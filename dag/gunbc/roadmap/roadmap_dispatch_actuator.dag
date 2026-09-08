@@ -75,6 +75,7 @@ import extdeps.tmux {
 }
 import extdeps.llm.cli {
   ProviderModelSelection,
+  ProviderModelPinned,
   shape_claude_invoke_argv,
   claude_cli_program,
   codex_cli_program,
@@ -265,10 +266,25 @@ fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> DispatchProvi
   }
 }
 
+// THE MODEL IS A REQUIRED FIELD OF THIS ARM, and that is the whole wall for the second spawn route.
+// review 62268 found the first cut of this change threaded a model into the argv rows but not into
+// this carrier, so gunbc.roadmap_belt_actuate belt_resolved_spawn_plan -- the OTHER caller of
+// dispatch_spawn_commands_for_resolved_instance -- had no model to supply; CI agreed, refusing at
+// belt_resolved_spawn_plan with `missing required argument model`. Passing
+// ProviderAccountDefaultModel there to make it compile would have been the absorbing fallback
+// DESIGN section 5 names: a silent widen that reports the account default for a selection that
+// resolved something else, which is precisely the class this change exists to close.
+//
+// Because the field is required and has no default, no construction of this arm can omit a model:
+// the belt route and the dispatch route both carry one or neither compiles. That is why there is no
+// belt-path witness for the drop -- the RED is not authorable, so a check here would be the
+// permanently-green decoration section 4b warns against rather than a wall. The argv-grain red
+// stays enrolled below, where the forbidden state IS writable.
 type DispatchActuatorSelection
   = DispatchActuatorSelectionOk {
       provider: DispatchCliProvider
       effort: ReasoningEffort
+      model: ProviderModelSelection
       process_fingerprint: NonEmptyStr
     }
   | DispatchActuatorSelectionRefused { reason: NonEmptyStr }
@@ -297,10 +313,11 @@ data harness_selection_process_fingerprint: NonEmptyStr = "gunbc" as NonEmptyStr
 
 fn dispatch_harness_selection() -> DispatchActuatorSelection {
   match harness_observe_roster() {
-    HarnessRosterServing { model: _, serving: _, declined: _ } =>
+    HarnessRosterServing { model: serving_model, serving: _, declined: _ } =>
       DispatchActuatorSelectionOk {
         provider: GunbcHarnessProvider,
         effort: ReasoningMedium,
+        model: ProviderModelPinned { model: serving_model as NonEmptyStr },
         process_fingerprint: harness_selection_process_fingerprint,
       }
     HarnessRosterNoneServing { model: m, declined } =>
@@ -326,6 +343,7 @@ fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuat
       DispatchActuatorSelectionOk {
         provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
         effort: receipt.applied_effort,
+        model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
@@ -362,6 +380,7 @@ fn dispatch_actuator_selection_for_provider(
       DispatchActuatorSelectionOk {
         provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
         effort: receipt.applied_effort,
+        model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
@@ -565,7 +584,7 @@ fn dispatch_provider_instance_for_kind(
 // vendor row into every session observation downstream.
 fn dispatch_provider_instance() -> ProviderInstance? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
       match dispatch_cli_to_provider_kind(provider: provider) {
         DispatchProviderKindIs { kind: k } =>
           Present { value: dispatch_provider_instance_for_kind(kind: k) }
@@ -600,7 +619,7 @@ fn dispatch_worker_observation() -> WorkerObservation? {
 
 fn dispatch_applied_effort() -> ReasoningEffort? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider: _, effort, model: _, process_fingerprint: _ } =>
       Present { value: effort }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
@@ -611,7 +630,7 @@ fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEm
     provider: provider,
     node_sizing: Unsized,
   ) {
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
       Present { value: process_fingerprint }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
@@ -1443,7 +1462,7 @@ fn dispatch_tmux_session_scope_for_process_fingerprint(
 
 fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
       Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
           node_id: node_id,
@@ -1651,41 +1670,7 @@ fn codex_spawn_argv(
   )
 }
 
-// `dashboard_instance_provider_executable` answers `FilePath?` -- the committed lock placement may
-// not be realized on a host, which is exactly what
-// `dashboard_instance_provider_executable_refusal_detail` exists to say -- and the argv builder below
-// reached it with `as String`, which does not eliminate the absence: an unrealized placement spawned
-// a process whose program argument was the literal text `Absent`. The compiler now refuses that
-// cast. The absent arm carries the existing refusal detail, so the spawn fails naming the host and
-// the unrealized placement rather than naming a program nobody wrote.
-fn codex_spawn_program_for_instance(instance: HostDashboardInstance) -> String {
-  match dashboard_instance_provider_executable(instance: instance) {
-    Present { value: executable } => executable as String
-    Absent => dashboard_instance_provider_executable_refusal_detail(instance: instance)
-  }
-}
 
-fn codex_spawn_argv_for_instance(
-  instance: HostDashboardInstance,
-  effort: ReasoningEffort,
-  model: ProviderModelSelection,
-  worktree_path: String,
-  brief: String,
-) -> List<String> {
-  shape_codex_exec_argv_for_programs(
-    env_program: dispatch_capability_program(
-      environment: instance.execution_environment,
-      cap: EnvironmentBindingCapability,
-    ),
-    program: codex_spawn_program_for_instance(instance: instance),
-    codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
-    cwd: worktree_path,
-    prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
-    reasoning_effort: effort,
-    model: model,
-    spec: dispatch_codex_exec_spec,
-  )
-}
 
 data gunbc_harness_needs_instance_reason: NonEmptyStr = "the gunbc harness worker resolves its modules from the CONTROLLER's repo_root, which only a dashboard instance names; this instance-less spawn path cannot supply one and refuses rather than guessing a checkout" as NonEmptyStr
 
@@ -2825,7 +2810,7 @@ fn classify_dispatch_request(
       match dispatch_actuator_selection(node_sizing: node.sizing) {
         DispatchActuatorSelectionRefused { reason } =>
           DispatchRefused { reason: reason }
-        DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint } =>
+        DispatchActuatorSelectionOk { provider: _, effort, model: _, process_fingerprint } =>
           classify_dispatch_request_for_process_fingerprint(
             node: node,
             ready: ready,

@@ -333,7 +333,7 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
     node_sizing: Unsized,
   ) {
     DispatchActuatorSelectionRefused { reason: _ } => true
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
   }
 }
 
@@ -716,7 +716,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionRefused { reason } =>
       reason == dispatch_selection_standing_ineligible_reason
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
   }
     && count(dispatch_live_sessions_from_entries(entries: [entry])) == 0
     && match classify_dispatch_request(
