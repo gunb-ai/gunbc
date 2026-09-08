@@ -101,6 +101,36 @@ test fn w_finite_power_set_record_shape_still_refuses_while_its_row_stands() -> 
   )
 }
 
+// FIELDLESS-RECORD DATA UNDER THE JSON PATH, THE DISCRIMINATING RED for the second native-parity
+// divergence class. A data definition of record type with no cross-refs is emitted as a
+// serde_json round-trip (emit_data_value_json), and the value side spelled EVERY record as a
+// JSON map -- including the zero-field record, whose emitted Rust type is a unit struct
+// (emit_struct_from_children, `pub struct Marker;`). serde's unit-struct Deserialize reads
+// `null` and rejects `{}`, so the emitted compiler panicked at first touch of the data:
+// "invalid type: map, expected unit struct BoolEncodingFact", measured 2026-09-08 on the native
+// run of the emitted 00_compile closure (v2.std.logic bool_primitive_facts). The value side now
+// spells the zero-field record `null`; this row reds if the map spelling returns.
+test fn w_fieldless_record_data_value_spells_null_for_the_unit_struct() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.fieldless_record_json_probe\ntype Marker {}\ntype Holder {\n  marker: Marker\n}\ndata probe: Holder = Holder { marker: Marker {} }\n",
+    "src/test_claim_fieldless_record_json_probe.rs",
+    ["pub struct Marker;", "\"marker\": null"],
+    ["\"marker\": {}"]
+  )
+}
+
+// THE BOUNDARY CONTROL. The null spelling is the zero-field case ONLY: a record with fields
+// keeps the map spelling its braced struct deserializes from. A repair that emitted `null` for
+// every record literal greens the row above and reds here.
+test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nonempty_record_json_probe\nimport std.types { String }\ntype Holder {\n  name: String\n}\ndata probe: Holder = Holder { name: \"kept\" }\n",
+    "src/test_claim_nonempty_record_json_probe.rs",
+    ["\"name\": \"kept\""],
+    ["\"name\": null"]
+  )
+}
+
 // THE PROBE IMPORTS v2.std.collection AND THEN CALLS IT BY ITS QUALIFIED NAME, which looks
 // redundant and is not. compile_dag_rust_emit_check compiles through the witness harness's
 // restricted pool (2973 modules against the corpus's 4261), and a qualified spelling alone does not

@@ -441,6 +441,14 @@ fn accumulate_json_field(acc: JsonFragmentsAccum, name: String, outcome: Emitter
   }
 }
 
+// The JSON spelling of a data value must deserialize into the RUST TYPE the same declaration
+// emitted, so the two sides are one agreement, not two choices. The case that forces the issue
+// is the fieldless record: emit_struct_from_children renders it as a unit struct (`pub struct
+// Name;`), and serde's derived unit-struct Deserialize reads `null` -- an empty map `{}` is a
+// different, rejected shape ("invalid type: map, expected unit struct", measured 2026-09-08 as
+// the second native-parity divergence, on v2.std.logic bool_primitive_facts). The record arm
+// therefore spells the zero-field value `null`; non-empty records keep the map spelling their
+// braced struct expects.
 fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) -> EmitterOutcome {
   match value.expr_data {
     ExprLiteral { value: v } => match v {
@@ -460,7 +468,10 @@ fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) 
         FragmentsAccumulated { pieces: ps } => Emitted { json: concat("[", ps |> join(separator: ", "), "]") }
       }
     }
-    ExprRecordLit { parent_enum: _ } => {
+    ExprRecordLit { parent_enum: _ } =>
+      if (value.children |> count) == 0 {
+        Emitted { json: "null" }
+      } else {
       let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, fld) =>
         accumulate_json_field(
           acc: acc,
