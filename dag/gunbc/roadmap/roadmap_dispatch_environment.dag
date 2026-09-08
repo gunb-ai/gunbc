@@ -3,12 +3,16 @@ module gunbc.roadmap_dispatch_environment
 import std.types { String, Bool, List, FilePath, NonEmptyStr }
 import std.upsert_decision {
   UpsertDecision,
-  Noop,
-  Apply,
   Refuse,
   upsert_decision_label,
 }
-import std.realization_reconcile { reconciliation_converged }
+import std.realization_reconcile {
+  ReconciledEffect,
+  classify_reconciled,
+  EffectConverged,
+  EffectNotConverged,
+  NotApplied,
+}
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.ensure {
   EnsureObservation,
@@ -17,8 +21,7 @@ import gunbc.ensure {
   EnsureInaccessible,
   EnsurePlan,
   EnsurePlanUnavailable,
-  ensure_decide,
-  ensure_readback,
+  ensure_reconcile,
 }
 import gunbc.roadmap_execution_contract {
   ExecutionCapability,
@@ -58,15 +61,66 @@ import extdeps.shell
 // is the authority ensure_decide already produced, so there is no second sum to keep in step
 // (DESIGN 3); the wire word exists once, at the JSON emit site, through upsert_decision_label.
 
-type CapabilityEnsureReceipt {
+// THE POSITIVE ARM IS SEALED, AND THAT IS THE WHOLE POINT OF THIS TYPE'S SHAPE. The admission fold
+// below trusts these receipts to decide whether dispatch runs, and it used to trust an ORDINARY
+// `grounded: Bool` on an open product. Migrating the producer onto the reconciliation authority did
+// not reach that sink: the sealed ReconciledEffect was classified, then flattened back into a Boolean
+// any importer could write, so
+//   CapabilityEnsureReceipt { decision: Refuse { ... }, grounded: true, reason: "", ... }
+// was authorable and admitted, because admission reads `grounded` and ignores `decision`. The
+// consistency table was optional at the exact boundary it exists to guard -- validation standing
+// where construction was available (DESIGN 5), and a migration that stops one type short of its sink.
+//
+// GroundedCapabilityEnsure is sole_constructor, so no module outside this one can build the value the
+// CapabilityGrounded arm requires. Positive standing now has a CONSTRUCTION PATH rather than a second
+// predicate: adding `decision == Noop` beside `grounded == true` would have left Noop-with-true just
+// as writable, which is the same validation-instead-of-construction move one rung down.
+//
+// The Boolean survives only as a JSON PROJECTION at the serialization boundary, where it is an
+// output format and not an authority anything reads back.
+//
+// THE WALL IS ENROLLED AND IS NOT NEW HERE. Cross-module sole_constructor forgery is the
+// sole-constructor-cross-module class in gunbc.guarantee_probe_corpus, which already carries a forged
+// RED, a cast RED and an unadmitted-caller RED beside its green controls. This type inherits that
+// wall; authoring a second probe class for it would be a second authority for one guarantee
+// (DESIGN 3), which is the move this change declined for its failure-mode row as well.
+//
+// SCOPED HONESTLY, in the same terms std.realization_reconcile uses for ConvergedEffect: the wall
+// holds for callers OUTSIDE this module. Inside it the mint is ordinary source, so a wrong
+// GroundedCapabilityEnsure is authorable here. What is closed is the importer path -- the one the
+// witness corpus was previously exercising -- and the emitted or deserialized representation is not
+// covered, which is this class's next-rung trigger rather than something the seal already holds.
+type GroundedCapabilityEnsure sole_constructor {
   capability: ExecutionCapability
   capability_label: String
   executable: String
   decision: UpsertDecision<String>
-  grounded: Bool
   evidence: String
-  reason: String
 }
+
+type CapabilityEnsureReceipt
+  = CapabilityGrounded { grounded: GroundedCapabilityEnsure }
+  | CapabilityNotGrounded {
+      capability: ExecutionCapability,
+      capability_label: String,
+      executable: String,
+      decision: UpsertDecision<String>,
+      evidence: String,
+      reason: String,
+    }
+
+fn receipt_capability(receipt: CapabilityEnsureReceipt) -> ExecutionCapability {
+  match receipt {
+    CapabilityGrounded { grounded: g } => g.capability
+    CapabilityNotGrounded { capability: c, capability_label: _, executable: _, decision: _, evidence: _, reason: _ } => c
+  }
+}
+
+
+
+
+
+
 
 type DispatchEnvironmentAdmission
   = EnvironmentAdmitted {
@@ -81,8 +135,8 @@ type DispatchEnvironmentAdmission
 
 // Dispatch admission is requirements -> Ensure -> grounded receipts -> actuation. The work item's
 // typed validation operations derive semantic capabilities; HostDashboardInstance resolves those to
-// exact executable paths and identity probes; one generic Ensure decision is evaluated
-// independently per capability; only independently grounded Noop receipts admit worktree/session
+// exact executable paths and identity probes; one generic Ensure decision is evaluated per
+// capability; only Noop receipts whose capability observation grounds admit worktree/session
 // effects. Generic Ensure never installs a named package. An EnsureMayApply realization still needs
 // a capability-specific typed plan and adapter; this module supplies no ambient package manager
 // fallback, so no-plan refuses. ExecutionContractUnspecified is an explicit migration refusal.
@@ -93,30 +147,6 @@ fn no_capability_plan(reason: String) -> EnsurePlan<String> {
   EnsurePlanUnavailable { reason: reason }
 }
 
-fn capability_ensure_decision(
-  realization: CapabilityRealization,
-  observation: EnsureObservation<String>,
-  identity_matches: Bool,
-) -> UpsertDecision<String> {
-  ensure_decide(
-    policy: realization.ensure_policy,
-    observation: observation,
-    observation_satisfies: identity_matches,
-    mismatch_reason: join([
-      execution_capability_label(capability: realization.capability),
-      " identity probe did not match ",
-      realization.identity_contains as String,
-    ], ""),
-    plan: no_capability_plan(
-      reason: join([
-        "no capability-specific provisioner is modeled for ",
-        execution_capability_label(capability: realization.capability),
-        "; generic Ensure cannot choose an installer",
-      ], ""),
-    ),
-  )
-}
-
 fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String {
   match observation {
     EnsureObserved { evidence } => evidence
@@ -125,59 +155,127 @@ fn ensure_observation_evidence(observation: EnsureObservation<String>) -> String
   }
 }
 
+// One receipt, one derivation. Each of the three arms below used to decide `grounded` for itself:
+// the Noop arm from the readback, and the Apply and Refuse arms from a hand-written `false`. Two of
+// the three were literals standing where a derivation belongs, so the arms could disagree with the
+// lifecycle silently and a fourth arm would arrive with no obligation to derive anything at all.
+// ensure_reconcile now answers it once, from the REPORTED effective read, and each arm takes the
+// reason std already classified rather than re-deriving one.
+//
+// Behaviour is unchanged by construction rather than by inspection: reconcile_effect refuses a
+// Refuse, refuses an Apply reported as NotApplied (this site reports NotApplied because no
+// capability-specific provisioner is modeled), and grounds a Noop exactly when the read grounds.
+//
+// EACH ARM TAKES THE REASON std CLASSIFIED. An earlier revision of this change routed both arms
+// through a capability_receipt_reason helper that re-branched on the decision, which preserved the
+// classified reason only for Noop: Apply substituted a literal and Refuse re-read the decision's own
+// reason. That discards exactly the reasons the classifier adds -- Refuse-paired-with-an-application
+// is a REPORT CONTRADICTION, not the original policy refusal -- so a receipt would have named the
+// wrong cause the moment this site gains a real provisioner. EffectNotConverged.reason is now used
+// directly, and the converged arm is the empty string because classify_reconciled reaches it only
+// through Grounds.
+//
+// AND THERE IS NO DISTINCT READBACK REASON, because there is no distinct readback. This site holds
+// ONE observation per capability and passes it as both before and after, so no reachable route
+// carries an after reason the before reason would not carry: a satisfied identity gives Noop over a
+// grounding read, and a dissatisfied one gives Refuse before the grounding report is consulted. A
+// helper minting separate "identity readback did not ground" vocabulary was therefore a producer
+// whose only consumer fed a semantically dead argument -- DESIGN 3c's dangling declaration, the same
+// class this change removes at ReconciledEffect. It is deleted rather than kept warm; a distinct
+// after reason returns when this site obtains a distinct after OBSERVATION, and not before.
+//
+// The converged arm's evidence is c.evidence, from the sealed result, NOT re-derived from the raw
+// observation. The two are equal today only because the same observation is passed as before and
+// after; consuming the sealed value is what stops that parallel source from diverging when a real
+// second read lands.
+//
+// The observation is passed as BOTH before and after, and that is a real limitation rather than an
+// oversight: this site holds ONE observation per capability, and it is not a second read of the host.
+// It was previously described as an independent readback, and the user-visible refusal said so too --
+// a receipt asserting evidence this site does not hold, which is worse than stale prose because a
+// reader acts on it. Making it one is a change to what this module
+// OBSERVES, not to how it reconciles, so it is deliberately not folded in here.
+
+fn capability_mismatch_reason(realization: CapabilityRealization) -> String {
+  join([
+    execution_capability_label(capability: realization.capability),
+    " identity probe did not match ",
+    realization.identity_contains as String,
+  ], "")
+}
+
+// CALLER-SEALED, BECAUSE sole_constructor ALONE LEFT THIS OPEN. GroundedCapabilityEnsure cannot be
+// written as a record literal outside this module, but an unrestricted pure function that MINTS it
+// from ordinary caller-authored inputs is a public semantic constructor with a longer spelling. Given
+// EnsureObserved plus identity_matches: true, this derives Noop, supplies NotApplied, reports one
+// observation as both before and after, classifies it as grounding, and returns the sealed positive --
+// with no IsExecutable and no identity command having run. So
+//   capability_ensure_receipt(realization: <anything>, observation: EnsureObserved { ... }, identity_matches: true)
+// was exactly the bypass that CapabilityEnsureReceipt { grounded: true } used to be, and a complete
+// set of them still reached EnvironmentAdmitted. Sealing the RECORD moved the forgery; it did not
+// remove it.
+//
+// This is the same cut gunbc.typed_remote_file_write already makes, and the reason that half got it
+// right: the public classifier there returns an ordinary RemoteFileComparisonReport, while
+// remote_file_converged_from_report is admitted to the func that ran the effect.
+//
+// admit_callers here names capability_ensure_observe -- the route that runs the executable probe and
+// the declared identity command -- and one NAMED FIXTURE AUTHORITY, which asserts a match rather than
+// observing one and says so at its declaration. The fixture exception is not a second observer, and
+// it dissolves on the trigger recorded there: an injected execution context for this route, after
+// which a witness drives the real observer and the fixture is deleted.
+//
+// NOT SPLIT into a public classifier plus a restricted mint, which was the other sound shape offered.
+// Nothing in the corpus needs judgment without authority -- dispatch_preflight consumes receipts and
+// never classifies -- so a public classify_capability_ensure would be a declaration with no consumer,
+// which is the dangling-declaration class this change removes elsewhere (DESIGN 3c).
 fn capability_ensure_receipt(
   realization: CapabilityRealization,
   observation: EnsureObservation<String>,
   identity_matches: Bool,
-) -> CapabilityEnsureReceipt {
-  let decision = capability_ensure_decision(
-    realization: realization,
-    observation: observation,
-    identity_matches: identity_matches,
+) -> CapabilityEnsureReceipt
+  admit_callers: [
+    decl_ref(module_path: "gunbc.roadmap_dispatch_environment", decl_name: "capability_ensure_observe"),
+    decl_ref(module_path: "test.claim.capability_ensure_fixture", decl_name: "grounded_capability_ensure_witness_fixture"),
+    decl_ref(module_path: "test.claim.capability_ensure_fixture", decl_name: "refused_capability_ensure_witness_fixture"),
+  ]
+{
+  let reconciled = ensure_reconcile(
+    policy: realization.ensure_policy,
+    before: observation,
+    before_satisfies: identity_matches,
+    mismatch_reason: capability_mismatch_reason(realization: realization),
+    plan: no_capability_plan(
+      reason: join([
+        "no capability-specific provisioner is modeled for ",
+        execution_capability_label(capability: realization.capability),
+        "; generic Ensure cannot choose an installer",
+      ], ""),
+    ),
+    application: NotApplied,
+    after: observation,
+    after_satisfies: identity_matches,
+    after_mismatch_reason: capability_mismatch_reason(realization: realization),
   )
-  let readback = ensure_readback(
-    applied: false,
-    observation: observation,
-    observation_satisfies: identity_matches,
-    mismatch_reason: join([
-      execution_capability_label(capability: realization.capability),
-      " identity readback did not ground the requirement",
-    ], ""),
-  )
-  match decision {
-    Noop =>
-      CapabilityEnsureReceipt {
-        capability: realization.capability,
-        capability_label: execution_capability_label(capability: realization.capability),
-        executable: realization.executable as String,
-        decision: decision,
-        grounded: reconciliation_converged(r: readback),
-        evidence: ensure_observation_evidence(observation: observation),
-        reason: if reconciliation_converged(r: readback) {
-          ""
-        } else {
-          "independent Ensure readback did not ground the capability"
+  match classify_reconciled(r: reconciled) {
+    EffectConverged { converged: c } =>
+      CapabilityGrounded {
+        grounded: GroundedCapabilityEnsure {
+          capability: realization.capability,
+          capability_label: execution_capability_label(capability: realization.capability),
+          executable: realization.executable as String,
+          decision: c.decision,
+          evidence: c.evidence,
         },
       }
-    Apply { plan: _ } =>
-      CapabilityEnsureReceipt {
+    EffectNotConverged { reason: why, attempt: a } =>
+      CapabilityNotGrounded {
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),
         executable: realization.executable as String,
-        decision: decision,
-        grounded: false,
+        decision: a.decision,
         evidence: ensure_observation_evidence(observation: observation),
-        reason: "capability-specific apply is required before admission; no effect ran in the decision layer",
-      }
-    Refuse { reason } =>
-      CapabilityEnsureReceipt {
-        capability: realization.capability,
-        capability_label: execution_capability_label(capability: realization.capability),
-        executable: realization.executable as String,
-        decision: decision,
-        grounded: false,
-        evidence: ensure_observation_evidence(observation: observation),
-        reason: reason as String,
+        reason: why,
       }
   }
 }
@@ -192,14 +290,13 @@ fn missing_capability_reason(cap: ExecutionCapability) -> String {
 fn missing_capability_receipt(
   cap: ExecutionCapability,
 ) -> CapabilityEnsureReceipt {
-  CapabilityEnsureReceipt {
+  CapabilityNotGrounded {
     capability: cap,
     capability_label: execution_capability_label(capability: cap),
     executable: "",
     decision: Refuse {
       reason: missing_capability_reason(cap: cap) as NonEmptyStr,
     },
-    grounded: false,
     evidence: "",
     reason: missing_capability_reason(cap: cap),
   }
@@ -263,17 +360,42 @@ fn receipt_matches_requirement(
   receipt: CapabilityEnsureReceipt,
   cap: ExecutionCapability,
 ) -> Bool {
-  execution_capability_equal(a: receipt.capability, b: cap)
+  execution_capability_equal(a: receipt_capability(receipt: receipt), b: cap)
 }
 
-fn first_ungrounded_reason(receipts: List<CapabilityEnsureReceipt>) -> String {
-  fold(receipts, init: "", f: fn(reason, receipt) {
-    if reason != "" {
-      reason
-    } else if !receipt.grounded {
-      join([receipt.capability_label, ": ", receipt.reason], "")
-    } else {
-      ""
+// ONE PASS, AND NO BOOL BETWEEN THE COPRODUCT AND THE ANSWER. An earlier revision of this change
+// replaced the grounded: Bool FIELD with the coproduct above and then re-minted the Bool underneath
+// it: a two-arm receipt_grounded fold, a scan that branched on it, and a receipt_reason that had to
+// return "" on the grounded arm as a sentinel. That is the shape std.realization_reconcile forbids in
+// this same change -- collapse the coproduct, then re-expand it to recover the reason it already
+// carried -- and the "" sentinel was a second, weaker encoding of the discriminator the arms already
+// are (DESIGN 2: net concepts must not grow by re-invention).
+//
+// The reason lives on CapabilityNotGrounded, so one match yields it BY CONSTRUCTION. The admission
+// decision consumes this verdict directly instead of scanning for a Bool and then re-scanning the
+// same list to find which receipt caused the refusal.
+type CapabilityAdmissionScan
+  = AllCapabilitiesGrounded
+  | CapabilityRefusalFound { reason: String }
+
+fn capability_admission_scan(
+  receipts: List<CapabilityEnsureReceipt>,
+) -> CapabilityAdmissionScan {
+  fold(receipts, init: AllCapabilitiesGrounded, f: fn(acc, receipt) {
+    match acc {
+      CapabilityRefusalFound { reason: found } => CapabilityRefusalFound { reason: found }
+      AllCapabilitiesGrounded =>
+        match receipt {
+          CapabilityGrounded { grounded: _ } => AllCapabilitiesGrounded
+          CapabilityNotGrounded {
+            capability: _,
+            capability_label: label,
+            executable: _,
+            decision: _,
+            evidence: _,
+            reason: why,
+          } => CapabilityRefusalFound { reason: join([label, ": ", why], "") }
+        }
     }
   })
 }
@@ -314,16 +436,19 @@ fn dispatch_environment_admission_decision(
       validation_summary: validation_summary,
       reason: "Ensure receipt set does not exactly cover the execution contract",
     }
-  } else if !all(receipts, receipt => receipt.grounded) {
-    EnvironmentRefused {
-      receipts: receipts,
-      validation_summary: validation_summary,
-      reason: first_ungrounded_reason(receipts: receipts),
-    }
   } else {
-    EnvironmentAdmitted {
-      receipts: receipts,
-      validation_summary: validation_summary,
+    match capability_admission_scan(receipts: receipts) {
+      CapabilityRefusalFound { reason: why } =>
+        EnvironmentRefused {
+          receipts: receipts,
+          validation_summary: validation_summary,
+          reason: why,
+        }
+      AllCapabilitiesGrounded =>
+        EnvironmentAdmitted {
+          receipts: receipts,
+          validation_summary: validation_summary,
+        }
     }
   }
   }
@@ -413,18 +538,45 @@ fn dispatch_environment_receipt_decode(
   }
 }
 
+// THE WIRE PROJECTION, and the one place a Bool is correct: this is an output FORMAT with a stable
+// shape, not an authority anything reads back. It is built per ARM rather than through a reusable
+// coproduct-to-Bool fold, because such a fold is what a consumer picks up to re-branch on -- which is
+// how the discriminator got re-minted here once already. Nothing but this emitter can reach these
+// literals, so the keys stay identical across arms while the discriminator stays structural.
 fn capability_ensure_receipt_json(receipt: CapabilityEnsureReceipt) -> JsonValue {
-  json_object(members: [
-    json_kv(key: "capability", value: json_string(s: receipt.capability_label)),
-    json_kv(key: "executable", value: json_string(s: receipt.executable)),
-    json_kv(
-      key: "decision",
-      value: json_string(s: upsert_decision_label(decision: receipt.decision)),
-    ),
-    json_kv(key: "grounded", value: json_bool(b: receipt.grounded)),
-    json_kv(key: "evidence", value: json_string(s: receipt.evidence)),
-    json_kv(key: "reason", value: json_string(s: receipt.reason)),
-  ])
+  match receipt {
+    CapabilityGrounded { grounded: g } =>
+      json_object(members: [
+        json_kv(key: "capability", value: json_string(s: g.capability_label)),
+        json_kv(key: "executable", value: json_string(s: g.executable)),
+        json_kv(
+          key: "decision",
+          value: json_string(s: upsert_decision_label(decision: g.decision)),
+        ),
+        json_kv(key: "grounded", value: json_bool(b: true)),
+        json_kv(key: "evidence", value: json_string(s: g.evidence)),
+        json_kv(key: "reason", value: json_string(s: "")),
+      ])
+    CapabilityNotGrounded {
+      capability: _,
+      capability_label: label,
+      executable: exe,
+      decision: decision,
+      evidence: evidence,
+      reason: why,
+    } =>
+      json_object(members: [
+        json_kv(key: "capability", value: json_string(s: label)),
+        json_kv(key: "executable", value: json_string(s: exe)),
+        json_kv(
+          key: "decision",
+          value: json_string(s: upsert_decision_label(decision: decision)),
+        ),
+        json_kv(key: "grounded", value: json_bool(b: false)),
+        json_kv(key: "evidence", value: json_string(s: evidence)),
+        json_kv(key: "reason", value: json_string(s: why)),
+      ])
+  }
 }
 
 fn dispatch_environment_admission_json(

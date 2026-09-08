@@ -4,6 +4,7 @@
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
+pub use crate::v1_compiler_infer_items::leaf_owner_modules_from_registry;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::UniqueAccum;
 pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
@@ -96,7 +97,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                 owners: v1_rt::rc_empty_map::<String, String>(),
                 diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<ModuleFilenameOwners>, tm: _| {
+            |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
                 let module_name = crate::v1_std_core::authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
@@ -158,7 +159,7 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            |acc: _, item: String| {
+            |acc: Rc<UniqueAccum>, item: String| {
                 if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), item.clone()) {
                     acc.clone()
                 } else {

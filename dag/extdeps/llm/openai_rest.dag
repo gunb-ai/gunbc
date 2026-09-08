@@ -9,6 +9,8 @@ import extdeps.llm.openai {
 import extdeps.llm.openai_errors { OpenAiErrorShape }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.types { NonEmptyStr }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -23,7 +25,6 @@ service llm.OpenAI {
     auth: Bearer
     auth_input: api_key
 
-    rate_limit: { requests: 500, per: minute, scope: chat }
   }
 
   operation ChatCompletion {
@@ -87,3 +88,6 @@ service llm.OpenAI {
     }
   }
 }
+
+// The chat completions request limit for this account tier as published: 500 requests per minute.
+data openai_chat_rate_limit: UpstreamRateLimit = UpstreamRateLimit { upstream: "openai" as NonEmptyStr, scope: "chat" as NonEmptyStr, requests: 500, period: PerMinute }

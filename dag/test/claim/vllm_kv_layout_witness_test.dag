@@ -2,9 +2,12 @@ module test.claim.vllm_kv_layout_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
-import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  Percent, percent, percent_count,
+  AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+}
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache {
   VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused,
@@ -20,44 +23,45 @@ import extdeps.vllm.kv_layout {
   recovered_blocks_per_max_length_request,
   PrintedLinesAgreement, PrintedLinesAgree, PrintedLinesDisagree, PrintedLinesUncheckable, printed_lines_agree,
   AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
-  AllocatorUsage, UsageReading, UsageRead, FreeCountImpossible, allocator_usage, allocator_usage_is_occupancy,
+  AllocatorUsage, UsageReading, UsageRead, FreeCountImpossible, allocator_usage,
   group_blocks_for,
 }
 
-// The group A head's own two startup lines, 2026-09-05T20:43:56Z.
-fn w_pool() -> VllmObservedKvPool {
-  match vllm_observed_kv_pool_from_reading(
+// The group A head's own two startup lines, 2026-09-05T20:43:56Z. A refused admission is a red
+// fixture, not a second guess: the nested token_count(0) substitute and the unguarded self-call
+// both violated DESIGN section 5 (refuse, never widen) and section 4 (bounded, forward).
+fn w_pool_admission() -> VllmKvPoolAdmission {
+  vllm_observed_kv_pool_from_reading(
     tokens: token_count(count: 11767856),
     reading: vllm_startup_reading(
       line: GpuKvCacheSize,
       captured_text: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens" as NonEmptyStr,
+      observed_at_revision: vllm_source_revision_read,
     ),
-  ) {
-    KvPoolAdmitted { pool: p } => p
-    KvPoolRefused { cause: _ } =>
-      match vllm_observed_kv_pool_from_reading(
-        tokens: token_count(count: 0),
-        reading: vllm_startup_reading(line: GpuKvCacheSize, captured_text: "x" as NonEmptyStr, observed_at_revision: vllm_source_revision_read),
-      ) {
-        KvPoolAdmitted { pool: q } => q
-        KvPoolRefused { cause: _ } => w_pool()
-      }
+  )
+}
+
+fn with_admitted_pool(f: (VllmObservedKvPool) -> Bool) -> Bool {
+  match w_pool_admission() {
+    KvPoolAdmitted { pool: p } => f(p)
+    KvPoolRefused { cause: _ } => false
   }
 }
 
-fn w_reported() -> VllmReportedCapacity {
-  vllm_reported_capacity(pool: w_pool(), max_concurrency_hundredths: 1122)
+fn w_reported(pool: VllmObservedKvPool) -> VllmReportedCapacity {
+  vllm_reported_capacity(pool: pool, max_concurrency: percent(count: 1122))
 }
 
 // The allocator inventory read off the same engine's cache_config_info.
 fn w_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
   resolved_kv_layout(
-    allocator_blocks: 54475,
+    allocator_blocks: allocator_block_count(count: 54475),
     scheduler_block_size: token_count(count: 16),
     hash_block_size: token_count(count: 16),
     max_model_len: token_count(count: 1048576),
     max_num_batched_tokens: token_count(count: 8192),
     groups: groups,
+    established_at_revision: vllm_source_revision_read,
   )
 }
 
@@ -66,10 +70,12 @@ fn w_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
 // the engine's own group-aware arithmetic recovered, not re-derived from fields whose reductions
 // differ, and it is the only per-request cost today's evidence yields.
 test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines() -> Bool {
-  match recovered_blocks_per_max_length_request(layout: w_layout(groups: []), reported: w_reported()) {
-    BlocksPerRequestRecovered { blocks: b } => b == 4854
-    BlocksPerRequestUnrecoverable { cause: _ } => false
-  }
+  with_admitted_pool(f: (p) =>
+    match recovered_blocks_per_max_length_request(layout: w_layout(groups: []), reported: w_reported(pool: p)) {
+      BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4854
+      BlocksPerRequestUnrecoverable { cause: _ } => false
+    }
+  )
 }
 
 // THE LIMIT OF TODAY'S EVIDENCE, ASSERTED RATHER THAN ASSUMED. The printed-line check tests the pool
@@ -82,30 +88,35 @@ test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines
 // blocks, 4,930 against group B's 55,328), which is what makes the cost a function of the launch
 // while the agreement check is not.
 test fn the_printed_line_check_does_not_see_the_inventory_which_is_why_a_receipt_is_still_needed() -> Bool {
-  let other = resolved_kv_layout(
-    allocator_blocks: 55328,
-    scheduler_block_size: token_count(count: 16),
-    hash_block_size: token_count(count: 16),
-    max_model_len: token_count(count: 1048576),
-    max_num_batched_tokens: token_count(count: 8192),
-    groups: [],
-  )
-  (match printed_lines_agree(layout: w_layout(groups: []), reported: w_reported()) { PrintedLinesAgree => true  _ => false })
-    && (match printed_lines_agree(layout: other, reported: w_reported()) { PrintedLinesAgree => true  _ => false })
-    && (match recovered_blocks_per_max_length_request(layout: other, reported: w_reported()) {
-          BlocksPerRequestRecovered { blocks: b } => b == 4930
-          BlocksPerRequestUnrecoverable { cause: _ } => false
-        })
+  with_admitted_pool(f: (p) => {
+    let other = resolved_kv_layout(
+      allocator_blocks: allocator_block_count(count: 55328),
+      scheduler_block_size: token_count(count: 16),
+      hash_block_size: token_count(count: 16),
+      max_model_len: token_count(count: 1048576),
+      max_num_batched_tokens: token_count(count: 8192),
+      groups: [],
+      established_at_revision: vllm_source_revision_read,
+    )
+    (match printed_lines_agree(layout: w_layout(groups: []), reported: w_reported(pool: p)) { PrintedLinesAgree => true  _ => false })
+      && (match printed_lines_agree(layout: other, reported: w_reported(pool: p)) { PrintedLinesAgree => true  _ => false })
+      && (match recovered_blocks_per_max_length_request(layout: other, reported: w_reported(pool: p)) {
+            BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4930
+            BlocksPerRequestUnrecoverable { cause: _ } => false
+          })
+  })
 }
 
 // AND THE CHECK IS NOT VACUOUS: a mistranscribed concurrency line breaks it. Without this row the
 // one above could be satisfied by a function that returns Agree unconditionally.
 test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Bool {
-  let wrong = vllm_reported_capacity(pool: w_pool(), max_concurrency_hundredths: 440)
-  match printed_lines_agree(layout: w_layout(groups: []), reported: wrong) {
-    PrintedLinesDisagree { implied_hundredths: i, reported_hundredths: r } => i == 1122 && r == 440
-    _ => false
-  }
+  with_admitted_pool(f: (p) => {
+    let wrong = vllm_reported_capacity(pool: p, max_concurrency: percent(count: 440))
+    match printed_lines_agree(layout: w_layout(groups: []), reported: wrong) {
+      PrintedLinesDisagree { implied: i, reported: r } => percent_count(p: i) == 1122 && percent_count(p: r) == 440
+      _ => false
+    }
+  })
 }
 
 fn w_full(layers: KvLayerCount, block: KvBlockSize) -> KvGroupLayout {
@@ -131,9 +142,9 @@ test fn one_inventory_and_one_block_size_do_not_determine_the_admission_cost() -
       match cold_admission_blocks(layout: mostly_windowed, sequence_budget: budget) {
         AdmissionCostUnestablished { cause: _ } => false
         AdmissionCostBlocks { blocks: b } =>
-          a != b
-            && a == (31250 * 40) + (8 * 21)
-            && b == (31250 * 4) + (8 * 57)
+          allocator_block_count_value(c: a) != allocator_block_count_value(c: b)
+            && allocator_block_count_value(c: a) == (31250 * 40) + (8 * 21)
+            && allocator_block_count_value(c: b) == (31250 * 4) + (8 * 57)
       }
   }
 }
@@ -154,12 +165,13 @@ test fn an_unobserved_group_layout_refuses_the_admission_cost() -> Bool {
 
 // THE TWO FORBIDDEN RECONSTRUCTIONS STAY FORBIDDEN, and this module offers no function that performs
 // either. The usage gauge is likewise not occupancy: it counts retained prefix-cache blocks, which
-// is why the group B head read a majority-used pool with nothing running.
+// is why the group B head read a majority-used pool with nothing running. There is no occupancy
+// predicate to cite; the conversion's absence is the coverage.
 test fn neither_reconstruction_is_authoritative_and_usage_is_not_occupancy() -> Bool {
   !vllm_pool_reconstruction_is_authoritative(r: BlockCountTimesBlockSize)
     && !vllm_pool_reconstruction_is_authoritative(r: UtilizationTimesTotalMemory)
-    && (match allocator_usage(layout: w_layout(groups: []), free_blocks: 545) {
-          UsageRead { usage: u } => u.referenced_or_retained_blocks == 53930 && !allocator_usage_is_occupancy(usage: u)
+    && (match allocator_usage(layout: w_layout(groups: []), free_blocks: allocator_block_count(count: 545)) {
+          UsageRead { usage: u } => allocator_block_count_value(c: u.referenced_or_retained_blocks) == 53930
           FreeCountImpossible { free_blocks: _, allocator_blocks: _ } => false
         })
 }
@@ -169,8 +181,9 @@ test fn neither_reconstruction_is_authoritative_and_usage_is_not_occupancy() -> 
 // saturated engine, indistinguishable from a real one. The two numbers came from different launches
 // and the only honest output says so.
 test fn a_free_count_exceeding_the_inventory_refuses_rather_than_reading_as_saturated() -> Bool {
-  match allocator_usage(layout: w_layout(groups: []), free_blocks: 99999) {
-    FreeCountImpossible { free_blocks: f, allocator_blocks: a } => f == 99999 && a == 54475
+  match allocator_usage(layout: w_layout(groups: []), free_blocks: allocator_block_count(count: 99999)) {
+    FreeCountImpossible { free_blocks: f, allocator_blocks: a } =>
+      allocator_block_count_value(c: f) == 99999 && allocator_block_count_value(c: a) == 54475
     UsageRead { usage: _ } => false
   }
 }

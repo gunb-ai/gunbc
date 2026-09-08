@@ -340,8 +340,6 @@ service gcp.IAM {
     endpoint: "https://iamcredentials.googleapis.com"
     auth: Bearer
     auth_input: access_token
-
-    rate_limit: { requests: 60, per: minute, scope: iam_credentials }
   }
 
   operation GenerateAccessToken {

@@ -1560,48 +1560,88 @@ pub struct TransitionAdmission {
 /// the carrier in `product.cable_leg_observation`, base and head bind each spelling identically,
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
-const LEG_OBSERVATION_REHOME_LABEL: &str =
-    "gunbc#10671 transceiver layer split: the cable-leg observation carrier moves from the \
-     SFF-8636 byte-meaning module extdeps.transceiver.sff_8636 to product.cable_leg_observation";
+
+/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
+/// next roster-touching change, which is this one.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
+/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
+/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
+/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
+/// and both consumers, `test.claim.cable_leg_coding_witness` and
+/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
+/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
+/// reading rather than an author error.
+///
+/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
+/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
+/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
+///
+///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
+///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
+///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
+///   as an import from the fixture (and as uses inside `mb_scene` and
+///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
+///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
+///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
+///   the correct reading for all nine.
+///
+/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
+/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
+/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
+/// permissions standing over nothing.
+///
+/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
+/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
+/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
+/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
+///
+/// SIXTH TRANSITION (2026-09-07, gunbc#10688). `call_semantics_target` moved from
+/// `v1.compiler.emit_rust` to `v1.std.core`, so the two emit-side bindings of that spelling report
+/// `TargetChanged`. It is a re-home and not a re-spelling: the function reads a `CallSemantics` and
+/// answers a `CallTargetIdentity`, both declared in `v1.std.core`, and this change gave that
+/// coproduct a `LocallyBoundCall` arm — so the reduction is now consumed by `v1.compiler.infer` and
+/// `v1.compiler.service` as well as by emission. Leaving it in `v1.compiler.emit_rust` would have
+/// made the inference and effect tiers import the EMITTER to ask what a call names, which is the
+/// second-representation pressure DESIGN §3 forbids: the alternative on offer was a second copy
+/// beside the type. It sits beside `CallSemantics` because that is the declaration it destructures.
+///
+/// TWO ROWS, ONE PER BINDING SITE, enumerated rather than matched by module pattern, for the same
+/// reason the fourth transition was: the roster's population is an enumeration, never a predicate.
+/// The membership deltas this change also produces are `ExplicitlyEvaluatedZeroDelta` and
+/// auto-admit, and the `resolved_plain_call_target_for_outcome` delta is an
+/// `AuthoredReferenceResolution`, so all of them are deliberately absent here.
+///
+/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
+/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
+/// touch. Adjudicate that deletion by joining each row against main on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+const CALL_SEMANTICS_TARGET_REHOME_LABEL: &str =
+    "gunbc#10688 call-target identity re-home: `call_semantics_target` moves from \
+     v1.compiler.emit_rust to v1.std.core beside the `CallSemantics` it reads and the \
+     `CallTargetIdentity` it answers, so inference and the effect pass read one reduction \
+     instead of importing the emitter";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
+        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "delivered_fs_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_rust_expr_call",
+            spelling: "call_semantics_target",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
+        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "leg_with_unmodelled_code",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "correctly_coded_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "delivered_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_rust_tco_non_self_call",
+            spelling: "call_semantics_target",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

@@ -26,11 +26,46 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // and src/v2/ from the declarations themselves, so a newly authored operation enrolls by existing
 // and coverage is a corpus fact rather than a claim (DESIGN 3 and 6 -- a hand roster would be the
 // parallel-ledger form of exactly this fact). Each row is bound GENERICALLY: every input the
-// operation declares, and nothing else. Measured at authoring time by execution: 141 rows (139
-// corpus operations plus the 2 executable-position fixture operations), of which 133 materialize,
-// 96 reference at least one input outside the seed's prior five-name vocabulary (package, bin,
-// args, unit, property) and so could not be materialized AT ALL before this change, and 92 of those
-// 96 now materialize -- the remaining 4 are in the counted expression residue below.
+// operation declares, and nothing else. Row cardinality is the live enumerator
+// (shell_transport_operation_rows / ArgvCorpusTally.rows), not a number copied into this note.
+// An earlier authoring-time transcription of 141 rows is withdrawn: it was a snapshot, not an
+// authority, and it drifted from the enumerator on the same witness (DESIGN 6: name the
+// instrument, never transcribe its output).
+// Pins below are the executing floor (non-vacuous lower bound, residue count, unexplained == 0),
+// not a restated census total. The expression_residue pin is ArgvRowExpressionResidue only.
+// Materialization also refuses composed argv (calls and coproduct helpers) on operations that
+// this pin does not name; git.Plumbing.ReadTreeIntoIndex is the exemplar. Do not read the residue
+// pin as the set of operations whose argv is too composed to compare.
+// Argv-list identity cannot be walled as its own merge-blocking witness identity UNDER
+// THE CURRENT COST MODEL, in which every claim identity pays its own full-corpus
+// rematerialization. DESIGN 4b next-rung, measured: witness_duplicate_authority_pairs_are_well_formed
+// hit changed-witness interrupted_before_verdict against the required-floor claim CPU
+// deadline (required_floor_claim_cpu_safety_limit_ms). The obstacle is that second
+// rematerialization against that deadline, not the analysis and not the absence of a check.
+// Sampling is not a wall. A count or closed roster over pairs is the absorbing fallback.
+// Cite claim_batch's [witness] cpu= line against that deadline function; do not copy
+// milliseconds into this note. A declaration-only fold over the same enumerator (output
+// from-keys, no argv expansion) has been observed under the deadline as its own claim
+// identity; that is a different class and does not retire this rung.
+// Next-rung trigger (the capability, not an artifact): materialization results shared
+// across claim identities, or an argv identity derivable without rematerializing. Either
+// makes the wall affordable; writing another witness does not.
+// E0S0 is not a defect class. No stdout product plus branchable failure (exit_code,
+// stderr) is a legitimate contract; git.Plumbing is the exemplar. Reading the A0B0C0
+// empty E0S0 cell as corpus-wide emptiness treats a slice as the table. Browser effect
+// operations with output {} (Close, Click, Fill, UploadFile, Screenshot, Wait) are a
+// finding for that upstream, not a floor witness.
+// A Hamming-1 relation (same program and flags; one position a declaration literal vs a
+// generic bound-slot) would catch the class this join cannot see: an operation that bakes
+// its parameter in as a literal never shares an argv with the general operation it
+// duplicates, so the identity join reports a LOWER BOUND and is blind in the direction of
+// the worst offenders -- the more policy an operation hardcodes, the less likely it is to
+// join. It is a second named relation, not list identity, not "same policy" (undecidable),
+// and was not built. The specimen that motivated it was deleted rather than repaired: it
+// had no consumer, so deletion cost nothing the relation would have protected. That
+// disposition is why the relation stays unbuilt AND why its absence is not evidence the
+// class is empty -- the census found this one by reading the module, not by joining.
+// The relation remains blind on composed argv regardless.
 
 data operation_argv_expression_residue_note: String = "The residue is a DEFICIT HELD CONSTANT, not a regression: 7 operations carry an argv element that is a call or a field access, which materialization does not evaluate. Established by execution against the OLD builtin before this change -- all 7 refused there too (4 with `unsupported expr`, 3 with `unbound param` reached first), so no operation that materialized before refuses now. What changed is the shape of the refusal: an untyped host error string became a typed, located, counted ArgvExpressionUnsupported. The count is pinned so the deficit can only shrink deliberately; the operations are git.Core.DiffUnified0, git.Core.DiffNameStatus, http.Client.GetLocalhostBounded, sudo.NopasswdExecuteProbe.Check, gunbc.Cli.Run, claim_executor.Executor.RunPlan and claim_executor.Executor.VerifyBuildArtifacts. Dissolves when argv element evaluation lands, which is a separate lane."
 
