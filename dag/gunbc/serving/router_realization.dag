@@ -16,9 +16,11 @@ import std.types { String, NonEmptyStr, List }
 // answer the argument rather than rediscover it.
 //
 // THE CALLABLE HALF OF THIS BOUNDARY IS gunbc.harness.harness_cli: harness_place_cli asks the fabric
-// for a placement and prints the granted endpoint, the group, the exact launch and the grant
-// reference; harness_release_cli gives the seat back by that reference when the proxied request
-// ends. Those two entries are what a router calls INSTEAD of scoring replicas.
+// for a placement and prints the granted endpoint, the group, the exact partition, the exact launch
+// and the grant's own reference and fence; harness_release_cli gives the seat back by that whole
+// capability when the proxied request ends. Those two entries are what a router calls INSTEAD of
+// scoring replicas, and the release takes the capability rather than a group name so that a caller
+// cannot address a partition it never held a grant in.
 //
 // WHAT IS NOT IN THIS REPOSITORY IS THE ROUTER ITSELF. Its realization lives in the ctrl codebase,
 // so the paired change -- deleting its load score and its host selection, and calling these two

@@ -59,11 +59,23 @@ fn vllm_endpoint_process_launch(group: FabricGroup, endpoint: NonEmptyStr, proce
   VllmEndpointProcessLaunch { group: group, endpoint: endpoint, process_start_field: process_start_field }
 }
 
-// THE OFFER KEY. It is the group wire and the launch discriminator, in one string, because an offer
-// key is one opaque name and every consumer that recovers a group from it does so by asking this
-// module rather than by taking a prefix.
+// THE OFFER KEY, AND EVERY FIELD OF THE CARRIER PARTICIPATES IN IT. It is the group wire, the
+// endpoint the reading came from, and the launch discriminator, in one string, because an offer key
+// is one opaque name and every consumer that recovers a group from it does so by asking this module
+// rather than by taking a prefix.
+//
+// THE ENDPOINT IS IN THE KEY BECAUSE IT IS IN THE OBSERVATION. An earlier spelling carried it as a
+// field and left it out of the key and the equality, which is the shape where a carrier holds a fact
+// its identity ignores: two readings taken from different addresses could compare equal, and a
+// consumer holding the carrier could act on an endpoint the identity never agreed to. A field that
+// does not participate in identity belongs outside the identity carrier; this one belongs in, because
+// the process-start value is only meaningful relative to the exporter that reported it.
 fn vllm_endpoint_process_launch_key(launch: VllmEndpointProcessLaunch) -> NonEmptyStr {
-  join([fabric_group_wire(g: launch.group) as String, "@", launch.process_start_field as String], "") as NonEmptyStr
+  join([
+    fabric_group_wire(g: launch.group) as String, "@",
+    launch.endpoint as String, "@",
+    launch.process_start_field as String,
+  ], "") as NonEmptyStr
 }
 
 fn vllm_endpoint_process_launch_is(launch: VllmEndpointProcessLaunch, other: VllmEndpointProcessLaunch) -> Bool {

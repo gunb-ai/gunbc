@@ -86,7 +86,7 @@ fn floor_supply_selection(
   candidates: List<CandidateOffer<NonEmptyStr>>,
   maximum_buy_order: MoneyAmountMicro,
   delay_valuation: MoneyPerSecond,
-  demand_key: NonEmptyStr,
+  affinity: NonEmptyStr,
 ) -> SupplySelection<NonEmptyStr> {
   select_supply(
     requirements: floor_execution_requirements(),
@@ -96,7 +96,7 @@ fn floor_supply_selection(
     budget_currency: Usd,
     delay_valuation: delay_valuation,
     tie: StableRosterOrder,
-    demand_key: demand_key,
+    affinity: affinity,
   )
 }
 

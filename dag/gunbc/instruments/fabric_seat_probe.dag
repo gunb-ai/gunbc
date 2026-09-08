@@ -77,7 +77,7 @@ fn fabric_seat_collision_probe(root: NonEmptyStr, remote: NonEmptyStr, partition
   let host = os.Hostname.ReadShort()
   let short = if host.success { trim(s: host.value) } else { "unknown" }
   let layout = event_log_layout(root: root as FilePath, remote: collision_remote(remote: remote as String))
-  let pool = pool_of(identity: partition, ceiling: Measure { count: 1 }, replenishment: NoReplenishment)
+  let pool = pool_of(identity: partition, ceiling: Measure { count: 1 }, replenishment: NoReplenishment, release_law: QuiescenceRequired)
   match harness_now_epoch() {
     Absent => exit_failure(reason: "collision probe: clock unreadable")
     Present { value: now } => {
@@ -130,7 +130,7 @@ fn fabric_seat_collision_probe_from(root: NonEmptyStr, remote: NonEmptyStr, part
   let host = os.Hostname.ReadShort()
   let short = if host.success { trim(s: host.value) } else { "unknown" }
   let layout = event_log_layout(root: root as FilePath, remote: collision_remote(remote: remote as String))
-  let pool = pool_of(identity: partition, ceiling: Measure { count: 1 }, replenishment: NoReplenishment)
+  let pool = pool_of(identity: partition, ceiling: Measure { count: 1 }, replenishment: NoReplenishment, release_law: QuiescenceRequired)
   let pid = (partition as String) as PartitionId
   let actor = join(["collision-probe:", short], "") as NonEmptyStr
   match event_log_read_partition(layout: layout, partition: pid, budget: 256) {

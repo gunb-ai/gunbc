@@ -3,16 +3,12 @@ module test.claim.capacity_lease_chain_witness
 import std.types { Bool, Int, NonEmptyStr, List, String, EpochSecs }
 import std.nat { Nat }
 import std.measure { Measure, Count, One }
-import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_reading_at, PoolReading, PoolRead, PoolReadingRefused }
+import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_reading_at, PoolReading, PoolRead, PoolReadingRefused, pool_acquire, PoolOutcome, PoolAdvanced, PoolRefused }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
   AppendDecision, AppendAdmitted, AppendStale, decide_append, chain_from_head, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
 }
-import product.capacity.lease {
-  LeaseFence, lease_fence_of, fence_verdict, FenceVerdict, FenceCurrent, FenceObsolete, FenceForeignGrant,
-  LeasePolicy, LeaseGrant, lease_grant, ReleaseLaw, FencedResource, QuiescenceRequired,
-  QuiescenceFact, Quiescent, QuiescenceUnobserved, CapacityAfterExpiry, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence, capacity_after_expiry,
-}
+import product.capacity.lease { LeaseFence, lease_fence_of, fence_verdict, FenceVerdict, FenceCurrent, FenceObsolete, FenceForeignGrant, LeasePolicy, LeaseGrant, lease_grant, ReleaseLaw, FencedResource, QuiescenceRequired, QuiescenceFact, Quiescent, QuiescenceUnobserved, CapacityAfterExpiry, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence, capacity_after_expiry }
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
@@ -38,7 +34,7 @@ fn w_env(id: String, parent: String, payload: PoolEvent, at: EpochSecs) -> Chain
 }
 
 fn w_root() -> Pool<Count, One> {
-  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 2), replenishment: NoReplenishment)
+  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 2), replenishment: NoReplenishment, release_law: FencedResource)
 }
 
 fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
@@ -178,4 +174,47 @@ test fn every_pool_event_kind_round_trips_through_its_wire_and_junk_is_refused()
     }
   })
     && (match pool_event_decode(text: "{\"schema\":\"nope\"}") { PoolEventUndecodable { reason: _ } => true  PoolEventDecoded { event: _ } => false })
+}
+
+// ── AN EXPIRED SEAT UNDER QUIESCENCE-REQUIRED STILL CONSUMES THE CEILING ──────────────────────
+//
+// THE DISCRIMINATING CONTROL FOR THE LAW THE POOL USED TO IGNORE. lease.dag's capacity_after_expiry
+// says a quiescence-required grant is CapacityHeldPendingQuiescence once its term lapses, because
+// nothing can stop an obsolete holder from still using the resource. The pool freed it anyway: every
+// held entry stopped charging at expiry whatever the law said, so the authority and the fold
+// disagreed, and under vLLM -- which cannot reject a superseded holder -- that gap is the overlap the
+// one-seat ceiling exists to prevent. A holder that stalls past its term hands its seat to the next
+// arrival while it is still able to send.
+//
+// So the same event history is folded against two roots that differ ONLY in the law. Under
+// FencedResource the seat is free after expiry, which is correct: the resource itself refuses the old
+// holder. Under QuiescenceRequired it is still held, and a second acquisition at that instant is
+// refused. This control goes red on exactly the shape that shipped.
+fn w_root_law(law: ReleaseLaw) -> Pool<Count, One> {
+  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 1), replenishment: NoReplenishment, release_law: law)
+}
+
+fn w_after_expiry(law: ReleaseLaw) -> Int {
+  match pool_acquire(pool: w_root_law(law: law), reference: "turn-stalled" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 300) {
+    PoolAdvanced { pool: p } => w_headroom(p: p, at: 2000)
+    PoolRefused { refusal: _ } => -2
+  }
+}
+
+test fn an_expired_unquiesced_seat_still_consumes_the_ceiling() -> Bool {
+  w_after_expiry(law: FencedResource) == 1 && w_after_expiry(law: QuiescenceRequired) == 0
+}
+
+// AND THE REFUSAL IS WHAT THE HEADROOM MEANS. A count nobody acts on would leave the wall stated and
+// unenforced, so the second acquisition is attempted against the same expired-but-unquiesced pool and
+// must be refused rather than granted beside the stalled holder.
+test fn a_second_seat_is_refused_while_an_expired_holder_is_unquiesced() -> Bool {
+  match pool_acquire(pool: w_root_law(law: QuiescenceRequired), reference: "turn-stalled" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 300) {
+    PoolRefused { refusal: _ } => false
+    PoolAdvanced { pool: held } =>
+      match pool_acquire(pool: held, reference: "turn-arriving" as NonEmptyStr, amount: w_seats(n: 1), at: 2000, term_seconds: 300) {
+        PoolRefused { refusal: _ } => true
+        PoolAdvanced { pool: _ } => false
+      }
+  }
 }

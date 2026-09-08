@@ -24,7 +24,7 @@ import product.fabric.supply {
   QuotedTotal, QuotedTotalDerived, QuotedTotalNeedsDuration,
   GrantDuration, ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
   grant_duration_bound_seconds,
-  EqualCostOfferTieBreak, StableRosterOrder, DemandKeyedRendezvous,
+  EqualCostOfferTieBreak, StableRosterOrder, AffinityKeyedRendezvous,
 }
 
 // SELECTION IS THE FOLD product.fabric.supply DECLINED TO WRITE, AND THIS MODULE IS WHY IT
@@ -1044,20 +1044,30 @@ fn cohort_at_total<P>(priced: List<PricedCandidate<P>>, total: Nat) -> List<Pric
   filter(priced, c => priced_total(c: c) == total)
 }
 
-// THE SPREAD KEY IS THE DEMAND'S STABLE IDENTITY, hashed with the EXACT offer identity. It must
-// survive a retry of the same placement -- a value minted per attempt would spread one demand across
-// offers on successive tries, which is worse than concentrating it. And it must be derived here
-// rather than supplied, because a caller that can hand in a rank can steer the answer, which is the
-// host-picking this authority exists to prevent.
-fn rendezvous_digest(demand_key: NonEmptyStr, offer_key: NonEmptyStr) -> Fnv1a64Structural {
+// THE SPREAD KEY IS AN AFFINITY VALUE, AND SAYING SO IS THE POINT. It is hashed with the offer's KEY,
+// and a key is not a fabric identity -- identity.dag is explicit that identity is the pair of
+// principal and key. So this policy ranks by affinity, not by identity, and the arm is named for what
+// it hashes (product.fabric.supply PlacementAffinityKey).
+//
+// WHAT THAT COSTS, EXACTLY. Two offers whose keys agree while their principals differ produce one
+// digest. That is not a silent merge: identical digests inside one cohort are a duplicate, and
+// resolve_cohort REFUSES rather than choosing, so the cross-principal case fails closed. On the demand
+// side a caller supplies the affinity value, so a caller can steer which of the EQUALS it lands on --
+// spread preference, never admission, because an inadmissible offer is refused before any tie is
+// considered and no affinity value resurrects it.
+//
+// IT MUST SURVIVE A RETRY. A value minted per attempt would spread one demand across offers on
+// successive tries, which is worse than concentrating it -- so the caller passes a stable value and
+// the ranking is derived here rather than accepted as a rank.
+fn rendezvous_digest(affinity: NonEmptyStr, offer_key: NonEmptyStr) -> Fnv1a64Structural {
   content_hash_combine_structural(
-    left: content_hash_atom(value: demand_key),
+    left: content_hash_atom(value: affinity),
     right: content_hash_atom(value: offer_key),
   )
 }
 
-fn candidate_digest<P>(c: PricedCandidate<P>, demand_key: NonEmptyStr) -> Fnv1a64StructuralDigestHex {
-  rendezvous_digest(demand_key: demand_key, offer_key: c.candidate.offer.id.key).digest
+fn candidate_digest<P>(c: PricedCandidate<P>, affinity: NonEmptyStr) -> Fnv1a64StructuralDigestHex {
+  rendezvous_digest(affinity: affinity, offer_key: c.candidate.offer.id.key).digest
 }
 
 // EACH CANDIDATE IS DIGESTED EXACTLY ONCE. The obvious shape -- ask, for each member, how many
@@ -1071,8 +1081,8 @@ type KeyedCandidate<P> {
   digest: Fnv1a64StructuralDigestHex
 }
 
-fn key_cohort<P>(cohort: List<PricedCandidate<P>>, demand_key: NonEmptyStr) -> List<KeyedCandidate<P>> {
-  map(cohort, c => KeyedCandidate { candidate: c, digest: candidate_digest(c: c, demand_key: demand_key) })
+fn key_cohort<P>(cohort: List<PricedCandidate<P>>, affinity: NonEmptyStr) -> List<KeyedCandidate<P>> {
+  map(cohort, c => KeyedCandidate { candidate: c, digest: candidate_digest(c: c, affinity: affinity) })
 }
 
 // THE COHORT IS SORTED BY DIGEST ONCE, AND EVERY REMAINING QUESTION IS ADJACENCY IN THAT ORDER. A
@@ -1116,7 +1126,7 @@ type EqualCostOutcome<P>
 fn resolve_cohort<P>(
   cohort: List<PricedCandidate<P>>,
   tie: EqualCostOfferTieBreak,
-  demand_key: NonEmptyStr,
+  affinity: NonEmptyStr,
 ) -> EqualCostOutcome<P>? {
   match tie {
     StableRosterOrder =>
@@ -1124,8 +1134,8 @@ fn resolve_cohort<P>(
         Absent => none
         Present { value: c } => Present { value: TieResolved { winner: c } }
       }
-    DemandKeyedRendezvous => {
-      let scanned = scan_sorted(sorted: sort_by(key_cohort(cohort: cohort, demand_key: demand_key), k => k.digest as String))
+    AffinityKeyedRendezvous => {
+      let scanned = scan_sorted(sorted: sort_by(key_cohort(cohort: cohort, affinity: affinity), k => k.digest as String))
       match scanned.duplicate {
         Present { value: d } => Present { value: TieUnresolvedCollision { digest: d } }
         Absent =>
@@ -1146,7 +1156,7 @@ fn select_supply<P>(
   budget_currency: CurrencyCode,
   delay_valuation: MoneyPerSecond,
   tie: EqualCostOfferTieBreak,
-  demand_key: NonEmptyStr,
+  affinity: NonEmptyStr,
 ) -> SupplySelection<P> {
   let ranked = fold(
     candidates,
@@ -1168,7 +1178,7 @@ fn select_supply<P>(
   match minimum_priced_total(priced: ranked.priced) {
     Absent => NoAdmissibleOffer { considered: ranked.considered }
     Present { value: lowest } =>
-      match resolve_cohort(cohort: cohort_at_total(priced: ranked.priced, total: lowest), tie: tie, demand_key: demand_key) {
+      match resolve_cohort(cohort: cohort_at_total(priced: ranked.priced, total: lowest), tie: tie, affinity: affinity) {
         Absent => NoAdmissibleOffer { considered: ranked.considered }
         Present { value: outcome } =>
           match outcome {

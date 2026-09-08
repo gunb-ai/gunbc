@@ -177,14 +177,20 @@ test fn an_admitted_candidate_carries_no_priced_estimate() -> Bool {
 // predecessor's readiness, queue and capacity evidence price the successor. Keyed on the launch they
 // are two, which is what lets a seat taken against one engine fail to authorize a request against
 // the engine that replaced it.
+// AND THE ENDPOINT IS PART OF THE IDENTITY, not a passenger field: the same group reporting the same
+// process-start value from a different address is a different reading and a different subject. It was
+// a field the key and the equality both ignored, which is the shape where a carrier holds a fact its
+// identity does not agree to.
 test fn a_restarted_engine_is_a_different_offer_subject() -> Bool {
   let first = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
   let second = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757209999.25" as NonEmptyStr)
   let other_group = vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.233" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
+  let relocated = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.240" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
   !vllm_endpoint_process_launch_is(launch: first, other: second)
     && !vllm_endpoint_process_launch_is(launch: first, other: other_group)
     && vllm_endpoint_process_launch_is(launch: first, other: first)
     && ((vllm_endpoint_process_launch_key(launch: first) as String) != (vllm_endpoint_process_launch_key(launch: second) as String))
+    && !vllm_endpoint_process_launch_is(launch: first, other: relocated)
 }
 
 // AND A LAUNCH THAT CANNOT BE NAMED IS NOT OFFERED, because the alternative is an offer keyed on the

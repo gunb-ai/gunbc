@@ -112,7 +112,7 @@ fn d_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<No
     candidates: candidates,
     maximum_buy_order: money_amount_micro(count: 1000000),
     delay_valuation: d_no_delay_valuation(),
-    demand_key: "test.floor-demand" as NonEmptyStr,
+    affinity: "test.floor-demand" as NonEmptyStr,
   )
 }
 

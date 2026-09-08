@@ -92,13 +92,16 @@ fn serving_co_tenancy(reading: ServingQueueReading) -> ServingCoTenancy {
 // placement path reads it before it offers anything. So occupancy is BOTH readings, and a group is
 // idle only when the ledger holds no seat AND the engine reports nothing.
 //
-// WHAT THIS COSTS, STATED RATHER THAN DISCOVERED. The seat ceiling is an operator capacity policy of
-// three, and this rule admits only at zero held -- so while it stands, a serving group takes ONE
-// cold-risk turn at a time and the other two seats are unreachable for this demand class. That is
-// the interactive-quality consequence of the measurement, not a capacity claim: the ceiling still
-// says what the pool may hold, and this says what may be placed beside a turn already in flight. It
-// dissolves when a turn can be observed to be warm on a named launch, because a warm turn is not the
-// arriving cold prefill the 72x overlap was measured on.
+// WHAT THIS COSTS, STATED RATHER THAN DISCOVERED. The ceiling is whatever
+// gunbc.harness.harness_seat harness_interactive_quality_seats says, and this rule admits only at
+// zero held -- so while it stands, a serving group takes ONE cold-risk turn at a time and any
+// remaining seats are unreachable for this demand class. Naming the row rather than its value is the
+// whole point: an earlier spelling of this block transcribed the count, the same commit changed it,
+// and the prose was wrong before anyone read it. That is the interactive-quality consequence of the
+// measurement, not a capacity claim: the ceiling still says what the pool may hold, and this says
+// what may be placed beside a turn already in flight. It dissolves when a turn can be observed to be
+// warm on a named launch, because a warm turn is not the arriving cold prefill that
+// serving_co_tenancy_overlap_receipt names the experiment for.
 type ServingSeatOccupancy
   = NoSeatHeld
   | SeatsHeldForTurns { held: Nat }

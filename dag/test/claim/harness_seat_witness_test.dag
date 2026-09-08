@@ -106,14 +106,21 @@ test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
 //
 // The pool refuses a duplicate reference against its WHOLE history, released entries included. A
 // reference of actor-plus-epoch-seconds therefore collides with itself the moment one actor places
-// twice inside one second, and stays refused for that partition forever after. The round ordinal and
-// the offer key separate every attempt the placement loop can make -- a retry is a different round,
-// and another group is a different launch key -- so this control varies exactly those two and
-// requires all four references to differ.
-test fn an_acquisition_reference_separates_rounds_and_offers() -> Bool {
-  let a1 = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1) as String
-  let a2 = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 2) as String
-  let b1 = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-b@200.5" as NonEmptyStr, now: 1757200000, round: 1) as String
-  let c1 = harness_seat_reference(actor: "worker:/w/two" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1) as String
+// twice inside one second, and stays refused for that partition forever after.
+//
+// THE ROUND ORDINAL IS NOT ENOUGH, and this control says so with the case that proves it: TWO
+// INDEPENDENT PLACEMENTS both start at round one, so an earlier spelling minted one reference twice
+// for the same actor, offer and second and turned an ordinary lost race into a permanent refusal. The
+// head the partition is at is what separates them -- it moves on every append, so the loser
+// re-observes a head the winner wrote. The last pair below is the discriminating one: everything else
+// held equal, two different heads must give two different references.
+test fn an_acquisition_reference_separates_rounds_offers_and_processes() -> Bool {
+  let a1 = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
+  let a2 = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 2, head: "aaa111" as NonEmptyStr) as String
+  let b1 = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-b@200.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
+  let c1 = harness_seat_reference(actor: "worker:/w/two" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
+  let moved = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "bbb222" as NonEmptyStr) as String
+  let empty = harness_seat_reference(actor: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "empty" as NonEmptyStr) as String
   a1 != a2 && a1 != b1 && a1 != c1 && a2 != b1 && a2 != c1 && b1 != c1
+    && a1 != moved && a1 != empty && moved != empty
 }

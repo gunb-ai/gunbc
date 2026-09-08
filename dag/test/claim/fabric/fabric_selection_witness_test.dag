@@ -18,7 +18,7 @@ import product.fabric.work {
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply {
-  EqualCostOfferTieBreak, StableRosterOrder, DemandKeyedRendezvous,
+  EqualCostOfferTieBreak, StableRosterOrder, AffinityKeyedRendezvous,
   SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, ObservedSupply,
   GrantDuration, ExactGrantDuration, UnobservedGrantDuration,
 }
@@ -239,7 +239,7 @@ fn t_select_for(
     budget_currency: Usd,
     delay_valuation: t_no_delay_valuation(),
     tie: StableRosterOrder,
-    demand_key: "test.demand" as NonEmptyStr,
+    affinity: "test.demand" as NonEmptyStr,
   )
 }
 
@@ -506,7 +506,7 @@ test fn valued_delay_enters_the_ranking_and_not_the_reservation() -> Bool {
     budget_currency: Usd,
     delay_valuation: t_five_micros_per_second(),
     tie: StableRosterOrder,
-    demand_key: "test.demand" as NonEmptyStr,
+    affinity: "test.demand" as NonEmptyStr,
   )
   match selection {
     OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _, tie_policy: _ } =>
@@ -808,7 +808,7 @@ fn t_twins_reversed() -> List<CandidateOffer<NonEmptyStr>> {
   concat(t_twin_candidate(key: "offer-group-b"), t_twin_candidate(key: "offer-group-a"))
 }
 
-fn t_select_tie(candidates: List<CandidateOffer<NonEmptyStr>>, tie: EqualCostOfferTieBreak, demand_key: NonEmptyStr) -> SupplySelection<NonEmptyStr> {
+fn t_select_tie(candidates: List<CandidateOffer<NonEmptyStr>>, tie: EqualCostOfferTieBreak, affinity: NonEmptyStr) -> SupplySelection<NonEmptyStr> {
   select_supply(
     requirements: t_requirements(),
     candidates: candidates,
@@ -817,20 +817,20 @@ fn t_select_tie(candidates: List<CandidateOffer<NonEmptyStr>>, tie: EqualCostOff
     budget_currency: Usd,
     delay_valuation: t_no_delay_valuation(),
     tie: tie,
-    demand_key: demand_key,
+    affinity: affinity,
   )
 }
 
-fn t_rendezvous_winner(demand_key: NonEmptyStr) -> NonEmptyStr {
-  selected_key(s: t_select_tie(candidates: t_twins(), tie: DemandKeyedRendezvous, demand_key: demand_key))
+fn t_rendezvous_winner(affinity: NonEmptyStr) -> NonEmptyStr {
+  selected_key(s: t_select_tie(candidates: t_twins(), tie: AffinityKeyedRendezvous, affinity: affinity))
 }
 
 // TWO EQUAL OFFERS TIE EXACTLY, WHICH IS THE PRECONDITION EVERYTHING BELOW DEPENDS ON. If the
 // fixtures ever stopped tying, every tie witness would still pass while testing nothing -- so the
 // tie itself is asserted first, against the totals rather than against the outcome.
 test fn the_twin_offers_actually_tie() -> Bool {
-  let a = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-a"), tie: StableRosterOrder, demand_key: "d"))
-  let b = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, demand_key: "d"))
+  let a = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-a"), tie: StableRosterOrder, affinity: "d"))
+  let b = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, affinity: "d"))
   a == b && length(t_twins()) == 2
 }
 
@@ -838,8 +838,8 @@ test fn the_twin_offers_actually_tie() -> Bool {
 // it, and stated as a control rather than as a comment: reversing the candidate list reverses the
 // winner, which is exactly what "the roster decided" means.
 test fn stable_roster_order_returns_the_first_offer_handed_to_it() -> Bool {
-  (selected_key(s: t_select_tie(candidates: t_twins(), tie: StableRosterOrder, demand_key: "d")) as String) == "offer-group-a"
-    && (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: StableRosterOrder, demand_key: "d")) as String) == "offer-group-b"
+  (selected_key(s: t_select_tie(candidates: t_twins(), tie: StableRosterOrder, affinity: "d")) as String) == "offer-group-a"
+    && (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: StableRosterOrder, affinity: "d")) as String) == "offer-group-b"
 }
 
 // AND UNDER THE RENDEZVOUS THE ANSWER DOES NOT DEPEND ON THE ORDER. This is the discriminating
@@ -848,17 +848,17 @@ test fn stable_roster_order_returns_the_first_offer_handed_to_it() -> Bool {
 // caller's list.
 test fn the_rendezvous_is_invariant_under_roster_order() -> Bool {
   fold(["alpha" as NonEmptyStr, "beta" as NonEmptyStr, "gamma" as NonEmptyStr, "delta" as NonEmptyStr], init: true, f: (acc, d) =>
-    acc && ((selected_key(s: t_select_tie(candidates: t_twins(), tie: DemandKeyedRendezvous, demand_key: d)) as String)
-             == (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: DemandKeyedRendezvous, demand_key: d)) as String)))
+    acc && ((selected_key(s: t_select_tie(candidates: t_twins(), tie: AffinityKeyedRendezvous, affinity: d)) as String)
+             == (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: AffinityKeyedRendezvous, affinity: d)) as String)))
 }
 
 // A RETRY OF ONE PLACEMENT LANDS WHERE THE FIRST ATTEMPT DID. A key minted per attempt would spread
 // one demand across offers on successive tries, which is worse than concentrating it: the second
 // attempt would prefill somewhere the first attempt did not warm.
 test fn one_demand_retries_onto_the_same_offer() -> Bool {
-  let first = t_rendezvous_winner(demand_key: "worker:/w/session-a")
-  let second = t_rendezvous_winner(demand_key: "worker:/w/session-a")
-  let third = t_rendezvous_winner(demand_key: "worker:/w/session-a")
+  let first = t_rendezvous_winner(affinity: "worker:/w/session-a")
+  let second = t_rendezvous_winner(affinity: "worker:/w/session-a")
+  let third = t_rendezvous_winner(affinity: "worker:/w/session-a")
   ((first as String) == (second as String)) && ((second as String) == (third as String))
 }
 
@@ -868,7 +868,7 @@ test fn one_demand_retries_onto_the_same_offer() -> Bool {
 // asserting the digest's arithmetic rather than the policy's behaviour.
 test fn sequential_demands_do_not_all_take_the_roster_first_offer() -> Bool {
   let keys = ["worker:/w/one" as NonEmptyStr, "worker:/w/two" as NonEmptyStr, "worker:/w/three" as NonEmptyStr, "worker:/w/four" as NonEmptyStr, "reviewer:/v/five" as NonEmptyStr, "auditor:/v/six" as NonEmptyStr]
-  let on_a = fold(keys, init: 0, f: (n, d) => if (t_rendezvous_winner(demand_key: d) as String) == "offer-group-a" { n + 1 } else { n })
+  let on_a = fold(keys, init: 0, f: (n, d) => if (t_rendezvous_winner(affinity: d) as String) == "offer-group-a" { n + 1 } else { n })
   on_a > 0 && on_a < length(keys)
 }
 
@@ -877,10 +877,10 @@ test fn sequential_demands_do_not_all_take_the_roster_first_offer() -> Bool {
 // under both policies.
 test fn a_cheaper_offer_still_wins_under_the_rendezvous() -> Bool {
   let mixed = concat(t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()), t_twin_candidate(key: "offer-group-b"))
-  let owned_total = selected_total(s: t_select_tie(candidates: t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()), tie: StableRosterOrder, demand_key: "d"))
-  let twin_total = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, demand_key: "d"))
+  let owned_total = selected_total(s: t_select_tie(candidates: t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()), tie: StableRosterOrder, affinity: "d"))
+  let twin_total = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, affinity: "d"))
   (owned_total != twin_total)
-    && (selected_key(s: t_select_tie(candidates: mixed, tie: DemandKeyedRendezvous, demand_key: "d")) as String)
+    && (selected_key(s: t_select_tie(candidates: mixed, tie: AffinityKeyedRendezvous, affinity: "d")) as String)
         == (if owned_total < twin_total { "offer-owned-srv1" } else { "offer-group-b" })
 }
 
@@ -895,7 +895,7 @@ test fn the_rendezvous_never_rescues_a_refused_offer() -> Bool {
   )
   let population = concat(unavailable, t_twin_candidate(key: "offer-group-a"))
   fold(["one" as NonEmptyStr, "two" as NonEmptyStr, "three" as NonEmptyStr, "four" as NonEmptyStr], init: true, f: (acc, d) =>
-    acc && ((selected_key(s: t_select_tie(candidates: population, tie: DemandKeyedRendezvous, demand_key: d)) as String) == "offer-group-a"))
+    acc && ((selected_key(s: t_select_tie(candidates: population, tie: AffinityKeyedRendezvous, affinity: d)) as String) == "offer-group-a"))
 }
 
 // THE SPREAD KEYS ON THE EXACT OFFER IDENTITY. Two offers whose keys differ are two subjects to the
@@ -904,7 +904,7 @@ test fn the_rendezvous_never_rescues_a_refused_offer() -> Bool {
 test fn the_digest_keys_on_the_exact_offer_identity() -> Bool {
   let renamed = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-b@second-launch"))
   fold(["one" as NonEmptyStr, "two" as NonEmptyStr, "three" as NonEmptyStr, "four" as NonEmptyStr, "five" as NonEmptyStr, "six" as NonEmptyStr], init: false, f: (acc, d) =>
-    acc || ((selected_key(s: t_select_tie(candidates: renamed, tie: DemandKeyedRendezvous, demand_key: d)) as String) == "offer-group-b@second-launch"))
+    acc || ((selected_key(s: t_select_tie(candidates: renamed, tie: AffinityKeyedRendezvous, affinity: d)) as String) == "offer-group-b@second-launch"))
 }
 
 // A COLLISION REFUSES RATHER THAN FALLING BACK, and this fixture is honest about which collision it
@@ -915,7 +915,7 @@ test fn the_digest_keys_on_the_exact_offer_identity() -> Bool {
 // in the one case nobody would notice.
 test fn an_unresolvable_tie_refuses_instead_of_taking_the_first() -> Bool {
   let twinned = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a"))
-  match t_select_tie(candidates: twinned, tie: DemandKeyedRendezvous, demand_key: "d") {
+  match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d") {
     EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 2
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
     NoAdmissibleOffer { considered: _ } => false
@@ -926,7 +926,7 @@ test fn an_unresolvable_tie_refuses_instead_of_taking_the_first() -> Bool {
 // chosen by the order the collision happened to occur in -- the tie is still unresolved at that cost.
 test fn a_collision_survives_a_later_candidate() -> Bool {
   let twinned = concat(concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a")), t_twin_candidate(key: "offer-group-b"))
-  match t_select_tie(candidates: twinned, tie: DemandKeyedRendezvous, demand_key: "d") {
+  match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d") {
     EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 3
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
     NoAdmissibleOffer { considered: _ } => false
@@ -936,14 +936,14 @@ test fn a_collision_survives_a_later_candidate() -> Bool {
 // THE OUTCOME SAYS WHICH POLICY DECIDED, so a reader of a placement receipt can tell a rendezvous
 // answer from a roster-order one without knowing what the caller passed.
 test fn the_outcome_carries_the_policy_that_decided_it() -> Bool {
-  (match t_select_tie(candidates: t_twins(), tie: DemandKeyedRendezvous, demand_key: "d") {
+  (match t_select_tie(candidates: t_twins(), tie: AffinityKeyedRendezvous, affinity: "d") {
      OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: p } =>
-       match p { DemandKeyedRendezvous => true  StableRosterOrder => false }
+       match p { AffinityKeyedRendezvous => true  StableRosterOrder => false }
      _ => false
    })
-    && (match t_select_tie(candidates: t_twins(), tie: StableRosterOrder, demand_key: "d") {
+    && (match t_select_tie(candidates: t_twins(), tie: StableRosterOrder, affinity: "d") {
           OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: p } =>
-            match p { StableRosterOrder => true  DemandKeyedRendezvous => false }
+            match p { StableRosterOrder => true  AffinityKeyedRendezvous => false }
           _ => false
         })
 }
@@ -976,8 +976,8 @@ fn t_select_five_micros(candidates: List<CandidateOffer<NonEmptyStr>>) -> Supply
     maximum_buy_order: money_amount_micro(count: 1000000),
     budget_currency: Usd,
     delay_valuation: t_five_micros_per_second(),
-    tie: DemandKeyedRendezvous,
-    demand_key: "test.demand",
+    tie: AffinityKeyedRendezvous,
+    affinity: "test.demand",
   )
 }
 
@@ -1000,7 +1000,7 @@ test fn a_cheaper_candidate_after_a_collision_still_wins_in_either_order() -> Bo
 // The cohort shape has no running best to hide behind -- the tie is resolved over the whole set at
 // the minimum total -- so every permutation of the same population answers the same way.
 fn t_tie_refuses(candidates: List<CandidateOffer<NonEmptyStr>>) -> Bool {
-  match t_select_tie(candidates: candidates, tie: DemandKeyedRendezvous, demand_key: "d") {
+  match t_select_tie(candidates: candidates, tie: AffinityKeyedRendezvous, affinity: "d") {
     EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 3
     OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
     NoAdmissibleOffer { considered: _ } => false
@@ -1013,4 +1013,62 @@ test fn a_collision_refuses_in_every_roster_order() -> Bool {
   t_tie_refuses(candidates: concat(concat(a, a), b))
     && t_tie_refuses(candidates: concat(concat(a, b), a))
     && t_tie_refuses(candidates: concat(concat(b, a), a))
+}
+
+// ── SAME KEY, DIFFERENT PRINCIPAL, AND THE POLICY REFUSES RATHER THAN MERGING ─────────────────
+//
+// The rendezvous hashes the offer's KEY, and identity.dag is explicit that identity is the PAIR:
+// dropping the principal "silently merges two tenants who chose the same name for their work". So the
+// question this control answers is what the policy DOES in that case, and the answer must not be
+// "picks one". Two offers under different principals carrying one key produce one digest, which is a
+// duplicate in the cohort, and the duplicate rule refuses -- the cross-principal case fails closed
+// rather than handing a tenant an offer that belongs to another. Hashing sealed identities instead
+// needs a rendering of the principal type, which the fabric core does not have by construction.
+fn t_offer_under(principal: NonEmptyStr, key: OfferKey) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: principal, key: key },
+    executor: principal,
+    shape: t_shape(threads: hardware_thread_count(count: 64)),
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: t_open_isolation(),
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply { observed_at: "2026-08-27T00:00:00Z", receipt: "gunbc.observation.fleet-1" },
+  }
+}
+
+fn t_candidate_under(principal: NonEmptyStr, key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_offer_under(principal: principal, key: key),
+    inputs: t_inputs(
+      key: key,
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: t_idle(),
+    ),
+  )
+}
+
+test fn one_key_under_two_principals_refuses_rather_than_merging() -> Bool {
+  let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
+  match t_select_tie(candidates: shared, tie: AffinityKeyedRendezvous, affinity: "d") {
+    EqualCostTieUnresolved { digest: _, considered: cs } => length(cs) == 2
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+// AND THE ROSTER-ORDER ARM DOES NOT INHERIT THAT REFUSAL, which is what makes the refusal a property
+// of the rendezvous rather than of the fixture: StableRosterOrder never asks the identity question,
+// so it takes the first and this control says so rather than leaving the pair looking equivalent.
+test fn the_roster_arm_still_answers_for_one_key_under_two_principals() -> Bool {
+  let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
+  match t_select_tie(candidates: shared, tie: StableRosterOrder, affinity: "d") {
+    OfferSelected { offer: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.id.principal as String) == "tenant-a"
+    _ => false
+  }
 }

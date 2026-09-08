@@ -4,6 +4,7 @@ import std.types { Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.nat { Nat }
 import std.measure { Measure, measure_add, measure_le }
 import extdeps.accounting.budget { Appropriation }
+import product.capacity.lease { ReleaseLaw, FencedResource, QuiescenceRequired }
 import extdeps.accounting.encumbrance {
   Encumbrance, EncumbranceState, Held, Expended, Released,
   EncumbranceLedger, EncumbranceOutcome, LedgerAdvanced, EncumbranceRefused,
@@ -52,24 +53,39 @@ type LeaseTerm {
   expires_at: EpochSecs
 }
 
+// THE POOL CARRIES THE RELEASE LAW, WHICH IT PREVIOUSLY IGNORED. lease.dag declares that a
+// quiescence-required resource keeps its capacity encumbered after the term lapses, because nothing
+// can stop an obsolete holder from still using it, and capacity_after_expiry says exactly that. The
+// pool did not consume it: every held entry stopped charging the instant it expired, so the authority
+// said held and the fold said free. Under vLLM, which cannot reject a superseded holder, that gap is
+// a live overlap -- a holder that stalls past its term hands its seat to the next arrival while it is
+// still able to send.
+//
+// So the law travels with the pool it governs. A fenced resource is unchanged: expiry frees it,
+// because the resource itself will refuse the old holder. A quiescence-required one keeps charging
+// until the entry is RELEASED, which is the only quiescence this repository can observe -- the holder
+// saying it is done. A crashed holder therefore wedges its own seat rather than silently sharing it,
+// and the operator release entry is how a wedged seat is recovered.
 type Pool<Q, S> {
   identity: NonEmptyStr
   ledger: EncumbranceLedger<Q, S>
   replenishment: Replenishment
   terms: List<LeaseTerm>
+  release_law: ReleaseLaw
 }
 
-fn pool_of<Q, S>(identity: NonEmptyStr, ceiling: Measure<Q, S, Nat>, replenishment: Replenishment) -> Pool<Q, S> {
+fn pool_of<Q, S>(identity: NonEmptyStr, ceiling: Measure<Q, S, Nat>, replenishment: Replenishment, release_law: ReleaseLaw) -> Pool<Q, S> {
   Pool {
     identity: identity,
     ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: ceiling }, entries: [] },
     replenishment: replenishment,
     terms: [],
+    release_law: release_law,
   }
 }
 
 fn pool_with<Q, S>(pool: Pool<Q, S>, ledger: EncumbranceLedger<Q, S>, terms: List<LeaseTerm>) -> Pool<Q, S> {
-  Pool { identity: pool.identity, ledger: ledger, replenishment: pool.replenishment, terms: terms }
+  Pool { identity: pool.identity, ledger: ledger, replenishment: pool.replenishment, terms: terms, release_law: pool.release_law }
 }
 
 // A LEASE'S STANDING AT AN INSTANT IS DERIVED, NEVER SUPPLIED. Live until its term runs out,
@@ -132,7 +148,12 @@ fn entry_charge_at<Q, S>(pool: Pool<Q, S>, e: Encumbrance<Q, S>, at: EpochSecs, 
       } else {
         match e.state {
           Held { maximum_liability: m } =>
-            if at < term.expires_at { m } else { Measure { count: 0 } }
+            if at < term.expires_at { m } else {
+              match pool.release_law {
+                FencedResource => Measure { count: 0 }
+                QuiescenceRequired => m
+              }
+            }
           Expended { actual: a, settled_at: _ } => a
           Released { reason: _, released_at: _ } => Measure { count: 0 }
         }

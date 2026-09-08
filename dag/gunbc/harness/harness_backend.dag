@@ -21,7 +21,7 @@ import extdeps.languages.json.parse {
 }
 import gunbc.harness.harness_wire {
   harness_engine_replica_roster, HarnessReplicasResolved, HarnessReplicasUnresolved,
-  harness_engine_port, harness_engine_model, HarnessWireShape, harness_backend_url_for_address,
+  harness_engine_port, harness_engine_model,
 }
 
 // THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.
@@ -189,28 +189,13 @@ fn harness_roster_unresolved_detail(hosts: List<String>) -> String {
   join(["harness replica roster unresolved: pair head(s) with no LAN endpoint row in gunbc.fleet_intent_network: ", join(hosts, ", ")], "")
 }
 
-// THE URL AN ATTEMPT POSTS TO, bound at process start from the replicas serving at that moment. The
-// seed spreads concurrent attempts across the serving set; a roster with nothing serving is a typed
-// refusal the entry point exits on, never a URL that will fail on the first turn.
-type HarnessBackendUrl
-  = BackendUrlBound { url: String, declined_count: Int }
-  | BackendUrlRefused { detail: String }
-
-// THE PROBE BINDS TO THE FIRST REPLICA OBSERVED SERVING. This is an observation entry, not a turn:
-// a turn takes its endpoint from a granted seat (gunbc.harness.harness_seat), and the seed hash
-// that used to spread turns here is gone with the picker it belonged to.
-fn harness_serving_backend_url(shape: HarnessWireShape) -> HarnessBackendUrl {
-  match harness_observe_roster() {
-    HarnessRosterServing { model: _, serving, declined } =>
-      match first(serving) {
-        Present { value: a } => BackendUrlBound { url: harness_backend_url_for_address(shape: shape, address: a), declined_count: count(declined) }
-        Absent => BackendUrlRefused { detail: "the serving roster is empty" }
-      }
-    HarnessRosterNoneServing { model: m, declined } =>
-      BackendUrlRefused { detail: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], "") }
-    HarnessRosterUnresolved { hosts } => BackendUrlRefused { detail: harness_roster_unresolved_detail(hosts: hosts) }
-  }
-}
+// THE LAST LOCAL PICKER IS GONE. This module used to hand out a URL bound at process start from the
+// first replica observed serving, and every turn that took one was choosing its own host beside the
+// fabric rather than through it. The probe was the final consumer, and it now acquires a seat like
+// every other turn (gunbc.harness.harness_cli harness_probe_cli), so the picker has no caller and is
+// deleted rather than left standing: a picker nothing calls today is a picker the next entry point
+// reaches for, and the roster reading it was built on is still here for the observation entries that
+// legitimately want to know what is serving.
 
 fn harness_backend_report() -> String {
   match harness_engine_replica_roster() {
