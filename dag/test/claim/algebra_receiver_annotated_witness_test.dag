@@ -1,7 +1,7 @@
 module test.claim.algebra_receiver_annotated_witness_test
 
 import std.types { Bool, Int, List }
-import std.algebra { Cons }
+import std.algebra { Cons, Empty, FreeMonoid }
 
 // The declared List<Int> is a nominal application. Its argument is the Int
 // algebra_child_or_placeholder is missing on a Cons expansion. Binding that
@@ -32,4 +32,13 @@ fn annotated_parameter_fold(xs: List<Int>) -> Int {
 
 test fn annotated_fn_parameter_fold_resolves() -> Bool {
   annotated_parameter_fold(xs: [1, 2, 3]) == 6
+}
+
+// Independent of this file: the same annotated-let Empty initializer that
+// algebra_receiver_alias_witness_test explicit_initializer_is_an_acceptance_fixture
+// compiles as a string. That census uses total_blocking_count == 0 over the
+// whole compile, which is not an oracle for this fixture. The live program is.
+test fn annotated_freemonoid_empty_initializer_fold_resolves() -> Bool {
+  let initial: FreeMonoid<Int> = Empty
+  [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) }) == [1, 2]
 }
