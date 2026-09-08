@@ -1,15 +1,22 @@
 module test.claim.workflow_dispatch_input_witness
 
 import extdeps.github.actions {
-  WorkflowDispatch, DispatchInput, InputString, InputChoice
+  WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
 import gunbc.fleet_converge_workflow {
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
+  fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
+  fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
+  reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
+}
+import gunbc.host_reset_return {
+  DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
+  ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
 }
 import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke, gunbc_ci_spark_bootstrap_invoke }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
@@ -142,21 +149,25 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
 // `dashboard-deploy` job was added -- not because the check was in the way. Naming each job without
 // pinning the total would let a fourth job appear unobserved; pinning the total without naming them
-// would pass for any three jobs at all. Together they are an exact partition, which is the identity
+// would pass for any set of jobs at all. Together they are an exact partition, which is the identity
 // join DESIGN section 5 asks for rather than a count standing in for one.
 //
-// BOTH DEPLOYING JOBS NEED `build`, and that is the property this witness is really about: the
-// release binaries are produced once and consumed by everything that installs them, so a job that
-// mutates a host without that edge would be installing whatever happened to be lying around.
+// EVERY JOB THAT TOUCHES A HOST NEEDS `build`, and that is the property this witness is really about:
+// the release binaries are produced once and consumed by everything that installs them, so a job
+// that mutates a host without that edge would be installing whatever happened to be lying around.
+// `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
+// subject, so a stale binary there would drive a real machine from a model nobody reviewed.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 4
+  fleet_converge_workflow.jobs.length() == 5
     && fleet_converge_workflow.jobs[0].id == "build"
     && fleet_converge_workflow.jobs[1].id == "fleet-converge"
     && fleet_converge_workflow.jobs[1].needs == ["build"]
-    && fleet_converge_workflow.jobs[2].id == "dashboard-deploy"
+    && fleet_converge_workflow.jobs[2].id == "host-reset-return"
     && fleet_converge_workflow.jobs[2].needs == ["build"]
-    && fleet_converge_workflow.jobs[3].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[3].id == "dashboard-deploy"
     && fleet_converge_workflow.jobs[3].needs == ["build"]
+    && fleet_converge_workflow.jobs[4].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[4].needs == ["build"]
 }
 
 fn expected_fleet_converge_yml_content() -> String {
@@ -166,17 +177,43 @@ fn expected_fleet_converge_yml_content() -> String {
   }
 }
 
+// TWO ABSENCES, ONE RENDER. Both patterns are facts about the same emitted workflow, and rendering it
+// is the expensive part -- roughly the whole 500ms claim budget on its own. Asking them in separate
+// witnesses renders it twice for no additional information, which is DESIGN section 2's authored
+// duplication rather than a cache question: the two demands share this frame as their least common
+// ancestor, so the first value is carried.
+//
+// THE ORG-ADMIN SECRET CLAIM MOVED HERE, and its route is worth recording because two attempts were
+// wrong before this one. It began as a last conjunct of the org-actions witness, where it was the
+// second subject in a witness about the invoke string. Splitting it into its own witness was right on
+// subject and wrong on cost: the new identity rendered the workflow a second time and was interrupted
+// at 509ms with no verdict. Merging it here was right on cost and, at first, wrong on IDENTITY --
+// renaming this witness orphaned its row in v2.workflow.floor_cost_debt, which both left that row
+// naming an identity the tree no longer declares AND made this an unenrolled identity whose 523ms was
+// then gated rather than observed.
+//
+// SO THE NAME IS LOAD-BEARING AND IS NOT TO BE TIDIED. Every witness in this file that renders or
+// constructs the workflow costs over a second (the floor reports 1264-1399ms for its siblings); the
+// 500ms line is not a target they can meet, it is the threshold above which a claim must be ENROLLED
+// as declared debt, after which the cost is observed and published rather than gating. The enrollment
+// is keyed by the witness's fully qualified name, so a rename is a silent de-enrollment.
 test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
-  !string_contains(s: expected_fleet_converge_yml_content(), pattern: "expected_healed_sha")
+  let yml = expected_fleet_converge_yml_content()
+  !string_contains(s: yml, pattern: "expected_healed_sha")
+    && !string_contains(s: yml, pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
 }
 
+// ONE EMISSION, READ TWICE. Both conjuncts ask about the same rendered workflow, so emitting it
+// once and binding it is not a cache but the removal of an authored duplicate (DESIGN section 2):
+// the two demands share this frame as their least common ancestor, so the first value is carried.
 test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool {
+  let yml = expected_fleet_converge_yml_content()
   string_contains(
-    s: expected_fleet_converge_yml_content(),
+    s: yml,
     pattern: "EXPECTED_HASH: $\{\{ github.event.inputs.plan_artifact_hash \}\}",
   )
     && !string_contains(
-      s: expected_fleet_converge_yml_content(),
+      s: yml,
       pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
     )
     && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
@@ -204,20 +241,125 @@ test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -
     && string_contains(s: invoke, pattern: "OrgAdminInstallationTokenRefused")
     && string_contains(s: invoke, pattern: "OrgAdminAppKeyUnreadable")
     && !string_contains(s: invoke, pattern: "curl -sSf -H @\"$HDR_FILE\" \"https://secretmanager")
-    && !string_contains(s: expected_fleet_converge_yml_content(), pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
 }
 
+
+
+// THE UNNAMED OBSERVER REFUSES THROUGH A MODELED ADMISSION, NOT A HAND-SHELL GATE. reset_observer is
+// required:false and its value is interpolated into the reset job's runs-on, so a dispatch omitting it
+// asks for a runner carrying an empty label and the job queues silently until its backstop (review
+// 61950). The refusal cannot live in that job -- runs-on resolves before any of its steps exist -- so
+// it lives in `build`, which is always schedulable and which every host-scoped job needs.
+//
+// THE ARMS ARE THE SUBJECT HERE, not a rendered string. The first version of this gate was concat-built
+// shell and the witness read its text; the fold is now modeled, so the witness exercises the decision.
+// THE DISCRIMINATING CONJUNCTS ARE THE LAST TWO: an admission that refused on the mode alone would
+// reject every correctly-dispatched reset, and one that ignored the mode would reject every OTHER
+// mode's dispatch. Both would satisfy a witness that only checked the unnamed case refuses.
+test fn an_unnamed_reset_observer_refuses_in_the_always_schedulable_job() -> Bool {
+  match admit_reset_dispatch(mode: "host_reset_return", reset_observer: "") {
+    ResetDispatchObserverUnnamed { mode: _ } =>
+      match admit_reset_dispatch(mode: "host_reset_return", reset_observer: "srv1") {
+        ResetDispatchAdmitted { mode: _ } =>
+          match admit_reset_dispatch(mode: "apply", reset_observer: "") {
+            ResetDispatchNotThisMode { mode: _ } => true
+            ResetDispatchAdmitted { mode: _ } => false
+            ResetDispatchObserverUnnamed { mode: _ } => false
+          }
+        ResetDispatchNotThisMode { mode: _ } => false
+        ResetDispatchObserverUnnamed { mode: _ } => false
+      }
+    ResetDispatchAdmitted { mode: _ } => false
+    ResetDispatchNotThisMode { mode: _ } => false
+  }
+}
+
+// A WHITESPACE-ONLY OBSERVER IS UNNAMED TOO, which the shell `-z` test caught for free and a modeled
+// comparison does not unless it trims. GitHub hands an omitted input over as an empty string, but a
+// form field carrying a space is the same dispatch with the same silent stall behind it.
+test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
+  match admit_reset_dispatch(mode: "host_reset_return", reset_observer: "   ") {
+    ResetDispatchObserverUnnamed { mode: _ } => true
+    ResetDispatchAdmitted { mode: _ } => false
+    ResetDispatchNotThisMode { mode: _ } => false
+  }
+}
+
+// AND IT IS ACTUALLY IN THE JOB. A step function nothing calls is the dangling-declaration shape
+// (DESIGN section 3c) and would leave the guard passing its own witness while never running.
+//
+// IT ASKS THE STEP LIST, NOT THE WHOLE WORKFLOW, and that is a cost fact rather than a style one:
+// fleet_converge_build_job_steps() is the single authority the job's `steps:` field consumes, so
+// folding it answers the same question as indexing fleet_converge_workflow.jobs[0] while building one
+// job's steps instead of five jobs. The first draft indexed the workflow and was interrupted at
+// cpu_at_least=507ms against the 500ms line, producing no verdict at all.
+test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
+  any(
+    fleet_converge_build_job_steps(),
+    st => match st {
+      RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false }
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    }
+  )
+}
+
+// THE RESET JOB SHARES ITS SUBJECT'S MUTATION DOMAIN. Review 62030 found it carrying no concurrency
+// group at all while being the most mutating job in the workflow, which let two dispatches naming
+// different observers resolve to one subject and interleave -- B's power cycle inside A's watch
+// window, so A mints a down-then-back for a return it did not cause.
+//
+// THE DISCRIMINATING CONJUNCT IS THE LAST. A group keyed on the OBSERVER would satisfy "has a group"
+// and still admit exactly the collision, because the observers differ and the subject does not; this
+// holds that the emitted group is the same gunbc-host-mutation- domain every other host-touching job
+// uses, resolved through the modeled assignment rather than through the dispatch input directly.
+test fn the_reset_job_shares_the_mutation_domain_of_its_subject() -> Bool {
+  string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "gunbc-host-mutation-")
+    && string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "github.event.inputs.reset_observer")
+    && string_contains(s: fleet_converge_reset_subject_map_json(), pattern: "mtcollins1")
+    && !string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "gunbc-host-mutation-${{ github.event.inputs.reset_observer")
+}
+
+// THE SUBJECT MAP IS EMITTED, NOT CONCATENATED, AND A HOSTILE LABEL IS HOW YOU CAN TELL. Review 62097
+// found this object hand-built from string literals: nothing in NonEmptyStr or HostIdentity forbids a
+// label carrying a quote or a backslash, and such a label emitted malformed JSON, so fromJSON failed
+// at JOB-SETUP time before any step existed and the reset job died with no receipt and no upload --
+// the silent-stall class this workflow's own dispatch-admission gate exists to close, reintroduced
+// one function away from it.
+//
+// THIS IS THE WHOLE REASON THE FOLD TAKES AN ARGUMENT. Reading the assignment data row directly, the
+// only witness available would have restated what the emitter does and been green by construction.
+// Handing it a pairing whose observer carries a quote is a red that the concat form fails and the
+// emitted form passes, which is the difference between a check and a decoration.
+test fn a_reset_subject_map_escapes_a_label_that_would_break_the_json() -> Bool {
+  let rendered = match reset_dispatch_pairings(
+    subject_roster: ["mtcollins1"],
+    peer_roster: ["srv\"1"],
+  ) {
+    DispatchAssignmentRefused { cause: _ } => ""
+    DispatchAssignment { pairings: ps } => reset_subject_map_json(pairings: ps)
+  }
+  string_contains(s: rendered, pattern: "\\\"")
+    && !string_contains(s: rendered, pattern: "\"srv\"1\"")
+}
 
 // THE VOCABULARY IS THE ONLY SPELLING AUTHORITY, and these are the facts that make that a claim
 // rather than a hope.
 //
-// COUNT AND DISTINCTNESS TOGETHER. Fifteen members is not enough on its own: two members returning
-// the same wire string would still be fifteen, and the dispatch menu would silently offer one option
-// twice while one mode became unselectable. Counting the DISTINCT wire values is what refuses that.
-test fn the_mode_vocabulary_has_fifteen_members_with_fifteen_distinct_wire_values() -> Bool {
+// COUNT AND DISTINCTNESS TOGETHER. The count alone is not enough: two members returning the same
+// wire string would still meet it, and the dispatch menu would silently offer one option twice while
+// one mode became unselectable. Counting the DISTINCT wire values is what refuses that.
+//
+// THE LITERAL MOVED FROM FIFTEEN TO SIXTEEN when HostResetReturn was added, and the roster
+// annotation in gunbc.fleet_converge_workflow says why a literal is here at all: nothing reflects
+// over a closed vocabulary to produce its members, so fleet_converge_workflow_modes is hand-ordered
+// and this count is what makes a member DROPPED from that roster visible. The count is grounded in
+// the coproduct, not copied from a measurement of itself -- adding a variant without rostering it
+// leaves the type and the roster disagreeing, and this is the only place that disagreement is loud.
+test fn the_mode_vocabulary_members_have_that_many_distinct_wire_values() -> Bool {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
-  count(fleet_converge_workflow_modes) == 15
-    && count(wires) == 15
+  count(fleet_converge_workflow_modes) == 16
+    && count(wires) == 16
     && unique(xs: wires, eq: (a, b) => a == b)
 }
 
@@ -225,7 +367,7 @@ test fn the_mode_vocabulary_has_fifteen_members_with_fifteen_distinct_wire_value
 // to a hand-kept list that merely happens to agree with it today.
 test fn every_dispatch_option_is_a_wire_value_of_the_vocabulary() -> Bool {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
-  count(fleet_converge_mode_options) == 15
+  count(fleet_converge_mode_options) == 16
     && all(fleet_converge_mode_options, o => any(wires, w => w == o))
 }
 

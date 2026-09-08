@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.match_variant_lookup_does_not_peel_type_alias
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data match_variant_lookup_does_not_peel_type_alias: RecurringFailureMode = RecurringFailureMode {
+  identity: "match_variant_lookup_does_not_peel_type_alias" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a match arm names a coproduct variant on a scrutinee whose declared type is a container-typed generic use of an alias of that coproduct (type-argument children; List<T> = FreeMonoid<T>), and inference refuses variant not found in type AliasName. Nullary aliases already peel through expand_scrut_from_type_name and are not this state. What does not peel: is_user_generic_use_site returns false when is_container_type, so the expander looks up the authored name, the List use site is not a Disj, and find_child_named searches for Cons among the type arguments. ",
+
+    "HARM: a legal pattern against the aliased coproduct is unwritable under the alias spelling, so authors either cannot express the match or take a second spelling of the same type (the coproduct name) to route around the wall -- DESIGN section 5 workaround. ",
+
+    "SPECIMEN, gunbc#10699, executed both ways on the same binary (target/release/gunbc compile --source-root dag --source-root src/v2 --entry dag/std/algebra.dag --target rust). Control: is_collection_filter_param_types(param_types: List<AlgebraTypeTemplate>) matching Cons refused with variant Cons not found in type List at dag/std/algebra.dag:320 (exit 1, one hard diagnostic). Discriminator: the same function with only the parameter type spelling changed to FreeMonoid<AlgebraTypeTemplate>, pattern unchanged -- still one hard diagnostic Cons not found in type List, now located at the next List in the same pattern (CallableOf.params: List at :283). dag/std/types.dag declares type List<element> = FreeMonoid<element>; dag/std/algebra.dag declares FreeMonoid Cons. Main at 1c500bbe has zero hits of this diagnostic because it does not match Cons against a List-typed binder. ",
+
+    "NOT JOINED TO the Coproduct(FreeMonoid) method-lookup refusal on bold-swift at src/v2/extdeps/languages/c.dag:385 (method list_push not found). Shared carrier name and similar-shaped lookup failure is a topic match until a discriminator binds them. ",
+
+    "RECOGNITION RULE: a match of Cons or Empty against a binder whose declared type is a container-typed generic use of an alias of FreeMonoid (type-argument children) refuses naming the alias. Nullary aliases of a coproduct already peel -- enrolled and passing: src/v2/test/claim/algebra/generic_alias_coproduct_instantiation_test.dag, type SymbolPath = FreeMonoid<Symbol>, matches Cons. Changing only an outer type spelling to the coproduct name, holding the pattern fixed, moves the same diagnostic onto the next List-typed field in the pattern. ",
+
+    "RUNG FOUND AT: mitigatable -- the refusal is loud. CEILING: structurally guaranteed when variant lookup peels aliases to the coproduct that declares the constructor, so the alias spelling and the coproduct spelling admit the same arms. ",
+
+    "NEXT-RUNG TRIGGER, a capability: match-variant membership is decided on the alias-erased coproduct, sufficient that a Cons arm on a List<T> binder compiles when List is declared equal to FreeMonoid. A local spelling of FreeMonoid in one function is a workaround, not this trigger. ",
+  ],
+
+  evidence: [],
+}
