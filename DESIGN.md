@@ -204,7 +204,7 @@ The payoff is that **language design itself opens up.** It is normally locked by
 
 ## Recurring failure modes (instances of §3–§5, kept for pattern-matching)
 
-One row per class, each carrying its recognition rule and its receipts, in [docs/design-failure-modes.md](docs/design-failure-modes.md) — authority `gunbc.recurring_failure_mode`. They are rostered there rather than here because they are a LEDGER and not a consequence: every lane that finds a new class appends one, so the section grows without bound while this document's sections are fixed by §1. The class names are NOT indexed here either: an index derived from the roster is a second projection of the same rows, and it made this file — the one every session loads in full on every turn — regenerate on every ledger append.
+One row per class, each carrying its recognition rule and its receipts, as a file under `dag/gunbc/recurring_failure_mode/` — authority `gunbc.recurring_failure_mode`. They are rostered there rather than here because they are a LEDGER and not a consequence: every lane that finds a new class appends one file, so the section grows without bound while this document's sections are fixed by §1. The class names are NOT indexed here either: an index derived into this file would regenerate DESIGN.md on every ledger append.
 
 ## Building & checks
 
