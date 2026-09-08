@@ -70,13 +70,13 @@ type MaintenanceRefusal =
 // freeze has been repealed by drift rather than by ruling.
 //
 // WHAT WAS PROPOSED, concretely enough to be re-adjudicated rather than re-derived. Partition
-// v1.compiler.cli_run run_dag_parse_sweep's return so that INSTRUMENT-CANNOT-COMPLETE is separable
+// the seed's shared `run_dag_parse_sweep` return so that INSTRUMENT-CANNOT-COMPLETE is separable
 // from SUBJECT-REFUSED. Today both arrive as one Vec<String>: an empty root roster, a read_dir
 // failure, an empty walk under a root, and a per-file read failure are instrument failures, while
 // genuine parse refusals accumulate into that same vector and return through the same Err. On the
 // Ok path, declaration-index corpus findings then reach the SAME process exit. So exit 1 is a
 // three-way union of subject refused, instrument could not complete, and index finding. The
-// partition cannot be made in the binary's main -- v1.compiler.bin.v1_src_dag_parse only chooses an
+// partition cannot be made in the binary's main -- the `v1_src_dag_parse` cargo bin only chooses an
 // ExitCode from what it is handed -- so it has to be made in the sweep's own return type.
 //
 // WHY IT IS REFUSED, and BOTH legs are stated because either alone is the weaker argument.
@@ -128,7 +128,7 @@ type RefusedV1Proposal {
 }
 
 data v1_maintenance_parse_sweep_partition_refusal: RefusedV1Proposal = RefusedV1Proposal {
-    proposal: "partition v1.compiler.cli_run run_dag_parse_sweep's return so instrument-cannot-complete is separable from subject-refused, the union today being an empty root roster, a read_dir failure, an empty walk, a per-file read failure and genuine parse refusals in one Vec<String>, with declaration-index findings reaching the same exit on the Ok path" as NonEmptyStr,
+    proposal: "partition the seed's shared run_dag_parse_sweep return so instrument-cannot-complete is separable from subject-refused, the union today being an empty root roster, a read_dir failure, an empty walk, a per-file read failure and genuine parse refusals in one Vec<String>, with declaration-index findings reaching the same exit on the Ok path" as NonEmptyStr,
     refused_as: SeedFeatureCompletion,
     admits_when: unbound_dissolution(description: "a consumer exists that MUST BRANCH on instrument-cannot-complete versus subject-refused -- not merely report it differently, but take a different action -- and that consumer serves the v2 self-host program. Naming a surface that would display the distinction does not satisfy this; the distinction must change what something does. Explicitly NOT satisfied by any local pre-push or pre-commit surface, for the reason recorded above." as NonEmptyStr),
   }
