@@ -13,8 +13,8 @@
     dead_code,  // 3
 )]
 
-use crate::cli_run::namespace_wave_admission::git_stdout;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
@@ -200,6 +200,30 @@ enum DagTypeDecl {
 /// violation), wrong again whenever the grammar moves, and wrong SILENTLY because it cannot
 /// distinguish "did not match" from "is not there". `parse_with_table` returns an error arm, so
 /// an unreadable source REFUSES instead of yielding zero declarations.
+/// Run one git command in `workspace` and return its trimmed stdout, or a refusal naming the
+/// command that failed.
+///
+/// REHOMED 2026-09-08 from `cli_run::namespace_wave_admission`, which was deleted with the
+/// wave-admission phase. It was never part of that wall's behavior -- the wall merely hosted the
+/// one copy after `claim_executor`'s byte-identical private copy was deleted into it -- so the
+/// helper follows its remaining consumer rather than dying with its former host.
+fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(workspace)
+        .env("GIT_PAGER", "cat")
+        .output()
+        .map_err(|e| format!("spawn git {}: {e}", args.join(" ")))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+}
+
 fn parse_dag_module_node(file: &str, source: &str) -> Result<Rc<crate::v1_std_core::Node>, String> {
     use crate::v1_compiler_parse::parse_with_table;
     use crate::v1_compiler_tokenize::tokenize;

@@ -13,7 +13,6 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostRatchetGateEnrolled,
   SelfHostCorpusEmitsCleanly,
   SelfHostCargoPhaseEnrolled,
-  NamespaceWaveAdmissionEnrolled,
   NamespaceBaselineObservationComplete,
   NamespaceFixForwardComplete,
   NamespaceGrammarRetired,
@@ -23,7 +22,6 @@ import gunbc.compiler_frontend_program_interlock {
 import gunbc.required_ci_phase_roster {
   RequiredCiPhase,
   ParsePhase,
-  NamespaceWaveAdmissionPhase,
   required_ci_phases,
 }
 import gunbc.namespace_cut_stage {
@@ -84,7 +82,6 @@ import gunbc.compiler_frontend_program_status {
   stage_status,
   stage_startability,
   stage_prerequisite_names_by_class,
-  wave_admission_enrolment_outstanding,
   stage_subject_outstanding,
   InstrumentObstacle,
   NotBuilt,
@@ -568,21 +565,6 @@ test fn act0_startability_names_only_chain_stages() -> Bool {
           stage_prerequisite_names_by_class(s: StageAct0ActivationGate, want: ClassOutstanding),
           stage_prerequisite_names_by_class(s: StageAct0ActivationGate, want: ClassClear))),
       n => any(stage_labels, l => l == n))
-}
-
-// THE WAVE-ADMISSION ENROLMENT FOLD ANSWERS BOTH WAYS AT FIXTURE GRAIN -- the RED the live
-// roster cannot author (the phase is enrolled) is authored here as a roster without it.
-test fn the_wave_admission_enrolment_fold_answers_both_ways() -> Bool {
-  count(wave_admission_enrolment_outstanding(phases: [ParsePhase])) == 1
-    && count(wave_admission_enrolment_outstanding(phases: [ParsePhase, NamespaceWaveAdmissionPhase])) == 0
-}
-
-// AND THE MILESTONE IS WIRED TO THAT FOLD OVER THE LIVE ROSTER -- the same self-comparison-as-
-// wiring-claim shape as the S4a arm: rewiring the milestone off the phase roster reds this.
-test fn the_wave_admission_milestone_is_wired_to_the_phase_roster() -> Bool {
-  standing_agrees_with_population(
-    s: milestone_status(m: NamespaceWaveAdmissionEnrolled),
-    expected: wave_admission_enrolment_outstanding(phases: required_ci_phases))
 }
 
 // THE BASELINE MILESTONE'S TWO ARMS, CHECKED WITHOUT PINNING TODAY'S CAPABILITY. While capture is

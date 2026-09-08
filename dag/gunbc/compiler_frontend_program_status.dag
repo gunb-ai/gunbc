@@ -14,7 +14,6 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostCargoPhaseEnrolled,
   SelfHostRatchetObservationEnrolled,
   SelfHostRatchetGateEnrolled,
-  NamespaceWaveAdmissionEnrolled,
   NamespaceBaselineObservationComplete,
   NamespaceFirstSemanticWave,
   NamespaceFixForwardComplete,
@@ -44,7 +43,6 @@ import v2.workflow.legacy_baseline_capture {
 }
 import gunbc.required_ci_phase_roster {
   RequiredCiPhase,
-  NamespaceWaveAdmissionPhase,
   required_ci_phases,
   required_ci_phase_enrolled,
 }
@@ -366,16 +364,6 @@ fn ratchet_observation_outstanding(cadence: WitnessConsumerCadence) -> List<Stri
   }
 }
 
-// Parameterized on the roster so a witness can author the un-enrolled population; the live call
-// hands it required_ci_phases, the same declaration the workflow emission consumes.
-fn wave_admission_enrolment_outstanding(phases: List<RequiredCiPhase>) -> List<String> {
-  if required_ci_phase_enrolled(p: NamespaceWaveAdmissionPhase, phases: phases) {
-    []
-  } else {
-    ["gunbc.required_ci_phase_roster required_ci_phases does not enrol the namespace-wave-admission phase"]
-  }
-}
-
 // The declared deletion subjects of one stage, at probe-identity grain.
 fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
   subjects_deleted_at(stage: stage)
@@ -448,13 +436,6 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         why: "THIS MILESTONE CLAIMS A MERGE-BLOCKING GATE AGAINST S2'S IDENTITY-GRAIN POPULATION, and until 2026-09-01 it rendered Clear whenever the PERSISTED RECEIPT SERIES validated. Those are different facts. phase_board_series_ratchet folds authored receipts against each other, so what the enrolled witness blocks a merge on is the COHERENCE OF THE SERIES -- an incoherent receipt, a broken prefix link, an unadmitted regression left open. Nothing in it reads the tree being merged, so a regression introduced by the diff under judgment is invisible to it and the merge is blocked on nothing that measures the change. Rendering Clear there was DESIGN 4b(1) rung inflation on the compiler's own self-description, and the inflated class never ranks for climbing. WHAT SURVIVES AND IS REPORTED ELSEWHERE: the series ratchet is real, executes on the required floor, and its standing is carried by SelfHostWholeCorpusPopulationDerived and SelfHostCorpusEmitsCleanly, both of which say RECEIPT in their subject. WHAT IS MISSING is the join to the live tree: gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage is the typed judgment that decides it, it refuses rather than widens when the tree under judgment is unobserved, and it is wired to nothing that gates. Derivable once a board measured on the tree under judgment can be supplied to it." as NonEmptyStr,
         cause: needs(i: LiveTreeCompilePhaseMeasurement)
       }
-    NamespaceWaveAdmissionEnrolled =>
-      standing_from_evidence(
-        e: observe_outstanding(
-          subject: "namespace: the wave-admission wall enrolled as a required-ci phase" as NonEmptyStr,
-          outstanding: wave_admission_enrolment_outstanding(phases: required_ci_phases)
-        )
-      )
     NamespaceBaselineObservationComplete =>
       match legacy_baseline_capture_capability() {
         CaptureBlocked { phase: p, cause: c } =>
@@ -750,7 +731,6 @@ data program_milestones: List<ProgramMilestone> = [
   SelfHostCargoPhaseEnrolled,
   SelfHostRatchetObservationEnrolled,
   SelfHostRatchetGateEnrolled,
-  NamespaceWaveAdmissionEnrolled,
   NamespaceBaselineObservationComplete,
   NamespaceFirstSemanticWave,
   NamespaceFixForwardComplete,
@@ -875,8 +855,8 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
     StageF0 =>
       standing_from_evidence(
         e: observe_outstanding(
-          subject: "F-0: the control plane's own deliverable -- wall enrolment derived from the phase roster" as NonEmptyStr,
-          outstanding: wave_admission_enrolment_outstanding(phases: required_ci_phases)
+          subject: "F-0: the control plane's own deliverable -- stage chain and subject roster" as NonEmptyStr,
+          outstanding: ["gunbc.namespace.namespace_cut_stage F-0 carried derived wave-wall enrolment as its third deliverable; the wave-admission phase was deleted 2026-09-08 and F-0 has not been re-specified over the two deliverables that remain"]
         )
       )
     StageXL0Denominator =>

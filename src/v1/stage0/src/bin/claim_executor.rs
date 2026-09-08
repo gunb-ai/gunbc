@@ -732,67 +732,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("parse");
         }
 
-        // PHASE — THE NAMESPACE WAVE-ADMISSION WALL.
-        //
-        // WHAT IT GATES AND WHY IT IS REQUIRED. `gunbc.compiler_frontend_program_interlock`
-        // (operator ruling, 2026-08-26) makes the import/namespace plan's disclosed "no CI
-        // mechanism" gap a BLOCKER rather than a disclosure: no change that can alter which
-        // modules enter a subject, or what an occurrence denotes, may merge before this wall
-        // exists, and `milestone_prerequisites` gates `NamespaceFirstSemanticWave` on
-        // `NamespaceWaveAdmissionEnrolled` by name.
-        //
-        // IT REPORTS ITS OWN NON-VERDICTS UNDER THEIR OWN NAMES. `NoSubject` (a push whose
-        // baseline is its own head) and `NotEvaluated` (a baseline that does not resolve) are
-        // printed as themselves and never as an admission -- and only the first of them
-        // passes, because "nothing to compare" and "could not compare" are the two zeros this
-        // repository has already been corrected for once.
-        if required_ci_phase_selected(RequiredCiPhase::NamespaceWaveAdmission, required_ci_lane) {
-            eprintln!("required-ci: phase namespace-wave-admission (closure, subject membership, binding)");
-            match &head_index {
-                // THE PARSE REFUSED, SO THERE IS NO HEAD TO ADJUDICATE AGAINST. This is not
-                // silence: the parse phase has already stopped the line, and adjudicating a
-                // corpus half of which failed to parse would report a smaller delta than the
-                // one that exists.
-                None => {
-                    eprintln!(
-                        "required-ci: namespace-wave-admission NOT RUN — the parse phase did not \
-                         produce an index (it refused, or this lane does not own it)"
-                    );
-                    phase_failures.push("namespace-wave-admission (no head index)".to_string());
-                }
-                Some(index) => {
-                    // THE VOCABULARY JOIN RUNS FIRST, because every verdict below is stated in
-                    // that vocabulary: adjudicating against a superseded disposition set would
-                    // produce answers that look like verdicts and are not.
-                    let vocabulary =
-                        v1_compiler::cli_run::namespace_wave_admission::vocabulary_findings(index);
-                    for finding in &vocabulary {
-                        eprintln!("required-ci: namespace-wave-admission VOCABULARY {finding}");
-                    }
-                    if !vocabulary.is_empty() {
-                        phase_failures.push(format!(
-                            "namespace-wave-admission vocabulary ({} finding(s))",
-                            vocabulary.len()
-                        ));
-                    }
-                    match v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
-                        index,
-                    ) {
-                        Ok(outcome) => {
-                            if let Some(failure) = report_wave_admission_outcome(&outcome) {
-                                phase_failures.push(failure);
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("required-ci: namespace-wave-admission FAIL {e}");
-                            phase_failures.push("namespace-wave-admission".to_string());
-                        }
-                    }
-                }
-            }
-            ran.push("namespace-wave-admission");
-        }
-
         // PHASE — ONE adjudication over BOTH declared generated-artifact populations: every
         // emitted stage0 mirror, and every committed registry projection. Neither half can report
         // a terminal green: the phase records its one verdict only after both adjudicators ran.
@@ -1576,7 +1515,6 @@ impl RequiredCiLane {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RequiredCiPhase {
     Parse,
-    NamespaceWaveAdmission,
     GeneratedArtifact,
     RegenFixedPoint,
     Floor,
@@ -1586,7 +1524,6 @@ impl RequiredCiPhase {
     fn name(self) -> &'static str {
         match self {
             RequiredCiPhase::Parse => "parse",
-            RequiredCiPhase::NamespaceWaveAdmission => "namespace-wave-admission",
             RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
@@ -1606,7 +1543,6 @@ impl RequiredCiPhase {
             // necessity and not by preference: its head index IS the sweep's index, and a
             // lane boundary between them would mean parsing the corpus twice to answer a
             // question one parse already reached.
-            RequiredCiPhase::NamespaceWaveAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
             // the receipt that phase's stage0-mirror adjudicator wrote at
@@ -1619,14 +1555,15 @@ impl RequiredCiPhase {
     }
 }
 
-// THE REQUIRED GATE IS FIVE PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
-// generated-artifact returned after its declared exposure produced a real stale projection on
-// main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
-// identities would preserve the independently-green outcomes this composition removes. The other
-// three removed phases remain outside required CI and inside the declared drop.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+// THE REQUIRED GATE IS FOUR PHASES, down from five: namespace-wave-admission was DELETED on
+// 2026-09-08 by operator ruling, because it predicated evaluation on parsing the BASE revision
+// with the HEAD compiler and therefore refused any change to the grammar itself. generated-artifact
+// returned after its declared exposure produced a real stale projection on main, and now also owns
+// the former regen phase's stage0-mirror population. Keeping two phase identities would preserve
+// the independently-green outcomes this composition removes. The other removed phases remain
+// outside required CI and inside the declared drop.
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
     RequiredCiPhase::Parse,
-    RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::Floor,
@@ -1641,17 +1578,15 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 4] = [
     "ParsePhase",
-    "NamespaceWaveAdmissionPhase",
     "GeneratedArtifactPhase",
     "RegenFixedPointPhase",
     "FloorPhase",
 ];
 
-/// Refuse if the host phase enum and the `.dag` phase roster disagree — the same both-directions
-/// variant-set join `namespace_wave_admission::vocabulary_findings` executes against its own
-/// authority, for the same reason: a second representation diverges on the first amendment, and
+/// Refuse if the host phase enum and the `.dag` phase roster disagree — a both-directions
+/// variant-set join, because a second representation diverges on the first amendment, and
 /// nothing else joins these two. An absent authority module refuses too — that is the state in
 /// which nothing is checking the roster, not permission to proceed.
 ///
@@ -1708,77 +1643,6 @@ fn required_ci_phase_selected(phase: RequiredCiPhase, lane: Option<RequiredCiLan
     match lane {
         None => true,
         Some(selected) => phase.lane() == selected,
-    }
-}
-
-/// Print one wave-admission run, and return the phase failure it carries, if any.
-///
-/// EVERY GREEN NAMES ITS DENOMINATORS. A run that admitted nothing because it compared
-/// nothing and a run that compared a corpus and found no motion render identically unless the
-/// population is printed beside the verdict, and rendering them alike is the
-/// execution-provenance loss DESIGN names.
-fn report_wave_admission_outcome(
-    outcome: &v1_compiler::cli_run::namespace_wave_admission::WaveAdmissionOutcome,
-) -> Option<String> {
-    use v1_compiler::cli_run::namespace_wave_admission as nwa;
-    match outcome {
-        nwa::WaveAdmissionOutcome::NoSubject { head } => {
-            eprintln!(
-                "required-ci: namespace-wave-admission NO SUBJECT — the merge base against \
-                 origin/main IS {head}, so this run has no diff to adjudicate. Nothing was \
-                 compared and nothing is admitted."
-            );
-            None
-        }
-        nwa::WaveAdmissionOutcome::NotEvaluated { reason } => {
-            eprintln!("required-ci: namespace-wave-admission NotEvaluated — {reason}");
-            nwa::wave_admission_refusal(outcome)
-        }
-        nwa::WaveAdmissionOutcome::Adjudicated {
-            base,
-            head,
-            report,
-            roster_touched: _,
-        } => {
-            let p = &report.population;
-            eprintln!(
-                "required-ci: namespace-wave-admission base={base} head={head} \
-                 modules_compared={} modules_added={} modules_removed={} \
-                 membership_edges_head={} binding_rows_compared={} closure_rows_moved={} \
-                 deltas={}",
-                p.modules_compared,
-                p.modules_added,
-                p.modules_removed,
-                p.membership_edges_head,
-                p.binding_rows_compared,
-                p.closure_rows_moved,
-                report.deltas.len(),
-            );
-            for delta in &report.deltas {
-                eprintln!(
-                    "required-ci: namespace-wave-admission {}",
-                    nwa::render_delta(delta)
-                );
-            }
-            for stale in &report.stale_admissions {
-                eprintln!("required-ci: namespace-wave-admission STALE ADMISSION {stale}");
-            }
-            for consumed in &report.consumed_admissions {
-                eprintln!("required-ci: namespace-wave-admission CONSUMED ADMISSION {consumed}");
-            }
-            // THE VERDICT IS THE WALL'S, NOT THE PRINTER'S. This function owns the receipts
-            // because it owns a stderr; `wave_admission_refusal` owns whether the run refuses,
-            // so the arm that decides it can be exercised by a test on the path CI runs rather
-            // than only from inside this binary.
-            let refusal = nwa::wave_admission_refusal(outcome);
-            if refusal.is_none() {
-                eprintln!(
-                    "required-ci: namespace-wave-admission ADMITTED — every delta is \
-                     auto-admitted or named by a transition admission"
-                );
-            }
-            refusal
-        }
     }
 }
 

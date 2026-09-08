@@ -38,6 +38,7 @@ import gunbc.rung_drop.cited_symbol_census { cited_symbol_census }
 import gunbc.rung_drop.emit_stage_blocking { emit_stage_blocking }
 import gunbc.rung_drop.lens_enforcement_censuses { lens_enforcement_censuses }
 import gunbc.rung_drop.required_gate_bankruptcy { required_gate_bankruptcy }
+import gunbc.rung_drop.namespace_wave_admission_deleted { namespace_wave_admission_deleted }
 import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall }
 import gunbc.rung_drop.fabric_evidence_gating { fabric_evidence_gating }
 import gunbc.rung_drop.rust_unit_tests_off_the_merge_path { rust_unit_tests_off_the_merge_path }
@@ -78,6 +79,7 @@ data rung_drop_roster: List<RungDrop> = [
   emit_stage_blocking,
   lens_enforcement_censuses,
   required_gate_bankruptcy,
+  namespace_wave_admission_deleted,
   text_boundary_identity_wall,
   fabric_evidence_gating,
   rust_unit_tests_off_the_merge_path,
