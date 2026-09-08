@@ -305,10 +305,12 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, address: S
   }
 }
 
-// AN UNREAD GROUP IS PENDING AND AN OCCUPIED ONE IS PENDING; NEITHER IS A REFUSAL OF THE DEMAND, and
-// the difference is carried by branching on the admission arms here rather than by asking a pair of
-// Bool predicates about them. The remedies differ in kind: an occupied group will free itself, so a
-// retry is the whole remedy, while an unread group frees nobody and the remedy is to go and measure.
+// AN OCCUPIED GROUP IS PENDING AND AN UNREAD ONE IS REFUSED, and the difference is carried by
+// branching on the admission arms here rather than by asking a pair of Bool predicates about them.
+// The remedies differ in kind, which is why the two outcomes do: an occupied group will free itself,
+// so a retry is the whole remedy and the demand stays live; an unread group frees nobody, no amount
+// of retrying learns anything, and the remedy is to go and measure -- so it refuses now rather than
+// spending the caller's time on a wait that cannot end.
 // Two predicates matched the same coproduct twice to rebuild one decision, and a fourth arm -- the
 // warm arm this module already promises -- would have defaulted silently to "not admissible, not
 // retryable" in both. One exhaustive match refuses to compile instead.

@@ -97,7 +97,7 @@ fn t_disposition(a: ServingGroupAdmission) -> String {
   match a {
     AdmissibleForColdPrefill { receipt: _ } => "admissible"
     InadmissibleActiveInteractiveTurn { occupied_by: _, basis: _ } => "pending-retry"
-    AdmissibilityUnread { obligation: _ } => "pending-measure"
+    AdmissibilityUnread { obligation: _ } => "refused-measure"
   }
 }
 
@@ -111,6 +111,7 @@ test fn unreadable_admission_evidence_never_admits() -> Bool {
   (match a { AdmissibilityUnread { obligation: o } => string_contains(s: o as String, pattern: "did not answer")  _ => false })
     && (t_disposition(a: a) != "admissible")
     && (t_disposition(a: a) != "pending-retry")
+    && (t_disposition(a: a) == "refused-measure")
     && string_contains(s: serving_admission_detail(group: FabricGroupA, admission: a), pattern: "occupancy unread, which is not idle")
 }
 
@@ -156,6 +157,7 @@ test fn no_admissible_group_and_the_reasons_do_not_fuse() -> Bool {
     && (t_disposition(a: busy) != "admissible")
     && (t_disposition(a: busy) == "pending-retry")
     && (t_disposition(a: unread) != "pending-retry")
+    && (t_disposition(a: unread) == "refused-measure")
 }
 
 // ── THE COST AXES CARRY NO ESTIMATE, WHICH IS THE OTHER HALF OF THE CUT ───────────────────────
