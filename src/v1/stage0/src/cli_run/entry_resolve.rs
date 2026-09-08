@@ -502,8 +502,8 @@ pub fn load_sources_for_entry_with_pool_index(
 // command exiting nonzero). So the emission transaction lives HERE, and BOTH the CLI's
 // `--entry` arm and the required phase call it. Keeping two callers equal by hand would
 // have been a fork with three live parameters to drift on -- the pool-index policy, the
-// census population, and the silent-pick gate -- and the first draft of this phase had
-// already drifted on the first of them.
+// census population, and (until it was deleted as permanently green) the CLI's silent-pick
+// gate -- and the first draft of this phase had already drifted on the first of them.
 //
 // THE ENTRY IS THE v2 COMPILER ROOT, AND THE PARAGRAPH THAT USED TO SIT HERE ARGUED FOR
 // THE OPPOSITE (operator ruling, 2026-08-25). It chose the smallest entry in the tree and
@@ -528,8 +528,11 @@ pub fn load_sources_for_entry_with_pool_index(
 // invariant's clothes. The invariant is that emission COMPLETED -- the transaction ran to
 // its end and produced a tree -- and the refusal predicate is not restated here either:
 // it is `v1_compiler_compile` `stage0_self_compile_refusal_message`, the same authority
-// the CLI already stops on (a blocking diagnostic, or an empty emitted file set), plus
-// the CLI's own silent-pick gate. A gate that refused on ANY diagnostic would be
+// the CLI already stops on (a blocking diagnostic, or an empty emitted file set) -- AND
+// NOTHING ELSE. It formerly named the CLI's own silent-pick gate as a second refusal
+// source; that gate was deleted as permanently green, so the sentence is corrected here
+// rather than left standing, because a reader of this refusal contract would otherwise
+// conclude silent-pick is walled on this path. A gate that refused on ANY diagnostic would be
 // permanently red -- the v2 compiler closure carries hundreds of advisory diagnostics
 // against zero blocking, which is a standing property of the corpus rather than a figure
 // worth pinning -- so advisory diagnostics are COUNTED and reported and never refused on.
@@ -2353,6 +2356,30 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
         .collect();
     out.sort_by(|a, b| a.module.cmp(&b.module));
     out
+}
+
+/// The KEYED read of the same module census `module_declaration_facts` publishes: the row for
+/// `module_path`, or none.
+///
+/// The population read exists because a consumer wanted every module; this exists because most
+/// consumers want ONE — "is this module declared, and where does it live". Both project the one
+/// `build_module_path_index` authority, so a hit here is the same `(module, path)` pair the list
+/// carries; the difference is that the keyed form neither materializes nor sorts ~thousands of rows
+/// to answer about one, and the interpreter never marshals them.
+///
+/// `Option`, not a bool: the two questions a keyed caller asks — declared? at which path? — are one
+/// lookup, and answering only the first would send the second back through the population read.
+pub fn module_declaration_fact_at(
+    pool_roots: &[String],
+    module_path: &str,
+) -> Option<ModuleDeclarationFactRaw> {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    build_module_path_index(&abs_pool_roots)
+        .get(module_path)
+        .map(|path| ModuleDeclarationFactRaw {
+            module: module_path.to_string(),
+            path: path.clone(),
+        })
 }
 
 /// Project reference edges into the `ImportResolutionFactRaw` channel the module-graph adjacency and

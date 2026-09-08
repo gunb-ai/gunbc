@@ -34,10 +34,47 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // admitted with NO diagnostic of any kind. Same absent import, same absent containment relation,
 // two different observabilities: the advisory channel does not cover constructors.
 //
-// WHAT IS NOT CLAIMED. This is not a silent-arbitrary-pick finding. With two owners of one arm
-// name inside the compiled closure the compile REFUSES (case5). The defects found are narrower and
-// are named as next rungs below, not repaired here: the refusal names the wrong situation, and the
-// ambiguity domain is the CLOSURE rather than the source root.
+// WHAT IS NOT CLAIMED, AS CORRECTED. The original sentence here read: "This is not a
+// silent-arbitrary-pick finding. With two owners of one arm name inside the compiled closure the
+// compile REFUSES (case5)." That generalised case5 past its own geometry and is FALSE in three of
+// the four geometries measured below. It is corrected in place rather than deleted, because the
+// false form is what a reader would otherwise carry away, and because a lane acting on it would
+// conclude the channel already fails closed and stop looking.
+//
+// What case5 actually establishes is narrower: when the referring module reaches BOTH owners
+// DIRECTLY, by its own references, the compile refuses. Reach either owner only indirectly -- a
+// carrier module in the closure imports it, and nothing else does -- and the wall does not apply,
+// because the fold it lives in (insert_variant_owner_checked, over the module's own declarations
+// and its DIRECT imports) never sees the pair. So the honest statement of the channel is that it
+// refuses on the per-FILE pair and is silent on the per-CLOSURE one, and the defects named as
+// next rungs below stand alongside a silent-wrong-bind finding rather than instead of one.
+//
+// AND THE SITE OF THAT SILENT BIND IS NOT WHERE THIS CARRIER FIRST SAID IT WAS. The first draft
+// of these rows attributed case6 and case7 to `build_global_bare_variant_locals` -- Unique enters
+// the whole-closure variant base, Ambiguous falls to its `_ => acc`. That is FALSE for a
+// standalone competitor and is corrected here rather than quietly amended, because it is the same
+// failure this change exists to fix, one layer down: a plausible mechanism story that a repair
+// would be aimed at, landing nowhere near the live site (review 61874). That builder inserts ONLY
+// when the Unique binding's owner is a Disj carrying a child of the name, so a foreign
+// `type Sq { .. }` -- a Conj -- never enters that base under Unique either, and the fold cannot
+// distinguish case6 from case7 at all.
+//
+// THE LIVE SITE IS RECORD-LITERAL INFERENCE, and the deciding value is `type_name_declares_own_type`.
+// For `Sq { s: 2 }` inside the subject: `lookup_variant_parent_enum` finds the LOCAL owner `Shape`
+// correctly, so the widening the join needs is available. It is then DISCARDED, because
+// `lookup_binding_by_name` resolves the bare `Sq` through `global_bare` to the foreign standalone
+// declaration, and `binding_declares_name` is simply "the resolved node's authored name equals the
+// looked-up name" -- which a `type Sq` satisfies. The `if` takes the declares-own-type arm and
+// keeps the foreign Product instead of widening to the parent. case7 is clean for the same reason
+// read backwards: a second competitor makes the bare lookup Ambiguous, `type_name_declares_own_type`
+// goes false, the else arm looks the parent up by name, and the local `Shape` wins.
+//
+// THAT ALSO EXPLAINS case9 WITHOUT A SECOND MECHANISM, which is the check that the story is right
+// rather than merely different: a foreign COPRODUCT owning an arm spelled `Sq` resolves the bare
+// name to the OWNER node, whose authored name is its own (`Boxone`), not `Sq`. So
+// `binding_declares_name` is false, the arm cannot trigger the preference, and it equally cannot
+// contribute the ambiguity that would repair case6 -- which is precisely what case9 and case10
+// measure. One predicate accounts for all five rows.
 
 // WHAT THE REFERRING MODULE USES THE UNIMPORTED NAME AS. The two arms are the discriminator: they
 // are the only difference between case1 and case4.
@@ -108,7 +145,55 @@ data constructor_binding_channel_probes: List<ChannelProbe> = [
     owner_modules_in_source_root: 2,
     owner_modules_in_compiled_closure: 2,
     outcome: RefusedWithDiagnostic { diagnostic: "undefined variable 'ZqxProbeRed'", situation: "MISLEADING -- the name is declared twice, not zero times. The channel fails closed, and then describes the closure as if the declaration were absent" },
-    what_it_establishes: "the channel does not silently pick a winner under in-closure ambiguity. It refuses -- under a diagnostic that names the wrong situation",
+    what_it_establishes: "the channel does not silently pick a winner under in-closure ambiguity. It refuses -- under a diagnostic that names the wrong situation. READ CASE6 THROUGH CASE10 BEFORE GENERALISING THIS ROW: its geometry has the referring module reaching BOTH owners DIRECTLY, and that is what the wall covers",
+  },
+  {
+    case_name: "case6 -- one foreign STANDALONE type competing with an arm, reached only indirectly",
+    reference_kind: ConstructorReference { position: "the else branch of an if whose join is the declaring module's own coproduct" },
+    owner_modules_in_source_root: 2,
+    owner_modules_in_compiled_closure: 2,
+    outcome: RefusedWithDiagnostic { diagnostic: "if branches resolve to incompatible types: Coproduct(Shape) vs Product(Sq)", situation: "MISLEADING IN A SECOND WAY, distinct from case5's. Nothing is reported as ambiguous or absent; the arm is bound to the FOREIGN declaration and the only observable is a type error at declaring.dag, a file that neither declares nor imports the competitor and is byte-identical to the arm that compiles clean" },
+    what_it_establishes: "the per-file wall of case5 does not reach here. No single file imports two owners: the competitor is reached foreign -> carrier -> entry, so insert_variant_owner_checked never sees the pair and the whole-closure base binds it unopposed. This is the silent-arbitrary-pick the original WHAT IS NOT CLAIMED denied",
+  },
+  {
+    case_name: "case7 -- the SAME geometry with a SECOND standalone competitor added",
+    reference_kind: ConstructorReference { position: "identical to case6, byte-identical declaring module" },
+    owner_modules_in_source_root: 3,
+    owner_modules_in_compiled_closure: 3,
+    outcome: BoundSilently { emitted: "11 files emitted, 0 diagnostics, exit 0 -- and the bind is CORRECT" },
+    what_it_establishes: "THE NON-MONOTONICITY, IN ISOLATION. Adding a competitor REPAIRS the compile. The mechanism is `type_name_declares_own_type` in record-literal inference, NOT the variant-locals builder this row first named: with one competitor the bare `Sq` resolves through global_bare to the foreign standalone declaration, whose authored name IS `Sq`, so the predicate holds and the foreign Product is kept instead of widening to the local parent the lookup already found; with two, the bare lookup goes Ambiguous, the predicate goes false, and the else arm resolves the parent by name and widens correctly. The consequence is unchanged by the correction: a repair validated on a corpus where most spellings have several answers will look correct and still be wrong, and any severity census that ranks by competitor count has the sign backwards",
+  },
+  {
+    case_name: "case8 -- case6 plus one NON-competing foreign module (the closure-size control)",
+    reference_kind: ConstructorReference { position: "identical to case6" },
+    owner_modules_in_source_root: 3,
+    owner_modules_in_compiled_closure: 3,
+    outcome: RefusedWithDiagnostic { diagnostic: "if branches resolve to incompatible types: Coproduct(Shape) vs Product(Sq)", situation: "same as case6" },
+    what_it_establishes: "case7's repair is not an artefact of closure size or module count. This closure is the same size as case7's and stays red; the only variable that moves the verdict is how many declarations answer to the one SPELLING",
+  },
+  {
+    case_name: "case9 -- the competitor is a foreign COPRODUCT ARM rather than a standalone type",
+    reference_kind: ConstructorReference { position: "identical to case6" },
+    owner_modules_in_source_root: 2,
+    owner_modules_in_compiled_closure: 2,
+    outcome: BoundSilently { emitted: "9 files emitted, 0 diagnostics, exit 0 -- and the bind is CORRECT" },
+    what_it_establishes: "AN ARM IS NOT A COMPETITOR ON THIS CHANNEL. Measured at one and at two such foreign coproducts, both clean. The committed fixture at fixtures/if_join_pool_binding declaring its perturbation as `type PoolSpecimenSquare { s: Int }` -- a standalone product, not an arm -- is therefore load-bearing rather than incidental, and a census that counts arm-shaped answers to a spelling is measuring a population that does not perturb",
+  },
+  {
+    case_name: "case10 -- one standalone competitor AND one coproduct-arm competitor",
+    reference_kind: ConstructorReference { position: "identical to case6" },
+    owner_modules_in_source_root: 3,
+    owner_modules_in_compiled_closure: 3,
+    outcome: RefusedWithDiagnostic { diagnostic: "if branches resolve to incompatible types: Coproduct(Shape) vs Product(Sq)", situation: "same as case6" },
+    what_it_establishes: "THE SCOPE OF CASE9 AND CASE10, STATED BEFORE THE FACT SO THE FACT IS NOT OVER-READ. In every one of these five geometries the LOCAL declarer is in the closure throughout, so the closure census for the spelling is never Unique-on-a-FOREIGN-arm. What is measured is that adding an arm owner BESIDE an already-present local declarer changes nothing; what is NOT measured is a closure whose count of arm owners crosses one with no local declarer present, which case3 says is the domain that decides. A reader taking case9 as `arm owners never matter` has taken it past its own geometry, which is the same over-reading this change corrects in case5. Now the fact itself: the two previous rows are one fact, not two. An arm-shaped answer does not perturb AND does not count toward the ambiguity that would have repaired case6 -- had it counted, this closure would have gone clean like case7. So the competitor population is non-monotone in one direction and blind in the other, which is the whole reason these five rows are recorded rather than summarised",
+  },
+  {
+    case_name: "case11 -- the competitor is a foreign COPRODUCT whose OWN NAME is the contested spelling",
+    reference_kind: ConstructorReference { position: "identical to case6" },
+    owner_modules_in_source_root: 2,
+    owner_modules_in_compiled_closure: 2,
+    outcome: RefusedWithDiagnostic { diagnostic: "if branches resolve to incompatible types: Coproduct(Shape) vs Coproduct(Sq)", situation: "the same silent wrong bind as case6, and the RENDERED SHAPE IS THE RECEIPT: it says Coproduct(Sq), so the arm bound to the foreign coproduct itself" },
+    what_it_establishes: "THE DISCRIMINATING PREDICTION THAT SEPARATES THE TWO MECHANISM STORIES, run because a corrected causal claim asserted from reading is worth less than one that predicted an unmeasured outcome. The refuted story -- the whole-closure variant base -- requires an owner that is a Disj CARRYING A CHILD of the name; this foreign coproduct is a Disj and has NO child spelled Sq, so that story predicts CLEAN. The corrected story turns on binding_declares_name, the resolved node's authored name equalling the looked-up name, which this declaration satisfies, so it predicts PERTURBATION. IT PERTURBS. The arms already recorded separated the two stories only by a structural argument; this row separates them by an outcome neither had been measured against, and the rendered Coproduct(Sq) names the winner directly. It also bounds what case9 says: an arm is not invisible because its OWNER is a coproduct -- a coproduct competes perfectly well when it is the coproduct's own NAME that collides. What is invisible is a name that a declaration does not itself declare",
   },
 ]
 
@@ -144,6 +229,16 @@ data constructor_binding_channel_stages: List<ChannelStage> = [
   {
     site: decl_ref(module_path: "v1.compiler.infer", decl_name: "build_module_context"),
     what_it_contributes: "folds the result into the module's ordinary locals, so a corpus-derived arm is an ordinary top-priority local binding rather than a fallback consulted last",
+    is_governed_by_the_flat_ruling: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "binding_declares_name"),
+    what_it_contributes: "THE DECIDING PREDICATE FOR case6 THROUGH case10, and it is one line: the resolved node's authored name equals the looked-up name. A foreign standalone `type Sq` satisfies it; a foreign coproduct owning an ARM spelled Sq does not, because the bare name resolves to the OWNER, whose authored name is its own. That single asymmetry is why a standalone competitor perturbs and an arm does not",
+    is_governed_by_the_flat_ruling: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer", decl_name: "infer_record_lit_structural"),
+    what_it_contributes: "where that predicate is CONSUMED and the damage is done: `lookup_variant_parent_enum` has already found the correct LOCAL owner, and the `type_name_declares_own_type` arm then discards it and keeps the foreign declaration instead of widening to the parent. The else arm -- taken when the bare lookup is Ambiguous -- resolves the parent by name and is correct, which is why adding a second competitor REPAIRS the compile",
     is_governed_by_the_flat_ruling: false,
   },
 ]
@@ -191,14 +286,155 @@ data constructor_binding_channel_fixtures: List<FixtureModule> = [
   },
 ]
 
+// THE case6-case10 FIXTURE MODULES ARE COMMITTED FILES, NOT STRINGS, AND THE DIFFERENCE IS THE
+// POINT (review 61858). A `module_source` blob is a SECOND REPRESENTATION of a fixture whose home
+// is `fixtures/` -- nothing compiles it, nothing can compile it, and it drifts from the thing it
+// transcribes with no mechanism that would notice. The roster above is the old form and is left
+// alone rather than churned: its five cases were measured on a different tree by a different
+// lane, and rewriting them here would restate a measurement this change did not take. It is the
+// form to migrate, not the form to extend.
+//
+// So the modules rostered below are real files under `fixtures/constructor_binding_channel_indirect/`,
+// and this roster names them by PATH. Re-deriving case6 through case10 is now a command over
+// committed bytes rather than a transcription exercise:
+//
+//   gunbc compile --source-root fixtures/constructor_binding_channel_indirect \
+//                 --entry fixtures/constructor_binding_channel_indirect/uab/<entry>.dag
+//
+// WHAT THIS DOES AND DOES NOT BUY, said plainly so the row is not read as coverage: the fixture
+// is committed and compilable, and NOTHING RUNS IT. That is a strictly better state than a string
+// blob -- a reader can execute it, and it cannot silently disagree with itself -- but it is not
+// an executing consumer, and the rung below stays where it is until one exists.
+type FixtureModuleFile {
+  case_name: String
+  path: String
+  role: String
+}
+
+data constructor_binding_channel_indirect_fixture_files: List<FixtureModuleFile> = [
+  {
+    case_name: "case6, case7, case8, case9, case10",
+    path: "fixtures/constructor_binding_channel_indirect/uab/declaring.dag",
+    role: "THE SUBJECT. Declares both arms of its own coproduct and returns one per if-branch. Byte-identical across every case; that invariance is the instrument",
+  },
+  {
+    case_name: "case6, case7, case8, case10",
+    path: "fixtures/constructor_binding_channel_indirect/uab/foreign_one.dag",
+    role: "a foreign STANDALONE type spelled the same as the subject's arm, with a DIFFERENT field name so a wrong bind cannot typecheck by coincidence",
+  },
+  {
+    case_name: "case7",
+    path: "fixtures/constructor_binding_channel_indirect/uab/foreign_two.dag",
+    role: "the SECOND standalone competitor, and the only difference between case6 and case7",
+  },
+  {
+    case_name: "case8",
+    path: "fixtures/constructor_binding_channel_indirect/uab/foreign_three.dag",
+    role: "a foreign module that does NOT compete for the spelling -- the control that holds closure size constant against case7",
+  },
+  {
+    case_name: "case9, case10",
+    path: "fixtures/constructor_binding_channel_indirect/uab/cop_one.dag",
+    role: "a foreign COPRODUCT owning an arm of the contested spelling, which is the population case9 shows does not perturb",
+  },
+  {
+    case_name: "case9",
+    path: "fixtures/constructor_binding_channel_indirect/uab/cop_two.dag",
+    role: "a second such coproduct, for the two-arm-owner arm of case9",
+  },
+  {
+    case_name: "case6, case7, case8, case10",
+    path: "fixtures/constructor_binding_channel_indirect/uab/carrier_one.dag",
+    role: "THE CARRIER IS THE GEOMETRY. It imports the foreign owner so the entry reaches it INDIRECTLY, which is why no single file presents two owners to insert_variant_owner_checked and the per-file wall of case5 never applies",
+  },
+  {
+    case_name: "case7",
+    path: "fixtures/constructor_binding_channel_indirect/uab/carrier_two.dag",
+    role: "the same, for the second standalone competitor",
+  },
+  {
+    case_name: "case8",
+    path: "fixtures/constructor_binding_channel_indirect/uab/carrier_three.dag",
+    role: "the same, for the non-competing module",
+  },
+  {
+    case_name: "case9, case10",
+    path: "fixtures/constructor_binding_channel_indirect/uab/ccar_one.dag",
+    role: "the same, for the foreign coproduct",
+  },
+  {
+    case_name: "case9",
+    path: "fixtures/constructor_binding_channel_indirect/uab/ccar_two.dag",
+    role: "the same, for the second foreign coproduct",
+  },
+  {
+    case_name: "case6",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_a.dag",
+    role: "THE ENTRY IS THE VARIABLE. Subject plus one standalone competitor: REFUSES at the subject, which neither declares nor imports the competitor",
+  },
+  {
+    case_name: "case7",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_b.dag",
+    role: "subject plus BOTH standalone competitors: CLEAN, and the bind is correct. The non-monotonicity",
+  },
+  {
+    case_name: "case8",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_d.dag",
+    role: "subject, one competitor, one non-competitor: same closure size as case7 and still REFUSES, so the variable is competitor count on the spelling and not closure size",
+  },
+  {
+    case_name: "case9",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_e.dag",
+    role: "subject plus ONE foreign arm owner: CLEAN",
+  },
+  {
+    case_name: "case9",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_f.dag",
+    role: "subject plus TWO foreign arm owners: CLEAN. An arm is not a competitor",
+  },
+  {
+    case_name: "case11",
+    path: "fixtures/constructor_binding_channel_indirect/uab/named_sq.dag",
+    role: "a foreign COPRODUCT whose OWN NAME is the contested spelling and whose arms are unrelated -- a Disj with no child of that name, which is what makes it discriminating",
+  },
+  {
+    case_name: "case11",
+    path: "fixtures/constructor_binding_channel_indirect/uab/ncar_one.dag",
+    role: "its carrier, so the reach stays indirect",
+  },
+  {
+    case_name: "case11",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_h.dag",
+    role: "REFUSES with Coproduct(Shape) vs Coproduct(Sq) -- the refuted mechanism story predicted CLEAN here and the corrected one predicted this",
+  },
+  {
+    case_name: "case10",
+    path: "fixtures/constructor_binding_channel_indirect/uab/entry_g.dag",
+    role: "one standalone competitor AND one arm competitor: REFUSES, so an arm does not even count toward the ambiguity that would have repaired case6",
+  },
+]
+
 // WHAT THIS CARRIER DOES NOT DO, stated so a reader does not take it for coverage. Nothing here
-// executes on any run: the subject is a MULTI-MODULE closure, and the one in-repo compile surface a
-// witness can reach (compile_dag_rust_emit_check) takes a single source string, which is the same
-// ceiling gunbc.ci_layer_roots records for the emitter's ambiguous-variant-owner witness. So the
-// rung this class sits at is MITIGATABLE -- the measurement above was taken once and is re-measured
-// by nothing -- and its next-rung trigger is a compile surface that admits a closure of several
-// named .dag sources as one subject, at which point case1 and case4 become an enrollable
-// discriminating pair and case5 a permanent regression control.
+// executes on any run: the subject is a MULTI-MODULE closure, and nothing in this repository
+// builds these cases into a witness. The rung this class sits at is MITIGATABLE -- both
+// measurements were taken once and are re-measured by nothing.
+//
+// THE TRIGGER THIS PARAGRAPH USED TO NAME WAS ALREADY SATISFIED WHEN IT WAS WRITTEN, and that is
+// worth more than the correction (review 61858). It said the trigger was "a compile surface that
+// admits a closure of several named .dag sources as one subject", on the strength of
+// compile_dag_rust_emit_check taking a single source string. But `tools.multi_module_compile_fixture`,
+// over the host `compile_dag_multi_module_fixture`, takes exactly that closure of several named
+// sources -- it is what gunbc#10740 consumes for the neighbouring class. A trigger naming a
+// capability that already exists CANNOT FIRE, so the class never ranks for climbing and the stall
+// is untracked while looking tracked, which is precisely what DESIGN 4b(2) forbids. The tell was
+// available here without leaving the file: a trigger written as a capability should be checkable
+// by one grep for that capability, and nobody ran it.
+//
+// THE REAL TRIGGER IS ENROLLMENT, not a missing surface: a `test.claim` module that builds the
+// committed fixture modules rostered below into that fixture surface, asserts the case6-versus-case7
+// flip, and is admitted to `v2.workflow.required_floor` `required_gate_prefixes` -- the roster row
+// without which a witness module is discovered and never run. At that point case6 and case7 become
+// the enrollable discriminating pair and case8 the control that keeps it honest.
 // A CONTROL WHOSE SUBJECT CANNOT CONTAIN THE CHANGE IS NOT A CONTROL, and this is written down
 // because the next person will reach for the instrument it names as evidence, exactly as this lane
 // did. `claim_executor --required-regen` re-emits the v1 seed and compares bytes, and a
@@ -219,7 +455,62 @@ data regen_cannot_see_v2_corpus_emission_change: DeclarationRef = decl_ref(
   decl_name: "reference_derived_use_lines_note",
 )
 
-data constructor_binding_channel_evidence_standing: String = "Measured once at 9917d4a9b3 on a BuildBuddy runner; not enrolled, not re-measured. Rung: mitigatable. Next-rung trigger: a multi-source compile fixture surface."
+// WHY THE PRIOR TRIGGER COULD NOT FIRE, which is the one thing here that is irreducible rationale
+// rather than a typed fact, and so is the one thing left in prose (review 61895). The row below
+// used to be a String carrying rung, trigger, two commits and a citation; DESIGN 4c rules that a
+// String whose sole purpose is commentary is misplaced data, and rung-plus-trigger is exactly the
+// shape 4b already types. So the facts moved into carriers and this paragraph keeps only the why.
+//
+// The trigger this carrier shipped with named "a compile surface that admits a closure of several
+// named .dag sources as one subject". That surface already existed when the sentence was written --
+// `tools.multi_module_compile_fixture` over the host `compile_dag_multi_module_fixture` -- so the
+// trigger could never fire, the class could never rank for climbing, and the stall was untracked
+// while looking tracked. The tell was one grep for the capability, and nobody ran it. A trigger
+// written as a capability should be checkable that way; if it is not, it is a wish.
+type MeasurementEpisode {
+  cases: String
+  commit: String
+  where_run: String
+  command: String
+  enrolled: Bool
+  re_measured: Bool
+}
+
+data constructor_binding_channel_measurements: List<MeasurementEpisode> = [
+  {
+    cases: "case1 through case5",
+    commit: "9917d4a9b3",
+    where_run: "a BuildBuddy runner",
+    command: "gunbc compile --source-root <case> --entry <case>/user.dag --target dag",
+    enrolled: false,
+    re_measured: false,
+  },
+  {
+    cases: "case6 through case11",
+    commit: "413be13f38a",
+    where_run: "a session worktree, on a gunbc built from that tree",
+    command: "gunbc compile --source-root fixtures/constructor_binding_channel_indirect --entry fixtures/constructor_binding_channel_indirect/uab/<entry>.dag",
+    enrolled: false,
+    re_measured: false,
+  },
+]
+
+// THE TWO EPISODES ARE SEPARATE ROWS RATHER THAN ONE SENTENCE because they were taken on different
+// trees by different lanes, and a single covering claim misdates one of them. case7 is the row that
+// materially changed what this carrier claims, so a re-derivation should start there.
+type EvidenceStanding {
+  rung: String
+  ceiling: String
+  next_rung_trigger: String
+  why_the_rung_is_not_higher: String
+}
+
+data constructor_binding_channel_evidence_standing: EvidenceStanding = {
+  rung: "mitigatable",
+  ceiling: "mechanically preventable",
+  next_rung_trigger: "a test.claim module that builds the rostered fixture modules through tools.multi_module_compile_fixture, asserts the case6-versus-case7 flip, and is admitted to v2.workflow.required_floor required_gate_prefixes -- the roster row without which a witness module is discovered and never run",
+  why_the_rung_is_not_higher: "unbuilt work, NOT an absent capability. The fixture surface exists and the fixture modules are committed; nothing runs them. The new geometries widen what a single unenrolled measurement covers, they do not climb the rung",
+}
 
 // THE TWO REPAIRS THIS ESTABLISHES AND DELIBERATELY DOES NOT MAKE. Both sit in v1's infer stage,
 // which DESIGN names as load-bearing, and both are the namespace lane's to sequence: they change

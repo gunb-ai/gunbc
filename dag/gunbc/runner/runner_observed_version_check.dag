@@ -1,0 +1,136 @@
+module gunbc.runner.runner_observed_version_check
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.shell.exec { ProcessObservation, process_observation }
+import extdeps.tools.gnu_coreutils { cat_command }
+import gunbc.command_runner { run_shell_command_observe, LocalExec }
+import gunbc.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner_microvm_boot_probe {
+  BootProbeVerdict, BootPrintedRunnerVersion, BootConsoleLacksRunnerVersion,
+  BootProducedNoConsole, BootVmmFailed, BootExceededHostDeadline,
+  boot_probe_verdict, boot_probe_verdict_text,
+}
+
+// THE COMPARATOR ALREADY EXISTED AND NOTHING CALLED IT.
+//
+// gunbc.runner_microvm_boot_probe's boot_probe_verdict takes a modeled runner release and an observed
+// console and refuses when the console does not carry that version. It is exactly the check that
+// would have caught the Mt. Collins guest running 2.337.0 while gunbc.runner_microvm's image row
+// said 2.336.0 -- and the Mt. Collins path never invoked it, because that path is a hand-built image
+// with its own shell rather than the modeled guest image.
+//
+// SO THE GAP WAS NEVER A MISSING CHECK. It was a check with no consumer, which is the inert-lens tier
+// the guarantee ladder warns about: the machinery exists, nothing gates on it, and its existence
+// reads as coverage.
+
+// ── what this compares ─────────────────────────────────────────────────────────────────────────
+
+// THE OBSERVATION IS A CAPTURED HOST CONSOLE, and the runner prints its own version into it:
+//
+//   Current runner version: '2.337.0'
+//
+// The host dumps the whole guest log to its serial console, so that line survives into the captured
+// receipt. Nothing had to be added to the guest to make this observable -- the evidence was already
+// in the committed captures, unread.
+data runner_version_console_marker: NonEmptyStr = "Current runner version"
+
+// THIS IS A RECEIPT-TIME CHECK, NOT AN ADMISSION-TIME ONE, and the difference is worth stating
+// rather than leaving for a reader to discover. The host is shell and cannot call this function, so
+// the comparison happens afterwards against the captured console. It catches a divergence that has
+// already run; it does not prevent one from running.
+//
+// MOVING IT EARLIER MEANS THE HOST CONSUMING A MODELED ADMISSION rather than a script printing a
+// line -- which is the same restructuring the launch path needs, and belongs with it rather than
+// being half-done here.
+type VersionCheckStanding
+  = CheckedAtReceiptTime { cannot: NonEmptyStr }
+  | CheckedBeforeAdmission
+
+data runner_version_check_standing: VersionCheckStanding = CheckedAtReceiptTime {
+  cannot: "the host is shell and cannot evaluate this; a mismatch is caught after the attempt ran, not before it was admitted",
+}
+
+// ── the check ──────────────────────────────────────────────────────────────────────────────────
+
+// A CAPTURE THAT CANNOT BE READ IS NOT A PASS. boot_probe_verdict already refuses an empty console,
+// and feeding it a failed read would produce BootVmmFailed -- which names the VMM rather than the
+// reader. The exit code is taken from cat so the two causes stay distinguishable.
+func observe_captured_console(path: String) -> ProcessObservation
+  uses net: Network
+{
+  let obs = run_shell_command_observe(command: cat_command(path: path), transport: LocalExec)
+  process_observation(exit_code: obs.exit_code, stdout: obs.stdout, stderr: obs.stderr)
+}
+
+// THE MODELED RELEASE COMES FROM THE GUEST IMAGE ROW, not from a literal here. A version string in
+// this module would be a third place saying which runner this fleet installs, which is the fork the
+// check exists to detect -- committed one layer up.
+func check_captured_console(path: String) -> BootProbeVerdict
+  uses net: Network
+{
+  boot_probe_verdict(
+    runner: gunbc_runner_guest_image.runner,
+    observed: observe_captured_console(path: path),
+  )
+}
+
+// THE VERDICT BECOMES AN EXIT CODE, because a check that reports a mismatch and exits 0 is the
+// fabricated-plausible-output arm applied to a conformance check.
+func verify_captured_console(path: String) -> ProcessExit
+  uses net: Network
+{
+  let verdict = check_captured_console(path: path)
+  match verdict {
+    BootPrintedRunnerVersion { version: _ } => ExitSuccess
+    _ => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+  }
+}
+
+// THE COMMITTED CAPTURE FROM THE BOUND-ATTEMPT RUN, bound so the check has a real subject rather
+// than requiring a caller to remember where the evidence lives. It is the run whose GitHub side
+// reported runner 2.337.0, so a disagreement here would be between two independent observers of one
+// attempt rather than between the model and itself.
+data runner_bound_attempt_capture: NonEmptyStr = "docs/probes/mtcollins_bound_attempt_host_capture_2026-09-07.txt"
+
+func verify_bound_attempt_runner_version() -> ProcessExit
+  uses net: Network
+{
+  verify_captured_console(path: runner_bound_attempt_capture as String)
+}
+
+// AND THE CAPTURE FROM THE TWO-ATTEMPT RUN, which carries TWO guest consoles in one file. A single
+// contains-check passing on a file with two guests does not establish that BOTH printed the expected
+// version -- it establishes that at least one did. That weakness is named rather than papered over:
+// per-attempt console extraction is what would settle it, and this check does not do that.
+data runner_two_attempt_capture: NonEmptyStr = "docs/probes/mtcollins_two_attempts_one_boot_2026-09-07.txt"
+
+data two_attempt_check_weakness: NonEmptyStr = "the two-attempt capture holds two guest consoles in one file, so a contains-check proves at least one guest printed the expected version and not that both did; separating the consoles per attempt is what would close it"
+
+func verify_two_attempt_runner_version() -> ProcessExit
+  uses net: Network
+{
+  verify_captured_console(path: runner_two_attempt_capture as String)
+}
+
+// ── the discriminating negative, kept enrolled rather than run once ────────────────────────────
+
+// TWO PASSES WITH NO FAILURE PROVE NOTHING. Both captures above carry the expected version, so a
+// check that always returned success would be indistinguishable from this one. The JIT-absent
+// capture is the real negative: that guest refused its credential and exited before any runner
+// started, so its console contains no runner version at all.
+//
+// IT IS A COMMITTED ARTIFACT RATHER THAN A FIXTURE, which is what makes it discriminating about the
+// thing being measured. A synthetic console missing a version string would test the string search;
+// this tests the search against a console a real refused attempt actually produced.
+//
+// AND IT STAYS ENROLLED. A negative control that is run once to satisfy a reviewer and then deleted
+// leaves the positive arms unable to fail, which is the state this check was in before it existed.
+data runner_jit_absent_capture: NonEmptyStr = "docs/probes/mtcollins_jit_absent_launch_defect_2026-09-07.txt"
+
+func verify_jit_absent_capture_lacks_runner_version() -> ProcessExit
+  uses net: Network
+{
+  verify_captured_console(path: runner_jit_absent_capture as String)
+}

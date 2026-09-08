@@ -1,0 +1,200 @@
+module gunbc.runner.runner_host_jailed_kvm_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THE JAILER IN THE LAUNCH PATH, which is the difference between the qualification profile and the
+// production process graph. Attempt slice3c-jail-42d51def on the Mt. Collins unit, 2026-09-06: the
+// repository-built stateless host changed away from its initial rootfs, traversed the Firecracker
+// v1.16.1 jailer, executed Firecracker under a nonzero uid, opened /dev/kvm from inside the jail,
+// and reached a guest kernel under KVM. The host's bounded termination path then left no observed
+// attempt process and no jail directory.
+//
+// A FOURTH RECEIPT. The three earlier ones remain true of their own attempts and their captures are
+// byte-identical -- verified rather than assumed.
+data jailed_probe_attempt: NonEmptyStr = "slice3c-jail-42d51def"
+data jailed_probe_iso_sha256: NonEmptyStr = "471696748d0dda035f40b07a5bc99ca892d157d845f877679d7e74020e9fadc3"
+data jailed_probe_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-jailed-kvm-probe.log"
+data jailed_probe_evidence_sha256: NonEmptyStr = "37096b75ae48bbe0cd11497ebf6c41919ff8d9d07626dea854971b4d12c06891"
+data jailed_probe_evidence_byte_count: Int = 217123
+
+type JailedKvmProbeOutcome
+  = RunnerHostJailedKvmProbeReachedGuestKernel {
+      jailer_release: NonEmptyStr
+      firecracker_release: NonEmptyStr
+      guest_kernel_release: NonEmptyStr
+    }
+  | RunnerHostJailedKvmProbeRefused { detail: String }
+
+data mtcollins1_jailed_kvm_probe: JailedKvmProbeOutcome = RunnerHostJailedKvmProbeReachedGuestKernel {
+  jailer_release: "v1.16.1",
+  firecracker_release: "v1.16.1",
+  guest_kernel_release: "6.1.128",
+}
+
+// ── privilege, at the grain actually observed ───────────────────────────────────────────────────
+
+// A NONZERO UID IS NOT "UNPRIVILEGED", and the name says only what was seen. Linux privilege is
+// also the effective, permitted, bounding, inheritable and ambient capability sets plus
+// no_new_privs and seccomp state, none of which this run read back. What IS established is
+// consequential on its own: after the jailer's uid transition, Firecracker could open the jailed
+// /dev/kvm and start a VM -- so the drop happened and did not break the one access that matters.
+type PrivilegeObservation
+  = FirecrackerRanWithNonzeroUid { uid: Int, gid: Int }
+  | PrivilegeObservationUnreadable { detail: String }
+
+data jailed_probe_privilege: PrivilegeObservation = FirecrackerRanWithNonzeroUid { uid: 1000, gid: 1000 }
+
+data privilege_axes_not_read_back: List<NonEmptyStr> = [
+  "CapEff, CapPrm, CapBnd, CapInh and CapAmb from /proc/<pid>/status",
+  "NoNewPrivs",
+  "Seccomp mode",
+  "supplementary groups",
+]
+
+// ── cgroup and namespaces: what a post-run look cannot say ──────────────────────────────────────
+
+// THE CGROUP WAS ABSENT AFTER THE RUN AND THAT PROVES NOTHING ABOUT DURING IT. A post-mortem look
+// finds a cleaned-up cgroup and a never-created one identical. Placement is a contemporaneous
+// observation -- /proc/<pid>/cgroup while the VM lives -- and this attempt took none.
+type CgroupPlacementObservation
+  = CgroupPlacementObservedDuringRun { path: NonEmptyStr }
+  | CgroupPlacementContradictedDuringRun { detail: String }
+  | CgroupPlacementNotObserved
+
+data jailed_probe_cgroup: CgroupPlacementObservation = CgroupPlacementNotObserved
+
+// THE SAME DISCIPLINE FOR NAMESPACES. The jailer necessarily creates a mount namespace to pivot
+// into, so that one is entailed by the pivot succeeding. PID and network namespaces depend on
+// --new-pid-ns and --netns, neither of which this invocation passed, and no namespace inode was
+// read. A boolean "namespaced" would assert all three from evidence for one.
+data namespaces_observed: List<NonEmptyStr> = [
+  "mount namespace: entailed by the pivot succeeding, not read back by inode",
+]
+
+data namespaces_not_observed: List<NonEmptyStr> = [
+  "PID namespace -- --new-pid-ns was not passed, so none was requested",
+  "network namespace -- --netns was not passed",
+  "any namespace inode identity, for any namespace",
+]
+
+// ── termination: the join, not the number ───────────────────────────────────────────────────────
+
+// rc=137 ALONE DOES NOT SAY WHO SENT THE SIGNAL. It says the process died by signal 9 under the
+// usual shell encoding, and nothing about the sender. What supports the deadline reading here is a
+// JOIN: the invocation carried BusyBox timeout -s KILL 120, the elapsed time matched the bound, the
+// wait status was SIGKILL, no other signal sender is modeled in this image, and the post-attempt
+// census was empty. That is an argument rather than a reading, and the production supervisor should
+// remove the inference by emitting the deadline, the kill and the reap as their own events.
+type TerminationEvidence {
+  wait_status_encoding: NonEmptyStr
+  deadline_mechanism: NonEmptyStr
+  inference_form: NonEmptyStr
+}
+
+data jailed_probe_termination: TerminationEvidence = TerminationEvidence {
+  wait_status_encoding: "rc=137, which is 128+9 -- death by SIGKILL, sender not identified by the number",
+  deadline_mechanism: "BusyBox 1.36.1 timeout -s KILL 120, which forks a watcher that outlives its exec and signals at the bound",
+  inference_form: "a join of invocation, elapsed time, wait status, absence of any other modeled sender, and an empty post-attempt census -- not a reading of the exit code",
+}
+
+// AND THE CLEANUP CLAIM IS WEAKER THAN IT LOOKS UNDER IN-PLACE EXEC. "Zero surviving jailer" is not
+// an independent teardown fact when the jailer became Firecracker by exec: it stopped existing as a
+// jailer at that moment regardless of any cleanup. The load-bearing postcondition is that no
+// process identity associated with the attempt remained -- which the census supports, since it was
+// enumerated rather than counted.
+// NARROWED 2026-09-06, because the later live census showed this claim outran its evidence. The
+// post-attempt capture read: init, and two busybox processes. The DEADLINE WATCHER IS ALSO BUSYBOX
+// -- the live census caught it as pid 1651, busybox, uid 0 -- so a census that distinguishes
+// processes only by name cannot tell two console helpers from one helper plus a surviving watcher.
+//
+// WHAT THE EVIDENCE ACTUALLY SUPPORTS is narrower than what was written: no process NAMED
+// firecracker or jailer, and no jail directory, were observed afterwards. That does not exclude a
+// surviving attempt-associated identity, because the one that could survive shares a name with the
+// processes that legitimately remain. Closing it needs an identity join over the launch/exec event
+// set rather than a name match.
+data cleanup_claim_scope: NonEmptyStr = "no process NAMED firecracker or jailer and no jail directory were observed afterwards; the two surviving busybox processes were not identified finely enough to exclude a surviving deadline watcher, which is also busybox"
+
+// ── the runtime root transition ─────────────────────────────────────────────────────────────────
+
+// THE PROOF IS THE TRANSITION, NOT THE WORD tmpfs. pivot_root refuses on the SPECIAL INITIAL ROOTFS
+// mount, not on a filesystem type -- so "root-fstype=tmpfs" is a hint and not the establishing
+// fact. What establishes it is that the host populated a separately mounted tmpfs, switch_root'd
+// into it, and the jailer's pivot then succeeded where it had previously returned EINVAL.
+//
+// WHAT WAS NOT RECORDED, and is owed: the mount identity of the root before and after the
+// transition. Without those ids this receipt shows a successful sequence rather than a proof that /
+// is a distinct RAM-backed mount.
+data runtime_root_transition: NonEmptyStr = "initramfs rootfs -> populated tmpfs -> switch_root -> jailer pivot succeeded where it had returned EINVAL"
+data runtime_root_ids_not_recorded: NonEmptyStr = "mount ids of the root before and after switch_root were not captured; the transition is evidenced by sequence rather than by mount identity"
+
+// ── mount policy: a widening scoped to one mount role ───────────────────────────────────────────
+
+// THE WIDENING IS THE STOCK JAILER'S REQUIREMENT, NOT A GENERAL RELAXATION. The jailer copies the
+// VMM binary into the jail and executes it there, and mknods /dev/kvm inside it -- so noexec blocks
+// the execution and nodev makes the device node unopenable, which is precisely what EACCES from
+// "Error creating KVM object" was. Only the JAIL ROOT is widened; staging and receipt paths keep
+// nodev,nosuid,noexec, and the host runtime root is declared independently rather than inheriting
+// this result.
+type JailMountPolicy
+  = JailerMountPolicyWidenedForStockRealization { retained: NonEmptyStr, given_up: NonEmptyStr }
+  | JailMountPolicyNarrowed { detail: NonEmptyStr }
+
+data jailed_probe_mount_policy: JailMountPolicy = JailerMountPolicyWidenedForStockRealization {
+  retained: "nosuid",
+  given_up: "nodev and noexec, both required by the stock jailer's copy-and-mknod method",
+}
+
+// A PLAUSIBLE LATER NARROWING, recorded as untested rather than planned: an exec-capable jail root
+// with a separate device-capable /dev submount (jail root nodev,nosuid,exec; jail /dev
+// dev,nosuid,noexec). It must be run against the stock jailer before being claimed, and a
+// read-only pre-staged executable layout may need a different jailer-equivalent entirely, since
+// this one copies its executable during setup by design.
+data jail_mount_narrowing_untested: NonEmptyStr = "an exec-only jail root with a device-capable /dev submount is plausible and untested against the stock jailer"
+
+// ── the two predecessor refusals, as their own attempts ─────────────────────────────────────────
+
+// THEY ARE NOT PROSE INSIDE THE SUCCESS. Each ran under a different runtime-root or mount-policy
+// configuration, so folding them into the successful attempt would describe three outcomes as
+// though one configuration produced them.
+type JailedProbeRefusal {
+  attempt: NonEmptyStr
+  configuration: NonEmptyStr
+  errno_observed: NonEmptyStr
+  finding: NonEmptyStr
+}
+
+data jailer_on_initial_rootfs_refused: JailedProbeRefusal = JailedProbeRefusal {
+  attempt: "slice3-jail-da42bc9b",
+  configuration: "runtime root was the initial rootfs; jail tmpfs nodev,nosuid",
+  errno_observed: "EINVAL -- 'Failed to pivot root: Invalid argument (os error 22)'",
+  finding: "pivot_root refuses to move the special initial rootfs, so a host whose / IS the initramfs cannot run the stock jailer however it is invoked",
+}
+
+data jailed_kvm_on_nodev_mount_refused: JailedProbeRefusal = JailedProbeRefusal {
+  attempt: "slice3b-jail-fe2bd950",
+  configuration: "runtime root was tmpfs after switch_root; jail tmpfs still nodev,nosuid",
+  errno_observed: "EACCES -- 'Error creating KVM object: Permission denied (os error 13)'",
+  finding: "the pivot succeeded and Firecracker ran inside the jail, but a device node on a nodev mount cannot be opened, so the jailer's own /dev/kvm was unusable",
+}
+
+// ── standing ────────────────────────────────────────────────────────────────────────────────────
+
+data jailed_probe_closed: List<NonEmptyStr> = [
+  "a separately mounted RAM-backed runtime root can host the stock jailer",
+  "the jailer's pivot and chroot path completed",
+  "the jailer's device creation and permission setup sufficed for Firecracker to open KVM after dropping to a nonzero uid",
+  "Firecracker ran under the jail id and started a guest kernel under KVM",
+  "the host's bounded termination path ended the attempt",
+  "no process named firecracker or jailer, and no jail directory, were observed afterwards -- see cleanup_claim_scope for why this is weaker than 'no attempt identity remained'",
+]
+
+data jailed_probe_open: List<NonEmptyStr> = [
+  "live cgroup membership during the run",
+  "namespace inode identities for any namespace",
+  "capability sets, no_new_privs and seccomp readback",
+  "guest root mounting and guest userspace -- the deadline still kills it early in boot",
+  "repeated attempts on one boot, which is what a runner actually does",
+  "networking, on host or guest",
+  "arbitrary-work admission",
+  "the closed-world runtime-surface comparison this all exists to make possible",
+]

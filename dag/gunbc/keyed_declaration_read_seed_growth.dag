@@ -1,0 +1,65 @@
+module gunbc.keyed_declaration_read_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by exposing a KEYED declaration-index read to the
+// substrate. Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note
+// makes unenumerated hand growth in src/v1 a stop-line, and this change adds two hand items --
+// one host producer per census.
+//
+// WHAT THE CHANGE IS, AND WHAT IT IS NOT. It is a NARROWING of two reads that already exist, not a
+// new fact and not a second census. decl_facts and module_declaration_facts were exposed to the
+// substrate only as whole-population reads, so every keyed question -- does this citation name a
+// declaration -- minted the entire population into interpreter values and folded all but one row
+// away, once per ask. eval_decl_facts_at answers from decl_facts_for_roots_shared, the same memo
+// the population read consults, and filters the raw rows on qualified_name before
+// eval_decl_facts_rows marshals them; module_declaration_fact_at is a get on the already-cached
+// build_module_path_index. Neither adds a walk, a row, a field or a decision: any row either
+// returns is the row the population read would have returned.
+//
+// WHY IT WAS ADDED, MEASURED RATHER THAN ARGUED. Required run 34085447859 on main reports the three
+// v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test identities
+// INTERRUPTED-BEFORE-VERDICT against a 500ms per-claim CPU line, with the reach probe naming
+// last_builtin=module_path_declared -- the linear scan over the module population that a keyed read
+// replaces. Those rows are cost-UNMEASURED by construction, since the deadline preempted them, so
+// what the run establishes is a lower bound and the direction of the demand, not a figure to
+// transcribe.
+//
+// WHY IT IS RUST AND NOT .dag. The narrowed SUBJECT is a host walk. Both censuses are produced by
+// the seed's own source loader over a prepared inventory the substrate cannot name -- the same
+// boundary gunbc.decl_facts_shared_memo_seed_growth records one seam over, and gunbc.census_memo_
+// seed_growth one seam beyond that. The filter has to run on the side of the seam where the rows
+// still exist as host rows, because running it on the other side is precisely the cost being
+// removed. The keyed producers are co-located with the population producers they narrow rather than
+// minting a second reflection authority beside them (DESIGN section 3): same census, same memo,
+// same shared-artifact fill attribution, same canonical order.
+//
+// WHAT IS NOT COUNTED HERE. The two interpreter arms (free_call.decl_facts_at and
+// free_call.module_declaration_facts_at) are macro arms inside v1_interpreter's v1_builtin_arms and
+// are not citable declarations; they are named here rather than omitted, because a receipt that
+// counts only what the roster can cite under-reports its own growth. The rename of
+// register_floor_decl_parse_memo to register_decl_census_memo and its clear, the two rows added to
+// FIXTURE_CARRIER_CITATION_EXEMPTIONS, and the two registration calls in claim_batch's main are
+// ExistingSeedItemModified per gunbc.seed_growth_admission SeedGrowthChangeDisposition -- no new
+// declaration, one more registrant of an existing cell, and a name that stopped saying the concept
+// belongs to one of its callers.
+//
+// THE THREE GENERATED FILES IN THE DIFF ARE PROJECTIONS AND THEIR AUTHORITIES ARE IN IT TOO, which
+// is what keeps them out of this roster:
+// v1_interpreter_dispatch_generated.rs projects gunbc.v1_interpreter_primitive_surface,
+// v1_compiler_infer_method.rs projects v1.compiler.infer_method, and std_primitive_projection.rs
+// projects std.primitive_projection. Each was edited by hand in the same change as its authority
+// because the seed cannot build the emitter that regenerates it without them -- the ordinary
+// stage0 bootstrap seam, not new hand growth.
+data keyed_declaration_read_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "module_declaration_fact_at", field: WholeDeclaration }
+  ],
+  reason: "A keyed read of a host census is a property of the host that holds it. Both items are the keyed projection of a population read that already exists beside them, and each is its own item because each answers for a different census: eval_decl_facts_at over the declaration facts, module_declaration_fact_at over the module-path index.\n\nTHE RETURN SHAPE IS THE CORRECTNESS CONTENT. eval_decl_facts_at returns the MATCHING SET rather than a bool or a first hit, because multiplicity is what DeclarationRefAmbiguous is derived from -- two rows under one logical qualified name is an ambiguous citation, and a keyed read that collapsed it would silently RESOLVE one. That is not a cost defect, it is a wrong answer, and it is the reason this item is enumerated rather than treated as an inlined filter. module_declaration_fact_at returns an Option because the two questions a keyed caller asks -- is this module declared, and at which path -- are one lookup, and answering only the first would send the second back through the population read.\n\nEXECUTING EVIDENCE, not a shape argument: test.claim.decl_ref_keyed_read_agreement_witness_test asks one reference BOTH ways over one pool and requires the two feeds to land on the same arm AND names which arm, across all five, with the ambiguous arm reached at multiplicity two from a real duplicate-qualified-name fixture pool rather than a synthesized fact list.\n\nENUMERATED RATHER THAN COUNTED. Both are free functions, so the citable count and the real count are both two; nothing lands in seed_growth_uncitable_item_keys. The interpreter arms and the modified existing items are disclosed in this file's header instead.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk -- at which point a keyed read of it is an ordinary modeled query over a modeled collection and needs no host producer at all. This receipt dissolves with gunbc.decl_facts_shared_memo_seed_growth and gunbc.census_memo_seed_growth and not before: they are one seam, and retiring the memo while its keyed reader stayed hand-written would leave the reader keyed on a population nothing models.",
+  current_boundary: "Two pure functions of their declared arguments, each reading one already-built artifact and holding nothing. eval_decl_facts_at consults decl_facts_for_roots_shared -- the same census, the same canonical key over the pool-root multiset, the same shared-artifact fill accounting -- and filters DeclFactRaw rows on exact qualified_name equality, which is the law v2.std.decl_facts_skeleton decl_facts_matching_qualified_name already carries on the interpreted side; it therefore inherits the population read's CanonicalOrder rather than choosing one, because a filter cannot reorder what it does not rebuild. module_declaration_fact_at reads build_module_path_index, which was already process-cached before this change. Neither adds state, and neither can answer where the population read refuses: the pool-root defect line-stop fires first in both, against the DECLARED roots, because an empty keyed answer is exactly what a genuine miss looks like and the two must stay distinguishable. What they do NOT bound is the demand: a fold over N citations makes N keyed calls, so the census provider must retain across them, which is why claim_batch registers the census for its invocation and why gunbc run -- whose dispatch diverges and so cannot clear -- is deliberately left unregistered with no keyed consumer reached through it."
+}
