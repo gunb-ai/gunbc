@@ -1,0 +1,69 @@
+module test.claim.generic_effectful_declaration_wall_witness_test
+
+import std.types { String, Bool, Int }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
+// ENROLLED EVIDENCE for the refusal that the `func` keyword cut made necessary, kept here rather
+// than run once and discarded because DESIGN section 4b(4) enrolls a class's discriminating RED
+// and its positive control as the standing proof that the rung stays real. The ad-hoc pair this
+// replaces ran on a remote runner that no longer exists, which establishes nothing about any
+// later revision.
+//
+// WHAT THE WALL IS FOR. Before the cut, `fn` could not carry a `uses` row and `func` could not
+// carry type parameters, so `<T>` and `uses` were unwritable together. Unifying on the single
+// `fn` grammar makes that combination newly grammatical, and NO emitter plumbs type parameters
+// through the effectful path -- the Rust, Python and Go effectful emitters each construct the
+// resource-aware body directly rather than routing through the generic-fn split. The refusal sits
+// at parse_fn_body_from_prefix, the single ingress where both facts are in scope, so one typed
+// located diagnostic covers all three targets instead of one wall per emitter.
+//
+// WHY NOT LEAVE IT TO THE RUST `compile_error!` THAT ALREADY EXISTED. That arm is a
+// target-specific failure discovered only when the emitted crate is compiled, so `gunbc compile`
+// reports success over an artifact engineered to fail its own target compiler. A green compile
+// whose output cannot build is the fabricated-plausible-output failure of DESIGN section 5.
+//
+// THE PAIR IS WHAT DISCRIMINATES, and neither arm is satisfiable by a check that always answers
+// the same way: a compiler that refused every `uses` row passes the refusal and FAILS the
+// control, and one that never walled the combination passes the control and FAILS the refusal.
+//
+// THE CLASS IS NAMED RATHER THAN ASSERTED AS A BARE FALSE. `dag/test/retirement/model.dag` records
+// why: "A generic compile_dag_rust_emit_check false is explicitly insufficient: it cannot separate
+// the expected refusal from a malformed fixture or an unrelated earlier failure." Counting
+// ParseError says the wall fired, not merely that something did.
+//
+// COVERAGE BOUND, STATED BECAUSE IT IS NOT OBVIOUS FROM A GREEN. These arms cover the WALL. They
+// do NOT cover the sibling repair in the same change -- parse_fn_body_from_prefix threading
+// `prefix.uses` into the node it builds, which hardcoded `uses: []` while the `func` path bound
+// the row. That defect is invisible to every cheap oracle: a discarded effect row still PARSES
+// (measured: the .dag sweep reports 0 errors with the row dropped), and regen drift cannot see it
+// either because the stage0 mirrors project only the compiler's own modules, which declare no
+// `uses`. Its executing evidence today is the witness floor, which ran 3550 claims with
+// claims_failed=0 over a corpus carrying the effectful declarations. NEXT-RUNG TRIGGER: an
+// emit-level assertion that an effect row reaches the emitted signature, which needs a fixture
+// whose emitted text is read rather than substring-guessed -- four probe rounds against
+// compile_dag_rust_emit_check established that the resource NAME is not emitted and that its
+// include/exclude pair collapses to one Bool, so a control cannot say which half moved.
+
+data gew_generic_effectful_source: String = "module gew_wall_generic\n\ntype GewNet \{\n  id: Int\n}\n\nfn gew_generic_effectful<T>(x: T) -> T\n  uses net: GewNet\n\{\n  x\n}\n"
+
+data gew_plain_effectful_source: String = "module gew_wall_effectful\n\ntype GewNet2 \{\n  id: Int\n}\n\nfn gew_plain_effectful(x: String) -> String\n  uses net: GewNet2\n\{\n  x\n}\n"
+
+// NOT-RUNNABLE IS NOT ZERO: a census that could not run has observed nothing, and rendering that
+// as "no diagnostics of this class" would let a broken harness satisfy the == 0 control while
+// making the == 1 refusal unsatisfiable -- the empty-observation narrow. -1 is neither.
+fn gew_blocking_count(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+test fn a_generic_effectful_declaration_is_refused_at_parse() -> Bool {
+  gew_blocking_count(source: gew_generic_effectful_source, wanted: "ParseError") == 1
+}
+
+test fn a_nongeneric_effectful_declaration_still_parses() -> Bool {
+  gew_blocking_count(source: gew_plain_effectful_source, wanted: "ParseError") == 0
+}

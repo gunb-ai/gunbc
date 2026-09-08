@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data base_readability_gate_refuses_a_grammar_change: RecurringFailureMode = RecurringFailureMode {
+  identity: "base_readability_gate_refuses_a_grammar_change" as NonEmptyStr,
+
+  receipts: [
+    "**a gate that reads the base revision with the HEAD compiler refuses every change to the GRAMMAR ITSELF.** INVALID STATE: an adjudicator compares base-side and head-side declarations, parses both with one compiler, and has no representable arm for `the base is well-formed under its OWN grammar and unreadable only under the head's`. Removing a keyword makes every file in the diff unreadable at base at once, so the gate refuses in proportion to how thoroughly the change succeeded. ",
+
+    "SEPARATE FROM ITS NEAREST NEIGHBOUR, and the distinction is the whole reason for a second row. fail_closed_gate_refuses_its_own_repair covers a base that is DEFECTIVE, where the head is the repair; the shared symptom is NotEvaluated and the shared disposition is an exceptional landing. Here the base is HEALTHY -- main parses clean under main's own compiler and every other lane sees nothing wrong -- and only the head's changed grammar makes it unreadable. Filing them as one row would state `restores base health` as the recognition rule, which is false of this instance and would send a reader looking for a defect on main that does not exist. ",
+
+    "MEASURED SPECIMEN (2026-09-08, gunbc#10850, the `func` keyword cut). namespace-wave-admission reported `NotEvaluated -- dag/extdeps/access/posix_effective_principal_read_op.dag does not parse at the base revision (5 diagnostic(s)), so its base-side declarations cannot be read`, BLOCKING, with every other required signal green: build lane PASS, floor planned=3550 executed=3550 claims_failed=0, .dag parse sweep 0 errors on the merged tree, regen first_generation_equal=true, and both arms of the new wall's enrolled witness passing. The 5 diagnostics are one refused declaration plus its orphaned annotations, and the same shape holds for each of the 140+ changed files. ",
+
+    "DISTINGUISHING FACTS: nothing widened, defaulted or fabricated -- the gate preserved ignorance as NotEvaluated exactly as fail-closed requires, so this is NOT absorbing_fallback. The defect is transition reachability across a grammar boundary, not verdict truth. Recognition rule: a change that edits the LANGUAGE the corpus is written in, where the gate's precondition is that base and head share that language. The precondition is unstated, which is why it is discovered by a red rather than by reading the gate. ",
+
+    "SELF-CLEARING, WHICH BOUNDS THE HARM AND IS ALSO THE TRAP: once the change lands, every later pull request has a post-cut base that parses under the head grammar and the phase evaluates normally. So the refusal is one-time per grammar change and cannot be waited out -- holding the change holds the refusal, and only landing clears it. ",
+
+    "THE TEMPTING REPAIR IS THE ONE DESIGN FORBIDS: keeping the removed spelling as a transitional parse-only alias satisfies the gate, and is exactly the staged migration section 3 delete-first rejects (a second authority preserved to buy a migration window that nothing consumes). A gate should not be able to make a language-design decision by attrition; that it currently can is the finding. ",
+
+    "RUNG FOUND AT: mitigatable by operator inspection and exceptional landing, same disposition as the neighbour row and reached for a different reason. CEILING: mechanically preventable -- the gate can read the base revision with the BASE revision's own compiler, which is the same seed-versus-head discipline the bootstrap already observes elsewhere in this repository, rather than assuming one grammar across the diff. NEXT-RUNG TRIGGER: base-side declaration reading bound to the compiler of the revision being read, so a grammar change is adjudicable instead of unevaluable.",
+  ],
+
+  evidence: [],
+}
