@@ -24679,7 +24679,7 @@ const EFFECT_REACH_HOST_SINK_MARKERS: &[&str] = &[
     "Exec.Run",
 ];
 
-pub(crate) fn source_has_path_like_string_data(content: &str) -> bool {
+fn source_has_path_like_string_data(content: &str) -> bool {
     content.lines().any(source_line_has_path_like_string_data)
 }
 
