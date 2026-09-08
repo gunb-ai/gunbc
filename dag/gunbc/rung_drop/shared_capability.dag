@@ -136,19 +136,21 @@ fn every_shared_capability_holds(caps: List<SharedCapability>, ds: List<RungDrop
   fold(caps, init: true, f: fn(acc, cap) { acc && shared_capability_holds(cap: cap, ds: ds) })
 }
 
-// TYPED WAITERS MUST CITE THIS CAPABILITY'S IDENTITY in their restoration_trigger, so the unique
-// remainder cannot silently become a private trigger again. A prose waiter has no typed trigger
-// field; its membership in waiter_identities is the join, and requiring a substring of a paragraph
-// would be a second, positional naming scheme for the same fact. A prose waiter that also admits
-// an operator-withdrawal arm must name delisting from waiter_identities on that arm, or the join
-// treats a legitimate single-row retirement as SplitRetirement.
+// WAITERS MUST CITE THIS CAPABILITY'S IDENTITY, so the unique remainder cannot silently become a
+// private trigger again. Typed waiters cite in restoration_trigger. Prose waiters have no such
+// field: authored is the only carrier, so the same identity string must appear there. Skipping
+// the prose arm as `true` made the check permanently green for floor_cut_falsifier_cadence
+// (DESIGN 4b: a RED that cannot be authored is a decoration). Membership in waiter_identities is
+// still the join; this predicate is the citation, not a second population. A prose waiter that
+// also admits an operator-withdrawal arm must name delisting from waiter_identities on that arm,
+// or the join treats a legitimate single-row retirement as SplitRetirement.
 fn typed_waiters_cite_capability(cap: SharedCapability, ds: List<RungDrop>) -> Bool {
   fold(waiter_rows(cap: cap, ds: ds), init: true, f: fn(acc, d) {
     acc && match d.declaration {
       TypedDeclaration {
         previous: _, temporary: _, reason: _, population: _, restoration_trigger: rt
       } => rt.contains(cap.identity as String)
-      AuthoredProse { legacy: _, authored: _ } => true
+      AuthoredProse { legacy: _, authored: a } => a.contains(cap.identity as String)
     }
   })
 }

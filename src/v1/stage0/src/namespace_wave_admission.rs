@@ -2571,7 +2571,6 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
-
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {

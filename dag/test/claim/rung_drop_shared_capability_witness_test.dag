@@ -3,7 +3,8 @@ module test.claim.rung_drop_shared_capability_witness_test
 import std.types { String, Bool, NonEmptyStr, List }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 import gunbc.rung_drop {
-  RungDrop, RungDropStanding, TypedDeclaration, DeletedWithoutReplacement, Standing, Retired,
+  RungDrop, RungDropStanding, TypedDeclaration, AuthoredProse, FloorCutFalsifierCadence,
+  DeletedWithoutReplacement, Standing, Retired,
 }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.shared_capability {
@@ -160,6 +161,24 @@ test fn typed_citation_is_not_vacuous() -> Bool {
     fixture_drop(id: "w.a", standing: Standing, trigger: "private trigger only"),
     fixture_drop(id: "w.b", standing: Standing, trigger: "uses fixture.shared"),
   ]
+  typed_waiters_cite_capability(cap: cap, ds: citing)
+    && !typed_waiters_cite_capability(cap: cap, ds: silent)
+}
+
+fn fixture_prose_drop(id: String, authored: String) -> RungDrop {
+  RungDrop {
+    identity: id as NonEmptyStr,
+    subject: id,
+    declared: "2026-01-01",
+    standing: Standing,
+    declaration: AuthoredProse { legacy: FloorCutFalsifierCadence, authored: authored }
+  }
+}
+
+test fn prose_citation_is_not_stuck_true() -> Bool {
+  let cap = fixture_cap(waiters: ["w.prose"])
+  let citing = [fixture_prose_drop(id: "w.prose", authored: "enrolled on fixture.shared")]
+  let silent = [fixture_prose_drop(id: "w.prose", authored: "no capability identity here")]
   typed_waiters_cite_capability(cap: cap, ds: citing)
     && !typed_waiters_cite_capability(cap: cap, ds: silent)
 }
