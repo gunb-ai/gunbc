@@ -1,50 +1,68 @@
 module test.claim.spark.serving_deployment_selection_witness_test
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.decision { SelectionReceipt }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq }
+import std.measure { token_count }
 import v2.std.optional { Present, Absent }
-import std.pareto { SelectionAxis }
-import std.decision {
-  HardConstraint, UniqueSurvivorRequired,
-  SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy,
-  RealizationSelectionRefused, NoFeasibleRealization, CandidateFieldUnestablished,
-  select_realization,
-}
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, ReplicaProfile, SpeculationOff, SpeculationOn,
-  QualityPolicy, QualityAdmitted, QualityRefused, QualityUnestablished, quality_standing_of,
-  WeightsFitWithHeadroom, WeightsExceedRank, WeightFitUnderivable, weight_fit_of,
-  FleetSnapshot, WorkloadDemand, spark_fleet_snapshot,
+  QualityPolicy, QualityReceipt, ServingQualitySubject,
+  QualityAdmitted, QualityRefused, QualityUnestablished, quality_standing_of,
+  WeightsNotRuledOutByLowerBound, WeightsImpossibleByLowerBound, WeightFitUnderivable, weight_fit_of,
+  per_rank_bytes_ceiling, fleet_fits,
+  WorkloadDemand, spark_fleet_snapshot,
   artifact_deepseek_v4_flash_native, artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
-  glm_candidate_field, project_candidate, serving_selection_axes, serving_selection_constraints,
-  useful_context, covers_demand, blast_radius_percent,
-  ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence, ServingDeploymentNeedsPolicy,
-  NoFeasibleServingDeployment, ServingDeploymentSelectionRefused,
-  select_serving_deployment,
+  TopologyShape, ServingDeploymentChoiceDomain, ServingDeploymentCandidateField,
+  topology_shape, serving_deployment_domain, serving_candidate_field,
+  serving_quality_subject, serving_quality_receipt, serving_decision_input,
+  ServingFieldEstablished, ServingFieldUnestablished, establish_serving_candidate_field,
+  ServingDeploymentDecisionInput,
+  ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
+  select_serving_deployment, useful_context, covers_demand,
   LaunchAdmitted, LaunchRefused, admit_launch, compared_candidate_count,
-  deepseek_launch_admission,
-  ax_quality, ax_weight_fit, ax_context_covered,
-  serving_deployment_assessment,
+  glm_first_serving_selection, deepseek_serving_selection,
+  serving_deployment_assessment, id_subject, id_physical_authority,
 }
 
-// ── A FIELD WHOSE FOOTPRINTS ARE MEASURED, so selection can actually complete ─────────────────
+// ── FIXTURES ──────────────────────────────────────────────────────────────────────────────────
 //
-// The GLM artifact's footprint is deliberately unread, which is the right first answer but cannot
-// demonstrate anything downstream of feasibility. These rows use the artifact whose bytes WERE
-// measured on the serving host, so the quality wall has something to exclude a winner from.
+// The production subjects deliberately return evidence obligations, so a completed selection needs
+// a fixture that ADMITS specific profiles by receipt. That is not a loophole around the quality
+// wall -- it is the wall's positive control. Without one, every refusal row below could be
+// satisfied vacuously by a mechanism that refuses unconditionally.
 data demand_300k: WorkloadDemand = WorkloadDemand {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "demand_300k"),
   required_context: token_count(count: 300000),
   basis: "fixture demand" as NonEmptyStr,
 }
 
-data native_only: QualityPolicy = QualityPolicy {
-  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "native_only"),
-  required_artifact: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_flash_native"),
-  rationale: "fixture: the measured native artifact is the subject" as NonEmptyStr,
+data required_artifact_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.spark.serving_deployment_selection",
+  decl_name: "artifact_deepseek_v4_flash_native",
+  field: WholeDeclaration,
+}
+
+fn subject_at(tp: Nat) -> ServingQualitySubject {
+  serving_quality_subject(artifact: required_artifact_ref, tensor_parallel_degree: tp, speculative: SpeculationOff)
+}
+
+fn receipt_at(tp: Nat) -> QualityReceipt {
+  serving_quality_receipt(
+    subject: subject_at(tp: tp),
+    established_by: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_policy"),
+    note: "fixture: quality established for this exact profile" as NonEmptyStr,
+  )
+}
+
+// EVERY topology in the domain is admitted, so nothing below wins or loses on quality COVERAGE --
+// only on the artifact wall itself. A roster admitting one topology would silently turn the
+// isolation comparison into a quality comparison.
+data fixture_policy: QualityPolicy = QualityPolicy {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_policy"),
+  required_artifact: required_artifact_ref,
+  admitted_profiles: [receipt_at(tp: 8), receipt_at(tp: 4), receipt_at(tp: 2), receipt_at(tp: 1)],
+  rationale: "fixture: the measured native artifact is the subject and each topology carries its own receipt" as NonEmptyStr,
 }
 
 fn cand(name: String, art: ModelArtifact, tp: Nat, replicas: Nat) -> DeploymentCandidate {
@@ -62,110 +80,211 @@ fn cand(name: String, art: ModelArtifact, tp: Nat, replicas: Nat) -> DeploymentC
   }
 }
 
-// The requantised row FITS ON ONE HOST and therefore reaches eight independent replicas with the
-// smallest blast radius in the field. On every funded axis it is the best candidate. Only the
-// quality constraint keeps it out, which is exactly what makes it the right control.
-// EACH CANDIDATE IS ITS OWN DECLARATION, because its identity CITES one. A row whose identity names
-// a declaration that does not exist is a positional citation wearing a symbol's clothes -- the
-// corpus's citation wall catches it, and it caught this file.
-data native_tp2_x4: DeploymentCandidate = cand(name: "native_tp2_x4", art: artifact_deepseek_v4_flash_native, tp: 2, replicas: 4)
-data native_tp4_x2: DeploymentCandidate = cand(name: "native_tp4_x2", art: artifact_deepseek_v4_flash_native, tp: 4, replicas: 2)
 data native_tp8_x1: DeploymentCandidate = cand(name: "native_tp8_x1", art: artifact_deepseek_v4_flash_native, tp: 8, replicas: 1)
-data fast_2bit_tp1_x8: DeploymentCandidate = cand(name: "fast_2bit_tp1_x8", art: artifact_glm_53_flash_2bit, tp: 1, replicas: 8)
+data native_tp4_x2: DeploymentCandidate = cand(name: "native_tp4_x2", art: artifact_deepseek_v4_flash_native, tp: 4, replicas: 2)
+data native_tp2_x4: DeploymentCandidate = cand(name: "native_tp2_x4", art: artifact_deepseek_v4_flash_native, tp: 2, replicas: 4)
+data native_tp1_x8: DeploymentCandidate = cand(name: "native_tp1_x8", art: artifact_deepseek_v4_flash_native, tp: 1, replicas: 8)
 
-data mixed_field: List<DeploymentCandidate> = [native_tp2_x4, native_tp4_x2, native_tp8_x1, fast_2bit_tp1_x8]
+data native_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(artifacts: [artifact_deepseek_v4_flash_native], topologies: [
+    topology_shape(tensor_parallel_degree: 8, replica_count: 1),
+    topology_shape(tensor_parallel_degree: 4, replica_count: 2),
+    topology_shape(tensor_parallel_degree: 2, replica_count: 4),
+    topology_shape(tensor_parallel_degree: 1, replica_count: 8),
+  ])
 
-fn selected_of(s: ServingDeploymentSelection) -> DeclarationRef? {
-  match s {
-    ServingDeploymentSelected { candidate: c, receipt: _ } => Present { value: c }
-    ServingDeploymentNeedsEvidence { needs: _ } => none
-    ServingDeploymentNeedsPolicy { survivors: _ } => none
-    NoFeasibleServingDeployment { causes: _ } => none
-    ServingDeploymentSelectionRefused { defects: _ } => none
-  }
-}
+data native_field: ServingDeploymentCandidateField = serving_candidate_field(identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "native_field"), domain: native_domain, candidates: [native_tp8_x1, native_tp4_x2, native_tp2_x4, native_tp1_x8])
 
-// ── THE CONTROL THE WHOLE POLICY RESTS ON ─────────────────────────────────────────────────────
-//
-// Quality cannot be bought with throughput. The requantised candidate wins every funded axis and
-// must still lose, because it is a different set of weights and the subject requires the exact one.
-test fn speed_cannot_buy_a_different_artifact() -> Bool {
-  match selected_of(s: select_serving_deployment(candidates: mixed_field, fleet: spark_fleet_snapshot, policy: native_only, demand: demand_300k, assessment: serving_deployment_assessment)) {
-    Absent => false
-    Present { value: c } =>
-      !declaration_ref_eq(a: c, b: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fast_2bit_tp1_x8"))
-  }
-}
-
-// THE MUTATION. Delete the quality constraint and nothing else. The requantised candidate stops
-// being excluded before dominance and becomes a live survivor of the field -- the decision that was
-// settled turns undecided, with a different set of weights sitting in it as an option. If this row
-// ever goes GREEN while the constraint is still in serving_selection_constraints, the constraint
-// has stopped excluding anything and the row above is passing for some other reason.
-data constraints_without_quality: List<HardConstraint> = [
-  HardConstraint { identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_selection_constraints"), axis: ax_weight_fit, bound_micro: 1 },
-  HardConstraint { identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_selection_constraints"), axis: ax_context_covered, bound_micro: 1 },
-]
-
-fn field_contains(refs: List<DeclarationRef>, name: String) -> Bool {
-  refs |> any(r => declaration_ref_eq(a: r, b: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: name)))
-}
-
-test fn without_the_quality_constraint_the_requantised_weights_become_selectable() -> Bool {
-  match select_realization(
+fn input_over(field: ServingDeploymentCandidateField, policy: QualityPolicy) -> ServingDeploymentDecisionInput {
+  serving_decision_input(
+    subject_identity: id_subject,
+    field: field,
+    fleet: spark_fleet_snapshot,
+    fleet_identity: id_physical_authority,
+    quality_policy: policy,
+    demand: demand_300k,
+    evidence_snapshot: id_physical_authority,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_policy"),
     assessment: serving_deployment_assessment,
-    candidate_field_identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mixed_field"),
-    field: map(mixed_field, c => project_candidate(c: c, fleet: spark_fleet_snapshot, policy: native_only, demand: demand_300k)),
-    axes: serving_selection_axes,
-    constraints: constraints_without_quality,
-    constraint_authority: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_selection_constraints"),
-    policy: UniqueSurvivorRequired { identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "native_only") },
-    evidence_snapshot: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot"),
-  ) {
-    SelectionNeedsPolicy { survivors: s } =>
-      field_contains(refs: s, name: "fast_2bit_tp1_x8") && field_contains(refs: s, name: "native_tp2_x4")
-    _ => false
-  }
+  )
 }
 
-// ── AN UNREAD FOOTPRINT IS NOT A FAILURE TO FIT ───────────────────────────────────────────────
+// ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS, NOT WITH A SHAPE ─────────────────────────
 //
-// The real GLM field returns evidence obligations rather than a shape, because nobody has measured
-// the artifact. That is the honest first answer and it is what stops a rumoured byte count being
-// divided by four and launched.
-test fn the_real_glm_field_needs_evidence_rather_than_choosing() -> Bool {
-  match select_serving_deployment(
-    candidates: glm_candidate_field, fleet: spark_fleet_snapshot,
-    policy: native_only, demand: demand_300k, assessment: serving_deployment_assessment) {
+// This is the row that most needed to change. An earlier version of this module SELECTED a DeepSeek
+// topology and reported it as a finding, on a quality gate that could not see topology and a field
+// whose only discriminating axes were replica count and capacity share. Both real subjects now
+// return evidence needs, which is the correct answer while no topology-specific quality receipt and
+// no runtime feasibility observation exist for any profile on this fleet.
+test fn the_real_deepseek_subject_returns_obligations_rather_than_a_topology() -> Bool {
+  match deepseek_serving_selection() {
     ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
     _ => false
   }
 }
 
-test fn an_unread_footprint_is_underivable_not_a_misfit() -> Bool {
-  match weight_fit_of(c: cand(name: "x", art: artifact_glm_53_flash_native, tp: 4, replicas: 2), fleet: spark_fleet_snapshot) {
-    WeightFitUnderivable { because: _ } => true
-    WeightsFitWithHeadroom { per_rank_bytes: _, usable_bytes: _, headroom_bytes: _ } => false
-    WeightsExceedRank { per_rank_bytes: _, usable_bytes: _ } => false
+test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
+  match glm_first_serving_selection() {
+    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    _ => false
   }
 }
 
-// A single host cannot hold the measured native artifact; four ranks can.
-test fn weight_fit_refuses_the_topologies_that_cannot_hold_the_weights() -> Bool {
-  match weight_fit_of(c: cand(name: "x", art: artifact_deepseek_v4_flash_native, tp: 1, replicas: 8), fleet: spark_fleet_snapshot) {
-    WeightsExceedRank { per_rank_bytes: _, usable_bytes: _ } => true
+// ── QUALITY IS A PROPERTY OF THE PROFILE, NOT OF THE WEIGHTS ──────────────────────────────────
+//
+// THE DISCRIMINATING ROW. The same required artifact, speculation off, at a topology the policy has
+// no receipt for, is UNESTABLISHED rather than admitted. Under the previous gate this answered
+// QualityAdmitted, which is what let a topology change be recommended on evidence that could not
+// see topology. Restoring artifact-only admission turns this row red and nothing else would notice.
+data unrostered_policy: QualityPolicy = QualityPolicy {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "unrostered_policy"),
+  required_artifact: required_artifact_ref,
+  admitted_profiles: [receipt_at(tp: 4)],
+  rationale: "fixture: only the four-rank profile carries a quality receipt" as NonEmptyStr,
+}
+
+test fn the_same_weights_at_an_unreceipted_topology_are_unestablished() -> Bool {
+  match quality_standing_of(c: native_tp2_x4, policy: unrostered_policy) {
+    QualityUnestablished { obligation: _ } => true
     _ => false
-  } && match weight_fit_of(c: cand(name: "y", art: artifact_deepseek_v4_flash_native, tp: 4, replicas: 2), fleet: spark_fleet_snapshot) {
-    WeightsFitWithHeadroom { per_rank_bytes: _, usable_bytes: _, headroom_bytes: _ } => true
+  } && match quality_standing_of(c: native_tp4_x2, policy: unrostered_policy) {
+    QualityAdmitted { evidence: _ } => true
     _ => false
+  }
+}
+
+// A DIFFERENT ARTIFACT IS REFUSED, NOT MERELY UNMEASURED. That distinction is the whole quality
+// policy: unread is an obligation, wrong weights is a decided negative no receipt can lift.
+test fn a_different_artifact_is_refused_rather_than_left_open() -> Bool {
+  match quality_standing_of(c: cand(name: "fast_2bit", art: artifact_glm_53_flash_2bit, tp: 1, replicas: 8), policy: fixture_policy) {
+    QualityRefused { violated: _ } => true
+    _ => false
+  }
+}
+
+// IDENTITY COMPARISON IS COMPLETE. A ref agreeing on module and name but differing in `field` is a
+// different declaration, and comparing only the first two spellings would admit it.
+data field_shifted_policy: QualityPolicy = QualityPolicy {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "field_shifted_policy"),
+  required_artifact: DeclarationRef {
+    module_path: "gunbc.spark.serving_deployment_selection",
+    decl_name: "artifact_deepseek_v4_flash_native",
+    field: NamedField { field_name: "footprint" as NonEmptyStr },
+  },
+  admitted_profiles: [receipt_at(tp: 4)],
+  rationale: "fixture: same module and name, different field" as NonEmptyStr,
+}
+
+test fn an_artifact_ref_differing_only_in_field_is_a_different_artifact() -> Bool {
+  match quality_standing_of(c: native_tp4_x2, policy: field_shifted_policy) {
+    QualityRefused { violated: _ } => true
+    _ => false
+  }
+}
+
+// ── THE LOWER BOUND DISPROVES; IT DOES NOT ESTABLISH ──────────────────────────────────────────
+test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool {
+  match weight_fit_of(c: native_tp1_x8, fleet: spark_fleet_snapshot) {
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => true
+    _ => false
+  } && match weight_fit_of(c: native_tp4_x2, fleet: spark_fleet_snapshot) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unread_footprint_is_underivable_not_a_misfit() -> Bool {
+  match weight_fit_of(c: cand(name: "unread", art: artifact_glm_53_flash_native, tp: 4, replicas: 2), fleet: spark_fleet_snapshot) {
+    WeightFitUnderivable { because: _ } => true
+    _ => false
+  }
+}
+
+// CEILING, NOT FLOOR. 101 bytes over 2 ranks is 51 per rank. Floor division answers 50, admitting a
+// candidate whose ranks cannot hold their share -- the wrong direction for a bound whose only job
+// is to disprove.
+test fn per_rank_bytes_round_up_so_the_bound_never_understates() -> Bool {
+  per_rank_bytes_ceiling(total: 101, ranks: 2) == 51
+    && per_rank_bytes_ceiling(total: 100, ranks: 2) == 50
+    && per_rank_bytes_ceiling(total: 1, ranks: 8) == 1
+}
+
+// ── A DEGENERATE SHAPE IS NOT A CHEAP ONE ─────────────────────────────────────────────────────
+//
+// Zero replicas consume no hosts, so a fleet-fit test comparing only host counts would admit a
+// deployment that serves nothing and then let it win every capacity axis it never paid for.
+test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool {
+  !fleet_fits(c: cand(name: "zero_replicas", art: artifact_deepseek_v4_flash_native, tp: 4, replicas: 0), fleet: spark_fleet_snapshot)
+    && !fleet_fits(c: cand(name: "zero_ranks", art: artifact_deepseek_v4_flash_native, tp: 0, replicas: 2), fleet: spark_fleet_snapshot)
+    && fleet_fits(c: native_tp4_x2, fleet: spark_fleet_snapshot)
+}
+
+// ── COMPLETENESS IS A JOIN AGAINST THE DECLARED DOMAIN ────────────────────────────────────────
+//
+// THE DOMAIN-DELETION MUTATION. Remove one combination the domain admits and the field must refuse,
+// because otherwise an author obtains a preferred winner by omitting the candidate that beats it.
+// A count cannot catch this: the short field is still nonempty and duplicate-free.
+data field_missing_one: ServingDeploymentCandidateField = serving_candidate_field(identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "field_missing_one"), domain: native_domain, candidates: [native_tp8_x1, native_tp4_x2, native_tp1_x8])
+
+test fn a_field_missing_a_combination_its_domain_admits_is_unestablished() -> Bool {
+  match establish_serving_candidate_field(field: field_missing_one) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+test fn the_complete_field_is_established() -> Bool {
+  match establish_serving_candidate_field(field: native_field) {
+    ServingFieldEstablished => true
+    ServingFieldUnestablished { causes: _ } => false
+  }
+}
+
+// A CANDIDATE THE DOMAIN NEVER ADMITTED IS A DEFECT IN THE OTHER DIRECTION: it enters a comparison
+// the declared choice domain does not sanction.
+data field_with_extra: ServingDeploymentCandidateField = serving_candidate_field(identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "field_with_extra"), domain: native_domain, candidates: [native_tp8_x1, native_tp4_x2, native_tp2_x4, native_tp1_x8, cand(name: "undeclared_tp2_x2", art: artifact_deepseek_v4_flash_native, tp: 2, replicas: 2)])
+
+test fn a_candidate_outside_the_declared_domain_is_unestablished() -> Bool {
+  match establish_serving_candidate_field(field: field_with_extra) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// A SETTLED CHOICE IS LEGAL, and it is a domain that genuinely yields one combination rather than a
+// truncated roster -- exactly the distinction a receipt count cannot draw.
+data settled_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(artifacts: [artifact_deepseek_v4_flash_native], topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)])
+
+data settled_field: ServingDeploymentCandidateField = serving_candidate_field(identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "settled_field"), domain: settled_domain, candidates: [native_tp4_x2])
+
+test fn a_settled_domain_of_one_combination_is_established() -> Bool {
+  match establish_serving_candidate_field(field: settled_field) {
+    ServingFieldEstablished => true
+    ServingFieldUnestablished { causes: _ } => false
+  }
+}
+
+// ── THE RECEIPT NAMES THE FIELD THAT SUPPLIED THE CANDIDATE ───────────────────────────────────
+//
+// THE FIELD-IDENTITY MUTATION. A selection over the settled field must not produce a receipt naming
+// some other field. The previous version always reported `glm_candidate_field` whatever it was
+// handed, and the singleton count row passed anyway -- a count says how many identities a receipt
+// carries, never which field they came from.
+fn selected_field_identity(s: ServingDeploymentSelection) -> DeclarationRef? {
+  match s {
+    ServingDeploymentSelected { selected: sel } => Present { value: sel.receipt.candidate_field_identity }
+    _ => none
+  }
+}
+
+test fn the_receipt_names_the_field_the_selection_was_made_over() -> Bool {
+  match selected_field_identity(s: select_serving_deployment(input: input_over(field: settled_field, policy: fixture_policy))) {
+    Absent => false
+    Present { value: id } =>
+      declaration_ref_eq(a: id, b: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "settled_field"))
   }
 }
 
 // ── VALUE SATURATES AT THE DECLARED DEMAND ────────────────────────────────────────────────────
-//
-// A 400,000-token candidate earns no more context value than a 300,000-token one when the declared
-// requirement is 300,000. That is how a knee appears without anyone choosing a decay curve, and it
-// is what makes an over-provisioned shape dominated rather than merely more expensive.
 fn cand_ctx(name: String, ctx: Nat) -> DeploymentCandidate {
   DeploymentCandidate {
     identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: name),
@@ -184,9 +303,6 @@ test fn exceeding_the_declared_demand_earns_no_further_context_value() -> Bool {
 }
 
 // ── SPECULATION IS NOT ASSUMED LOSSLESS ───────────────────────────────────────────────────────
-//
-// It is widely described as lossless because draft tokens are verified against the full model, but
-// no output-equivalence receipt exists for this profile. Unread is not admitted.
 data spec_on: DeploymentCandidate = DeploymentCandidate {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "spec_on"),
   label: "the deployed shape with speculative decoding turned on" as NonEmptyStr,
@@ -196,61 +312,33 @@ data spec_on: DeploymentCandidate = DeploymentCandidate {
 }
 
 test fn speculative_decoding_is_unestablished_rather_than_free() -> Bool {
-  match quality_standing_of(c: spec_on, policy: native_only) {
+  match quality_standing_of(c: spec_on, policy: fixture_policy) {
     QualityUnestablished { obligation: _ } => true
     _ => false
   }
 }
 
-// ── ONLY A SELECTION MAY LAUNCH ───────────────────────────────────────────────────────────────
+// ── ONLY A SELECTION MAY LAUNCH, AND THE LAUNCH IS THE WHOLE FLEET ────────────────────────────
 test fn an_under_evidenced_decision_cannot_reach_an_engine() -> Bool {
-  match admit_launch(s: select_serving_deployment(
-    candidates: glm_candidate_field, fleet: spark_fleet_snapshot,
-    policy: native_only, demand: demand_300k, assessment: serving_deployment_assessment),
-    candidates: glm_candidate_field) {
+  match admit_launch(s: deepseek_serving_selection()) {
     LaunchRefused { because: _ } => true
-    LaunchAdmitted { profile: _ } => false
+    LaunchAdmitted { plan: _ } => false
   }
 }
 
-// ── A SETTLED CHOICE IS A FIELD OF ONE, AND THE RECEIPT SAYS SO ───────────────────────────────
-//
-// Deciding in advance stays legal. What stops being possible is deciding in advance INVISIBLY: a
-// one-candidate field passes the spine and yields a receipt whose compared-candidate count is one,
-// so "nothing was compared" is a number a reader can find rather than the silent default it is when
-// a launch profile is assembled from literals.
-data settled_field: List<DeploymentCandidate> = [native_tp4_x2]
+// THE PLAN EXPRESSES THE DEPLOYMENT THE SELECTION WAS MADE ON. A single ReplicaProfile could
+// describe a four-rank replica but not TWO disjoint ones, so the shape the decision turned on was
+// not actuable from the result. One placement per replica, and unassigned hosts stay visible.
+test fn the_launch_plan_carries_one_placement_per_replica_and_the_leftover_hosts() -> Bool {
+  match admit_launch(s: select_serving_deployment(input: input_over(field: settled_field, policy: fixture_policy))) {
+    LaunchAdmitted { plan: p } => count(p.replicas) == 2 && p.hosts_assigned == 8 && p.hosts_unassigned == 0
+    LaunchRefused { because: _ } => false
+  }
+}
 
 test fn a_settled_choice_still_produces_a_receipt_that_reports_a_field_of_one() -> Bool {
-  match admit_launch(
-    s: select_serving_deployment(candidates: settled_field, fleet: spark_fleet_snapshot,
-       policy: native_only, demand: demand_300k, assessment: serving_deployment_assessment),
-    candidates: settled_field) {
-    LaunchAdmitted { profile: p } => compared_candidate_count(r: p.receipt) == 1
-    LaunchRefused { because: _ } => false
-  }
-}
-
-// And a real comparison reports what it actually compared, so the two are distinguishable.
-test fn a_compared_field_reports_more_than_one_candidate() -> Bool {
-  match admit_launch(
-    s: select_serving_deployment(candidates: mixed_field, fleet: spark_fleet_snapshot,
-       policy: native_only, demand: demand_300k, assessment: serving_deployment_assessment),
-    candidates: mixed_field) {
-    LaunchAdmitted { profile: p } => compared_candidate_count(r: p.receipt) > 1
-    LaunchRefused { because: _ } => false
-  }
-}
-
-// ── THE DEPLOYED DEEPSEEK SHAPE, ANSWERED RATHER THAN ASSUMED ─────────────────────────────────
-//
-// This row asserts nothing about WHICH shape wins. It asserts that the question now has an answer
-// carrying a receipt -- which is the property the convergence lacked when its topology came from
-// `length(hosts)`. What the answer IS belongs in the PR body and to an operator, not in a claim
-// that would have to be edited every time the fleet changed size.
-test fn the_deployed_deepseek_shape_is_a_decided_question_with_a_receipt() -> Bool {
-  match deepseek_launch_admission() {
-    LaunchAdmitted { profile: p } => compared_candidate_count(r: p.receipt) == 4
+  match admit_launch(s: select_serving_deployment(input: input_over(field: settled_field, policy: fixture_policy))) {
+    LaunchAdmitted { plan: p } => compared_candidate_count(r: p.selected_by) == 1
     LaunchRefused { because: _ } => false
   }
 }
