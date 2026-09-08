@@ -1,8 +1,8 @@
 module gunbc.superseded_run_starvation_census
 
-import std.types { Bool, Int, String, Timestamp, Seconds }
+import std.types { Bool, Int, String, Timestamp }
 import std.nat { Nat }
-import std.measure { seconds_per_day }
+import std.measure { Second, second, seconds_per_day }
 import std.algebra { trim }
 import extdeps.github.workflow_runs {
   github.WorkflowRuns,
@@ -29,11 +29,6 @@ import extdeps.github.workflow_runs {
   StartupFailure,
 }
 import extdeps.clock { Clock }
-
-// The page size for list operations — bound from the single authority
-// (github.WorkflowRuns.ListWorkflowRuns's per_page: Int = 100 default)
-// and consumed by the page-count arithmetic below.
-data census_page_size: Int = 100
 
 // One census identity is an ordered pair, never a run selected because it hurt. The observing
 // instrument discovers every pair in a declared time window by PR identity and head transition.
@@ -166,11 +161,11 @@ fn collect_runs_in_window(
     workflow_name: workflow_name,
     event: event,
     created_range: created_range,
-    per_page: census_page_size,
     page: 1,
   )
   let total = first.result.total_count
-  let data_pages = (total + census_page_size - 1) / census_page_size
+  // Page count: ListWorkflowRuns defaults to per_page=100. This literal must match that default.
+  let data_pages = (total + 99) / 100
   if data_pages == 0 {
     CollectionComplete { runs: first.result.workflow_runs }
   } else if data_pages > max_run_pages {
@@ -221,7 +216,6 @@ fn collect_window_pages(
       workflow_name: workflow_name,
       event: event,
       created_range: created_range,
-      per_page: census_page_size,
       page: next_page,
     )
     match response.result.workflow_runs {
@@ -375,7 +369,7 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
 }
 
 type DurationResult
-  = DurationComputed { seconds: Seconds }
+  = DurationComputed { seconds: Second }
   | DurationClockRefused { end_raw: String, start_raw: String }
   | DurationInsufficientData
   | DurationInconsistentTimestamps { end: Timestamp, start: Timestamp }
@@ -389,7 +383,7 @@ fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
         Present { value: start_s } =>
           if end_s >= start_s {
             let diff_nat: Nat = (end_s - start_s) as Nat
-            DurationComputed { seconds: diff_nat }
+            DurationComputed { seconds: second(count: diff_nat) }
           } else { DurationInconsistentTimestamps { end: end, start: start } }
         Absent => DurationClockRefused {
           end_raw: end_clock.unix_secs,
@@ -803,7 +797,7 @@ func superseded_run_starvation_census(
   observed_at: Timestamp,
   max_run_pages: Int,
 ) -> CensusResult {
-  let discovery_lookback = Clock.TimestampOffset(timestamp: from, offset: seconds_per_day())
+  let discovery_lookback = Clock.TimestampOffset(timestamp: from, offset_seconds: seconds_per_day() as Int)
   let discovery_range = concat(trim(discovery_lookback.result), "..", through)
   let outcome = collect_runs_in_window(
     auth_token: auth_token,

@@ -3,7 +3,7 @@ module extdeps.clock
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { EpochMs, Timestamp, Seconds }
+import std.types { EpochMs, Timestamp }
 import v2.std.optional { Present }
 
 
@@ -48,11 +48,16 @@ service Clock {
     }
   }
 
+  // Residue: the transport accepts Int (bare scalar without a measure carrier) because the
+  // shell transport interpolates only Int/String; Second (Measure<Time, One, Nat>) is a
+  // structured record that formats as a struct, not a bare decimal. offset_seconds names
+  // the unit at the parameter level as a second-best signal. Dissolves when the transport
+  // supports Measure-type interpolation, or when a proper clock protocol replaces shell.
   operation TimestampOffset {
-    input { timestamp: Timestamp, offset: Seconds }
+    input { timestamp: Timestamp, offset_seconds: Int }
     output { result: Timestamp from "stdout" }
     readonly
-    transport shell { argv: ["date", "-u", "-d", "{timestamp} -{offset} seconds", "+%Y-%m-%dT%H:%M:%SZ"] }
+    transport shell { argv: ["date", "-u", "-d", "{timestamp} -{offset_seconds} seconds", "+%Y-%m-%dT%H:%M:%SZ"] }
     exit {
       0 => Unit
       nonzero => String "date offset failed"
