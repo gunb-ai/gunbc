@@ -75,6 +75,7 @@ import extdeps.transports.rest {
 import v2.std.collection { Absent, Present }
 import extdeps.github.github { Repository }
 import v2.std.algebra { non_empty_to_list }
+import v2.std.cardinality { Never }
 import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
@@ -1101,8 +1102,10 @@ type RepositoryRulesetConvergenceSubject {
 // redistribute onto the three facts they always were:
 //
 //   the read failed entirely            -> the observation layer (RulesetReadRefusal)
-//   the desire cannot be projected      -> RulesetAssessmentRefusal: the GOAL is unexpressible, so
-//                                          there is no honest comparison to make
+//   the desire disagrees with itself    -> RulesetUnknown on THAT dimension only: the goal states
+//                                          the merge queue twice and the two disagree, so which one
+//                                          is the desire is undetermined -- and every OTHER
+//                                          dimension is still compared
 //   the roster could not be read        -> RulesetUnknown: reached, unread, and now carried
 //                                          ALONGSIDE the proved drift instead of hiding it
 //   the live state differs              -> deviations, each already located by render_divergence
@@ -1135,12 +1138,7 @@ type RepositoryRulesetConvergenceSubject {
 // it -- so a retry cannot discharge it and it must never be read as "no actors".
 type RulesetUnknown
   = RulesetBypassRosterUnobservable { reader: NonEmptyStr, detail: NonEmptyStr }
-
-// NOT A DEVIATION AND NOT AN UNKNOWN: the DESIRED side is unexpressible, so there is nothing to
-// compare the live state against on that dimension. An assessment that returned a verdict anyway
-// would be answering over a goal it could not state.
-type RulesetAssessmentRefusal
-  = RulesetSignedPolicyProjectionUnrepresentable { detail: NonEmptyStr }
+  | RulesetMergeQueueDesireSelfInconsistent { detail: NonEmptyStr }
 
 fn ruleset_unknowns(roster: BypassActorRosterObservation) -> List<RulesetUnknown> {
   match roster {
@@ -1170,28 +1168,53 @@ fn observation_unknowns(observation: RulesetObservation) -> List<RulesetUnknown>
 
 // THE ASSESSOR, AND THE ONLY PLACE THE GOAL IS READ.
 //
-// The unprojectable-desire refusal is answered FIRST, ahead of any deviation, and the ordering is
-// a consequence of what the arm means rather than a priority list. The other arms all report on a
-// comparison; this one reports that the comparison could not be posed, because the declared goal
-// itself has no projection. Reporting drift underneath it would be reporting distance from a goal
-// this module just said it cannot state.
+// IT HAS NO SHORT-CIRCUIT, AND THAT IS THE SECOND HALF OF THIS MIGRATION RATHER THAN A DETAIL.
+// An earlier revision answered `signed_desire_projection_refusal` FIRST and returned a whole-
+// assessment refusal, so a defect in ONE dimension of the desire suppressed the comparison of
+// every other -- a live enforcement, target, name or required-context drift went unreported
+// because of a merge-queue projection gap that has nothing to do with any of them. That is the
+// exact ordering harm this branch deleted the actuation holds to fix, reproduced one layer down
+// on the arm that was left, and it is the class rostered as
+// gunbc.recurring_failure_mode.read_only_policy_bound_as_an_actuator_that_only_refuses -- the
+// helper's own prose still says "Refusing rather than actuating", which is what it was for.
+// Review 62287 found it.
 //
-// Below that, deviations and unknowns go to the mint together and the mint decides the arm --
-// unknowns outrank deviations, and the deviations survive into GoalIndeterminate rather than being
-// dropped. That is the regression this migration exists to fix: the shape it replaces returned the
-// hold and discarded the drift.
+// SO THE PROJECTION GAP IS AN UNKNOWN ON ONE DIMENSION, and it is genuinely unknown rather than
+// merely awkward: the goal states the merge-queue desire TWICE -- once as the signed policy, once
+// as the rules wire the projection carries -- and when those two disagree, WHICH ONE IS THE GOAL is
+// undetermined. `merge_queue_divergences` can still compare the live queue against the signed
+// policy, so the dimension is not unassessable for want of a comparison; it is unassessable for
+// want of an unambiguous goal. Every other dimension is unaffected and is still compared.
+//
+// THERE IS THEREFORE NO WHOLE-ASSESSMENT REFUSAL LEFT FOR THIS SUBJECT, and the type says so:
+// AssessRefusal is v2.std.cardinality Never, which has no constructor. That is not a placeholder --
+// it is the claim, checked, that no state of this subject leaves its inputs incomparable. The arm
+// stays in `verify`'s match because the coproduct is closed, and it is unreachable by
+// construction rather than by convention.
+//
+// Deviations and unknowns go to the mint together and the mint decides the arm: unknowns outrank
+// deviations, and the deviations survive into GoalIndeterminate rather than being dropped.
 fn ruleset_assess(
   observed: RulesetObservation,
-) -> GoalAssessment<RepoRulesetConvergedEvidence, RulesetDivergence, RulesetUnknown, RulesetAssessmentRefusal> {
+) -> GoalAssessment<RepoRulesetConvergedEvidence, RulesetDivergence, RulesetUnknown, Never> {
+  assess_by_deviations_and_unknowns(
+    evidence: converged_evidence_of(writes: 0, removals: 0, observation: observed),
+    deviations: observation_divergences(observation: observed),
+    unknowns: append(
+      observation_unknowns(observation: observed),
+      items: merge_queue_desire_unknowns(),
+    ),
+  )
+}
+
+// The goal's own self-consistency on the merge-queue dimension, read from the two places the desire
+// states it. This is a fact about the DESIRE and not about the live ruleset, which is why it does
+// not come from the observation.
+fn merge_queue_desire_unknowns() -> List<RulesetUnknown> {
   match signed_desire_projection_refusal() {
-    Present { value: detail } => GoalAssessmentRefused {
-      cause: RulesetSignedPolicyProjectionUnrepresentable { detail: detail },
-    }
-    Absent => assess_by_deviations_and_unknowns(
-      evidence: converged_evidence_of(writes: 0, removals: 0, observation: observed),
-      deviations: observation_divergences(observation: observed),
-      unknowns: observation_unknowns(observation: observed),
-    )
+    Absent => []
+    Present { value: detail } =>
+      [RulesetMergeQueueDesireSelfInconsistent { detail: detail }]
   }
 }
 
@@ -1234,6 +1257,11 @@ fn render_unknown(u: RulesetUnknown) -> String {
           d as String,
         ],
         "",
+      )
+    RulesetMergeQueueDesireSelfInconsistent { detail: d } =>
+      concat(
+        "the merge queue IS signed off and the desired projection does not carry the signed policy, so the goal states this dimension two ways and WHICH ONE IS THE DESIRE is undetermined -- signing again fixes nothing -- ",
+        d as String,
       )
   }
 }
@@ -1280,16 +1308,11 @@ func verify() -> ProcessExit {
         ],
         "",
       ))
-    GoalInspected {
-      subject: _,
-      observed: _,
-      assessment: GoalAssessmentRefused {
-        cause: RulesetSignedPolicyProjectionUnrepresentable { detail: detail },
-      },
-    } =>
-      exit_failure(reason: concat(
-        "repo ruleset verify refused: the merge queue IS signed off and the desired projection cannot carry the signed policy -- signing again fixes nothing -- ",
-        detail as String,
-      ))
+    // UNREACHABLE BY CONSTRUCTION, not by convention: this assessment's AssessRefusal is
+    // v2.std.cardinality Never, which has no constructor anywhere, so no value can arrive here.
+    // The arm is written because the coproduct is closed -- which is the property that would make
+    // a FIFTH assessment arm a compile error rather than a silent fall-through.
+    GoalInspected { subject: _, observed: _, assessment: GoalAssessmentRefused { cause: _ } } =>
+      exit_failure(reason: "repo ruleset verify refused: unreachable assessment refusal")
   }
 }

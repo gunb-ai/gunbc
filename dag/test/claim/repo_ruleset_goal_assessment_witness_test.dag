@@ -28,6 +28,7 @@ import gunbc.repo_ruleset {
   desired_ruleset_rules,
   gunbc_passing_ci_ruleset_name,
   required_status_check_standing,
+  merge_queue_desire_unknowns,
   observation_unknowns,
   render_divergences,
   render_unknowns,
@@ -153,4 +154,37 @@ test fn an_unreadable_ruleset_refuses_at_the_observation_layer_and_mints_no_unkn
     cause: RulesetReadTransportRefused { cause: "fixture transport refusal" as NonEmptyStr },
   }
   length(observation_unknowns(observation: unreadable)) == 0
+}
+
+// DISCRIMINATING RED FOR THE SECOND SHORT-CIRCUIT, found by review 62287 after the first was fixed.
+//
+// The desire states the merge-queue dimension twice -- as the signed policy and as the rules wire
+// the projection carries -- and an earlier revision answered a WHOLE-ASSESSMENT refusal when those
+// two disagreed, ahead of any comparison. A defect in one dimension of the goal then suppressed the
+// live drift of every other, which is the same ordering harm the actuation holds were deleted for.
+//
+// The claim is stated over the CURRENT desire rather than over a fixture, because that is the thing
+// that would regress: this repository's merge queue is unsigned today, so the gap is Absent and the
+// assessment must reach a comparison. If someone signs the policy without wiring the projection,
+// this witness holds only if the gap became an unknown on that dimension -- and the drift claim
+// above still proves the rest of the comparison survives an unknown.
+test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool {
+  length(merge_queue_desire_unknowns()) == 0
+}
+
+// THE POSITIVE CONTROL FOR THE ARM THAT MATTERS: with the desire self-consistent, an observation
+// that differs in a dimension the merge queue has nothing to do with must still DIVERGE rather
+// than be swallowed. A short-circuit reinstated anywhere above the comparison fails here.
+test fn a_name_drift_is_still_reported_with_the_desire_self_consistent() -> Bool {
+  match ruleset_assess(
+    observed: fixture_observed(
+      name: "drifted-name",
+      rule_types_extra: false,
+      roster: BypassRosterObserved { actors: [] },
+    ),
+  ) {
+    GoalDiverged { deviations: ds } =>
+      string_contains(s: render_divergences(ds: non_empty_to_list(xs: ds)), pattern: "ruleset name is drifted-name")
+    _ => false
+  }
 }
