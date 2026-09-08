@@ -1,0 +1,8 @@
+module uab.entry_f
+
+import uab.declaring { Shape, pick }
+import uab.ccar_one { ccarry_one }
+import uab.ccar_two { ccarry_two }
+
+fn use_f(c: Bool) -> Shape { pick(c: c) }
+fn touch_f() -> Int { ccarry_one() + ccarry_two() }

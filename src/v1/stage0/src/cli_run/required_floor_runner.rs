@@ -1035,6 +1035,12 @@ pub(crate) struct ChangedWitnessProjectionRow {
     /// `changed_witness_standing_blocks` realized: passed, known-red-held, and a verdict-only
     /// pass with its cost published are green.
     pub blocks: bool,
+    /// THE CAUSE THIS ROW HANDS ITS CONSUMER, and empty exactly on the rows that do not block.
+    /// Mirror of `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`: it is
+    /// chosen in the same expression that chooses `standing`, so the two cannot describe
+    /// different rows. For a decline it is the disposition's own wire name, unprefixed, so this
+    /// receipt and `required_floor_disposition.tsv` spell one fact one way.
+    pub cause: String,
     /// The published cost observation, present exactly for a row that executed under
     /// `ChangedCostDebtVerdictOnly` and reached a verdict. `None` on every ordinary row, and on
     /// an override that published nothing — which is why that case reds rather than passing.
@@ -1183,6 +1189,7 @@ pub(crate) fn changed_witness_projection_rows(
                 disposition: "absent".to_string(),
                 outcome: "absent".to_string(),
                 blocks: true,
+                cause: "changed_witness_missing_disposition".to_string(),
             },
             Some(
                 RequiredFloorDisposition::Planned
@@ -1232,25 +1239,36 @@ pub(crate) fn changed_witness_projection_rows(
                 let green = (reached_pass && !cost_missing)
                     || matches!(outcome, Some(ClaimDisposition::KnownRedHeld))
                     || wet_joined;
+                // THE STANDING AND ITS CAUSE ARE ONE CHOICE. Deriving the cause from the
+                // standing string afterwards would be a second classification of the same fact
+                // that a typo could silently desynchronize; the green arms carry no cause at all
+                // rather than a plausible one nobody prints.
+                let (standing, cause): (&'static str, &'static str) = match outcome {
+                    Some(ClaimDisposition::KnownRedHeld) => ("planned-and-known-red-held", ""),
+                    _ if cost_missing => (
+                        "cost-observation-missing-under-verdict-only",
+                        "changed_witness_cost_observation_missing_under_verdict_only",
+                    ),
+                    _ if reached_pass && verdict_only_policy => {
+                        ("planned-and-passed-with-cost-debt-observed", "")
+                    }
+                    _ if reached_pass => ("planned-and-passed", ""),
+                    _ if wet_joined => ("hermetic-route-gap-held-and-wet-passed", ""),
+                    _ => {
+                        // "No terminal Passed verdict stands", deliberately covering a failed
+                        // or refused verdict too — each of those already reds the floor by its
+                        // own mechanism, and this projection reds it again at the changed-set
+                        // grain, naming the identity the change touched.
+                        (
+                            "planned-without-terminal-verdict",
+                            "changed_witness_planned_without_terminal_verdict",
+                        )
+                    }
+                };
                 ChangedWitnessProjectionRow {
                     identity: identity.clone(),
                     cost: observation,
-                    standing: match outcome {
-                        Some(ClaimDisposition::KnownRedHeld) => "planned-and-known-red-held",
-                        _ if cost_missing => "cost-observation-missing-under-verdict-only",
-                        _ if reached_pass && verdict_only_policy => {
-                            "planned-and-passed-with-cost-debt-observed"
-                        }
-                        _ if reached_pass => "planned-and-passed",
-                        _ if wet_joined => "hermetic-route-gap-held-and-wet-passed",
-                        _ => {
-                            // "No terminal Passed verdict stands", deliberately covering a failed
-                            // or refused verdict too — each of those already reds the floor by its
-                            // own mechanism, and this projection reds it again at the changed-set
-                            // grain, naming the identity the change touched.
-                            "planned-without-terminal-verdict"
-                        }
-                    },
+                    standing,
                     disposition: required_floor_disposition_label(dispositions[identity.as_str()])
                         .to_string(),
                     outcome: outcome
@@ -1258,6 +1276,7 @@ pub(crate) fn changed_witness_projection_rows(
                         .unwrap_or("not_executed")
                         .to_string(),
                     blocks: !green,
+                    cause: cause.to_string(),
                 }
             }
             // A DECLINE BLOCKS UNLESS THE TREE GRANTS AN EXEMPTION, and the grant is membership in
@@ -1297,8 +1316,16 @@ pub(crate) fn changed_witness_projection_rows(
                     .to_string(),
                     outcome: "not_executed".to_string(),
                     blocks: false,
+                    cause: String::new(),
                 }
             }
+            // THE DECLINE'S CAUSE IS ITS DISPOSITION, VERBATIM. This arm is the one the
+            // `non_verdict_disposition_surfaces_as_refusal` receipt was measured on: a witness
+            // enrolled because the DIFF touched it and declined because DISCOVERY reaches no
+            // module still blocks, and must not reach its consumer wearing the flat name of the
+            // population it belongs to. It is discharged by making the identity reachable or by
+            // declaring it unreachable — never by a rerun, which is the only affordance one
+            // undifferentiated cause can offer.
             Some(declined) => ChangedWitnessProjectionRow {
                 identity: identity.clone(),
                 cost: None,
@@ -1306,6 +1333,7 @@ pub(crate) fn changed_witness_projection_rows(
                 disposition: required_floor_disposition_label(declined).to_string(),
                 outcome: "not_executed".to_string(),
                 blocks: true,
+                cause: required_floor_disposition_label(declined).to_string(),
             },
         })
         .collect()
@@ -1863,9 +1891,18 @@ pub(crate) fn emit_changed_witness_projection(
             ),
             None => String::new(),
         };
+        // THE CAUSE IS PRINTED ON THE ROW THAT CARRIES IT, and is empty on a row that does not
+        // block: the line a reader sees and the blocker the merge gate receives then name the
+        // same fact with the same string, which is what makes the two artifacts joinable without
+        // a human holding them side by side.
+        let cause = if row.cause.is_empty() {
+            String::new()
+        } else {
+            format!(" cause={}", row.cause)
+        };
         eprintln!(
-            "[changed-witness] identity={} standing={} disposition={} outcome={}{}",
-            row.identity, row.standing, row.disposition, row.outcome, cost
+            "[changed-witness] identity={} standing={} disposition={} outcome={}{}{}",
+            row.identity, row.standing, row.disposition, row.outcome, cause, cost
         );
     }
     let blocking = rows.iter().filter(|r| r.blocks).count();
@@ -7697,10 +7734,22 @@ pub fn run_required_floor(
         );
         emit_changed_witness_projection(&rows)?;
         outcome.changed_witness_rows = rows.len();
+        // A BLOCKING ROW WITH NO CAUSE IS THE DEFECT REINTRODUCED, so it refuses here rather
+        // than travelling as an empty string the receipt would print as nothing at all.
+        if let Some(row) = rows.iter().find(|r| r.blocks && r.cause.is_empty()) {
+            return Err(format!(
+                "required-floor: changed witness {} blocks with standing {} and no cause \
+                 (v2.workflow.floor_changed_witness changed_witness_blocking_cause is total)",
+                row.identity, row.standing
+            ));
+        }
         outcome.changed_witness_blocking = rows
             .iter()
             .filter(|r| r.blocks)
-            .map(|r| r.identity.clone())
+            .map(|r| ChangedWitnessBlocker {
+                identity: r.identity.clone(),
+                cause: r.cause.clone(),
+            })
             .collect();
     }
     Ok(outcome)

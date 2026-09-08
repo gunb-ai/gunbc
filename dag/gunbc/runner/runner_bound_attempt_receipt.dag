@@ -1,0 +1,136 @@
+module gunbc.runner.runner_bound_attempt_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// ONE ATTEMPT, OBSERVED FROM BOTH SIDES, JOINED BY ASSIGNMENT RATHER THAN BY A SHARED STRING.
+//
+// gunbc.runner.runner_qualification_receipt records why this receipt exists: its predecessor joined
+// a successful job to a capture of a different boot, because both printed the same build label. The
+// repair is not a better label -- it is a label that only one registration can carry.
+
+data receipt_subject_build: NonEmptyStr = "runner-canary-8"
+data receipt_subject_host_attempt: NonEmptyStr = "runner-canary-8-1b3b5aea"
+data receipt_subject_run: NonEmptyStr = "actions run 34108061111, conclusion success"
+data receipt_subject_kernel_digest: NonEmptyStr = "62a4c9c007c5f71dfa4e1624a9bac3eecd07c560af836f62e1de3e89ec881bb1"
+data receipt_subject_guest_digest: NonEmptyStr = "c8fed37af97cfb9cf2377ff2bb8132ded8b7c492ce1e5a1d2543948aeeaacea1"
+data receipt_subject_iso_digest: NonEmptyStr = "b69e4423ff8f5b48ddeea077312c6c4a5f817da37c8a421a41f254a2c6ecbc14"
+
+data host_capture_artifact: NonEmptyStr = "docs/probes/mtcollins_bound_attempt_host_capture_2026-09-07.txt"
+data host_capture_full_digest: NonEmptyStr = "9f5fca6af0ff0d3d2f3e45c03409afe7d233f1dbd62ecc3dc49ecaa1ff7354b2"
+data host_capture_extract_digest: NonEmptyStr = "b0f18c0fae6cdb516debefd3d0473753e1416bcd12f6c5ce49944b88fcb45c0b"
+
+// ── the binding ────────────────────────────────────────────────────────────────────────────────
+
+// EACH LINK IS A CONSTRAINT RATHER THAN A COINCIDENCE. The label was minted into exactly one
+// registration; the workflow REQUIRED that label, so no other registration could take the job; and
+// GitHub records which runner did. The chain closes without either side having to be trusted about
+// what it intended.
+type AttemptBinding {
+  attempt_label: NonEmptyStr
+  minted_into: NonEmptyStr
+  required_by: NonEmptyStr
+  github_record: NonEmptyStr
+  host_attempt: NonEmptyStr
+}
+
+data bound_attempt: AttemptBinding = AttemptBinding {
+  attempt_label: "mtc-a8-e68387a2",
+  minted_into: "exactly one JIT registration, served once, to 192.168.1.230",
+  required_by: "the workflow's runs-on, which lists the attempt label alongside self-hosted and mtcollins",
+  github_record: "run 34108061111 ran on runner mtcollins-1 with labels self-hosted,mtcollins,mtc-a8-e68387a2",
+  host_attempt: "runner-canary-8-1b3b5aea, the attempt id in the host capture",
+}
+
+// WHAT THIS DOES AND DOES NOT ESTABLISH. It settles WHICH registration served the job, which is
+// exactly what the false receipt got wrong. It does not authenticate anything: the label is chosen
+// by the operator and the endpoint that mints it is still unauthenticated in both directions, so an
+// attacker on the segment who took the credential would also take the label with it.
+data binding_is_not_authentication: NonEmptyStr = "the label makes the join decidable; it does not make the credential path authenticated, and a peer that stole the one-shot envelope would carry the label too"
+
+// ── admission, proven by a discriminating RED and this positive control ────────────────────────
+
+// THE RED CAME FIRST AND ON THE SAME CODE PATH. Build runner-canary-7 booted with no JIT server
+// listening and refused before spending: jitconfig-bytes=0, jit-admission=no,
+// firecracker-launches=0, no guest-boot-begin, no credential drive, no workspace. That is the arm
+// the previous build failed -- it had launched a VM on a zero-byte credential and let the GUEST
+// refuse afterwards.
+//
+// THIS RUN IS THE POSITIVE CONTROL: the same admission accepted a 4076-byte envelope and the
+// attempt proceeded. A check that only ever refuses is not evidence of a working check.
+type AdmissionEvidence {
+  discriminating_red: NonEmptyStr
+  positive_control: NonEmptyStr
+}
+
+data jit_admission_evidence: AdmissionEvidence = AdmissionEvidence {
+  discriminating_red: "runner-canary-7: no server listening, jitconfig-bytes=0, jit-admission=no, firecracker-launches=0, and the log contains no guest-boot-begin at all",
+  positive_control: "runner-canary-8: jitconfig-bytes=4076, jit-admission=yes, and the attempt ran to a successful job",
+}
+
+// THE ADMISSION NAMES WHAT IT DID NOT CHECK, and the run prints that line in both arms:
+// signature, unit binding, boot binding, attempt binding, expiry, replay. A refusal that implied a
+// stronger check than it performed would be the more dangerous half of a fail-closed arm.
+data jit_admission_unchecked: List<NonEmptyStr> = [
+  "signature -- the response is not authenticated, so a peer on the segment could have served it",
+  "unit binding -- nothing ties the envelope to this physical machine",
+  "boot binding -- nothing ties it to this boot of that machine",
+  "attempt binding -- nothing ties it to this VM attempt",
+  "expiry -- freshness is left to the endpoint's own JIT lifetime",
+  "replay -- redemption is atomic at GitHub, but this host cannot detect a second consumer",
+]
+
+// AND ONE RESIDUAL IN THE ORDERING. The refusal precedes every LAUNCH, which is the safety property,
+// but the jail tmpfs and the guest artifact copy still happen before it -- the fetch sits later in
+// the host's init than the jail block. That is wasted work on a refused attempt rather than a wider
+// surface, and moving the network bring-up and fetch above the jail is the fix.
+data admission_ordering_residual: NonEmptyStr = "zero Firecracker launches, no credential drive and no workspace on a refused envelope; the jail chroot and artifact copy still precede admission because the fetch is sequenced after them in the host init"
+
+// ── the chain, with both observers present this time ───────────────────────────────────────────
+
+data execution_chain: List<NonEmptyStr> = [
+  "host: image-build=runner-canary-8, attempt=runner-canary-8-1b3b5aea",
+  "host: jitconfig-bytes=4076, jit-admission=yes",
+  "host: guest-boot-begin attempt=runner-canary-8-1b3b5aea via=jailer",
+  "guest: jitconfig-bytes=4076 read off the read-only credential drive",
+  "guest: Listening for Jobs at 09:52:09Z",
+  "guest: Running job: canary at 09:52:10Z",
+  "guest: Job canary completed with result: Succeeded at 09:52:19Z",
+  "guest: runner-exit=0",
+]
+
+// ── retirement, after an attempt that actually did work ────────────────────────────────────────
+
+// THE PREVIOUS RETIREMENT OBSERVATION WAS TAKEN AFTER A GUEST THAT REFUSED IMMEDIATELY, which is a
+// weaker test because there was less to clean up. This one follows an attempt that held a
+// registration, mounted a workspace, wrote to it and ran a job.
+data retirement_after_real_work: List<NonEmptyStr> = [
+  "jail-removed=yes",
+  "post-jit-device-present=no -- the credential carrier does not outlive the attempt that used it",
+  "post-workspace-present=no -- the workspace a job wrote to is gone",
+  "post-jailbase-entries=0 and post-jailbase-mounted=0",
+  "post-cgroup-empty=yes then post-cgroup-removed=yes",
+  "post-tap-present=no, post-ruleset-present=no, post-nft-process=0",
+  "surviving-firecracker=0, surviving-jailer=0",
+]
+
+// ── the harness, which no longer power-cycles on an unresolved reading ─────────────────────────
+
+// THE PREVIOUS HARNESS DESTROYED THE RUN IT WAS OBSERVING. A console closed by the BMC read as a
+// failed boot, so it power-cycled a host that was mid-job. Only a firmware error on a LIVE console
+// now authorises another cycle; a dropped console or any other ambiguous reading stops and tells the
+// operator to look before touching power.
+//
+// THIS RUN REACHED THE LOADER ON ITS FIRST ATTEMPT, so the refusal arm did not fire here. It is
+// recorded as unexercised rather than counted as working.
+data harness_refusal_arm_standing: NonEmptyStr = "the ambiguous-reading refusal is written and was NOT exercised by this run, which booted on its first attempt; only the firmware-error retry path has been observed since the change"
+
+// ── still open ─────────────────────────────────────────────────────────────────────────────────
+
+data still_open: List<NonEmptyStr> = [
+  "an authenticated, attempt-bound JIT envelope -- the six unchecked fields above",
+  "actions/checkout, a JavaScript action, and a toolchain step over the filtered egress path",
+  "two attempts on ONE host boot, with absence of every previous attempt's resources proven BEFORE the second starts",
+  "metered vCPU-seconds against a declared interval, recorded separately from the capacity-held interval",
+  "boot_probe_verdict wired to an observed runner version rather than two values compared by a reader",
+  "moving the fetch above the jail so admission precedes all spending, not just all launches",
+]

@@ -3056,6 +3056,29 @@ pub struct MultiModuleFixtureSource {
     pub content: String,
 }
 
+/// Per-function **resolved-registry** projection for the Rust emit target: source identity plus
+/// the ordered parameter name list taken from `ItemInfo` with `emit_ident` /
+/// `service_var_name` transforms. See `tools.multi_module_compile_fixture`
+/// `ResolvedRustFnSignature`. Not a read of emitted file bytes — the type name admits the Rust
+/// target, not emit-path observation.
+///
+/// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types.
+///
+/// **Registry mirror, not emit join (below ceiling — order and membership):** DESIGN §3b middle
+/// value — deliberate divergence with stated reason (see `tools.multi_module_compile_fixture`
+/// `ResolvedRustFnSignature`). Nothing refuses if `emit_func_params` / `emit_func_def` and this
+/// projection disagree (resource arm already reads `ItemInfo.resource_names` while emit folds
+/// `uses` via `resource_use_name_at`). **Next-rung trigger:** derive from the same source
+/// `emit_func_params` reads (or from its emit result). **Why unbuilt:** emit_rust seed
+/// regeneration would couple this instrument PR to #10688's live surface. DESIGN §5: an in-diff
+/// approval claim does not authorize the debt; the technical reason does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedRustFnSignature {
+    pub owner_module: String,
+    pub declaration_name: String,
+    pub ordered_parameter_names: Vec<String>,
+}
+
 /// Outcome of [`compile_dag_multi_module_fixture`]. THE THREE ARMS HAVE THREE DIFFERENT OWNERS:
 /// `InstrumentRefused` is the harness's own fault (malformed manifest, entry naming no supplied
 /// module, panic), `CompileRefused` is the SUBJECT's fault and carries the compiler's judgment,
@@ -3081,6 +3104,7 @@ pub enum MultiModuleCompileFixtureOutcome {
     CompileCompleted {
         module_count: i64,
         emitted_files: Vec<String>,
+        resolved_rust_functions: Vec<ResolvedRustFnSignature>,
         diagnostics: Vec<CompileDiagnosticCensusRow>,
         source_digest: String,
         compiler_digest: String,
@@ -6626,7 +6650,6 @@ pub struct CompileRun {
     /// (`compile_to_resolved_with_options` runs once); only emission is per target, the reason
     /// `--target rust,dag` exists.
     pub emissions: Vec<TargetEmission>,
-    pub silent_pick: crate::v1_rt::SilentPickTelemetry,
 }
 
 impl CompileRun {
@@ -6845,108 +6868,6 @@ mod entry_admission_tests {
         assert!(
             cause.contains("source root does not exist"),
             "the refusal must name the condition, not merely fail: {cause}"
-        );
-    }
-
-    /// THE GUARD'S OWN DISCRIMINATING RED, a different claim from the three above: those
-    /// establish the refusal is TYPED AND LOCATED; this establishes it does not leave
-    /// thread-local telemetry ARMED behind it -- the leak review 56292 found on two new arms and
-    /// that already existed on `subject-read`.
-    ///
-    /// IT GOES RED WITHOUT THE GUARD. Delete the `Drop` impl, or return before `take()`, and
-    /// `resolution_silent_pick_is_enabled` is still true here: the enable at the top of the
-    /// transaction ran, the early return skipped every hand-written `disable`, and the flag
-    /// outlives the transaction that armed it -- the state this forbids, reachable on
-    /// `origin/main`.
-    #[test]
-    fn a_refused_transaction_leaves_no_telemetry_armed() {
-        assert!(
-            !crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "precondition: the flag must be clear before the transaction arms it, or this test \
-             cannot tell an armed leak from an inherited one"
-        );
-        let run = compile_emission(&CompileRequest {
-            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
-            source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
-            primary_precedence: true,
-            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
-        });
-        assert!(
-            matches!(run.disposition, CompileDisposition::NotExecuted { .. }),
-            "the arm under test is the REFUSAL path; a completed compile would exercise \
-             `take()` instead and prove nothing about early return"
-        );
-        assert!(
-            !crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "the refused transaction left resolution-silent-pick telemetry ARMED; the session \
-             guard's Drop did not run or was bypassed"
-        );
-    }
-
-    /// NESTING IS REFUSED BEFORE THE DESTRUCTIVE RESET, AND THIS TEST IS ABOUT THE *BEFORE*.
-    ///
-    /// The first version asserted only that a second arm panics; that passes even with the
-    /// assertion AFTER `resolution_silent_pick_enable`'s reset -- refusing re-entry loudly while
-    /// having already destroyed the enclosing transaction's counters. Panicking and preserving
-    /// are different claims; only the second is worth having.
-    ///
-    /// So this asserts the enclosing session SURVIVES the rejected attempt: observations taken
-    /// before and after the refusal must BOTH still be in the telemetry `take` returns. It goes
-    /// red if the wall is moved after the reset, which the panic-only form does not.
-    ///
-    /// WHAT THIS DOES NOT COVER: `v1_rt::resolution_silent_pick_enable` is `pub`, so a direct
-    /// caller of the raw primitive still bypasses this and destroys an outer population. Closing
-    /// that means putting the assertion in the primitive ahead of its reset -- and the primitive
-    /// is generated, so its authority is `src/v1/runtime_rust.dag` and the change carries the
-    /// regen chain. That is this class's next-rung trigger, not something this test hides.
-    #[test]
-    fn a_rejected_nested_session_leaves_the_enclosing_transaction_intact() {
-        fn observe(name: &str) {
-            crate::v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
-                "fixture.env".to_string(),
-                name.to_string(),
-                2,
-                "fixture.chosen".to_string(),
-            );
-        }
-
-        let outer = SilentPickSession::enable();
-        observe("before_the_rejected_attempt");
-
-        let nested = std::panic::catch_unwind(SilentPickSession::enable);
-        assert!(
-            nested.is_err(),
-            "arming a second session inside an armed one must refuse; it silently reset the \
-             enclosing transaction's telemetry instead"
-        );
-
-        assert!(
-            crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "the rejected attempt disarmed the enclosing session"
-        );
-        observe("after_the_rejected_attempt");
-
-        let telemetry = outer.take();
-        let seen: std::vec::Vec<&str> = telemetry
-            .global_bare_lcp_picks
-            .iter()
-            .map(|site| site.name.as_str())
-            .collect();
-        assert_eq!(
-            seen,
-            vec!["before_the_rejected_attempt", "after_the_rejected_attempt"],
-            "the enclosing transaction's observations did not survive the rejected nested \
-             attempt; the refusal happened AFTER the destructive reset, not before it"
-        );
-
-        assert!(
-            !crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "`take` must return the session to inactive"
-        );
-        let fresh = SilentPickSession::enable().take();
-        assert!(
-            fresh.global_bare_lcp_picks.is_empty(),
-            "a fresh session inherited the previous transaction's observations"
         );
     }
 
@@ -7195,67 +7116,6 @@ mod entry_admission_tests {
     }
 }
 
-// ARMING A THREAD-LOCAL ACROSS A FALLIBLE TRANSACTION IS A LEAK WAITING FOR THE NEXT AUTHOR.
-// `resolution_silent_pick_enable` sets a thread-local that stays set until `disable`, and the
-// compile transaction it wraps has SIX early returns between the two. Hand-pairing had ALREADY
-// FAILED: the `subject-read` arm returns without disabling on `origin/main`, and review 56292
-// caught two more this PR added. Three leaks, two authors, one pattern.
-//
-// So the pairing is structural (DESIGN §5, construction over validation): arming returns a
-// guard, every exit path drops it, and `take` is the one way to consume the telemetry on the
-// success path. An arm that forgets to disable is unwritable -- there is nothing to forget.
-struct SilentPickSession {
-    armed: bool,
-}
-
-impl SilentPickSession {
-    // NESTING IS REFUSED HERE RATHER THAN ACCOMMODATED, for a property of the primitive.
-    //
-    // The ordinary law for a thread-local guard is that `Drop` restores the value found on entry,
-    // never a blind `false` -- the idiom `v1_rt::with_type_ref_hit_ne_bind_measure` uses
-    // (prev/set/restore), correct there because that flag is NON-DESTRUCTIVE.
-    //
-    // `resolution_silent_pick_enable` is destructive: its FIRST statement resets the telemetry to
-    // default, so by the time an inner session could restore an outer flag, the outer counters
-    // are gone. A save-and-restore guard would leave the flag `true` over silently zeroed
-    // telemetry -- an outer transaction reporting "no silent picks observed" when its
-    // observations were discarded: a fabricated plausible output, worse than the state it
-    // replaces.
-    //
-    // So the double-arm is LOUD. This is a programming-error invariant, not input-derived: only
-    // a code edit arming the flag around a call to `compile_emission` reaches it. Nesting is not
-    // reachable in production today -- `main.rs`'s other `resolution_silent_pick_enable` is the
-    // legacy `--source-dir` arm, DOWNSTREAM of the `--source-root` transaction's
-    // `std::process::exit(0)` rather than around it -- but it is authorable in a fixture, the
-    // reachability test that decides whether a wall is a wall or a decoration.
-    fn enable() -> Self {
-        assert!(
-            !crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "resolution-silent-pick telemetry was already armed when this compile transaction \
-             tried to arm it; `resolution_silent_pick_enable` RESETS the counters, so proceeding \
-             would silently discard the enclosing transaction's observations and report the \
-             emptied result as its own"
-        );
-        crate::v1_rt::resolution_silent_pick_enable();
-        Self { armed: true }
-    }
-
-    // Consumes the session AND the telemetry together, so the success path cannot both read
-    // the counters and leave the flag set.
-    fn take(mut self) -> crate::v1_rt::SilentPickTelemetry {
-        self.armed = false;
-        crate::v1_rt::resolution_silent_pick_disable()
-    }
-}
-
-impl Drop for SilentPickSession {
-    fn drop(&mut self) {
-        if self.armed {
-            let _ = crate::v1_rt::resolution_silent_pick_disable();
-        }
-    }
-}
-
 fn compile_not_executed(
     subject: &CompileSubject,
     started: std::time::Instant,
@@ -7274,7 +7134,6 @@ fn compile_not_executed(
             cause,
         },
         emissions: Vec::new(),
-        silent_pick: crate::v1_rt::SilentPickTelemetry::default(),
     }
 }
 
@@ -7556,7 +7415,9 @@ pub fn compile_entry_emission(
 ///
 /// It owns source-root indexing and precedence, subject source-set construction, census-only
 /// fill, memory admission, resolution and compilation, blocking/advisory classification,
-/// silent-pick capture, and the completion/refusal disposition. A caller decodes argv, realizes
+/// and the completion/refusal disposition. It formerly also owned silent-pick capture; that
+/// capture and the gate it fed were deleted as permanently green, and the sentence is
+/// corrected here because this is a public contract every modern compile goes through. A caller decodes argv, realizes
 /// the returned files, renders diagnostics and picks an exit code -- those are boundary
 /// concerns, not a second pipeline.
 pub fn compile_emission(request: &CompileRequest) -> CompileRun {
@@ -7696,7 +7557,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         }
     }
 
-    let silent_pick_session = SilentPickSession::enable();
     // ONE INDEX BUILD, NOT TWO. The closure loader and the census fill both need the
     // module index, and calling `load_sources_for_entry_with_pool_index` and then building
     // a second index for the census parsed ~3,800 modules twice per invocation (review
@@ -7912,7 +7772,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             result: v1_compiler_compile::emit_resolved_for_target(resolved.clone(), target.clone()),
         })
         .collect();
-    let silent_pick = silent_pick_session.take();
 
     // THE REFUSAL IS OVER EVERY TARGET, NOT THE FIRST. Emission is per target, so a target
     // that emits nothing or emits a blocking diagnostic must stop the line even when an
@@ -7946,19 +7805,34 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         .iter()
         .map(|emission| emission.result.diagnostics.len())
         .sum();
-    // The silent-pick gate is part of the CLI's refusal, so it is part of the transaction's:
-    // a gate that skipped it would green on a tree `gunbc compile` exits nonzero on.
+    // THE SILENT-PICK GATE THAT STOOD HERE IS DELETED, AND ITS REMOVAL IS A CORRECTION RATHER
+    // THAN A RUNG DROP. It refused when `fn_parent_first_hits` was non-empty, and that vector
+    // cannot be non-empty on this path: its only producer is `v1.compiler.infer_sigs`
+    // `lookup_resolved_sig_with_telemetry`, called solely from the `else` of
+    // `name_resolution_policy_is_namespace_only()` in `lookup_resolved_sig` -- the legacy
+    // ImportScoped arm. That policy is a thread-local defaulting to TRUE whose only setters are
+    // two Rust tests, so no production compile takes the arm and the gate was structurally
+    // unable to fire. The same holds for `global_bare_lcp_picks`/`_ties`, whose producer
+    // `v1.compiler.infer_env` `record_global_bare_ambiguous_silent_pick` sits in the matching
+    // `else` of `global_bare_lookup` -- which is why REPAIRING the gate to read those vectors
+    // instead would have been a decoration rather than a wider wall.
+    //
+    // SO NOTHING IS LOST AND NO `gunbc.rung_drop` ROW IS OWED: a permanently-green gate held no
+    // rung to drop. What ends is a FALSE CLAIM OF COVERAGE -- a fail-closed `Refused` arm a
+    // reader finds and concludes the class is walled, which DESIGN 4b rates worse than an absent
+    // check. The class it appeared to cover is
+    // `gunbc.recurring_failure_mode` `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`,
+    // and THAT CLASS HAS NO EXECUTING INSTRUMENT IN THIS TREE, which is what its row says and
+    // is why the sentence is written this way rather than pointing somewhere reassuring. Its
+    // evidence today is a manual reproduction over `fixtures/if_join_pool_binding`, which is
+    // committed but which nothing runs. A required-floor witness over those same four modules is
+    // enrolled in gunbc#10740 and had not landed when this was written; citing it here as though
+    // it resolved would have replaced one false claim of coverage with another, in the paragraph
+    // that deletes the first.
     let disposition = match refusal {
         Some(cause) => CompileDisposition::Refused {
             phase: "emit".to_string(),
             cause,
-        },
-        None if !silent_pick.fn_parent_first_hits.is_empty() => CompileDisposition::Refused {
-            phase: "silent-pick-gate".to_string(),
-            cause: format!(
-                "{} fn_parent_first_hit silent pick(s) in this compile",
-                silent_pick.fn_parent_first_hits.len()
-            ),
         },
         None => CompileDisposition::Completed {
             emitted_count: emissions
@@ -7979,7 +7853,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         wall_ms: started.elapsed().as_millis(),
         disposition,
         emissions,
-        silent_pick,
     }
 }
 
@@ -40519,6 +40392,20 @@ fn long_home_storage_agreement(
     }
 }
 
+/// ONE BLOCKING CHANGED-WITNESS ROW AS ITS CONSUMER RECEIVES IT: the identity, and the CAUSE that
+/// made it block. Host mirror of `v2.workflow.floor_changed_witness` `ChangedWitnessBlocker`.
+///
+/// The pair travels together because the identity alone is what this population used to carry,
+/// and the cause is exactly what its consumer could not recover: `claim_executor` had one
+/// constant to stamp, so a declined witness that never executed and a claim that ran and failed
+/// arrived at the merge gate as the same bit. `cause` is never empty on a blocking row —
+/// `changed_witness_projection_rows` refuses rather than emitting one that is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedWitnessBlocker {
+    pub identity: String,
+    pub cause: String,
+}
+
 /// What one required-floor attempt did. The three identity counts are separate fields rather
 /// than one `total` because the operator's acceptance census asks them to be EQUAL, and a
 /// single number cannot be compared with itself: a run that planned 9,267 claims, executed
@@ -40712,9 +40599,19 @@ pub struct RequiredFloorOutcome {
     pub changed_witness_rows: usize,
     /// The changed identities whose `ChangedWitnessExecutionStanding`
     /// (`v2.workflow.floor_changed_witness`) BLOCKS — declined, missing from the disposition
-    /// receipt, or planned without a terminal Passed verdict. Non-empty reds the required
-    /// context; see `required_floor_outcome_is_clean` in `claim_executor`.
-    pub changed_witness_blocking: Vec<String>,
+    /// receipt, or planned without a terminal Passed verdict — EACH WITH THE CAUSE THAT MADE IT
+    /// BLOCK. Non-empty reds the required context; see `required_floor_outcome_is_clean` in
+    /// `claim_executor`.
+    ///
+    /// THIS WAS A `Vec<String>` AND THE CAUSE WAS THE DEFECT. The standings above are computed
+    /// per row and were dropped on the way into this field, so `claim_executor` had one constant
+    /// to stamp on all of them and the merge gate received one bit for four materially different
+    /// states. Measured on gunbc#10757: fifteen identities that never executed (the disposition
+    /// artifact counts them `declined_changed_witness_outside_discovery=15`) reached the
+    /// measurement receipt as `cause=changed_witness_blocking`, indistinguishable from a claim
+    /// that ran and failed, in a run where zero claims failed. Authority for the cause spelling:
+    /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`.
+    pub changed_witness_blocking: Vec<ChangedWitnessBlocker>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
