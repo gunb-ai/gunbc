@@ -1,6 +1,6 @@
 module gunbc.v1_maintenance_standing
 
-import std.types { String }
+import std.types { String, CommitSha }
 
 // Why this carrier exists rather than a sentence in DESIGN.md: a status with a
 // closed allow/refuse vocabulary is exactly the machine-consumed fact DESIGN 4c
@@ -84,7 +84,7 @@ type MaintenanceRefusal =
 type UnadjudicatedDisposition =
     MergedWhileObjectionStood {
       change: String,
-      merged_as: String,
+      merged_as: CommitSha,
       objecting_review: String,
       refusal_at_issue: MaintenanceRefusal,
     }
@@ -536,10 +536,9 @@ data v1_maintenance_typecheck_progress_admission_note: String = "AN ADMISSION UN
 // THESE FACTS WERE OFFERED IN SUPPORT OF ADMISSION AND THE ADMISSION WAS NEVER RULED ON. They are
 // recorded as the evidence that existed, not as a finding that the class permits the change.
 
-data v1_maintenance_inhabitance_relation_merged_disposition: UnadjudicatedDisposition =
-  MergedWhileObjectionStood {
+data v1_maintenance_inhabitance_relation_merged_disposition: UnadjudicatedDisposition = MergedWhileObjectionStood {
     change: "gunbc#10727",
-    merged_as: "7fb62e6e5e7",
+    merged_as: "7fb62e6e5e72b480a40bf0c858bb92f23664d5e4",
     objecting_review: "github-review-5135375330",
     refusal_at_issue: PublicSurfaceGrowth,
   }
