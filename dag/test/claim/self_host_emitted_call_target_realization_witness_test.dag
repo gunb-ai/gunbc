@@ -132,27 +132,42 @@ test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool {
 }
 
 
-// THE VARIANT BOUNDARY OF THE JSON DATA PATH, FAIL-CLOSED. A record literal with parent_enum
-// PRESENT is a variant construction, and its correct wire spelling is the parent coproduct's
-// declared VariantEncoding policy -- measured against serde 2026-09-08: the internal-tag default
-// accepts only the tag map (`{"_variant": "A"}`), while `null` and the bare string are both
-// rejected, so the zero-field record arm's `null` and the map arm's untagged fields are each
-// measured-wrong for a variant. The policy is a module-local fact of the parent's home module
-// (resolve_local_coproduct_wire_policy scans that module's items), which the JSON value path
-// does not carry, so the arm REFUSES and the caller renders compile_error! -- a build-time
-// located refusal where a runtime panic on `.expect("valid data definition")` was the latent
-// alternative. The probe forces the JSON path (the Holder record nests Marker) and constructs
-// the fieldless variant with braces; the bare spelling never reaches the arm (an ExprVar routes
-// the whole value to direct construction via data_value_has_cross_refs). This row reds if the
-// refusal is lost -- and greens the day the named trigger lands (a closure-wide wire-policy
-// index beside EmitGraphInfo.type_decl_items), at which point it is rewritten to assert the
-// spelled tag map.
-test fn w_variant_record_lit_on_the_json_data_path_refuses_fail_closed() -> Bool {
+// THE VARIANT BOUNDARY OF THE JSON DATA PATH, SPELLED. A record literal with parent_enum PRESENT
+// is a variant construction, and its wire spelling is the parent coproduct's declared
+// VariantEncoding policy -- measured against serde 2026-09-08: the internal-tag default accepts
+// only the tag map (`{"_variant": "A"}`), while `null` and the bare string are both rejected.
+// This row stood as a fail-closed REFUSAL for one day, because the policy is a module-local fact
+// of the parent's home module and the JSON value path carried no cross-module view of it; it
+// greened the day its named trigger landed -- the closure-wide wire-spelling index
+// (EmitGraphInfo.data_variant_wire_spellings, built beside type_decl_items by
+// build_data_variant_wire_spellings), which this pair of rows now pins. The probe forces the JSON
+// path (the Holder record nests Marker) and constructs the fieldless variant with braces; the
+// bare spelling never reaches the arm (an ExprVar routes the whole value to direct construction
+// via data_value_has_cross_refs). It reds if the tag map is lost, and if the former
+// mis-serializations (null, or the compile_error! refusal) return.
+test fn w_variant_record_lit_on_the_json_data_path_spells_the_internal_tag() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.variant_json_refusal_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: A {}, m: Marker {} }\n",
-    "src/test_claim_variant_json_refusal_probe.rs",
-    ["compile_error!(\"variant record literal on the serde_json data path"],
-    ["\"e\": null"]
+    "module test.claim.variant_json_spelling_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: A {}, m: Marker {} }\n",
+    "src/test_claim_variant_json_spelling_probe.rs",
+    ["{\"e\": {\"_variant\": \"A\"}, \"m\": null}"],
+    ["compile_error!", "\"e\": null"]
+  )
+}
+
+// THE FIELD-CARRYING HALF OF THE SAME BOUNDARY. The internal-tag default spells a record variant
+// as the tag map with the payload fields INLINE (`{"_variant": "B", "x": 3}`), not the bare field
+// map (`{"x": 3}`) the pre-index arm produced -- measured against serde 2026-09-08: the untagged
+// field map is rejected ("missing field `_variant`"). This is the shape the five real closure
+// sites take (SurfaceAtomKey { atom } in v2.std.compilers.sugar, CopiedPortCitationRetained {
+// combiner, migration_trigger } in v2.lens.cost.copied_port_citations), so this row is the
+// discriminating control for the population the index actually serves. It reds if the tag or the
+// inline fields are dropped, and if the compile_error! refusal returns.
+test fn w_fielded_variant_record_lit_on_the_json_data_path_spells_tag_and_fields() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.variant_json_fielded_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: B { x: 3 }, m: Marker {} }\n",
+    "src/test_claim_variant_json_fielded_probe.rs",
+    ["{\"e\": {\"_variant\": \"B\", \"x\": 3}, \"m\": null}"],
+    ["compile_error!", "\"e\": {\"x\": 3}"]
   )
 }
 

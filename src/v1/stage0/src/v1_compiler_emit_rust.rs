@@ -176,6 +176,8 @@ pub use crate::v1_compiler_infer::{
     expand_type_for_field_access, expr_span, extend_scope, is_where_refinement_type,
     resolved_type_name,
 };
+pub use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling;
+use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences,
@@ -5069,6 +5071,294 @@ pub fn resolve_local_coproduct_wire_policy(
     }
 }
 
+pub fn resolve_emission_coproduct_wire_policy(
+    coproduct_name: String,
+    item: Rc<Node>,
+    wire_items: Rc<Vec<Rc<Node>>>,
+    wire_imports: Rc<Vec<Rc<Node>>>,
+    wire_contract_item: Option<Rc<Node>>,
+    scoped_data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<RustEnumWireSerde> {
+    {
+        let all_unit_variants = {
+            let mut __all = true;
+            for child in item.children.clone().iter().cloned() {
+                if !((child.children.clone().len() as i64) == 0) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        };
+        match resolve_local_coproduct_wire_policy(
+            coproduct_name.clone(),
+            all_unit_variants.clone(),
+            wire_items.clone(),
+            wire_imports.clone(),
+            source_indices.clone(),
+        ) {
+            Some(local_policy) => local_policy.clone(),
+            std::option::Option::None => {
+                if all_unit_variants.clone() {
+                    match wire_contract_item.clone() {
+                        Some(_) => resolve_wire_serde_policy_for_coproduct(
+                            wire_contract_item.clone(),
+                            source_indices.clone(),
+                            scoped_data_items.clone(),
+                        ),
+                        std::option::Option::None => rust_tagged_object_policy(),
+                    }
+                } else {
+                    rust_tagged_object_policy()
+                }
+            }
+        }
+    }
+}
+
+pub fn data_path_wire_variant_tag(
+    authored: String,
+    policy: Rc<RustEnumWireSerde>,
+) -> Option<String> {
+    if (policy.error_message.clone() != std::option::Option::None) {
+        std::option::Option::None
+    } else {
+        match policy.rename_style.clone() {
+            Some(_) => wire_variant_tag_for_policy(authored.clone(), policy.clone()),
+            std::option::Option::None => {
+                if v1_rt::contains(
+                    policy.enum_attr.clone(),
+                    "rename_all = \"snake_case\"".to_string(),
+                ) {
+                    Some(crate::v1_compiler_emit_core_support::to_snake(
+                        authored.clone(),
+                    ))
+                } else {
+                    if v1_rt::contains(
+                        policy.enum_attr.clone(),
+                        "rename_all = \"SCREAMING_SNAKE_CASE\"".to_string(),
+                    ) {
+                        Some(crate::v1_compiler_emit_core_support::to_screaming_snake(
+                            authored.clone(),
+                        ))
+                    } else {
+                        Some(authored.clone())
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn project_data_variant_spelling(
+    authored_variant: String,
+    policy: Rc<RustEnumWireSerde>,
+) -> Rc<DataVariantWireSpelling> {
+    match policy.error_message.clone() {
+        Some(message) => Rc::new(DataVariantWireSpelling::DataVariantSpellingRefused {
+            reason: message.clone(),
+        }),
+        std::option::Option::None => {
+            if policy_is_untagged(policy.clone()) {
+                Rc::new(DataVariantWireSpelling::DataVariantUntagged)
+            } else {
+                match data_path_wire_variant_tag(authored_variant.clone(), policy.clone()) {
+                    std::option::Option::None => {
+                        Rc::new(DataVariantWireSpelling::DataVariantSpellingRefused {
+                            reason: v1_rt::concat(
+                                v1_rt::concat(
+                                    "no wire tag derivable for variant ".to_string(),
+                                    authored_variant.clone(),
+                                ),
+                                " under the parent coproduct's naming policy".to_string(),
+                            ),
+                        })
+                    }
+                    Some(tag) => {
+                        if policy_is_string_variant(policy.clone()) {
+                            Rc::new(DataVariantWireSpelling::DataVariantBareString {
+                                tag: tag.clone(),
+                            })
+                        } else {
+                            match policy_serde_tag_field(policy.clone()) {
+    Some(tag_field) => Rc::new(DataVariantWireSpelling::DataVariantInternalTagged {
+    tag_field: tag_field.clone(),
+    tag: tag.clone(),
+}),
+    std::option::Option::None => Rc::new(DataVariantWireSpelling::DataVariantSpellingRefused {
+    reason: v1_rt::concat(v1_rt::concat("wire policy for variant ".to_string(), authored_variant.clone()), " carries no tag field and is neither untagged nor string-variant".to_string()),
+}),
+}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn data_variant_wire_spelling_eq(
+    a: Rc<DataVariantWireSpelling>,
+    b: Rc<DataVariantWireSpelling>,
+) -> bool {
+    match (*a.clone()).clone() {
+        DataVariantWireSpelling::DataVariantInternalTagged {
+            tag_field: a_tf,
+            tag: a_t,
+            ..
+        } => match (*b.clone()).clone() {
+            DataVariantWireSpelling::DataVariantInternalTagged {
+                tag_field: b_tf,
+                tag: b_t,
+                ..
+            } => ((a_tf.clone() == b_tf.clone()) && (a_t.clone() == b_t.clone())),
+            _ => false,
+        },
+        DataVariantWireSpelling::DataVariantBareString { tag: a_t, .. } => {
+            match (*b.clone()).clone() {
+                DataVariantWireSpelling::DataVariantBareString { tag: b_t, .. } => {
+                    (a_t.clone() == b_t.clone())
+                }
+                _ => false,
+            }
+        }
+        DataVariantWireSpelling::DataVariantUntagged => match (*b.clone()).clone() {
+            DataVariantWireSpelling::DataVariantUntagged => true,
+            _ => false,
+        },
+        DataVariantWireSpelling::DataVariantSpellingRefused { reason: a_r, .. } => {
+            match (*b.clone()).clone() {
+                DataVariantWireSpelling::DataVariantSpellingRefused { reason: b_r, .. } => {
+                    (a_r.clone() == b_r.clone())
+                }
+                _ => false,
+            }
+        }
+    }
+}
+
+pub fn insert_data_variant_spelling(
+    index: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>,
+    key: String,
+    spelling: Rc<DataVariantWireSpelling>,
+    coproduct_name: String,
+) -> Rc<HashMap<String, Rc<DataVariantWireSpelling>>> {
+    match v1_rt::map_get(&index, key.clone()) {
+        std::option::Option::None => {
+            v1_rt::rc_map_insert(index.clone(), key.clone(), spelling.clone())
+        }
+        Some(existing) => {
+            if data_variant_wire_spelling_eq(existing.clone(), spelling.clone()) {
+                index.clone()
+            } else {
+                v1_rt::rc_map_insert(index.clone(), key.clone(), Rc::new(DataVariantWireSpelling::DataVariantSpellingRefused {
+    reason: v1_rt::concat(v1_rt::concat("ambiguous wire policy for coproduct ".to_string(), coproduct_name.clone()), ": two modules in the emission closure declare it and their resolved policies differ, so a bare parent_enum cannot name one policy".to_string()),
+}))
+            }
+        }
+    }
+}
+
+pub fn build_data_variant_wire_spellings(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    data_items: Rc<HashMap<String, Rc<Node>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<HashMap<String, Rc<DataVariantWireSpelling>>> {
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(),
+        |acc: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>, tm: Rc<TypedModule>| {
+            let si = tm.type_env.clone().source_indices.clone();
+            let module_name = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+            let contracts_imports = contracts_imports_for_module(
+                module_name.clone(),
+                modules.clone(),
+                si.clone(),
+                module_index.clone(),
+            );
+            let wire_items = v1_rt::concat(
+                tm.items.clone(),
+                contracts_items_for_module(
+                    module_name.clone(),
+                    modules.clone(),
+                    si.clone(),
+                    module_index.clone(),
+                ),
+            );
+            let wire_imports = v1_rt::concat(
+                crate::v1_std_core::module_imports(tm.module.clone()),
+                contracts_imports.clone(),
+            );
+            let scoped_data = augment_scoped_data_item_index_with_imports(
+                build_scoped_data_item_index(tm.clone(), data_items.clone()),
+                contracts_imports.clone(),
+                si.clone(),
+                data_items.clone(),
+            );
+            let wire_contract_item = Rc::new({
+                let mut __result = Vec::new();
+                for i in wire_items.iter().cloned() {
+                    if ((i.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue)
+                        && (crate::v1_std_core::authored_name_at(si.clone(), i.clone())
+                            == "wire_contract".to_string()))
+                    {
+                        __result.push(i);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned();
+            Rc::new({
+                let mut __result = Vec::new();
+                for item in tm.items.clone().iter().cloned() {
+                    if (crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                        && crate::v1_compiler_infer_types::is_coproduct_type(item.clone()))
+                    {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .fold(
+                acc,
+                |item_acc: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>, item: Rc<Node>| {
+                    let coproduct_name =
+                        crate::v1_std_core::authored_name_at(si.clone(), item.clone());
+                    let policy = resolve_emission_coproduct_wire_policy(
+                        coproduct_name.clone(),
+                        item.clone(),
+                        wire_items.clone(),
+                        wire_imports.clone(),
+                        wire_contract_item.clone(),
+                        scoped_data.clone(),
+                        si.clone(),
+                    );
+                    item.children.clone().iter().cloned().fold(
+                        item_acc,
+                        |variant_acc: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>,
+                         variant: Rc<Node>| {
+                            let variant_name =
+                                crate::v1_std_core::authored_name_at(si.clone(), variant.clone());
+                            insert_data_variant_spelling(
+                                variant_acc,
+                                v1_rt::concat(
+                                    v1_rt::concat(coproduct_name.clone(), ".".to_string()),
+                                    variant_name.clone(),
+                                ),
+                                project_data_variant_spelling(variant_name.clone(), policy.clone()),
+                                coproduct_name.clone(),
+                            )
+                        },
+                    )
+                },
+            )
+        },
+    )
+}
+
 pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
@@ -6161,10 +6451,20 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 base_info.type_decl_items.clone(),
                 merged_module_source_indices(typed.modules.clone()),
             );
+        let data_items = build_data_item_index(typed.modules.clone());
+        let module_index = build_module_index(
+            typed.modules.clone(),
+            base_info.item_leaf_owner_modules.clone(),
+        );
         let emit_info = Rc::new(EmitGraphInfo {
             item_leaf_owner_modules: base_info.item_leaf_owner_modules.clone(),
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
+            data_variant_wire_spellings: build_data_variant_wire_spellings(
+                typed.modules.clone(),
+                data_items.clone(),
+                module_index.clone(),
+            ),
             fn_decl_items: base_info.fn_decl_items.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
@@ -6185,7 +6485,6 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             expected_type: std::option::Option::None,
         });
         let registry = typed.item_registry.clone();
-        let data_items = build_data_item_index(typed.modules.clone());
         let workflow_funcs = collect_workflow_funcs(
             typed.modules.clone(),
             registry.clone(),
@@ -6259,10 +6558,6 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
         let test_projections =
             crate::v1_compiler_emit_core_support::extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
-        let module_index = build_module_index(
-            typed.modules.clone(),
-            emit_info.item_leaf_owner_modules.clone(),
-        );
         let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
         Rc::new(EmitRustContext {
             emit_info: emit_info.clone(),
@@ -7287,10 +7582,20 @@ pub fn emit_module(
                 base_info.type_decl_items.clone(),
                 merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             );
+        let data_items = build_data_item_index(Rc::new(vec![typed_module.clone()]));
+        let module_index = build_module_index(
+            Rc::new(vec![typed_module.clone()]),
+            base_info.item_leaf_owner_modules.clone(),
+        );
         let emit_info = Rc::new(EmitGraphInfo {
             item_leaf_owner_modules: base_info.item_leaf_owner_modules.clone(),
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
+            data_variant_wire_spellings: build_data_variant_wire_spellings(
+                Rc::new(vec![typed_module.clone()]),
+                data_items.clone(),
+                module_index.clone(),
+            ),
             fn_decl_items: base_info.fn_decl_items.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
@@ -7312,17 +7617,13 @@ pub fn emit_module(
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
-        let module_index = build_module_index(
-            Rc::new(vec![typed_module.clone()]),
-            emit_info.item_leaf_owner_modules.clone(),
-        );
         emit_module_full(
             typed_module.clone(),
             registry.clone(),
             emit_info.clone(),
             shared_types.clone(),
             v1_rt::rc_empty_map::<String, String>(),
-            build_data_item_index(Rc::new(vec![typed_module.clone()])),
+            data_items.clone(),
             export_sets.clone(),
             Rc::new(vec![typed_module.clone()]),
             module_index.clone(),
@@ -10210,6 +10511,7 @@ pub fn emit_module_full(
             item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
             type_summaries: emit_info.type_summaries.clone(),
             type_decl_items: emit_info.type_decl_items.clone(),
+            data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
             fn_decl_items: emit_info.fn_decl_items.clone(),
             recursive_type_set: emit_info.recursive_type_set.clone(),
             fielded_variants: emit_info.fielded_variants.clone(),
@@ -15331,6 +15633,7 @@ pub fn emit_typed_item(
                         item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                         type_summaries: emit_info.type_summaries.clone(),
                         type_decl_items: emit_info.type_decl_items.clone(),
+                        data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
                         fn_decl_items: emit_info.fn_decl_items.clone(),
                         recursive_type_set: emit_info.recursive_type_set.clone(),
                         fielded_variants: emit_info.fielded_variants.clone(),
@@ -15432,6 +15735,7 @@ pub fn emit_typed_item(
                         registry.clone(),
                         shared_types.clone(),
                         env.clone(),
+                        emit_info.clone(),
                     )
                 }
             }
@@ -15977,41 +16281,15 @@ pub fn emit_type_def_from_connective(
                         }
                     } else {
                         {
-                            let all_unit_variants = {
-                                let mut __all = true;
-                                for child in item.children.clone().iter().cloned() {
-                                    if !((child.children.clone().len() as i64) == 0) {
-                                        __all = false;
-                                        break;
-                                    }
-                                }
-                                __all
-                            };
-                            let serde_policy = match resolve_local_coproduct_wire_policy(
+                            let serde_policy = resolve_emission_coproduct_wire_policy(
                                 item_text.clone(),
-                                all_unit_variants.clone(),
+                                item.clone(),
                                 module_items.clone(),
                                 imports.clone(),
+                                wire_contract_item.clone(),
+                                data_items.clone(),
                                 env.source_indices.clone(),
-                            ) {
-                                Some(local_policy) => local_policy.clone(),
-                                std::option::Option::None => {
-                                    if all_unit_variants.clone() {
-                                        match wire_contract_item.clone() {
-                                            Some(_) => resolve_wire_serde_policy_for_coproduct(
-                                                wire_contract_item.clone(),
-                                                env.source_indices.clone(),
-                                                data_items.clone(),
-                                            ),
-                                            std::option::Option::None => {
-                                                rust_tagged_object_policy()
-                                            }
-                                        }
-                                    } else {
-                                        rust_tagged_object_policy()
-                                    }
-                                }
-                            };
+                            );
                             let rename_validations = variant_rename_validations_for_policy(
                                 item.children.clone(),
                                 env.clone(),
@@ -25960,6 +26238,9 @@ pub fn emit_rust_fold_method_call(
                             item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                             type_summaries: emit_info.type_summaries.clone(),
                             type_decl_items: emit_info.type_decl_items.clone(),
+                            data_variant_wire_spellings: emit_info
+                                .data_variant_wire_spellings
+                                .clone(),
                             fn_decl_items: emit_info.fn_decl_items.clone(),
                             recursive_type_set: emit_info.recursive_type_set.clone(),
                             fielded_variants: emit_info.fielded_variants.clone(),
@@ -26006,6 +26287,9 @@ pub fn emit_rust_fold_method_call(
                                 item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                                 type_summaries: emit_info.type_summaries.clone(),
                                 type_decl_items: emit_info.type_decl_items.clone(),
+                                data_variant_wire_spellings: emit_info
+                                    .data_variant_wire_spellings
+                                    .clone(),
                                 fn_decl_items: emit_info.fn_decl_items.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
@@ -33155,6 +33439,7 @@ pub fn emit_service_def(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let safe_name = crate::v1_compiler_emit_core_support::sanitize_service_name(
@@ -33177,6 +33462,7 @@ pub fn emit_service_def(
             shared_types.clone(),
             env.clone(),
             item.clone(),
+            emit_info.clone(),
         );
         v1_rt::concat(
             v1_rt::concat(struct_def.clone(), "\n\n".to_string()),
@@ -33271,6 +33557,7 @@ pub fn emit_service_impl(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let depth = 0;
@@ -33293,6 +33580,7 @@ pub fn emit_service_impl(
                     shared_types.clone(),
                     env.clone(),
                     service_item.clone(),
+                    emit_info.clone(),
                 ));
             }
             __result
@@ -33518,6 +33806,7 @@ pub fn emit_operation_method(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let op_text = crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone());
@@ -33603,6 +33892,7 @@ pub fn emit_operation_method(
             op_node.clone(),
             env.clone(),
             shared_types.clone(),
+            emit_info.clone(),
         );
         let body = v1_rt::concat(
             v1_rt::concat(
@@ -33689,6 +33979,7 @@ pub fn emit_dry_run_branch_from_props(
     op_node: Rc<Node>,
     env: Rc<TypeEnv>,
     shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let log_line = v1_rt::concat(
@@ -33699,7 +33990,7 @@ pub fn emit_dry_run_branch_from_props(
             {
                 let first_mock = mock_props.clone().first().cloned();
                 match first_mock.clone() {
-    Some(mp) => match (*crate::v1_compiler_emit::emit_data_value_json(crate::v1_std_core::field_init_node_value(mp.clone()), source_indices.clone())).clone() {
+    Some(mp) => match (*crate::v1_compiler_emit::emit_data_value_json(crate::v1_std_core::field_init_node_value(mp.clone()), source_indices.clone(), emit_info.data_variant_wire_spellings.clone())).clone() {
     EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\ncompile_error!(\"".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(r.clone())), "\");".to_string()),
     EmitterOutcome::Emitted { json: mock_json, .. } => {
                     let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
@@ -36648,6 +36939,7 @@ pub fn emit_data_def_body(
                     match (*crate::v1_compiler_emit::emit_data_value_json(
                         value.clone(),
                         scope.type_env.clone().source_indices.clone(),
+                        emit_info.data_variant_wire_spellings.clone(),
                     ))
                     .clone()
                     {

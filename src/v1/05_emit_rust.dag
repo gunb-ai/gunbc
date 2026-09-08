@@ -2645,6 +2645,175 @@ fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants
   }
 }
 
+// THE ONE POLICY DECISION FOR AN EMITTED COPRODUCT, extracted so the type side and the data-path
+// index ask the same question of the same authority (DESIGN section 2 -- one derivation, two call
+// sites). The answer order is: a CoproductWireContract row in the coproduct's own module or its
+// `_contracts` sibling (resolve_local_coproduct_wire_policy scans the concatenated context); then,
+// for a nullary-only coproduct, the module's legacy `wire_contract` data item; otherwise the
+// internal-tag default. The wire_items/wire_imports arguments ARE the emitting module's items and
+// imports concatenated with its contracts sibling's (contracts_items_for_module /
+// contracts_imports_for_module), and scoped_data_items is the module's scoped data index augmented
+// with the contracts sibling's imports -- both call sites build them identically.
+fn resolve_emission_coproduct_wire_policy(coproduct_name: String, item: Node, wire_items: List<Node>, wire_imports: List<Node>, wire_contract_item: Node?, scoped_data_items: Map<String, List<Node>>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
+  let all_unit_variants = item.children |> all(child => child.children |> count == 0)
+  match resolve_local_coproduct_wire_policy(coproduct_name: coproduct_name, all_unit_variants: all_unit_variants, module_items: wire_items, imports: wire_imports, source_indices: source_indices) {
+    Present { value: local_policy } => local_policy
+    Absent =>
+      if all_unit_variants {
+        match wire_contract_item {
+          Present { value: _ } => resolve_wire_serde_policy_for_coproduct(wire_contract_item: wire_contract_item, source_indices: source_indices, data_items: scoped_data_items)
+          Absent => rust_tagged_object_policy()
+        }
+      } else {
+        rust_tagged_object_policy()
+      }
+  }
+}
+
+// THE TOTAL WIRE-TAG QUESTION. wire_variant_tag_for_policy answers the ATTRIBUTE question -- does
+// this variant need a per-variant #[serde(rename)] -- and its `none` means "no attr needed", which
+// conflates "renamed by the container's rename_all" with "as authored". The data path needs the
+// TAG itself: the exact string serde places on the wire, which under a container rename_all is the
+// renamed spelling and under no renaming is the authored one. The two functions read the same
+// policy fields in the same order so the answers cannot drift: StripAffix style defers to the
+// attribute function's computation (its none -- a failed strip the type side already refuses --
+// propagates as none here), then rename_all snake_case / SCREAMING_SNAKE_CASE, then as-authored.
+fn data_path_wire_variant_tag(authored: String, policy: RustEnumWireSerde) -> String? {
+  if policy.error_message != none {
+    none
+  } else {
+    match policy.rename_style {
+      Present { value: _ } => wire_variant_tag_for_policy(authored: authored, policy: policy)
+      Absent =>
+        if contains(policy.enum_attr, "rename_all = \"snake_case\"") {
+          Present { value: to_snake(name: authored) }
+        } else if contains(policy.enum_attr, "rename_all = \"SCREAMING_SNAKE_CASE\"") {
+          Present { value: to_screaming_snake(name: authored) }
+        } else {
+          Present { value: authored }
+        }
+    }
+  }
+}
+
+// Projection from the Rust policy carrier to the language-general spelling the data path reads
+// (the type's comment at v1.compiler.infer_emit_info DataVariantWireSpelling names why the
+// projection exists). Untagged is tested FIRST: policy_is_string_variant's shape test (no
+// "tag =" substring) also matches the untagged attribute, so the order is load-bearing.
+fn project_data_variant_spelling(authored_variant: String, policy: RustEnumWireSerde) -> DataVariantWireSpelling {
+  match policy.error_message {
+    Present { value: message } => DataVariantSpellingRefused { reason: message }
+    Absent =>
+      if policy_is_untagged(policy: policy) {
+        DataVariantUntagged
+      } else {
+        match data_path_wire_variant_tag(authored: authored_variant, policy: policy) {
+          Absent => DataVariantSpellingRefused { reason: concat("no wire tag derivable for variant ", authored_variant, " under the parent coproduct's naming policy") }
+          Present { value: tag } =>
+            if policy_is_string_variant(policy: policy) {
+              DataVariantBareString { tag: tag }
+            } else {
+              match policy_serde_tag_field(policy: policy) {
+                Present { value: tag_field } => DataVariantInternalTagged { tag_field: tag_field, tag: tag }
+                Absent => DataVariantSpellingRefused { reason: concat("wire policy for variant ", authored_variant, " carries no tag field and is neither untagged nor string-variant") }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn data_variant_wire_spelling_eq(a: DataVariantWireSpelling, b: DataVariantWireSpelling) -> Bool {
+  match a {
+    DataVariantInternalTagged { tag_field: a_tf, tag: a_t } =>
+      match b {
+        DataVariantInternalTagged { tag_field: b_tf, tag: b_t } => a_tf == b_tf && a_t == b_t
+        _ => false
+      }
+    DataVariantBareString { tag: a_t } =>
+      match b {
+        DataVariantBareString { tag: b_t } => a_t == b_t
+        _ => false
+      }
+    DataVariantUntagged =>
+      match b {
+        DataVariantUntagged => true
+        _ => false
+      }
+    DataVariantSpellingRefused { reason: a_r } =>
+      match b {
+        DataVariantSpellingRefused { reason: b_r } => a_r == b_r
+        _ => false
+      }
+  }
+}
+
+// The index is keyed by BARE coproduct and variant names because that is what a variant record
+// literal carries: infer stamps parent_enum as the parent declaration's authored name
+// (lookup_variant_parent_enum), never module-qualified. Two modules in one closure declaring the
+// same coproduct leaf therefore share a key. Where their resolved policies agree the answer is one
+// fact and either row serves; where they differ the key is POISONED with a stored refusal, so the
+// data path fails closed with the cause instead of silently serving whichever module folded last.
+fn insert_data_variant_spelling(index: Map<String, DataVariantWireSpelling>, key: String, spelling: DataVariantWireSpelling, coproduct_name: String) -> Map<String, DataVariantWireSpelling> {
+  match map_get(index, key) {
+    Absent => map_insert(index, key, spelling)
+    Present { value: existing } =>
+      if data_variant_wire_spelling_eq(a: existing, b: spelling) {
+        index
+      } else {
+        map_insert(index, key, DataVariantSpellingRefused { reason: concat("ambiguous wire policy for coproduct ", coproduct_name, ": two modules in the emission closure declare it and their resolved policies differ, so a bare parent_enum cannot name one policy") })
+      }
+  }
+}
+
+// THE CLOSURE-WIDE WIRE-POLICY INDEX the variant arm of emit_data_value_json reads. Built once per
+// emission root from the same inputs the type side resolves against, one row per (coproduct,
+// variant) pair, beside EmitGraphInfo.type_decl_items. This is the trigger the fail-closed
+// variant refusal named on 2026-09-08, landed the same day its first real population measured out:
+// five sites in the 00_compile closure (SugarKey x2 in v2.std.compilers.sugar,
+// CopiedPortCitationFrontierDisposition x3 in v2.lens.cost.copied_port_citations).
+fn build_data_variant_wire_spellings(modules: List<TypedModule>, data_items: Map<String, Node>, module_index: ModuleIndex) -> Map<String, DataVariantWireSpelling> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let si = tm.type_env.source_indices
+    let module_name = authored_name_at(source_indices: si, node: tm.module)
+    let contracts_imports = contracts_imports_for_module(module_name: module_name, typed_modules: modules, source_indices: si, module_index: module_index)
+    let wire_items = concat(tm.items, contracts_items_for_module(module_name: module_name, typed_modules: modules, source_indices: si, module_index: module_index))
+    let wire_imports = concat(module_imports(n: tm.module), contracts_imports)
+    let scoped_data = augment_scoped_data_item_index_with_imports(
+      scoped: build_scoped_data_item_index(typed_module: tm, data_items: data_items),
+      imports: contracts_imports,
+      source_indices: si,
+      data_items: data_items
+    )
+    let wire_contract_item = wire_items
+      |> filter(i => i.module_item_kind == ModuleItemDataValue && authored_name_at(source_indices: si, node: i) == "wire_contract")
+      |> first
+    tm.items
+      |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
+      |> fold(init: acc, f: (item_acc, item) =>
+        let coproduct_name = authored_name_at(source_indices: si, node: item)
+        let policy = resolve_emission_coproduct_wire_policy(
+          coproduct_name: coproduct_name,
+          item: item,
+          wire_items: wire_items,
+          wire_imports: wire_imports,
+          wire_contract_item: wire_contract_item,
+          scoped_data_items: scoped_data,
+          source_indices: si
+        )
+        item.children |> fold(init: item_acc, f: (variant_acc, variant) =>
+          let variant_name = authored_name_at(source_indices: si, node: variant)
+          insert_data_variant_spelling(
+            index: variant_acc,
+            key: concat(coproduct_name, ".", variant_name),
+            spelling: project_data_variant_spelling(authored_variant: variant_name, policy: policy),
+            coproduct_name: coproduct_name
+          )
+        )
+      )
+  )
+}
+
 fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
@@ -3166,10 +3335,13 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: typed.modules)
   )
+  let data_items = build_data_item_index(modules: typed.modules)
+  let module_index = build_module_index(modules: typed.modules, leaf_owner_modules: base_info.item_leaf_owner_modules)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: base_info.item_leaf_owner_modules,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
+    data_variant_wire_spellings: build_data_variant_wire_spellings(modules: typed.modules, data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
@@ -3190,7 +3362,6 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     expected_type: none
   }
   let registry = typed.item_registry
-  let data_items = build_data_item_index(modules: typed.modules)
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
@@ -3203,7 +3374,6 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   )
   let test_projections = extract_test_projections(typed: typed)
   let export_sets = build_module_export_sets(modules: typed.modules)
-  let module_index = build_module_index(modules: typed.modules, leaf_owner_modules: emit_info.item_leaf_owner_modules)
   let unlisted_type_names_by_module = group_unlisted_type_names(diags: typed.diagnostics)
   EmitRustContext {
     emit_info: emit_info,
@@ -3816,10 +3986,13 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
+  let data_items = build_data_item_index(modules: [typed_module])
+  let module_index = build_module_index(modules: [typed_module], leaf_owner_modules: base_info.item_leaf_owner_modules)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: base_info.item_leaf_owner_modules,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
+    data_variant_wire_spellings: build_data_variant_wire_spellings(modules: [typed_module], data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
@@ -3841,8 +4014,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
-  let module_index = build_module_index(modules: [typed_module], leaf_owner_modules: emit_info.item_leaf_owner_modules)
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: []).file
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: data_items, export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: []).file
 }
 
 fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
@@ -5243,6 +5415,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
+    data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -7307,6 +7480,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
             type_summaries: emit_info.type_summaries,
             type_decl_items: emit_info.type_decl_items,
+            data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
             fn_decl_items: emit_info.fn_decl_items,
             recursive_type_set: emit_info.recursive_type_set,
             fielded_variants: emit_info.fielded_variants,
@@ -7354,7 +7528,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       if item.children |> count == 0 {
         emit_rust_item_refusal(item_text: item_text, reason: "service declares no operations")
       } else {
-        emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env)
+        emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env, emit_info: emit_info)
       }
     ModuleItemResource =>
       emit_resource_def(item: item, shared_types: shared_types, env: env)
@@ -7653,19 +7827,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = ", render_rust_diagnostics_carrier_applied(shared_types: shared_types), ";")
   } else {
-    let all_unit_variants = item.children |> all(child => child.children |> count == 0)
-    let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: module_items, imports: imports, source_indices: env.source_indices) {
-      Present { value: local_policy } => local_policy
-      Absent =>
-        if all_unit_variants {
-          match wire_contract_item {
-            Present { value: _ } => resolve_wire_serde_policy_for_coproduct(wire_contract_item: wire_contract_item, source_indices: env.source_indices, data_items: data_items)
-            Absent => rust_tagged_object_policy()
-          }
-        } else {
-          rust_tagged_object_policy()
-        }
-    }
+    let serde_policy = resolve_emission_coproduct_wire_policy(coproduct_name: item_text, item: item, wire_items: module_items, wire_imports: imports, wire_contract_item: wire_contract_item, scoped_data_items: data_items, source_indices: env.source_indices)
     let rename_validations = variant_rename_validations_for_policy(children: item.children, env: env, serde_policy: serde_policy)
     let policy_validation = match serde_policy.error_message {
       Present { value: message } => emit_rust_compile_error_item(message: message)
@@ -11829,6 +11991,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
+              data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
@@ -11862,6 +12025,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
+              data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
@@ -14010,13 +14174,14 @@ fn emit_service_def(
   item: Node,
   registry: Map<String, ItemInfo>,
   shared_types: Set<String>,
-  env: TypeEnv
+  env: TypeEnv,
+  emit_info: EmitGraphInfo
 ) -> String {
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
   let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children, service_item: item, source_indices: env.source_indices)
-  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, shared_types: shared_types, env: env, service_item: item)
+  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, shared_types: shared_types, env: env, service_item: item, emit_info: emit_info)
   concat(struct_def, "\n\n", impl_block)
 }
 
@@ -14037,11 +14202,11 @@ fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>,
   else { decls |> join(separator: "") }
 }
 
-fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, env: TypeEnv, service_item: Node) -> String {
+fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, env: TypeEnv, service_item: Node, emit_info: EmitGraphInfo) -> String {
   let depth = 0
   let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children, service_item: service_item, source_indices: env.source_indices)
   let method_strs = op_children |> map(op_node =>
-    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, env: env, service_item: service_item)
+    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, env: env, service_item: service_item, emit_info: emit_info)
   )
   let all_methods = concat([new_method], method_strs)
   let methods_str = all_methods |> join(separator: "\n\n")
@@ -14124,7 +14289,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_indices: Map<Stri
   }
 }
 
-fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node) -> String {
+fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node, emit_info: EmitGraphInfo) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
     concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, enclosing_returns_arrow: false))
@@ -14140,7 +14305,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let bound = bind_operation_transport(t: eff_transport, op_node: op_node, source_indices: env.source_indices)
   let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, emit_info: emit_info)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -14154,12 +14319,12 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     make_indent(level: depth + 1),body, "\n}")
 }
 
-fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, op_node: Node, env: TypeEnv, shared_types: Set<String>) -> String {
+fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, op_node: Node, env: TypeEnv, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
     let first_mock = mock_props |> first
     match first_mock {
-      Present { value: mp } => match emit_data_value_json(value: field_init_node_value(n: mp), source_indices: source_indices) {
+      Present { value: mp } => match emit_data_value_json(value: field_init_node_value(n: mp), source_indices: source_indices, variant_wire: emit_info.data_variant_wire_spellings) {
         Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", escape_string_literal_body(s: r), "\");")
         Emitted { json: mock_json } => {
         let is_multi_field_conj = inferred.connective == Conj && inferred.children |> count > 1
@@ -15333,7 +15498,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
   } else if match value.expr_data { ExprElaboratedLiteral { value: _, elaboration: _ } => true _ => false } {
     concat("            ", emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
-    match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices) {
+    match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices, variant_wire: emit_info.data_variant_wire_spellings) {
       Refused { reason: r } => concat("            compile_error!(\"", escape_string_literal_body(s: r), "\")")
       Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
         "                .expect(\"valid data definition\")")
