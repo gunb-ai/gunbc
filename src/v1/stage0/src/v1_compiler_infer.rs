@@ -934,6 +934,25 @@ pub fn internal_expr_error_node(message: String, span: Rc<SourceSpan>) -> Rc<Nod
     )
 }
 
+pub fn local_coproduct_owner_from_locals(scope: Rc<InferScope>, name: String) -> Option<Rc<Node>> {
+    match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
+        Some(binding) => {
+            if ((binding.resolved.clone().connective.clone() == Connective::Disj)
+                && crate::v1_std_core::has_child_named(
+                    binding.resolved.clone(),
+                    name.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ))
+            {
+                Some(binding.resolved.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(binding) => match crate::v1_compiler_infer_env::lookup_type_for(
@@ -14039,6 +14058,8 @@ Rc::new(FieldInferResult {
                     scope.type_env.clone(),
                     type_name.clone().unwrap(),
                 );
+                let owner_from_locals =
+                    local_coproduct_owner_from_locals(scope.clone(), type_name.clone().unwrap());
                 let local_variant_parent =
                     match lookup_variant_parent_enum(scope.clone(), type_name.clone().unwrap()) {
                         Some(p) => Some(p.clone()),
@@ -14109,7 +14130,10 @@ Rc::new(FieldInferResult {
                                 parent_name.clone(),
                             ) {
                                 Some(parent_decl) => parent_decl.clone(),
-                                std::option::Option::None => variant_lookup_resolved.clone(),
+                                std::option::Option::None => match owner_from_locals.clone() {
+                                    Some(owner) => owner.clone(),
+                                    std::option::Option::None => variant_lookup_resolved.clone(),
+                                },
                             }
                         }
                     }

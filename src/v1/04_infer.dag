@@ -597,8 +597,28 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
   make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: message, span: span)
 }
 
-fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
+// constructor_binding_authority: the locals binding carries the OWNER coproduct NODE.
+// infer_record_lit used to re-derive that owner through lookup_type_by_name(parent_name)
+// and, on a miss, fall through to lookup_type_by_name(arm) / variant_arm_type_projection.
+// That miss is what differs between typechecking a module as its own subject (local
+// str_bindings hit) and resolving a larger entry over the same bytes (shared intern /
+// census / overlay can miss). It is not the three refuted bind stories (foreign unit
+// arm as competitor, Unique/Ambiguous owner-count, global_bare Conj insert).
+// A HIT of lookup_type_by_name must still win: substituting the locals node there
+// left Int fields as NoConnective leaves (span in the consumer) and emitted
+// OperandIdentityUnavailableAt for `+` in std.import. Locals fill only the miss.
+fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
+  match map_get(scope.locals, name) {
+    Present { value: binding } =>
+      if binding.resolved.connective == Disj
+        && has_child_named(n: binding.resolved, name: name, source_indices: scope.type_env.source_indices) {
+        Present { value: binding.resolved }
+      } else { none }
+    Absent => none
+  }
+}
 
+fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
@@ -8611,6 +8631,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
+    let owner_from_locals = local_coproduct_owner_from_locals(scope: scope, name: type_name.value)
     let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
       Present { value: p } => Present { value: p }
       Absent =>
@@ -8647,7 +8668,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
           match lookup_type_by_name(env: scope.type_env, name: parent_name) {
             Present { value: parent_decl } => parent_decl
-            Absent => variant_lookup_resolved
+            Absent =>
+              match owner_from_locals {
+                Present { value: owner } => owner
+                Absent => variant_lookup_resolved
+              }
           }
         }
       Absent => variant_lookup_resolved
