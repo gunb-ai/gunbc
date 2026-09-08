@@ -5,7 +5,13 @@ import std.nat { Nat }
 import std.measure { token_count_value, percent_count }
 import product.placement_supply { host_identity_eq }
 import extdeps.network.ipv4 { ipv4_address_eq }
-import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
+import v2.std.optional { Present, Absent }
+import std.measure { token_count, percent }
+import extdeps.vllm.engine_args {
+  vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire,
+  VllmEngineArgs, vllm_memory_utilization, KvFp8DsMla, ExecutorRay,
+}
+import gunbc.spark.pair_serving_realization { spark_pair_vllm_serve_argv }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
@@ -21,6 +27,35 @@ import gunbc.spark.pair_serving_desired {
 
 // THE TUPLE IS THE OPERATOR'S, READ BACK OFF THE ROW, WITH N FROM THE GROUP: 82% of the unified
 // pool, 1M context, the DeepSeek MLA fp8 KV layout, Ray as the executor; nothing here is re-derived.
+// THE PINNED BATCH BUDGET REACHES THE ARGV, which is the only place it can affect the engine.
+//
+// The field is optional and its ABSENT arm renders nothing, so a desired row that silently reverted
+// to `none` would still typecheck, still build a valid launch, and still serve -- on whatever
+// default the runtime's device probe happened to resolve. That is the exact failure this pin exists
+// to prevent, and it is invisible without an assertion on the rendered text.
+test fn the_pinned_prefill_budget_is_rendered_into_the_serve_argv() -> Bool {
+  string_contains(
+    s: join(spark_pair_vllm_serve_argv(args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32)), " "),
+    pattern: "--max-num-batched-tokens 2048")
+}
+
+// THE DISCRIMINATING NEGATIVE. An unrequested policy must emit NO batch flag at all, rather than
+// emitting a default we would then be inheriting twice. Without this arm the row above would still
+// pass if the renderer hard-coded the flag regardless of the field.
+test fn an_unrequested_prefill_policy_renders_no_batch_flag() -> Bool {
+  !string_contains(
+    s: join(spark_pair_vllm_serve_argv(args: VllmEngineArgs {
+      prefill_scheduling: none,
+      tensor_parallel_size: 4,
+      gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
+      max_model_len: token_count(count: 1048576),
+      max_num_seqs: 32,
+      kv_cache_dtype: KvFp8DsMla,
+      distributed_executor_backend: ExecutorRay,
+    }), " "),
+    pattern: "--max-num-batched-tokens")
+}
+
 test fn the_group_engine_tuple_is_the_observed_safe_tuple_at_the_groups_degree() -> Bool {
   let a = spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32)
   a.tensor_parallel_size == 4
