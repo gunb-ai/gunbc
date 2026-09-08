@@ -26,16 +26,18 @@ import test.claim.github_app_registry { app_credential, observed_grant, runner_g
 // account it fences against; rebuilding either here would be a second answer to "what authorizes
 // this work", and the two would drift the first time issuance moved.
 import test.claim.fabric_grant_issuance_witness {
-  issue, subject_work, first_attempt, funded_account, exhausted_account, admitted_offer, thread_appropriation,
+  issue, subject_work, other_work, first_attempt, funded_account, exhausted_account, admitted_offer, thread_appropriation,
 }
 import product.fabric.execution { ExecutionGrant }
 import product.fabric.grant_issue { GrantIssue, GrantCommitted, GrantRefused }
 import product.fabric.budget { MoneyAccount }
 import std.measure { byte_size, mebibyte_count }
 import gunbc.runner_microvm_launch_plan {
+  AuthorizationAgreement, AuthorizationAgrees, AuthorizationDisagrees,
+  grant_authorizes_reservation,
+  plan_microvm_launch_of_binding, LaunchRefusedGrant,
   MicroVmLaunchPlan, LaunchAdmitted, LaunchRefusedCell, LaunchRefusedConfig,
   LaunchRefusedAdmission, LaunchRefusedCredential,
-  plan_microvm_launch_of_binding,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -124,27 +126,16 @@ fn planned(
   intent: RunnerUnitLifecycleIntent,
   listener_is_main_process: Bool
 ) -> MicroVmLaunchPlan {
-  match issued_authorizations() {
-    Cons { head: auth, tail: _ } =>
-      planned_with(grant: auth.grant, account: auth.account, owned: owned, topology: topology, intent: intent, listener_is_main_process: listener_is_main_process)
-    Empty {} =>
-      LaunchRefusedGrant {
-        cause: "the witness fixture issued no grant, so this plan is not the subject under test",
-      }
-  }
+  planned_with(owned: owned, topology: topology, intent: intent, listener_is_main_process: listener_is_main_process)
 }
 
 fn planned_with(
-  grant: ExecutionGrant<NonEmptyStr>,
-  account: MoneyAccount,
   owned: Bool,
   topology: VmmProcessTopology,
   intent: RunnerUnitLifecycleIntent,
   listener_is_main_process: Bool
 ) -> MicroVmLaunchPlan {
   plan_microvm_launch_of_binding(
-    grant: grant,
-    account: account,
     binding: launch_binding(owned: owned),
     reserve: witness_reserve,
     kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
@@ -197,29 +188,23 @@ test fn an_orphanable_topology_refuses_at_admission_not_at_the_mint() -> Bool {
 // A CREDENTIAL MISSING organization self-hosted-runners write REFUSES, with an owned cell and an
 // admitting topology, so only the credential join can produce it.
 test fn a_credential_without_the_runner_permission_refuses_the_launch() -> Bool {
-  match issued_authorizations() {
-    Cons { head: auth, tail: _ } =>
-    match plan_microvm_launch_of_binding(
-      grant: auth.grant,
-      account: auth.account,
-      binding: launch_binding(owned: true),
-      reserve: witness_reserve,
-      kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
-      net: launch_net(),
-      topology: VmmIsMainProcess,
-      intent: cannot_orphan_intent,
-      listener_is_main_process: true,
-      authority: launch_authority(),
-      control_plane: observed_grant(perms: full_workflow_grant),
-      organization: launch_org,
-      runner_group_id: JitRunnerGroupId { value: 1 },
-      labels: [JitRunnerLabel { value: "self-hosted" }],
-    ) {
-      LaunchRefusedCredential { organization: org, unsatisfied: u } =>
-        (org as String) == "gunb-ai" && count(u) > 0
-      _ => false
-    }
-    Empty {} => false
+  match plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: true),
+    reserve: witness_reserve,
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: VmmIsMainProcess,
+    intent: cannot_orphan_intent,
+    listener_is_main_process: true,
+    authority: launch_authority(),
+    control_plane: observed_grant(perms: full_workflow_grant),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  ) {
+    LaunchRefusedCredential { organization: org, unsatisfied: u } =>
+      (org as String) == "gunb-ai" && count(u) > 0
+    _ => false
   }
 }
 
@@ -266,38 +251,32 @@ test fn an_owned_cell_with_a_sufficient_credential_admits_and_carries_the_mint()
 // carries it, and a witness that recomputed the comparison would be a second representation of the
 // same constraint -- satisfiable by editing this file while the production path still lied.
 test fn production_admits_a_guest_against_the_declared_reserve() -> Bool {
-  match issued_authorizations() {
-    Cons { head: auth, tail: _ } =>
-    match plan_microvm_launch_of_binding(
-      grant: auth.grant,
-      account: auth.account,
-      binding: launch_binding(owned: true),
-      reserve: gunbc_runner_microvm_realization_reserve(),
-      kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
-      net: launch_net(),
-      topology: VmmIsMainProcess,
-      intent: cannot_orphan_intent,
-      listener_is_main_process: true,
-      authority: launch_authority(),
-      control_plane: launch_control_plane(),
-      organization: launch_org,
-      runner_group_id: JitRunnerGroupId { value: 1 },
-      labels: [JitRunnerLabel { value: "self-hosted" }],
-    ) {
-      LaunchAdmitted {
-        attempt: _,
-        config: config,
-        unit_name: _,
-        slice_property: _,
-        rootfs_path: _,
-        jit_drive_path: _,
-        mint_endpoint_path: _,
-        mint_request: _,
-      } =>
-        config.machine_config.mem_size_mib == mebibyte_count(m: gunbc_runner_microvm_declared_size.memory)
-      _ => false
-    }
-    Empty {} => false
+  match plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: true),
+    reserve: gunbc_runner_microvm_realization_reserve(),
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: VmmIsMainProcess,
+    intent: cannot_orphan_intent,
+    listener_is_main_process: true,
+    authority: launch_authority(),
+    control_plane: launch_control_plane(),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  ) {
+    LaunchAdmitted {
+      attempt: _,
+      config: config,
+      unit_name: _,
+      slice_property: _,
+      rootfs_path: _,
+      jit_drive_path: _,
+      mint_endpoint_path: _,
+      mint_request: _,
+    } =>
+      config.machine_config.mem_size_mib == mebibyte_count(m: gunbc_runner_microvm_declared_size.memory)
+    _ => false
   }
 }
 
@@ -305,28 +284,22 @@ test fn production_admits_a_guest_against_the_declared_reserve() -> Bool {
 // judgment that answers yes to everything. A reserve larger than the cell cannot leave room for any
 // guest, so this is the one case where the arithmetic must refuse no matter how small the guest is.
 test fn a_reserve_larger_than_the_cell_admits_no_guest() -> Bool {
-  match issued_authorizations() {
-    Cons { head: auth, tail: _ } =>
-    match plan_microvm_launch_of_binding(
-      grant: auth.grant,
-      account: auth.account,
-      binding: launch_binding(owned: true),
-      reserve: ReserveDeclared { bytes: byte_size(1099511627776) },
-      kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
-      net: launch_net(),
-      topology: VmmIsMainProcess,
-      intent: cannot_orphan_intent,
-      listener_is_main_process: true,
-      authority: launch_authority(),
-      control_plane: launch_control_plane(),
-      organization: launch_org,
-      runner_group_id: JitRunnerGroupId { value: 1 },
-      labels: [JitRunnerLabel { value: "self-hosted" }],
-    ) {
-      LaunchRefusedAdmission { reason: r } => string_contains(s: r, pattern: "would not fit")
-      _ => false
-    }
-    Empty {} => false
+  match plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: true),
+    reserve: ReserveDeclared { bytes: byte_size(1099511627776) },
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: VmmIsMainProcess,
+    intent: cannot_orphan_intent,
+    listener_is_main_process: true,
+    authority: launch_authority(),
+    control_plane: launch_control_plane(),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  ) {
+    LaunchRefusedAdmission { reason: r } => string_contains(s: r, pattern: "would not fit")
+    _ => false
   }
 }
 
@@ -335,74 +308,85 @@ test fn a_reserve_larger_than_the_cell_admits_no_guest() -> Bool {
 // its wall lands, and an unresolved fit is exactly the state the launch path must never pass a
 // guest through -- whether or not production is the caller that reaches it today.
 test fn an_unmodeled_reserve_still_refuses_the_launch() -> Bool {
-  match issued_authorizations() {
-    Cons { head: auth, tail: _ } =>
-    match plan_microvm_launch_of_binding(
-      grant: auth.grant,
-      account: auth.account,
-      binding: launch_binding(owned: true),
-      reserve: ReserveUnmodeled { cause: "the witness holds the unresolved case open after production declared its own" },
-      kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
-      net: launch_net(),
-      topology: VmmIsMainProcess,
-      intent: cannot_orphan_intent,
-      listener_is_main_process: true,
-      authority: launch_authority(),
-      control_plane: launch_control_plane(),
-      organization: launch_org,
-      runner_group_id: JitRunnerGroupId { value: 1 },
-      labels: [JitRunnerLabel { value: "self-hosted" }],
-    ) {
-      LaunchRefusedAdmission { reason: r } => string_contains(s: r, pattern: "cannot be judged")
-      _ => false
-    }
-    Empty {} => false
+  match plan_microvm_launch_of_binding(
+    binding: launch_binding(owned: true),
+    reserve: ReserveUnmodeled { cause: "the witness holds the unresolved case open after production declared its own" },
+    kernel_path: "/var/lib/gunbc-runner/guest/vmlinux",
+    net: launch_net(),
+    topology: VmmIsMainProcess,
+    intent: cannot_orphan_intent,
+    listener_is_main_process: true,
+    authority: launch_authority(),
+    control_plane: launch_control_plane(),
+    organization: launch_org,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+  ) {
+    LaunchRefusedAdmission { reason: r } => string_contains(s: r, pattern: "cannot be judged")
+    _ => false
   }
 }
 
-// THE GRANT CONTROL. FCI-3's exit predicate is that an absent, corrupt or expired Grant yields ZERO
-// target processes, and this is the arm that executes it: a grant presented against an account that
-// does not fence its lease generation is a superseded authorization, and the launch must refuse.
+// THE GRANT CONTROLS, DRIVING THE FACTORED RULE rather than the seal above it. The seal's input is
+// a sole_constructor RequiredBuildCellSnapshot, so a disagreeing snapshot cannot be constructed
+// here at all -- a control aimed there would have an unauthorable RED and be a 4b decoration.
+// The rule takes the coordinates, so the disagreement is writable, and the seal delegates to it.
 //
-// The absent case has no claim here BECAUSE IT HAS NO CONSTRUCTOR. plan_microvm_launch_of_binding
-// takes the grant as a required parameter, so "no grant" cannot be written at a call site at all --
-// asserting it would be the decoration DESIGN 4b warns about, a check whose RED is unauthorable.
-test fn a_grant_that_does_not_fence_starts_no_process() -> Bool {
+// The absent-grant case has no claim BECAUSE IT HAS NO CONSTRUCTOR: the grant is a required
+// parameter, so "no grant" cannot be written at a call site.
+test fn a_grant_that_does_not_fence_authorizes_nothing() -> Bool {
   match issued_authorizations() {
     Cons { head: auth, tail: _ } =>
-      match planned_with(
+      match grant_authorizes_reservation(
         grant: auth.grant,
         account: exhausted_account,
-        owned: true,
-        topology: VmmIsMainProcess,
-        intent: cannot_orphan_intent,
-        listener_is_main_process: true,
+        work: auth.grant.context.work,
+        demand: auth.grant.context.demand,
+        offer: auth.grant.object.offer,
       ) {
-        LaunchRefusedGrant { cause: c } => string_contains(s: c, pattern: "does not fence")
-        _ => false
+        AuthorizationDisagrees { cause: c } => string_contains(s: c, pattern: "does not fence")
+        AuthorizationAgrees => false
       }
     Empty {} => false
   }
 }
 
-// THE ORDERING CONTROL FOR THE SAME AXIS. Without it the row above is satisfied by a planner that
-// refuses the grant only after the cell, the config and the mint have already been reached -- which
-// is exactly the ordering FCI-3 forbids, because the expensive stages would run under an
-// authorization already known to be stale. An UNOWNED cell would refuse at LaunchRefusedCell if the
-// cell stage led; the grant refusal winning here is what pins authorization first.
-test fn a_stale_grant_refuses_before_the_cell_is_even_consulted() -> Bool {
+// THE SUBSTITUTION CONTROL, and it is the one the grant parameter alone did not give. Every
+// coordinate agrees except Work: a grant issued for one execution presented against another
+// execution's reservation. Before the join existed this combination was ADMITTED, because the only
+// thing read off the grant was its money reservation.
+test fn a_grant_for_another_work_authorizes_nothing() -> Bool {
   match issued_authorizations() {
     Cons { head: auth, tail: _ } =>
-      match planned_with(
+      match grant_authorizes_reservation(
         grant: auth.grant,
-        account: exhausted_account,
-        owned: false,
-        topology: VmmIsMainProcess,
-        intent: cannot_orphan_intent,
-        listener_is_main_process: true,
+        account: auth.account,
+        work: other_work.id,
+        demand: auth.grant.context.demand,
+        offer: auth.grant.object.offer,
       ) {
-        LaunchRefusedGrant { cause: _ } => true
-        _ => false
+        AuthorizationDisagrees { cause: c } => string_contains(s: c, pattern: "different Work")
+        AuthorizationAgrees => false
+      }
+    Empty {} => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE SAME RULE. Without it every row above is satisfied by a rule that
+// disagrees unconditionally -- which is exactly the shape that passed here once already, when the
+// fence was checked against the pre-issuance account and refused everything.
+test fn the_issued_grant_authorizes_its_own_reservation() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: auth.account,
+        work: auth.grant.context.work,
+        demand: auth.grant.context.demand,
+        offer: auth.grant.object.offer,
+      ) {
+        AuthorizationAgrees => true
+        AuthorizationDisagrees { cause: _ } => false
       }
     Empty {} => false
   }
