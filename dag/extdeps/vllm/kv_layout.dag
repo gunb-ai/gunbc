@@ -1,9 +1,13 @@
 module extdeps.vllm.kv_layout
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
-import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  Percent, percent, percent_count,
+  AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+}
+import std.nat { Nat, nat_min }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -109,7 +113,7 @@ type KvGroupLayout {
 // external upstream decomposition). Putting the incarnation here would author it in two places,
 // because the receipt has to name it anyway.
 type ResolvedKvLayout sole_constructor {
-  allocator_blocks: Nat
+  allocator_blocks: AllocatorBlockCount
   scheduler_block_size: TokenCount
   hash_block_size: TokenCount
   max_model_len: TokenCount
@@ -118,7 +122,7 @@ type ResolvedKvLayout sole_constructor {
 }
 
 fn resolved_kv_layout(
-  allocator_blocks: Nat,
+  allocator_blocks: AllocatorBlockCount,
   scheduler_block_size: TokenCount,
   hash_block_size: TokenCount,
   max_model_len: TokenCount,
@@ -142,14 +146,14 @@ fn resolved_kv_layout(
 // together here because the recovery below needs both and neither is meaningful alone.
 type VllmReportedCapacity sole_constructor {
   pool: VllmObservedKvPool
-  max_concurrency_hundredths: Nat
+  max_concurrency: Percent
   observed_at_revision: VllmSourceRevision
 }
 
-fn vllm_reported_capacity(pool: VllmObservedKvPool, max_concurrency_hundredths: Nat) -> VllmReportedCapacity {
+fn vllm_reported_capacity(pool: VllmObservedKvPool, max_concurrency: Percent) -> VllmReportedCapacity {
   VllmReportedCapacity {
     pool: pool,
-    max_concurrency_hundredths: max_concurrency_hundredths,
+    max_concurrency: max_concurrency,
     observed_at_revision: pool.observed_at_revision,
   }
 }
@@ -174,7 +178,7 @@ fn vllm_reported_capacity(pool: VllmObservedKvPool, max_concurrency_hundredths: 
 // recovered cost is exact only to that precision; the recovery therefore returns a refusal when the
 // inputs cannot produce a positive integer, instead of a zero that would read as a free request.
 type BlocksPerRequest
-  = BlocksPerRequestRecovered { blocks: Nat }
+  = BlocksPerRequestRecovered { blocks: AllocatorBlockCount }
   | BlocksPerRequestUnrecoverable { cause: NonEmptyStr }
 
 fn recovered_blocks_per_max_length_request(
@@ -183,18 +187,19 @@ fn recovered_blocks_per_max_length_request(
 ) -> BlocksPerRequest {
   let pool_tokens = token_count_value(t: reported.pool.tokens)
   let context = token_count_value(t: layout.max_model_len)
+  let inventory = allocator_block_count_value(c: layout.allocator_blocks)
   if pool_tokens == 0 {
     BlocksPerRequestUnrecoverable { cause: "the reported KV cache size is zero, so the engine's per-request block cost cannot be inverted out of it" as NonEmptyStr }
-  } else if layout.allocator_blocks == 0 {
+  } else if inventory == 0 {
     BlocksPerRequestUnrecoverable { cause: "the allocator inventory is zero, so there is no pool to divide" as NonEmptyStr }
   } else if context == 0 {
     BlocksPerRequestUnrecoverable { cause: "the context cap is zero, so the full-context request the reported figures describe does not exist" as NonEmptyStr }
   } else {
-    let recovered = (layout.allocator_blocks * context) / pool_tokens
+    let recovered = (inventory * context) / pool_tokens
     if recovered == 0 {
       BlocksPerRequestUnrecoverable { cause: "the inversion produced no whole block, so the reported pool and inventory do not describe the same engine" as NonEmptyStr }
     } else {
-      BlocksPerRequestRecovered { blocks: recovered }
+      BlocksPerRequestRecovered { blocks: allocator_block_count(count: recovered) }
     }
   }
 }
@@ -220,7 +225,7 @@ fn recovered_blocks_per_max_length_request(
 // BY TODAY'S EVIDENCE, and closing that gap is exactly what the per-group layout is needed for.
 type PrintedLinesAgreement
   = PrintedLinesAgree
-  | PrintedLinesDisagree { implied_hundredths: Nat, reported_hundredths: Nat }
+  | PrintedLinesDisagree { implied: Percent, reported: Percent }
   | PrintedLinesUncheckable { cause: NonEmptyStr }
 
 fn printed_lines_agree(layout: ResolvedKvLayout, reported: VllmReportedCapacity) -> PrintedLinesAgreement {
@@ -229,11 +234,11 @@ fn printed_lines_agree(layout: ResolvedKvLayout, reported: VllmReportedCapacity)
   if context == 0 {
     PrintedLinesUncheckable { cause: "the context cap is zero, so the concurrency the pool line encodes cannot be recovered" as NonEmptyStr }
   } else {
-    let implied = (pool_tokens * 100) / context
-    if implied == reported.max_concurrency_hundredths {
+    let implied = percent(count: (pool_tokens * 100) / context)
+    if percent_count(p: implied) == percent_count(p: reported.max_concurrency) {
       PrintedLinesAgree
     } else {
-      PrintedLinesDisagree { implied_hundredths: implied, reported_hundredths: reported.max_concurrency_hundredths }
+      PrintedLinesDisagree { implied: implied, reported: reported.max_concurrency }
     }
   }
 }
@@ -252,7 +257,7 @@ fn printed_lines_agree(layout: ResolvedKvLayout, reported: VllmReportedCapacity)
 // here either -- it belongs to the policy that decides how much conservatism to buy, not to the
 // module that reports what the layout says.
 type AdmissionCost
-  = AdmissionCostBlocks { blocks: Nat }
+  = AdmissionCostBlocks { blocks: AllocatorBlockCount }
   | AdmissionCostUnestablished { cause: NonEmptyStr }
 
 fn cold_admission_blocks(layout: ResolvedKvLayout, sequence_budget: TokenCount) -> AdmissionCost {
@@ -265,7 +270,11 @@ fn cold_admission_blocks(layout: ResolvedKvLayout, sequence_budget: TokenCount) 
   } else if token_count_value(t: sequence_budget) > token_count_value(t: layout.max_model_len) {
     AdmissionCostUnestablished { cause: "the sequence budget exceeds the engine's context cap, so no admission of it is representable" as NonEmptyStr }
   } else {
-    AdmissionCostBlocks { blocks: fold(layout.groups, init: 0, f: (acc, g) => acc + group_blocks_for(group: g, sequence: sequence_budget)) }
+    AdmissionCostBlocks {
+      blocks: allocator_block_count(
+        count: fold(layout.groups, init: 0, f: (acc, g) => acc + group_blocks_for(group: g, sequence: sequence_budget)),
+      ),
+    }
   }
 }
 
@@ -278,17 +287,13 @@ fn group_blocks_for(group: KvGroupLayout, sequence: TokenCount) -> Nat {
     FullAttention =>
       ceil_div(numerator: token_count_value(t: sequence), denominator: group.block_size) * group.layer_count
     SlidingWindowAttention { window: w } =>
-      ceil_div(numerator: min_nat(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) * group.layer_count
+      ceil_div(numerator: nat_min(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) * group.layer_count
   }
 }
 
 // The denominator is a KvBlockSize, which cannot be zero, so this is total without a guard.
 fn ceil_div(numerator: Nat, denominator: KvBlockSize) -> Nat {
   (numerator + denominator - 1) / denominator
-}
-
-fn min_nat(a: Nat, b: Nat) -> Nat {
-  if a < b { a } else { b }
 }
 
 // ── THE USAGE GAUGE IS OVER THE INVENTORY, AND IT IS NOT OCCUPANCY ─────────────────────────────
@@ -299,8 +304,8 @@ fn min_nat(a: Nat, b: Nat) -> Nat {
 // B head read 53% with zero running on 2026-09-06. Any reading of this number as saturation, or any
 // attempt to divide it into a per-request cost, is measuring the cache and calling it the load.
 type AllocatorUsage sole_constructor {
-  referenced_or_retained_blocks: Nat
-  allocator_blocks: Nat
+  referenced_or_retained_blocks: AllocatorBlockCount
+  allocator_blocks: AllocatorBlockCount
 }
 
 // A FREE COUNT LARGER THAN THE INVENTORY IS NOT A FULL POOL, IT IS TWO ENGINES. The previous shape
@@ -310,23 +315,24 @@ type AllocatorUsage sole_constructor {
 // the inventory and the free count came from different launches.
 type UsageReading
   = UsageRead { usage: AllocatorUsage }
-  | FreeCountImpossible { free_blocks: Nat, allocator_blocks: Nat }
+  | FreeCountImpossible { free_blocks: AllocatorBlockCount, allocator_blocks: AllocatorBlockCount }
 
-fn allocator_usage(layout: ResolvedKvLayout, free_blocks: Nat) -> UsageReading {
-  if free_blocks > layout.allocator_blocks {
+fn allocator_usage(layout: ResolvedKvLayout, free_blocks: AllocatorBlockCount) -> UsageReading {
+  let inventory = allocator_block_count_value(c: layout.allocator_blocks)
+  let free = allocator_block_count_value(c: free_blocks)
+  if free > inventory {
     FreeCountImpossible { free_blocks: free_blocks, allocator_blocks: layout.allocator_blocks }
   } else {
     UsageRead {
       usage: AllocatorUsage {
-        referenced_or_retained_blocks: layout.allocator_blocks - free_blocks,
+        referenced_or_retained_blocks: allocator_block_count(count: inventory - free),
         allocator_blocks: layout.allocator_blocks,
       },
     }
   }
 }
 
-// There is deliberately NO function from AllocatorUsage to a request count or a token count. The
+// There is deliberately no function from AllocatorUsage to a request count or a token count. The
 // numerator mixes live references with evictable retention, and nothing here can separate them.
-fn allocator_usage_is_occupancy(usage: AllocatorUsage) -> Bool {
-  false
-}
+// A constant predicate claiming "this is not occupancy" would be a decoration whose RED is
+// unauthorable; the absence of the conversion is the wall.

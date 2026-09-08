@@ -99,29 +99,36 @@ fn digests_agree(left: ContentHash, right: ContentHash) -> DigestAgreement {
 // join ignores is worse than no field: it reads as though the host were part of the identity while
 // contributing nothing to it. The rule this row list now holds is that the type has no field the
 // fold does not consult.
-//
-// EVERY IDENTITY FIELD IS COMPARED, AND `head` IS THE ONE THAT WAS MISSED. It sat in the type and
-// not in this list, so two launches on DIFFERENT HOSTS that happened to share an invocation id
-// joined as the same launch -- and a systemd invocation id is unique per host, not across the
-// fleet, so nothing prevents that coincidence between two of the eight Sparks. A carrier field the
-// join ignores is worse than no field: it reads as though the host were part of the identity while
-// contributing nothing to it. The rule this row list now holds is that the type has no field the
-// fold does not consult.
+type FieldVerdict
+  = FieldAgrees
+  | FieldDiffers
+  | FieldIncomparable
+
 type FieldAgreement {
   field: NonEmptyStr
-  agrees: Bool
-  incomparable: Bool
+  verdict: FieldVerdict
 }
 
 fn field_agreement(field: NonEmptyStr, agrees: Bool) -> FieldAgreement {
-  FieldAgreement { field: field, agrees: agrees, incomparable: false }
+  FieldAgreement {
+    field: field,
+    verdict: if agrees { FieldAgrees } else { FieldDiffers },
+  }
 }
 
 fn digest_agreement_row(field: NonEmptyStr, agreement: DigestAgreement) -> FieldAgreement {
   match agreement {
-    DigestsAgree => FieldAgreement { field: field, agrees: true, incomparable: false }
-    DigestsDiffer => FieldAgreement { field: field, agrees: false, incomparable: false }
-    DigestsIncomparable => FieldAgreement { field: field, agrees: false, incomparable: true }
+    DigestsAgree => FieldAgreement { field: field, verdict: FieldAgrees }
+    DigestsDiffer => FieldAgreement { field: field, verdict: FieldDiffers }
+    DigestsIncomparable => FieldAgreement { field: field, verdict: FieldIncomparable }
+  }
+}
+
+fn field_verdict_disagrees(v: FieldVerdict) -> Bool {
+  match v {
+    FieldAgrees => false
+    FieldDiffers => true
+    FieldIncomparable => true
   }
 }
 
@@ -137,13 +144,14 @@ fn agreement_rows(a: VllmServingLaunch, b: VllmServingLaunch) -> List<FieldAgree
 }
 
 fn contradiction_of_row(invocation: NonEmptyStr, row: FieldAgreement) -> LaunchJoin {
-  if row.incomparable {
-    LaunchContradiction {
-      invocation: invocation,
-      field: join([row.field as String, " (the digest families are incomparable, so the two observers cannot be joined at all)"], "") as NonEmptyStr,
-    }
-  } else {
-    LaunchContradiction { invocation: invocation, field: row.field }
+  match row.verdict {
+    FieldIncomparable =>
+      LaunchContradiction {
+        invocation: invocation,
+        field: join([row.field as String, " (the digest families are incomparable, so the two observers cannot be joined at all)"], "") as NonEmptyStr,
+      }
+    FieldAgrees => LaunchContradiction { invocation: invocation, field: row.field }
+    FieldDiffers => LaunchContradiction { invocation: invocation, field: row.field }
   }
 }
 
@@ -157,7 +165,7 @@ fn same_launch(a: VllmServingLaunch, b: VllmServingLaunch) -> LaunchJoin {
   if (a.systemd_invocation as String) != (b.systemd_invocation as String) {
     DifferentLaunch { left: a.systemd_invocation, right: b.systemd_invocation }
   } else {
-    match first(filter(agreement_rows(a: a, b: b), r => !r.agrees)) {
+    match first(filter(agreement_rows(a: a, b: b), r => field_verdict_disagrees(v: r.verdict))) {
       Absent => SameLaunch
       Present { value: row } => contradiction_of_row(invocation: a.systemd_invocation, row: row)
     }
