@@ -147,6 +147,12 @@ type CensusResult
       cancellation_rows: List<CancellationRow>
       rows: List<RefreshedPair>
     }
+  | CensusJobListTruncated {
+      window: CensusWindow
+      refreshed_rows: List<RefreshedPair>
+      truncated: List<JobListTruncated>
+      pair_count: Int
+    }
   | CensusPageLimitExceeded {
       window: CensusWindow
       collected_pages: Int
@@ -747,19 +753,27 @@ func superseded_run_starvation_census(
       let pairs = extract_pairs_from_groups(groups: groups, from: from, through: through)
       let boundary_obligations = extract_boundary_obligations(groups: groups, from: from)
       let refreshed_result = refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs)
-      let refreshed = match refreshed_result {
-        AllPairsRefreshed { pairs: rs } => rs
-        SomePairsTruncated { pairs: rs, truncated: _ } => rs
-      }
-      let start_standings = collect_start_standings(rows: refreshed)
-      let cancellation_rows = collect_cancellation_rows(pairs: pairs, refreshed: refreshed)
-      CensusComplete {
-        window: CensusWindow { from: from, through: through, observed_at: observed_at },
-        left_boundary_obligations: boundary_obligations,
-        pair_count: count_pairs(pairs: pairs),
-        start_standings: start_standings,
-        cancellation_rows: cancellation_rows,
-        rows: refreshed,
+      let pair_count = count_pairs(pairs: pairs)
+      match refreshed_result {
+        AllPairsRefreshed { pairs: refreshed } => {
+          let start_standings = collect_start_standings(rows: refreshed)
+          let cancellation_rows = collect_cancellation_rows(pairs: pairs, refreshed: refreshed)
+          CensusComplete {
+            window: CensusWindow { from: from, through: through, observed_at: observed_at },
+            left_boundary_obligations: boundary_obligations,
+            pair_count: pair_count,
+            start_standings: start_standings,
+            cancellation_rows: cancellation_rows,
+            rows: refreshed,
+          }
+        }
+        SomePairsTruncated { pairs: refreshed, truncated: ts } =>
+          CensusJobListTruncated {
+            window: CensusWindow { from: from, through: through, observed_at: observed_at },
+            refreshed_rows: refreshed,
+            truncated: ts,
+            pair_count: pair_count,
+          }
       }
     }
     PageLimitExceeded { collected: _, reached_page: p, max_pages: m } =>
