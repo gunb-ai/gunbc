@@ -30,6 +30,8 @@ import extdeps.github.workflow_runs {
 }
 import extdeps.clock { Clock }
 
+// One census identity is an ordered pair, never a run selected because it hurt. The observing
+// instrument discovers every pair in a declared time window by PR identity and head transition.
 type SupersededRunPair {
   pull_request: Int
   superseded_run: Int
@@ -38,6 +40,9 @@ type SupersededRunPair {
   live_head: String
 }
 
+// Absence of either job roster is coverage debt, not the reassuring `false` arm. `ReachedFirst`
+// also covers a live-head run that still has zero registered jobs at the observation boundary:
+// once a dead-head job has started, it necessarily started before an event that has not happened.
 type DeadHeadStartStanding
   = DeadHeadReachedInProgressFirst
   | LiveHeadRegisteredJobFirst
@@ -70,6 +75,9 @@ fn dead_head_start_standing(
   }
 }
 
+// Cancellation is priced at job grain. A run listing can lag the individual run resource during
+// settlement, so the instrument refreshes that resource and never derives a status transition
+// from successive listing reads. Cancelled work and a queued laggard can coexist in one aggregate.
 type CancelledRunJobStanding {
   pair: SupersededRunPair
   cancelled_jobs: Int
@@ -788,7 +796,7 @@ func superseded_run_starvation_census(
   observed_at: Timestamp,
   max_run_pages: Int,
 ) -> CensusResult {
-  let discovery_lookback = Clock.TimestampOffsetDays(timestamp: from, days: 1)
+  let discovery_lookback = Clock.TimestampOffset(timestamp: from, offset: second(count: 86400))
   let discovery_range = concat(trim(discovery_lookback.result), "..", through)
   let outcome = collect_runs_in_window(
     auth_token: auth_token,

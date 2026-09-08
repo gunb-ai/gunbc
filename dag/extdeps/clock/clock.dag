@@ -4,7 +4,7 @@ import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { EpochMs, Timestamp }
-import std.nat { Nat }
+import std.measure { Second }
 import v2.std.optional { Present }
 
 
@@ -49,17 +49,11 @@ service Clock {
     }
   }
 
-  // declared decomposition: offset_days_Int dissolves to std.temporal.DayOffset when one exists.
-  // The field was introduced as bare Int without a std.measure carrier, the same defect the
-  // existing note at line 74 names for UnixSecs. Until a temporal modeling exists, the parameter
-  // names "days" rather than "offset_days" to avoid implying a unit carrier that does not exist,
-  // and the Nat type (non-negative, "days before the reference") encodes the sign in the name
-  // rather than in a signed scalar.
-  operation TimestampOffsetDays {
-    input { timestamp: Timestamp, days: Nat }
+  operation TimestampOffset {
+    input { timestamp: Timestamp, offset: Second }
     output { result: Timestamp from "stdout" }
     readonly
-    transport shell { argv: ["date", "-u", "-d", "{timestamp} -{days} days", "+%Y-%m-%dT%H:%M:%SZ"] }
+    transport shell { argv: ["date", "-u", "-d", "{timestamp} -{offset} seconds", "+%Y-%m-%dT%H:%M:%SZ"] }
     exit {
       0 => Unit
       nonzero => String "date offset failed"
@@ -67,10 +61,12 @@ service Clock {
   }
 
   // Declared residue: the output is String (the shell transport does not support Int from
-  // "stdout"), and the consumer owns the decode. The existing note at line 74 explicitly rules
-  // this shape out. The correct output type is EpochMs (std.types, Int where range(min: 0)).
-  // Dissolves when the shell transport supports Int | EpochMs from "stdout" (natively parsing
-  // the decimal text), or when a proper clock protocol replaces the shell transport.
+  // "stdout"), and the consumer owns the decode. The annotation on ClockUnixMillisRead
+  // explicitly rules this shape out (UnixSecs was no better — its output was String, every
+  // consumer would have owned the decode). The correct output type is EpochMs (std.types,
+  // Int where range(min: 0)). Dissolves when the shell transport supports Int | EpochMs from
+  // "stdout" (natively parsing the decimal text), or when a proper clock protocol replaces
+  // the shell transport.
   operation TimestampToUnixSecs {
     input { timestamp: Timestamp }
     output { unix_secs: String from "stdout" }
