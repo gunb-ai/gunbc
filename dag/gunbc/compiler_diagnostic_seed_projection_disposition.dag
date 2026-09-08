@@ -73,6 +73,13 @@ type SeedProjectionReceiptVerdict
 // corpus already carries this exact class as declared debt (std.types file_path_sentinel_scaffold_note,
 // "interim re-spellings encode absence in a nominally-non_empty carrier"), so copying it into a NEW
 // module was replicating debt, not matching sibling style.
+// WHY A DOMAIN-SHAPED JUDGMENT RATHER THAN Optional<String>, which the corpus does carry
+// (v2.workflow.floor_discovery_producer keys a `disposition_refusal: Optional<String>` field that
+// way). Optional would make absence a constructor and fix the sentinel, so it is not wrong -- but
+// it names the SHAPE and not the fact: Absent would have to be read as "accepted", which is a
+// convention a reader must be told rather than a thing the type says. A refusal carrier is worth
+// keeping domain-shaped, so the accepted arm is spelled DispositionAccepted and cannot be confused
+// with "no value was supplied".
 type DispositionJudgment
   = DispositionAccepted
   | DispositionRefused { detail: String }
@@ -150,7 +157,7 @@ fn projected_item_keys(rows: List<SeedGrowthChangeDisposition>) -> List<String> 
   )
 }
 
-// CONSUMED, NOT RE-FOLDED. This was a hand-rolled fold that called disposition_refusal TWICE per
+// CONSUMED, NOT RE-FOLDED. This was a hand-rolled fold that called the per-row judgment TWICE per
 // element and accumulated with list_append(left: acc, right: [x]) -- the copied accumulator whose
 // cost is quadratic in the row count, which section 6's bare-minimum-cost rule says is always fixed
 // regardless of the realized n, because "n is small here" is not a time-stable fact. filter and
