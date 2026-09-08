@@ -43,8 +43,9 @@ import v2.std.text { String }
 // outlive its file), and a row claiming retention for a path required-regen DOES compare REFUSES (a
 // row cannot silence a live comparison). The census is a pure function of the two observed
 // populations, so its discriminating REDs are authorable as ordinary fixture lists and execute in
-// the required floor; wiring the live observation is a separate arm and is deliberately not what
-// this roster's evidence rests on.
+// the required floor. The host join against the generated projection
+// (gunbc.seed_retention_frontier_emit) is that live-observation arm: it consumes the
+// paths, it does not stand in as evidence for the three refusals.
 
 // ReasonNotYetDeclared IS THE POINT, not a hole in it. DESIGN section 4b(2) separates cannot-climb
 // from can-climb-after-one-grounding from can-climb-now-but-unbuilt, and the honest state of most
@@ -199,6 +200,7 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_elsewhere(path: "src/v2_compiler_tokenize.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
   retained_reason_elsewhere(path: "src/v2_compiler_infer.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
   retained_reason_elsewhere(path: "src/bootstrap_stage0_crate_layout_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
+  retained_reason_elsewhere(path: "src/bootstrap_seed_retention_frontier_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
   retained_reason_elsewhere(path: "src/v1_interpreter_dispatch_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "v1_interpreter_dispatch_generated_family_note"),
   retained_reason_elsewhere(path: "src/main.rs", cause: EmitterProducedDivergentSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "emitter_produced_divergent_registrations"),
   retained_support_dir_member(path: "src/cli_run/floor_discovery_snapshot.rs"),
@@ -268,6 +270,41 @@ fn roster_paths(roster: List<SeedRetentionFrontierRow>) -> List<String> {
     roster,
     init: [],
     f: fn(acc, row) { concat(acc, [row.crate_relative_path]) }
+  )
+}
+
+fn seed_retention_frontier_crate_relative_paths() -> List<String> {
+  roster_paths(roster: seed_retention_frontier_roster)
+}
+
+// Direct children of src/ only: that is the key space required_regen_host's
+// committed_generated_basenames / generated_basenames_from_emit join uses.
+// Nested retained paths (cli_run/, bin/, tests/) never enter that join.
+fn top_level_src_basename(path: String) -> String {
+  let stripped = replace(path, "src/", "")
+  if stripped == path {
+    ""
+  } else {
+    if string_contains(s: stripped, pattern: "/") {
+      ""
+    } else {
+      stripped
+    }
+  }
+}
+
+fn seed_retention_frontier_top_level_src_basenames() -> List<String> {
+  fold(
+    seed_retention_frontier_crate_relative_paths(),
+    init: [],
+    f: fn(acc, path) {
+      let basename = top_level_src_basename(path: path)
+      if basename == "" {
+        acc
+      } else {
+        concat(acc, [basename])
+      }
+    }
   )
 }
 

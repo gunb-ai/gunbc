@@ -9,6 +9,7 @@ import gunbc.generated_artifact {
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
+  SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
@@ -124,6 +125,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     Stage0CrateLayoutGeneratedRsArtifact => []
     Stage0CratePartitionGeneratedDagArtifact => []
     Stage0ExecutableAssemblyGeneratedDagArtifact => []
+    SeedRetentionFrontierGeneratedRsArtifact => []
     V1InterpreterDispatchGeneratedRsArtifact => []
     EvaluationBudgetConsequenceGeneratedRsArtifact => []
     FileTransportRealizationGeneratedRsArtifact => []
