@@ -225,13 +225,30 @@ fn model_snapshot_role_for(member_rail: Ipv4Address?) -> ModelSnapshotRole {
       }
   }
 }
+// THE RAIL SOURCE OBEYS THE PLACEMENT, AND IT PREVIOUSLY DISCARDED IT. This bound `placement: _` and
+// then rebuilt a Hub-cache path by hand -- cache_root, repo directory, `/snapshots/`, revision -- so
+// every snapshot was replicated as though it lived in the Hub cache. The canary checkpoint does not:
+// its placement is a LocalDirectoryPlacement at an operator-chosen path, and rsync would have been
+// pointed at a Hub-cache directory that does not exist for it, on BOTH ends. Nothing would have
+// refused, because rsync against a missing source is an ordinary error and the fold would have read
+// it as this source failing rather than as the path being invented.
+//
+// THE DEEPER FAULT WAS THE SECOND SPELLING, and fixing only the discarded field would have left it.
+// `snapshot_install_path` already answers "where does this snapshot live" from the placement, and the
+// replicate argv answered it AGAIN, differently, for one of the two placements only -- so the two
+// could not have disagreed for the Hub case and could not have agreed for any other. The path is now
+// asked for once and used on both ends of the transfer, which is what makes the placement reach the
+// wire rather than merely being present in the type.
 fn model_snapshot_rail_source(peer: Ipv4Address, snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> AcquisitionSource? {
   match snapshot {
     ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => none
-    ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: _, revision_provenance: _ } =>
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
       Present { value: AcquisitionSource {
         identity: join(["fabric-rail-peer ", render_ipv4_address(addr: peer) as String], "") as NonEmptyStr,
-        locator: join(model_snapshot_rail_replicate_argv(peer: peer, cache_root: cache_root, repo_dir: hub_repo_cache_directory_name(repo: r), revision: rev), " ") as NonEmptyStr,
+        locator: join(model_snapshot_rail_replicate_argv(
+          peer: peer,
+          path: snapshot_install_path(placement: pl, repo: r, revision: rev),
+        ), " ") as NonEmptyStr,
       } }
   }
 }
@@ -241,11 +258,15 @@ fn model_snapshot_rail_source(peer: Ipv4Address, snapshot: ModelSnapshotDesired,
 // `blobs/<hash>`, so a copy that preserved links would land a tree of dangling pointers on a host
 // whose blobs directory is empty. `--partial --inplace` so an interrupted 330 GB transfer resumes
 // rather than restarting.
-fn model_snapshot_rail_replicate_argv(peer: Ipv4Address, cache_root: NonEmptyStr, repo_dir: NonEmptyStr, revision: NonEmptyStr) -> List<String> {
+// THE SAME PATH ON BOTH ENDS, BECAUSE PLACEMENT IS A PROPERTY OF THE SNAPSHOT AND NOT OF THE HOST.
+// Every peer on the rail resolves the same placement to the same location, so the replicate is that
+// one path fetched from the peer into itself -- and there is no second construction here that could
+// drift from the one the installer, the verifier and the launch line all read.
+fn model_snapshot_rail_replicate_argv(peer: Ipv4Address, path: NonEmptyStr) -> List<String> {
   [
     "rsync", "-a", "--copy-links", "--partial", "--inplace",
-    join([render_ipv4_address(addr: peer) as String, ":", cache_root as String, "/", repo_dir as String, "/snapshots/", revision as String, "/"], ""),
-    join([cache_root as String, "/", repo_dir as String, "/snapshots/", revision as String, "/"], ""),
+    join([render_ipv4_address(addr: peer) as String, ":", path as String, "/"], ""),
+    join([path as String, "/"], ""),
   ]
 }
 

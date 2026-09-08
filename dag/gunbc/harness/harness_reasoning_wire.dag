@@ -214,16 +214,30 @@ fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmp
 // reasoning half is missing, which is why this is a one-value correction rather than a verdict that
 // the image cannot serve the model.
 //
-// THE CONSEQUENCE IS EXACTLY WHAT THE SEAM ROUTES. With no server-side parser a thinking completion
-// arrives as ONE text block -- reasoning, the end token, then speech -- and
-// `harness_split_inline_reasoning` performs that split client-side using this unit's own end token.
-// Had this row stayed `true`, the harness would have waited for a `reasoning_content` that never
-// comes and read the model's deliberation as its speech. It moves back to `true` when the image is
-// rebuilt on a vLLM carrying the GLM reasoning parser, and that is a fact about the image.
+// THE GLM ROW WAS FALSE AND THE RUNNING CANARY FALSIFIED IT, 2026-09-08. Everything above is a
+// measurement of the PINNED DEEPSEEK IMAGE, and the conclusion was carried across to a unit that does
+// not run on that image. The canary runs the community SM121 runtime, whose serve line the live engine
+// echoes back as `reasoning_parser: glm45` inside its own StructuredOutputsConfig -- so this unit's
+// server DOES split reasoning, and the row said it did not. That is the same fault the checkpoint's
+// attention row carried: a fact established about one artifact, asserted about another.
+//
+// THE EVIDENCE IS A COMPLETION, NOT A FILE LISTING, which matters because the previous row was
+// inferred from `ls` over a parser directory. Asked a review question with a 1500-token cap, the
+// canary answered with finish_reason `length`, 1500 completion tokens, and BOTH `content` AND
+// `reasoning_content` null. Only a server that is parsing produces that: it buffered a reasoning block
+// whose end token never arrived inside the cap, so it had no completed reasoning to place in one field
+// and no speech for the other. A server emitting one inline block would have returned the 1500 tokens
+// as content.
+//
+// AND THAT NULL-BOTH OUTCOME IS A REAL HAZARD THIS SEAM MUST NOT HIDE. A truncated thinking block
+// yields a well-formed 200 response carrying no text anywhere, which a consumer checking only for an
+// HTTP error reads as an empty answer rather than as a truncation. It is named here rather than
+// modelled because the honest fix is the token budget, not a decoder arm -- and because the seam's
+// job is to say which field to read, not to invent content when neither is populated.
 fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
   match unit {
     DeepseekV4FlashOnVllm => false
-    Glm53FlashOnVllm => false
+    Glm53FlashOnVllm => true
   }
 }
 
