@@ -9,7 +9,8 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome,
-  TurnProviderStopped, TurnStepBudgetExhausted, TurnTransportRefused,
+  TurnProviderStopped, TurnCompletedByArtifact, TurnStepBudgetExhausted, TurnTransportRefused,
+  HarnessTurnCompletion, CompletesOnProviderStop, CompletesWhenEntryPresent,
   TurnResponseUnreadable, TurnRequestUnwritable,
   harness_run_turn, harness_outcome_label, harness_outcome_detail,
 }
@@ -213,6 +214,7 @@ fn harness_macbook_config(backend_url: String) -> HarnessTurnConfig {
     context_budget: harness_context_budget,
     request_deadline: harness_request_deadline,
     environment: harness_macbook_environment(),
+    completion: CompletesOnProviderStop,
   }
 }
 
@@ -239,6 +241,7 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
   match outcome {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
       ExitSuccess
+    TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
     _ =>
       ExitFailure {
         code: 1,
@@ -311,6 +314,7 @@ fn harness_worker_config(
       timeout_program: timeout_program,
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
+    completion: CompletesOnProviderStop,
   }
 }
 
@@ -372,8 +376,8 @@ fn harness_worker_cli(
 // syllogism) and one more fact the worker never receives: the path of the verdict file the review
 // is complete by. The exit says whether a turn completed, exactly as for the worker; whether a verdict
 // was written, and what it says, is read by the belt from that file, never from this exit.
-fn harness_reviewer_system_prompt_at(verdict_path: String) -> String {
-  review_guidance_prose(rows: harness_reviewer_guidance_at(verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
+fn harness_reviewer_system_prompt_at(worktree: String, verdict_path: String) -> String {
+  review_guidance_prose(rows: harness_reviewer_guidance_at(worktree: worktree, verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
 }
 
 // A REVIEW IS READ-MOSTLY AND SHORT. Half the worker's rounds: read the diff, read what it touches,
@@ -390,16 +394,18 @@ fn harness_reviewer_config(
   timeout_program: FilePath,
   request_scratch_path: FilePath,
   events_path: FilePath,
-  verdict_path: String,
+  verdict_dir: String,
+  verdict_name: String,
   backend_url: String,
 ) -> HarnessTurnConfig {
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
-    system_prompt: harness_reviewer_system_prompt_at(verdict_path: verdict_path),
+    system_prompt: harness_reviewer_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget,
@@ -409,6 +415,7 @@ fn harness_reviewer_config(
       timeout_program: timeout_program,
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
+    completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
   }
 }
 
@@ -418,8 +425,10 @@ fn harness_reviewer_cli(
   timeout_program: String,
   request_scratch_path: String,
   events_path: String,
-  verdict_path: String,
+  verdict_dir: String,
+  verdict_name: String,
 ) -> ProcessExit {
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
@@ -430,7 +439,8 @@ fn harness_reviewer_cli(
           timeout_program: timeout_program as FilePath,
           request_scratch_path: request_scratch_path as FilePath,
           events_path: events_path as FilePath,
-          verdict_path: verdict_path,
+          verdict_dir: verdict_dir,
+          verdict_name: verdict_name,
           backend_url: url,
         ),
         prompt: brief,
@@ -443,8 +453,8 @@ fn harness_reviewer_cli(
 }
 
 // THE AUDITOR ENTRY: the reviewer's harness under the auditor's own prompt (gunbc.harness.harness_goal_audit_guidance).
-fn harness_auditor_system_prompt_at(verdict_path: String) -> String {
-  audit_guidance_prose(rows: harness_auditor_guidance_at(verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
+fn harness_auditor_system_prompt_at(worktree: String, verdict_path: String) -> String {
+  audit_guidance_prose(rows: harness_auditor_guidance_at(worktree: worktree, verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
 }
 
 fn harness_auditor_config(
@@ -452,16 +462,18 @@ fn harness_auditor_config(
   timeout_program: FilePath,
   request_scratch_path: FilePath,
   events_path: FilePath,
-  verdict_path: String,
+  verdict_dir: String,
+  verdict_name: String,
   backend_url: String,
 ) -> HarnessTurnConfig {
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
-    system_prompt: harness_auditor_system_prompt_at(verdict_path: verdict_path),
+    system_prompt: harness_auditor_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget,
@@ -471,6 +483,7 @@ fn harness_auditor_config(
       timeout_program: timeout_program,
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
+    completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
   }
 }
 
@@ -480,8 +493,10 @@ fn harness_auditor_cli(
   timeout_program: String,
   request_scratch_path: String,
   events_path: String,
-  verdict_path: String,
+  verdict_dir: String,
+  verdict_name: String,
 ) -> ProcessExit {
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
@@ -492,7 +507,8 @@ fn harness_auditor_cli(
           timeout_program: timeout_program as FilePath,
           request_scratch_path: request_scratch_path as FilePath,
           events_path: events_path as FilePath,
-          verdict_path: verdict_path,
+          verdict_dir: verdict_dir,
+          verdict_name: verdict_name,
           backend_url: url,
         ),
         prompt: brief,

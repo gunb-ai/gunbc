@@ -4,7 +4,7 @@ import std.types { List, Bool, String, Map }
 import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
 
 type HostnameAllocation {
   fleet_slot: HostIdentity
@@ -120,6 +120,18 @@ fn canonical_hostname_in_roster(
   }
 }
 
+// THE FIFTH SLOT, AND IT IS ALLOCATED RATHER THAN INHERITED. This module's scope disposition states
+// that srv1-srv4's hostname-equals-slot-spelling is a legacy COINCIDENCE recorded as stated rows,
+// never a derivation rule, and that a fifth slot must be allocated a hostname rather than inherit
+// one. So this row is an authored allocation that happens to coincide with the identity's spelling,
+// which is a different fact from being derived from it.
+//
+// WHY IT WAS NOT AUTHORED BY THE LANE THAT NEEDED IT. gunbc.host_reset_return_run compares an
+// observer's own hostname against the subject's allocated one, and with no row here that check
+// refused as unreadable. Guessing a hostname to clear that refusal would have been a fabricated
+// observation standing exactly where the check that catches fabrication runs -- the guess would
+// have disarmed the instrument it was feeding. The allocation is therefore a decision taken here
+// and consumed there, which is the only ordering in which the check keeps its meaning.
 data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_srv1,
@@ -136,6 +148,10 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_srv4,
     canonical_hostname: "srv4" as DnsLabel,
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_mtcollins1,
+    canonical_hostname: "mtcollins1" as DnsLabel,
   },
 ]
 
