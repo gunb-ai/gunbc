@@ -258,9 +258,22 @@ fn depth_micros_per_thousand_tokens(r: DepthDependentRate, depth: Nat) -> Nat {
 // that actually arrived while the prefill was running.
 //
 // THE MECHANISM, which is what makes this predictive rather than anecdotal: chunked prefill runs as
-// a MIXED batch, so a co-tenant decoder receives exactly one token per chunk, at the chunk's
-// duration. The measured degradation is therefore not a queueing artifact to be tuned away -- it is
-// the step duration, and it moves with the budget by construction.
+// a MIXED batch, so a co-tenant decoder's progress is whatever that step accepted for it, at the
+// step's duration. The measured degradation is therefore not a queueing artifact to be tuned away
+// -- it is the step duration, and it moves with the budget by construction.
+//
+// THE MEASURED FORM IS THE ONE-ACCEPTED-TOKEN SPECIAL CASE, AND MUST NOT BE CARRIED AS THE LAW.
+// This profile served no speculative decoding, so each step accepted exactly one decode token and
+// the victim's inter-token latency equalled the step duration. Under speculative decoding a single
+// step can accept a BURST, so the general relation is
+//
+//     victim progress per step  =  accepted decode tokens from that step
+//     observed inter-token gap  =  f(step duration, accepted per step, buffering, admission)
+//
+// A profile with a draft model can suffer the same step duration and a materially better felt
+// cadence. The mechanism survives a model change; this equation does not, and neither does the
+// batch-policy trade measured beside it -- draft tokens consume the same budget, so a budget
+// measurement taken with speculation OFF does not describe a product served with it ON.
 type CoTenantOverlapStanding
   = OverlapEstablishedByTimestamp { decode_tokens_during_prefill: Nat }
   | OverlapAssumedNotEstablished { because: NonEmptyStr }

@@ -167,6 +167,12 @@ fn iteration_tokens_verdict(q: ServingQuestion) -> MetricVerdict {
 // effective budget behaviourally, and the one that showed iteration_tokens_total_count is not a
 // step counter.
 //
+// THE PER-STEP QUANTUM IS NOT A CONSTANT TO CARRY. The counter advances by a fixed amount per step
+// FOR A GIVEN model and topology, because it estimates that model's floating-point work per rank --
+// it was observed to DOUBLE when the rank count halved. So the divisor that turns a delta into a
+// step count must be re-derived for every profile, and one carried across a model or topology
+// change silently reports the wrong step population.
+//
 // THE ATTRIBUTION BOUNDARY STILL APPLIES. This counter is ENGINE-WIDE like every other. It yields a
 // per-request step population only under a complete attribution boundary -- one launch throughout,
 // exact start and end, no foreign contributor -- and sparse polling earns only NO FOREIGN REQUEST
