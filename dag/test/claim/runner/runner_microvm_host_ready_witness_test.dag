@@ -17,6 +17,10 @@ import gunbc.runner_microvm_host_ready {
   kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_standing_text,
   firecracker_fetch_commands, firecracker_install_commands, firecracker_installed_binary, firecracker_install_root,
 }
+import gunbc.runner_microvm_footprint_probe {
+  GnuTimeMaxRss, SystemdMemoryPeak, CgroupMemoryPeak,
+  InstrumentStanding, InstrumentPresent, InstrumentAbsent, InstrumentUnreadable,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -32,9 +36,11 @@ test fn the_release_artifact_is_identified_by_version_arch_and_digest() -> Bool 
 // The standing folds two facts; readiness needs both, and each refusal names what it lacks.
 test fn readiness_needs_a_writable_kvm_device_and_the_modeled_version() -> Bool {
   let instruments = FootprintInstrumentStanding {
-    gnu_time_present: false,
-    cgroup_memory_peak_present: false,
-    systemd_version_line: "",
+    instruments: [
+      InstrumentStanding { instrument: GnuTimeMaxRss, observation: InstrumentAbsent },
+      InstrumentStanding { instrument: CgroupMemoryPeak, observation: InstrumentAbsent },
+      InstrumentStanding { instrument: SystemdMemoryPeak, observation: InstrumentUnreadable { cause: "systemctl --version produced no readable line" } },
+    ],
   }
   let ready = FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }, footprint_instruments: instruments }
   let no_kvm = FirecrackerHostStanding { kvm: KvmDeviceAbsent, binary: ready.binary, footprint_instruments: instruments }
@@ -106,14 +112,18 @@ test fn every_runner_host_deploy_grants_the_executor_kvm_membership() -> Bool {
 // measurement question.
 test fn host_readiness_is_independent_of_the_footprint_instruments() -> Bool {
   let bare = FootprintInstrumentStanding {
-    gnu_time_present: false,
-    cgroup_memory_peak_present: false,
-    systemd_version_line: "",
+    instruments: [
+      InstrumentStanding { instrument: GnuTimeMaxRss, observation: InstrumentAbsent },
+      InstrumentStanding { instrument: CgroupMemoryPeak, observation: InstrumentAbsent },
+      InstrumentStanding { instrument: SystemdMemoryPeak, observation: InstrumentUnreadable { cause: "systemctl --version produced no readable line" } },
+    ],
   }
   let equipped = FootprintInstrumentStanding {
-    gnu_time_present: true,
-    cgroup_memory_peak_present: true,
-    systemd_version_line: "systemd 255 (255.4-1ubuntu8)",
+    instruments: [
+      InstrumentStanding { instrument: GnuTimeMaxRss, observation: InstrumentPresent },
+      InstrumentStanding { instrument: CgroupMemoryPeak, observation: InstrumentPresent },
+      InstrumentStanding { instrument: SystemdMemoryPeak, observation: InstrumentPresent },
+    ],
   }
   let installed = FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" }
   firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: installed, footprint_instruments: bare })
@@ -129,13 +139,15 @@ test fn the_standing_text_reports_the_instruments() -> Bool {
     kvm: KvmDeviceWritable,
     binary: FirecrackerInstalled { binary: "/x/firecracker", version_line: "Firecracker v1.16.1" },
     footprint_instruments: FootprintInstrumentStanding {
-      gnu_time_present: true,
-      cgroup_memory_peak_present: false,
-      systemd_version_line: "systemd 255 (255.4-1ubuntu8)",
+      instruments: [
+        InstrumentStanding { instrument: GnuTimeMaxRss, observation: InstrumentPresent },
+        InstrumentStanding { instrument: CgroupMemoryPeak, observation: InstrumentAbsent },
+        InstrumentStanding { instrument: SystemdMemoryPeak, observation: InstrumentUnreadable { cause: "not read in this fixture" } },
+      ],
     },
   }
   let text = firecracker_host_standing_text(s: equipped)
-  string_contains(s: text, pattern: "gnu_time=present")
-    && string_contains(s: text, pattern: "cgroup_memory_peak=absent")
-    && string_contains(s: text, pattern: "systemd 255")
+  string_contains(s: text, pattern: "gnu-time-max-rss=present")
+    && string_contains(s: text, pattern: "cgroup-memory-peak=absent")
+    && string_contains(s: text, pattern: "systemd-memory-peak=unreadable(")
 }

@@ -18,7 +18,7 @@ fn sampled(mib: Int, peak_kb: Int) -> FootprintSampleOutcome {
     sample: VmmFootprintSample {
       guest_memory: mebibyte_to_byte_size(m: mebibyte(count: mib)),
       instrument: GnuTimeMaxRss,
-      vmm_peak: gnu_time_max_rss_bytes(kilobytes: peak_kb),
+      vmm_peak: gnu_time_max_rss_bytes(kibibytes: peak_kb),
     },
   }
 }
@@ -26,10 +26,10 @@ fn sampled(mib: Int, peak_kb: Int) -> FootprintSampleOutcome {
 // THE UNIT CONVERSION IS ASSERTED EXACTLY, not merely as "returns something". %M is kilobytes and a
 // consumer that forgot the conversion would be wrong by 1024x in the direction that UNDER-reserves,
 // which is the direction that kills a guest rather than wasting memory.
-test fn gnu_time_kilobytes_become_bytes() -> Bool {
-  byte_size_count(b: gnu_time_max_rss_bytes(kilobytes: 1)) == 1024
-    && byte_size_count(b: gnu_time_max_rss_bytes(kilobytes: 204800)) == 209715200
-    && byte_size_count(b: gnu_time_max_rss_bytes(kilobytes: 0)) == 0
+test fn gnu_time_kibibytes_become_bytes() -> Bool {
+  byte_size_count(b: gnu_time_max_rss_bytes(kibibytes: 1)) == 1024
+    && byte_size_count(b: gnu_time_max_rss_bytes(kibibytes: 204800)) == 209715200
+    && byte_size_count(b: gnu_time_max_rss_bytes(kibibytes: 0)) == 0
 }
 
 // A RECEIPT IS COMPLETE ONLY IF EVERY DECLARED SIZE PRODUCED A SAMPLE, and the two ways it can fail

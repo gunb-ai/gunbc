@@ -1,8 +1,24 @@
 module gunbc.runner_microvm_footprint_probe
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
-import std.measure { ByteSize, byte_size, byte_size_count, Second, second, mebibyte, mebibyte_to_byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count, Second, second, mebibyte, mebibyte_to_byte_size, kibibyte, kibibyte_to_byte_size }
+
+// DECLARED FRONTIER, STATED RATHER THAN LEFT IMPLICIT (DESIGN 3c). NOTHING EXECUTES THIS PROBE
+// TODAY: no caller runs a VMM under GNU time, and `extdeps.tools.gnu_time.gnu_time_max_rss_command`
+// has no call site outside the `admit_callers` roster row that permits it. Only this module's own
+// witness exercises the types, the renderer and the completeness fold.
+//
+// THAT IS THE HONEST STATE AND IT IS NAMED HERE RATHER THAN ARGUED IN A PR BODY. The named consumer
+// is a wet footprint run on a host that carries an instrument; the trigger is that run producing a
+// receipt. It is not held for a specific host -- any host carrying the instrument discharges it --
+// because waiting on one machine nobody has is the untracked stall 4b(2) forbids.
+//
+// WHAT SEPARATES THIS FROM DANGLING MODELING: the sibling half of this change, the instrument
+// standing in gunbc.runner_microvm_host_ready, DOES execute today and reports whether a host can
+// measure at all. This module is the shape the measurement takes once one can; it is not a second
+// answer to a question something else already answers.
 
 data runner_microvm_footprint_probe_disposition: Disposition = SingleAuthority
 
@@ -29,15 +45,48 @@ data runner_microvm_footprint_probe_disposition: Disposition = SingleAuthority
 // numbers as if they bounded that case would be the fabricated plausible output this whole refusal
 // exists to prevent, arriving by way of a measurement instead of a guess.
 
+// THE INSTRUMENT SET IS ENUMERATED ONCE, HERE, AND OBSERVED ELSEWHERE. An earlier revision carried
+// this enumeration twice -- these variants, and a parallel record of one Bool per instrument in
+// gunbc.runner_microvm_host_ready -- which is the meaning fork DESIGN 3 forbids: two independently
+// editable lists of one set, and they had already drifted (cgroup memory.peak had a boolean and no
+// variant, and systemd carried a raw String that a renderer re-interpreted by trimming). Adding an
+// instrument now edits one place, and a standing that does not cover a variant cannot be built.
 type FootprintInstrument
   = GnuTimeMaxRss
   | SystemdMemoryPeak
+  | CgroupMemoryPeak
 
 fn footprint_instrument_name(i: FootprintInstrument) -> String {
   match i {
     GnuTimeMaxRss => "gnu-time-max-rss"
     SystemdMemoryPeak => "systemd-memory-peak"
+    CgroupMemoryPeak => "cgroup-memory-peak"
   }
+}
+
+// WHETHER AN INSTRUMENT IS THERE IS THREE-VALUED, NOT A BOOLEAN. "The host does not carry it" and
+// "we could not read whether it carries it" are different facts, and only one of them says the host
+// cannot measure. Collapsing the second into `absent` is the absorbing arm DESIGN 5 names.
+type InstrumentObservation
+  = InstrumentPresent
+  | InstrumentAbsent
+  | InstrumentUnreadable { cause: String }
+
+type InstrumentStanding {
+  instrument: FootprintInstrument
+  observation: InstrumentObservation
+}
+
+fn instrument_observation_text(o: InstrumentObservation) -> String {
+  match o {
+    InstrumentPresent => "present"
+    InstrumentAbsent => "absent"
+    InstrumentUnreadable { cause: c } => join(["unreadable(", c, ")"], "")
+  }
+}
+
+fn instrument_standing_text(s: InstrumentStanding) -> String {
+  join([footprint_instrument_name(i: s.instrument), "=", instrument_observation_text(o: s.observation)], "")
 }
 
 type VmmFootprintSample {
@@ -63,13 +112,13 @@ data runner_microvm_footprint_sample_sizes: List<ByteSize> = [
   mebibyte_to_byte_size(m: mebibyte(count: 4096)),
 ]
 
-// GNU time's %M IS KILOBYTES, and this is the one place that fact is converted. extdeps.tools.gnu_time
-// deliberately does not convert -- it reports what upstream documents -- so the consumer that knows
-// what it measured owns the conversion.
-data gnu_time_max_rss_unit_bytes: Int = 1024
-
-fn gnu_time_max_rss_bytes(kilobytes: Int) -> ByteSize {
-  byte_size(kilobytes * gnu_time_max_rss_unit_bytes)
+// GNU time's %M IS KIBIBYTES, and this is the one place that fact is APPLIED -- but not the place
+// the conversion is DEFINED. extdeps.tools.gnu_time deliberately does not convert (it reports what
+// upstream documents), so the consumer that knows what it measured owns the CHOICE of unit; std.measure
+// owns the arithmetic. Re-minting a 1024 here would be a second unit system beside the one that
+// already carries Kibibyte and its IEC 80000-13 factor.
+fn gnu_time_max_rss_bytes(kibibytes: Nat) -> ByteSize {
+  kibibyte_to_byte_size(k: kibibyte(count: kibibytes))
 }
 
 fn footprint_sample_text(o: FootprintSampleOutcome) -> String {

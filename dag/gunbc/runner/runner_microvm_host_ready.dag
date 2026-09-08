@@ -7,6 +7,12 @@ import std.resources { Network }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.posix.test_utility { test_exists_command, test_writable_command, test_executable_command }
+import gunbc.runner_microvm_footprint_probe {
+  FootprintInstrument, GnuTimeMaxRss, SystemdMemoryPeak, CgroupMemoryPeak,
+  InstrumentObservation, InstrumentPresent, InstrumentAbsent, InstrumentUnreadable,
+  InstrumentStanding, instrument_standing_text,
+}
+import extdeps.tools.gnu_time { gnu_time_binary_path }
 import extdeps.systemd.systemctl { systemctl_version_command }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
@@ -80,10 +86,12 @@ type FirecrackerBinaryStanding
 // them: it requires the process to still exist, so a guest that powers itself off can be missed
 // entirely, and a missed sample under-reports -- the wrong direction for a value that will become a
 // safety reserve.
+// ONE ROW PER INSTRUMENT, KEYED BY THE SINGLE ENUMERATION in gunbc.runner_microvm_footprint_probe.
+// This used to be one Bool per instrument declared here, which made the instrument set editable in
+// two places (DESIGN 3), and it carried systemd as a raw version line that the renderer
+// re-interpreted -- so an unreadable systemd and an old systemd were the same value.
 type FootprintInstrumentStanding {
-  gnu_time_present: Bool
-  cgroup_memory_peak_present: Bool
-  systemd_version_line: String
+  instruments: List<InstrumentStanding>
 }
 
 type FirecrackerHostStanding {
@@ -92,18 +100,12 @@ type FirecrackerHostStanding {
   footprint_instruments: FootprintInstrumentStanding
 }
 
-data gnu_time_binary_path: String = "/usr/bin/time"
-
 // The ROOT cgroup's file, whose presence is a kernel-support fact rather than a statement about any
 // particular scope. cgroup v2 gained memory.peak in Linux 5.19.
 data cgroup_v2_memory_peak_path: String = "/sys/fs/cgroup/memory.peak"
 
 fn footprint_instrument_text(f: FootprintInstrumentStanding) -> String {
-  join([
-    "footprint-instruments: gnu_time=", if f.gnu_time_present { "present" } else { "absent" },
-    " cgroup_memory_peak=", if f.cgroup_memory_peak_present { "present" } else { "absent" },
-    " systemd=", if trim(s: f.systemd_version_line) == "" { "unreadable" } else { trim(s: f.systemd_version_line) },
-  ], "")
+  join(["footprint-instruments: ", join(map(f.instruments, s => instrument_standing_text(s: s)), " ")], "")
 }
 
 data runner_microvm_host_standing_receipt_dir: String = "target"
@@ -199,6 +201,12 @@ func executor_home_wet() -> String? {
   }
 }
 
+// SYSTEMD IS THE ONE INSTRUMENT THAT CAN BE UNREADABLE RATHER THAN MERELY ABSENT. MemoryPeak
+// arrives in systemd v254, so an empty version line means the question WAS NOT ANSWERED, not that
+// the host is too old -- and reporting that as `absent` would be the absorbing arm, since it would
+// let "we could not ask" and "the host cannot measure" render identically to whoever reads the
+// receipt and decides what can measure the reserve.
+
 func observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStanding
   uses net: Network
 {
@@ -227,9 +235,24 @@ func observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStand
     kvm: kvm_standing_of(exists: exists, writable: writable),
     binary: binary_standing_of(binary: binary, executable: executable, version_output: version_output, rel: rel),
     footprint_instruments: FootprintInstrumentStanding {
-      gnu_time_present: gnu_time,
-      cgroup_memory_peak_present: cgroup_peak,
-      systemd_version_line: systemd_version,
+      instruments: [
+        InstrumentStanding {
+          instrument: GnuTimeMaxRss,
+          observation: if gnu_time { InstrumentPresent } else { InstrumentAbsent },
+        },
+        InstrumentStanding {
+          instrument: CgroupMemoryPeak,
+          observation: if cgroup_peak { InstrumentPresent } else { InstrumentAbsent },
+        },
+        InstrumentStanding {
+          instrument: SystemdMemoryPeak,
+          observation: if trim(s: systemd_version) == "" {
+            InstrumentUnreadable { cause: "systemctl --version produced no readable line" }
+          } else {
+            InstrumentPresent
+          },
+        },
+      ],
     },
   }
 }
