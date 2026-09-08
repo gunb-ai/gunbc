@@ -14,6 +14,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// Residue: the transport accepts Int (bare scalar without a measure carrier) because the
+// shell transport interpolates only Int/String; Second (Measure<Time, One, Nat>) is a
+// structured record that formats as a struct, not a bare decimal. offset_seconds names
+// the unit at the parameter level as a second-best signal. Dissolves when the transport
+// supports Measure-type interpolation, or when a proper clock protocol replaces shell.
+
+// Declared residue: TimestampToUnixSecs output is String (the shell transport does not
+// support Int from "stdout"), and the consumer owns the decode. The annotation on
+// ClockUnixMillisRead explicitly rules this shape out (UnixSecs was no better — its output
+// was String, every consumer would have owned the decode). The correct output type is
+// EpochMs (std.types, Int where range(min: 0)). Dissolves when the shell transport supports
+// Int | EpochMs from "stdout" (natively parsing the decimal text), or when a proper clock
+// protocol replaces the shell transport.
+
 service Clock {
   operation Now {
     input {}
@@ -48,11 +62,6 @@ service Clock {
     }
   }
 
-  // Residue: the transport accepts Int (bare scalar without a measure carrier) because the
-  // shell transport interpolates only Int/String; Second (Measure<Time, One, Nat>) is a
-  // structured record that formats as a struct, not a bare decimal. offset_seconds names
-  // the unit at the parameter level as a second-best signal. Dissolves when the transport
-  // supports Measure-type interpolation, or when a proper clock protocol replaces shell.
   operation TimestampOffset {
     input { timestamp: Timestamp, offset_seconds: Int }
     output { result: Timestamp from "stdout" }
@@ -64,13 +73,6 @@ service Clock {
     }
   }
 
-  // Declared residue: the output is String (the shell transport does not support Int from
-  // "stdout"), and the consumer owns the decode. The annotation on ClockUnixMillisRead
-  // explicitly rules this shape out (UnixSecs was no better — its output was String, every
-  // consumer would have owned the decode). The correct output type is EpochMs (std.types,
-  // Int where range(min: 0)). Dissolves when the shell transport supports Int | EpochMs from
-  // "stdout" (natively parsing the decimal text), or when a proper clock protocol replaces
-  // the shell transport.
   operation TimestampToUnixSecs {
     input { timestamp: Timestamp }
     output { unix_secs: String from "stdout" }
