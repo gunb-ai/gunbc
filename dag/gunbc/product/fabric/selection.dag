@@ -1128,40 +1128,40 @@ fn affinity_collision_wire<P>(c: AffinityCollision<P>) -> String {
   }
 }
 
-type DigestScan<P> {
-  latest: KeyedCandidate<P>?
-  duplicate: AffinityCollision<P>?
-  duplicate_digest: Fnv1a64StructuralDigestHex?
+// A COLLISION IS ONE VALUE, NOT A DIGEST BESIDE A CAUSE. An earlier spelling carried the two as
+// independent optionals on the scan, and the state where they disagreed was not refused but answered
+// WRONGLY: a present cause with an absent digest fell through to none, select_supply read that as
+// NoAdmissibleOffer, and the caller reported an empty market for a fleet that had admissible offers
+// and an ambiguous tie -- the exact conflation EqualCostTieUnresolved exists to prevent. The pair is
+// set in one place and read in one place, so it travels as one value and the disagreeing state has
+// no constructor (review 62374). This is the same rule the incumbent above already follows.
+type CollisionAt<P> {
+  digest: Fnv1a64StructuralDigestHex
+  cause: AffinityCollision<P>
 }
 
-fn adjacent_repeat<P>(previous: KeyedCandidate<P>?, k: KeyedCandidate<P>) -> AffinityCollision<P>? {
+type DigestScan<P> {
+  latest: KeyedCandidate<P>?
+  duplicate: CollisionAt<P>?
+}
+
+fn adjacent_repeat<P>(previous: KeyedCandidate<P>?, k: KeyedCandidate<P>) -> CollisionAt<P>? {
   match previous {
     Absent => none
     Present { value: p } =>
       if p.digest == k.digest {
-        Present { value: classify_collision(left: p.candidate.candidate.offer.id, right: k.candidate.candidate.offer.id) }
+        Present { value: CollisionAt { digest: k.digest, cause: classify_collision(left: p.candidate.candidate.offer.id, right: k.candidate.candidate.offer.id) } }
       } else { none }
   }
 }
 
-fn adjacent_repeat_digest<P>(previous: KeyedCandidate<P>?, k: KeyedCandidate<P>) -> Fnv1a64StructuralDigestHex? {
-  match previous {
-    Absent => none
-    Present { value: p } => if p.digest == k.digest { Present { value: k.digest } } else { none }
-  }
-}
-
 fn scan_sorted<P>(sorted: List<KeyedCandidate<P>>) -> DigestScan<P> {
-  fold(sorted, init: DigestScan { latest: none, duplicate: none, duplicate_digest: none }, f: (acc, k) => {
+  fold(sorted, init: DigestScan { latest: none, duplicate: none }, f: (acc, k) => {
     let repeat = match acc.duplicate {
       Present { value: d } => Present { value: d }
       Absent => adjacent_repeat(previous: acc.latest, k: k)
     }
-    let repeat_digest = match acc.duplicate_digest {
-      Present { value: d } => Present { value: d }
-      Absent => adjacent_repeat_digest(previous: acc.latest, k: k)
-    }
-    DigestScan { latest: Present { value: k }, duplicate: repeat, duplicate_digest: repeat_digest }
+    DigestScan { latest: Present { value: k }, duplicate: repeat }
   })
 }
 
@@ -1186,11 +1186,7 @@ fn resolve_cohort<P>(
     AffinityKeyedRendezvous => {
       let scanned = scan_sorted(sorted: sort_by(key_cohort(cohort: cohort, affinity: affinity), k => k.digest as String))
       match scanned.duplicate {
-        Present { value: c } =>
-          match scanned.duplicate_digest {
-            Absent => none
-            Present { value: d } => Present { value: TieUnresolvedCollision { digest: d, cause: c } }
-          }
+        Present { value: c } => Present { value: TieUnresolvedCollision { digest: c.digest, cause: c.cause } }
         Absent =>
           match scanned.latest {
             Absent => none
