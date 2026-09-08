@@ -79,7 +79,24 @@ data witness_jit_request: JitRunnerConfigRequest = JitRunnerConfigRequest {
 // answering 422 -- after a call that may already have created a runner identity.
 test fn the_mint_request_body_renders_the_documented_shape() -> Bool {
   jit_config_request_body(request: witness_jit_request)
-    == "{\"name\":\"gunbc-microvm-srv1-01-a1\",\"runner_group_id\":1,\"labels\":[\"self-hosted\",\"gunbc-microvm\"],\"work_folder\":\"_work\"}"
+    == "{\"name\": \"gunbc-microvm-srv1-01-a1\", \"runner_group_id\": 1, \"labels\": [\"self-hosted\", \"gunbc-microvm\"], \"work_folder\": \"_work\"}"
+}
+
+// THE ESCAPING CONTROL, and it is the reason the renderer above is not hand-written. A runner name
+// carrying a quote or a backslash is a perfectly ordinary NonEmptyStr -- no type here rejects it --
+// and a renderer that concatenated quotes would emit a document that ends the name early and leaves
+// the rest of the request as garbage. The first thing to notice would be the live endpoint, with a
+// 422, after a call that may already have created a runner identity. This is a DISCRIMINATING RED
+// against the previous concatenating renderer: it passed the pin above and would fail this.
+test fn a_name_carrying_a_quote_is_escaped_rather_than_ending_the_field() -> Bool {
+  jit_config_request_body(
+    request: JitRunnerConfigRequest {
+      name: JitRunnerName { value: "a\"b" as NonEmptyStr },
+      runner_group_id: JitRunnerGroupId { value: 1 },
+      labels: [JitRunnerLabel { value: "self-hosted" as NonEmptyStr }],
+      work_folder: JitWorkFolder { value: "_work" as NonEmptyStr },
+    },
+  ) == "{\"name\": \"a\\\"b\", \"runner_group_id\": 1, \"labels\": [\"self-hosted\"], \"work_folder\": \"_work\"}"
 }
 
 // THE URL JOINS THE TWO AUTHORITIES THAT OWN ITS HALVES and addresses the org the caller named. A

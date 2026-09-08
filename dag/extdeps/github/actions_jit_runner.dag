@@ -4,6 +4,9 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
+import extdeps.languages.json.emit {
+  json_kv, json_string, json_int, json_array, serialize_json_object,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -110,19 +113,25 @@ fn org_generate_jitconfig_url(org_login: NonEmptyStr) -> String {
 
 // THE REQUEST BODY IS RENDERED HERE BECAUSE ITS SHAPE IS UPSTREAM'S, not ours. The field spellings
 // are GitHub's documented ones; a caller assembling this JSON would be a second authority for a
-// structure the cited endpoint owns.
-fn jit_runner_labels_json(labels: List<JitRunnerLabel>) -> String {
-  join(["[", join(map(labels, l => join(["\"", jit_runner_label_wire(l: l), "\""], "")), ","), "]"], "")
-}
-
+// structure the cited endpoint owns. What this module owns is the SHAPE -- which fields, spelled
+// how, in what types. It does not own JSON, so the bytes are produced by the one authority that
+// does, `extdeps.languages.json.emit`. Rendering them here by concatenating quotes would be a
+// second authority for serialization (DESIGN section 3) and would leave every value unescaped: a
+// runner name containing a quote or a backslash is accepted by every type here and produces a
+// malformed document that only the live endpoint notices, with a 422, after a call that may
+// already have created a runner identity.
 fn jit_config_request_body(request: JitRunnerConfigRequest) -> String {
-  join([
-    "{\"name\":\"", request.name.value as String,
-    "\",\"runner_group_id\":", to_string(request.runner_group_id.value),
-    ",\"labels\":", jit_runner_labels_json(labels: request.labels),
-    ",\"work_folder\":\"", request.work_folder.value as String,
-    "\"}",
-  ], "")
+  serialize_json_object([
+    json_kv(key: "name", value: json_string(s: request.name.value as String)),
+    json_kv(key: "runner_group_id", value: json_int(n: request.runner_group_id.value)),
+    json_kv(
+      key: "labels",
+      value: json_array(
+        elements: map(request.labels, l => json_string(s: jit_runner_label_wire(l: l))),
+      ),
+    ),
+    json_kv(key: "work_folder", value: json_string(s: request.work_folder.value as String)),
+  ])
 }
 
 // THE MINTED CREDENTIAL NEVER TOUCHES STDOUT, AND THAT IS THE OPERATION'S SHAPE RATHER THAN A
