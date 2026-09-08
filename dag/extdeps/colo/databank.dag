@@ -8,10 +8,6 @@ import extdeps.colo.types {
   CabinetDensityClaim, DensityMarketedMax, CabinetPowerFigure, PublishedRealPower,
   RetailGrainStanding, SingleCabinetOffered,
 }
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedMax,
-  RetailGrainStanding, SingleCabinetOffered,
-}
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -101,8 +97,8 @@ data databank_lga3_orangeburg: ColoFacilityRow = ColoFacilityRow {
 }
 
 data databank_lga3_density: CabinetDensityClaim = DensityMarketedMax {
-  air_cooled_kw: 35,
-  liquid_cooled_kw: 100,
+  air_cooled: PublishedRealPower { power: watt(count: 35000) },
+  liquid_cooled: PublishedRealPower { power: watt(count: 100000) },
   claim_wording: "35kW+ Cab Density Air, 100kW+ Cab Density Liquid",
   citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08. Identical figures to LGA4 and stated in the operator's own spec strip. This is a SECOND facility carrying the claim, not a second reading of the same facility - the two buildings are separately marketed with separate critical loads.",
 }

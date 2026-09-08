@@ -1,10 +1,11 @@
 module extdeps.colo.nyi
 
 import std.types { NonEmptyStr }
+import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly,
+  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
   RetailGrainStanding, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -49,7 +50,7 @@ data nyi_long_island: ColoFacilityRow = ColoFacilityRow {
 }
 
 data nyi_long_island_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled_kw: 3,
+  air_cooled: PublishedRealPower { power: watt(count: 3000) },
   claim_wording: "Cooling level average is 3kW per cabinet",
   citation: "nyi.net Long Island page, read 2026-09-08. Identical wording to the Long Island Interconnect page for the same address, which corroborates the reading and does NOT double it: one building's cooling average read twice is one fact, and a consumer counting dense candidates must not count this row and the Long Island Interconnect row as two.",
 }

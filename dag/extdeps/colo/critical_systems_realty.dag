@@ -1,10 +1,11 @@
 module extdeps.colo.critical_systems_realty
 
 import std.types { NonEmptyStr }
+import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly,
+  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
   RetailGrainStanding, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -53,7 +54,7 @@ data csr_orny1_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // which is the sort of spread that only becomes visible once density is a typed field rather than
 // a sentence in a facility note.
 data csr_orny1_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled_kw: 10,
+  air_cooled: PublishedRealPower { power: watt(count: 10000) },
   claim_wording: "High density 10KW + per cabinets",
   citation: "1547realty.com ORNY1 page, read 2026-09-08. THE PAGE DOES NOT STATE A COOLING MEDIUM: the figure is recorded on the air arm because an unqualified per-cabinet claim is what an ordinary air deployment would be quoted against, and no liquid figure is published to carry. If a quote reveals the 10 kW assumes a liquid path, this row is wrong in the direction that matters and must move.",
 }
