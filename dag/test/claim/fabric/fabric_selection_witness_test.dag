@@ -1,5 +1,6 @@
 module test.claim.fabric_selection_witness
 
+import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_unadmitted_for_offer }
 import product.fabric.provider_route { ProviderRoute }
 import std.decl_ref { decl_ref }
 import std.logic { Bool }
@@ -25,6 +26,7 @@ import product.fabric.supply {
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
   AvailabilityObservation, AvailableForInterval, AvailableIndefinitely, AvailabilityUnobserved,
   CommitmentState, PayAsYouGo, PaidThrough,
   StartCostObservation, StartCostMeasured,
@@ -204,9 +206,16 @@ fn t_rented_candidate(
 // roster. Returning an unconstructable value or re-binding in a loop were the alternatives,
 // and both hide the same mistake.
 fn t_bound(offer: SupplierOffer<NonEmptyStr>, inputs: DispatchInputs<NonEmptyStr>) -> List<CandidateOffer<NonEmptyStr>> {
-  match bind_candidate(offer: offer, dispatch: inputs) {
+  match bind_candidate(
+    offer: offer,
+    dispatch: inputs,
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+  ) {
     CandidateBound { candidate: c } => [c]
     DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
   }
 }
 
@@ -216,6 +225,15 @@ fn t_ninety_seconds() -> GrantDuration {
 
 fn t_no_delay_valuation() -> MoneyPerSecond {
   MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }
+}
+
+// A NON-ZERO DELAY VALUATION, THROUGH A DECLARED RETURN TYPE. Spelled inline at the argument
+// position this was `MoneyRate { .. }` where MoneyPerSecond is expected, and it did not typecheck -
+// the whole module failed to RESOLVE, so every claim in this file was unreachable rather than
+// failing. Going through a function whose return type is declared is how the sibling above already
+// does it, and it is the difference between the rate unit being asserted and being assumed.
+fn t_five_micro_delay_valuation() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 5), currency: Usd }
 }
 
 fn t_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
@@ -465,9 +483,14 @@ test fn dispatch_inputs_naming_another_offer_refuse_to_bind() -> Bool {
       operating: OperatingCostBorneBySupplier,
       opportunity: t_idle(),
     ),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
   ) {
     DispatchInputsNameAnotherOffer { offer: _, inputs_name: n } => (n.key as NonEmptyStr) == "offer-rented-hourly"
     CandidateBound { candidate: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
   }
 }
 
@@ -493,7 +516,7 @@ test fn valued_delay_enters_the_ranking_and_not_the_reservation() -> Bool {
     duration: t_ninety_seconds(),
     maximum_buy_order: money_amount_micro(count: 1000000),
     budget_currency: Usd,
-    delay_valuation: MoneyRate { amount: money_amount_micro(count: 5), currency: Usd },
+    delay_valuation: t_five_micro_delay_valuation(),
   )
   match selection {
     OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _ } =>
@@ -763,4 +786,86 @@ fn sel_route() -> ProviderRoute {
     service: decl_ref(module_path: "test.claim.fabric_selection_witness", decl_name: "sel_service"),
     region: decl_ref(module_path: "test.claim.fabric_selection_witness", decl_name: "sel_region"),
   }
+}
+
+// THE PROVIDER-USE WALL, READ FROM THE MARKET SIDE. These rows are the reason the permit was put
+// inside the sealed CandidateOffer rather than checked inside the ranking fold: what they assert is
+// not that a check fired, but that the losing state HAS NO SPELLING. An unadmitted offer never
+// becomes a CandidateOffer, so it is not in the population the fold ranks - it cannot win, cannot
+// tie, and cannot be resurrected by being cheap.
+//
+// The owned offer is the right subject for exactly that reason: it is priced at ZERO, so it is the
+// offer any cost-ordered fold must prefer, and it wins the control below. If admission could be
+// bought, this is the offer that would buy it.
+fn t_unadmitted_bound(
+  offer: SupplierOffer<NonEmptyStr>,
+  inputs: DispatchInputs<NonEmptyStr>,
+) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: inputs,
+    admission: fixture_unadmitted_for_offer(route: offer.route, offer: offer.id),
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+  }
+}
+
+fn t_owned_inputs() -> DispatchInputs<NonEmptyStr> {
+  t_inputs(
+    key: "offer-owned-srv1",
+    availability: t_ready_now(),
+    commitment: PayAsYouGo,
+    operating: OperatingCostBorneBySupplier,
+    opportunity: t_idle(),
+  )
+}
+
+// POSITIVE CONTROL, and it is load-bearing for both reds below. Without it, "the zero-priced offer
+// did not win" would be satisfied by a fixture in which it never wins for some unrelated reason,
+// and both reds would be green while asserting nothing about admission.
+test fn w_the_zero_priced_offer_wins_when_it_is_admitted() -> Bool {
+  selected_key(s: t_select(candidates: concat(
+    t_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ),
+  ))) == "offer-owned-srv1"
+}
+
+// RED - THE CHEAPEST OFFER CANNOT WIN UNADMITTED. Identical population to the control; the only
+// thing that moves is whether the zero-priced offer's use was admitted. The dearer rented offer
+// wins, which is the whole claim: price is evaluated after admission, so being free buys nothing.
+test fn w_the_cheapest_offer_cannot_win_unadmitted() -> Bool {
+  selected_key(s: t_select(candidates: concat(
+    t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ),
+  ))) == "offer-rented-hourly"
+}
+
+// RED - A ZERO-COST DEMAND STILL REFUSES WITHOUT A PERMIT. With no admitted alternative to fall
+// back on, the answer is NoAdmissibleOffer rather than the free offer: nothing is selected, and the
+// refusal is the fabric declining to place work rather than placing it for nothing.
+test fn w_a_zero_cost_unadmitted_offer_selects_nothing() -> Bool {
+  selected_key(s: t_select(
+    candidates: t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+  )) == "none"
+}
+
+// RED - MONEY CANNOT OVERRIDE A DENIAL, stated as a comparison rather than as a single outcome.
+// The unadmitted zero-priced offer and an EMPTY market produce the SAME answer, which is what
+// "the offer is not in the population" means: adding it changed nothing at all.
+test fn w_an_unadmitted_offer_is_indistinguishable_from_no_offer() -> Bool {
+  selected_key(s: t_select(
+    candidates: t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+  )) == selected_key(s: t_select(candidates: []))
 }

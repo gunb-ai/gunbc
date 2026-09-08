@@ -1,0 +1,188 @@
+module test.claim.fabric.provider_use_fixture
+
+import std.types { List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
+  DownstreamProviderPopulation, NoDownstreamProviders,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
+  DispositionStanding, DispositionCleared, admit_provider_use,
+}
+
+// ONE ADMITTED USE, SHARED BY THE WITNESSES THAT NEED A CANDIDATE BUT ARE NOT ABOUT ADMISSION.
+//
+// Several selection, dispatch and control-plane witnesses need a bound CandidateOffer in order to
+// say something about RANKING, arbitration or the store. Since bind_candidate now requires an
+// admitted permit, each of them would otherwise grow its own roster, posture, closure and scope -
+// the same fixture written five times, which is section 2's duplicated work and would drift within
+// a week. It is written once here.
+//
+// THIS IS NOT A BACK DOOR AROUND THE SEAL. It mints nothing itself: it calls admit_provider_use
+// with a roster that genuinely sanctions the route it is asked about, and returns whatever that
+// decision returns. A caller that asks for a route the fixture roster does not cover gets a
+// refusal, exactly as production would. The seal on ProviderUsePermit is untouched - there is
+// still exactly one constructor, and this module is a caller of it like any other.
+//
+// The discriminating reds for admission itself do NOT live here and must not: they belong to
+// test.claim.fabric.provider_admission_witness, which builds its own inputs precisely so that a
+// change to this convenience fixture cannot quietly weaken them.
+
+fn fx_ref(name: String) -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric.provider_use_fixture", decl_name: name)
+}
+
+fn fx_hash(seed: String) -> ContentHash {
+  as_content_hash_structural(structural: content_hash_atom(value: seed))
+}
+
+fn fx_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: fx_ref(name: "fixture-posture-authority"),
+    revision: fx_hash(seed: "fixture-posture-r1"),
+  }
+}
+
+fn fx_customer_profile() -> DeclarationRef { fx_ref(name: "fixture-customer-profile") }
+fn fx_data_handling_profile() -> DeclarationRef { fx_ref(name: "fixture-data-handling-profile") }
+fn fx_agreement() -> DeclarationRef { fx_ref(name: "fixture-agreement-v1") }
+
+fn fx_located() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: fx_ref(name: "fixture-operator"),
+    jurisdiction: fx_ref(name: "fixture-jurisdiction"),
+    evidence: fx_ref(name: "fixture-evidence"),
+  }
+}
+
+// Every path located except spill, which is explicitly ABSENT with evidence rather than unread.
+// A closure with any unread path would refuse, which is the admission witness's subject, not this
+// module's.
+fn fx_closure() -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: fx_located(),
+    durable_storage: fx_located(),
+    backups: fx_located(),
+    logs: fx_located(),
+    telemetry: fx_located(),
+    control_plane: fx_located(),
+    support_access: fx_located(),
+    administrative_access: fx_located(),
+    spill: ProviderPathAbsent { evidence: fx_ref(name: "fixture-no-spill") },
+  }
+}
+
+fn fx_downstream() -> DownstreamProviderPopulation {
+  NoDownstreamProviders { evidence: fx_ref(name: "fixture-no-downstream") }
+}
+
+fn fx_facts(route: ProviderRoute) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: route,
+    contract_terms: fx_ref(name: "fixture-contract-terms"),
+    data_paths: fx_closure(),
+    downstream: fx_downstream(),
+    observed_at: "2026-09-07T00:00:00Z",
+    facts_revision: fx_hash(seed: "fixture-facts-r1"),
+  }
+}
+
+fn fx_roster(route: ProviderRoute) -> List<RouteScopeSanction> {
+  [
+    RouteScopeSanction {
+      route: route,
+      posture: fx_posture(),
+      customer_profile: fx_customer_profile(),
+      data_handling_profile: fx_data_handling_profile(),
+      requires_agreement: fx_agreement(),
+    },
+  ]
+}
+
+fn fx_cleared(what: String) -> DispositionStanding {
+  DispositionCleared { evidence: fx_ref(name: what) }
+}
+
+fn fx_scope(
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+) -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: demand,
+    work: work,
+    customer_profile: fx_customer_profile(),
+    data_handling_profile: fx_data_handling_profile(),
+    agreement: fx_agreement(),
+    prohibited_use_disposition: fx_cleared(what: "fixture-prohibited-use-cleared"),
+    sanctions_disposition: fx_cleared(what: "fixture-sanctions-cleared"),
+    export_disposition: fx_cleared(what: "fixture-export-cleared"),
+  }
+}
+
+// The roster is built FOR the route being asked about, so this returns an admitted use for any
+// route a caller names. That is deliberate for a fixture whose subject is not admission: it keeps
+// the callers' reds about ranking rather than about whether the fixture happened to cover them.
+fn fixture_admitted_use(
+  route: ProviderRoute,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+) -> ProviderUseAdmission<NonEmptyStr> {
+  admit_provider_use(
+    roster: fx_roster(route: route),
+    facts: fx_facts(route: route),
+    active: fx_posture(),
+    scope: fx_scope(demand: demand, work: work),
+    offer: offer,
+    decision_receipt: fx_ref(name: "fixture-decision-receipt"),
+  )
+}
+
+// The same inputs with an EMPTY roster, so a caller can ask for the denied arm without building a
+// second fixture. This is what makes "the cheapest unadmitted offer never wins" authorable.
+fn fixture_unadmitted_use(
+  route: ProviderRoute,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+) -> ProviderUseAdmission<NonEmptyStr> {
+  admit_provider_use(
+    roster: [],
+    facts: fx_facts(route: route),
+    active: fx_posture(),
+    scope: fx_scope(demand: demand, work: work),
+    offer: offer,
+    decision_receipt: fx_ref(name: "fixture-decision-receipt"),
+  )
+}
+
+// The one-argument forms the ranking witnesses actually call. The demand and work identities are
+// derived from the offer's own principal so a caller never has to invent a tenant, and admission
+// does not read them beyond recording them on the permit.
+fn fixture_admitted_for_offer(
+  route: ProviderRoute,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> ProviderUseAdmission<NonEmptyStr> {
+  fixture_admitted_use(
+    route: route,
+    offer: offer,
+    demand: FabricIdentity { principal: offer.principal, key: "fixture-demand" as DemandKey },
+    work: FabricIdentity { principal: offer.principal, key: "fixture-work" as WorkKey },
+  )
+}
+
+fn fixture_unadmitted_for_offer(
+  route: ProviderRoute,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> ProviderUseAdmission<NonEmptyStr> {
+  fixture_unadmitted_use(
+    route: route,
+    offer: offer,
+    demand: FabricIdentity { principal: offer.principal, key: "fixture-demand" as DemandKey },
+    work: FabricIdentity { principal: offer.principal, key: "fixture-work" as WorkKey },
+  )
+}

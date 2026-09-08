@@ -13,6 +13,7 @@ module test.claim.fabric_floor_dispatch_witness
 // So every row below turns on a fact that belongs to the floor specifically: its eight threads, its
 // capability ref, its satisfaction requirement.
 
+import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer }
 import product.fabric.provider_route { ProviderRoute }
 import std.decl_ref { decl_ref }
 import std.logic { Bool }
@@ -34,6 +35,7 @@ import product.fabric.supply {
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
   AvailabilityObservation, AvailableIndefinitely,
   CommitmentState, PayAsYouGo,
   StartCostObservation, StartCostMeasured,
@@ -82,6 +84,7 @@ fn d_offer(key: OfferKey, threads: HardwareThreadCount) -> SupplierOffer<NonEmpt
 fn d_bound(offer: SupplierOffer<NonEmptyStr>, key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
   match bind_candidate(
     offer: offer,
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
     dispatch: DispatchInputs {
       offer: FabricIdentity { principal: "gunbc", key: key },
       availability: AvailableIndefinitely {
@@ -103,6 +106,9 @@ fn d_bound(offer: SupplierOffer<NonEmptyStr>, key: OfferKey) -> List<CandidateOf
   ) {
     CandidateBound { candidate: c } => [c]
     DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
   }
 }
 

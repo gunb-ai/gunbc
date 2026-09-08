@@ -1,5 +1,7 @@
 module product.fabric.grant_issue
 
+import product.fabric.provider_route { provider_route_eq }
+import product.fabric.provider_admission { ProviderUsePermit }
 import std.types { NonEmptyStr, List, Int, Timestamp }
 import std.measure { Measure }
 import std.nat { Nat }
@@ -78,6 +80,13 @@ import extdeps.accounting.encumbrance {
 // the cross-principal refusal. Two tenants who chose the same work key are two identities, and
 // nothing in this module can compare the key half alone.
 
+// THE THREE PERMIT ARMS ARE THREE REMEDIES, NOT ONE. PermitNamesAnotherOffer and
+// PermitNamesAnotherRoute are WIRING faults - a real permit carried onto the wrong subject - and
+// the fix is at the call site. ProviderUseNotAdmitted is the absence of any admitted permit at all,
+// and the fix is to go and get the use admitted. issue_grant cannot produce that last arm, since it
+// takes a permit and one therefore exists by the time it runs; the arm belongs to whoever resolves
+// an offer to its permit and finds none, and is theirs to construct rather than a case issuance can
+// silently invent.
 type GrantIssueRefusal<P, Q, S>
   = AttemptNamesAnotherWork {
       attempt_work: FabricIdentity<P, WorkKey>,
@@ -96,6 +105,12 @@ type GrantIssueRefusal<P, Q, S>
   | GrantAlreadyIssuedForAttempt { existing: FabricIdentity<P, GrantKey> }
   | MoneyReservationRefused { refusal: MoneyRefusal }
   | ResourceReservationRefused { refusal: EncumbranceRefusal<Q, S> }
+  | PermitNamesAnotherOffer {
+      offer: FabricIdentity<P, OfferKey>,
+      permit_names: FabricIdentity<P, OfferKey>,
+    }
+  | PermitNamesAnotherRoute { offer: FabricIdentity<P, OfferKey> }
+  | ProviderUseNotAdmitted { offer: FabricIdentity<P, OfferKey> }
 
 // BOTH LEDGERS ADMIT OR NEITHER COMMITMENT IS VISIBLE.
 //
@@ -339,10 +354,29 @@ type GrantIssue<P, Q, S>
 // ReservationRefs while the cell actuator needs a slot key, and nothing relates the two. Issuance
 // does not need that relation -- it MINTS the reference rather than interpreting one -- which is
 // why the kernel could land without it.
+// ISSUANCE TAKES THE PERMIT EXPLICITLY, AND DELIBERATELY NOT A CandidateOffer.
+//
+// The provider-use wall put the permit inside the sealed CandidateOffer so selection cannot RANK an
+// offer nobody admitted. Issuance took a bare SupplierOffer, so that wall stood on one path while
+// the other stayed open, and a wall with a way around it is not a wall. The obvious repair is to
+// take a CandidateOffer here - and residual capability ONE above rules that out in advance, for a
+// reason worth restating rather than stepping around: bind_candidate seals only that an offer and
+// its dispatch observations name the SAME offer, so it constructs a CandidateOffer for ANY
+// identity-consistent candidate, which is the PRE-SELECTION BOUND INPUT to the fold and not its
+// winner. Naming it here would be a trigger satisfied while the defect stood - exactly DESIGN
+// section 4b(3)'s rule that a trigger naming less than the capability it restores gets retired
+// while the capability stays dead. Capability ONE is untouched by this change and remains open.
+//
+// So the permit arrives as its own parameter and answers only its own question. It cannot be
+// forged: ProviderUsePermit is sole_constructor, so the only permit a caller can pass is one
+// admit_provider_use actually produced. The two refusals below check that the permit the caller
+// brought is about THIS offer and THIS route, which is the same wiring fault bind_candidate
+// refuses, caught at the second entrance.
 fn issue_grant<P, Q, S>(
   work: Work<P>,
   attempt: Attempt<P>,
   offer: SupplierOffer<P>,
+  permit: ProviderUsePermit<P>,
   outstanding: List<ExecutionGrant<P>>,
   account: MoneyAccount,
   money_request: MoneyReservationRequest,
@@ -362,6 +396,12 @@ fn issue_grant<P, Q, S>(
     GrantRefused {
       refusal: AttemptPrincipalIsNotTheWorkPrincipal { attempt: attempt.id, subject_work: work.id },
     }
+  } else if !fabric_identity_eq(left: offer.id, right: permit.offer) {
+    GrantRefused {
+      refusal: PermitNamesAnotherOffer { offer: offer.id, permit_names: permit.offer },
+    }
+  } else if !provider_route_eq(a: offer.route, b: permit.route) {
+    GrantRefused { refusal: PermitNamesAnotherRoute { offer: offer.id } }
   } else {
     let fungibility = offer_fungibility_for(requirements: work.requirements, offer: offer)
     match fungibility {

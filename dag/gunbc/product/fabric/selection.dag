@@ -1,5 +1,10 @@
 module product.fabric.selection
 
+import product.fabric.provider_route { provider_route_eq }
+import product.fabric.provider_admission {
+  ProviderUsePermit, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
+  ProviderUseRefusal,
+}
 import std.types { NonEmptyStr, List, Bool }
 import std.measure {
   MoneyAmountMicro, MoneyOnce, MoneyPerSecond, money_amount_micro, money_amount_micro_count,
@@ -216,23 +221,72 @@ type DispatchInputs<P> {
 // unchanged -- this confines WHO may construct and establishes nothing about whether the
 // observations themselves were honestly taken, which stays a boundary obligation on whoever
 // produced them.
+// THE PERMIT IS A THIRD MEMBER OF THE SEALED TRIPLE, AND THAT IS THE WHOLE WALL.
+//
+// Ranking used to decide over offers that no authority had admitted, so "may this work run on this
+// route at all" was answered nowhere on the deciding path and the cheapest offer won regardless.
+// Adding a check inside the ranking fold would have been validation - satisfiable by editing the
+// check, and one forgotten call site from being wrong again. Putting the permit INSIDE the sealed
+// candidate makes the bad state unconstructible instead: sole_constructor confines construction to
+// bind_candidate, bind_candidate refuses without an admitted permit, and selection ranks
+// CandidateOffers. So "an unadmitted offer won the ranking" has no spelling, which is section 4b's
+// top rung rather than a wall someone has to remember to run.
+//
+// The ordering argument is unchanged and now enforced one step earlier: this module already
+// evaluates price LAST so price cannot rescue an offer that cannot run the work. Admission is
+// earlier still, so price cannot rescue an offer we are not authorised to use.
 type CandidateOffer<P> sole_constructor {
   offer: SupplierOffer<P>
   dispatch: DispatchInputs<P>
+  permit: ProviderUsePermit<P>
 }
 
+// THE THREE NEW ARMS ARE THREE DIFFERENT THINGS TO GO AND DO, which is why they are not one
+// "not admitted" arm. A denial carries the admission's own typed cause, so the remedy is whatever
+// that cause names - gather route facts, clear a sanctions case, re-posture. A permit naming
+// another offer is a WIRING fault: a real admission carried onto the wrong offer. A permit naming
+// another route is the same fault one level down, and it is the case the route on SupplierOffer
+// exists to make expressible - without it the two could never disagree, so the check could not be
+// written at all.
 type CandidateBinding<P>
   = CandidateBound { candidate: CandidateOffer<P> }
   | DispatchInputsNameAnotherOffer {
       offer: FabricIdentity<P, OfferKey>,
       inputs_name: FabricIdentity<P, OfferKey>,
     }
+  | OfferNotAdmittedForUse {
+      offer: FabricIdentity<P, OfferKey>,
+      cause: ProviderUseRefusal,
+    }
+  | PermitNamesAnotherOffer {
+      offer: FabricIdentity<P, OfferKey>,
+      permit_names: FabricIdentity<P, OfferKey>,
+    }
+  | PermitNamesAnotherRoute { offer: FabricIdentity<P, OfferKey> }
 
-fn bind_candidate<P>(offer: SupplierOffer<P>, dispatch: DispatchInputs<P>) -> CandidateBinding<P> {
-  if !fabric_identity_eq(left: offer.id, right: dispatch.offer) {
-    DispatchInputsNameAnotherOffer { offer: offer.id, inputs_name: dispatch.offer }
-  } else {
-    CandidateBound { candidate: CandidateOffer { offer: offer, dispatch: dispatch } }
+// The admission coproduct is matched ONCE and the permit comes out of the admitted arm, so there
+// is no Bool "was it admitted" predicate and nowhere to invent a permit: the only permit this
+// function can put in a candidate is the one the decision actually produced.
+fn bind_candidate<P>(
+  offer: SupplierOffer<P>,
+  dispatch: DispatchInputs<P>,
+  admission: ProviderUseAdmission<P>,
+) -> CandidateBinding<P> {
+  match admission {
+    ProviderUseDenied { decision, cause } =>
+      OfferNotAdmittedForUse { offer: offer.id, cause: cause }
+    ProviderUseAdmitted { permit } =>
+      if !fabric_identity_eq(left: offer.id, right: dispatch.offer) {
+        DispatchInputsNameAnotherOffer { offer: offer.id, inputs_name: dispatch.offer }
+      } else if !fabric_identity_eq(left: offer.id, right: permit.offer) {
+        PermitNamesAnotherOffer { offer: offer.id, permit_names: permit.offer }
+      } else if !provider_route_eq(a: offer.route, b: permit.route) {
+        PermitNamesAnotherRoute { offer: offer.id }
+      } else {
+        CandidateBound {
+          candidate: CandidateOffer { offer: offer, dispatch: dispatch, permit: permit },
+        }
+      }
   }
 }
 

@@ -1,5 +1,6 @@
 module test.claim.fabric_control_plane_witness
 
+import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer }
 import product.fabric.provider_route { ProviderRoute }
 import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -30,6 +31,7 @@ import product.fabric.budget {
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, SelectionCost, selection_liability, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
   AvailabilityObservation, AvailableIndefinitely,
   CommitmentState, PayAsYouGo,
   StartCostObservation, StartCostMeasured,
@@ -208,6 +210,9 @@ fn cp_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
 fn cp_candidate_for(executor: NonEmptyStr) -> List<CandidateOffer<NonEmptyStr>> {
   match bind_candidate(
     offer: cp_offer_for(executor: executor),
+    admission: fixture_admitted_for_offer(
+      route: cp_offer_for(executor: executor).route,
+      offer: cp_offer_for(executor: executor).id),
     dispatch: DispatchInputs {
       offer: cp_offer_id(key: "offer-1"),
       availability: AvailableIndefinitely {
@@ -229,6 +234,9 @@ fn cp_candidate_for(executor: NonEmptyStr) -> List<CandidateOffer<NonEmptyStr>> 
   ) {
     CandidateBound { candidate: c } => [c]
     DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
   }
 }
 
