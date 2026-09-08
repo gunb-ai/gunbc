@@ -1,11 +1,6 @@
 module gunbc.runner.runner_bound_attempt_receipt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import gunbc.runner.runner_jit_admission {
-  JitAdmissionAxis, SignatureAxis, ExpiryAxis, ReplayAxis,
-  UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
-  jit_admission_axis_standing, JitAdmissionAxisStanding,
-}
 
 // ONE ATTEMPT, OBSERVED FROM BOTH SIDES, JOINED BY ASSIGNMENT RATHER THAN BY A SHARED STRING.
 //
@@ -72,20 +67,8 @@ data jit_admission_evidence: AdmissionEvidence = AdmissionEvidence {
   positive_control: "runner-canary-8: jitconfig-bytes=4076, jit-admission=yes, and the attempt ran to a successful job",
 }
 
-// THE HOST PRINTED THESE SIX NAMES AS UNCHECKED. Standing for each axis lives in
-// gunbc.runner.runner_jit_admission — this receipt does not restate dispositions as prose.
-data host_printed_admission_axes: List<JitAdmissionAxis> = [
-  SignatureAxis,
-  UnitBindingAxis,
-  BootBindingAxis,
-  AttemptBindingAxis,
-  ExpiryAxis,
-  ReplayAxis,
-]
-
-fn host_printed_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStanding {
-  jit_admission_axis_standing(axis: axis)
-}
+// THE HOST PRINTED SIX ADMISSION NAMES AS UNCHECKED. Standing for each lives in
+// gunbc.runner.runner_jit_admission; this receipt does not restate that roster.
 
 // AND ONE RESIDUAL IN THE ORDERING. The refusal precedes every LAUNCH, which is the safety property,
 // but the jail tmpfs and the guest artifact copy still happen before it -- the fetch sits later in

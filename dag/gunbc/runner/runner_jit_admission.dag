@@ -1,9 +1,9 @@
 module gunbc.runner.runner_jit_admission
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, Int }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.github.actions_jit_runner {
-  org_generate_jitconfig_path,
+  org_generate_jitconfig_path, jit_config_conflict_status,
   JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused,
   JitConfigMintNotFound, JitConfigMintConflict, JitConfigMintValidationFailed,
 }
@@ -46,7 +46,7 @@ type JitAdmissionAxisStanding
   = AxisRequired { checker: JitAdmissionChecker }
   | AxisDeferred { trigger: NonEmptyStr }
   | AxisDissolvedInto { into: JitAdmissionAxis }
-  | AxisDissolvedIntoUpstreamMint { reason: NonEmptyStr }
+  | AxisDissolvedIntoUpstreamMint { conflict_status: Int, reason: NonEmptyStr }
 
 fn gunbai_ci_installation_token_url() -> String {
   github_app_installation_access_token_url(
@@ -63,7 +63,8 @@ fn jit_admission_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStandi
     SignatureAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
     ExpiryAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
     ReplayAxis => AxisDissolvedIntoUpstreamMint {
-      reason: "generate-jitconfig creates one runner identity; a second mint of the same name is HTTP 409, and the blob is not a reusable secret",
+      conflict_status: jit_config_conflict_status,
+      reason: "generate-jitconfig creates one runner identity; a second mint of the same name conflicts, and the blob is not a reusable secret",
     }
     UnitBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
     BootBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
@@ -77,7 +78,7 @@ fn attempt_binding_admits_mint_name(standing: JitAdmissionAxisStanding) -> Bool 
     AxisRequired { checker: _ } => false
     AxisDeferred { trigger: _ } => false
     AxisDissolvedInto { into: _ } => false
-    AxisDissolvedIntoUpstreamMint { reason: _ } => false
+    AxisDissolvedIntoUpstreamMint { conflict_status: _, reason: _ } => false
   }
 }
 

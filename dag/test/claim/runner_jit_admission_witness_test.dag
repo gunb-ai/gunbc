@@ -6,7 +6,6 @@ import extdeps.github.actions_jit_runner {
   jit_config_conflict_status, jit_config_mint_outcome,
 }
 import gunbc.auth.github_apps { gunbai_ci_declared }
-import gunbc.runner.runner_bound_attempt_receipt { host_printed_axis_standing }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
   AxisRequired, AxisDeferred, AxisDissolvedInto, AxisDissolvedIntoUpstreamMint,
@@ -36,8 +35,8 @@ test fn signature_and_expiry_are_required_host_envelope_checks() -> Bool {
 
 test fn replay_dissolves_into_the_upstream_one_shot_mint() -> Bool {
   match jit_admission_axis_standing(axis: ReplayAxis) {
-    AxisDissolvedIntoUpstreamMint { reason: r } =>
-      string_contains(s: r, pattern: "409") && jit_config_conflict_status == 409
+    AxisDissolvedIntoUpstreamMint { conflict_status: s, reason: _ } =>
+      s == jit_config_conflict_status
     _ => false
   }
 }
@@ -97,17 +96,6 @@ test fn only_expiry_and_replay_are_observable_coverage() -> Bool {
 test fn encoded_jit_config_interior_is_a_declared_boundary() -> Bool {
   match encoded_jit_config_interior {
     OutsideTheModeledGuaranteeDeclaredBoundary => true
-  }
-}
-
-test fn bound_attempt_receipt_reads_axis_standing_from_the_authority() -> Bool {
-  match host_printed_axis_standing(axis: SignatureAxis) {
-    AxisRequired { checker: HostEnvelopeNonemptyAndFresh } =>
-      match host_printed_axis_standing(axis: AttemptBindingAxis) {
-        AxisRequired { checker: GitHubMintRequestName } => true
-        _ => false
-      }
-    _ => false
   }
 }
 
