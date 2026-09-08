@@ -83,8 +83,7 @@ test fn witness_empty_cell_actions_realize_no_effects() -> Bool {
 // on a comment describing a two-arm shape the tree no longer had. When the wall's premise died the
 // expecting-red row flipped to this permanent positive control: a full cell of three additions
 // realizes FOUR effects -- the host-scoped base directory, two address directories, and one slice
-// ensure carrying all five desired
-// directives -- and a regression that re-refuses the boundary goes red here.
+// ensure carrying the five base directives plus the declared CPUQuota -- and a regression that re-refuses the boundary goes red here.
 test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool {
   let full_cell = [
     added(address: FabricCellRootAddress),
@@ -97,7 +96,7 @@ test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool 
         && fold(es, init: false, f: (acc, e) => acc || (match e {
           FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
             (u as String) == fabric_cell_slice_name(slot: srv3_fabric_slot())
-              && list_length(items: ds) == 5
+              && list_length(items: ds) == 6
           FabricCellDirectoryEnsure { path: _, owner: _ } => false
         }))
     CellPlanRefused { refusals: _ } => false

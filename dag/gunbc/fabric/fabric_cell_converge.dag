@@ -5,7 +5,11 @@ import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.string_type { string_is_lexicographically_before }
 import v2.std.optional { Optional, Present, Absent }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, HardwareThreadCount }
+import extdeps.systemd {
+  systemd_cpu_quota_per_sec_of_threads,
+  systemd_cpu_quota_per_sec_identity,
+}
 import product.placement_supply { HostIdentity }
 import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
@@ -205,7 +209,26 @@ fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
     memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
     tasks_max: to_string(desired.tasks_max),
     cpu_weight: to_string(desired.cpu_weight),
+    cpu_quota_per_sec: fabric_cell_cpu_quota_per_sec_desired_digest(quota: desired.cpu_quota),
   )
+}
+
+// THE QUOTA MEMBER IS THE IDENTITY OF systemd_cpu_quota_per_sec_of_threads, NOT A SECOND
+// RENDERER. Desired authors a thread count (or its absence); observed reads CPUQuotaPerSecUSec as
+// a formatted span. Both sides pass through that conversion and then systemd_cpu_quota_per_sec_
+// identity, so a six-thread cell and a host that printed `6s` compare equal as magnitudes, and a
+// cell whose policy is deliberately unbounded (`of_threads` Absent -> CpuQuotaUnbounded ->
+// `infinity`) cannot compare equal to a missing report (`CpuQuotaAbsent` -> empty). Rendering
+// Absent as `0` or `""` would make relative-sharing and a vanished ceiling the same digest.
+//
+// of_threads never produces CpuQuotaUndecodable, so identity is Present on every desired row.
+// The Absent arm below is therefore uninhabited for this caller; it is a match the type
+// requires, not a spelling a host can satisfy.
+fn fabric_cell_cpu_quota_per_sec_desired_digest(quota: HardwareThreadCount?) -> String {
+  match systemd_cpu_quota_per_sec_identity(q: systemd_cpu_quota_per_sec_of_threads(threads: quota)) {
+    Present { value: s } => s
+    Absent => "cpu-quota-desired-identity-uninhabited"
+  }
 }
 
 // THE SPELLING IS A FUNCTION, BECAUSE THE OBSERVED SIDE HAS TO PRODUCE THE SAME ONE. The desired
@@ -217,17 +240,19 @@ fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
 //
 // IT TAKES STRINGS AND NOT THE TYPED MAGNITUDES, and that is a deliberate boundary rather than
 // anemia. The desired side holds `ByteSize` and `Int` because it is authored here; the observed
-// side holds whatever `systemctl show` printed, which is a decimal string or the literal word
-// `infinity`. Parsing that back into a magnitude in order to re-render it would invent a
-// round-trip the comparison does not need and would have to decide what `infinity` means as a
-// number -- so the digest compares the RENDERED values, and the desired side renders its
-// magnitudes through the same authority it always did.
+// side holds whatever `systemctl show` printed. For the five original properties that print is a
+// decimal string or the literal word `infinity`, so the digest compares those RENDERED values.
+// CPUQuotaPerSecUSec is the exception this sixth member exists for: systemd prints a time span,
+// so the observed caller first parses it and then supplies the identity string, never the raw
+// show text -- otherwise `6s` and `6000000` would be two spellings of one ceiling and every
+// unchanged cell would read as drifted.
 fn fabric_cell_boundary_state_digest_of(
   memory_max: String,
   memory_high: String,
   memory_swap_max: String,
   tasks_max: String,
   cpu_weight: String,
+  cpu_quota_per_sec: String,
 ) -> NonEmptyStr {
   join([
     "memory_max=", memory_max,
@@ -235,6 +260,7 @@ fn fabric_cell_boundary_state_digest_of(
     ";memory_swap_max=", memory_swap_max,
     ";tasks_max=", tasks_max,
     ";cpu_weight=", cpu_weight,
+    ";cpu_quota_per_sec=", cpu_quota_per_sec,
   ], "") as NonEmptyStr
 }
 

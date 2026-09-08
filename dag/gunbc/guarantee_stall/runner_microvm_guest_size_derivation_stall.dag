@@ -21,28 +21,24 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // so the row was re-derived from the module's declarations rather than edited.
 //
 // MEMBERSHIP RULE: a symbol is a member when, IN PRODUCTION, it cannot reach its intended answer
-// because of the two missing quantities. That deliberately includes guest_memory_fits, which is
-// correct code that always returns MemoryFitUnresolved on the production path, and deliberately
-// excludes guest_resources_of_machine_config and the topology and credential arms, which decide
-// fully today. It also includes fabric_cell_slice_desired_directives, which is not in this module:
-// the CPU obstacle is owed there, and a row scoped to the file rather than the class would be
-// satisfied while the capability stayed dead.
+// because of the missing memory quantity, or because guest topology is still a declared product
+// decision rather than a derivation from the cell's now-real absolute CPU ceiling. That
+// deliberately includes guest_memory_fits, which is correct code that always returns
+// MemoryFitUnresolved on the production path, and deliberately excludes guest_resources_of_machine_
+// config and the topology and credential arms, which decide fully today. fabric_cell_slice_
+// desired_directives is NOT a member: the cell slice now emits CPUQuota when the slot declares one
+// and the boundary digest reconciles CPUQuotaPerSecUSec, so that function reaches its intended
+// answer. A row that kept it would be a stall standing on a discharged obstacle.
 //
-// THE TRIGGER CARRIES TWO CLAUSES AND BOTH ARE REQUIRED, because satisfying the first alone would
-// take the admission's accept arm live having never executed. Retargeting the microVM witnesses
-// onto the refusal path left the success path with NO executed coverage: RunnerMicroVmAdmitted is
-// unreachable while sizing refuses, so every witness now proves a gate is passed on the way to a
-// refusal and none proves an admissible VM is admitted. A gate whose accept arm has never run is
-// not a gate that has been tested.
-//
-// THE CPU AXIS IS NOT A SECOND COPY OF THE MEMORY ONE, WHICH IS WHY THE TRIGGER SPLITS THEM. On
-// memory the quantity may exist and be uncited. On CPU the cell realizes no absolute entitlement at
-// all: fabric_cell_slice_desired_directives emits CPUWeight, a relative share that guarantees no
-// amount of anything under contention. The absolute ceiling this fleet does declare is written by
-// host_converge onto the RUNNER UNIT, a different systemd object from the cell slice -- so a guest
-// vCPU count derived from the cell would equal a number the cell never enforces. That is the
-// failure gunbc.ci.ci_runner_placement already records once: "the arithmetic said six threads per
-// slot and the host was never told."
+// THE TRIGGER'S CPU CLAUSE IS DISCHARGED. An earlier recital said fabric_cell_effect emits only
+// CPUWeight so there is no absolute cell entitlement, and that the fleet's CPUQuota lands on the
+// RUNNER UNIT. Both halves are false once the cell slice carries slice_cpu_quota from
+// gunbc_runner_slot_desired().cpu_quota and fabric_cell_resource_boundary_state_digest includes
+// that quota as its sixth member. Leaving that recital standing is DESIGN section 3: a false
+// claim under a stable name. What remains is memory, and the still-undeclared derivation of
+// guest vCPU count FROM the cell entitlement -- runner_microvm still serves a declared product
+// size, with an Absolute arm that withdraws that declaration the day the entitlement function
+// starts reading the cell.
 //
 // AND THE CONTROLS MUST COME BACK AS FIT CONTROLS. The pair this row replaced asserted EQUALITY to
 // the envelope in both directions -- it admitted a guest sized at the whole ceiling and refused a
@@ -50,11 +46,11 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // wrong in opposite directions while the pair looked discriminating. A nonconstant predicate with
 // both polarities observed can still be answering a question nobody asked.
 data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall {
-  subject: "gunbc.runner_microvm cannot derive a guest's resource envelope from the bounded cell on EITHER axis: memory needs a subtrahend for the Firecracker VMM's own footprint that is not cited anywhere, and CPU needs an absolute entitlement the cell does not carry",
+  subject: "gunbc.runner_microvm cannot derive a guest's resource envelope from the bounded cell on MEMORY (no cited VMM footprint) and does not yet consume the cell's absolute CPU ceiling for guest topology",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
-    grounding: "what quantities, if any, relate a cell's declared envelope to an admissible guest. On MEMORY that may be a cited VMM footprint, or the finding that guest RAM is an operator-declared input BOUNDED BY the envelope rather than derived from it. On CPU it is prior: gunbc.fabric.fabric_cell_effect emits CPUWeight, a RELATIVE share that guarantees no amount of anything, so there is no absolute cell entitlement for a guest vCPU count to be derived from -- the absolute ceiling this fleet does declare, gunbc.host.host_converge runner_cpu_boundary_knobs writing CapacityQuota as a CPUQuota drop-in, lands on the RUNNER UNIT and not on the cell slice. One bounded execution context, two realizations, different axes enforced",
+    grounding: "what quantities, if any, relate a cell's declared envelope to an admissible guest. On MEMORY that may be a cited VMM footprint, or the finding that guest RAM is an operator-declared input BOUNDED BY the envelope rather than derived from it. On CPU the cell NOW realizes an absolute entitlement: gunbc.fabric.fabric_cell_effect emits CPUQuota on the CELL SLICE when gunbc_runner_slot_desired declares one, and fabric_cell_resource_boundary_state_digest reconciles CPUQuotaPerSecUSec through systemd_cpu_quota_per_sec_of_threads so a drifted ceiling cannot compare equal. The remaining CPU work is consumption, not realization -- gunbc.runner_microvm still sizes from a declared product row rather than from that cell entitlement",
   },
   population: BoundedPopulation {
     members: [
@@ -66,9 +62,8 @@ data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall
       "gunbc.runner_microvm runner_microvm_admission_after_credential",
       "gunbc.runner_microvm gunbc_runner_microvm_admission",
       "gunbc.runner_microvm gunbc_runner_microvm_vm_config",
-      "gunbc.fabric.fabric_cell_effect fabric_cell_slice_desired_directives",
       "test.claim.runner_microvm_witness_test",
     ],
   },
-  next_rung_trigger: climbs_when(capability: "BOTH of: (1) a quantity sufficient to DERIVE an admissible guest RAM from a cell envelope, or a decision that guest RAM is a declared input bounded by that envelope; AND (2) the cell realizing an ABSOLUTE CPU entitlement that a guest vCPU count can be derived from -- a CPUQuota or CPU set on the CELL SLICE, not the CPUQuota gunbc.host.host_converge already writes onto the runner UNIT -- or guest topology renamed as a separately declared product decision that is NOT derived from the cell. The clauses are separate because the obstacles differ in kind: the memory quantity may exist and merely be uncited, while the cell grants no CPU quantity at all, so a trigger naming only the memory subtrahend would be satisfied while the CPU axis stayed unfounded. THE THIRD CLAUSE THIS ROW CARRIED IS DISCHARGED: RunnerMicroVmAdmitted is reachable again and executed, because the realization reserve is a PARAMETER of the admission rather than a global, so a witness declaring one drives the accept arm while production still refuses. What is NOT discharged and is not claimed here is that PRODUCTION can reach that arm -- it cannot, and clauses 1 and 2 are what would change that")
+  next_rung_trigger: climbs_when(capability: "BOTH of: (1) a quantity sufficient to DERIVE an admissible guest RAM from a cell envelope, or a decision that guest RAM is a declared input bounded by that envelope; AND (2) guest topology derived from the cell's absolute CPUQuota (already applied on the cell slice and reconciled via CPUQuotaPerSecUSec) rather than from the declared product size, or guest topology kept as a separately declared product decision that is NOT derived from the cell. Clause 2 of the prior trigger -- the cell realizing an absolute CPU entitlement on the CELL SLICE -- is DISCHARGED. THE THIRD CLAUSE THIS ROW CARRIED IS DISCHARGED: RunnerMicroVmAdmitted is reachable again and executed, because the realization reserve is a PARAMETER of the admission rather than a global, so a witness declaring one drives the accept arm while production still refuses. What is NOT discharged and is not claimed here is that PRODUCTION can reach that arm from a derived envelope -- it cannot, and clause 1 plus consuming the cell CPU ceiling are what would change that")
 }

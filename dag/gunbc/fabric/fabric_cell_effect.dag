@@ -93,10 +93,11 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // cannot occur -- permanently red by staleness, the mirror of the permanently-green decoration
 // DESIGN 4b forbids.
 //
-// FIVE DIRECTIVES, ZERO LITERALS. Every magnitude comes from gunbc_runner_slot_desired -- the same
-// row fabric_cell_resource_boundary_state_digest renders into the desired member digest -- so the
-// directives this effect applies and the digest reconcile compares are two projections of one
-// authority and cannot disagree by drift.
+// FIVE BASE DIRECTIVES PLUS THE QUOTA WHEN DECLARED, ZERO LITERALS. Every magnitude comes from
+// gunbc_runner_slot_desired -- the same row fabric_cell_resource_boundary_state_digest renders
+// into the desired member digest, quota included via systemd_cpu_quota_per_sec_of_threads --
+// so the directives this effect applies and the digest reconcile compares are two projections of
+// one authority and cannot disagree by drift.
 //
 // WHY DIRECTIVES AND NOT A SystemdUnitFile: the effect's production realization is
 // `systemctl set-property <slice> <Property>=<value>...` -- systemd renders and owns the persisted

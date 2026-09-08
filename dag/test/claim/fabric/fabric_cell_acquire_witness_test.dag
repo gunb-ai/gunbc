@@ -5,7 +5,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, hardware_thread_count }
+import v2.std.optional { Present, Absent }
 import gunbc.fabric_cell_converge {
   FabricCellRootAddress,
   FabricCellAttemptRootAddress,
@@ -14,6 +15,9 @@ import gunbc.fabric_cell_converge {
   fabric_cell_desired_state_digest,
   fabric_cell_root_path,
   fabric_cell_slice_name,
+  fabric_cell_boundary_state_digest_of,
+  fabric_cell_boundary_address_digest_of,
+  fabric_cell_cpu_quota_per_sec_desired_digest,
 }
 import extdeps.systemd { MemoryMax, TasksMax }
 import gunbc.fabric_cell_observe {
@@ -466,6 +470,19 @@ fn converged_boundary_values() -> FabricCellBoundaryReading {
     memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
     tasks_max: to_string(desired.tasks_max),
     cpu_weight: to_string(desired.cpu_weight),
+    cpu_quota_per_sec: "6s",
+  }
+}
+
+fn boundary_values_with_quota_raw(raw: String) -> FabricCellBoundaryReading {
+  let desired = gunbc_runner_slot_desired()
+  BoundaryValuesRead {
+    memory_max: to_string(byte_size_count(b: desired.memory_max)),
+    memory_high: to_string(byte_size_count(b: desired.memory_high)),
+    memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+    tasks_max: to_string(desired.tasks_max),
+    cpu_weight: to_string(desired.cpu_weight),
+    cpu_quota_per_sec: raw,
   }
 }
 
@@ -569,3 +586,80 @@ fn path_kind_is_read(o: FabricCellPathKindObservation) -> Bool {
     PathKindReadRefused { cause: _ } => false
   }
 }
+
+// A DRIFTED CEILING IS A DIFFERENT DIGEST. One thread (`1s`) against a desired six cannot
+// compose equal, so reconcile cannot report converged. This is the class the five-member digest
+// was silent on.
+test fn witness_acquire_drifted_quota_is_a_different_digest() -> Bool {
+  let desired = fabric_cell_desired_state_digest(slot: witness_slot(), address: FabricCellResourceBoundaryAddress)
+  match fabric_cell_boundary_address_probe(
+    slot: witness_slot(),
+    reading: boundary_values_with_quota_raw(raw: "1s"),
+  ) {
+    AddressStateReadRefused { cause: _ } => false
+    AddressStateRead { state_digest: d } => (d as String) != (desired as String)
+  }
+}
+
+// POLICY ABSENT AND A MISSING REPORT ARE DIFFERENT MEMBERS. Desired Absent renders Unbounded
+// (`infinity`) through of_threads; an empty show parses as CpuQuotaAbsent and identity-spells
+// empty. Collapsing them is the silence this sixth member exists to close.
+test fn witness_acquire_absent_policy_and_missing_report_digest_differently() -> Bool {
+  let desired = gunbc_runner_slot_desired()
+  let unbounded = fabric_cell_boundary_state_digest_of(
+    memory_max: to_string(byte_size_count(b: desired.memory_max)),
+    memory_high: to_string(byte_size_count(b: desired.memory_high)),
+    memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+    tasks_max: to_string(desired.tasks_max),
+    cpu_weight: to_string(desired.cpu_weight),
+    cpu_quota_per_sec: fabric_cell_cpu_quota_per_sec_desired_digest(quota: Absent),
+  )
+  let missing = fabric_cell_boundary_state_digest_of(
+    memory_max: to_string(byte_size_count(b: desired.memory_max)),
+    memory_high: to_string(byte_size_count(b: desired.memory_high)),
+    memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+    tasks_max: to_string(desired.tasks_max),
+    cpu_weight: to_string(desired.cpu_weight),
+    cpu_quota_per_sec: "",
+  )
+  (unbounded as String) != (missing as String)
+    && fabric_cell_cpu_quota_per_sec_desired_digest(quota: Absent) == "infinity"
+    && fabric_cell_cpu_quota_per_sec_desired_digest(quota: Present { value: hardware_thread_count(count: 6) })
+      == "6000000"
+}
+
+// AN UNBOUNDED HOST MATCHES A CELL THAT DECLARED NO QUOTA. `infinity` is what systemd prints for
+// an unset ceiling, and of_threads(Absent) is that same identity -- so relative-sharing still
+// reconciles clean when the host really has no quota.
+test fn witness_acquire_unbounded_host_matches_a_cell_with_no_declared_quota() -> Bool {
+  let desired = gunbc_runner_slot_desired()
+  address_probe_is_read_as(
+    p: fabric_cell_boundary_address_probe(
+      slot: witness_slot(),
+      reading: boundary_values_with_quota_raw(raw: "infinity"),
+    ),
+    digest: fabric_cell_boundary_address_digest_of(
+      slice_name: fabric_cell_slice_name(slot: witness_slot()),
+      state: fabric_cell_boundary_state_digest_of(
+        memory_max: to_string(byte_size_count(b: desired.memory_max)),
+        memory_high: to_string(byte_size_count(b: desired.memory_high)),
+        memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+        tasks_max: to_string(desired.tasks_max),
+        cpu_weight: to_string(desired.cpu_weight),
+        cpu_quota_per_sec: fabric_cell_cpu_quota_per_sec_desired_digest(quota: Absent),
+      ),
+    ),
+  )
+}
+
+// AN UNDECODABLE SPAN CANNOT REACH A DIGEST. Fractional forms have no identity; admitting them
+// would let an unreadable host compare equal to something.
+test fn witness_acquire_undecodable_quota_refuses_rather_than_digesting() -> Bool {
+  address_probe_is_refused(
+    p: fabric_cell_boundary_address_probe(
+      slot: witness_slot(),
+      reading: boundary_values_with_quota_raw(raw: "1.500000s"),
+    ),
+  )
+}
+
