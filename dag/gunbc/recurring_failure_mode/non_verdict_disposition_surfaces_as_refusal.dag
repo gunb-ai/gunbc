@@ -108,6 +108,9 @@ data non_verdict_disposition_surfaces_as_refusal: RecurringFailureMode = Recurri
     "The cause is now carried rather than reconstructed, and a blocking row with an empty cause REFUSES in `changed_witness_projection_rows` rather than travelling as a blank -- but the invalid state is still writable, since nothing structurally binds a blocker's cause to the standing that produced it. ",
 
     "It is not the row's ceiling and it is not the row's whole subject: the interrupted-before-verdict / completed-over-cost-requirement pair above is a DIFFERENT boundary in the same fold and is untouched by this repair, so the class's rung remains the minimum across its boundaries.",
+
+    "THE INSTRUMENT FOR THE SPECIMEN THE REPAIR ABOVE RESTS ON, named at the grain this row's first specimen already uses, because a transcribed number is unreachable from the producer that owns it and the repair receipt does not carry one. The pre-repair specimen is workflow run 34132197639 on gunb-ai/gunbc, attempt 1, job `required-witnesses-floor` id 101779846687, whose failing step is `D0-ADJUDICATE: consume the published measurement receipt`. Re-derive it with `gh run download 34132197639 -n required-floor-disposition` and `gh run download 34132197639 -n required-ci-measurement-receipt`; read the disposition TSV's `# summary` line and its per-identity `disposition` column BY HEADER NAME, and read the receipt JSON's `receipt.blockers[].cause`. ",
+    "TWO CHANNELS ARE WRONG FOR THIS SUBJECT AND BOTH ARE CHEAP TO REACH BY ACCIDENT. `gh run view --job <id> --log` answers an attempt-1 job id with attempt-2 content, which is the wrong-content channel this row's first specimen already warns about; and the `/actions/runs/<id>/logs` zip truncates. The download-by-artifact-name route above is the one that answers the subject asked. ",
   ],
 
   evidence: [],
