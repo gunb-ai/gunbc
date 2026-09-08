@@ -28,7 +28,7 @@ import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { SatisfactionRequirement }
 import product.fabric.supply {
-  SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply,
+  SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply, PlacementAffinityKey,
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,

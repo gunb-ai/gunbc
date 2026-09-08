@@ -12,7 +12,7 @@ import std.durable_compare_and_set {
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
 import product.fabric.demand { Demand }
-import product.fabric.supply { SupplierOffer, OfferQuote, offer_quote_currency }
+import product.fabric.supply { SupplierOffer, OfferQuote, offer_quote_currency, PlacementAffinityKey }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
