@@ -963,6 +963,7 @@ fn zero_memory_slot_shape() -> RunnerSlotDesired {
     memory_high: byte_size(0),
     tasks_max: 16384,
     cpu_weight: 100,
+    cpu_quota: Absent,
     labels: RunnerSlotLabels { github_labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"] },
   }
 }
