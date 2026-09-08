@@ -372,18 +372,11 @@ fn ceil_div(numerator: Nat, denominator: TokenCount) -> Nat? {
 // push forward, so the check refuses; it does not read an absent second opinion as agreement.
 type LayoutReproduction
   = LayoutReproducesReported { blocks_per_max_request: AllocatorBlockCount }
-  | LayoutContradictsReported { predicted: Percent, reported: Percent }
+  | LayoutContradictsReported { predicted: ConcurrentRequestHundredths, reported: ConcurrentRequestHundredths }
   | LayoutReproductionUnavailable { cause: NonEmptyStr }
 
 fn revision_is_modelled(r: VllmSourceRevision) -> Bool {
   (r.full_revision as String) == (vllm_source_revision_read.full_revision as String)
-}
-
-fn hundredths_within_printed_precision(predicted: Percent, reported: Percent) -> Bool {
-  let p = percent_count(p: predicted)
-  let r = percent_count(p: reported)
-  let delta = if p > r { p - r } else { r - p }
-  delta <= 1
 }
 
 // THE CHECK RUNS FORWARD, NOT AS AN EQUALITY BETWEEN TWO INVERSIONS.
@@ -421,7 +414,7 @@ fn layout_reproduces_reported(layout: ResolvedKvLayout, reported: VllmReportedCa
         if cost == 0 {
           LayoutReproductionUnavailable { cause: "the groups sum to no blocks for a full-context request, so no concurrency can be predicted from them" as NonEmptyStr }
         } else {
-          let predicted = percent(count: (allocator_block_count_value(c: layout.allocator_blocks) * 100) / cost)
+          let predicted = concurrent_request_hundredths(count: (allocator_block_count_value(c: layout.allocator_blocks) * 100) / cost)
           if hundredths_within_printed_precision(predicted: predicted, reported: reported.max_concurrency) {
             LayoutReproducesReported { blocks_per_max_request: derived }
           } else {

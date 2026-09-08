@@ -5,7 +5,7 @@ import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import std.measure {
-  TokenCount, token_count, percent,
+  TokenCount, token_count, concurrent_request_hundredths,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
   attention_layer_count,
 }
@@ -84,7 +84,7 @@ fn w_concurrency_reading(revision: VllmSourceRevision) -> VllmStartupReading {
 fn w_reported(pool: VllmObservedKvPool, hundredths: Nat) -> VllmReportedCapacity? {
   match vllm_reported_capacity(
     pool: pool,
-    max_concurrency: percent(count: hundredths),
+    max_concurrency: concurrent_request_hundredths(count: hundredths),
     reading: w_concurrency_reading(revision: pool.observed_at_revision),
   ) {
     ReportedCapacityAdmitted { capacity: c } => Present { value: c }

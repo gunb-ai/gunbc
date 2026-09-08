@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure {
-  TokenCount, token_count_value, Percent, percent_count,
+  TokenCount, token_count_value, ConcurrentRequestHundredths, concurrent_request_hundredths_count,
   AllocatorBlockCount, allocator_block_count_value,
 }
 import gunbc.spark.vllm_serving_launch {
@@ -83,7 +83,7 @@ fn admit_kv_layout(
         launch: launch,
         cause: join([
           "the captured startup lines disagree with each other: the pool line implies a concurrency of ",
-          to_string(percent_count(p: i)), " hundredths while the concurrency line reports ", to_string(percent_count(p: r)),
+          to_string(concurrent_request_hundredths_count(c: i)), " hundredths while the concurrency line reports ", to_string(concurrent_request_hundredths_count(c: r)),
         ], "") as NonEmptyStr,
       }
     PrintedLinesAgree =>
@@ -98,7 +98,7 @@ fn admit_kv_layout(
             launch: launch,
             cause: join([
               "the group layout and the printed lines describe different engines: the groups predict a concurrency of ",
-              to_string(percent_count(p: p)), " hundredths while the engine printed ", to_string(percent_count(p: r)),
+              to_string(concurrent_request_hundredths_count(c: p)), " hundredths while the engine printed ", to_string(concurrent_request_hundredths_count(c: r)),
             ], "") as NonEmptyStr,
           }
         LayoutReproducesReported { blocks_per_max_request: b } =>
