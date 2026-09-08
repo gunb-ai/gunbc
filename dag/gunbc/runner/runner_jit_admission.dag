@@ -86,11 +86,9 @@ fn attempt_binding_admits_mint_name(standing: JitAdmissionAxisStanding) -> Bool 
 // not an unmet observation. The mint does not expose the blob's interior; no token will. Filing
 // that opacity as coverage is what would talk a later lane into decoding the blob. Signature,
 // unit, boot and attempt already route around it (host envelope; dissolve into attempt; mint name).
-type EncodedJitConfigInteriorStanding
-  = OutsideTheModeledGuaranteeDeclaredBoundary
+type EncodedJitConfigInteriorStanding = OutsideTheModeledGuaranteeDeclaredBoundary
 
-data encoded_jit_config_interior: EncodedJitConfigInteriorStanding =
-  OutsideTheModeledGuaranteeDeclaredBoundary
+data encoded_jit_config_interior: EncodedJitConfigInteriorStanding = OutsideTheModeledGuaranteeDeclaredBoundary
 
 type AxisMintObservability
   = MintObservableCoverage { question: MintSurfaceCoverageQuestion }
