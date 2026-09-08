@@ -4,6 +4,9 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import gunbc.spark.model_snapshot_acquisition {
+  SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
+}
 
 // A SERVING ARM IS A CHECKPOINT, A RUNTIME AND A TOPOLOGY -- NOT A MODEL.
 //
@@ -60,10 +63,16 @@ fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
 // The same GLM-5.3-Flash is 306 GiB of native FP8 weights and 79.3 GiB of EXL3 2.05bpw; a topology
 // that admits one refuses the other. A model-identity row cannot express that difference, which is
 // how a branch came to pin a checkpoint that could not fit the group it targeted.
+// PLACEMENT TRAVELS WITH THE CHECKPOINT ROW, so the one value that decides install path, download,
+// verification, mount and launch path is declared once beside the identity it belongs to. A
+// checkpoint's bytes are somewhere specific on a host; pretending every checkpoint lives in the same
+// layout is what made a modelled run report an ABSENT snapshot while 80 GiB of exactly that revision
+// sat on the same disk serving a live engine.
 type ServingCheckpointRow {
   checkpoint: ServingCheckpoint
   repo: HubRepoId
   revision: NonEmptyStr
+  placement: SnapshotPlacement
   weight_gib: Nat
   quantization_wire: NonEmptyStr
   provenance: NonEmptyStr
@@ -73,6 +82,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   checkpoint: Glm53Exl3_205,
   repo: HubRepoId { kind: HubModelRepo, path: "turboderp/GLM-5.3-Flash-exl3" as NonEmptyStr },
   revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
+  placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/glm53-flash-exl3-2.05" as NonEmptyStr },
   weight_gib: 80,
   quantization_wire: "exl3" as NonEmptyStr,
   provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards" as NonEmptyStr,
@@ -82,6 +92,7 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   checkpoint: Glm53NativeFp8,
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   weight_gib: 306,
   quantization_wire: "fp8" as NonEmptyStr,
   provenance: "revision resolved from the Hub model API on 2026-09-07; weight figure is the vLLM recipe's published size for this checkpoint and is NOT measured on this fleet -- nothing here has fetched it" as NonEmptyStr,

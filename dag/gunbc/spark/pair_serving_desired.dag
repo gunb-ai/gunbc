@@ -7,9 +7,9 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.memory.types { UnifiedShared }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.vllm.engine_args {
-  VllmEngineArgs, vllm_memory_utilization, KvFp8, ExecutorRay,
+  VllmEngineArgs, vllm_memory_utilization, KvFp8DsMla, ExecutorRay,
 }
-import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_context_length }
+import extdeps.deepseek.deepseek_v4 { deepseek_v4_context_length }
 import gunbc.spark.serving_engine {
   ServingEngine, VllmServing,
   MemoryEnforcerKind, KernelOomKiller, memory_enforcer_kind_wire,
@@ -66,42 +66,25 @@ type SparkPairServingSeqCapacity
   | SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
   | SeqCapacityUnmeasured
 
-// THE INHERITED COUNT IS GONE, AND ITS REMOVAL IS THE POINT OF THIS MIGRATION RATHER THAN A SIDE
-// EFFECT OF IT. Until the GLM-5.3-Flash cutover both rows below answered SeqCapacityMeasured with
-// `first_pair_vllm_serve.max_num_seqs` -- 32, read from the stdout of ONE launch, of ONE artifact
-// (DeepSeek V4 Flash), at ONE quantisation, under ONE KV layout (fp8_ds_mla), at tensor-parallel 2
-// -- and handed it to every group of every model thereafter. Every one of those five qualifiers has
-// now changed. A measurement is a fact about the scenario it was taken in; carried outside that
-// scenario it is not a stale number but a fabricated one, and it reads as evidence because it was
-// once true. The receipt is one day old: group B's ledger partition bricked on 2026-09-06 when a
-// ceiling derived from a measured engine property was replaced by a constant and the fold then
-// judged already-admitted history against the new value.
+// THE COUNT IS THE ONE MEASURED FOR THIS EXACT SCENARIO, AND THAT IS NOT THE DEFECT THE BRANCH SET
+// OUT TO FIX. The defect was carrying 32 -- read from one DeepSeek V4 Flash launch, at one
+// quantisation, under fp8_ds_mla, at tensor-parallel 2 -- ACROSS MODELS. Used for the model, layout
+// and fabric it was actually taken on, it is a measurement in its own scenario, which is the whole
+// rule.
 //
-// AN EARLIER REVISION OF THIS ROW ANSWERED `SeqCapacityUnmeasured`, AND THAT WAS AN OVER-CORRECTION
-// THAT DEADLOCKED THE FLEET. Refusing to INHERIT is correct and stays. Answering Unmeasured as the
-// LIVE state made the group unlaunchable, and unlaunchable in a circular way: the unit refuses, so
-// the realization refuses, so the apply plan refuses, so no engine ever starts -- and the launch line
-// that would supply the measurement can only come from an engine that started. The materialize step
-// that fetches the weights lives inside that same apply script, so even the acquisition could not
-// run. A model whose only reachable state is refusal has not made anything safer; it has removed the
-// operator's ability to act while looking rigorous.
+// A REVISION OF THIS BRANCH ANSWERED `SeqCapacityUnmeasured` HERE AND THAT DEADLOCKED THE FLEET: the
+// unit refused, so the realization refused, so the apply plan refused, so no engine could start --
+// and the launch line that would supply a measurement can only come from an engine that started. It
+// was then repaired to an operator-policy 16 for a GLM cutover; with this route restored to DeepSeek,
+// neither is right. The scenario's own measurement is.
 //
-// SO THE COUNT IS AN OPERATOR CHOICE, WHICH IS WHAT IT ALWAYS WAS. `--max-num-seqs` is an INPUT to
-// the engine, not a reading off it: vLLM is TOLD how many sequences to admit. What is read BACK is
-// the KV pool, and this module already states that no law from pool tokens to admitted sequences is
-// modeled -- so the 32 was never derived from the pool either. It was a human picking a number and
-// writing a pool figure beside it. Naming that honestly is the fix; refusing to let a human pick at
-// all was not.
-//
-// 16 RATHER THAN 32, AND THE REASON IS STATED SO IT IS NOT MISTAKEN FOR A DERIVATION. Nothing here
-// computes it. It is half the count the operator ran DeepSeek at, chosen downward because
-// GLM-5.3-Flash's KV layout, attention architecture and per-sequence footprint on this fabric are all
-// unmeasured, and admitting fewer sequences fails toward queueing rather than toward the unified-pool
-// starvation that needs a physical power cycle (gunbc.spark.serving_engine records two such events).
-// It is re-chosen, not confirmed, once a GLM launch line is read back.
-data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityByOperatorPolicy {
-  max_num_seqs: 16,
-  basis: "operator interim choice for the GLM-5.3-Flash cutover, 2026-09-08: nothing derives it. Half the count DeepSeek V4 Flash ran at, chosen downward because this model's KV layout (fp8, not fp8_ds_mla), attention architecture and per-sequence footprint on this fabric are unmeasured. It is NOT the first pair's 32 and carries no pool reading, because no law from pool tokens to admitted sequences is modeled. Re-choose it against this group's own GLM launch line" as NonEmptyStr,
+// THE DEADLOCK REPAIR HAD A CONSEQUENCE WORTH RECORDING, because it is why a witness went red rather
+// than a compile: while this row refused, the served-model name could point anywhere harmlessly,
+// since nothing downstream rendered. Un-refusing it made a GLM name on a DeepSeek-only image
+// REACHABLE. An accidental guard is not a guard, and removing one is a change in its own right.
+data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityMeasured {
+  max_num_seqs: 32,
+  basis: "read from the first pair's own vLLM launch line on 2026-09-03 (gunbc.spark.pair_serving_observed first_pair_vllm_serve), for DeepSeek V4 Flash at the fp8_ds_mla KV layout on this fabric -- the scenario this route still serves. It may not travel to another model, quantisation or KV layout; a GLM arm carries its own" as NonEmptyStr,
 }
 
 // A GROUP'S OWN POOL DOES NOT SUPPLY THE COUNT EITHER, and the arm this replaced said so in its own
@@ -133,34 +116,29 @@ fn spark_pair_serving_head(group: FabricGroup) -> HostIdentity {
   }
 }
 
-// THE KV DTYPE IS A CORRECTNESS FIELD, NOT A TUNING KNOB, AND IT MOVED WITH THE MODEL. It read
-// KvFp8DsMla, whose wire spelling is `fp8_ds_mla` -- the cache layout of DeepSeek's Multi-head Latent
-// Attention. GLM-5.3-Flash's attention is a hybrid of sparse and linear layers and is not MLA
-// (extdeps.zhipu.glm_5_3_flash glm_5_3_flash_attention_is_multi_head_latent), so leaving the field
-// alone would not have been a slower setting inherited from a neighbour; it would have been a cache
-// laid out for an attention this model does not have. `KvFp8` is the recipe's own value.
+// THE KV DTYPE IS A CORRECTNESS FIELD, NOT A TUNING KNOB, AND THAT IS WHY IT IS BACK. A revision of
+// this branch set it to `KvFp8` for GLM-5.3-Flash. `fp8_ds_mla` is the cache layout of DeepSeek's
+// Multi-head Latent Attention, and this route serves DeepSeek V4 Flash, so the DeepSeek layout is the
+// CORRECT value here -- the GLM change was right about the model it was aimed at and wrong about the
+// route it was applied to.
 //
-// THE WINDOW IS THE MODEL'S DECLARED CEILING, DERIVED RATHER THAN TRANSCRIBED. It read a literal
-// 1048576, which happened to be DeepSeek's figure and happens to be GLM's; that coincidence is
-// exactly what makes a transcribed literal cheap to write and impossible to catch, since it stays
-// green through a model change it was never about. It now comes from the model authority, so it
-// moves when the model does. It is a CEILING and not a characterised depth -- Z.ai's published
-// long-context evaluations stop at 300,000 tokens -- and the authority carries that distinction for
-// a consumer sizing a working window.
+// THE GLM REASONING BEHIND THAT CHANGE WAS ALSO PARTLY WRONG, and it is recorded because the
+// correction outlived the change. A row asserted GLM-5.3-Flash "is not MLA"; measured on the running
+// canary 2026-09-08, the engine selects `FLASHINFER_MLA_SPARSE_SM120` and reports
+// "Using fp8_ds_mla KV cache format" FOR GLM. GLM's attention is a hybrid of KDA linear layers and
+// NoPE sparse MLA -- so it IS MLA, and the internal cache format is a backend decision downstream of
+// the external `--kv-cache-dtype` flag. The launch-wire value and the attention shape are two facts.
 //
-// THE UTILIZATION IS THE OPERATOR'S, WITH NO UPSTREAM BASIS, AND SAYING SO IS THE HONEST STATE. The
-// vLLM recipe for this model declares neither --gpu-memory-utilization nor --max-model-len
-// (glm_5_3_flash_recipe_declares_gpu_memory_utilization), so 82% is a choice this deployment made
-// against a DeepSeek layout and is now uncalibrated for GLM's. It is left where it stands rather than
-// re-guessed, because a fresh invented number would be worse than a declared inherited one: this row
-// is the declaration.
+// THE WINDOW IS DEEPSEEK'S DECLARED CEILING for the same reason. Both models happen to declare
+// 1,048,576, which is exactly what made a transcribed literal survive a model change it was never
+// about; it is derived from the authority of the model this route actually serves.
 fn spark_pair_serving_engine_args(tensor_parallel: Nat, max_num_seqs: Nat) -> VllmEngineArgs {
   VllmEngineArgs {
     tensor_parallel_size: tensor_parallel,
     gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
-    max_model_len: glm_5_3_flash_context_length,
+    max_model_len: deepseek_v4_context_length,
     max_num_seqs: max_num_seqs,
-    kv_cache_dtype: KvFp8,
+    kv_cache_dtype: KvFp8DsMla,
     distributed_executor_backend: ExecutorRay,
   }
 }

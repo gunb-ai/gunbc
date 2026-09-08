@@ -62,19 +62,31 @@ fn w_realized(f: fn(SparkPairHostRealization, List<SparkPairHostRealization>) ->
   }
 }
 
-// THE LIVE ROSTER REFUSES, AND THE REFUSAL IS THE MIGRATION'S FAIL-CLOSED EDGE. Two independent
-// facts are missing for GLM-5.3-Flash and either alone is disqualifying: no sequence capacity has been
-// measured for this model on this fabric, and no snapshot of its weights has been read back from the
-// pair. The capacity refusal is the one that reaches the realization first, so that is what this
-// asserts; the snapshot refusal is asserted against the renderer below.
-test fn the_live_roster_refuses_until_this_model_is_measured() -> Bool {
+// THE LIVE ROSTER RENDERS DEEPSEEK, AND THIS WITNESS IS WHY IT DOES. A revision of this branch
+// pointed the production served-model name at GLM-5.3-Flash while this module still built its
+// runtime from `extdeps.docker.images.sparkrun_vllm_ds4_gb10` -- whose vLLM was measured on
+// 2026-09-08 not to register `Glm5NextForConditionalGeneration` at all. This witness was RED on that
+// revision, and it was right: the production planner had begun admitting a tuple that cannot start.
+//
+// IT WOULD HAVE BEEN EASY TO MAKE GREEN THE WRONG WAY, by relaxing it to accept whatever the roster
+// now renders. That would have blessed the impossible combination instead of reporting it. The
+// combination is removed instead: GLM lives behind gunbc.spark.glm_canary_converge, which admits its
+// exact arm through `serving_arm_admits` -- the wall that refuses an image that cannot load the
+// checkpoint.
+test fn the_live_roster_renders_the_model_its_image_can_actually_load() -> Bool {
   match w_first() {
     Absent => false
     Present { value: r } =>
       match r {
-        SparkPairRealized { group: _, head: _, workers: _ } => false
-        SparkPairRealizationRefused { group: _, cause: c } =>
-          string_contains(s: c as String, pattern: "max-num-seqs")
+        SparkPairRealizationRefused { group: _, cause: _ } => false
+        SparkPairRealized { group: _, head: h, workers: _ } => {
+          let t = w_unit_text(u: h.unit)
+          string_contains(s: t, pattern: "--served-model-name deepseek-v4-flash:iq3s-split")
+            && string_contains(s: t, pattern: "--tool-call-parser deepseek_v4")
+            && string_contains(s: t, pattern: "--kv-cache-dtype fp8_ds_mla")
+            && !string_contains(s: t, pattern: "GLM")
+            && !string_contains(s: t, pattern: "glm")
+        }
       }
   }
 }

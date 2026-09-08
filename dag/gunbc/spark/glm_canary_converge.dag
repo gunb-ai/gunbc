@@ -14,9 +14,11 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotRole, SnapshotSeed,
+  SnapshotPlacement, LocalDirectoryPlacement, HubCachePlacement,
 }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkMaterializeOutcome, SparkMaterialized, SparkMaterializeUnpinned,
+  SnapshotAcquisitionExecutor, ContainerizedCli,
   spark_materialize_member,
 }
 import gunbc.artifact_acquisition {
@@ -129,6 +131,7 @@ fn glm_canary_snapshot(arm: GlmCanaryArm) -> ModelSnapshotDesired? {
       identity: arm.served_model_alias,
       repo: row.repo,
       revision: row.revision,
+      placement: row.placement,
       revision_provenance: row.provenance,
     } }
   }
@@ -141,6 +144,12 @@ type GlmCanaryConvergence
   | CanaryMaterializeRefused { cause: NonEmptyStr }
   | CanaryMaterialized { outcome: AcquisitionOutcome, already_present: Bool }
 
+// THE PLACEMENT IS THE CANARY'S OWN, AND ADOPTING IT IS THE POINT. The first modelled run reported
+// this snapshot ABSENT and moved to fetch it, because the subject computed a Hub-cache path while the
+// bytes sat in the `local_dir` the community recipe uses -- on the same disk, serving a live engine.
+// The arm now declares that placement, so verification runs against the tree that exists rather than
+// one the model wished for.
+//
 // ADOPTING ALREADY-PRESENT STATE IS THE POINT OF THE FIRST RERUN, NOT AN OPTIMISATION. The canary's
 // 85 GB were fetched by hand before this root existed. A convergence that could only reach the
 // desired state by re-transferring them would be asserting ownership it does not have; the
@@ -200,6 +209,41 @@ fn glm_canary_reasoning_projection(arm: GlmCanaryArm) -> ReasoningResponseProjec
   }
 }
 
+
+// THE ACQUISITION EXECUTOR IS THE ARM'S OWN RUNTIME IMAGE, NOT THE SERVING CONTAINER. No Spark host
+// carries an `hf` executable -- measured on every member reached 2026-09-08 -- so acquisition runs the
+// CLI inside a container. It must be THIS ARM'S image rather than whatever is already running: on the
+// canary host the running production container is the DeepSeek unit, and during a first acquisition
+// there may be no serving container at all. Weights are fetched BEFORE serving exists.
+//
+// THE MOUNT IS THE PLACEMENT'S HOST PATH, so the CLI writes to and verifies exactly the tree the arm
+// declares, and the container path is where that tree appears to the CLI. Both come from the one
+// placement value rather than being spelled beside it.
+fn glm_canary_acquisition_executor(arm: GlmCanaryArm) -> SnapshotAcquisitionExecutor {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => ContainerizedCli {
+      image: "(unmodelled runtime)" as NonEmptyStr,
+      host_path: "/nonexistent" as NonEmptyStr,
+      container_path: "/out" as NonEmptyStr,
+    }
+    Present { value: rrow } => ContainerizedCli {
+      image: rrow.image_reference,
+      host_path: glm_canary_host_path(arm: arm),
+      container_path: "/out" as NonEmptyStr,
+    }
+  }
+}
+
+fn glm_canary_host_path(arm: GlmCanaryArm) -> NonEmptyStr {
+  match serving_checkpoint_row(c: arm.checkpoint) {
+    Absent => "/nonexistent" as NonEmptyStr
+    Present { value: crow } =>
+      match crow.placement {
+        LocalDirectoryPlacement { host_path: p } => p
+        HubCachePlacement { cache_root: root } => root
+      }
+  }
+}
 
 // ── THE OPERATOR-REACHABLE ENTRY ───────────────────────────────────────────────────────────────
 //
@@ -286,6 +330,7 @@ func glm_canary_converge_wet() -> ProcessExit
                         path: path,
                         admin_credential: administrator as Secret,
                         admin_credential_file: file,
+                        executor: glm_canary_acquisition_executor(arm: glm_canary_arm),
                       })
                     },
                   ) {

@@ -5,6 +5,7 @@ import std.nat { Nat }
 import product.placement_supply { HostIdentity }
 import std.algebra { trim }
 import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import extdeps.exec.command { shell_quote }
 import gunbc.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, SshTarget, portable_remote_words, shape_fleet_ssh_password_exec_trusting,
 }
@@ -46,6 +47,7 @@ type SparkMaterializeContext {
   path: SparkReachPath
   admin_credential: Secret
   admin_credential_file: NonEmptyStr
+  executor: SnapshotAcquisitionExecutor
 }
 
 type SparkRemoteRun
@@ -72,7 +74,7 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
               },
               words: words,
             ),
-            stdin_payload: join([join(argv, " "), "\n"], ""),
+            stdin_payload: join([shell_command_line(argv: argv), "\n"], ""),
           )
           RemoteRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
         }
@@ -80,8 +82,40 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
   }
 }
 
-fn spark_in_container(argv: List<String>) -> List<String> {
-  concat(["docker", "exec", spark_pair_container_name as String], argv)
+// SEAM 1: ARGV BOUNDARIES SURVIVE THE WIRE, AND AN EXECUTION PROVED THEY DID NOT. `spark_remote_run`
+// takes a `List<String>` and flattened it with `join(argv, " ")`, UNQUOTED -- so one list member
+// containing spaces became several shell words on the far side. The transfer start carries exactly
+// such a member (`--description=gunbc model snapshot materialize`), so systemd would have seen an
+// option value of `gunbc` followed by three stray arguments. This sat immediately behind the
+// `--unit=` defect, in the same command.
+fn shell_command_line(argv: List<String>) -> String {
+  join(map(argv, w => shell_quote(arg: w)), " ")
+}
+
+// SEAM 2: WHERE THE HUB CLI RUNS IS MODELLED, BECAUSE IT IS NOT ON THE HOST. Measured on every Spark
+// reached 2026-09-08: no `hf` executable on any host; the CLI exists at /opt/env/bin/hf INSIDE a
+// container. Acquisition previously ran the bare source locator under host-level `systemd-run`, which
+// fails for the same reason the empty unit name did -- a command the host cannot resolve.
+//
+// IT MUST NOT DEPEND ON THE SERVING CONTAINER. Verification was hardwired to
+// `docker exec gunbc-spark-pair` -- the OLD PRODUCTION container, which on the canary host is the
+// DeepSeek unit rather than the runtime this arm names, and which may not run at all while weights
+// are being acquired. Acquisition happens BEFORE serving exists, so it carries its own executor.
+type SnapshotAcquisitionExecutor
+  = HostCli
+  | ContainerizedCli { image: NonEmptyStr, host_path: NonEmptyStr, container_path: NonEmptyStr }
+
+fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> List<String> {
+  match executor {
+    HostCli => argv
+    ContainerizedCli { image: img, host_path: hp, container_path: cp } =>
+      concat(
+        ["docker", "run", "--rm",
+         "-v", join([hp as String, ":", cp as String], ""),
+         "--entrypoint", "/opt/env/bin/hf", img as String],
+        argv.skip(n: 1),
+      )
+  }
 }
 
 // ── THE THREE HANDLER SLOTS ────────────────────────────────────────────────────────────────────
@@ -103,13 +137,41 @@ fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, su
       if present != 0 {
         AcquisitionAbsent
       } else {
-        match spark_remote_run(ctx: ctx, argv: spark_in_container(argv: verify)) {
-          RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
-          RemoteRan { exit_code: ok, stdout: _, stderr: _ } =>
-            if ok == 0 { AcquisitionVerified } else { AcquisitionDigestMismatch }
-        }
+        spark_snapshot_verify_observation(ctx: ctx, verify: verify)
       }
   }
+}
+
+// SEAM 4: A REJECTED VERIFY IS NOT A BYTE MISMATCH, and collapsing them repeats one layer up the
+// defect just fixed one layer down. `hf cache verify` exits non-zero for a missing container, an
+// absent CLI, an unknown option, an auth failure -- and for genuinely missing or wrong bytes. Only the
+// last is a statement about the SNAPSHOT; the rest are statements about the PROBE, and reporting them
+// as a digest mismatch sends an operator to re-fetch bytes nothing ever examined.
+//
+// UNRECOGNISED OUTPUT FALLS THROUGH TO MISMATCH, which is the conservative direction: a real mismatch
+// misreported as an instrument failure would leave bad bytes installed and called present.
+fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionObservation {
+  match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
+    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteRan { exit_code: ok, stdout: _, stderr: err } =>
+      if ok == 0 {
+        AcquisitionVerified
+      } else if verify_output_indicates_instrument_failure(err: err) {
+        AcquisitionProbeFailed { reason: join(["the verification instrument did not run: ", err], "") as NonEmptyStr }
+      } else {
+        AcquisitionDigestMismatch
+      }
+  }
+}
+
+fn verify_output_indicates_instrument_failure(err: String) -> Bool {
+  err.contains("No such file or directory")
+    || err.contains("command not found")
+    || err.contains("Unable to find image")
+    || err.contains("no such option")
+    || err.contains("unrecognized arguments")
+    || err.contains("401")
+    || err.contains("403")
 }
 
 fn spark_snapshot_ensure_parent(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
@@ -135,7 +197,28 @@ fn spark_snapshot_ensure_parent(ctx: SparkMaterializeContext, subject: Acquisiti
 // re-running apply after a disconnect is the EXPECTED path, not an edge case, so starting a second
 // 330 GB download against the same cache would be the ordinary outcome rather than a rare one. The
 // unit name is derived from the subject, so an in-flight transfer is found and joined.
-data spark_transfer_unit_name: NonEmptyStr = "gunbc-model-materialize" as NonEmptyStr
+// SEAM 3: THE UNIT IS KEYED BY ITS SUBJECT, AND A GLOBAL CONSTANT WAS A SHARED STATE SLOT. One name
+// served every model, revision, placement and source, while the note above claimed the name was
+// derived from the subject. So a second acquisition could attach to, clear, or read the exit status
+// of a FIRST one and call it its own -- and the reattach guarantee that makes re-running safe was
+// valid only while exactly one transfer had ever existed.
+//
+// THE DESTINATION IS CARRIED WHOLE RATHER THAN DIGESTED. A systemd unit name admits alphanumerics,
+// dashes, underscores and dots to 256 characters, and this fleet's paths are well inside that -- so
+// the full destination both discriminates perfectly and stays readable in `systemctl` output, which a
+// digest would not. An earlier attempt here reached for a hash helper that returned the string's
+// LENGTH under a name claiming otherwise; the simple answer is the correct one.
+fn unit_name_segment(s: String) -> String {
+  join(["-", join(split(join(split(s, "/"), "-"), " "), "-")], "")
+}
+
+fn spark_transfer_unit_for(subject: AcquisitionSubject) -> NonEmptyStr {
+  join([
+    "gunbc-materialize",
+    unit_name_segment(s: subject.identity as String),
+    unit_name_segment(s: subject.install_path as String),
+  ], "") as NonEmptyStr
+}
 
 // THE SUPERVISION BUDGET IS DECLARED, AND EXHAUSTING IT IS NOT A FAILURE OF THE TRANSFER. These two
 // states have opposite remedies: a failed transfer wants investigating, a still-running one wants
@@ -154,8 +237,8 @@ type SparkTransferState
   | TransferExited { exit_code: Int }
   | TransferStateUnreadable { cause: String }
 
-fn spark_transfer_state(ctx: SparkMaterializeContext) -> SparkTransferState {
-  match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_name as String, "--property=ActiveState", "--value"]) {
+fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> SparkTransferState {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ActiveState", "--value"]) {
     RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
     RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
       if state == "active" || state == "activating" || state == "deactivating" {
@@ -163,7 +246,7 @@ fn spark_transfer_state(ctx: SparkMaterializeContext) -> SparkTransferState {
       } else if state == "" || state == "inactive" {
         TransferAbsent
       } else {
-        match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_name as String, "--property=ExecMainStatus", "--value"]) {
+        match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ExecMainStatus", "--value"]) {
           RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
           RemoteRan { exit_code: _, stdout: code, stderr: _ } => TransferExited { exit_code: to_int(s: code) }
         }
@@ -173,8 +256,8 @@ fn spark_transfer_state(ctx: SparkMaterializeContext) -> SparkTransferState {
 
 // A FINISHED UNIT IS CLEARED BEFORE THE NEXT START, because systemd keeps a failed transient unit
 // around and a stale one would be read as this run's result.
-fn spark_transfer_clear(ctx: SparkMaterializeContext) -> Bool {
-  match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_name as String, "||", "true"]) {
+fn spark_transfer_clear(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_for(subject: subject) as String, "||", "true"]) {
     RemoteUnreachable { cause: _ } => false
     RemoteRan { exit_code: _, stdout: _, stderr: _ } => true
   }
@@ -193,15 +276,15 @@ type TransferStartOutcome
   | TransferStartRejected { detail: NonEmptyStr }
   | TransferStartUnreachable { cause: NonEmptyStr }
 
-fn spark_transfer_start(ctx: SparkMaterializeContext, origin: AcquisitionSource) -> TransferStartOutcome {
+fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> TransferStartOutcome {
   match spark_remote_run(ctx: ctx, argv: concat(
     [
       "systemd-run",
-      join(["--unit=", spark_transfer_unit_name as String], ""),
+      join(["--unit=", spark_transfer_unit_for(subject: subject) as String], ""),
       "--description=gunbc model snapshot materialize",
       "--",
     ],
-    [origin.locator as String],
+    executor_wrap(executor: ctx.executor, argv: split(origin.locator as String, " ")),
   )) {
     RemoteUnreachable { cause: c } => TransferStartUnreachable { cause: c as NonEmptyStr }
     RemoteRan { exit_code: e, stdout: _, stderr: err } =>
@@ -222,22 +305,22 @@ type SparkTransferSupervision
 // silent stop (DESIGN section 4). The sleep happens on the remote host so a poll is one round trip,
 // and a poll whose ssh leg fails is NOT fatal -- the unit is still running and the next poll will
 // find it -- so only an unreadable state at the very end is reported as lost.
-fn spark_transfer_supervise(ctx: SparkMaterializeContext, remaining: Nat) -> SparkTransferSupervision {
+fn spark_transfer_supervise(ctx: SparkMaterializeContext, subject: AcquisitionSubject, remaining: Nat) -> SparkTransferSupervision {
   if remaining == 0 {
     SupervisedStillRunning { polls: spark_transfer_poll_budget }
   } else {
-    match spark_transfer_state(ctx: ctx) {
+    match spark_transfer_state(ctx: ctx, subject: subject) {
       TransferExited { exit_code: c } => SupervisedExit { exit_code: c }
       TransferAbsent => SupervisedExit { exit_code: 0 }
-      TransferStateUnreadable { cause: _ } => spark_transfer_wait_then_poll(ctx: ctx, remaining: remaining)
-      TransferRunning => spark_transfer_wait_then_poll(ctx: ctx, remaining: remaining)
+      TransferStateUnreadable { cause: _ } => spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
+      TransferRunning => spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
     }
   }
 }
 
-fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, remaining: Nat) -> SparkTransferSupervision {
+fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, subject: AcquisitionSubject, remaining: Nat) -> SparkTransferSupervision {
   let slept = spark_remote_run(ctx: ctx, argv: ["sleep", to_string(spark_transfer_poll_interval_seconds)])
-  spark_transfer_supervise(ctx: ctx, remaining: remaining - 1)
+  spark_transfer_supervise(ctx: ctx, subject: subject, remaining: remaining - 1)
 }
 
 // ONE SOURCE'S ATTEMPT, AND ITS THREE OUTCOMES ARE DECIDED BY TWO SEPARATE FACTS. The transfer's own
@@ -253,11 +336,11 @@ fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, remaining: Nat) -
 // left running; re-running apply reattaches to it. Killing it would throw away hours of progress to
 // report a cleaner state.
 fn spark_snapshot_attempt(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match spark_transfer_state(ctx: ctx) {
+  match spark_transfer_state(ctx: ctx, subject: subject) {
     TransferStateUnreadable { cause: _ } => AttemptUnreachable
     TransferRunning => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
     TransferExited { exit_code: _ } =>
-      if !spark_transfer_clear(ctx: ctx) {
+      if !spark_transfer_clear(ctx: ctx, subject: subject) {
         AttemptUnreachable
       } else {
         spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
@@ -267,7 +350,7 @@ fn spark_snapshot_attempt(ctx: SparkMaterializeContext, verify: List<String>, su
 }
 
 fn spark_snapshot_start_and_supervise(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match spark_transfer_start(ctx: ctx, origin: origin) {
+  match spark_transfer_start(ctx: ctx, subject: subject, origin: origin) {
     TransferStartUnreachable { cause: _ } => AttemptUnreachable
     TransferStartRejected { detail: d } => AttemptRejected { detail: d }
     TransferStarted => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
@@ -275,7 +358,7 @@ fn spark_snapshot_start_and_supervise(ctx: SparkMaterializeContext, verify: List
 }
 
 fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match spark_transfer_supervise(ctx: ctx, remaining: spark_transfer_poll_budget) {
+  match spark_transfer_supervise(ctx: ctx, subject: subject, remaining: spark_transfer_poll_budget) {
     SupervisionLost { cause: _ } => AttemptUnreachable
     SupervisedStillRunning { polls: n } =>
       AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
@@ -290,7 +373,7 @@ fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<Stri
       if e != 0 {
         AttemptUnreachable
       } else {
-        match spark_remote_run(ctx: ctx, argv: spark_in_container(argv: verify)) {
+        match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
           RemoteUnreachable { cause: c } =>
             AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
               identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,

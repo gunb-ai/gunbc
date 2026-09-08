@@ -6,7 +6,7 @@ import std.measure { token_count_value, percent_count }
 import product.placement_supply { host_identity_eq }
 import extdeps.network.ipv4 { ipv4_address_eq }
 import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
-import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_context_length }
+import extdeps.deepseek.deepseek_v4 { deepseek_v4_context_length }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
@@ -20,22 +20,22 @@ import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_wire,
 }
 
-// THE ENGINE TUPLE, WITH THE KV LAYOUT AS THE LOAD-BEARING ASSERTION. `fp8_ds_mla` is the cache
-// layout of DeepSeek's Multi-head Latent Attention; GLM-5.3-Flash's attention is a hybrid of sparse
-// and linear layers and is not MLA, so a cache laid out for MLA is not a slower setting inherited
-// from a neighbour -- it is a cache for an attention this model does not have. The recipe's own value
-// is plain `fp8`, and this test is what stops the DeepSeek layout travelling with the tuple.
+// THE ENGINE TUPLE FOR THE ROUTE THAT ACTUALLY SERVES DEEPSEEK. `fp8_ds_mla` is the cache layout of
+// DeepSeek's Multi-head Latent Attention and this route serves DeepSeek V4 Flash, so it is the
+// correct value here. A revision of this branch set it to plain `fp8` for GLM-5.3-Flash -- right
+// about the model it was aimed at, wrong about the route it was applied to, because this module's
+// realization builds from an image measured not to register GLM at all.
 //
 // THE WINDOW IS ASSERTED AGAINST THE MODEL AUTHORITY AND DELIBERATELY NOT AGAINST A LITERAL. Both
-// models declare 1,048,576, and that coincidence is exactly what makes a hardcoded window survive a
-// model change it was never about: an assertion on the literal would stay green through a migration
-// that had left the field pointing at the wrong authority.
+// models declare 1,048,576, and that coincidence is exactly what lets a hardcoded window survive a
+// model change it was never about: an assertion on the literal stays green through a migration that
+// left the field pointing at the wrong authority.
 test fn the_group_engine_tuple_carries_this_models_layout_and_window() -> Bool {
   let a = spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32)
   a.tensor_parallel_size == 4
     && percent_count(p: a.gpu_memory_utilization.fraction) == 82
-    && token_count_value(t: a.max_model_len) == token_count_value(t: glm_5_3_flash_context_length)
-    && (vllm_kv_cache_dtype_wire(request: a.kv_cache_dtype) as String) == "fp8"
+    && token_count_value(t: a.max_model_len) == token_count_value(t: deepseek_v4_context_length)
+    && (vllm_kv_cache_dtype_wire(request: a.kv_cache_dtype) as String) == "fp8_ds_mla"
     && (vllm_distributed_executor_backend_wire(backend: a.distributed_executor_backend) as String) == "ray"
 }
 
@@ -47,51 +47,31 @@ fn w_refused_naming(unit: SparkPairServingUnit, fragment: String) -> Bool {
 }
 
 // A CAPACITY WITH NO ANSWER AT ALL STILL REFUSES, and this arm stays reachable and tested even
-// though it is no longer the live state: it is the wall against a group that has neither an operator
-// choice nor a launch line.
+// though it is not the live state: it is the wall against a group that has neither a measurement nor
+// an operator choice.
 test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
   w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
 }
 
-// THE COUNT IS DECLARED A CHOICE, NOT A MEASUREMENT, AND THE TYPE MAKES THAT CHECKABLE. Until this
-// migration the only admitting arm was SeqCapacityMeasured, so an operator choice had to be dressed
-// as a measurement to be expressible -- which is exactly how DeepSeek's 32 came to be carried as
-// evidence for every model after it. Asserting the ARM is what stops that dressing-up returning.
-test fn the_live_sequence_count_is_an_operator_choice_and_says_so() -> Bool {
+// THE LIVE COUNT IS A MEASUREMENT IN ITS OWN SCENARIO, WHICH IS THE RULE RATHER THAN AN EXCEPTION TO
+// IT. The defect this branch set out to remove was carrying 32 ACROSS MODELS -- one DeepSeek launch,
+// one quantisation, one KV layout, at tensor-parallel 2, handed to every model thereafter. Used for
+// the model and layout it was actually taken on, it is exactly what a measured capacity should be,
+// and the basis names that scenario so it cannot travel silently.
+test fn the_live_sequence_count_is_measured_in_the_scenario_it_serves() -> Bool {
   match spark_pair_serving_seq_capacity {
-    SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
     SeqCapacityUnmeasured => false
-    SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: b } =>
-      n == 16
-        && string_contains(s: b as String, pattern: "nothing derives it")
-        && !string_contains(s: b as String, pattern: "pool of")
+    SeqCapacityByOperatorPolicy { max_num_seqs: _, basis: _ } => false
+    SeqCapacityMeasured { max_num_seqs: n, basis: b } =>
+      n == 32
+        && string_contains(s: b as String, pattern: "fp8_ds_mla")
+        && string_contains(s: b as String, pattern: "may not travel")
   }
 }
 
-// NEITHER GROUP INHERITS THE COUNT MEASURED ON ANOTHER MODEL. The former rows answered
-// SeqCapacityMeasured with 32 -- one DeepSeek launch, one quantisation, one KV layout, at tp=2 -- for
-// every group of every model. Both now answer the operator-choice arm, and the discriminating half is
-// that neither is 32: a group that had silently kept the inherited figure would still pass an
-// arm-only check.
-test fn neither_group_inherits_a_sequence_count_measured_on_another_model() -> Bool {
-  let a = spark_pair_serving_seq_capacity_for(group: FabricGroupA)
-  let b = spark_pair_serving_seq_capacity_for(group: FabricGroupB)
-  (match a {
-     SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: _ } => n != 32
-     SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
-     SeqCapacityUnmeasured => false
-   })
-    && (match b {
-          SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: _ } => n != 32
-          SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
-          SeqCapacityUnmeasured => false
-        })
-}
-
-// AND THE GROUP IS LAUNCHABLE, which is the property the over-corrected revision destroyed. A model
-// whose only reachable state is refusal removes the operator's ability to act while looking rigorous;
-// worse, the materialize step that fetches the weights lives inside the apply script this refusal
-// prevented from rendering, so the acquisition could not run either.
+// THE GROUPS ARE LAUNCHABLE, which is the property an over-corrected revision of this branch
+// destroyed by answering Unmeasured: the unit refused, the realization refused, the apply plan
+// refused, and no engine could ever start to produce the launch line a measurement needs.
 test fn the_promoted_groups_are_launchable() -> Bool {
   (match spark_pair_serving_unit(group: FabricGroupA) {
      SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true

@@ -7,11 +7,10 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
-import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_model_id, glm_5_3_flash_vllm_tool_call_parser }
 import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory_name }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned,
-  glm_5_3_flash_snapshot, model_snapshot_identity,
+  deepseek_v4_flash_snapshot, model_snapshot_identity,
 }
 import extdeps.docker { DockerMount, BindMount }
 import extdeps.docker.cli {
@@ -85,39 +84,35 @@ data spark_pair_ray_num_gpus: Nat = first_pair_ray_head.num_gpus
 data spark_pair_ray_object_store_bytes: Nat = first_pair_ray_head.object_store_memory_bytes
 data spark_pair_ray_gcs_port: Port = first_pair_ray_head.gcs_port
 
-// WHAT IS SERVED IS A DESIRED FACT AND CAME FROM AN OBSERVATION, which is the inversion this
-// migration removes. `spark_pair_served_model_name` and `spark_pair_tool_call_parser` both read
-// fields off `first_pair_vllm_serve` -- a process-list reading of the DeepSeek launch of 2026-09-03
-// -- so the answer to "which model should this pair serve" was "whichever one it was serving when
-// somebody last looked". That is not a stale row; it is a row that could never be changed by
-// deciding anything, only by re-observing, and it made a model migration unexpressible.
+// WHAT IS SERVED IS A DESIRED FACT AND CAME FROM AN OBSERVATION, which is the inversion this branch
+// removes. `spark_pair_served_model_name` and `spark_pair_tool_call_parser` both read fields off
+// `first_pair_vllm_serve` -- a process-list reading of the DeepSeek launch of 2026-09-03 -- so the
+// answer to "which model should this pair serve" was "whichever one it was serving when somebody
+// last looked". They now come from the model's own upstream authority, so a model change is an
+// import rather than a re-observation.
 //
-// THEY NOW COME FROM THE MODEL'S OWN UPSTREAM AUTHORITY, so there is one spelling of the identity
-// and one of the parser, both citable, and a model change is this import and nothing else. The
-// observed rows keep their fields; nothing derives a desired fact from them any more.
-data spark_pair_served_model_name: NonEmptyStr = glm_5_3_flash_model_id
-data spark_pair_tool_call_parser: NonEmptyStr = glm_5_3_flash_vllm_tool_call_parser
+// THIS ROUTE STILL SERVES DEEPSEEK, AND A REVISION OF THIS BRANCH BRIEFLY POINTED IT AT GLM. That
+// was wrong for a reason no compile could show, and a witness caught it: this module builds its
+// runtime from `extdeps.docker.images.sparkrun_vllm_ds4_gb10`, whose vLLM was MEASURED on 2026-09-08
+// not to register `Glm5NextForConditionalGeneration` at all. Pointing the served model at GLM while
+// the image stayed put made the production planner render a plan that cannot start -- a live planner
+// admitting a known-impossible tuple, which is worse than a target being far away.
+//
+// IT WAS NOT THE MODEL NAME THAT DID IT. The name change alone was inert while the sequence capacity
+// answered `SeqCapacityUnmeasured`, because the unit refused and nothing downstream rendered. Fixing
+// that refusal -- correctly, since it had deadlocked the fleet -- REMOVED THE ACCIDENTAL GUARD, and
+// the impossible tuple became reachable. Two changes each defensible alone composed into a defect
+// neither carried.
+//
+// SO GLM LIVES BEHIND THE CANARY ROOT, NOT HERE. gunbc.spark.glm_canary_converge owns the exact
+// checkpoint x runtime x topology arm and admits it through `serving_arm_admits`, which is the wall
+// that would have refused this combination. This route returns to DeepSeek, which is what the group
+// is actually running, until a GLM-capable image is modelled and probed for it.
+data spark_pair_served_model_name: NonEmptyStr = deepseek_v4_flash_served_model_name
+data spark_pair_tool_call_parser: NonEmptyStr = deepseek_v4_flash_tool_call_parser
 data spark_pair_serve_port: Port = first_pair_vllm_serve.port
 
-// THE WEIGHTS ARE A DIFFERENT QUESTION FROM THE IDENTITY, AND BOTH NOW HAVE AN AUTHORITY. A
-// served-model name is a choice; a snapshot revision is a fact about an upstream commit. The former
-// rows read the DeepSeek snapshot off an observation of the operator's disk, so the desired state
-// could only ever be whatever happened to have been downloaded.
-//
-// IT IS PINNED, NOT OBSERVED, AND THAT IS THE WHOLE CHANGE. gunbc.spark.model_snapshot_acquisition
-// resolves the revision from the Hub and owns the modelled way to bring it onto a host, so this
-// module can name the path a pinned revision WILL live at without asserting anything about whether
-// the bytes are there yet. Rendering a serve line and having the weights present are two facts, and
-// making them one is what left this fleet with an artifact no desired row could reproduce
-// (gunbc.rung_drop spark_serving_local_artifact_not_reproducible).
-//
-// AN EARLIER REVISION OF THIS MODULE REFUSED TO RENDER AT ALL while the snapshot was unobserved.
-// That was correct while nothing could fetch it -- pointing the identity at GLM over DeepSeek's
-// tensors would launch an engine that starts, answers, and is wrong -- and it is superseded rather
-// than kept beside the acquisition, because two rows answering "may this serve" is the fork this
-// migration exists to remove. The refusal now lives where it belongs: at acquisition, on a snapshot
-// nobody has pinned.
-data spark_pair_desired_snapshot: ModelSnapshotDesired = glm_5_3_flash_snapshot
+data spark_pair_desired_snapshot: ModelSnapshotDesired = deepseek_v4_flash_snapshot
 
 // THE CACHE FOLDER NAME IS THE HUB'S CONVENTION AND IS NOW CONSUMED RATHER THAN RE-DERIVED. A
 // private `hf_hub_models_dir_name` stood here reconstructing `models--org--name` by hand -- the one
