@@ -97,8 +97,10 @@ test fn expiry_and_replay_live_census_rows_are_unmet() -> Bool {
     LiveCensusUnmet { question: GenerateJitconfig201ExpiresAtPresence } =>
       match replay_runner_id_and_duplicate_name_coverage {
         LiveCensusUnmet { question: ReplayRunnerIdAndDuplicateName409 } => true
+        LiveCensusUnmet { question: GenerateJitconfig201ExpiresAtPresence } => false
         LiveCensusDischarged { question: _, receipt: _ } => false
       }
+    LiveCensusUnmet { question: ReplayRunnerIdAndDuplicateName409 } => false
     LiveCensusDischarged { question: _, receipt: _ } => false
   }
 }
