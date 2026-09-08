@@ -27,7 +27,8 @@ use std::io;
 use std::path::Path;
 
 pub const ROSTER_BASENAME: &str = "roster.dag";
-/// Modeled home of `gunbc.recurring_failure_mode` row files (module path as directories).
+/// Module path of the row files; `ROW_DIR_REL` is this spelling with `/` for `.`.
+pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
 pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
 pub fn is_recurring_failure_mode_row_dir(dir: &Path) -> bool {
@@ -62,9 +63,23 @@ pub fn ensure_derived_recurring_failure_mode_roster(dir: &Path) -> io::Result<()
 }
 
 fn write_atomically(path: &Path, body: &[u8]) -> io::Result<()> {
-    let tmp = path.with_extension("dag.deriving");
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp = path.with_file_name(format!(
+        "roster.dag.{}.{}.deriving",
+        std::process::id(),
+        nanos
+    ));
     fs::write(&tmp, body)?;
-    fs::rename(&tmp, path)
+    match fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
 }
 
 fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
@@ -149,5 +164,10 @@ mod tests {
         assert!(!super::is_recurring_failure_mode_row_dir(Path::new(
             "recurring_failure_mode"
         )));
+        assert_eq!(
+            super::ROW_DIR_REL,
+            super::ROW_MODULE.replace('.', "/"),
+            "directory match is the module path, not a second spelling"
+        );
     }
 }

@@ -412,7 +412,9 @@ fn unaccounted_sources(accounted: &[(String, String)]) -> Vec<JoinFinding> {
 fn join_recurring_failure_mode_files_to_roster(
     rostered_names: &BTreeSet<String>,
 ) -> Vec<JoinFinding> {
-    let dir = crate::cli_run::workspace_root().join("dag/gunbc/recurring_failure_mode");
+    let dir = crate::cli_run::workspace_root()
+        .join("dag")
+        .join(crate::cli_run::derived_row_roster::ROW_DIR_REL);
     join_row_files_to_roster_members(&dir, rostered_names)
 }
 
@@ -484,7 +486,10 @@ fn join_row_files_to_roster_members(
         findings.push(JoinFinding {
             kind: JoinFindingKind::RowFileNotRostered,
             row_type: "RecurringFailureModeRows".to_string(),
-            subject: format!("dag/gunbc/recurring_failure_mode/{stem}.dag"),
+            subject: format!(
+                "dag/{}/{stem}.dag",
+                crate::cli_run::derived_row_roster::ROW_DIR_REL
+            ),
             detail: "this row file exists on disk and is not named by \
                      `gunbc.recurring_failure_mode.roster.recurring_failure_mode_roster`"
                 .to_string(),
@@ -496,8 +501,9 @@ fn join_row_files_to_roster_members(
             row_type: "RecurringFailureModeRows".to_string(),
             subject: name.clone(),
             detail: format!(
-                "`{name}` is rostered and `dag/gunbc/recurring_failure_mode/{name}.dag` is not \
-                 a file"
+                "`{name}` is rostered and `dag/{}/{name}.dag` is not \
+                 a file",
+                crate::cli_run::derived_row_roster::ROW_DIR_REL
             ),
         });
     }
@@ -589,7 +595,9 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
         if enrolled.variant == "RecurringFailureModeRows" {
             let names: BTreeSet<String> = rostered
                 .iter()
-                .filter(|(module, name)| module == &format!("gunbc.recurring_failure_mode.{name}"))
+                .filter(|(module, name)| {
+                    module == &format!("{}.{name}", crate::cli_run::derived_row_roster::ROW_MODULE)
+                })
                 .map(|(_, name)| name.clone())
                 .collect();
             findings.extend(join_recurring_failure_mode_files_to_roster(&names));
