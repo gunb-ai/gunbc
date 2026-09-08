@@ -4,9 +4,10 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
-import v2.std.decl_index { DeclFact, FnItem, decl_facts }
+import v2.std.decl_index { DeclFact, FnItem }
 import v2.std.decl_ref_resolution {
   resolve_declaration_ref,
+  resolve_declaration_ref_live,
   DeclarationRefAmbiguous,
   DeclarationRefResolved,
   DeclarationRefModuleAbsent,
@@ -41,25 +42,28 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // everything.
 //
 // WHAT THIS IS NOT: enforcement. Long lane, executes nowhere today — the cited-symbol CI job was
-// removed 2026-08-23 and the required floor declines this home; each row pays a full witness-layer
-// decl_facts scan (operator 5s fast-lane rule 2026-07-12). The evidence is PRESERVED AND UNRUN, and
-// saying otherwise would be the rung inflation DESIGN 4b(1) calls worse than sitting low. What the
-// rehome buys is that when a route returns, the controls are still here and still attached to their
-// real subject.
-
-data decl_ref_witness_layer_facts: List<DeclFact> = decl_facts(pool_roots: witness_layer_roots)
+// removed 2026-08-23 and the required floor declines this home. The stated cost cause was that each
+// row paid a full witness-layer decl_facts scan (operator 5s fast-lane rule 2026-07-12); the four
+// live-tree rows now ask through resolve_declaration_ref_live, which reads the same census BY KEY,
+// so that cause is gone. The two rows that hand in a synthesized fact list stay on the population
+// route deliberately: a synthetic population is the only way to author the ambiguous arm, and
+// keeping both feeds exercised here is what makes them substitutable rather than merely both
+// present. The rows still execute nowhere — gunbc.ci_layer_roots routes this file off per-PR
+// discovery and only a measured eval under the fast-lane budget retires that row — so the evidence
+// is PRESERVED AND STILL UNRUN, and saying otherwise would be the rung inflation DESIGN 4b(1) calls
+// worse than sitting low. What the rehome buys is that when a route returns, the controls are still
+// here and still attached to their real subject.
 
 data decl_ref_witness_layer_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
 
 test fn decl_ref_resolves_node_kind_authority() -> Bool {
-  match resolve_declaration_ref(
+  match resolve_declaration_ref_live(
     ref: DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NodeKind",
       field: WholeDeclaration,
     },
-    facts: decl_ref_witness_layer_facts,
-    modules: decl_ref_witness_layer_modules
+    pool_roots: witness_layer_roots
   ) {
     DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "std.node.NodeKind"
     DeclarationRefModuleAbsent { reference: _ } => false
@@ -70,10 +74,9 @@ test fn decl_ref_resolves_node_kind_authority() -> Bool {
 }
 
 test fn decl_ref_resolves_decl_ref_constructor() -> Bool {
-  match resolve_declaration_ref(
+  match resolve_declaration_ref_live(
     ref: decl_ref(module_path: "std.decl_ref", decl_name: "decl_ref"),
-    facts: decl_ref_witness_layer_facts,
-    modules: decl_ref_witness_layer_modules
+    pool_roots: witness_layer_roots
   ) {
     DeclarationRefResolved { declaration_identity: _ } => true
     DeclarationRefModuleAbsent { reference: _ } => false
@@ -84,14 +87,13 @@ test fn decl_ref_resolves_decl_ref_constructor() -> Bool {
 }
 
 test fn decl_ref_refuses_module_absent() -> Bool {
-  match resolve_declaration_ref(
+  match resolve_declaration_ref_live(
     ref: DeclarationRef {
       module_path: "synthetic.g1_module_absent_RED",
       decl_name: "any",
       field: WholeDeclaration,
     },
-    facts: decl_ref_witness_layer_facts,
-    modules: decl_ref_witness_layer_modules
+    pool_roots: witness_layer_roots
   ) {
     DeclarationRefModuleAbsent { reference: _ } => true
     DeclarationRefResolved { declaration_identity: _ } => false
@@ -102,14 +104,13 @@ test fn decl_ref_refuses_module_absent() -> Bool {
 }
 
 test fn decl_ref_refuses_declaration_absent() -> Bool {
-  match resolve_declaration_ref(
+  match resolve_declaration_ref_live(
     ref: DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NoSuchDecl_G1_RED",
       field: WholeDeclaration,
     },
-    facts: decl_ref_witness_layer_facts,
-    modules: decl_ref_witness_layer_modules
+    pool_roots: witness_layer_roots
   ) {
     DeclarationRefDeclarationAbsent { reference: _ } => true
     DeclarationRefResolved { declaration_identity: _ } => false
@@ -154,14 +155,13 @@ test fn decl_ref_refuses_ambiguous_binding() -> Bool {
 }
 
 test fn decl_ref_refuses_named_field_absent() -> Bool {
-  match resolve_declaration_ref(
+  match resolve_declaration_ref_live(
     ref: DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NodeKind",
       field: NamedField { field_name: "NoSuchField_G1_RED" },
     },
-    facts: decl_ref_witness_layer_facts,
-    modules: decl_ref_witness_layer_modules
+    pool_roots: witness_layer_roots
   ) {
     DeclarationRefFieldAbsent { reference: _ } => true
     DeclarationRefResolved { declaration_identity: _ } => false

@@ -9,12 +9,10 @@ import gunbc.live_deploy.emit {
   emit_belt_service_unit_doc,
   emit_belt_timer_unit_doc,
   emit_systemd_unit_doc,
-  emit_tree_sync_unit_doc,
   live_deploy_belt_service_unit_file,
   live_deploy_belt_timer_unit_file,
   live_deploy_serve_unit_file,
   live_deploy_slice_unit_file,
-  live_deploy_tree_sync_unit_file,
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
   user_manager_environment_directives,
@@ -207,17 +205,17 @@ test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
 // exclude run on the first leg. The `.git` leg was deleted from the emitter when Git-native
 // repository convergence replaced file transport of repository metadata (gunbc.live_deploy.
 // repository_convergence_placement), and the expectation was never moved, so this witness was red
-// on main against an emitter with one ExecStart and nothing rostered it. Measured 2026-09-04 while
-// wiring `gunbc converge --mode deploy`.
+// RETIRED WITH THE ROUTE IT PINNED: the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widening.
 //
-// WHAT IS ASSERTED NOW: one ExecStart, the exclude run derived from deployed_tree_excluded_prefixes
-// (eight prefixes: the two bootstrap receipt channels joined it the same day), and the deployment
-// slice the unit joins. The deployed bytes on srv1 predate all three and converge on the next deploy.
-test fn the_tree_sync_unit_matches_the_deployed_bytes_plus_the_exclusion_widening() -> Bool {
-  let emitted = render(doc: emit_tree_sync_unit_doc(spec: live_spec(), tree_path: live_spec().service.repo_root as String), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc source tree sync (service-user-principal rsync from CI runner checkout)\n\n[Service]\nType=oneshot\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nEnvironmentFile=/etc/gunbc-tree-sync.env\nExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git --exclude /.claude --exclude /.gunbc --exclude /target-codex --exclude /.cargo-home --exclude /.gunbc-build-receipts --exclude /.gunbc-converge-receipts \"$\{GUNBC_TREE_SRC}/\" /opt/gunbc/gunbc/\n"
-}
-
+// It pinned the byte-exact ExecStart of the rsync tree-sync unit. That unit is no longer written:
+// the publication member now installs the repository-convergence oneshot and nothing else, so the
+// rsync program has no producer and the oracle had no subject. A byte oracle over bytes nobody
+// emits is permanently green and would be read as coverage of a route that does not run.
+//
+// WHAT IS NOT LOST WITH IT. The exclusion list this witness also covered is still asserted, by the
+// witnesses over deployed_tree_excluded_prefixes and path_is_deployed -- that authority survives
+// because it answers "must not be shipped" for candidate admission, which outlives the rsync that
+// used to consume it. Only the ExecStart pin went, because only the ExecStart lost its subject.
 
 // THE SLICE UNIT, BYTE FOR BYTE. The bound is the runner slot's allowance rendered by the
 // resource-control authority; a change to either shows up here as the deployed bytes changing.
@@ -524,64 +522,18 @@ test fn serve_unit_is_installable_as_multi_user_target() -> Bool {
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 //
 // DECISIONS ASSERTED:
-//   - the tree sync runs as the service principal
-//   - the tree sync joins the deployment's cgroup slice
-//   - the tree sync reads its environment from the deployment's tree-sync env file
-//   - the tree sync ExecStart carries rsync with the deployed-tree exclude flags
-//   - the tree sync unit is Type=oneshot
-//   - the tree sync unit is NotInstallable (no [Install] section)
+// RETIRED WITH THE RSYNC ROUTE: the tree-sync decision block and its helper.
+//
+// Seven decisions and their fixture pinned the rsync tree-sync unit -- its principal, slice,
+// environment file, ExecStart, Type=oneshot, NotInstallable and description. The publication member
+// no longer writes that unit: it installs the repository-convergence oneshot and nothing else, so
+// every one of those decisions lost its subject. A decision over a unit no producer emits is
+// permanently green and reads as coverage of a route that does not run.
+//
+// THE PRINCIPAL AND SLICE FACTS ARE NOT LOST. They are decisions about the CONVERGENCE unit now,
+// and that unit is covered by repository_convergence_placement's own witnesses, which assert the
+// service principal it runs as -- the fact this block was really protecting.
 
-fn tree_sync_file() -> SystemdUnitFile {
-  live_deploy_tree_sync_unit_file(spec: live_spec(), tree_path: live_spec().service.repo_root as String)
-}
-
-// DECISION: the tree sync runs as the service principal.
-test fn tree_sync_runs_as_service_principal() -> Bool {
-  let svc = live_spec().service
-  service_has(file: tree_sync_file(), target: ServiceUser { name: svc.service_user })
-    && service_has(file: tree_sync_file(), target: ServiceGroup { name: svc.service_user })
-}
-
-// DECISION: the tree sync joins the deployment's cgroup slice.
-test fn tree_sync_joins_deployment_slice() -> Bool {
-  let spec = live_spec()
-  service_has(file: tree_sync_file(), target: ServiceSlice { name: deployment_slice_unit_name(names: spec.names) })
-}
-
-// DECISION: the tree sync reads its environment from the deployment's tree-sync env path.
-test fn tree_sync_has_environment_file() -> Bool {
-  let spec = live_spec()
-  service_has(file: tree_sync_file(), target: EnvironmentFile { path: spec.names.tree_sync_env_path })
-}
-
-// DECISION: the tree sync ExecStart carries rsync with all deployed-tree excluded prefixes.
-test fn tree_sync_execstart_rsyncs_with_excludes() -> Bool {
-  let spec = live_spec()
-  service_has(file: tree_sync_file(), target: ExecStart { command: join([
-    "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
-    " \"$\{GUNBC_TREE_SRC\}/\" ", spec.service.repo_root as String, "/",
-  ], "") as NonEmptyStr })
-}
-
-// DECISION: the tree sync unit is Type=oneshot.
-test fn tree_sync_type_is_oneshot() -> Bool {
-  service_has(file: tree_sync_file(), target: ServiceType { mode: "oneshot" as NonEmptyStr })
-}
-
-// DECISION: the tree sync unit is NotInstallable.
-test fn tree_sync_is_not_installable() -> Bool {
-  match tree_sync_file() {
-    ServiceUnitFile { unit: _, service: _, install: NotInstallable } => true
-    _ => false
-  }
-}
-
-// DECISION: the tree sync has a Description.
-test fn tree_sync_has_description() -> Bool {
-  unit_has(file: tree_sync_file(), target: Description {
-    text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
-  })
-}
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // SLICE UNIT — directive-level assertions through the typed model
@@ -692,9 +644,6 @@ fn serve_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
   live_deploy_serve_unit_file(spec: spec, revision: live_revision())
 }
 
-fn tree_sync_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
-  live_deploy_tree_sync_unit_file(spec: spec, tree_path: spec.service.repo_root as String)
-}
 
 // RED: a spec with a different service_user makes belt_service_runs_as_service_principal go red.
 test fn belt_service_user_goes_red_under_different_user() -> Bool {
@@ -712,13 +661,6 @@ test fn serve_unit_user_goes_red_under_different_user() -> Bool {
     && service_has(file: f, target: ServiceUser { name: wrong_user })
 }
 
-// RED: a spec with a different service_user makes tree_sync_runs_as_service_principal go red.
-test fn tree_sync_user_goes_red_under_different_user() -> Bool {
-  let wrong_user = divergent_principal()
-  let f = tree_sync_file_of(spec: spec_with_principal(wrong_user: wrong_user))
-  !service_has(file: f, target: ServiceUser { name: live_spec().service.service_user })
-    && service_has(file: f, target: ServiceUser { name: wrong_user })
-}
 
 fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
   match live_spec() {
@@ -765,18 +707,6 @@ test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
     && service_has(file: f, target: WorkingDirectory { path: wrong_root })
 }
 
-// RED: a spec with a different repo_root makes the tree-sync ExecStart go red.
-//
-// THE EXPECTED COMMAND IS READ BACK FROM THE UNMUTATED SPEC, NOT RETYPED. Spelling the rsync line
-// out here would reintroduce a golden string inside the RED, and it would fail OPEN rather than
-// closed: once the exclusion list changed, the typed-out command would match nothing, the absence
-// assertion would hold vacuously, and the RED would pass while testing nothing.
-test fn tree_sync_execstart_goes_red_under_different_root() -> Bool {
-  exec_start_changed(
-    baseline: tree_sync_file_of(spec: live_spec()),
-    mutated: tree_sync_file_of(spec: spec_with_repo_root(wrong_root: divergent_repo_root())),
-  )
-}
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS

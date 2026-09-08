@@ -1,0 +1,274 @@
+module gunbc.auth.approval_broker
+
+import std.types { NonEmptyStr, String, Timestamp }
+import std.logic { Bool }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.tailscale.identity {
+  TailnetIdentity, IdentityMatch, IdentityMatches, IdentityMismatch, IdentityMissing,
+  match_tailnet_identity, identity_match_reason,
+}
+import gunbc.auth.approval_capability {
+  ApprovalCapability, ApprovalCapabilityClaims, CapabilityExpectation,
+  CapabilityVerification, CapabilityAuthentic, CapabilityRefused, CapabilityRefusal,
+  ProposedDecision, ProposeApprove, ProposeDeny,
+  verify_capability, capability_refusal_reason, proposed_decision_name,
+}
+import extdeps.crypto.mac { MacVerification }
+
+// ── What this module owns, and what it deliberately does not ─────────────────────────────────
+// THE LIFECYCLE IS SHARED; THE MEANING OF SUCCESS IS NOT.
+//
+// The broker owns the shape every authority's approval goes through: which request, which
+// revision, who may decide, one decision winning, the obligation to execute surviving a restart,
+// and the audit trail. It does not own what a cell is, what admission means, what the mutation
+// does, or what "verified" means for a provider -- those differ per authority and folding them in
+// here would produce a broker that must be edited to add an authority, which is the shape that
+// makes the fourth one a rewrite.
+//
+// Concretely: the broker learns that AN AUTHORITY HAS ESTABLISHED COMPLETION OF THIS EXACT INTENT.
+// It never inspects an IAM policy, never reads a sudoers file, and never converts an HTTP 200 or
+// an exit status into authorization. A `verified: true` supplied by the caller is not evidence,
+// for the same reason a MacVerified detached from its message was not.
+data broker_owns_lifecycle_not_meaning_note: NonEmptyStr = "One broker lifecycle; per-authority admission, execution and verification. The broker consumes an authority-produced completion bound to the request revision and executed intent, and never derives completion from a transport status. Adding an authority must not require editing this module."
+
+// ── Only a POST decides ──────────────────────────────────────────────────────────────────────
+// The operator taps a link. That is a GET, and a GET must not spend the decision.
+//
+// This is not pedantry about HTTP semantics: link previews fetch URLs, chat clients and mail
+// scanners fetch them, browsers prefetch them, and a phone's notification surface may fetch one
+// before the operator has looked at it. If a GET decided, an approval would be spent by software
+// that never asked a person anything -- and the operator would find the decision already made,
+// with an audit row naming them.
+//
+// So the link OPENS a confirmation page describing exactly what is being decided, and the tap on
+// that page POSTs. Retrieval is safe; commitment is deliberate.
+type DecisionMethodAdmission
+  = DecisionMethodCommits
+  | DecisionMethodRetrievesOnly { method: HttpMethod }
+  | DecisionMethodUnsupported { method: HttpMethod }
+
+fn decision_method_admission(m: HttpMethod) -> DecisionMethodAdmission {
+  match m {
+    POST => DecisionMethodCommits
+    GET => DecisionMethodRetrievesOnly { method: GET }
+    HEAD => DecisionMethodRetrievesOnly { method: HEAD }
+    OPTIONS => DecisionMethodRetrievesOnly { method: OPTIONS }
+    PUT => DecisionMethodUnsupported { method: PUT }
+    PATCH => DecisionMethodUnsupported { method: PATCH }
+    DELETE => DecisionMethodUnsupported { method: DELETE }
+  }
+}
+
+data safe_methods_must_not_decide_note: NonEmptyStr = "GET, HEAD and OPTIONS render the confirmation page and never consume the decision right. Link previews, mail scanners, chat unfurlers and browser prefetch all issue GETs at URLs nobody has looked at; a GET that decided would let any of them spend an approval and attribute it to the operator. The page's button POSTs."
+
+// ── Redeeming a capability ───────────────────────────────────────────────────────────────────
+// The order is fixed and each stage narrows what the next one may assume:
+//
+//   1. method     -- a safe method never reaches a decision at all
+//   2. capability -- authenticated bytes, so the claims can be read for meaning
+//   3. identity   -- the tailnet user matches the operator this request names
+//
+// Identity comes AFTER the capability rather than before it, because "who is asking" is only a
+// meaningful question once we know WHAT they are asking about, and the expected operator is a
+// claim inside the envelope. Checking identity first would mean comparing against an operator name
+// nobody had authenticated.
+type RedemptionRefusal
+  = RedemptionMethodNotCommitting { method: HttpMethod }
+  | RedemptionMethodUnsupported { method: HttpMethod }
+  | RedemptionCapabilityRefused { cause: CapabilityRefusal }
+  | RedemptionIdentityRefused { detail: String }
+
+type Redemption
+  = RedemptionAdmitted {
+      claims: ApprovalCapabilityClaims
+      decided_by: NonEmptyStr
+    }
+  | RedemptionRefused { cause: RedemptionRefusal }
+
+fn redeem_capability(
+  method: HttpMethod,
+  capability: ApprovalCapability,
+  expectation: CapabilityExpectation,
+  mac_result: MacVerification,
+  presented_identity: TailnetIdentity,
+  expected_operator: NonEmptyStr,
+  observed_at: Timestamp,
+) -> Redemption {
+  match decision_method_admission(m: method) {
+    DecisionMethodRetrievesOnly { method: m } =>
+      RedemptionRefused { cause: RedemptionMethodNotCommitting { method: m } }
+    DecisionMethodUnsupported { method: m } =>
+      RedemptionRefused { cause: RedemptionMethodUnsupported { method: m } }
+    DecisionMethodCommits =>
+      match verify_capability(
+        capability: capability,
+        expectation: expectation,
+        mac_result: mac_result,
+        observed_at: observed_at,
+      ) {
+        CapabilityRefused { cause: c } =>
+          RedemptionRefused { cause: RedemptionCapabilityRefused { cause: c } }
+        CapabilityAuthentic { claims: cl } =>
+          match match_tailnet_identity(presented: presented_identity, expected: expected_operator) {
+            IdentityMatches { login: l } =>
+              RedemptionAdmitted { claims: cl, decided_by: l }
+            IdentityMismatch { presented: p, expected: e } =>
+              RedemptionRefused {
+                cause: RedemptionIdentityRefused {
+                  detail: identity_match_reason(m: IdentityMismatch { presented: p, expected: e })
+                }
+              }
+            IdentityMissing { expected: e } =>
+              RedemptionRefused {
+                cause: RedemptionIdentityRefused {
+                  detail: identity_match_reason(m: IdentityMissing { expected: e })
+                }
+              }
+          }
+      }
+  }
+}
+
+fn redemption_refusal_reason(r: RedemptionRefusal) -> String {
+  match r {
+    RedemptionMethodNotCommitting { method: _ } =>
+      "this URL renders the decision; the decision itself is committed by the button on that page"
+    RedemptionMethodUnsupported { method: _ } =>
+      "unsupported method on the approval route"
+    RedemptionCapabilityRefused { cause: c } => capability_refusal_reason(r: c)
+    RedemptionIdentityRefused { detail: d } => d
+  }
+}
+
+// ── One decision slot, and what commits into it ──────────────────────────────────────────────
+// APPROVE AND DENY CONTEND ON THE SAME SLOT. Two slots -- one per verb -- would exclude nothing:
+// each writer would win its own, and a request could end up both approved and denied with no
+// interleaving that either writer could detect. The slot is keyed by ESCALATION, so every decision
+// that could answer one question addresses one key, and std.durable_compare_and_set's losing arm
+// is the concurrent-decision refusal.
+type BrokerDecision
+  = BrokerApproved {
+      escalation_id: NonEmptyStr
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      obligation: ExecutionObligation
+    }
+  | BrokerDenied {
+      escalation_id: NonEmptyStr
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      reason: NonEmptyStr
+    }
+
+// ── The approval and its obligation are ONE commit ───────────────────────────────────────────
+// APPROVAL COMMITTING IS NOT THE EFFECT HAPPENING, and the gap between them is where a crash
+// lives. Two failure shapes bracket it:
+//
+//   commit the approval, crash before the IAM write   -> access approved and never granted
+//   perform the IAM write, lose the response          -> access granted and never recorded
+//
+// A design that writes the decision and then starts the work has no record that work is owed, so a
+// restart finds an approval with nothing pending and either does nothing forever or asks the
+// operator again -- and asking again for something that may already have executed is how a
+// non-idempotent effect happens twice.
+//
+// So the obligation is part of the decision, committed in the same CAS. A restart finds PENDING
+// WORK rather than a need for fresh consent. The operator is asked once.
+type ExecutionObligation {
+  authority: NonEmptyStr
+  intent_revision: NonEmptyStr
+  execute_by: Timestamp
+}
+
+data approval_and_obligation_commit_together_note: NonEmptyStr = "The decision and the durable obligation to execute it are one commit. Writing the decision first and starting work afterwards leaves a window in which a crash produces an approval nobody owes work for; a restart then either stalls or re-asks, and re-asking is how a non-idempotent effect runs twice. A restart must find pending work, never a need for fresh consent."
+
+// ── Claiming the work is not the same as excluding the resource ──────────────────────────────
+// TWO EXCLUSIONS, AND THEY ARE NOT THE SAME EXCLUSION.
+//
+// The decision CAS makes one request's approve and deny mutually exclusive. It says nothing about
+// two DIFFERENT approved requests that touch the same secret's policy: both are legitimately
+// approved, both hold their own slot, and both read-modify-write the same document. Serializing
+// those is the authority's job, with the provider's own version check -- an etag on the policy, an
+// idempotency key, a resource lock. The broker cannot do it, because it does not know what
+// resource two requests share.
+data request_exclusion_is_not_resource_exclusion_note: NonEmptyStr = "A CAS on one escalation prevents that request's approve and deny both winning. It does not serialize two separately approved requests mutating the same provider resource -- they hold different slots and conflict at the resource. That exclusion belongs to the authority adapter and must use the provider's own concurrency control; the broker has no way to know two requests overlap."
+
+// A work claim names WHO is executing. It is a lease, and the honest limit is stated with it.
+type WorkClaim
+  = WorkUnclaimed
+  | WorkClaimedBy { attempt: AttemptIdentity, claimed_at: Timestamp, lease_until: Timestamp }
+  | WorkCompletedBy { attempt: AttemptIdentity, completed_at: Timestamp }
+  | WorkAbandoned { attempt: AttemptIdentity, at: Timestamp, cause: NonEmptyStr }
+
+// LEASE EXPIRY IS NOT FENCING, and treating it as if it were is the classic distributed-systems
+// error this codebase should not have to learn twice.
+//
+// An expired lease means the holder STOPPED REPORTING. It does not mean the holder stopped: a
+// paused process, a long GC, a partitioned network and a hung syscall all produce an expired lease
+// held by a worker that is still alive and may resume mid-effect the instant it is scheduled
+// again. If a second worker takes the lease on expiry alone, both may be executing.
+//
+// Real fencing requires the EXTERNAL effect to reject the stale worker -- a monotonic token the
+// provider checks, or a precondition (an etag, a generation) that the first worker's own write
+// would have invalidated. Where the provider offers that, takeover is safe. Where it does not,
+// expiry alone must not authorize automatic takeover, and the honest arm is to stop for a person.
+type TakeoverAdmission
+  = TakeoverFencedByProvider { fence: NonEmptyStr }
+  | TakeoverUnfencedAndRefused { holder: AttemptIdentity, lease_until: Timestamp }
+
+data lease_expiry_is_not_fencing_note: NonEmptyStr = "An expired lease establishes that the holder stopped REPORTING, not that it stopped executing: a paused, GC-stalled, partitioned or syscall-hung worker resumes mid-effect when scheduled. Automatic takeover is safe only where the external effect itself rejects the stale worker -- a provider-checked fence token or a precondition the first worker's write invalidates. Without one, expiry authorizes nothing and the correct arm is to stop for adjudication rather than to run the effect a second time."
+
+fn takeover_is_admissible(t: TakeoverAdmission) -> Bool {
+  match t {
+    TakeoverFencedByProvider { fence: _ } => true
+    TakeoverUnfencedAndRefused { holder: _, lease_until: _ } => false
+  }
+}
+
+// ── Submission is authorized separately from approval ────────────────────────────────────────
+// A NAMED REFUSAL MAY NOMINATE A REQUEST; IT MAY NOT ESTABLISH THAT THE REQUESTER MAY ASK.
+//
+// Phase (e) mints requests automatically from refusals, which is the point -- but "this workflow
+// hit OrgAdminAppKeyUnreadable" says a capability is MISSING, not that this workflow is entitled
+// to hold it. Without a separate submission check, automatic nomination is an escalation oracle: a
+// worker that can provoke a refusal can cause any capability it names to be put in front of the
+// operator, and the operator's whole defence is noticing that the notification is wrong.
+//
+// The operator remains the last word on whether to grant. Submission authorization is about which
+// requests are allowed to reach them at all.
+type SubmissionAdmission
+  = SubmissionAdmitted { requester: NonEmptyStr, authority: NonEmptyStr }
+  | SubmissionRequesterNotEnrolled { requester: NonEmptyStr }
+  | SubmissionAuthorityNotPermittedForRequester { requester: NonEmptyStr, authority: NonEmptyStr }
+
+data submission_is_not_approval_note: NonEmptyStr = "Automatic nomination from a named refusal establishes that a capability is missing, never that the requester may hold it. Without a submission check, a worker able to provoke a refusal can put any capability it names in front of the operator, whose only defence is noticing. Submission authorization decides which requests may REACH the operator; the operator decides whether to grant."
+
+fn admit_submission(
+  requester: NonEmptyStr,
+  authority: NonEmptyStr,
+  requester_enrolled: Bool,
+  authority_permitted: Bool,
+) -> SubmissionAdmission {
+  if !requester_enrolled {
+    SubmissionRequesterNotEnrolled { requester: requester }
+  } else if !authority_permitted {
+    SubmissionAuthorityNotPermittedForRequester { requester: requester, authority: authority }
+  } else {
+    SubmissionAdmitted { requester: requester, authority: authority }
+  }
+}
+
+// ── Admit before notifying, revalidate before dispatch ───────────────────────────────────────
+// The SAME policy, invoked at two moments, for two different reasons. Before notifying, so the
+// operator is never shown a request the policy would have refused -- asking a person to approve
+// something that cannot be granted trains them to approve without reading. Before dispatch,
+// because an approval may sit for its whole execution window while the role, the resource, the
+// beneficiary's enrolment or the policy itself changes underneath it.
+//
+// These are two invocations, not two implementations. A second admission rule that could disagree
+// with the first is a fork, and the failure it produces is the worst kind: an operator approved
+// what the first rule permitted and the second rule executed something else.
+data admit_twice_one_rule_note: NonEmptyStr = "Admission runs before notification and again before dispatch: the first so the operator is never asked to approve something outside policy, the second so an approval that waited cannot bypass changed circumstances. It is ONE rule invoked twice. Two rules that could disagree would let the operator approve under one and the executor act under the other."

@@ -1,5 +1,8 @@
 module v2.lens.unit_modeling
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+
 import v2.std.witness { Holds }
 import v2.std.node_query { edge_field_type_name }
 import v2.std.diagnostic { node_locus, outcome_accepted, outcome_rejected }
@@ -138,6 +141,7 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
   }
 }
 
+// Next-rung: gunbc.guarantee_stall.unit_modeling_carrier_totality_stall.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
