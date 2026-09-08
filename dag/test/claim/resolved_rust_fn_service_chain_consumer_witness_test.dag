@@ -136,3 +136,81 @@ test fn no_service_sibling_f0_lacks_service_parameter() -> Bool {
   let o = run_no_service_sibling()
   compiles_clean(o) && f0_lacks_setsw_probe(o)
 }
+
+// THE CROSS-MODULE DISCRIMINATOR (gunbc#10688), and why the single-module pair above could not be
+// one. Both fixtures above live in ONE module, so f0's row is complete on that module's own
+// TypedModule.item_registry and a consumer reading only the local row answers correctly. What the
+// WHOLE-GRAPH registry adds is expansion ACROSS module boundaries, so a consumer that misses the
+// graph row is invisible to any single-module fixture -- which is exactly how the emit-host seam
+// read the identity-keyed graph registry by bare leaf and fell through to the unexpanded local row
+// with every existing witness still green.
+//
+// Three modules, one hop each: setsw.top f0 -> setsw.mid f1 -> setsw.leaf f2 -> setsw.Probe.Ping.
+// f0's service parameter can only arrive by transitive expansion across two module boundaries, so
+// a reader taking the local row answers ABSENT here and the claim goes red.
+
+data cross_module_top_source: String = "module setsw.top\nimport setsw.mid \{ f1 \}\nfn f0(tag: String) -> String \{ f1(tag: tag) \}\n"
+
+data cross_module_mid_source: String = "module setsw.mid\nimport setsw.leaf \{ f2 \}\nfn f1(tag: String) -> String \{ f2(tag: tag) \}\n"
+
+data cross_module_leaf_source: String = "module setsw.leaf\nservice setsw.Probe \{\n  operation Ping \{\n    input \{ tag: String \}\n    output \{ line: String from \"stdout\" \}\n    readonly\n    transport shell \{ argv: [\"echo\", \"\{tag\}\"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\nfn f2(tag: String) -> String \{ setsw.Probe.Ping(tag: tag).line \}\n"
+
+data cross_module_no_service_leaf_source: String = "module setsw.leaf\nfn f2(tag: String) -> String \{ tag \}\n"
+
+fn run_cross_module_service_chain() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("setsw/top.dag", cross_module_top_source),
+      fixture_source("setsw/mid.dag", cross_module_mid_source),
+      fixture_source("setsw/leaf.dag", cross_module_leaf_source)
+    ],
+    entry: "setsw/top.dag"
+  })
+}
+
+fn run_cross_module_no_service_sibling() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("setsw/top.dag", cross_module_top_source),
+      fixture_source("setsw/mid.dag", cross_module_mid_source),
+      fixture_source("setsw/leaf.dag", cross_module_no_service_leaf_source)
+    ],
+    entry: "setsw/top.dag"
+  })
+}
+
+fn top_f0_has_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match resolved_rust_fn_lookup(
+    functions: completed_functions(o),
+    owner_module: "setsw.top",
+    declaration_name: "f0"
+  ) {
+    ResolvedRustFnFound { signature: sig } =>
+      resolved_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
+    ResolvedRustFnAbsent => false
+  }
+}
+
+fn top_f0_lacks_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match resolved_rust_fn_lookup(
+    functions: completed_functions(o),
+    owner_module: "setsw.top",
+    declaration_name: "f0"
+  ) {
+    ResolvedRustFnFound { signature: sig } =>
+      !resolved_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
+    ResolvedRustFnAbsent => false
+  }
+}
+
+// GREEN: the service parameter crosses two module boundaries and reaches the top row.
+test fn cross_module_service_chain_top_carries_leaf_service_parameter() -> Bool {
+  let o = run_cross_module_service_chain()
+  compiles_clean(o) && top_f0_has_setsw_probe(o)
+}
+
+// RED CONTROL: identical module shape and identical call graph, service removed at the leaf.
+test fn cross_module_no_service_sibling_top_lacks_service_parameter() -> Bool {
+  let o = run_cross_module_no_service_sibling()
+  compiles_clean(o) && top_f0_lacks_setsw_probe(o)
+}

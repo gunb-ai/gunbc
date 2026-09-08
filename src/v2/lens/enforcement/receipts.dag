@@ -108,13 +108,7 @@ fn root_has_body_unavailable_subject(root: String, facts: List<DeclFact>) -> Boo
 
 fn roots_with_body_unavailable(scope: ScopeRoster, facts: List<DeclFact>) -> ScopeRoster {
   ScopeRoster {
-    roots: fold(scope.roots, init: Empty, f: fn(acc, root) {
-      if root_has_body_unavailable_subject(root: root, facts: facts) {
-        Cons { head: root, tail: acc }
-      } else {
-        acc
-      }
-    })
+    roots: scope.roots |> filter(r => root_has_body_unavailable_subject(root: r, facts: facts))
   }
 }
 
