@@ -190,14 +190,40 @@ fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmp
   }
 }
 
-// WHETHER THE ENGINE SPLITS REASONING SERVER-SIDE. vLLM ships a reasoning parser for the GLM family
-// (glm45) and, on this fleet's build, none for DeepSeek V4 -- so on the DeepSeek unit a thinking-mode
-// completion arrives as one text block the client must split, and on the GLM unit it arrives already
-// separated. This is a fact about the LAUNCH FLAGS, and it moves when they do.
+// WHETHER THE ENGINE SPLITS REASONING SERVER-SIDE, AND THIS IS A FACT ABOUT THE PINNED IMAGE RATHER
+// THAN ABOUT UPSTREAM vLLM. The distinction is the whole reason this answer is per UNIT and not per
+// model, and an earlier revision of this row got it wrong in exactly the way the seam exists to
+// prevent.
+//
+// WHAT WAS ASSERTED AND WHY IT WAS WRONG. This row read `Glm53FlashOnVllm => true`, citing the vLLM
+// recipe's `--reasoning-parser glm45`. The recipe is correct about CURRENT upstream vLLM; the fleet
+// does not run current upstream vLLM. Measured on the running container of the serving head
+// (image sparkrun_vllm_ds4_gb10, vLLM 0.21.1rc1.dev339+g1967a5627bc3): `vllm/reasoning/` holds
+// twenty parser modules and NOT ONE of them is GLM, and a find for any GLM-named file on a reasoning
+// path returns nothing. So on this image `--reasoning-parser glm45` names a parser that is not there.
+//
+// THE INSTRUMENT IS FILE PRESENCE, AND IT IS CONTROL-VERIFIED. A registry introspection was tried
+// first and DISCARDED as invalid: it reported zero tool parsers and zero reasoning parsers, including
+// `deepseek_v4`, which this very engine is serving with at that moment -- the registries populate
+// lazily, so an empty reading is not an absence. File presence tracks availability in the direction
+// that matters, checked against that same control: `deepseekv4_tool_parser.py` is present and
+// `deepseek_v4` is in the live serve line.
+//
+// TOOL CALLING IS AVAILABLE; REASONING SPLITTING IS NOT. `glm47_moe_tool_parser.py` IS present in
+// `vllm/tool_parsers/`, so the tool-call half of the GLM serve line has its parser. Only the
+// reasoning half is missing, which is why this is a one-value correction rather than a verdict that
+// the image cannot serve the model.
+//
+// THE CONSEQUENCE IS EXACTLY WHAT THE SEAM ROUTES. With no server-side parser a thinking completion
+// arrives as ONE text block -- reasoning, the end token, then speech -- and
+// `harness_split_inline_reasoning` performs that split client-side using this unit's own end token.
+// Had this row stayed `true`, the harness would have waited for a `reasoning_content` that never
+// comes and read the model's deliberation as its speech. It moves back to `true` when the image is
+// rebuilt on a vLLM carrying the GLM reasoning parser, and that is a fact about the image.
 fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
   match unit {
     DeepseekV4FlashOnVllm => false
-    Glm53FlashOnVllm => true
+    Glm53FlashOnVllm => false
   }
 }
 

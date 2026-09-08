@@ -1,8 +1,9 @@
 module gunbc.spark.model_snapshot_acquisition
 
 import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address, ipv4_address_eq }
 import extdeps.huggingface.hub {
-  HubRepoId, HubModelRepo,
+  HubRepoId, HubModelRepo, hub_repo_cache_directory_name,
   hub_repo_cache_directory, hub_snapshot_directory, hub_download_argv, hub_cache_verify_argv,
   hub_default_cache_root,
 }
@@ -94,6 +95,131 @@ fn model_snapshot_identity(snapshot: ModelSnapshotDesired) -> NonEmptyStr {
 // built, because a manifest of that size is an observation and not something an author writes, and
 // authoring it by hand is exactly the fabrication this repository refuses.
 data model_snapshot_hub_source_identity: NonEmptyStr = "huggingface-hub-cli" as NonEmptyStr
+
+// ── THE TWO TRANSPORTS, AND WHY THE FLEET NEEDS BOTH ───────────────────────────────────────────
+//
+// THE MEASUREMENT THAT DECIDES THIS, taken 2026-09-08 on the serving group, because the answer is
+// not a preference and is not close. Every Spark carries two 50,000 Mb/s fabric legs
+// (`enp1s0f1np1`, `enP2p1s0f1np1`) -- and reaches the internet over WIRELESS: `ip route get 1.1.1.1`
+// answers `via 192.168.1.1 dev wlP9s9` on every host checked.
+//
+// SO A FAN-OUT ACQUISITION WOULD PULL THE MODEL ONCE PER HOST OVER ONE SHARED RADIO. The snapshot is
+// 330 GB of safetensors across 62 shards; eight members fetching independently is ~2.6 TB over the
+// wireless link, while the 100 Gb/s fabric those same machines are cabled into sits idle. It is also
+// the link the control plane and the harness use, so saturating it for hours is its own outage.
+//
+// THE SHAPE IS THEREFORE FETCH-ONCE-THEN-REPLICATE, which is what the operator did by hand on
+// 2026-09-05 -- over the rail, for exactly this reason. This module models that decision rather than
+// re-deriving it per apply.
+//
+// IT IS TWO HANDLERS ON ONE INTERFACE SHAPE, NOT TWO ACQUISITION PATHS (DESIGN section 3). The
+// combinator already walks an ORDERED source list with per-source identity and typed per-source
+// refusals, so a replica's sources are literally [rail-peer, hub]: try the fast local path, fall back
+// to upstream, and let the fold say which answered. Nothing about the algorithm changes.
+type ModelSnapshotRole
+  = SnapshotSeed
+  | SnapshotReplicaOf { peer_rail_address: Ipv4Address }
+
+// THE SEED IS ONE MEMBER OF THE WHOLE FLEET, NOT ONE PER GROUP, AND THAT IS A MEASURED CORRECTION.
+//
+// AN EARLIER REVISION OF THIS MODULE MADE EACH GROUP'S HEAD A SEED, on the assumption that the two
+// fabric groups are two separate L2 domains -- gunbc.spark.fabric_switch_observed does split them by
+// CAGE, and a cage is a real physical distinction. But a cage is a switch-port grouping, not a
+// broadcast domain, and nothing had checked whether it partitions the rail.
+//
+// IT DOES NOT. Measured 2026-09-08: every Spark sits on ONE flat 192.168.110.0/24 -- group A's head
+// spark-3bd5 at .110.14, group B's head spark-0c75 at .110.17 -- and A's neighbour table holds
+// .11 .12 .13 .15 .16 .17 .18, all eight members. A ping from A to B's rail address answers 0% loss
+// at 0.164 ms average. Cross-group replication is therefore ordinary L2, not a route that needs
+// building.
+//
+// SO A PER-GROUP SEED WOULD HAVE FETCHED 330 GB TWICE OVER THE WIRELESS LINK for no reason, which is
+// precisely the cost the rail transport exists to avoid, halved instead of removed. One seed, seven
+// replicas.
+//
+// WHICH MEMBER SEEDS IS AN ATTRIBUTABLE CHOICE, and it is group B's head: measured the same day, it
+// runs NO container (group B is not serving), it holds the most free space of any member at 3340 GB,
+// and group B is the group that must come up first because group A is currently the fleet's only
+// serving capacity. Seeding from an idle member keeps the 330 GB download off the box that is
+// answering requests.
+data model_snapshot_fleet_seed_rail_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 17)
+
+// A MEMBER'S ROLE IS DECIDED BY ITS OWN RAIL ADDRESS AGAINST THE SEED'S, so the seed is named once
+// and no caller re-derives who it is. A member whose rail address is unresolved cannot be compared,
+// and becomes a seed -- falling back to the working upstream path rather than replicating from a
+// peer it cannot address.
+fn model_snapshot_role_for(member_rail: Ipv4Address?) -> ModelSnapshotRole {
+  match member_rail {
+    Absent => SnapshotSeed
+    Present { value: a } =>
+      if ipv4_address_eq(a: a, b: model_snapshot_fleet_seed_rail_address) {
+        SnapshotSeed
+      } else {
+        SnapshotReplicaOf { peer_rail_address: model_snapshot_fleet_seed_rail_address }
+      }
+  }
+}
+fn model_snapshot_rail_source(peer: Ipv4Address, snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> AcquisitionSource? {
+  match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => none
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, revision_provenance: _ } =>
+      Present { value: AcquisitionSource {
+        identity: join(["fabric-rail-peer ", render_ipv4_address(addr: peer) as String], "") as NonEmptyStr,
+        locator: join(model_snapshot_rail_replicate_argv(peer: peer, cache_root: cache_root, repo_dir: hub_repo_cache_directory_name(repo: r), revision: rev), " ") as NonEmptyStr,
+      } }
+  }
+}
+
+// THE REPLICATE COMMAND. It copies the repo cache directory for exactly one revision, over the rail
+// address, dereferencing symlinks -- the Hub cache stores `snapshots/<rev>/<file>` as links into
+// `blobs/<hash>`, so a copy that preserved links would land a tree of dangling pointers on a host
+// whose blobs directory is empty. `--partial --inplace` so an interrupted 330 GB transfer resumes
+// rather than restarting.
+fn model_snapshot_rail_replicate_argv(peer: Ipv4Address, cache_root: NonEmptyStr, repo_dir: NonEmptyStr, revision: NonEmptyStr) -> List<String> {
+  [
+    "rsync", "-a", "--copy-links", "--partial", "--inplace",
+    join([render_ipv4_address(addr: peer) as String, ":", cache_root as String, "/", repo_dir as String, "/snapshots/", revision as String, "/"], ""),
+    join([cache_root as String, "/", repo_dir as String, "/snapshots/", revision as String, "/"], ""),
+  ]
+}
+
+// A MEMBER'S ORDERED SOURCES. The seed has one; a replica has the rail first and the hub behind it,
+// so a member whose peer is unreachable still converges -- slowly, over the radio, which is the
+// correct degradation because it is a fallback to a WORKING path rather than a widening of the
+// answer. The fold reports which source answered, so a run that quietly fell back to the hub is
+// visible in the receipt rather than inferred from its duration.
+fn model_snapshot_sources_for(role: ModelSnapshotRole, snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> List<AcquisitionSource> {
+  let hub = match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => [] as List<AcquisitionSource>
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, revision_provenance: _ } =>
+      [AcquisitionSource {
+        identity: model_snapshot_hub_source_identity,
+        locator: join(hub_download_argv(repo: r, revision: rev), " ") as NonEmptyStr,
+      }]
+  }
+  match role {
+    SnapshotSeed => hub
+    SnapshotReplicaOf { peer_rail_address: peer } =>
+      match model_snapshot_rail_source(peer: peer, snapshot: snapshot, cache_root: cache_root) {
+        Absent => hub
+        Present { value: rail } => concat([rail], hub)
+      }
+  }
+}
+
+fn model_snapshot_subject_for(role: ModelSnapshotRole, snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> AcquisitionSubject? {
+  match model_snapshot_subject(snapshot: snapshot, cache_root: cache_root) {
+    Absent => none
+    Present { value: base } => Present { value: AcquisitionSubject {
+      identity: base.identity,
+      key: base.key,
+      install_path: base.install_path,
+      staging_path: base.staging_path,
+      parent_directory: base.parent_directory,
+      sources: model_snapshot_sources_for(role: role, snapshot: snapshot, cache_root: cache_root),
+    } }
+  }
+}
 
 fn model_snapshot_subject(snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> AcquisitionSubject? {
   match snapshot {

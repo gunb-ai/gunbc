@@ -119,6 +119,12 @@ data glm_5_3_flash_chat_reasoning_field: NonEmptyStr = "reasoning_content" as No
 // but a wrong one.
 data glm_5_3_flash_vllm_kv_cache_dtype_wire: NonEmptyStr = "fp8" as NonEmptyStr
 data glm_5_3_flash_vllm_tool_call_parser: NonEmptyStr = "glm47" as NonEmptyStr
+// THE RECIPE NAMES A REASONING PARSER, AND WHETHER A GIVEN ENGINE BUILD HAS IT IS A DIFFERENT FACT.
+// This row records what upstream prescribes; it is NOT a claim that any particular deployment can
+// honour it. Measured 2026-09-08 on this fleet's pinned image (vLLM 0.21.1rc1.dev339+g1967a5627bc3):
+// no GLM reasoning parser is present, while the glm47 tool parser is. The consumer that must decide
+// what a completion looks like therefore asks the SERVING UNIT
+// (gunbc.harness.harness_reasoning_wire harness_unit_server_parses_reasoning), never this row.
 data glm_5_3_flash_vllm_reasoning_parser: NonEmptyStr = "glm45" as NonEmptyStr
 data glm_5_3_flash_attention_is_multi_head_latent: Bool = false
 

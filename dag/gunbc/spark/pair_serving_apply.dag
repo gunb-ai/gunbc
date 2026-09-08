@@ -27,6 +27,14 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_runtime_build_dir, exec_word_is_plain,
 }
 import gunbc.spark.pair_serving_observed { first_pair_container_runtime }
+import gunbc.spark.model_snapshot_acquisition {
+  ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned,
+  ModelSnapshotRole, SnapshotSeed, SnapshotReplicaOf,
+  glm_5_3_flash_snapshot, spark_hub_cache_root,
+  model_snapshot_sources_for, model_snapshot_install_path, model_snapshot_role_for,
+}
+import gunbc.artifact_acquisition { AcquisitionSource }
+import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 
 // THE FIRST APPLY OF THE RENDERED PAIR, OVER THE ADMINISTRATOR'S PASSWORD SESSION. Each host gets
 // one privileged script made only of the realization's typed argv, quoted word by word: create the
@@ -66,10 +74,71 @@ fn unit_render_text(u: SparkPairUnitRender) -> String? {
   }
 }
 
+// ── MATERIALIZE THE WEIGHTS BEFORE THE ENGINE IS ASKED TO LOAD THEM ────────────────────────────
+//
+// WHY THIS STEP EXISTS AT ALL. Until now nothing in desired state put weights on a host: the
+// container bind-mounts the operator's Hub cache read-only and assumes what is inside it, and
+// group B's copy arrived by hand over the rail on 2026-09-05. gunbc.rung_drop
+// spark_serving_local_artifact_not_reproducible has carried that gap since 2026-09-02.
+//
+// IT RUNS INSIDE THE CONTAINER, WHICH IS A MEASURED FACT AND NOT A STYLE CHOICE. There is no `hf` on
+// any Spark host -- checked on all four members of the serving group -- while the container carries
+// `/opt/env/bin/hf` with huggingface_hub 1.16.4, and it already mounts the cache the weights belong
+// in. Installing a second copy of the CLI on the hosts to avoid `docker exec` would be a parallel
+// authority for the same transport.
+//
+// IT IS ORDERED AHEAD OF THE UNIT WRITE AND THE RESTART, and `set -e` above makes that ordering
+// load-bearing: a member whose weights did not land never gets its engine bounced, so a failed
+// acquisition leaves the PREVIOUS engine running rather than restarting one onto a missing
+// snapshot. That is the difference between a refused convergence and an outage.
+//
+// THE SEED FETCHES FROM UPSTREAM AND EVERY OTHER MEMBER PULLS FROM THE RAIL. The source list is the
+// acquisition module's, in its order, so this script does not decide the transport -- it renders
+// whatever that authority hands it, first source first, falling through on failure. The fallback is
+// to a WORKING path (the radio) rather than to a widened answer, and the receipt names which source
+// answered.
+fn spark_pair_materialize_lines(sources: List<AcquisitionSource>, install_path: NonEmptyStr) -> String {
+  let ctr = spark_pair_container_name as String
+  join(concat(concat([
+    "if [ -d ", shell_quote(arg: install_path as String), " ]; then echo weights-present; else\n",
+  ],
+    map(sources, src => join([
+      "  if [ ! -d ", shell_quote(arg: install_path as String), " ]; then\n",
+      "    echo materialize-attempt ", shell_quote(arg: src.identity as String), "\n",
+      "    docker exec ", ctr, " ", src.locator as String, " || echo materialize-source-failed ", shell_quote(arg: src.identity as String), "\n",
+      "  fi\n",
+    ], ""))),
+    [
+    "  if [ ! -d ", shell_quote(arg: install_path as String), " ]; then echo materialize-refused; exit 1; fi\n",
+    "fi\n",
+  ]), "")
+}
+
+// A MEMBER'S ROLE IS ITS OWN, NOT ITS GROUP'S. The fleet seeds from ONE member across both groups
+// (they share a single rail /24, measured), so this asks the acquisition authority what this host is
+// rather than deciding from head-versus-worker. A host whose rail address is unresolved is handled
+// there, by falling back to upstream rather than replicating from an address nobody resolved.
+fn spark_pair_member_role(host: HostIdentity) -> ModelSnapshotRole {
+  model_snapshot_role_for(member_rail: fabric_rail_address(host: host))
+}
+
+// A MEMBER WITH NO PINNED SNAPSHOT EMITS NO MATERIALIZE STEP AND THE PLAN REFUSES ELSEWHERE, rather
+// than emitting a step that would compose a path out of a branch name.
+fn spark_pair_materialize_for(role: ModelSnapshotRole) -> String {
+  match model_snapshot_install_path(snapshot: glm_5_3_flash_snapshot) {
+    Absent => ""
+    Present { value: p } =>
+      spark_pair_materialize_lines(
+        sources: model_snapshot_sources_for(role: role, snapshot: glm_5_3_flash_snapshot, cache_root: spark_hub_cache_root),
+        install_path: p,
+      )
+  }
+}
+
 // The privileged script for one host of the pair. THE RESTART IS CONDITIONAL: the unit is bounced
 // only when its rendered text changed or it is not active, so re-applying a converged roster leaves
 // a serving group's engine alone instead of paying its model load again.
-fn spark_pair_host_apply_script(real: SparkPairHostRealization, unit_name: NonEmptyStr, unit_text: String, retired_unit: NonEmptyStr) -> String {
+fn spark_pair_host_apply_script(real: SparkPairHostRealization, role: ModelSnapshotRole, unit_name: NonEmptyStr, unit_text: String, retired_unit: NonEmptyStr) -> String {
   let ctr = spark_pair_container_name as String
   let old = first_pair_container_runtime.container_name as String
   let cache = spark_pair_jit_cache_host_dir as String
@@ -80,6 +149,7 @@ fn spark_pair_host_apply_script(real: SparkPairHostRealization, unit_name: NonEm
     "install -d -m 755 ", spark_pair_runtime_build_dir as String, "\n",
     "printf '%s' ", shell_quote(arg: gunbc_spark_pair_runtime_dockerfile()), " > ", spark_pair_runtime_build_dir as String, "/Dockerfile\n",
     "if docker container inspect ", old, " >/dev/null 2>&1; then docker cp ", old, ":/cache/huggingface/. ", cache, "/ 2>/dev/null || true; fi\n",
+    spark_pair_materialize_for(role: role),
     "printf '%s' ", shell_quote(arg: unit_text), " > /etc/systemd/system/", unit_name as String, ".next\n",
     "if cmp -s /etc/systemd/system/", unit_name as String, ".next /etc/systemd/system/", unit_name as String, "; then changed=0; else changed=1; fi\n",
     "mv -f /etc/systemd/system/", unit_name as String, ".next /etc/systemd/system/", unit_name as String, "\n",
@@ -102,12 +172,12 @@ type SparkPairApplyPlan
   = SparkPairApplyPlanned { workers: List<SparkPairHostApplyPlan>, head: SparkPairHostApplyPlan }
   | SparkPairApplyRefused { cause: String }
 
-fn spark_pair_worker_plan(w: SparkPairHostRealization) -> SparkPairHostApplyPlan? {
+fn spark_pair_worker_plan(w: SparkPairHostRealization, role: ModelSnapshotRole) -> SparkPairHostApplyPlan? {
   match unit_render_text(u: w.unit) {
     Absent => none
     Present { value: text } => Present { value: SparkPairHostApplyPlan {
       host: w.host, unit_name: spark_pair_worker_unit_name,
-      script: spark_pair_host_apply_script(real: w, unit_name: spark_pair_worker_unit_name, unit_text: text, retired_unit: spark_pair_retired_worker_unit),
+      script: spark_pair_host_apply_script(real: w, role: role, unit_name: spark_pair_worker_unit_name, unit_text: text, retired_unit: spark_pair_retired_worker_unit),
     } }
   }
 }
@@ -119,7 +189,7 @@ fn spark_pair_apply_plan(r: SparkPairRealization) -> SparkPairApplyPlan {
       match unit_render_text(u: h.unit) {
         Absent => SparkPairApplyRefused { cause: "the head unit did not render" }
         Present { value: head_text } => {
-          let worker_plans = flat_map(ws, w => match spark_pair_worker_plan(w: w) { Present { value: p } => [p]  Absent => [] as List<SparkPairHostApplyPlan> })
+          let worker_plans = flat_map(ws, w => match spark_pair_worker_plan(w: w, role: spark_pair_member_role(host: w.host)) { Present { value: p } => [p]  Absent => [] as List<SparkPairHostApplyPlan> })
           if length(worker_plans) != length(ws) {
             SparkPairApplyRefused { cause: "a worker unit did not render" }
           } else {
@@ -127,7 +197,7 @@ fn spark_pair_apply_plan(r: SparkPairRealization) -> SparkPairApplyPlan {
               workers: worker_plans,
               head: SparkPairHostApplyPlan {
                 host: h.host, unit_name: spark_pair_head_unit_name,
-                script: spark_pair_host_apply_script(real: h, unit_name: spark_pair_head_unit_name, unit_text: head_text, retired_unit: spark_pair_retired_head_unit),
+                script: spark_pair_host_apply_script(real: h, role: spark_pair_member_role(host: h.host), unit_name: spark_pair_head_unit_name, unit_text: head_text, retired_unit: spark_pair_retired_head_unit),
               },
             }
           }
