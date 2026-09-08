@@ -5,6 +5,10 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.entropy
 import extdeps.cloud.gcp.secret_manager {
+  sm_resolved_version_id,
+  SmResolvedVersionIdentity,
+  SmVersionIdProjected,
+  SmVersionIdNotAVersionResource,
   decode_sm_access_version_payload_wire,
   decode_sm_resolved_version_identity_wire,
   decode_sm_access_version_secret_wire,
@@ -220,6 +224,56 @@ fn bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> Pro
   }
 }
 
+// WHICH VERSION THE READ-BACK MUST ADDRESS, DERIVED PURELY SO IT CAN BE EXERCISED. The projection
+// below is the whole of this change's logic, and holding it inside the effectful function would put
+// it behind a network call: the only way to reach it would be a mock case, and no second mock case
+// exists to author (std.hermetic_replay PublishedMockCase carries case_id: Int, and every
+// declaration in the corpus is case_id: 0). Naming it here gives it a consumer that executes and a
+// RED that can be authored from a string, which is what section 4b asks before a wall is written.
+//
+// THE UNADDRESSABLE ARM IS NOT DEFENSIVE PADDING. AddVersion's returned name is external data, and a
+// name that does not project a version id leaves this run with no version to address -- proceeding
+// on "latest" at that point would silently restore exactly the behaviour this change removes, so it
+// refuses instead.
+type BmcReadbackTarget
+  = BmcReadbackAddressed { identity: SmResolvedVersionIdentity, version: NonEmptyStr }
+  | BmcReadbackUnaddressable { supplied: String }
+
+fn bmc_readback_target(stored_name: String) -> BmcReadbackTarget {
+  match decode_sm_resolved_version_identity_wire(name: stored_name) {
+    SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
+      BmcReadbackUnaddressable { supplied: stored_name }
+    SmResolvedVersionIdentityDecoded { identity: identity } =>
+      match sm_resolved_version_id(identity: identity) {
+        SmVersionIdNotAVersionResource { supplied: supplied } =>
+          BmcReadbackUnaddressable { supplied: supplied }
+        SmVersionIdProjected { version: v } =>
+          BmcReadbackAddressed { identity: identity, version: v }
+      }
+  }
+}
+
+// THE READ-BACK ADDRESSES THE EXACT VERSION THE WRITE RETURNED, NOT "latest". Add a version, then
+// access THAT version, is the one sequence Secret Manager documents as strongly consistent. Reading
+// "latest" was wrong twice over: it is a moving target between the two calls, so a concurrent writer
+// could satisfy the read while this run's bytes were never confirmed, and it sits outside the single
+// guarantee the service offers, so even the uncontended answer was unwarranted rather than merely
+// lucky. gunbc.secret_provision_actuator add_initial_version already reads back added.name for this
+// reason; this is the same move on the credential path that annotation names.
+//
+// WHAT CHANGED ON THE LADDER, STATED NARROWLY. The previous shape was not silently wrong -- it
+// compared the read-back identity against the one AddVersion reported and refused on divergence, so
+// a raced version was DETECTED. That is mitigation: the bad state was reachable and caught. Naming
+// the version makes it unreachable, because a response to a request for version N cannot be version
+// M. The identity comparison below is therefore NOT redundant validation and is deliberately kept:
+// it now guards an EXTERNAL boundary -- the service answering with something other than what was
+// addressed -- which is observation of reality, not a second representation of a fact this module
+// already holds.
+//
+// THE OTHER "latest" READ IN THIS MODULE IS LEFT ALONE ON PURPOSE. bmc_probe_credential_phase
+// fetches the CURRENT credential in order to probe with it, and has no preceding write whose version
+// it could address; "latest" is the question it actually means to ask. Sweeping both because they
+// share a spelling would have changed a correct read into a pinned one.
 fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret) -> ProcessExit
   uses net: Network
 {
@@ -239,34 +293,35 @@ fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource
         secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
         payload_b64: payload_b64
       )
-      readback = gcp.SecretManager.AccessVersion(
-        access_token: token,
-        project_id: fleet_secrets_gcp_project,
-        secret: secret_id,
-        version: "latest"
-      )
-      let expected_payload = utf8_encode_bytes(s: credential as String)
-      let readback_ok = match decode_sm_access_version_payload_wire(data_b64: readback.data_b64) {
-        SmAccessVersionPayloadDecoded { payload: stored_payload } =>
-          stored_payload == expected_payload
-        SmAccessVersionPayloadDecodeRefused { cause: _ } => false
-      }
-      match decode_sm_resolved_version_identity_wire(name: stored.name as String) {
-        SmResolvedVersionIdentityDecoded { identity: stored_identity } =>
-          match decode_sm_resolved_version_identity_wire(name: readback.name as String) {
-            SmResolvedVersionIdentityDecoded { identity: readback_identity } => {
-              if !readback_ok || stored_identity != readback_identity {
-                return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored_identity as String)), ""))
+      match bmc_readback_target(stored_name: stored.name as String) {
+        BmcReadbackUnaddressable { supplied: supplied } =>
+          return exit_failure(reason: concat("store: AddVersion returned a name this run cannot address a read-back against: ", supplied))
+        BmcReadbackAddressed { identity: stored_identity, version: stored_version } => {
+              readback = gcp.SecretManager.AccessVersion(
+                access_token: token,
+                project_id: fleet_secrets_gcp_project,
+                secret: secret_id,
+                version: stored_version
+              )
+              let expected_payload = utf8_encode_bytes(s: credential as String)
+              let readback_ok = match decode_sm_access_version_payload_wire(data_b64: readback.data_b64) {
+                SmAccessVersionPayloadDecoded { payload: stored_payload } =>
+                  stored_payload == expected_payload
+                SmAccessVersionPayloadDecodeRefused { cause: _ } => false
               }
-            }
-            SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
-              return exit_failure(reason: "store: GCP read-back resolved version identity refused by wire decoder")
-          }
-        SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
-          return exit_failure(reason: "store: GCP AddVersion resolved version identity refused by wire decoder")
-      }
+              match decode_sm_resolved_version_identity_wire(name: readback.name as String) {
+                SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
+                  return exit_failure(reason: "store: GCP read-back resolved version identity refused by wire decoder")
+                SmResolvedVersionIdentityDecoded { identity: readback_identity } => {
+                  if !readback_ok || stored_identity != readback_identity {
+                    return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored_identity as String)), ""))
+                  }
+                }
+              }
 
-      return bmc_rotate_credential(plan: plan, new_credential: credential)
+              return bmc_rotate_credential(plan: plan, new_credential: credential)
+        }
+      }
     }
   }
 }

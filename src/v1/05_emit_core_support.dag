@@ -11,7 +11,7 @@ import v1.std.core {
 
 import v1.compiler.artifact { RenderTarget }
 
-import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+import v1.compiler.infer_items { ResolvedGraph, TypedModule, leaf_owner_modules_from_registry }
 
 import v1.compiler.infer_service { UniqueAccum }
 
@@ -180,6 +180,25 @@ fn sanitize_service_name(name: String) -> String {
   let pascal_parts = parts |> map(p => capitalize_first(s: p))
   pascal_parts |> join(separator: "")
 }
+
+// THE PROJECTION IS NOT INJECTIVE, AND NOTHING HERE REFUSES ON THE COLLISION YET.
+//
+// sanitize_service_name splits the authored name on "." and joins the capitalized segments with
+// nothing, so the segment boundary is erased: `collision.Probe` and `CollisionProbe` are two
+// distinct service identities that project to one symbol. Observed, not argued: two services so
+// named in one module emitted two `pub struct CollisionProbe` definitions and bound one parameter
+// for both, with zero blocking diagnostics. service_var_name is the second channel, since to_snake
+// of one symbol is one symbol. All three targets share this projection, so the collision is a fact
+// about the shared allocation rather than about any one emitter.
+//
+// THE WALL IS NOT IN THIS BRANCH AND THIS COMMENT IS NOT ONE. The refusal would need its own
+// CompilerDiagnostic variant, and that coproduct's seed projection is the receipt row this same PR
+// declares FROZEN -- so landing it here would have one commit declare a freeze and breach it. The
+// class is recorded at gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective
+// rather than in this comment, because no Accepted program can read a comment (DESIGN.md 4c) and a
+// deferral that lives only in prose is an unstated divergence (3b). Its retiring trigger is a
+// CAPABILITY and not a merge: a typed CompilerDiagnostic receipt carrier existing, so a new
+// diagnostic variant no longer edits a frozen hand-maintained figure.
 
 fn capitalize_first(s: String) -> String {
   let chars_list = s |> chars

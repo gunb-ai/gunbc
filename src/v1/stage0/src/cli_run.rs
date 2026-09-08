@@ -80,7 +80,7 @@ use crate::v1_std_core::{
     make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
     module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
     CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    LeafOwner, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -88,6 +88,7 @@ mod active_workset;
 mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
+pub mod derived_row_roster;
 mod required_floor_runner;
 pub mod rostered_row_join;
 mod serve_budget_refusal;
@@ -332,6 +333,12 @@ fn collect_dag_files_result(
     dir: &std::path::Path,
     files: &mut Vec<std::path::PathBuf>,
 ) -> Result<(), String> {
+    derived_row_roster::ensure_if_row_dir(dir).map_err(|e| {
+        format!(
+            "failed to derive recurring_failure_mode roster in {:?}: {}",
+            dir, e
+        )
+    })?;
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
         .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
@@ -4880,6 +4887,10 @@ pub enum UnlistedImportBindingSource {
     ListedImport,
     PoolCoincidence,
     DefinerResolvable,
+    /// Two or more modules declare this bare leaf, so no single definer can be named.
+    /// It is NOT a binding source that was determined; it is the state of not being determinable,
+    /// and it is a variant rather than a `None` definer so a consumer cannot read it as "unresolved".
+    AmbiguousLeaf,
 }
 
 impl UnlistedImportBindingSource {
@@ -4888,6 +4899,7 @@ impl UnlistedImportBindingSource {
             Self::ListedImport => "listed-import",
             Self::PoolCoincidence => "pool-coincidence",
             Self::DefinerResolvable => "definer-resolvable",
+            Self::AmbiguousLeaf => "ambiguous-leaf",
         }
     }
 }
@@ -4910,17 +4922,70 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
         .collect()
 }
 
-fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+/// WHICH MODULE DEFINES A NAME, OR THE FACT THAT THE QUESTION HAS NO SINGLE ANSWER.
+///
+/// This used to answer a bare leaf with `.values().find(...)` -- the first matching row, silently,
+/// for exactly the question the `.dag` side refuses (`lookup_item_by_leaf` -> `ItemLeafAmbiguous`).
+/// An annotation saying "it is a guess either way" made the guess visible to a READER and not to a
+/// CONSUMER, which is the distinction DESIGN section 5 turns on.
+///
+/// IT DOES NOT SCAN. The first repair collected the distinct owning modules by walking
+/// `item_registry.values()`, which answered correctly and re-derived, per call, an index this
+/// compiler already builds: `leaf_owner_modules_from_registry` (v1.compiler.infer_items), carried
+/// on `ResolvedGraph.emit_graph_info.item_leaf_owner_modules`. That is DESIGN section 2
+/// re-invention -- net concepts must not grow by re-invention -- and a section 6 cost-shape defect
+/// besides, since `classify_unlisted_import_binding_source` and its callers put roughly four full
+/// registry passes behind every census row and the census is thousands of rows. Both are fixed by
+/// asking the modelled index, which is one map lookup and, being the same authority the emitted
+/// path reads, cannot disagree with it.
+///
+/// The index's value is the `LeafOwner` coproduct, so ambiguity arrives as an ARM this match has to
+/// write rather than as a sentinel this reader had to remember to test for -- the shape review 61778
+/// found here, and the same one `__DUPLICATE_ITEM_IDENTITY__` was retired for.
+enum DefinerLookup {
+    Definer(String),
+    /// Several modules declare the leaf. The symbol RESOLVES; its definer is not nameable.
+    AmbiguousLeaf,
+    Unresolved,
+}
+
+fn definer_lookup_for_name(graph: &ResolvedGraph, name: &str) -> DefinerLookup {
     if let Some(info) = graph.item_registry.get(name) {
-        return Some(info.module_name.clone());
+        return DefinerLookup::Definer(info.module_name.clone());
     }
-    if name.contains('.') {
-        let base = name.rsplit('.').next().unwrap_or(name);
-        if let Some(info) = graph.item_registry.get(base) {
-            return Some(info.module_name.clone());
-        }
+    // THE LEAF INDEX IS KEYED ON THE BARE LEAF, so a qualified spelling must be stripped before it
+    // is asked. The registry read above answers a qualified name only when the qualifier is exactly
+    // the owner module path, because its key is `owner.decl` -- so a reference qualified any other
+    // way (an alias, a re-export path, a partial containment prefix) reaches the index, and asking
+    // the index under the full spelling misses every time. Querying only the full spelling widened
+    // the unresolved bucket instead of refusing, and a census that reports a resolvable symbol as
+    // unresolved is the conflation this function's own name exists to keep apart.
+    let leaf = name.rsplit('.').next().unwrap_or(name);
+    match graph.emit_graph_info.item_leaf_owner_modules.get(leaf) {
+        None => DefinerLookup::Unresolved,
+        Some(owner) => match &**owner {
+            LeafOwner::LeafAmbiguous => DefinerLookup::AmbiguousLeaf,
+            LeafOwner::SingleOwner { module, .. } => DefinerLookup::Definer(module.clone()),
+        },
     }
-    None
+}
+
+fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+    match definer_lookup_for_name(graph, name) {
+        DefinerLookup::Definer(m) => Some(m),
+        DefinerLookup::AmbiguousLeaf => None,
+        DefinerLookup::Unresolved => None,
+    }
+}
+
+/// Whether the symbol resolves at all, which is a DIFFERENT question from whether its definer can
+/// be named. An ambiguous leaf answers yes here and `None` above, and conflating the two is how a
+/// census reports a resolvable symbol as unresolved.
+fn symbol_resolves_for_name(graph: &ResolvedGraph, name: &str) -> bool {
+    !matches!(
+        definer_lookup_for_name(graph, name),
+        DefinerLookup::Unresolved
+    )
 }
 
 /// Classify how a single `UnlistedImportUse` site obtained its binding.
@@ -4929,6 +4994,10 @@ pub fn classify_unlisted_import_binding_source(
     referencing_module: &str,
     referenced_name: &str,
 ) -> (UnlistedImportBindingSource, Option<String>) {
+    let lookup = definer_lookup_for_name(graph, referenced_name);
+    if matches!(lookup, DefinerLookup::AmbiguousLeaf) {
+        return (UnlistedImportBindingSource::AmbiguousLeaf, None);
+    }
     let definer = definer_module_for_name(graph, referenced_name);
     let tm = graph
         .modules
@@ -8054,7 +8123,7 @@ pub fn cross_module_binding_receipts_for_symbols(
         .iter()
         .map(|sym| {
             let definer = definer_module_for_name(graph, sym);
-            let binding_source = if definer.is_some() {
+            let binding_source = if symbol_resolves_for_name(graph, sym) {
                 Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
             } else {
                 None
@@ -13791,7 +13860,8 @@ pub struct ResolveStageNanos {
     pub assembly_diagnostics: u128,
     /// `item_registry` merge fold across the closure's typed modules.
     pub assembly_registry: u128,
-    /// `expand_transitive_services` (bounded 5-pass fixpoint over every bodied item).
+    /// `expand_transitive_services` (monotone fixpoint over every bodied item, under a bound
+    /// derived from the registry rather than a chosen pass count).
     pub assembly_services: u128,
     /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
     pub assembly_rewire: u128,
@@ -15150,8 +15220,37 @@ fn finish_resolved_graph_assembly(
     });
     resolve_stage_slot_add(|s| s.assembly_registry += registry_started.elapsed().as_nanos());
     let services_started = std::time::Instant::now();
-    let expanded_registry =
-        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    let effect_analysis =
+        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry);
+    // ONE AUTHORITY FOR THE CAUSE-TO-DIAGNOSTIC MAPPING, called rather than mirrored by hand. This
+    // block used to hand-copy `typecheck_with_census_extra`'s five-arm `EffectIncompleteness` match,
+    // three of its message strings verbatim included -- two sources for one fact, which DESIGN §2
+    // calls the forked-logic trap and §3 an authority fork, and whose failure is silent: a message
+    // edited on one side, or a sixth arm added on one side and defaulted on the other, disagrees
+    // with nothing that would refuse. It now calls the generated mirror of the `.dag` declaration
+    // `v1.compiler.infer` `effect_incompleteness_diagnostics`, so the two paths cannot disagree and
+    // a new arm is a compile error on both. What stays mirrored here is only the SHAPE of the
+    // unwrap: the registry is reachable through the complete arm alone, and an incomplete summary
+    // carries its causes onto the graph's diagnostics rather than being unwrapped into something
+    // indistinguishable from a fixed point.
+    let (expanded_registry, incompleteness_diagnostics): (
+        Rc<im::HashMap<String, Rc<ItemInfo>>>,
+        Vec<Rc<ErrorNode>>,
+    ) = match effect_analysis.as_ref() {
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsComplete { registry } => {
+            (registry.clone(), Vec::new())
+        }
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsIncomplete {
+            partial,
+            causes,
+        } => (
+            partial.clone(),
+            v1_compiler_infer::effect_incompleteness_diagnostics(causes.clone())
+                .iter()
+                .cloned()
+                .collect(),
+        ),
+    };
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics_started = std::time::Instant::now();
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
@@ -15159,6 +15258,7 @@ fn finish_resolved_graph_assembly(
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
+        acc.extend(incompleteness_diagnostics.iter().cloned());
         acc
     });
     let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
@@ -15186,7 +15286,8 @@ fn finish_resolved_graph_assembly(
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     let emit_info_started = std::time::Instant::now();
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
+    let emit_graph_info =
+        v1_compiler_infer::build_emit_graph_info(modules.clone(), expanded_registry.clone());
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
@@ -16514,6 +16615,14 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
         let before = dag_paths.len();
         let mut stack: Vec<std::path::PathBuf> = vec![root_dir.clone()];
         while let Some(dir) = stack.pop() {
+            // Derive gitignored `gunbc.recurring_failure_mode.roster` before this directory's
+            // listing, so the required-CI index contains the module the parse join reads.
+            derived_row_roster::ensure_if_row_dir(&dir).map_err(|e| {
+                vec![format!(
+                    "failed to derive recurring_failure_mode roster in {}: {e}",
+                    dir.display()
+                )]
+            })?;
             let read_dir = match std::fs::read_dir(&dir) {
                 Ok(d) => d,
                 Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
@@ -22930,6 +23039,9 @@ pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
+    // This walk swallows unreadable directories. Write failure here must not abort it;
+    // `run_dag_parse_sweep` is the loud required-CI writer.
+    let _ = derived_row_roster::ensure_if_row_dir(dir);
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -39988,7 +40100,14 @@ fn claim_scope_for_with_memos(
                 continue;
             };
             let authored = position < authored_region;
-            for (name, info) in module.item_registry.iter() {
+            // The registry's KEY is now the declaration's identity (owner module path plus
+            // declared name). This scope index is deliberately keyed by BARE leaf name and
+            // resolved by the precedence order above, so it takes the leaf from the VALUE rather
+            // than from the key -- the leaf is still exactly one field away, and taking it from
+            // `info` keeps this subsystem's bare-name-with-precedence semantics unchanged while
+            // the registry underneath it stops being ambiguous.
+            for (_identity, info) in module.item_registry.iter() {
+                let name = &info.name;
                 match winner_of.get(name) {
                     None => {
                         item_registry.insert(name.clone(), info.clone());
