@@ -24,6 +24,24 @@ import gunbc.artifact_acquisition {
   acquisition_refusal_text, acquisition_succeeded,
 }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.spark.fabric_reach {
+  SparkReachPath, ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown,
+  observe_executor_reach, spark_reach_path_wire,
+}
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
+  fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
 
 // THE CONVERGENCE ROOT FOR THE GLM CANARY -- THE PIECE THAT DID NOT EXIST.
 //
@@ -179,5 +197,114 @@ fn glm_canary_reasoning_projection(arm: GlmCanaryArm) -> ReasoningResponseProjec
   match serving_runtime_row(r: arm.runtime) {
     Absent => none
     Present { value: row } => Present { value: row.reasoning_projection }
+  }
+}
+
+
+// ── THE OPERATOR-REACHABLE ENTRY ───────────────────────────────────────────────────────────────
+//
+// THIS IS THE PIECE WHOSE ABSENCE MADE EVERYTHING ABOVE UNREACHABLE. `glm_canary_converge` is an
+// `fn`: pure, foldable, and incapable of touching a host. Nothing gunbc can invoke was ever bound to
+// it, which is why the live canary went out through hand-written scripts -- a behavioural lookalike
+// that could validate external assumptions and could not exercise one construction wall, typed
+// refusal or effect ordering in this corpus.
+//
+// THE CREDENTIAL BRACKET IS THE POINT, NOT A DETAIL. The hand scripts passed an administrator
+// password as a command-line argument, which puts it in argv, shell history and process listings.
+// This ladder reaches the same hosts through the same five refusals the pair apply uses -- reach,
+// credential, attempt identity, TRUST ESTABLISHED BEFORE ANY LEG RUNS, then a materialised key file
+// whose PATH is handed to ssh rather than its bytes. Using the modelled route is what fixes the
+// credential handling; they are the same change.
+//
+// MATERIALIZE ONLY, DELIBERATELY. This entry stops after acquisition and does NOT launch. Launching
+// needs the arm's flags rendered into a unit, and gunbc.spark.pair_serving_realization is still
+// hard-wired to the DeepSeek-era image and a four-rank topology -- threading the canary arm through
+// it is a second and larger change. The smallest slice that answers the open question is the one
+// worth running first, and on success it MUTATES NOTHING: the snapshot is already on the host, so
+// the expected verdict is AlreadyPresent.
+
+data glm_canary_receipt_path: String = "target/glm-canary-converge-receipt.txt"
+data glm_canary_attempt_raw: String = "glm-canary-converge"
+
+fn glm_canary_receipt_body(at: String, executor: String, path: SparkReachPath, verdict: GlmCanaryConvergence) -> String {
+  join([
+    "glm canary converge at=", at, " executor=", executor,
+    " reach=", spark_reach_path_wire(p: path), "\n",
+    "  arm: checkpoint=", glm_canary_checkpoint_wire(arm: glm_canary_arm),
+    " runtime=", glm_canary_runtime_wire(arm: glm_canary_arm),
+    " host=", glm_canary_arm.host as String, "\n",
+    "  verdict: ", glm_canary_convergence_text(v: verdict), "\n",
+  ], "")
+}
+
+fn glm_canary_checkpoint_wire(arm: GlmCanaryArm) -> String {
+  match serving_checkpoint_row(c: arm.checkpoint) {
+    Absent => "(unmodelled)"
+    Present { value: r } => join([r.repo.path as String, "@", r.revision as String], "")
+  }
+}
+
+fn glm_canary_runtime_wire(arm: GlmCanaryArm) -> String {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => "(unmodelled)"
+    Present { value: r } => r.image_reference as String
+  }
+}
+
+fn glm_canary_converged(v: GlmCanaryConvergence) -> Bool {
+  match v {
+    CanaryArmRefused { cause: _ } => false
+    CanaryMaterializeRefused { cause: _ } => false
+    CanaryMaterialized { outcome: o, already_present: _ } => acquisition_succeeded(outcome: o)
+  }
+}
+
+func glm_canary_converge_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["glm_canary_converge: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: path } =>
+      match read_bootstrap_credential() {
+        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+        BootstrapCredentialReady { secret: administrator } =>
+          match fleet_ssh_attempt_identity(raw: glm_canary_attempt_raw) {
+            Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+            Present { value: attempt } => {
+              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                Present { value: trust } =>
+                  match with_materialized_ssh_key_file(
+                    identity_file_name: "gunbc-glm-canary-admin-password" as NonEmptyStr,
+                    secret_bytes: administrator as Secret,
+                    use: fn(file) {
+                      glm_canary_converge(ctx: SparkMaterializeContext {
+                        host: glm_canary_arm.host,
+                        trust: trust,
+                        path: path,
+                        admin_credential: administrator as Secret,
+                        admin_credential_file: file,
+                      })
+                    },
+                  ) {
+                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                    MaterializedSshKeyFileBracketCompleted { value: verdict } => {
+                      let body = glm_canary_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, verdict: verdict)
+                      let wr = Filesystem.Write(path: glm_canary_receipt_path, content: body)
+                      if !wr.success {
+                        exit_failure(reason: join(["glm canary receipt write failed: ", wr.error], ""))
+                      } else if glm_canary_converged(v: verdict) {
+                        ExitSuccess
+                      } else {
+                        exit_failure(reason: join(["glm canary did not converge:\n", body], ""))
+                      }
+                    }
+                  }
+              }
+            }
+          }
+      }
   }
 }
