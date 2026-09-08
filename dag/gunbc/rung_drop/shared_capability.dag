@@ -1,0 +1,145 @@
+module gunbc.rung_drop.shared_capability
+
+import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.rung_drop {
+  RungDrop, RungDropStanding, Standing, Retired, TypedDeclaration, AuthoredProse,
+}
+
+// ONE CAPABILITY, N DROPS, AND THE JOIN THAT MAKES PARTIAL RETIREMENT UNWRITEABLE AS A QUIET STATE.
+// DESIGN 4b(3) retires a drop BY ITS TRIGGER AND BY NOTHING ELSE. When several drops wait on the
+// SAME capability, that sentence is false unless the waiters are one subject: landing the
+// capability fires every trigger at once, and an author who watches one row retires one row.
+// The other waiters then stand on a trigger that has already fired.
+//
+// THAT HAZARD LIVED AS PASTED PROSE inside each waiter's restoration_trigger, with no consumer.
+// Prose cannot refuse a split retirement. This module is the single authority for a shared
+// restoration capability: its waiters are an identity list, standing is joined against
+// gunbc.rung_drop.roster, and a split is a typed verdict rather than a paragraph.
+
+type SharedCapability {
+  identity: NonEmptyStr
+
+  capability: String
+
+  waiter_identities: List<String>
+}
+
+type SharedCapabilityVerdict
+  = AllWaitersStanding
+  | AllWaitersRetired
+  | SplitRetirement { standing_identities: List<String>, retired_identities: List<String> }
+  | WaiterAbsent { identities: List<String> }
+  | WaiterDuplicatedOnRoster { identities: List<String> }
+  | WaiterListHasDuplicates { identities: List<String> }
+  | EmptyWaiters
+
+fn drop_is_standing(d: RungDrop) -> Bool {
+  match d.standing {
+    Standing => true
+    Retired { trigger_fired: _ } => false
+  }
+}
+
+fn identity_equals(d: RungDrop, want: String) -> Bool {
+  (d.identity as String) == want
+}
+
+fn waiter_rows(cap: SharedCapability, ds: List<RungDrop>) -> List<RungDrop> {
+  filter(ds, d => length(xs: filter(cap.waiter_identities, w => identity_equals(d: d, want: w))) == 1)
+}
+
+fn waiter_occurrences_on_roster(cap: SharedCapability, ds: List<RungDrop>, want: String) -> Int {
+  length(xs: filter(ds, d => identity_equals(d: d, want: want)))
+}
+
+fn waiter_list_duplicate_identities(cap: SharedCapability) -> List<String> {
+  filter(cap.waiter_identities, w => length(xs: filter(cap.waiter_identities, x => x == w)) > 1)
+}
+
+fn shared_capability_verdict(cap: SharedCapability, ds: List<RungDrop>) -> SharedCapabilityVerdict {
+  if length(xs: cap.waiter_identities) == 0 {
+    EmptyWaiters
+  } else {
+    let list_dups = waiter_list_duplicate_identities(cap: cap)
+    if length(xs: list_dups) > 0 {
+      WaiterListHasDuplicates { identities: list_dups }
+    } else {
+      let missing = filter(cap.waiter_identities, w => waiter_occurrences_on_roster(cap: cap, ds: ds, want: w) == 0)
+      if length(xs: missing) > 0 {
+        WaiterAbsent { identities: missing }
+      } else {
+        let doubled = filter(cap.waiter_identities, w => waiter_occurrences_on_roster(cap: cap, ds: ds, want: w) > 1)
+        if length(xs: doubled) > 0 {
+          WaiterDuplicatedOnRoster { identities: doubled }
+        } else {
+          let rows = waiter_rows(cap: cap, ds: ds)
+          let standing_ids = map(filter(rows, d => drop_is_standing(d: d)), d => d.identity as String)
+          let retired_ids = map(filter(rows, d => !drop_is_standing(d: d)), d => d.identity as String)
+          if length(xs: standing_ids) > 0 && length(xs: retired_ids) > 0 {
+            SplitRetirement { standing_identities: standing_ids, retired_identities: retired_ids }
+          } else {
+            if length(xs: retired_ids) == length(xs: cap.waiter_identities) {
+              AllWaitersRetired
+            } else {
+              AllWaitersStanding
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn shared_capability_holds(cap: SharedCapability, ds: List<RungDrop>) -> Bool {
+  match shared_capability_verdict(cap: cap, ds: ds) {
+    AllWaitersStanding => true
+    AllWaitersRetired => true
+    SplitRetirement { standing_identities: _, retired_identities: _ } => false
+    WaiterAbsent { identities: _ } => false
+    WaiterDuplicatedOnRoster { identities: _ } => false
+    WaiterListHasDuplicates { identities: _ } => false
+    EmptyWaiters => false
+  }
+}
+
+fn every_shared_capability_holds(caps: List<SharedCapability>, ds: List<RungDrop>) -> Bool {
+  fold(caps, init: true, f: fn(acc, cap) { acc && shared_capability_holds(cap: cap, ds: ds) })
+}
+
+// TYPED WAITERS MUST CITE THIS CAPABILITY'S IDENTITY in their restoration_trigger, so the unique
+// remainder cannot silently become a private trigger again. A prose waiter has no typed trigger
+// field; its membership in waiter_identities is the join, and requiring a substring of a paragraph
+// would be a second, positional naming scheme for the same fact.
+fn typed_waiters_cite_capability(cap: SharedCapability, ds: List<RungDrop>) -> Bool {
+  fold(waiter_rows(cap: cap, ds: ds), init: true, f: fn(acc, d) {
+    acc && match d.declaration {
+      TypedDeclaration {
+        previous: _, temporary: _, reason: _, population: _, restoration_trigger: rt
+      } => rt.contains(cap.identity as String)
+      AuthoredProse { legacy: _, authored: _ } => true
+    }
+  })
+}
+
+// THE MISSING CADENCE CATEGORY. Measured 2026-09-03: the required run enumerates five phases
+// across two lanes, and `schedule:`/`cron:` appear zero times across the workflow files, so the
+// shared blocker is a missing CATEGORY rather than a missing invocation of an existing one.
+// Waiters are DISJOINT populations over that one capability. floor_cut_falsifier_cadence is the
+// fourth waiter: it names the same scheduled predict-only cold comparison, in prose, without the
+// pasted hazard paragraph the typed three carried.
+data missing_cadence_category: SharedCapability = SharedCapability {
+  identity: "missing_cadence_category" as NonEmptyStr,
+
+  capability: "a scheduled or required-run cadence category that executes predict-only cold comparison, offline-homed witness admission, and source-root ingest — the category that is absent, not an invocation of a phase the required run already names",
+
+  waiter_identities: [
+    "source_root_ingest_gate",
+    "deleted_cadence_reference",
+    "witness_deferral_freeze_forward_rule",
+    "floor_cut_falsifier_cadence",
+  ],
+}
+
+data shared_capabilities: List<SharedCapability> = [
+  missing_cadence_category,
+]
