@@ -65,10 +65,10 @@ pub use crate::v1_compiler_infer_sigs::{
     ResolvedFuncSig,
 };
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_type,
-    is_declared_container_alias_spelling, kernel_profile_lookup, method_receiver_element_node,
-    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
-    reground_alias_carrier_identity,
+    child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_field,
+    instantiate_algebra_type, is_declared_container_alias_spelling, kernel_profile_lookup,
+    method_receiver_element_node, node_is_keyed_collection, node_is_set_collection,
+    nominal_type_ref, normalize_access_type_node, reground_alias_carrier_identity,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -85,9 +85,10 @@ use crate::v1_std_core::MethodSemantics::{
 };
 pub use crate::v1_std_core::ResolvedFormal;
 pub use crate::v1_std_core::{
-    authored_name_at, error_type, find_child_named, has_child_named, param_node_name_at,
-    param_node_type_expr, preserve_outer_optional_cardinality, qualified_last_segment,
-    with_optional_cardinality, with_required_cardinality,
+    authored_name_at, error_type, find_child_named, has_child_named,
+    is_interpreter_blocking_diagnostic, param_node_name_at, param_node_type_expr,
+    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ErrorNode,
@@ -1489,15 +1490,59 @@ pub fn lookup_structural_method(
             }
         } else {
             {
+                let receiver_name = crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    receiver_type.clone(),
+                );
                 let enriched = crate::v1_compiler_infer_types::enrich_kernel_type(
-                    crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        receiver_type.clone(),
-                    ),
+                    receiver_name.clone(),
                     receiver_type.clone(),
                     source_indices.clone(),
                 );
-                if ((enriched.ty.clone().connective.clone() == Connective::Conj)
+                let profile =
+                    crate::v1_compiler_infer_types::kernel_profile_lookup(receiver_name.clone());
+                let template_match = match profile.clone() {
+                    Some(p) => {
+                        let templates =
+                            crate::std_algebra::algebra_templates_for_profile(p.clone());
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for t in templates.iter().cloned() {
+                                if (t.name.clone() == method_name.clone()) {
+                                    __result.push(t);
+                                }
+                            }
+                            __result
+                        })
+                        .first()
+                        .cloned()
+                    }
+                    std::option::Option::None => std::option::Option::None,
+                };
+                let method_diagnostics = match template_match.clone() {
+                    Some(t) => {
+                        let field_type = crate::v1_compiler_infer_types::instantiate_algebra_field(
+                            t.clone(),
+                            receiver_type.clone(),
+                            source_indices.clone(),
+                        );
+                        field_type.diagnostics.clone()
+                    }
+                    std::option::Option::None => enriched.diagnostics.clone(),
+                };
+                let blocking_method_diagnostics = Rc::new({
+                    let mut __result = Vec::new();
+                    for d in method_diagnostics.iter().cloned() {
+                        if crate::v1_std_core::is_interpreter_blocking_diagnostic(
+                            d.diagnostic.clone(),
+                        ) {
+                            __result.push(d);
+                        }
+                    }
+                    __result
+                });
+                if ((((blocking_method_diagnostics.clone().len() as i64) == 0)
+                    && (enriched.ty.clone().connective.clone() == Connective::Conj))
                     && ((enriched.ty.clone().children.clone().len() as i64) > 0))
                 {
                     {
@@ -1508,32 +1553,6 @@ pub fn lookup_structural_method(
                         );
                         match base_result.clone() {
                             Some(mfr) => {
-                                let profile = crate::v1_compiler_infer_types::kernel_profile_lookup(
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        receiver_type.clone(),
-                                    ),
-                                );
-                                let template_match = match profile.clone() {
-                                    Some(p) => {
-                                        let templates =
-                                            crate::std_algebra::algebra_templates_for_profile(
-                                                p.clone(),
-                                            );
-                                        Rc::new({
-                                            let mut __result = Vec::new();
-                                            for t in templates.iter().cloned() {
-                                                if (t.name.clone() == method_name.clone()) {
-                                                    __result.push(t);
-                                                }
-                                            }
-                                            __result
-                                        })
-                                        .first()
-                                        .cloned()
-                                    }
-                                    std::option::Option::None => std::option::Option::None,
-                                };
                                 let resolution = match template_match.clone() {
                                     Some(t) => Some(Rc::new(MethodFieldResult {
                                         field_node: mfr.field_node.clone(),
@@ -1546,19 +1565,19 @@ pub fn lookup_structural_method(
                                 };
                                 Rc::new(StructuralMethodLookup {
                                     resolution: resolution.clone(),
-                                    kernel_diagnostics: enriched.diagnostics.clone(),
+                                    kernel_diagnostics: method_diagnostics.clone(),
                                 })
                             }
                             std::option::Option::None => Rc::new(StructuralMethodLookup {
                                 resolution: std::option::Option::None,
-                                kernel_diagnostics: enriched.diagnostics.clone(),
+                                kernel_diagnostics: method_diagnostics.clone(),
                             }),
                         }
                     }
                 } else {
                     Rc::new(StructuralMethodLookup {
                         resolution: std::option::Option::None,
-                        kernel_diagnostics: enriched.diagnostics.clone(),
+                        kernel_diagnostics: method_diagnostics.clone(),
                     })
                 }
             }
