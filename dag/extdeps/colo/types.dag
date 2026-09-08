@@ -1,10 +1,12 @@
 module extdeps.colo.types
 
 import std.types { NonEmptyStr, List, Bool }
+import v2.std.optional { Optional, Present, Absent }
 import std.nat { Nat }
 import std.measure {
   MoneyPerMonth, MoneyOnce, MoneyPerHour,
-  Watt, Ampere, Volt, RackUnit, Bandwidth, ByteSize,
+  Watt, VoltAmpere, Ampere, Volt, RackUnit, Bandwidth, ByteSize,
+  watt, volt_ampere_count,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -115,15 +117,41 @@ type RetailPlanRow {
 // capacity, and not a commitment: it states what the facility is engineered to support somewhere
 // within it, which is why the arms carry the marketing wording verbatim rather than a normalized
 // number alone. A candidate may be screened IN on this and may never be screened as PRICED on it.
+// A MARKETED CABINET MAXIMUM, IN THE QUANTITY THE OPERATOR ACTUALLY PUBLISHED.
+//
+// TWO REVIEWS ARRIVED AT THIS FROM OPPOSITE ENDS AND MET. The first cut carried air_cooled_kw and
+// liquid_cooled_kw as bare Int. A census lane reading Telehouse Chelsea - "standard power to rack
+// at 3.5kVA with scalable options to 5kVA" - had no correct arm for it, put 5 in the kw field and
+// documented the mismatch in the citation; the documentation was right and the FIELD was wrong,
+// because a note cannot stop a consumer reading a number out of a field named for the quantity it
+// is not. Independently, a reviewer observed that a unit baked into a field name is a second
+// representation of a fact std.measure already owns, and that THIS FILE ALREADY IMPORTS Watt for
+// PowerAllocation - so the census was answering "how much power" two ways at once.
+//
+// Both objections have one repair, and std.measure had already made the distinction structurally:
+// Watt is Measure<Power, One, Nat> and VoltAmpere is Measure<ApparentPower, One, Nat>, carried on
+// SEPARATE dimensions with a note in that module saying that putting both on Power would conflate
+// them. So the kVA arm here is not a new concept - re-minting one would be the re-invention DESIGN
+// section 2 forbids - it is that existing dimension used where an operator published on it.
+//
+// WHY THE DISTINCTION IS LOAD-BEARING RATHER THAN PEDANTIC. kW = kVA x power factor with PF <= 1,
+// so kW <= kVA always, and reading a kVA publication as kilowatts OVERSTATES real capacity - it
+// fails in the flattering direction, which here means putting more nodes in a cabinet than its
+// breaker will carry. Colocation states kVA precisely because the facility sizes to apparent
+// power, so this is the common case.
+type CabinetPowerFigure
+  = PublishedRealPower { power: Watt }
+  | PublishedApparentPower { power: VoltAmpere }
+
 type CabinetDensityClaim
   = DensityMarketedMax {
-      air_cooled_kw: Int
-      liquid_cooled_kw: Int
+      air_cooled: CabinetPowerFigure
+      liquid_cooled: CabinetPowerFigure
       claim_wording: NonEmptyStr
       citation: NonEmptyStr
     }
   | DensityMarketedAirOnly {
-      air_cooled_kw: Int
+      air_cooled: CabinetPowerFigure
       claim_wording: NonEmptyStr
       citation: NonEmptyStr
     }
@@ -131,24 +159,49 @@ type CabinetDensityClaim
       obligation: NonEmptyStr
     }
 
-// The air figure is what an ordinary deployment can consume without a liquid loop, so it is the
-// one a screen reads; a liquid claim is carried because it bounds the facility's ambition, not
-// because this fleet can use it. An unread claim yields ZERO rather than a guess, and a consumer
-// must treat zero as "no evidence" rather than "no power" - which is why the predicate below
-// exists beside the accessor and no caller should compare the number without it.
-fn cabinet_density_air_kw(d: CabinetDensityClaim) -> Int {
+// THE ESTABLISHED REAL-POWER READING, AND THERE IS NO OTHER TOTAL ONE. The previous accessor
+// returned 0 for an unread claim - a fabricated in-band answer sitting on the same axis as real
+// readings, defended only by a comment telling callers to consult a predicate first, which is the
+// validation-beside-construction shape DESIGN section 5 warns about. The Optional makes the
+// confusable zero unconstructible instead, so the companion predicate is gone rather than
+// documented around.
+//
+// Absent has TWO causes and they are different facts with the same consequence for a consumer:
+// nobody published a figure, or somebody published apparent power and no power factor exists to
+// convert it. Either way there is no established watt reading, and an admission decision that
+// needs one must refuse.
+fn cabinet_density_air_established(d: CabinetDensityClaim) -> Watt? {
   match d {
-    DensityMarketedMax { air_cooled_kw, liquid_cooled_kw, claim_wording, citation } => air_cooled_kw,
-    DensityMarketedAirOnly { air_cooled_kw, claim_wording, citation } => air_cooled_kw,
-    DensityUnread { obligation } => 0,
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
+    DensityUnread { obligation } => Absent,
   }
 }
 
-fn cabinet_density_is_read(d: CabinetDensityClaim) -> Bool {
+fn cabinet_power_established(f: CabinetPowerFigure) -> Watt? {
+  match f {
+    PublishedRealPower { power } => Present { value: power },
+    PublishedApparentPower { power } => Absent,
+  }
+}
+
+// AN UPPER BOUND, WHICH IS A WEAKER CLAIM AND IS SOUND FOR EXACTLY ONE USE. Because kW <= kVA, an
+// apparent-power publication bounds real power from above, so a candidate too small even at this
+// bound can be REJECTED without a power factor. It must never admit one: the bound is what the
+// cabinet certainly cannot exceed, not what it can deliver. The crossing from ApparentPower to
+// Power happens here and only here, justified by that inequality and by nothing else.
+fn cabinet_density_air_upper_bound(d: CabinetDensityClaim) -> Watt? {
   match d {
-    DensityMarketedMax { air_cooled_kw, liquid_cooled_kw, claim_wording, citation } => true,
-    DensityMarketedAirOnly { air_cooled_kw, claim_wording, citation } => true,
-    DensityUnread { obligation } => false,
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Present { value: cabinet_power_upper_bound(f: air_cooled) },
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Present { value: cabinet_power_upper_bound(f: air_cooled) },
+    DensityUnread { obligation } => Absent,
+  }
+}
+
+fn cabinet_power_upper_bound(f: CabinetPowerFigure) -> Watt {
+  match f {
+    PublishedRealPower { power } => power,
+    PublishedApparentPower { power } => watt(count: volt_ampere_count(v: power)),
   }
 }
 

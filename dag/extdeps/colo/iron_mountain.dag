@@ -1,10 +1,11 @@
 module extdeps.colo.iron_mountain
 
 import std.types { NonEmptyStr }
+import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressUnread, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly, DensityUnread,
+  CabinetDensityClaim, DensityMarketedAirOnly, DensityUnread, CabinetPowerFigure, PublishedRealPower,
   RetailGrainStanding, SingleCabinetOffered,
 }
 
@@ -51,7 +52,7 @@ data iron_mountain_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // made colocation look physically incapable of holding a 650 W-per-node fleet. It is not: this
 // operator markets an order of magnitude more per rack, at a grain that includes single cabinets.
 data iron_mountain_nje1_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled_kw: 30,
+  air_cooled: PublishedRealPower { power: watt(count: 30000) },
   claim_wording: "high-density up to 30 kW/rack",
   citation: "ironmountain.com NJE-1 solution guide, read 2026-09-08; the same page states 25.6 MW facility capacity, 830,000 square feet, Tier III and a PUE as low as 1.2. No liquid-cooling density is stated, hence the air-only arm.",
 }
