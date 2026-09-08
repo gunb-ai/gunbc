@@ -67,9 +67,9 @@ type VllmKvLayoutReceipt
 //   2. the group layout must reproduce the printed per-request cost -- the one non-circular check,
 //      and the one that is unavailable until the engine emits group metadata.
 //
-// TODAY EVERY REAL CAPTURE LANDS ON (2) AS INCONSISTENT, because `groups` is empty and the derived
+// TODAY EVERY REAL CAPTURE LANDS ON (2) AS UNREADABLE, because `groups` is empty and the derived
 // route does not exist. That is the honest state and not a bug in this fold: an absent second
-// opinion is not agreement.
+// opinion is not agreement, and it is not established disagreement either.
 fn admit_kv_layout(
   launch: VllmServingLaunch,
   layout: ResolvedKvLayout,
@@ -89,7 +89,7 @@ fn admit_kv_layout(
     PrintedLinesAgree =>
       match layout_reproduces_reported(layout: layout, reported: reported) {
         LayoutReproductionUnavailable { cause: c } =>
-          KvLayoutInconsistent {
+          KvLayoutUnreadable {
             launch: launch,
             cause: join(["the layout cannot be checked against the engine's own arithmetic: ", c as String], "") as NonEmptyStr,
           }
