@@ -52,6 +52,9 @@ import gunbc.stage0_crate_layout_emit {
 import gunbc.stage0_crate_partition_emit {
   expected_stage0_crate_partition_generated_dag
 }
+import gunbc.stage0_executable_assembly_emit {
+  expected_stage0_executable_assembly_generated_dag
+}
 import gunbc.seed_retention_frontier_emit {
   expected_seed_retention_frontier_generated_rs
 }

@@ -2,7 +2,7 @@ module v2.compiler.self_host.seed_retention_frontier
 
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.algebra { any, length }
+import v2.std.algebra { any, filter, length, list_map }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -294,17 +294,12 @@ fn top_level_src_basename(path: String) -> String {
 }
 
 fn seed_retention_frontier_top_level_src_basenames() -> List<String> {
-  fold(
-    seed_retention_frontier_crate_relative_paths(),
-    init: [],
-    f: fn(acc, path) {
-      let basename = top_level_src_basename(path: path)
-      if basename == "" {
-        acc
-      } else {
-        concat(acc, [basename])
-      }
-    }
+  filter(
+    xs: list_map(
+      xs: seed_retention_frontier_crate_relative_paths(),
+      f: fn(path) { top_level_src_basename(path: path) }
+    ),
+    predicate: fn(basename) { basename != "" }
   )
 }
 
