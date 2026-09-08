@@ -237,6 +237,8 @@ fn collect_window_pages(
   }
 }
 
+}
+
 // Declared frontier: the recursive page-fetch loop in collect_window_pages (and its wrapper
 // collect_runs_in_window) dissolves into std.page_fold.page_fold_live when a production consumer
 // becomes a page_fold_run over a WorkflowRuns page transport — that is, when any other module
