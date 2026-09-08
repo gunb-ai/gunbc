@@ -96,7 +96,7 @@ data rung_drop_roster: List<RungDrop> = [
   deleted_cadence_reference_drop,
   floor_cost_debt_straddling_produced_decl,
   determinism_transitive_reachability,
-  transitional_admission_exception,
+  transitional_admission_exception(),
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
