@@ -8,16 +8,38 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // workflow (falsifier.yml) was deleted at #8283 have no scheduled route. std.witness_admission
 // witness_cadence_has_scheduled_route returns false for all five. Admission rows on those cadences
 // must be refused by explicit_witness_admission_cadence_executes (DESIGN §3 single authority, §5
-// coverage-by-illusion). 22 admission rows on three cadences (QuarantineProbeExpectRed [18 rows],
-// BinWitnessWet [3 rows], FalsifierSubstrateLongLane [1 row]) carry live admission data that
+// coverage-by-illusion). 22 admission rows on three cadences carry live admission data that
 // must transition to a scheduled-route cadence first. 2 more (self_host_body_producer,
 // self_host_use_site_verdict) are rostered in gunbc.rung_drop.deleted_cadence_reference_drop
 // and NOT duplicated here.
-// QuarantineProbeExpectRed — 18 rows from known_red_probe.
-// self_host_body_producer and self_host_use_site_verdict are NOT listed here —
-// already rostered in gunbc.rung_drop.deleted_cadence_reference_drop.
-// BinWitnessWet — 3 rows from source_root_ingest_gate_admitted_witness.
-// FalsifierSubstrateLongLane — 1 direct row.
+// transitional_admission_exception_identities below is the SAME population in
+// path::function format, consumed by explicit_witness_admission.dag as the single
+// authority for the gate exception (DESIGN §3).
+
+data transitional_admission_exception_identities: List<String> = [
+  "src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag::green_control_sanctioned_reader_body_not_flagged",
+  "dag/test/claim/method_arg_declared_contract_witness_test.dag::w_method_arg_infers_against_declared_contract_not_element_type_test",
+  "src/v2/test/claim/manual/english_emit_add_test.dag::english_emit_add_ingest_round_trip_holds",
+  "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag::legacy_test_behavior_unclassified_frontier_is_zero",
+  "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag::observation_emit_frontier_is_zero",
+  "dag/test/claim/long/g2_data_reference_under_selection_witness_test.dag::specimen_classifies_as_runtime_read",
+  "dag/test/claim/long/g2_data_reference_under_selection_witness_test.dag::specimen_does_not_classify_as_local_read",
+  "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag::witness_p1_proof_kernel_acceptance_contract_holds",
+  "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag::witness_namespace_reference_derived_closure_closing_contract_holds",
+  "src/v2/test/claim/long/direct_rust_door_production_group_test.dag::direct_rust_door_production_group_closing_expectation_holds",
+  "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag::self_host_parse_engine_hooks_behavioral_receipt_holds",
+  "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag::self_host_discovery_enumeration_behavioral_receipt_holds",
+  "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag::self_host_target_carriers_behavioral_receipt_holds",
+  "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag::self_host_03_normalize_behavioral_receipt_holds",
+  "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
+  "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_live_structural_fixture_mint_site_discovered_reds",
+  "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
+  "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
+  "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds",
+  "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_ingest_overflow_refuses_never_empty_holds",
+  "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag::compiler_closure_ingest_boundary_exact_cap_transport_holds",
+  "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag::infer_transform_add_vertical_witness_holds",
+]
 
 data transitional_admission_exception: RungDrop = RungDrop {
   identity: "transitional_admission_exception" as NonEmptyStr,
