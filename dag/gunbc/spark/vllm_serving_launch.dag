@@ -187,11 +187,11 @@ fn join_is_admissible(j: LaunchJoin) -> Bool {
 
 fn launch_join_wire(j: LaunchJoin) -> String {
   match j {
-    SameLaunch => "same-incarnation"
+    SameLaunch => "same-launch"
     DifferentLaunch { left: l, right: r } =>
-      join(["different-incarnation: ", l as String, " vs ", r as String], "")
+      join(["different-launch: ", l as String, " vs ", r as String], "")
     LaunchContradiction { invocation: i, field: f } =>
-      join(["incarnation-contradiction: two observations of ", i as String, " disagree on ", f as String], "")
+      join(["launch-contradiction: two observations of ", i as String, " disagree on ", f as String], "")
   }
 }
 
