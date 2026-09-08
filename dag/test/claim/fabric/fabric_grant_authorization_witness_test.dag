@@ -1,6 +1,6 @@
 module test.claim.fabric_grant_authorization_witness
 
-import std.types { NonEmptyStr, Bool, List }
+import std.types { NonEmptyStr, Bool, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // THE FABRIC GRANT FIXTURES ARE IMPORTED, NOT REBUILT. test.claim.fabric_grant_issuance_witness
 // owns the one construction of an issued grant and the account it fences against; rebuilding
@@ -8,6 +8,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // the first time issuance moved.
 import test.claim.fabric_grant_issuance_witness {
   issue, subject_work, other_work, first_attempt, funded_account, exhausted_account, admitted_offer, thread_appropriation,
+  money_request,
 }
 import product.fabric.execution { ExecutionGrant }
 import product.fabric.identity { FabricIdentity }
@@ -17,7 +18,7 @@ import product.fabric.grant_issue {
   GrantAuthorizesDifferentWork, GrantAnswersDifferentDemand, GrantIssuedAgainstDifferentOffer,
   grant_authorizes_reservation,
 }
-import product.fabric.budget { MoneyAccount }
+import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -34,6 +35,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // would need an arm for "issuance committed nothing", and the only things to put there are a
 // fabricated grant or a non-terminating call -- so every claim matches the list and an empty
 // issuance fails the claim loudly instead of being papered over.
+// THE MONEY GENERATION THE ISSUER REQUESTED, TAKEN FROM THE REQUEST RATHER THAN FROM THE ACCOUNT.
+// Reading it back off the account would make the fence arm compare a value to itself and green by
+// construction -- a 4b decoration. money_request is what the ISSUER asked for; the account's held
+// counter is what reserve_money RECORDED. The fence joins those two independently authored facts,
+// so presenting the request's value is the honest positive direction.
+//
+// IT IS ALSO NOT THE LEASE'S GENERATION, and the two fixtures make that easy to miss: the money
+// request and the resource lease both carry 9, so an earlier revision of this witness passed the
+// LEASE generation, fenced green, and read as a positive control while proving only that two
+// unrelated counters happened to coincide. Review 62587 found it. The fixtures are left at 9 and
+// the discrimination is carried by a claim that presents a DIFFERENT generation, below.
+data issued_money_generation: Int = money_request.generation
+
 type IssuedAuthorization {
   grant: ExecutionGrant<NonEmptyStr>
   account: MoneyAccount
@@ -72,6 +86,34 @@ test fn a_grant_that_does_not_fence_authorizes_nothing() -> Bool {
       match grant_authorizes_reservation(
         grant: auth.grant,
         account: exhausted_account,
+        money_generation: issued_money_generation,
+        work: auth.grant.context.work,
+        demand: auth.grant.context.demand,
+        offer: auth.grant.object.offer,
+      ) {
+        GrantFenceRefused => true
+        GrantAuthorizes => false
+        GrantAuthorizesDifferentWork => false
+        GrantAnswersDifferentDemand => false
+        GrantIssuedAgainstDifferentOffer => false
+      }
+    Empty {} => false
+  }
+}
+
+// THE GENERATION ARM OF THE SAME FENCE, AND IT IS THE ONE THE FIXTURE COINCIDENCE WAS HIDING. The
+// claim above refuses because the exhausted account holds NO lease for the reference at all, which
+// a rule that ignored the generation entirely would still pass. This one presents the RIGHT account
+// against a WRONG generation, so it can only go green if the presented counter actually
+// participates -- and it is exactly the claim that reds if the lease generation is substituted back
+// in, because the lease and the money request agree at 9 while this presents 10.
+test fn a_grant_fenced_at_another_money_generation_authorizes_nothing() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: auth.account,
+        money_generation: issued_money_generation + 1,
         work: auth.grant.context.work,
         demand: auth.grant.context.demand,
         offer: auth.grant.object.offer,
@@ -96,6 +138,7 @@ test fn a_grant_for_another_work_authorizes_nothing() -> Bool {
       match grant_authorizes_reservation(
         grant: auth.grant,
         account: auth.account,
+        money_generation: issued_money_generation,
         work: other_work.id,
         demand: auth.grant.context.demand,
         offer: auth.grant.object.offer,
@@ -120,6 +163,7 @@ test fn a_grant_for_another_demand_authorizes_nothing() -> Bool {
       match grant_authorizes_reservation(
         grant: auth.grant,
         account: auth.account,
+        money_generation: issued_money_generation,
         work: auth.grant.context.work,
         demand: FabricIdentity { principal: "gunbc", key: "demand-2" },
         offer: auth.grant.object.offer,
@@ -140,6 +184,7 @@ test fn a_grant_for_another_offer_authorizes_nothing() -> Bool {
       match grant_authorizes_reservation(
         grant: auth.grant,
         account: auth.account,
+        money_generation: issued_money_generation,
         work: auth.grant.context.work,
         demand: auth.grant.context.demand,
         offer: FabricIdentity { principal: "gunbc", key: "offer-2" },
@@ -163,6 +208,7 @@ test fn the_issued_grant_authorizes_its_own_reservation() -> Bool {
       match grant_authorizes_reservation(
         grant: auth.grant,
         account: auth.account,
+        money_generation: issued_money_generation,
         work: auth.grant.context.work,
         demand: auth.grant.context.demand,
         offer: auth.grant.object.offer,

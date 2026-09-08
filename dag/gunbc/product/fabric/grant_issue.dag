@@ -11,7 +11,6 @@ import product.fabric.identity {
 import product.fabric.execution {
   Attempt, ExecutionGrant, ReservationRef, LeaseIdentity,
   FabricGrantObject, FabricGrantContext, FabricGrantEvidence,
-  grant_lease_generation,
 }
 import product.fabric.supply {
   SupplierOffer, OfferFungibility, Fungible, TrustDomainMismatch,
@@ -455,6 +454,18 @@ fn issue_grant<P, Q, S>(
 // authorization while authorizing nothing about the subject. The grant carries work, demand and
 // offer, and a reserved cell carries its own, so the join is available and is made here.
 
+// THE MONEY GENERATION IS PRESENTED, NOT READ OFF THE GRANT, BECAUSE THE GRANT DOES NOT CARRY IT.
+// ExecutionGrant.money_reservation is a bare ReservationRef; the counter the account holds for that
+// reference was recorded from the MONEY request (product.fabric.budget reserve_money writes
+// `generation: request.generation`), while grant_lease_generation answers the RESOURCE lease's
+// counter. Those are two independently advancing counters, and an earlier revision of this rule
+// fenced the money reservation with the lease generation -- so a grant authorized whenever the two
+// happened to coincide, and a legitimate grant whose counters had diverged was refused with a cause
+// naming the wrong fact. product.fabric.execution already records that class one authority over:
+// comparing generations alone was a real fencing hole, and it made prose describe a wall the code
+// did not build. Presenting it keeps the join between two independently authored facts -- what the
+// issuer requested against what the account recorded -- rather than between one fact and itself.
+
 // IT TAKES THE COORDINATES RATHER THAN A SNAPSHOT, AND THAT IS WHAT MAKES ITS RED AUTHORABLE.
 // RequiredBuildCellSnapshot is sole_constructor, so no witness outside its module can build a
 // DISAGREEING one; a rule reading the snapshot directly would have an unauthorable RED and be a
@@ -477,6 +488,7 @@ type GrantAuthorization
 fn grant_authorizes_reservation(
   grant: ExecutionGrant<NonEmptyStr>,
   account: MoneyAccount,
+  money_generation: Int,
   work: FabricIdentity<NonEmptyStr, WorkKey>,
   demand: FabricIdentity<NonEmptyStr, DemandKey>,
   offer: FabricIdentity<NonEmptyStr, OfferKey>,
@@ -484,7 +496,7 @@ fn grant_authorizes_reservation(
   if !fence_admits(
     a: account,
     reference: grant.money_reservation,
-    presented: grant_lease_generation(g: grant),
+    presented: money_generation,
   ) {
     GrantFenceRefused
   } else if !fabric_identity_eq(left: grant.context.work, right: work) {
