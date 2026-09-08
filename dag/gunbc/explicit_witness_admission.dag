@@ -200,6 +200,14 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "green_control_sanctioned_reader_body_not_flagged executes true — which requires NoSuspect rather than FindingNotEstablished — and this row deletes in the same change, promoting the unchanged canonical safe-shape witness to an ordinary regression control")
   ),
   known_red_probe(
+    entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
+    f: "w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "THE DISCRIMINATING RED FOR A LIVE FLOOR HOLE, enrolled red because the defect is live rather than because it is new. A branded where-refinement value (HostIdentity, which is NonEmptyStr where brand(...)) passed at an ordinary product formal (Box) reaches NO refusal at the direct call argument seam, so a value of an unrelated constructor is admitted in silence at a declared position -- the DESIGN 4b floor sentence `values inhabit declared types`. The two chains share nothing, which makes this the STRONGER incompatibility: pairs whose chains merely MEET are at least reported undecidable, while this one mints a positive inhabitance claim. ATTRIBUTION IS MEASURED ON BOTH SIDES, NOT ASSERTED, and it is PRE-EXISTING rather than introduced: the same control over the same fixtures and the same corpus, run against two compilers differing only in the three stage0 infer mirrors, evaluates false under BOTH main`s mirrors and the candidate`s. It was surfaced by review 62172 as a consequence of a where-refinement exclusion in the nominal-product arm, and that attribution does not survive the measurement -- removing the exclusion does not change the result, because the product arm was not making the refusal the exclusion was thought to suppress. The assertion RUNS and returns false, so the expectation is ExpectAssertionFalse and not a pre-verdict refusal; the fixtures resolve cleanly. Owner: the declared-type inhabitance lane.",
+    dissolution: unbound_dissolution(description: "the declared-type inhabitance judgment REFUSES a produced value whose refinement chain is disjoint from the declared position`s -- the capability, not any artifact contributing to it: neither a control existing nor a diagnostic variant being declared retires this row. When that refusal lands, this witness greens with no edit to it and this admission row deletes in the same change, promoting the control to an ordinary permanent regression control for the disjoint case")
+  ),
+  known_red_probe(
     entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag",
     f: "w_method_arg_infers_against_declared_contract_not_element_type_test",
     kind: CorpusWitnessKind,
