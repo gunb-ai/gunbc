@@ -7,12 +7,13 @@ import gunbc.harness.harness_review_guidance {
 }
 
 fn rows() -> List<ReviewGroundedPremise> {
-  harness_reviewer_guidance_at(verdict_path: "/state/review/abc.json", verdict_shape: "SHAPE-TOKEN")
+  harness_reviewer_guidance_at(worktree: "/state/worktrees/attempt-1", verdict_path: "/state/review/abc.json", verdict_shape: "SHAPE-TOKEN")
 }
 
 test fn the_reviewer_prompt_names_the_verdict_path_and_derives_its_imperatives() -> Bool {
   let prose = review_guidance_prose(rows: rows())
   string_contains(s: prose, pattern: "/state/review/abc.json")
+    && string_contains(s: prose, pattern: "worktree at /state/worktrees/attempt-1")
     && string_contains(s: prose, pattern: "SHAPE-TOKEN")
     && string_contains(s: prose, pattern: "your output is the verdict file and nothing else")
     && string_contains(s: prose, pattern: "run the acceptance command yourself before judging")

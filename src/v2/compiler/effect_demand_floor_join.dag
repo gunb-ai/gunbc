@@ -35,6 +35,7 @@ import v2.workflow.required_floor {
   DeclinedOutsideRequiredGate,
   Planned,
   RequiredFloorDisposition,
+  required_floor_disposition_name,
   required_floor_site_disposition
 }
 
@@ -149,19 +150,6 @@ fn floor_join_entry_reaches_seam(
   )
 }
 
-fn floor_join_disposition_name(d: RequiredFloorDisposition) -> String {
-  match d {
-    Planned => "planned",
-    PlannedAsChangedWitness => "planned_as_changed_witness",
-    DeclinedLongModule { matched_prefix } => "declined_long_module",
-    DeclinedFixtureMember { matched_prefix } => "declined_fixture_member",
-    DeclinedOutsideRequiredGate => "declined_outside_required_gate",
-    DeclinedOutsideGateClosure => "declined_outside_gate_closure",
-    DeclinedDiscoveryExcluded { matched_substring } => "declined_discovery_excluded",
-    DeclinedCostDebt => "declined_cost_debt"
-  }
-}
-
 fn floor_join_counts_zero() -> FloorStandingCounts {
   FloorStandingCounts {
     offered: 0,
@@ -204,7 +192,7 @@ fn floor_join_digest_text(rows: List<FloorStandingJoinRow>) -> String {
     xs: rows,
     empty: "",
     cons: fn(acc, row) {
-      concat(concat(concat(concat(acc, row.claim_identity), "\t"), floor_join_disposition_name(d: row.disposition)), "\n")
+      concat(concat(concat(concat(acc, row.claim_identity), "\t"), required_floor_disposition_name(d: row.disposition)), "\n")
     }
   )
 }

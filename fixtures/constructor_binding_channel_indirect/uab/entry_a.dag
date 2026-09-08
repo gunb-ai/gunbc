@@ -1,0 +1,7 @@
+module uab.entry_a
+
+import uab.declaring { Shape, pick }
+import uab.carrier_one { carry_one }
+
+fn use_a(c: Bool) -> Shape { pick(c: c) }
+fn touch_a() -> Int { carry_one() }

@@ -1,6 +1,6 @@
 module product.node_power_envelope
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.types { EpochMs, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
   Bandwidth,
@@ -25,7 +25,12 @@ import std.measure {
   watt,
   watt_count,
 }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority {
+  ExternalAuthority,
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+}
 import extdeps.cpu.types { CpuModelCatalogRow }
 import extdeps.memory.types {
   DramModuleCatalogRow,
@@ -82,25 +87,14 @@ type MemoryElectricalContext {
 // So the figures are carried where consumed, with their uncitedness TYPED rather than invisible: a
 // consumer can ask whether the ceiling it used is grounded, and the read obligation names what
 // would ground it. A declared boundary fact, not a silent constant.
-type RateCeilingEvidence
-  = CeilingCitedToAuthority { authority: ExternalAuthority }
-  | CeilingTranscribedUncited { read_obligation: NonEmptyStr }
-
 type TwoDpcRateCeiling {
   min_rank_count: Nat
   ceiling: MegatransfersPerSecond
-  evidence: RateCeilingEvidence
+  evidence: CitedFigureStanding
 }
 
 type TwoDpcRateCeilingTable {
   rows: List<TwoDpcRateCeiling>
-}
-
-fn ceiling_is_cited(evidence: RateCeilingEvidence) -> Bool {
-  match evidence {
-    CeilingCitedToAuthority { authority: _ } => true
-    CeilingTranscribedUncited { read_obligation: _ } => false
-  }
 }
 
 // The ceilings held today, all uncited. One declaration so the population is countable and a later
@@ -110,14 +104,14 @@ data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
     TwoDpcRateCeiling {
       min_rank_count: 4,
       ceiling: megatransfers_per_second(count: 2400),
-      evidence: CeilingTranscribedUncited {
+      evidence: TranscribedUncited {
         read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for quad-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
       },
     },
     TwoDpcRateCeiling {
       min_rank_count: 2,
       ceiling: megatransfers_per_second(count: 2933),
-      evidence: CeilingTranscribedUncited {
+      evidence: TranscribedUncited {
         read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for dual-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
       },
     },

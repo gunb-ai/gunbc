@@ -1,0 +1,36 @@
+module test.claim.self_host_logic_seed_unavailable_witness
+
+import tools.self_host_logic_seed_unavailable_transport {
+  slbu_seed_unavailable_receipt_holds
+}
+
+// Seed-unavailable self-host behavioral receipt for dag/std/logic.dag (Control (b)):
+// tools.self_host_logic_seed_unavailable_transport emits dag/std/logic.dag via the
+// real gunbc binary, compiles the emitted Rust with standard infrastructure deps
+// (im, serde, etc. -- required by v1_rt.rs which the emitter includes unconditionally)
+// but WITHOUT the seed crate v1-compiler, and runs the resulting witness binary to
+// prove the emitted logic module executes without seed dependency.
+//
+// SEED-DEPENDENCY BOUNDARY: the control denies three of four modes:
+//   (1) EXECUTION: the emitted binary runs without the seed binary
+//   (2) LINKAGE: v1-compiler absent at cargo build time
+//   (3) FALLBACK: no runtime fallback to v1-compiler
+//   (4) EMBEDDED SOURCE: v1_rt.rs present (unconditional emitter behavior) -- the
+//       transport checks via per-subject spelling search: emitted .rs files are read
+//       and checked for `v1_compiler::` tokens (seed crate namespace); a match refuses the
+//       receipt (validator, not construction; the structural proof is the absent v1-compiler
+//       dependency in the manifest).
+//
+// THIS IS NOT A SUBSTITUTE FOR CONTROL (a). Control (b) tests whether the candidate
+// depends on the seed; control (a) tests whether the comparison discriminates. Neither
+// establishes the other, and a green (b) does not cover a missing (a).
+//
+// CLASSIFIED onto LocalRepoWetLane: effects confined to temp dir + cargo build with
+// standard cached deps, no network required, same class as existing local git repo
+// operations on that lane. Hermetic envelope refuses because shell.Mktemp.Dir,
+// Filesystem.Write, cargo.Build.BuildManifest, and gunbc.WitnessBin.Run have no
+// mock_response.
+
+test fn self_host_logic_seed_unavailable_receipt_holds() -> Bool {
+  slbu_seed_unavailable_receipt_holds()
+}

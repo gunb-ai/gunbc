@@ -91,13 +91,18 @@ test fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
   }
 }
 
-test fn witness_self_host_logic_falsifier_wet_consumer_holds() -> Bool {
+// Rehomed from FalsifierSelfHostWet to LocalRepoWetLane as part of this PR's
+// rehoming of the self-host behavioral receipts off a dead cadence (falsifier.yml
+// deleted at 611fd02770/#8283). LocalRepoWetLane is scheduled and executing.
+// Authority: ci_layer_roots.dag exclusion row for
+// self_host_logic_behavioral_witness_test.dag.
+test fn witness_self_host_logic_local_repo_wet_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
     function: "self_host_logic_behavioral_receipt_holds",
     excluded_from_discovery: true
   ) {
-    FalsifierSelfHostWet => true
+    LocalRepoWetLane => true
     _ => false
   }
 }

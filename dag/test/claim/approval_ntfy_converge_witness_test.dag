@@ -1,0 +1,113 @@
+module test.claim.approval_ntfy_converge_witness_test
+
+import std.logic { Bool }
+import std.types { String, Int, List, NonEmptyStr }
+import gunbc.auth.approval_ntfy_converge {
+  NtfyConvergedMember, NtfyServiceAccount, NtfyStateDirectory, NtfyConfigDirectory,
+  NtfyUnitDaemonReloaded, NtfyUnitEnabled, NtfyUnitStarted,
+  approval_ntfy_desired_members, ntfy_member_key,
+  approval_ntfy_converge_commands,
+}
+import gunbc.executor_privileged_operation {
+  EnsureSystemAccount, EnsureOwnedDirectory, SystemdDaemonReload,
+  executor_privileged_operation_precondition, executor_privileged_operation_converge_command,
+  OperationPrecondition, NoPrecondition, AccountExistsCheck,
+}
+import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.auth.approval_ntfy_deployment { approval_ntfy_account_command }
+
+// THE DEFECT THIS FAMILY WAS BUILT OVER, pinned so it cannot come back. `useradd` exits 9 when the
+// account exists, so an unguarded EnsureSystemAccount fails on every convergence after the first.
+// It read as idempotent only because its single caller wrapped it, which is the guarantee-supplied-
+// by-a-neighbour shape: the operation looked covered because someone else compensated.
+test fn witness_ensure_account_carries_its_precondition() -> Bool {
+  let cmd = executor_privileged_operation_converge_command(op: EnsureSystemAccount {
+    login: "gunbc-ntfy",
+    shell: fleet_posix_nologin_shell_path,
+  })
+  string_contains(s: cmd, pattern: "gunbc-ntfy")
+    && string_contains(s: cmd, pattern: "id")
+    && string_contains(s: cmd, pattern: ">/dev/null 2>&1 || ")
+}
+
+// POSITIVE CONTROL: an operation that is ALREADY idempotent must not acquire a guard, or the
+// witness above would pass over a renderer that wrapped everything indiscriminately.
+test fn witness_idempotent_operations_get_no_precondition() -> Bool {
+  let cmd = executor_privileged_operation_converge_command(op: SystemdDaemonReload)
+  !string_contains(s: cmd, pattern: " || ")
+}
+
+test fn witness_directory_ensure_needs_no_precondition() -> Bool {
+  match executor_privileged_operation_precondition(op: EnsureOwnedDirectory {
+    path: "/var/lib/gunbc-ntfy", owner: "gunbc-ntfy", group: "gunbc-ntfy", mode: "0750",
+  }) {
+    NoPrecondition => true
+    AccountExistsCheck { login: _ } => false
+  }
+}
+
+// THE ACCOUNT CHECK NAMES THE LOGIN IT CHECKS, so the precondition cannot drift from the operation
+// it guards -- a guard that tested a different account than the one being created would short
+// circuit on the wrong fact and read as converged.
+test fn witness_account_precondition_names_the_same_login() -> Bool {
+  match executor_privileged_operation_precondition(op: EnsureSystemAccount {
+    login: "gunbc-ntfy", shell: fleet_posix_nologin_shell_path,
+  }) {
+    AccountExistsCheck { login } => (login as String) == "gunbc-ntfy"
+    NoPrecondition => false
+  }
+}
+
+// EVERY CONVERGE COMMAND IS GUARDED OR INHERENTLY IDEMPOTENT, which is the property that makes
+// applying the desired set twice a no-op. This is the whole point of the family: a convergence
+// that fails on its second run is not a convergence.
+test fn witness_every_desired_member_has_a_command() -> Bool {
+  list_length(items: approval_ntfy_converge_commands()) >= list_length(items: approval_ntfy_desired_members())
+}
+
+// DISTINCT KEYS, so the reconcile cannot collapse two members into one. The two state directories
+// key on their paths precisely so both survive the roster.
+fn key_occurrences(k: NonEmptyStr) -> Int {
+  list_length(items: filter(xs: approval_ntfy_desired_members(), f: m => (ntfy_member_key(m: m) as String) == (k as String)))
+}
+
+test fn witness_desired_member_keys_are_distinct() -> Bool {
+  all(xs: approval_ntfy_desired_members(), f: m => key_occurrences(k: ntfy_member_key(m: m)) == 1)
+}
+
+// THE ACCOUNT MUST PRECEDE THE DIRECTORIES IT OWNS. A directory installed `-o gunbc-ntfy` before
+// the account exists refuses with `invalid user`, which is exactly how the publication helper's
+// first deploy failed. Order is a fact of the desired list, so it is asserted rather than assumed.
+test fn witness_account_is_the_first_member() -> Bool {
+  match first(approval_ntfy_desired_members()) {
+    Present { value: m } => match m {
+      NtfyServiceAccount => true
+      NtfyStateDirectory { path: _ } => false
+      NtfyConfigDirectory { path: _ } => false
+      NtfyUnitDaemonReloaded => false
+      NtfyUnitEnabled => false
+      NtfyUnitStarted => false
+    }
+    Absent => false
+  }
+}
+
+
+// THE HAND-RUN COMMAND AND THE CONVERGED MEMBER ARE ONE AUTHORITY, tested rather than claimed. The
+// module annotation asserted this while the two sides called DIFFERENT renderers -- the
+// intervention the unguarded one, the member the guarded one -- so the operator's copy-paste would
+// have exited 9 on a host that already had the account. A prose claim could not catch that; this
+// can, because it fails the moment the two diverge again.
+test fn witness_intervention_command_equals_the_converged_member_command() -> Bool {
+  let converged = executor_privileged_operation_converge_command(op: EnsureSystemAccount {
+    login: "gunbc-ntfy",
+    shell: fleet_posix_nologin_shell_path,
+  })
+  approval_ntfy_account_command() == converged
+}
+
+// AND IT CARRIES THE PRECONDITION, so the equality above is not two copies of the WRONG form.
+test fn witness_intervention_command_is_the_guarded_form() -> Bool {
+  string_contains(s: approval_ntfy_account_command(), pattern: ">/dev/null 2>&1 || ")
+    && string_contains(s: approval_ntfy_account_command(), pattern: "gunbc-ntfy")
+}

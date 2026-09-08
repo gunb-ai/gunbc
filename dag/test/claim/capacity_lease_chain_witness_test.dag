@@ -14,7 +14,7 @@ import product.capacity.lease {
   QuiescenceFact, Quiescent, QuiescenceUnobserved, CapacityAfterExpiry, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence, capacity_after_expiry,
 }
 import product.capacity.pool_events {
-  PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved,
+  PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
   SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
   grant_from_admission,
@@ -168,6 +168,7 @@ test fn every_pool_event_kind_round_trips_through_its_wire_and_junk_is_refused()
     PoolReleased { reference: "r" as NonEmptyStr, reason: "done" as NonEmptyStr },
     PoolLapsed,
     PoolUpstreamObserved { remaining: 500, term_seconds: 3300 },
+    PoolResetObserved { reset_at: 7200 },
   ]
   all(kinds, k => {
     let env = w_env(id: "x", parent: "p", payload: k, at: 42)
@@ -177,4 +178,58 @@ test fn every_pool_event_kind_round_trips_through_its_wire_and_junk_is_refused()
     }
   })
     && (match pool_event_decode(text: "{\"schema\":\"nope\"}") { PoolEventUndecodable { reason: _ } => true  PoolEventDecoded { event: _ } => false })
+}
+
+// A LOWERED CEILING DOES NOT INVALIDATE HISTORY THAT WAS ADMITTED UNDER THE OLD ONE.
+// This is group B's outage as a fixture. Four seats were acquired under a ceiling that admitted
+// them; the ceiling is then lowered to 2 in the corpus. Folding the SAME chain against the new
+// root must still reach a pool -- the events were admitted when they were written, and the fold
+// computes state rather than re-deciding admission. Before the split of policy from integrity this
+// refused at the third acquire and the partition could never be folded again.
+fn w_over_ceiling_chain() -> List<ChainEnvelope<PoolEvent>> {
+  [ w_env(id: "o1", parent: "", payload: PoolAcquired { reference: "seat-1" as NonEmptyStr, amount: 1, term_seconds: 600 }, at: 1000),
+    w_env(id: "o2", parent: "o1", payload: PoolAcquired { reference: "seat-2" as NonEmptyStr, amount: 1, term_seconds: 600 }, at: 1001),
+    w_env(id: "o3", parent: "o2", payload: PoolAcquired { reference: "seat-3" as NonEmptyStr, amount: 1, term_seconds: 600 }, at: 1002),
+    w_env(id: "o4", parent: "o3", payload: PoolAcquired { reference: "seat-4" as NonEmptyStr, amount: 1, term_seconds: 600 }, at: 1003) ]
+}
+
+test fn a_chain_admitted_under_a_higher_ceiling_still_folds_after_the_ceiling_drops() -> Bool {
+  match pool_fold(root: w_root(), oldest_first: w_over_ceiling_chain()) {
+    PoolFoldRefused { at_event: _, wire: _ } => false
+    PoolFolded { pool: p, generation: g } =>
+      g == 4
+      && (match pool_reading_at(pool: p, at: 1100) {
+            PoolReadingRefused { at: _, anchor: _ } => false
+            PoolRead { committed: c, ceiling: cl, headroom: h, over_committed: over } =>
+              c.count == 4 && cl.count == 2 && h.count == 0 && over
+          })
+  }
+}
+
+// THE WALL IS STILL THERE. The same over-committed pool refuses a NEW acquire, so the fold's
+// tolerance is not the ceiling being removed -- it is admission staying a write-time decision.
+// Without this control the change above is indistinguishable from deleting the ceiling.
+test fn an_over_committed_pool_still_refuses_a_new_acquire() -> Bool {
+  match pool_fold(root: w_root(), oldest_first: w_over_ceiling_chain()) {
+    PoolFoldRefused { at_event: _, wire: _ } => false
+    PoolFolded { pool: p, generation: g } =>
+      match propose_acquire(pool: p, generation: g, head: HeadAt { id: w_id(s: "o4") }, partition: w_partition(),
+                            actor: "srv1-harness" as NonEmptyStr,
+                            request: SeatRequest { reference: "seat-5" as NonEmptyStr, amount: 1, at: 1100, term_seconds: 300 }) {
+        SeatProposed { event: _, expected_head: _ } => false
+        SeatRefused { wire: w } => w == "pool-full"
+      }
+  }
+}
+
+// INTEGRITY STILL REFUSES THE FOLD. A duplicate reference is a property of the chain, not of the
+// corpus: it reads the same forever, so replay must still stop on it. This is the arm that would
+// go silently green if the fix had made the fold tolerant of everything rather than of policy.
+test fn a_duplicate_reference_still_refuses_the_fold() -> Bool {
+  let dup = [ w_env(id: "d1", parent: "", payload: PoolAcquired { reference: "seat-1" as NonEmptyStr, amount: 1, term_seconds: 600 }, at: 1000),
+              w_env(id: "d2", parent: "d1", payload: PoolAcquired { reference: "seat-1" as NonEmptyStr, amount: 1, term_seconds: 600 }, at: 1001) ]
+  match pool_fold(root: w_root(), oldest_first: dup) {
+    PoolFolded { pool: _, generation: _ } => false
+    PoolFoldRefused { at_event: e, wire: _ } => (e as String) == "d2"
+  }
 }

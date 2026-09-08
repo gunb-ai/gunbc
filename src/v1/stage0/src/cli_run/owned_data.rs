@@ -149,12 +149,19 @@ pub fn owned_data_decls_for_entry(
                 entry_module
             ));
         }
-        let info = typed_module.item_registry.get(&decl_name).ok_or_else(|| {
-            format!(
-                "{entry_path}: owned data '{}' missing from item_registry",
-                decl_name
-            )
-        })?;
+        // The registry is keyed on the declaration identity (owner.decl), so a bare-leaf `get`
+        // misses every row. Within ONE module the authored leaf is unique, so the row is found by
+        // scanning that module's own values rather than by reconstructing the owner spelling.
+        let info = typed_module
+            .item_registry
+            .values()
+            .find(|candidate| candidate.name == decl_name)
+            .ok_or_else(|| {
+                format!(
+                    "{entry_path}: owned data '{}' missing from item_registry",
+                    decl_name
+                )
+            })?;
         if info.kind != ItemKind::DataItem {
             continue;
         }
