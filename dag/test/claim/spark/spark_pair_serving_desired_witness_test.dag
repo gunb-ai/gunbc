@@ -6,6 +6,7 @@ import std.measure { token_count_value, percent_count }
 import product.placement_supply { host_identity_eq }
 import extdeps.network.ipv4 { ipv4_address_eq }
 import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_context_length }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
@@ -19,14 +20,22 @@ import gunbc.spark.pair_serving_desired {
   spark_pair_serving_unit_wire,
 }
 
-// THE TUPLE IS THE OPERATOR'S, READ BACK OFF THE ROW, WITH N FROM THE GROUP: 82% of the unified
-// pool, 1M context, the DeepSeek MLA fp8 KV layout, Ray as the executor; nothing here is re-derived.
-test fn the_group_engine_tuple_is_the_observed_safe_tuple_at_the_groups_degree() -> Bool {
+// THE ENGINE TUPLE, WITH THE KV LAYOUT AS THE LOAD-BEARING ASSERTION. `fp8_ds_mla` is the cache
+// layout of DeepSeek's Multi-head Latent Attention; GLM-5.3-Flash's attention is a hybrid of sparse
+// and linear layers and is not MLA, so a cache laid out for MLA is not a slower setting inherited
+// from a neighbour -- it is a cache for an attention this model does not have. The recipe's own value
+// is plain `fp8`, and this test is what stops the DeepSeek layout travelling with the tuple.
+//
+// THE WINDOW IS ASSERTED AGAINST THE MODEL AUTHORITY AND DELIBERATELY NOT AGAINST A LITERAL. Both
+// models declare 1,048,576, and that coincidence is exactly what makes a hardcoded window survive a
+// model change it was never about: an assertion on the literal would stay green through a migration
+// that had left the field pointing at the wrong authority.
+test fn the_group_engine_tuple_carries_this_models_layout_and_window() -> Bool {
   let a = spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32)
   a.tensor_parallel_size == 4
     && percent_count(p: a.gpu_memory_utilization.fraction) == 82
-    && token_count_value(t: a.max_model_len) == 1048576
-    && (vllm_kv_cache_dtype_wire(request: a.kv_cache_dtype) as String) == "fp8_ds_mla"
+    && token_count_value(t: a.max_model_len) == token_count_value(t: glm_5_3_flash_context_length)
+    && (vllm_kv_cache_dtype_wire(request: a.kv_cache_dtype) as String) == "fp8"
     && (vllm_distributed_executor_backend_wire(backend: a.distributed_executor_backend) as String) == "ray"
 }
 
@@ -37,25 +46,36 @@ fn w_refused_naming(unit: SparkPairServingUnit, fragment: String) -> Bool {
   }
 }
 
-// AN UNMEASURED POOL REFUSES THE UNIT INSTEAD OF INVENTING A SEQUENCE COUNT.
+// AN UNMEASURED POOL REFUSES THE UNIT INSTEAD OF INVENTING A SEQUENCE COUNT, and after the
+// GLM-5.3-Flash migration that is the live state rather than a hypothetical one. Both halves matter:
+// the refusal must name max-num-seqs so the operator knows which launch line to read back, and the
+// declared capacity must actually BE unmeasured -- an assertion on the refusal alone would pass
+// against a module that still carried the inherited 32.
 test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
   w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
     && (match spark_pair_serving_seq_capacity {
-          SeqCapacityUnmeasured => false
-          SeqCapacityMeasured { max_num_seqs: n, basis: _ } => n == 32
+          SeqCapacityUnmeasured => true
+          SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
         })
 }
 
-// EACH PROMOTED GROUP'S CAPACITY IS GROUNDED IN ITS OWN LAUNCH LINE, not the first pair's, and
-// the count is the operator-observed 32 on both.
-test fn each_groups_capacity_cites_its_own_pool_and_carries_the_observed_count() -> Bool {
+// THE COUNT MEASURED ON ONE MODEL DOES NOT REACH ANOTHER, and this is the assertion that keeps it
+// out. Until the migration both groups answered SeqCapacityMeasured with 32 -- a figure read from the
+// stdout of a single DeepSeek V4 Flash launch, at one quantisation, under the fp8_ds_mla KV layout,
+// at tensor-parallel two -- and every group of every model inherited it. Every one of those
+// qualifiers has changed, so neither group may answer measured until its own launch line is read.
+//
+// A GROUP'S OWN POOL DOES NOT RESCUE IT EITHER. The former arm read this group's pool tokens and then
+// carried the admission count from the first pair's tuple anyway; no law from pool tokens to admitted
+// sequences is modeled, so a pool reading grounds the pool and nothing else.
+test fn neither_group_inherits_a_sequence_count_measured_on_another_model() -> Bool {
   (match spark_pair_serving_seq_capacity_for(group: FabricGroupA) {
-     SeqCapacityUnmeasured => false
-     SeqCapacityMeasured { max_num_seqs: n, basis: b } => n == 32 && string_contains(s: b as String, pattern: "pool of 11767856 tokens read from this group's own head stdout")
+     SeqCapacityUnmeasured => true
+     SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
    })
     && (match spark_pair_serving_seq_capacity_for(group: FabricGroupB) {
-         SeqCapacityUnmeasured => false
-         SeqCapacityMeasured { max_num_seqs: n, basis: b } => n == 32 && string_contains(s: b as String, pattern: "pool of 11952124 tokens") && !string_contains(s: b as String, pattern: "inherited")
+         SeqCapacityUnmeasured => true
+         SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
        })
 }
 

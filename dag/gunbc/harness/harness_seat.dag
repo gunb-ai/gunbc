@@ -73,6 +73,18 @@ type HarnessSeatCapacity
 // The operator's chosen interim seat count per serving group (2026-09-06), set against the
 // concurrency actually observed running on the group A head. It is a POLICY CONSTANT: nothing
 // derives it, and it carries no claim about what the KV pool can hold.
+//
+// IT IS UNCALIBRATED AS OF THE GLM-5.3-FLASH MIGRATION, AND THAT IS A DIFFERENT STATEMENT FROM
+// WRONG. The count was chosen against concurrency observed on a group serving DeepSeek V4 Flash
+// under the fp8_ds_mla KV layout; the served model, the KV layout and the attention architecture
+// have all changed, so the scenario the observation was taken in no longer exists. Because nothing
+// DERIVES this row, nothing broke -- which is precisely why it needs saying here: an honest policy
+// constant is the one kind of number a model change cannot invalidate loudly.
+//
+// IT IS NOT RE-GUESSED, EITHER. Substituting a fresh number chosen against no observation would be
+// worse than keeping a declared stale one, because it would look calibrated. The row stands, its
+// basis is now stated as expired, and re-choosing it is the operator's call against concurrency
+// observed on a GLM group.
 data harness_seat_operator_policy_seats: Nat = 3
 
 fn harness_seat_capacity(group: FabricGroup) -> HarnessSeatCapacity {

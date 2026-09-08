@@ -2,13 +2,14 @@ module gunbc.spark.pair_serving_desired
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { token_count, percent, Millisecond, millisecond }
+import std.measure { percent, Millisecond, millisecond }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.memory.types { UnifiedShared }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.vllm.engine_args {
-  VllmEngineArgs, vllm_memory_utilization, KvFp8DsMla, ExecutorRay,
+  VllmEngineArgs, vllm_memory_utilization, KvFp8, ExecutorRay,
 }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_context_length }
 import gunbc.spark.serving_engine {
   ServingEngine, VllmServing,
   MemoryEnforcerKind, KernelOomKiller, memory_enforcer_kind_wire,
@@ -24,7 +25,7 @@ import gunbc.spark.fabric_switch_observed {
 }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
-import gunbc.spark.pair_serving_observed { first_pair_kv_pool, first_pair_observed_head, first_pair_vllm_serve, group_kv_pool_observed }
+import gunbc.spark.pair_serving_observed { first_pair_observed_head }
 
 // SPARK-BATCH-3 (operator, 2026-09-05): THE SERVING UNIT IS A FABRIC GROUP, NOT A HOST. DeepSeek V4
 // Flash does not fit one Spark's unified pool, so the desired serving state is one vLLM engine
@@ -59,24 +60,36 @@ type SparkPairServingSeqCapacity
   = SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
   | SeqCapacityUnmeasured
 
-// The first pair's pool (gunbc.spark.pair_serving_observed first_pair_kv_pool) sized max-num-seqs at
-// 32, the operator's observed-safe admission count. A group's capacity is grounded in its OWN pool
-// once that launch line is read (group_kv_pool_observed); the count stays at 32 because no law from
-// pool tokens to admitted sequences is modeled — the pool bounds concurrency at full context (the
-// engine's own "Nx" figure), and requests are shorter than full context by an unmodeled margin.
-data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityMeasured {
-  max_num_seqs: first_pair_vllm_serve.max_num_seqs,
-  basis: join(["pool of ", to_string(first_pair_kv_pool.pool_tokens), " tokens read from the first pair's captured stdout on 2026-09-05; ", first_pair_kv_pool.max_concurrency_at_max_model_len_wire as String, "; inherited by groups until their own launch line is read"], "") as NonEmptyStr,
-}
+// THE INHERITED COUNT IS GONE, AND ITS REMOVAL IS THE POINT OF THIS MIGRATION RATHER THAN A SIDE
+// EFFECT OF IT. Until the GLM-5.3-Flash cutover both rows below answered SeqCapacityMeasured with
+// `first_pair_vllm_serve.max_num_seqs` -- 32, read from the stdout of ONE launch, of ONE artifact
+// (DeepSeek V4 Flash), at ONE quantisation, under ONE KV layout (fp8_ds_mla), at tensor-parallel 2
+// -- and handed it to every group of every model thereafter. Every one of those five qualifiers has
+// now changed. A measurement is a fact about the scenario it was taken in; carried outside that
+// scenario it is not a stale number but a fabricated one, and it reads as evidence because it was
+// once true.
+//
+// THE RECEIPT THIS RULE WAS WRITTEN FROM is one day old. Group B's ledger partition bricked
+// permanently on 2026-09-06 because a seat ceiling derived from a measured engine property was
+// replaced by an operator constant, and the ledger's fold then judged already-admitted history
+// against the new value: ten legitimately-admitted acquires became unfoldable. A measurement applied
+// generally, then changed, retroactively invalidated history it had never been about.
+//
+// SO THE ANSWER IS UNMEASURED, AND THE UNIT REFUSES. That is not a regression from a working state:
+// what stood here was an answer with no basis, and the refusal names max-num-seqs so the operator
+// knows exactly which launch line must be read back. gunbc.rung_drop
+// spark_serving_fleet_global_configuration_drop cites this exact row as its instance of one
+// measurement reaching every realization; this is that instance closed by construction rather than
+// by remembering not to inherit.
+data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityUnmeasured
 
+// A GROUP'S OWN POOL DOES NOT SUPPLY THE COUNT EITHER, and the former arm said so in its own basis
+// string while answering anyway -- it read this group's pool and then carried the admission count
+// "from the operator-observed tuple", which is the first pair's. No law from pool tokens to admitted
+// sequences is modeled, so a pool reading grounds the pool and nothing else; the count comes from a
+// launch line for THIS model on THIS group, or it does not come.
 fn spark_pair_serving_seq_capacity_for(group: FabricGroup) -> SparkPairServingSeqCapacity {
-  match group_kv_pool_observed(group: group) {
-    Absent => spark_pair_serving_seq_capacity
-    Present { value: pool } => SeqCapacityMeasured {
-      max_num_seqs: first_pair_vllm_serve.max_num_seqs,
-      basis: join(["pool of ", to_string(pool.pool_tokens), " tokens read from this group's own head stdout at ", pool.probed_at as String, "; ", pool.max_concurrency_at_max_model_len_wire as String, "; admission count carried from the operator-observed tuple"], "") as NonEmptyStr,
-    }
-  }
+  spark_pair_serving_seq_capacity
 }
 
 // "Ray memory monitor disabled" is spelled the way Ray reads it: a zero refresh interval with
@@ -100,13 +113,34 @@ fn spark_pair_serving_head(group: FabricGroup) -> HostIdentity {
   }
 }
 
+// THE KV DTYPE IS A CORRECTNESS FIELD, NOT A TUNING KNOB, AND IT MOVED WITH THE MODEL. It read
+// KvFp8DsMla, whose wire spelling is `fp8_ds_mla` -- the cache layout of DeepSeek's Multi-head Latent
+// Attention. GLM-5.3-Flash's attention is a hybrid of sparse and linear layers and is not MLA
+// (extdeps.zhipu.glm_5_3_flash glm_5_3_flash_attention_is_multi_head_latent), so leaving the field
+// alone would not have been a slower setting inherited from a neighbour; it would have been a cache
+// laid out for an attention this model does not have. `KvFp8` is the recipe's own value.
+//
+// THE WINDOW IS THE MODEL'S DECLARED CEILING, DERIVED RATHER THAN TRANSCRIBED. It read a literal
+// 1048576, which happened to be DeepSeek's figure and happens to be GLM's; that coincidence is
+// exactly what makes a transcribed literal cheap to write and impossible to catch, since it stays
+// green through a model change it was never about. It now comes from the model authority, so it
+// moves when the model does. It is a CEILING and not a characterised depth -- Z.ai's published
+// long-context evaluations stop at 300,000 tokens -- and the authority carries that distinction for
+// a consumer sizing a working window.
+//
+// THE UTILIZATION IS THE OPERATOR'S, WITH NO UPSTREAM BASIS, AND SAYING SO IS THE HONEST STATE. The
+// vLLM recipe for this model declares neither --gpu-memory-utilization nor --max-model-len
+// (glm_5_3_flash_recipe_declares_gpu_memory_utilization), so 82% is a choice this deployment made
+// against a DeepSeek layout and is now uncalibrated for GLM's. It is left where it stands rather than
+// re-guessed, because a fresh invented number would be worse than a declared inherited one: this row
+// is the declaration.
 fn spark_pair_serving_engine_args(tensor_parallel: Nat, max_num_seqs: Nat) -> VllmEngineArgs {
   VllmEngineArgs {
     tensor_parallel_size: tensor_parallel,
     gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
-    max_model_len: token_count(count: 1048576),
+    max_model_len: glm_5_3_flash_context_length,
     max_num_seqs: max_num_seqs,
-    kv_cache_dtype: KvFp8DsMla,
+    kv_cache_dtype: KvFp8,
     distributed_executor_backend: ExecutorRay,
   }
 }

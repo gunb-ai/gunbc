@@ -11,7 +11,10 @@ import extdeps.languages.json.parse {
   JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   parse_json_document, json_object_unique_member, json_document_gap_text,
 }
-import extdeps.deepseek.deepseek_v4 { deepseek_v4_chat_reasoning_field, deepseek_v4_chat_reasoning_field_vllm_alias }
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, Glm53FlashOnVllm,
+  harness_unit_model_id, harness_unit_reasoning_field, harness_unit_reasoning_field_aliases,
+}
 import extdeps.llm.anthropic_messages_api {
   AnthropicToolDefinition,
   AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
@@ -409,7 +412,18 @@ fn harness_backend_url_for_address(shape: HarnessWireShape, address: String) -> 
 // shared-standard modelling bought: a second implementation of the same wire reused the decoder
 // with no second decoder written.
 
-data harness_engine_model: String = "deepseek-v4-flash:iq3s-split"
+// WHICH SERVING UNIT THE HARNESS TALKS TO. This row replaced a bare model STRING, and the
+// replacement is the point: the string was one of three independent spellings of one model identity
+// (this row, the pair's observed served_model_name, and the llama.cpp router's observed alias), so
+// a model change had to be remembered in three places and could be forgotten in two. The unit is now
+// the single thing chosen, and the model id is DERIVED from it through the seam, which in turn
+// derives it from the model's own upstream authority.
+//
+// GLM-5.3-Flash AS OF THIS MIGRATION. The DeepSeek arm remains inhabitable and its wire is intact --
+// the seam refuses to guess, so switching back is this row and nothing else.
+data harness_serving_unit: HarnessServingUnit = Glm53FlashOnVllm
+
+data harness_engine_model: String = harness_unit_model_id(unit: harness_serving_unit) as String
 
 // THE ROUTER'S WINDOW IS DECLARED BESIDE THE ROUTER, for the reason the model directly above it is.
 // gunbc.spark.serving_desired owns spark_serving_desired_context_length, and that row is the OLLAMA
@@ -501,11 +515,11 @@ fn harness_chat_tool_call_block(v: JsonValue) -> HarnessWireBlock? {
   }
 }
 
-fn harness_chat_message_blocks(msg: JsonValue) -> List<HarnessWireBlock> {
-  let reasoning = match harness_member_string(doc: msg, key: deepseek_v4_chat_reasoning_field as String) {
+fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> List<HarnessWireBlock> {
+  let reasoning = match harness_member_string(doc: msg, key: harness_unit_reasoning_field(unit: unit) as String) {
     Present { value: r } => [WireThinkingBlock { thinking: r }]
     Absent =>
-      match harness_member_string(doc: msg, key: deepseek_v4_chat_reasoning_field_vllm_alias as String) {
+      match harness_first_member_string(doc: msg, keys: harness_unit_reasoning_field_aliases(unit: unit)) {
         Present { value: r } => if r == "" { [] } else { [WireThinkingBlock { thinking: r }] }
         Absent => []
       }
@@ -525,7 +539,7 @@ fn harness_chat_message_blocks(msg: JsonValue) -> List<HarnessWireBlock> {
   concat(concat(reasoning, text), calls)
 }
 
-fn harness_decode_chat_completion(body: String) -> HarnessResponseRead {
+fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> HarnessResponseRead {
   match parse_json_document(s: body) {
     JsonDocumentUnreadable { gap: g } =>
       HarnessResponseUnreadable { cause: join(["response body is not a JSON document: ", json_document_gap_text(gap: g)], "") }
@@ -544,7 +558,7 @@ fn harness_decode_chat_completion(body: String) -> HarnessResponseRead {
                     StopReasonRead { reason: r } =>
                       HarnessResponseParsed {
                         blocks: match json_object_unique_member(v: choice, key: "message") {
-                          JsonMemberFound { value: m } => harness_chat_message_blocks(msg: m)
+                          JsonMemberFound { value: m } => harness_chat_message_blocks(unit: unit, msg: m)
                           _ => []
                         },
                         stop_reason: r,
@@ -565,9 +579,24 @@ fn harness_decode_chat_completion(body: String) -> HarnessResponseRead {
   }
 }
 
-fn harness_decode_for_shape(shape: HarnessWireShape, body: String) -> HarnessResponseRead {
+fn harness_decode_for_shape(unit: HarnessServingUnit, shape: HarnessWireShape, body: String) -> HarnessResponseRead {
   match shape {
     AnthropicMessagesShape => harness_decode_response(body: body)
-    OpenAiChatCompletionsShape => harness_decode_chat_completion(body: body)
+    OpenAiChatCompletionsShape => harness_decode_chat_completion(unit: unit, body: body)
+  }
+}
+
+// THE ALIAS FOLD. A unit may expose the same reasoning text under a second spelling -- vLLM's
+// "reasoning" beside the guide's reasoning_content -- and a unit may expose none. Folding a LIST
+// rather than branching on an empty sentinel keeps "this unit has no alias" as an empty list, which
+// is the state itself rather than a string standing in for it.
+fn harness_first_member_string(doc: JsonValue, keys: List<NonEmptyStr>) -> String? {
+  match keys.first() {
+    Absent => none
+    Present { value: k } =>
+      match harness_member_string(doc: doc, key: k as String) {
+        Present { value: v } => Present { value: v }
+        Absent => harness_first_member_string(doc: doc, keys: keys.skip(n: 1))
+      }
   }
 }

@@ -7,6 +7,12 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_model_id, glm_5_3_flash_vllm_tool_call_parser }
+import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory_name }
+import gunbc.spark.model_snapshot_acquisition {
+  ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned,
+  glm_5_3_flash_snapshot, model_snapshot_identity,
+}
 import extdeps.docker { DockerMount, BindMount }
 import extdeps.docker.cli {
   DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping,
@@ -33,7 +39,7 @@ import gunbc.spark.pair_serving_desired {
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
   SparkPairServingParticipant, spark_pair_serving_desired,
 }
-import gunbc.spark.pair_serving_observed { first_pair_model_snapshot, first_pair_ray_head, first_pair_vllm_serve }
+import gunbc.spark.pair_serving_observed { first_pair_ray_head, first_pair_vllm_serve }
 
 // THE PAIR'S REALIZATION IS TWO SYSTEM UNITS AND ONE CONTAINER PER HOST, RENDERED FROM THE DESIRED
 // ROW. This replaces the hand-authored spark-vllm-head.sh, spark-ray-worker.sh and
@@ -79,23 +85,54 @@ data spark_pair_ray_num_gpus: Nat = first_pair_ray_head.num_gpus
 data spark_pair_ray_object_store_bytes: Nat = first_pair_ray_head.object_store_memory_bytes
 data spark_pair_ray_gcs_port: Port = first_pair_ray_head.gcs_port
 
-// The model the pair serves: the snapshot elected on 2026-09-03 and observed on disk.
-data spark_pair_model_hub_repository: NonEmptyStr = first_pair_model_snapshot.hub_repository
-data spark_pair_model_snapshot_revision: NonEmptyStr = first_pair_model_snapshot.snapshot_revision
-data spark_pair_served_model_name: NonEmptyStr = first_pair_vllm_serve.served_model_name
+// WHAT IS SERVED IS A DESIRED FACT AND CAME FROM AN OBSERVATION, which is the inversion this
+// migration removes. `spark_pair_served_model_name` and `spark_pair_tool_call_parser` both read
+// fields off `first_pair_vllm_serve` -- a process-list reading of the DeepSeek launch of 2026-09-03
+// -- so the answer to "which model should this pair serve" was "whichever one it was serving when
+// somebody last looked". That is not a stale row; it is a row that could never be changed by
+// deciding anything, only by re-observing, and it made a model migration unexpressible.
+//
+// THEY NOW COME FROM THE MODEL'S OWN UPSTREAM AUTHORITY, so there is one spelling of the identity
+// and one of the parser, both citable, and a model change is this import and nothing else. The
+// observed rows keep their fields; nothing derives a desired fact from them any more.
+data spark_pair_served_model_name: NonEmptyStr = glm_5_3_flash_model_id
+data spark_pair_tool_call_parser: NonEmptyStr = glm_5_3_flash_vllm_tool_call_parser
 data spark_pair_serve_port: Port = first_pair_vllm_serve.port
-data spark_pair_tool_call_parser: NonEmptyStr = first_pair_vllm_serve.tool_call_parser
 
-fn hf_hub_models_dir_name(repository: NonEmptyStr) -> String {
-  join(["models--", join(split(repository as String, "/"), "--")], "")
-}
+// THE WEIGHTS ARE A DIFFERENT QUESTION FROM THE IDENTITY, AND BOTH NOW HAVE AN AUTHORITY. A
+// served-model name is a choice; a snapshot revision is a fact about an upstream commit. The former
+// rows read the DeepSeek snapshot off an observation of the operator's disk, so the desired state
+// could only ever be whatever happened to have been downloaded.
+//
+// IT IS PINNED, NOT OBSERVED, AND THAT IS THE WHOLE CHANGE. gunbc.spark.model_snapshot_acquisition
+// resolves the revision from the Hub and owns the modelled way to bring it onto a host, so this
+// module can name the path a pinned revision WILL live at without asserting anything about whether
+// the bytes are there yet. Rendering a serve line and having the weights present are two facts, and
+// making them one is what left this fleet with an artifact no desired row could reproduce
+// (gunbc.rung_drop spark_serving_local_artifact_not_reproducible).
+//
+// AN EARLIER REVISION OF THIS MODULE REFUSED TO RENDER AT ALL while the snapshot was unobserved.
+// That was correct while nothing could fetch it -- pointing the identity at GLM over DeepSeek's
+// tensors would launch an engine that starts, answers, and is wrong -- and it is superseded rather
+// than kept beside the acquisition, because two rows answering "may this serve" is the fork this
+// migration exists to remove. The refusal now lives where it belongs: at acquisition, on a snapshot
+// nobody has pinned.
+data spark_pair_desired_snapshot: ModelSnapshotDesired = glm_5_3_flash_snapshot
 
-fn spark_pair_model_path_in_container() -> String {
-  join([
-    spark_pair_weights_container_dir as String, "/",
-    hf_hub_models_dir_name(repository: spark_pair_model_hub_repository),
-    "/snapshots/", spark_pair_model_snapshot_revision as String,
-  ], "")
+// THE CACHE FOLDER NAME IS THE HUB'S CONVENTION AND IS NOW CONSUMED RATHER THAN RE-DERIVED. A
+// private `hf_hub_models_dir_name` stood here reconstructing `models--org--name` by hand -- the one
+// piece of the Hub this repository had ever modelled, spelled inside a consumer with no citation,
+// which is the ordinary shape of a nickname. extdeps.huggingface.hub owns it.
+fn spark_pair_model_path_in_container(snapshot: ModelSnapshotDesired) -> String? {
+  match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => none
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, revision_provenance: _ } =>
+      Present { value: join([
+        spark_pair_weights_container_dir as String, "/",
+        hub_repo_cache_directory_name(repo: r) as String,
+        "/snapshots/", rev as String,
+      ], "") }
+  }
 }
 
 // vLLM spells the utilization as a fraction; the tuple carries a Percent.
@@ -104,9 +141,11 @@ fn vllm_utilization_wire(p: Percent) -> String {
   if n >= 100 { "1.0" } else if n >= 10 { join(["0.", to_string(n)], "") } else { join(["0.0", to_string(n)], "") }
 }
 
-fn spark_pair_vllm_serve_argv(args: VllmEngineArgs) -> List<String> {
-  [
-    sparkrun_vllm_ds4_gb10_vllm_binary as String, "serve", spark_pair_model_path_in_container(),
+fn spark_pair_vllm_serve_argv(args: VllmEngineArgs, snapshot: ModelSnapshotDesired) -> List<String>? {
+  match spark_pair_model_path_in_container(snapshot: snapshot) {
+    Absent => none
+    Present { value: model_path } => Present { value: [
+    sparkrun_vllm_ds4_gb10_vllm_binary as String, "serve", model_path,
     "--served-model-name", spark_pair_served_model_name as String,
     "--host", "0.0.0.0", "--port", to_string(spark_pair_serve_port),
     "--tensor-parallel-size", to_string(args.tensor_parallel_size),
@@ -118,7 +157,8 @@ fn spark_pair_vllm_serve_argv(args: VllmEngineArgs) -> List<String> {
     "--kv-cache-dtype", vllm_kv_cache_dtype_wire(request: args.kv_cache_dtype) as String,
     "--gpu-memory-utilization", vllm_utilization_wire(p: args.gpu_memory_utilization.fraction),
     "--enable-prefix-caching",
-  ]
+  ] }
+  }
 }
 
 fn spark_pair_ray_stop_argv() -> List<String> {
@@ -266,11 +306,14 @@ type SparkPairUnitRender
   = SparkPairUnitRendered { unit_name: NonEmptyStr, text: String }
   | SparkPairUnitRenderRefused { unit_name: NonEmptyStr, cause: NonEmptyStr }
 
-fn spark_pair_head_unit_file(args: VllmEngineArgs, head: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
+fn spark_pair_head_unit_file(args: VllmEngineArgs, snapshot: ModelSnapshotDesired, head: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
   let start = spark_pair_lifecycle_pre_directives(spec: spec)
   let stop_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_stop_argv()))
   let start_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_head_argv(head: head)))
-  let serve = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_vllm_serve_argv(args: args)))
+  let serve = match spark_pair_vllm_serve_argv(args: args, snapshot: snapshot) {
+    Absent => none
+    Present { value: argv } => exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: argv))
+  }
   match start {
     Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: "a container lifecycle line is not a plain argv" as NonEmptyStr }
     Present { value: lifecycle } => match stop_ray {
@@ -278,7 +321,7 @@ fn spark_pair_head_unit_file(args: VllmEngineArgs, head: FabricLaneObserved, spe
       Present { value: stop_line } => match start_ray {
         Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: "ray head line is not a plain argv" as NonEmptyStr }
         Present { value: ray_line } => match serve {
-          Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: "vllm serve line is not a plain argv" as NonEmptyStr }
+          Absent => SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: "the vllm serve line could not be rendered: either the desired model snapshot carries no pinned revision (gunbc.spark.model_snapshot_acquisition) or the line is not a plain argv" as NonEmptyStr }
           Present { value: serve_line } =>
             SparkPairUnitRendered {
               unit_name: spark_pair_head_unit_name,
@@ -385,7 +428,7 @@ fn spark_pair_realization(unit: SparkPairServingUnit) -> SparkPairRealization {
       match e {
         OllamaServing { profile: _ } => SparkPairRealizationRefused { group: g, cause: "a group unit carries an Ollama engine, which has no group realization" as NonEmptyStr }
         VllmServing { args: args } =>
-          match spark_pair_host_realization(host: h.host, lane: h.lane, unit: fn(spec) { spark_pair_head_unit_file(args: args, head: h.lane, spec: spec) }) {
+          match spark_pair_host_realization(host: h.host, lane: h.lane, unit: fn(spec) { spark_pair_head_unit_file(args: args, snapshot: spark_pair_desired_snapshot, head: h.lane, spec: spec) }) {
             Absent => SparkPairRealizationRefused { group: g, cause: "the head's container environment does not cover every interface name the image bakes" as NonEmptyStr }
             Present { value: head_real } =>
               match spark_pair_worker_realizations(head: h.lane, workers: ws) {

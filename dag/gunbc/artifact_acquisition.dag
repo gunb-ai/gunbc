@@ -1,0 +1,271 @@
+module gunbc.artifact_acquisition
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.nat { Nat }
+
+// THE SUBJECT-AGNOSTIC ACQUISITION UPSERT: bring a named artifact into a place it is not, keyed on
+// what the artifact IS rather than on whether somebody remembers having fetched it.
+//
+// WHY THIS MODULE EXISTS RATHER THAN A THIRD COPY OF THE SAME FOLD. The mechanism below was already
+// written once, correctly, for the Ubuntu install ISO
+// (extdeps.provisioning.ubuntu_install_media_fetch): probe the destination, verify what is there
+// against the expected identity, and on absence walk an ordered list of transports staging into a
+// side path and publishing only after the identity checks out. It was also written once before that,
+// for Ollama model blobs, and DELETED with the Ollama tree. Model weights now need it a third time.
+// Three subjects, one fold: the vocabulary was per-subject (`Mirror`, `InstallMedia`) but not one
+// step of the algorithm was, which is DESIGN section 2's horizontal move stated as a defect -- one
+// concept, spelled once per breadth.
+//
+// THIS MODULE ENUMERATES NO SUBJECT AND SELECTS NO TRANSPORT. A caller supplies a subject and its
+// ordered sources; the dispatch that picks a realization is itself realization and sits at the
+// periphery (DESIGN section 3), which is why there is no `Ubuntu` or `HuggingFace` arm anywhere
+// below and adding a fourth subject adds a binding at that subject rather than a row here.
+
+// ── WHAT IDENTIFIES THE ARTIFACT ───────────────────────────────────────────────────────────────
+//
+// THE TWO KEYS ARE NOT INTERCHANGEABLE AND THE DIFFERENCE IS A GUARANTEE, NOT A SPELLING. Carrying
+// them as one `NonEmptyStr` would let a consumer read the second as though it bought the first.
+//
+//   - ContentDigestSha256 is verified HERE, by this module, against the bytes actually on disk. The
+//     wrong bytes cannot be published, whatever the transport did or claimed.
+//   - UpstreamRevision names an immutable upstream commit whose contents this module cannot itself
+//     check -- a directory of two hundred shards has no single digest to compare. Verification is
+//     DELEGATED to the transport, so the guarantee is exactly as strong as that transport's own
+//     integrity checking and no stronger. A consumer that needs the first must not be handed the
+//     second.
+//
+// The revision arm exists because refusing it would not make large multi-file artifacts safer; it
+// would make them unmodelled, which is the state this repository is trying to leave. It is named so
+// its weakness is legible instead of implied.
+type AcquisitionKey
+  = ContentDigestSha256 { hex: NonEmptyStr }
+  | UpstreamRevision { revision: NonEmptyStr }
+
+fn acquisition_key_wire(key: AcquisitionKey) -> NonEmptyStr {
+  match key {
+    ContentDigestSha256 { hex: h } => h
+    UpstreamRevision { revision: r } => r
+  }
+}
+
+// WHETHER THIS MODULE ITSELF ESTABLISHES THE IDENTITY, asked as a function so a caller can branch on
+// the guarantee rather than on the key's shape. A receipt that wants to say "verified" is entitled
+// to say so only when this answers true.
+fn acquisition_key_is_locally_verifiable(key: AcquisitionKey) -> Bool {
+  match key {
+    ContentDigestSha256 { hex: _ } => true
+    UpstreamRevision { revision: _ } => false
+  }
+}
+
+// ── WHERE IT MAY COME FROM ─────────────────────────────────────────────────────────────────────
+//
+// A SOURCE IS A TRANSPORT BOUND TO THIS SUBJECT, one of N, and never a fact about the artifact
+// (DESIGN section 3). The identity is carried beside the locator so a receipt names WHICH source
+// answered -- "the second mirror" and "the CDN" are different facts about a run, and a bare URL
+// makes a reader reconstruct which was which.
+type AcquisitionSource {
+  identity: NonEmptyStr
+  locator: NonEmptyStr
+}
+
+type AcquisitionSubject {
+  identity: NonEmptyStr
+  key: AcquisitionKey
+  install_path: NonEmptyStr
+  staging_path: NonEmptyStr?
+  parent_directory: NonEmptyStr
+  sources: List<AcquisitionSource>
+}
+
+// STAGING IS NOT A CONVENIENCE. Fetching straight to the install path makes a partial or wrong
+// download indistinguishable from a good one on the next run -- the file is present, so the probe
+// says present, and nothing ever re-checks it. Staging then publishing means the install path only
+// ever holds bytes that passed the check.
+//
+// IT IS OPTIONAL BECAUSE SOME TRANSPORTS STAGE INTERNALLY, and this is the second place the two keys
+// show through. A single-file fetch needs a side path this module names, because this module is what
+// publishes. A transport that materialises a whole directory tree does its own staging -- the Hub
+// CLI writes `.incomplete` blobs and only links them into the snapshot once complete -- so there is
+// nothing here to name, and a required field would be a fact this model asserts and never verifies.
+
+// ── WHAT THE DESTINATION SAYS ──────────────────────────────────────────────────────────────────
+//
+// THE PROBE HAS FOUR ANSWERS AND NOT TWO, because "not there", "there and right", "there and wrong"
+// and "I could not tell" have four different remedies. Collapsing the last into either of the first
+// two is the state-space conflation DESIGN names: a broken checksum tool reading as a digest
+// mismatch sends an operator to re-download bytes that were fine, and reading as absence silently
+// re-fetches on every run forever.
+type AcquisitionObservation
+  = AcquisitionAbsent
+  | AcquisitionVerified
+  | AcquisitionDigestMismatch
+  | AcquisitionProbeFailed { reason: NonEmptyStr }
+
+// ── HOW IT CAN FAIL ────────────────────────────────────────────────────────────────────────────
+//
+// EVERY ARM IS TYPED, LOCATED AND COUNTED, so a deficit's frequency is observable rather than
+// absorbed (DESIGN section 5). `attempted` is carried on the two exhaustion arms because "no source
+// answered" and "one source answered wrongly" are different operational states that a bare message
+// would flatten.
+type AcquisitionRefusal
+  = InstalledCopyFailsItsKey { identity: NonEmptyStr, install_path: NonEmptyStr, expected: NonEmptyStr }
+  | DestinationProbeFailed { identity: NonEmptyStr, reason: NonEmptyStr }
+  | ParentDirectoryUnwritable { identity: NonEmptyStr, parent_directory: NonEmptyStr }
+  | NoSourceDeclared { identity: NonEmptyStr }
+  | EverySourceUnreachable { identity: NonEmptyStr, attempted: Nat }
+  | EverySourceFailedItsKey { identity: NonEmptyStr, attempted: Nat }
+  | PublishFailed { identity: NonEmptyStr, source: NonEmptyStr, install_path: NonEmptyStr }
+  | VerifyMechanismFailed { identity: NonEmptyStr, source: NonEmptyStr, reason: NonEmptyStr }
+
+type AcquisitionOutcome
+  = AcquisitionAlreadyPresent { identity: NonEmptyStr, install_path: NonEmptyStr }
+  | AcquisitionFetched { identity: NonEmptyStr, install_path: NonEmptyStr, source: AcquisitionSource }
+  | AcquisitionRefused { cause: AcquisitionRefusal }
+
+fn acquisition_refusal_text(cause: AcquisitionRefusal) -> String {
+  match cause {
+    InstalledCopyFailsItsKey { identity: i, install_path: p, expected: e } =>
+      join(["the installed copy of ", i as String, " at ", p as String, " does not match its declared identity ", e as String, "; it is not re-fetched over, because a destination that disagrees with its key is a fact an operator must see"], "")
+    DestinationProbeFailed { identity: i, reason: r } =>
+      join(["the destination probe for ", i as String, " could not answer: ", r as String], "")
+    ParentDirectoryUnwritable { identity: i, parent_directory: d } =>
+      join(["the parent directory ", d as String, " for ", i as String, " could not be created"], "")
+    NoSourceDeclared { identity: i } =>
+      join(["no source is declared for ", i as String, ", so nothing was attempted; this is not the same state as every source having failed"], "")
+    EverySourceUnreachable { identity: i, attempted: n } =>
+      join(["every one of the ", to_string(n), " declared sources for ", i as String, " was unreachable"], "")
+    EverySourceFailedItsKey { identity: i, attempted: n } =>
+      join([to_string(n), " sources for ", i as String, " were reached and none produced bytes matching its declared identity"], "")
+    PublishFailed { identity: i, source: s, install_path: p } =>
+      join([i as String, " was fetched from ", s as String, " and verified, but could not be published to ", p as String], "")
+    VerifyMechanismFailed { identity: i, source: s, reason: r } =>
+      join(["the verification mechanism itself failed for ", i as String, " fetched from ", s as String, ": ", r as String], "")
+  }
+}
+
+// ── THE FOLD ───────────────────────────────────────────────────────────────────────────────────
+//
+// ONE SOURCE'S ATTEMPT HAS THREE OUTCOMES AND THEY MUST STAY APART. The Ubuntu original folded
+// "could not reach it" and "reached it and the digest was wrong" into one `none`, so a run where
+// every mirror served corrupt bytes reported "all mirrors unreachable" -- reachability answering for
+// correctness. That was found and fixed there; the split is carried here so the next subject
+// inherits the fix instead of re-deriving it.
+type AcquisitionAttempt
+  = AttemptTerminal { outcome: AcquisitionOutcome }
+  | AttemptFailedKey
+  | AttemptUnreachable
+
+type AcquisitionFoldState {
+  terminal: AcquisitionOutcome?
+  reached_count: Nat
+  saw_failed_key: Bool
+}
+
+fn acquisition_fold_step(acc: AcquisitionFoldState, attempt: AcquisitionAttempt) -> AcquisitionFoldState {
+  match acc.terminal {
+    Present { value: _ } => acc
+    Absent =>
+      match attempt {
+        AttemptTerminal { outcome: o } =>
+          AcquisitionFoldState { terminal: Present { value: o }, reached_count: acc.reached_count + 1, saw_failed_key: acc.saw_failed_key }
+        AttemptFailedKey =>
+          AcquisitionFoldState { terminal: none, reached_count: acc.reached_count + 1, saw_failed_key: true }
+        AttemptUnreachable => acc
+      }
+  }
+}
+
+// EXHAUSTION IS NOT ONE STATE, AND AN EMPTY SOURCE LIST IS NOT EXHAUSTION AT ALL. The Ubuntu
+// original reported a subject with zero declared sources as "all mirrors unreachable" -- nothing was
+// attempted, and the answer named a failure of the network. That is the empty-observation narrow:
+// bottom-as-answer standing in for bottom-as-ignorance, and it is worse than the widen DESIGN
+// section 5 forbids because it reads as a diagnosis. `NoSourceDeclared` is checked before the fold
+// is entered, so the arm below can only be reached by sources that genuinely ran.
+fn acquisition_exhausted(subject: AcquisitionSubject, state: AcquisitionFoldState) -> AcquisitionOutcome {
+  if state.saw_failed_key {
+    AcquisitionRefused { cause: EverySourceFailedItsKey { identity: subject.identity, attempted: state.reached_count } }
+  } else {
+    AcquisitionRefused { cause: EverySourceUnreachable { identity: subject.identity, attempted: list_length(items: subject.sources) } }
+  }
+}
+
+// THE HANDLER IS THE SEAM. Probing a destination, moving bytes over a network and publishing a file
+// are host effects, and this module is a pure fold over their typed outcomes -- so the caller binds
+// them and this module never names a transport. That is the same shape gunbc.world_converge uses,
+// and for the same reason: a combinator that reached for an effect would have to enumerate the
+// effects it may reach for, which is the enumeration this module exists to avoid.
+type AcquisitionHandler {
+  observe: fn(AcquisitionSubject) -> AcquisitionObservation
+  ensure_parent: fn(AcquisitionSubject) -> Bool
+  attempt: fn(AcquisitionSubject, AcquisitionSource) -> AcquisitionAttempt
+}
+
+fn acquire_from_declared_sources(subject: AcquisitionSubject, handler: AcquisitionHandler) -> AcquisitionOutcome {
+  let attempt_one = handler.attempt
+  let folded = fold(
+    subject.sources,
+    init: AcquisitionFoldState { terminal: none, reached_count: 0, saw_failed_key: false },
+    f: (acc, origin) => match acc.terminal {
+      Present { value: _ } => acc
+      Absent => acquisition_fold_step(acc: acc, attempt: attempt_one(subject, origin))
+    },
+  )
+  match folded.terminal {
+    Present { value: outcome } => outcome
+    Absent => acquisition_exhausted(subject: subject, state: folded)
+  }
+}
+
+fn acquire_from_sources(subject: AcquisitionSubject, handler: AcquisitionHandler) -> AcquisitionOutcome {
+  if list_length(items: subject.sources) == 0 {
+    AcquisitionRefused { cause: NoSourceDeclared { identity: subject.identity } }
+  } else {
+    acquire_from_declared_sources(subject: subject, handler: handler)
+  }
+}
+
+// THE ROOT. AN INSTALLED COPY THAT FAILS ITS KEY IS A REFUSAL, NOT A RE-FETCH -- the one decision
+// here a reader is most likely to expect the other way round. Overwriting would make the run green
+// and destroy the evidence; something put wrong bytes at that path, and which thing did it is the
+// question worth answering before the path is reused.
+fn acquire_artifact(subject: AcquisitionSubject, handler: AcquisitionHandler) -> AcquisitionOutcome {
+  let observe = handler.observe
+  let ensure_parent = handler.ensure_parent
+  match observe(subject) {
+    AcquisitionVerified => AcquisitionAlreadyPresent { identity: subject.identity, install_path: subject.install_path }
+    AcquisitionDigestMismatch =>
+      AcquisitionRefused { cause: InstalledCopyFailsItsKey {
+        identity: subject.identity,
+        install_path: subject.install_path,
+        expected: acquisition_key_wire(key: subject.key),
+      } }
+    AcquisitionProbeFailed { reason: r } =>
+      AcquisitionRefused { cause: DestinationProbeFailed { identity: subject.identity, reason: r } }
+    AcquisitionAbsent =>
+      if !ensure_parent(subject) {
+        AcquisitionRefused { cause: ParentDirectoryUnwritable {
+          identity: subject.identity,
+          parent_directory: subject.parent_directory,
+        } }
+      } else {
+        acquire_from_sources(subject: subject, handler: handler)
+      }
+  }
+}
+
+fn acquisition_is_idempotent_skip(outcome: AcquisitionOutcome) -> Bool {
+  match outcome {
+    AcquisitionAlreadyPresent { identity: _, install_path: _ } => true
+    AcquisitionFetched { identity: _, install_path: _, source: _ } => false
+    AcquisitionRefused { cause: _ } => false
+  }
+}
+
+fn acquisition_succeeded(outcome: AcquisitionOutcome) -> Bool {
+  match outcome {
+    AcquisitionAlreadyPresent { identity: _, install_path: _ } => true
+    AcquisitionFetched { identity: _, install_path: _, source: _ } => true
+    AcquisitionRefused { cause: _ } => false
+  }
+}
