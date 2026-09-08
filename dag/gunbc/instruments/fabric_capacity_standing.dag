@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.algebra { trim }
-import std.measure { TokenCount, token_count }
+import std.measure { TokenCount, token_count, percent, AllocatorBlockCount, allocator_block_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest, Fnv1a64, content_hash_atom }
 import extdeps.ssh.session
@@ -13,6 +13,7 @@ import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
 import gunbc.spark.managed_access_apply { spark_managed_login }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.server { vllm_source_revision_read }
 import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
@@ -50,18 +51,8 @@ import gunbc.spark.pair_serving_capacity_floor {
 data capacity_probe_unit: String = "gunbc-spark-pair-head"
 data capacity_probe_container: String = "gunbc-spark-pair"
 data capacity_probe_log: String = "/var/log/gunbc/spark-pair-head.log"
-data capacity_probe_identity_file: String = "/home/briansrls/.ssh/fleet-automation"
-// THE PRINCIPAL IS THE DECLARED ONE, READ FROM ITS AUTHORITY.
-//
-// This said "briansrls" — a human login that happens to exist on the group A head and not on the
-// group B head, so the first run of this instrument reported group B as unreachable and I wrote it
-// up as a fleet key-distribution gap. It was not. gunbc.spark.managed_access_apply already declares
-// gunbc-automation as the convergence principal, managed_access_apply provisions it, and both heads
-// answer to it on the fleet key. The gap was in this file: a second spelling of "who automation is",
-// which read as evidence about the fleet.
-//
-// So it is not spelled here at all. A probe that names its own principal can disagree with the one
-// convergence uses, and the disagreement looks exactly like a broken host.
+
+data capacity_probe_script_brace_workaround_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.recurring_failure_mode.heads_only_index_counts_braces_inside_string_literals next-rung — token-aware brace matching in the module index, sufficient for this probe to be a typed argv realization rather than concat-built shell. Until then this script is the filed workaround, not a second carrier." as NonEmptyStr)
 
 // TWELVE LINES, FIXED ORDER, "-" FOR ANYTHING THIS HOST CANNOT ANSWER.
 //
@@ -221,12 +212,13 @@ fn pool_from_fields(f: CapacityProbeFields) -> VllmObservedKvPool? {
 // reason. Filling it with a guess is the one move that would make this instrument lie.
 fn layout_from_fields(f: CapacityProbeFields) -> ResolvedKvLayout {
   resolved_kv_layout(
-    allocator_blocks: f.allocator_blocks,
+    allocator_blocks: allocator_block_count(count: f.allocator_blocks),
     scheduler_block_size: token_count(count: f.block_size),
     hash_block_size: token_count(count: f.block_size),
     max_model_len: token_count(count: f.max_model_len),
     max_num_batched_tokens: token_count(count: 0),
     groups: [],
+    established_at_revision: vllm_source_revision_read,
   )
 }
 
@@ -271,7 +263,6 @@ fn group_report(group: FabricGroup) -> GroupStanding {
     Present { value: address } => {
       let result = ssh.Session.ExecPortableWordsWithStdin(
         client_args: [
-          "-i", capacity_probe_identity_file,
           "-o", "BatchMode=yes",
           "-o", "ConnectTimeout=10",
           join([spark_managed_login, "@", address as String], ""),
@@ -294,7 +285,7 @@ fn group_report(group: FabricGroup) -> GroupStanding {
                     let receipt = admit_kv_layout(
                       incarnation: launch,
                       layout: layout_from_fields(f: f),
-                      reported: vllm_reported_capacity(pool: pool, max_concurrency_hundredths: f.concurrency_hundredths),
+                      reported: vllm_reported_capacity(pool: pool, max_concurrency: percent(count: f.concurrency_hundredths)),
                       source_capture_digest: Fnv1a64(content_hash_atom(value: result.stdout as NonEmptyStr)),
                     )
                     let floor = capacity_floor_standing(receipt: receipt, floor: spark_pair_serving_minimum_cold_sessions)

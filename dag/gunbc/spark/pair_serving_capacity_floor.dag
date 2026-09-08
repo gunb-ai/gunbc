@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_capacity_floor
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value, AllocatorBlockCount, allocator_block_count_value }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, launch_wire }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent,
@@ -14,6 +14,7 @@ import gunbc.spark.pair_serving_launch_receipt {
 import extdeps.vllm.kv_layout {
   ResolvedKvLayout, AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.harness.harness_seat { harness_seat_operator_policy_seats }
 
 // ── THE FLOOR IS DECLARED IN THE UNIT THE OPERATOR ACTUALLY WANTS ──────────────────────────────
@@ -63,11 +64,12 @@ fn capacity_floor_standing(receipt: VllmKvLayoutReceipt, floor: MinimumColdSessi
       match cold_admission_blocks(layout: layout, sequence_budget: floor.maximum_sequence_tokens) {
         AdmissionCostUnestablished { cause: c } => FloorUnestablished { cause: c }
         AdmissionCostBlocks { blocks: per_request } => {
-          let required = per_request * floor.sessions
-          if required > layout.allocator_blocks {
-            BelowFloor { required_blocks: required, available_blocks: layout.allocator_blocks }
+          let required = allocator_block_count_value(c: per_request) * floor.sessions
+          let available = allocator_block_count_value(c: layout.allocator_blocks)
+          if required > available {
+            BelowFloor { required_blocks: required, available_blocks: available }
           } else {
-            MeetsFloor { required_blocks: required, available_blocks: layout.allocator_blocks }
+            MeetsFloor { required_blocks: required, available_blocks: available }
           }
         }
       }
@@ -203,3 +205,5 @@ fn re_admit(fresh: VllmKvLayoutReceipt, floor: MinimumColdSessions) -> ReAdmissi
       ReAdmissionRefused { cause: join(["the restarted engine's capacity is unestablished, so it is not re-admitted: ", c as String], "") as NonEmptyStr }
   }
 }
+
+data restart_admission_apply_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: pair_serving_apply (or the convergence fold that replaces it) constructs DrainStanding from the seat-partition head and RetryAllowance from the run, then calls restart_admission before any restart argv. SUFFICIENT FOR: a restart is unreachable unless restart_admission returned RestartAdmitted, which today has no constructor from the fold because UnifiedMemoryPlanUnmodelled is still the last arm — M4/M6 replaces that arm, it does not delete this frontier." as NonEmptyStr)

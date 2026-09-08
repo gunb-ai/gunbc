@@ -16,8 +16,8 @@ import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat {
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, harness_bind_seat,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire,
-  harness_now_epoch,
 }
+import gunbc.fabric_event_log_host { HostEventLogLayout, HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host, now_epoch_seconds }
 import gunbc.harness.harness_cli { harness_seat_policy }
 import gunbc.fabric_event_log {
   EventLogRemote, RemoteLocalPath, RemoteOverFleetSsh, EventLogLayout, event_log_layout,
@@ -75,7 +75,7 @@ fn fabric_seat_collision_probe(root: NonEmptyStr, remote: NonEmptyStr, partition
   let short = if host.success { trim(s: host.value) } else { "unknown" }
   let layout = event_log_layout(root: root as FilePath, remote: collision_remote(remote: remote as String))
   let pool = pool_of(identity: partition, ceiling: Measure { count: 1 }, replenishment: NoReplenishment)
-  match harness_now_epoch() {
+  match now_epoch_seconds() {
     Absent => exit_failure(reason: "collision probe: clock unreadable")
     Present { value: now } => {
       let outcome = fabric_seat_acquire(
@@ -108,7 +108,7 @@ fn fabric_seat_collision_probe(root: NonEmptyStr, remote: NonEmptyStr, partition
 fn wait_until_epoch(go_at: Int, max_seconds: Nat) -> Bool {
   let reached = fold(nat_range_inclusive(lo: 1, hi: max_seconds), init: false, f: (done, _i) =>
     if done { true } else {
-      match harness_now_epoch() {
+      match now_epoch_seconds() {
         Absent => true
         Present { value: now } => if now >= go_at { true } else { let _s = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)  false }
       }
@@ -140,7 +140,7 @@ fn fabric_seat_collision_probe_from(root: NonEmptyStr, remote: NonEmptyStr, part
           match pool_fold(root: pool, oldest_first: xs) {
             PoolFoldRefused { at_event: _, wire: w } => exit_failure(reason: join(["collision-at: fold refused: ", w], ""))
             PoolFolded { pool: folded, generation: g } =>
-              match harness_now_epoch() {
+              match now_epoch_seconds() {
                 Absent => exit_failure(reason: "collision-at: clock unreadable")
                 Present { value: now } =>
                   match propose_acquire(pool: folded, generation: g, head: head, partition: pid, actor: actor, request: SeatRequest { reference: join([short, "@", to_string(now)], "") as NonEmptyStr, amount: 1, at: now, term_seconds: 120 }) {
