@@ -1,0 +1,5 @@
+module fixtures.record_lit_unit_arm_neighbor.unit_collider
+
+// THE PERTURBATION: a unit coproduct arm spelled Observed. Not imported by declaring_module.
+type NeighborPhase
+  = Observed

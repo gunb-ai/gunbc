@@ -592,21 +592,43 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
   make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: message, span: span)
 }
 
-fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
-
+// constructor_binding_authority: the locals binding carries the OWNER coproduct NODE.
+// Do not re-derive it through lookup_type_for / lookup_type_by_name: those project a
+// unique unit arm of the same spelling (variant_arm_type_projection) and then a parent-name
+// miss falls through to that leaf. The production specimen is Primitive(Observed) vs
+// Coproduct(BeltObserve) at gunbc.roadmap.roadmap_belt_actuate belt_sessions_observe_for_instance
+// — the same source, flipped by an unrelated import that changes whether the name lookup
+// hits. Reading the edge already in locals is closure-invariant.
+fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
-      match lookup_type_for(env: scope.type_env, node: binding.resolved) {
-        Present { value: parent } =>
-          let is_coproduct = parent.connective == Disj
-          if is_coproduct {
-            if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
-              Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved) }
-            } else { none }
-          } else { none }
+      if binding.resolved.connective == Disj
+        && has_child_named(n: binding.resolved, name: name, source_indices: scope.type_env.source_indices) {
+        Present { value: binding.resolved }
+      } else { none }
+    Absent => none
+  }
+}
+
+fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
+  match local_coproduct_owner_from_locals(scope: scope, name: name) {
+    Present { value: owner } =>
+      Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
+    Absent =>
+      match map_get(scope.locals, name) {
+        Present { value: binding } =>
+          match lookup_type_for(env: scope.type_env, node: binding.resolved) {
+            Present { value: parent } =>
+              let is_coproduct = parent.connective == Disj
+              if is_coproduct {
+                if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
+                  Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: parent) }
+                } else { none }
+              } else { none }
+            Absent => none
+          }
         Absent => none
       }
-    Absent => none
   }
 }
 
@@ -677,19 +699,23 @@ fn variant_owner_node(scope: InferScope, name: String) -> Node? {
       Absent => none
     }
   } else {
-  match map_get(scope.locals, name) {
-    Present { value: binding } =>
-      match lookup_type_for(env: scope.type_env, node: binding.resolved) {
-        Present { value: owner } =>
-          let owner_is_coproduct = owner.connective == Disj
-          if owner_is_coproduct {
-            if has_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
-              Present { value: owner }
-            } else { none }
-          } else { none }
+  match local_coproduct_owner_from_locals(scope: scope, name: name) {
+    Present { value: owner } => Present { value: owner }
+    Absent =>
+      match map_get(scope.locals, name) {
+        Present { value: binding } =>
+          match lookup_type_for(env: scope.type_env, node: binding.resolved) {
+            Present { value: owner } =>
+              let owner_is_coproduct = owner.connective == Disj
+              if owner_is_coproduct {
+                if has_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
+                  Present { value: owner }
+                } else { none }
+              } else { none }
+            Absent => none
+          }
         Absent => none
       }
-    Absent => none
   }
   }
 }
@@ -8588,12 +8614,21 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let raw_resolved = match local_variant_parent {
       Present { value: parent_name } =>
         if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
-          match lookup_type_by_name(env: scope.type_env, name: parent_name) {
-            Present { value: parent_decl } => parent_decl
-            Absent => variant_lookup_resolved
+          match local_coproduct_owner_from_locals(scope: scope, name: type_name.value) {
+            Present { value: owner } => owner
+            Absent =>
+              match lookup_type_by_name(env: scope.type_env, name: parent_name) {
+                Present { value: parent_decl } => parent_decl
+                Absent => variant_lookup_resolved
+              }
           }
         }
-      Absent => variant_lookup_resolved
+      Absent =>
+        match local_coproduct_owner_from_locals(scope: scope, name: type_name.value) {
+          Present { value: owner } =>
+            if type_name_declares_own_type { variant_lookup_resolved } else { owner }
+          Absent => variant_lookup_resolved
+        }
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent

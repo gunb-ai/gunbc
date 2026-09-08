@@ -1,0 +1,15 @@
+module fixtures.record_lit_unit_arm_neighbor.declaring_module
+
+// THE PRODUCTION-NEIGHBOR GEOMETRY. A payload-carrying arm spelled Observed is constructed in
+// an if whose other arm is a sibling of the same local coproduct. A foreign UNIT arm of the
+// same spelling must not change the join: widening reads the owner node on the locals binding
+// (constructor_binding_authority) and must not re-lookup the parent name, which is the miss
+// that rendered Primitive(Observed) vs Coproduct(BeltObserve) at
+// gunbc.roadmap.roadmap_belt_actuate belt_sessions_observe_for_instance.
+type NeighborObserve
+  = Observed { live: Int }
+  | ObserveRefused { reason: String }
+
+fn pick_observe(c: Bool) -> NeighborObserve {
+  if c { Observed { live: 0 } } else { ObserveRefused { reason: "x" } }
+}
