@@ -97,6 +97,18 @@ import extdeps.accounting.encumbrance {
 // takes a permit and one therefore exists by the time it runs; the arm belongs to whoever resolves
 // an offer to its permit and finds none, and is theirs to construct rather than a case issuance can
 // silently invent.
+//
+// SO ITS ONLY CONSTRUCTOR TODAY IS A WITNESS, AND THAT IS A DECLARED FRONTIER RATHER THAN a
+// quiet exception. This PR deleted two other arms - TransferOrLocationUnresolved and
+// ProviderAccessPathUnsupported - on the grounds that an arm no producer can inhabit is
+// decoration that will later be cited as coverage, and consistency requires saying why this one
+// stays instead. It differs in being INHABITABLE and inhabited: the issuance witness constructs
+// it as the honest answer when no admitted permit exists, so it is exercised rather than merely
+// declared. What it lacks is a PRODUCTION producer, because nothing in production resolves an
+// offer to its permit yet - callers are handed one. TRIGGER: a production resolver from offer to
+// admitted permit, SUFFICIENT FOR issuance to be reached with no permit and refuse by this arm
+// without a caller having constructed the refusal. If that resolver lands and does not produce
+// this arm, the arm is decoration and is deleted rather than kept.
 type GrantIssueRefusal<P, Q, S>
   = AttemptNamesAnotherWork {
       attempt_work: FabricIdentity<P, WorkKey>,
