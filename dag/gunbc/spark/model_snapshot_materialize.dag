@@ -145,7 +145,10 @@ fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> L
       ["docker", "run", "--rm",
        "-v", join([hp as String, ":", cp as String], ""),
        "--entrypoint", "sh", img as String,
-       "-c", sentinel_command_line(argv: concat([cli as String], argv.skip(n: 1))),
+       "-c", sentinel_command_line(argv: translate_mounted_paths(
+         host_path: hp, container_path: cp,
+         argv: concat([cli as String], argv.skip(n: 1)),
+       )),
       ]
   }
 }
@@ -172,6 +175,32 @@ fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> L
 // the same information with no parsing at all: the shell picks which one to emit.
 data verify_ok_sentinel: NonEmptyStr = "GUNBC-VERIFY-OK" as NonEmptyStr
 data verify_failed_sentinel: NonEmptyStr = "GUNBC-VERIFY-FAILED" as NonEmptyStr
+
+// THE EXECUTOR OWES THE PATH TRANSLATION, BECAUSE IT OWNS THE MOUNT. A placement's `host_path` is
+// true ON THE HOST; the command runs INSIDE a container where that tree appears at `container_path`.
+// A previous revision handed `--local-dir /home/briansrls/models/...` to a process that could only
+// see `/out`, so `hf` found no files there, `--fail-on-missing-files` made it exit non-zero, and the
+// fold reported the checkpoint as not matching its declared identity.
+//
+// THE BYTES WERE PERFECT THE WHOLE TIME. Run by hand against the container path, the same verify
+// answers `Verified 24 file(s) ... All checksums match`. Three consecutive receipts said otherwise
+// about a tree a live engine was serving correctly, and each said it for a different reason that had
+// nothing to do with the bytes: an unprivileged docker socket, a CLI path from the wrong image, and
+// now a host path handed across a mount boundary.
+//
+// THE TRANSLATION BELONGS HERE AND NOWHERE ELSE. `executor_wrap` is the thing that DECIDED host_path
+// appears at container_path -- it wrote the `-v` flag -- so it is the only place that knows the
+// mapping. Making a caller pre-translate would put mount knowledge in something that does not own
+// the mount, which is how the fact crossed contexts in the first place.
+fn translate_mounted_paths(host_path: NonEmptyStr, container_path: NonEmptyStr, argv: List<String>) -> List<String> {
+  map(argv, w => translate_one_mounted_path(word: w, host_path: host_path, container_path: container_path))
+}
+
+fn translate_one_mounted_path(word: String, host_path: NonEmptyStr, container_path: NonEmptyStr) -> String {
+  let from = host_path as String
+  let to = container_path as String
+  if word == from { to } else { word }
+}
 
 fn sentinel_command_line(argv: List<String>) -> String {
   join([
