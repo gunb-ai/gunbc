@@ -2,9 +2,10 @@ module extdeps.colo.netrality
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { watt }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly,
+  CabinetDensityClaim, DensityMarketedAirOnly, PublishedRealPower,
   RetailGrainStanding, SingleCabinetOffered,
 }
 
@@ -54,9 +55,9 @@ data netrality_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // node, one such cabinet holds the whole fleet with room over, so the constraint moves off density
 // entirely and onto what a 30 kW cabinet costs - which this operator does not publish.
 data netrality_401_n_broad_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled_kw: 30,
+  air_cooled: PublishedRealPower { power: watt(count: 30000) },
   claim_wording: "Cabinet density up to 30kW",
-  citation: "netrality.com Philadelphia colocation page, read 2026-09-08. No liquid-cooled figure is stated, so the air-only arm carries it; 'up to' makes this a marketed ceiling rather than a per-cabinet commitment, and the wording is retained beside the integer.",
+  citation: "netrality.com Philadelphia colocation page, read 2026-09-08. The page says kW, so this is REAL power and takes the PublishedRealPower arm; had it said kVA no conversion would have been possible. No liquid-cooled figure is stated, so the air-only arm carries it, and 'up to' makes this a marketed ceiling rather than a per-cabinet commitment.",
 }
 
 data netrality_401_n_broad_retail_grain: RetailGrainStanding = SingleCabinetOffered {
