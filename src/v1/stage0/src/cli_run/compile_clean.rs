@@ -825,6 +825,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => {
             "ReferenceDerivedImportExportUnproven"
         }
+        CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { .. } => {
+            "AlgebraApplicationEvidenceUnavailable"
+        }
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -938,6 +941,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         // judgment, and keying on the referenced name would spread one unjudged field across
         // a row per service that happens to use a different word in it.
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field, .. } => field.clone(),
+        // The NAME is the RECEIVER TYPE, not the argument index: the histogram this feeds
+        // groups by the subject whose evidence is missing, and keying on the index would
+        // scatter one unresolvable receiver across a row per argument position it appears in.
+        CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type, .. } => {
+            receiver_type.clone()
+        }
     };
     (class.to_string(), name)
 }
