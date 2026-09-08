@@ -114,6 +114,7 @@ test fn a_recovered_bring_up_is_distinguishable_from_a_clean_one() -> Bool {
   (match serving_standing(attempts: flapped) {
      ServingRecoveredAfterFailures { incarnation: _, failed_attempts: n, terminals: ts } =>
        n == 8 && length(ts) == 8
+         && (match ts.first() { LaunchKilled { signal: s } => s == 9  _ => false })
      _ => false
    })
     && (match serving_standing(attempts: clean) { ServingOnFirstAttempt { incarnation: _ } => true  _ => false })

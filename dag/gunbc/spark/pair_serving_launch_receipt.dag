@@ -140,8 +140,8 @@ fn attribute_oom(attempt: PairServingLaunchAttempt, observation: OomObservation?
 // facts about the same host, and only the second one says the bring-up is unstable.
 type ServingStanding
   = ServingOnFirstAttempt { incarnation: VllmServingLaunch }
-  | ServingRecoveredAfterFailures { incarnation: VllmServingLaunch, failed_attempts: Nat, terminals: List<String> }
-  | NotServing { failed_attempts: Nat, terminals: List<String> }
+  | ServingRecoveredAfterFailures { incarnation: VllmServingLaunch, failed_attempts: Nat, terminals: List<LaunchTerminal> }
+  | NotServing { failed_attempts: Nat, terminals: List<LaunchTerminal> }
   | ServingStandingUnobserved { cause: NonEmptyStr }
 
 fn attempt_is_serving(a: PairServingLaunchAttempt) -> Bool {
@@ -158,7 +158,7 @@ fn attempt_is_serving(a: PairServingLaunchAttempt) -> Bool {
 // and a fold that re-sorted by it would be inventing an order the observations did not carry.
 fn serving_standing(attempts: List<PairServingLaunchAttempt>) -> ServingStanding {
   let failures = filter(attempts, a => !attempt_is_serving(a: a))
-  let terminals = map(failures, a => launch_terminal_wire(t: a.terminal))
+  let terminals = map(failures, a => a.terminal)
   if length(attempts) == 0 {
     ServingStandingUnobserved { cause: "no launch attempt was recorded for this unit, so whether it is serving is unobserved rather than false" as NonEmptyStr }
   } else {
@@ -178,9 +178,9 @@ fn serving_standing_wire(s: ServingStanding) -> String {
   match s {
     ServingOnFirstAttempt { incarnation: i } => join(["serving on first attempt: ", launch_wire(i: i)], "")
     ServingRecoveredAfterFailures { incarnation: i, failed_attempts: n, terminals: ts } =>
-      join(["serving after ", to_string(n), " failed attempt(s): ", launch_wire(i: i), " [", join(ts, ", "), "]"], "")
+      join(["serving after ", to_string(n), " failed attempt(s): ", launch_wire(i: i), " [", join(map(ts, t => launch_terminal_wire(t: t)), ", "), "]"], "")
     NotServing { failed_attempts: n, terminals: ts } =>
-      join(["not serving after ", to_string(n), " attempt(s): [", join(ts, ", "), "]"], "")
+      join(["not serving after ", to_string(n), " attempt(s): [", join(map(ts, t => launch_terminal_wire(t: t)), ", "), "]"], "")
     ServingStandingUnobserved { cause: c } => join(["serving standing unobserved: ", c as String], "")
   }
 }
