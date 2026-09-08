@@ -14118,26 +14118,50 @@ Rc::new(FieldInferResult {
                         ),
                         std::option::Option::None => false,
                     };
-                let raw_resolved = match local_variant_parent.clone() {
+                let skip_owner_widen = type_name_declares_own_type.clone()
+                    || match local_variant_parent.clone() {
+                        Some(parent_name) => parent_name.clone() == "Optional".to_string(),
+                        std::option::Option::None => false,
+                    };
+                let interned_owner = match local_variant_parent.clone() {
                     Some(parent_name) => {
-                        if ((parent_name.clone() == "Optional".to_string())
-                            || type_name_declares_own_type.clone())
-                        {
-                            variant_lookup_resolved.clone()
+                        if skip_owner_widen.clone() {
+                            std::option::Option::None
                         } else {
                             match crate::v1_compiler_infer_env::lookup_type_by_name(
                                 scope.type_env.clone(),
                                 parent_name.clone(),
                             ) {
-                                Some(parent_decl) => parent_decl.clone(),
-                                std::option::Option::None => match owner_from_locals.clone() {
-                                    Some(owner) => owner.clone(),
-                                    std::option::Option::None => variant_lookup_resolved.clone(),
-                                },
+                                Some(parent_decl) => {
+                                    if ((parent_decl.clone().connective.clone()
+                                        == Connective::Disj)
+                                        && crate::v1_std_core::has_child_named(
+                                            parent_decl.clone(),
+                                            type_name.clone().unwrap(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ))
+                                    {
+                                        Some(parent_decl.clone())
+                                    } else {
+                                        std::option::Option::None
+                                    }
+                                }
+                                std::option::Option::None => std::option::Option::None,
                             }
                         }
                     }
-                    std::option::Option::None => variant_lookup_resolved.clone(),
+                    std::option::Option::None => std::option::Option::None,
+                };
+                let raw_resolved = if skip_owner_widen.clone() {
+                    variant_lookup_resolved.clone()
+                } else {
+                    match interned_owner.clone() {
+                        Some(parent_decl) => parent_decl.clone(),
+                        std::option::Option::None => match owner_from_locals.clone() {
+                            Some(owner) => owner.clone(),
+                            std::option::Option::None => variant_lookup_resolved.clone(),
+                        },
+                    }
                 };
                 let expected_optional_parent = Some("Optional".to_string());
                 let is_present_ctor = ((type_name.clone().unwrap() == "Present".to_string())

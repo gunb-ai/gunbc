@@ -604,9 +604,14 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 // str_bindings hit) and resolving a larger entry over the same bytes (shared intern /
 // census / overlay can miss). It is not the three refuted bind stories (foreign unit
 // arm as competitor, Unique/Ambiguous owner-count, global_bare Conj insert).
-// A HIT of lookup_type_by_name must still win: substituting the locals node there
-// left Int fields as NoConnective leaves (span in the consumer) and emitted
-// OperandIdentityUnavailableAt for `+` in std.import. Locals fill only the miss.
+// A HIT of lookup_type_by_name that IS the owning Disj must still win: substituting
+// the locals node there left Int fields as NoConnective leaves (span in the consumer)
+// and emitted OperandIdentityUnavailableAt for `+` in std.import.
+// Locals fill every other arm: name-lookup miss, parent-enum miss (lookup_type_for
+// on the locals node fails under composed intern while the Disj node is still in
+// locals — #10838 only filled the name-lookup miss, so roadmap_belt_actuate:3532
+// stayed Primitive(Observed) vs Coproduct(BeltObserve) on bdec61e28b), and a HIT
+// that is not that owner (unit-arm projection).
 fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
@@ -8663,19 +8668,35 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         binding_declares_name(binding: name_binding, name: type_name.value, source_indices: scope.type_env.source_indices)
       Absent => false
     }
-    let raw_resolved = match local_variant_parent {
+    let skip_owner_widen = type_name_declares_own_type || match local_variant_parent {
+      Present { value: parent_name } => parent_name == "Optional"
+      Absent => false
+    }
+    let interned_owner = match local_variant_parent {
       Present { value: parent_name } =>
-        if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
+        if skip_owner_widen { none } else {
           match lookup_type_by_name(env: scope.type_env, name: parent_name) {
-            Present { value: parent_decl } => parent_decl
-            Absent =>
-              match owner_from_locals {
-                Present { value: owner } => owner
-                Absent => variant_lookup_resolved
-              }
+            Present { value: parent_decl } =>
+              if parent_decl.connective == Disj
+                && has_child_named(n: parent_decl, name: type_name.value, source_indices: scope.type_env.source_indices) {
+                Present { value: parent_decl }
+              } else { none }
+            Absent => none
           }
         }
-      Absent => variant_lookup_resolved
+      Absent => none
+    }
+    let raw_resolved = if skip_owner_widen {
+      variant_lookup_resolved
+    } else {
+      match interned_owner {
+        Present { value: parent_decl } => parent_decl
+        Absent =>
+          match owner_from_locals {
+            Present { value: owner } => owner
+            Absent => variant_lookup_resolved
+          }
+      }
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
