@@ -1,6 +1,6 @@
 module gunbc.runner.runner_jit_admission
 
-import std.types { String, NonEmptyStr, Bool, Int }
+import std.types { String, NonEmptyStr, Bool }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.github.actions_jit_runner {
   JitMintAdmittedRequestField, JitMintName, JitMintLabels, JitMintRunnerGroupId, JitMintWorkFolder,
@@ -180,15 +180,41 @@ fn mint_field_can_carry_attempt_binding(field: JitMintAdmittedRequestField) -> B
   }
 }
 
-// LIVE CENSUS IS A DOWNSTREAM COVERAGE OBLIGATION, not an Unobserved property on the upstream
-// module. DESIGN §3: observations this repository produces are receipts in the observing layer;
-// extdeps.github.actions_jit_runner models the cited spec. Closing item 3 on the published schema
-// is the right layer. These three questions remain unmet until a later lane with an installation
-// token discharges them. encoded_jit_config contents are out of scope — do not decode the blob.
+// encoded_jit_config CONTENTS ARE OUTSIDE THE MODELED GUARANTEE (DESIGN §4b adjacent column),
+// not an unmet observation. The mint does not expose the blob's interior; no token will. Filing
+// that opacity as coverage is what would talk a later lane into decoding the blob. Signature,
+// unit, boot and attempt already route around it (host envelope; dissolve into attempt; mint name).
+type EncodedJitConfigInteriorStanding
+  = OutsideTheModeledGuaranteeDeclaredBoundary
+
+data encoded_jit_config_interior: EncodedJitConfigInteriorStanding =
+  OutsideTheModeledGuaranteeDeclaredBoundary
+
+type AxisMintObservability
+  = MintObservableCoverage { question: MintSurfaceCoverageQuestion }
+  | MintUnobservableDeclaredBoundary
+
 type MintSurfaceCoverageQuestion
-  = GunbaiCiHoldsOrganizationSelfHostedRunnersWrite
-  | GenerateJitconfig201FieldPresence
-  | DuplicateNameConflictsWith409
+  = GenerateJitconfig201ExpiresAtPresence
+  | ReplayRunnerIdAndDuplicateName409
+
+fn axis_mint_observability(axis: JitAdmissionAxis) -> AxisMintObservability {
+  match axis {
+    ExpiryAxis => MintObservableCoverage { question: GenerateJitconfig201ExpiresAtPresence }
+    ReplayAxis => MintObservableCoverage { question: ReplayRunnerIdAndDuplicateName409 }
+    SignatureAxis => MintUnobservableDeclaredBoundary
+    UnitBindingAxis => MintUnobservableDeclaredBoundary
+    BootBindingAxis => MintUnobservableDeclaredBoundary
+    AttemptBindingAxis => MintUnobservableDeclaredBoundary
+  }
+}
+
+fn axis_awaits_live_census(axis: JitAdmissionAxis) -> Bool {
+  match axis_mint_observability(axis: axis) {
+    MintObservableCoverage { question: _ } => true
+    MintUnobservableDeclaredBoundary => false
+  }
+}
 
 type MintSurfaceLiveCensus
   = LiveCensusUnmet { question: MintSurfaceCoverageQuestion }
@@ -205,18 +231,10 @@ fn mint_surface_live_census_is_unmet(census: MintSurfaceLiveCensus) -> Bool {
   }
 }
 
-fn mint_surface_live_app_read(status: Int) -> Bool {
-  status == 200
+data generate_jitconfig_201_expires_at_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
+  question: GenerateJitconfig201ExpiresAtPresence,
 }
 
-data gunbai_ci_runners_write_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
-  question: GunbaiCiHoldsOrganizationSelfHostedRunnersWrite,
-}
-
-data generate_jitconfig_201_fields_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
-  question: GenerateJitconfig201FieldPresence,
-}
-
-data duplicate_name_409_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
-  question: DuplicateNameConflictsWith409,
+data replay_runner_id_and_duplicate_name_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
+  question: ReplayRunnerIdAndDuplicateName409,
 }

@@ -1,6 +1,6 @@
 module gunbc.test.claim.runner_jit_admission_witness_test
 
-import std.types { String, Bool, Int, NonEmptyStr }
+import std.types { String, Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_jit_runner {
   JitMintName, JitMintLabels, JitMintRunnerGroupId, JitMintWorkFolder,
@@ -13,11 +13,12 @@ import gunbc.runner.runner_jit_admission {
   HostEnvelopeNonemptyAndFresh, GitHubMintRequestField,
   jit_admission_axis_standing, jit_admission_axis_is_deferred, axis_standing_is_deferred,
   gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
-  mint_field_can_carry_attempt_binding, mint_surface_live_app_read, mint_fact_needed,
+  mint_field_can_carry_attempt_binding, mint_fact_needed,
   mint_surface_live_census, mint_surface_live_census_is_unmet, LiveCensusDischarged,
-  GunbaiCiHoldsOrganizationSelfHostedRunnersWrite, GenerateJitconfig201FieldPresence,
-  DuplicateNameConflictsWith409,
-  gunbai_ci_runners_write_coverage, generate_jitconfig_201_fields_coverage, duplicate_name_409_coverage,
+  GenerateJitconfig201ExpiresAtPresence, ReplayRunnerIdAndDuplicateName409,
+  generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
+  axis_awaits_live_census, encoded_jit_config_interior,
+  OutsideTheModeledGuaranteeDeclaredBoundary,
   EncodedBlobIsOpaque, InstallationHoldsRunnersWrite, JitconfigResponseHasExpiresAtField,
   DuplicateNameConflicts, JitconfigResponseCarriesRunnerId,
   RequestNameIsPersistedRunnerIdentity, RequestAdmitsLabels,
@@ -91,15 +92,6 @@ test fn the_mint_surface_is_the_gunbai_ci_installation_token_then_generate_jitco
     && (gunbai_ci_declared.slug as String) == "gunbai-ci"
 }
 
-// A 403 FROM GET /apps/gunbai-ci IS A LIVE-GRANT READ REFUSAL, not a schema gap: the published
-// generate-jitconfig body is readable; the installation's current permission grant is not readable
-// with this session's integration token. 200 would mean the live grant was in hand.
-test fn live_app_grant_read_refuses_non_200() -> Bool {
-  !mint_surface_live_app_read(status: 403)
-    && !mint_surface_live_app_read(status: 401)
-    && mint_surface_live_app_read(status: 200)
-}
-
 // EACH AXIS NAMES THE MINT FIELDS IT NEEDS, so a live read is a field grant. Discriminating:
 // expiry needs expires_at-present-or-absent and does not need 409; replay is the reverse.
 test fn mint_facts_needed_are_per_axis_not_the_whole_mint() -> Bool {
@@ -119,21 +111,34 @@ test fn mint_facts_needed_are_per_axis_not_the_whole_mint() -> Bool {
     && mint_fact_needed(axis: AttemptBindingAxis, fact: RequestAdmitsLabels)
 }
 
-// THE LIVE CENSUS IS UNMET IN THE OBSERVING LAYER. Item 3 closed on published schema; these three
-// questions are coverage obligations for a later token-holding lane. encoded_jit_config is not one
-// of them.
-test fn gunbai_ci_mint_live_census_is_an_unmet_downstream_obligation() -> Bool {
+// ONLY EXPIRY AND REPLAY AWAIT A LIVE CENSUS. Signature, unit, boot and attempt hit blob opacity,
+// which is a declared §4b boundary, not a probe someone should later decode to close.
+test fn only_expiry_and_replay_await_a_live_census() -> Bool {
+  axis_awaits_live_census(axis: ExpiryAxis)
+    && axis_awaits_live_census(axis: ReplayAxis)
+    && !axis_awaits_live_census(axis: SignatureAxis)
+    && !axis_awaits_live_census(axis: UnitBindingAxis)
+    && !axis_awaits_live_census(axis: BootBindingAxis)
+    && !axis_awaits_live_census(axis: AttemptBindingAxis)
+}
+
+test fn encoded_jit_config_interior_is_a_declared_boundary() -> Bool {
+  match encoded_jit_config_interior {
+    OutsideTheModeledGuaranteeDeclaredBoundary => true
+  }
+}
+
+test fn expiry_and_replay_live_census_is_unmet_downstream() -> Bool {
   mint_surface_live_census_is_unmet(census: mint_surface_live_census(
-    question: GunbaiCiHoldsOrganizationSelfHostedRunnersWrite,
+    question: GenerateJitconfig201ExpiresAtPresence,
   ))
     && mint_surface_live_census_is_unmet(census: mint_surface_live_census(
-         question: GenerateJitconfig201FieldPresence,
+         question: ReplayRunnerIdAndDuplicateName409,
        ))
-    && mint_surface_live_census_is_unmet(census: mint_surface_live_census(
-         question: DuplicateNameConflictsWith409,
-       ))
+    && mint_surface_live_census_is_unmet(census: generate_jitconfig_201_expires_at_coverage)
+    && mint_surface_live_census_is_unmet(census: replay_runner_id_and_duplicate_name_coverage)
     && !mint_surface_live_census_is_unmet(census: LiveCensusDischarged {
-         question: GunbaiCiHoldsOrganizationSelfHostedRunnersWrite,
+         question: GenerateJitconfig201ExpiresAtPresence,
          receipt: "not yet" as NonEmptyStr,
        })
 }
