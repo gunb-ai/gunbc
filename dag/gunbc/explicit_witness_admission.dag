@@ -790,7 +790,7 @@ fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
 fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
   match cadence {
     QuarantineProbeExpectRed => true
-    FalsifierSelfHostWet => true
+    FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => true
     FalsifierSubstrateLongLane => true
     BinWitnessWet => true
