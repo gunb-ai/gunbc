@@ -29,11 +29,13 @@ import std.witness_admission {
   PreVerdictPhase,
   PreVerdictResolve,
   PreVerdictCause,
-  UnboundImportedVariantConstructor
+  UnboundImportedVariantConstructor,
+  witness_cadence_has_scheduled_route
 }
 import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.algebra { Cons, Empty }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception_identities }
 
 // THE function-grain authority for exact witness admission. One row per admitted witness, carrying
 // the witness identity, the cadence that executes it, and its own reason and dissolve_on.
@@ -847,28 +849,63 @@ fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
 // this witness runs somewhere, so DiscoverySelection (which is the absence of an admission),
 // OfflineLocalRecipe and FixtureExplicitRoster (which are path policies, not executing consumers)
 // and NoConsumer (which is the refusal itself) are all refused here by
-// explicit_witness_admission_cadence_executes. Without that arm an author could write an admission
-// whose cadence runs nothing and satisfy the every-witness-has-a-consumer wall with a row that
-// executes nowhere — the coverage-by-illusion tier, one enum arm away.
+// explicit_witness_admission_cadence_executes. The execution question itself is delegated to
+// std.witness_admission witness_cadence_has_scheduled_route (DESIGN §3 single authority), so all
+// five falsifier-family cadences whose workflow was deleted at #8283 are refused correctly
+// — no hand-edit can drift. Exempted rows on three cadences
+// (QuarantineProbeExpectRed, FalsifierSubstrateLongLane, BinWitnessWet) are rostered in
+// gunbc.rung_drop.transitional_admission_exception and consumed here as the single authority
+// (DESIGN §3) — the exception is bounded by identity, not cadence (§4b(3)).
+// FalsifierRehomedBinWet has zero admission rows and returns false via delegation.
+// Without the extra policy refusals an author could write an admission whose cadence runs nothing
+// and satisfy the every-witness-has-a-consumer wall with a row that executes nowhere
+// — the coverage-by-illusion tier.
 
 fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
-  match cadence {
-    QuarantineProbeExpectRed => true
-    FalsifierSelfHostWet => true
-    FalsifierRehomedBinWet => true
-    FalsifierSubstrateLongLane => true
-    BinWitnessWet => true
-    LocalRepoWetLane => true
-    DiscoverySelection => false
-    OfflineLocalRecipe => false
-    FixtureExplicitRoster => false
-    NoConsumer => false
-  }
+  witness_cadence_has_scheduled_route(cadence: cadence)
+    && match cadence {
+      DiscoverySelection => false
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => false
+      NoConsumer => false
+      LocalRepoWetLane => true
+      FalsifierSelfHostWet => true
+      FalsifierRehomedBinWet => true
+      FalsifierSubstrateLongLane => true
+      BinWitnessWet => true
+      QuarantineProbeExpectRed => true
+    }
+}
+
+// BOUNDED TRANSITIONAL EXCEPTIONS for admission rows on cadences whose scheduled route was
+// deleted at #8283. Each row identity is named explicitly — a new row on those cadences is
+// refused (DESIGN §4b(3): the exception is bounded by identity, not cadence).
+// See docs/design-rung-drops.md gunbc.rung_drop.transitional_admission_exception.
+// TRIGGER: each named identity carries a cadence with a live scheduled route.
+// Remove an identity from this list when its row migrates to a scheduled-route cadence.
+// The population list is owned by gunbc.rung_drop.transitional_admission_exception
+// and consumed here as the single authority (DESIGN §3). Do not re-mint.
+
+fn is_transitional_admission_row(entry: String, function: String) -> Bool {
+  fold(
+    transitional_admission_exception_identities,
+    init: false,
+    f: fn(found, id) {
+      found || (id == concat(entry, "::", function))
+    }
+  )
 }
 
 fn explicit_witness_admission_well_formed(row: ExplicitWitnessAdmission) -> Bool {
   !(row.witness.entry == "")
-    && explicit_witness_admission_cadence_executes(cadence: row.cadence)
+    && (explicit_witness_admission_cadence_executes(cadence: row.cadence)
+        || (is_transitional_admission_row(entry: row.witness.entry, function: row.witness.function)
+            && match row.cadence {
+              QuarantineProbeExpectRed => true
+              FalsifierSubstrateLongLane => true
+              BinWitnessWet => true
+              _ => false
+            }))
 }
 
 fn explicit_witness_admissions_well_formed_in(rows: List<ExplicitWitnessAdmission>) -> Bool {
