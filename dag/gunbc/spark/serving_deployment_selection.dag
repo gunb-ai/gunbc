@@ -744,11 +744,17 @@ fn deepseek_candidate(name: String, label: NonEmptyStr, tp: Nat, replicas: Nat) 
 
 // Every shape eight hosts can express, INCLUDING the one deployed and the ones that cannot hold the
 // weights -- a refusal that is visible is evidence; a combination never listed is not.
+// EACH ROW IS ITS OWN DECLARATION BECAUSE ITS IDENTITY CITES ONE. A candidate whose decl_ref names
+// a declaration that does not exist is a positional citation wearing a symbol's clothes; the
+// corpus's citation wall caught exactly that shape in this change's witness, and the same defect
+// would otherwise sit here undetected because the spelling reaches decl_ref through a parameter.
+data deepseek_tp8_x1: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp8_x1", label: "DeepSeek, one eight-rank replica" as NonEmptyStr, tp: 8, replicas: 1)
+data deepseek_tp4_x2: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp4_x2", label: "DeepSeek, two four-rank replicas (DEPLOYED TODAY)" as NonEmptyStr, tp: 4, replicas: 2)
+data deepseek_tp2_x4: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp2_x4", label: "DeepSeek, four two-rank replicas" as NonEmptyStr, tp: 2, replicas: 4)
+data deepseek_tp1_x8: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp1_x8", label: "DeepSeek, eight single-rank replicas" as NonEmptyStr, tp: 1, replicas: 8)
+
 data deepseek_candidate_field: List<DeploymentCandidate> = [
-  deepseek_candidate(name: "deepseek_tp8_x1", label: "DeepSeek, one eight-rank replica" as NonEmptyStr, tp: 8, replicas: 1),
-  deepseek_candidate(name: "deepseek_tp4_x2", label: "DeepSeek, two four-rank replicas (DEPLOYED TODAY)" as NonEmptyStr, tp: 4, replicas: 2),
-  deepseek_candidate(name: "deepseek_tp2_x4", label: "DeepSeek, four two-rank replicas" as NonEmptyStr, tp: 2, replicas: 4),
-  deepseek_candidate(name: "deepseek_tp1_x8", label: "DeepSeek, eight single-rank replicas" as NonEmptyStr, tp: 1, replicas: 8),
+  deepseek_tp8_x1, deepseek_tp4_x2, deepseek_tp2_x4, deepseek_tp1_x8,
 ]
 
 fn deepseek_serving_selection() -> ServingDeploymentSelection {
