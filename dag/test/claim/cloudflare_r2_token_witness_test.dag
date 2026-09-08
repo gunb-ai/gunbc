@@ -18,6 +18,8 @@ import extdeps.cloudflare.account_api_tokens {
   token_policy_effect_wire,
   PolicyAllow,
   CreatedAccountToken,
+  CreatedAccountTokenCreateResponse,
+  created_account_token_from_create_response,
   HumanDashboardAcquired,
   CreatedViaAccountTokensApi,
   AccountTokenApiMintAdmitted,
@@ -85,6 +87,33 @@ test fn token_status_and_effect_use_upstream_wire_words() -> Bool {
     && token_policy_effect_wire(effect: PolicyAllow) == "allow"
 }
 
+test fn create_response_folds_wire_status_fail_closed() -> Bool {
+  let admitted = created_account_token_from_create_response(
+    response: CreatedAccountTokenCreateResponse {
+      id: "ed17574386854bf78a67040be0a770b0",
+      name: "readonly token",
+      status: "active",
+      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret
+    }
+  )
+  let refused = created_account_token_from_create_response(
+    response: CreatedAccountTokenCreateResponse {
+      id: "ed17574386854bf78a67040be0a770b0",
+      name: "readonly token",
+      status: "nope",
+      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret
+    }
+  )
+  match admitted {
+    Present { value: t } => t.status == TokenActive
+    none => false
+  }
+    && match refused {
+      none => true
+      Present { value: _ } => false
+    }
+}
+
 test fn r2_endpoints_and_iam_resource_names_follow_the_r2_token_docs() -> Bool {
   r2_s3_endpoint_url(
     endpoint: R2S3Endpoint {
@@ -114,7 +143,13 @@ test fn r2_object_read_create_request_cites_the_documented_permission_group_id()
     bucket_name: "my-bucket"
   )
   (policy.permission_groups |> count) == 1
-    && (policy.resources |> count) == 1
+    && (policy.resources |> get(
+      r2_bucket_resource_name(
+        account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+        jurisdiction: R2JurisdictionDefault,
+        bucket_name: "my-bucket"
+      )
+    )) == "*"
     && all(
       policy.permission_groups,
       g => g.id == workers_r2_storage_bucket_item_read_permission_group_id

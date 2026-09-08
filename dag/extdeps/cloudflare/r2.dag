@@ -1,6 +1,6 @@
 module extdeps.cloudflare.r2
 
-import std.types { NonEmptyStr, String, List, Timestamp }
+import std.types { NonEmptyStr, String, List, Timestamp, Map }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -10,7 +10,6 @@ import extdeps.cloudflare.account_api_tokens {
   CreatedAccountToken,
   AccountTokenPolicy,
   PermissionGroupRef,
-  TokenResourceGrant,
   PolicyAllow,
   CreateAccountTokenRequest
 }
@@ -149,17 +148,16 @@ fn r2_bucket_item_read_resources(
   account_id: String,
   jurisdiction: R2Jurisdiction,
   bucket_name: String
-) -> List<TokenResourceGrant> {
-  [
-    TokenResourceGrant {
-      resource: r2_bucket_resource_name(
-        account_id: account_id,
-        jurisdiction: jurisdiction,
-        bucket_name: bucket_name
-      ),
-      access: "*"
-    }
-  ]
+) -> Map<String, String> {
+  map_insert(
+    empty_map(),
+    r2_bucket_resource_name(
+      account_id: account_id,
+      jurisdiction: jurisdiction,
+      bucket_name: bucket_name
+    ),
+    "*"
+  )
 }
 
 fn r2_object_read_token_policy(

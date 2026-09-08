@@ -1,6 +1,6 @@
 module extdeps.cloudflare.account_api_tokens
 
-import std.types { NonEmptyStr, String, Secret, Timestamp, List }
+import std.types { NonEmptyStr, String, Secret, Timestamp, List, Map }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
 import std.dissolution { unbound_dissolution }
@@ -188,15 +188,10 @@ type PermissionGroupRef {
   id: NonEmptyStr
 }
 
-type TokenResourceGrant {
-  resource: String
-  access: String
-}
-
 type AccountTokenPolicy {
   effect: TokenPolicyEffect
   permission_groups: List<PermissionGroupRef>
-  resources: List<TokenResourceGrant>
+  resources: Map<String, String>
 }
 
 type CreateAccountTokenRequest {
@@ -216,6 +211,32 @@ type CreatedAccountToken {
   value: Secret
   expires_on: Timestamp?
   not_before: Timestamp?
+}
+
+type CreatedAccountTokenCreateResponse {
+  id: NonEmptyStr
+  name: String
+  status: String
+  value: Secret
+}
+
+fn created_account_token_from_create_response(
+  response: CreatedAccountTokenCreateResponse
+) -> CreatedAccountToken? {
+  match parse_account_token_status(raw: response.status) {
+    Present { value: status } =>
+      Present {
+        value: CreatedAccountToken {
+          id: response.id,
+          name: response.name,
+          status: status,
+          value: response.value,
+          expires_on: none,
+          not_before: none
+        }
+      }
+    none => none
+  }
 }
 
 type AccountTokenMetadata {
@@ -249,10 +270,10 @@ data cloudflare_account_api_tokens_frontier_rows: List<FrontierRow> = [
     )
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "parse_account_token_status"),
-    reason: "status parser has no executing Create-response fold in this change",
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "created_account_token_from_create_response"),
+    reason: "Create-response fold has no executing Create caller in this change",
     dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration maps a Create or list status wire word through parse_account_token_status on an executing converge or gunbc-run entry; a witness that the fold exists does not fire this"
+      description: "dissolves when a gunbc declaration maps cloudflare.AccountTokens.Create output through created_account_token_from_create_response on an executing converge or gunbc-run entry; a witness that the fold exists does not fire this"
     )
   ),
   frontier_row_decl(
@@ -360,7 +381,7 @@ service cloudflare.AccountTokens {
       body: { name: name, policies: policies }
     }
     response {
-      200 => CreatedAccountToken
+      200 => CreatedAccountTokenCreateResponse
       401 => CloudflareApiError
       403 => CloudflareApiError
       422 => CloudflareApiError
