@@ -45,6 +45,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_tokenize.rs",
     "v2_compiler_infer.rs",
     "bootstrap_stage0_crate_layout_generated.rs",
+    "bootstrap_seed_retention_frontier_generated.rs",
     "v1_interpreter_dispatch_generated.rs",
     "evaluation_budget_consequence_generated.rs",
     "gunbc_file_transport_generated.rs",
