@@ -10,8 +10,10 @@
 //! without this file present does not fold membership to empty: the module is absent from the
 //! index, resolve refuses the import, and `rostered_row_join` reports `RosterModuleAbsent`.
 //! An empty list is a different state — a present `= []` — and only arises if the directory
-//! contains no sibling row files; if rows exist and the list omits them, the join reports
-//! `DeclaredNotRostered`. Neither arm is a silent zero.
+//! contains no sibling row files. A `read_dir` or dirent error refuses the collect; a `.dag`
+//! file whose stem is not utf-8 refuses rather than being dropped from the list. If a listed
+//! row file is compiled as `RecurringFailureMode` and the derived list omits it, the parse
+//! join reports `DeclaredNotRostered`. Neither arm is a silent zero.
 //!
 //! The compiler writes this gitignored file as a realization of a capability the substrate
 //! lacks (directory enumeration sufficient to bind each sibling as a typed value). That
@@ -63,7 +65,15 @@ fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
         }
         let stem = match path.file_stem().and_then(|n| n.to_str()) {
             Some(s) => s,
-            None => continue,
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "recurring_failure_mode row file {:?} has a non-utf8 stem; refusing to derive a shortened roster",
+                        path
+                    ),
+                ));
+            }
         };
         if stem == "roster" {
             continue;
