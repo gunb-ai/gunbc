@@ -148,6 +148,7 @@ type CensusWindow {
 type RunCollectionOutcome
   = CollectionComplete { runs: List<WorkflowRun> }
   | PageLimitExceeded { collected: List<WorkflowRun>, reached_page: Int, max_pages: Int }
+  | FoldProtocolRefused { cause: NonEmptyStr }
 
 type CensusResult
   = CensusComplete {
@@ -169,6 +170,10 @@ type CensusResult
       collected_pages: Int
       reached_page: Int
       max_pages: Int
+    }
+  | CensusFoldRefused {
+      window: CensusWindow
+      cause: NonEmptyStr
     }
 
 fn collect_runs_in_window(
@@ -202,12 +207,12 @@ fn collect_runs_in_window(
     }
   } else {
     let subject = github_listing_subject(
-      operation: "gunbc.superseded_run_starvation_census"
+      operation: "gunbc.superseded_run_starvation_census" as NonEmptyStr
     )
     let fetch = fn(c: PageCursor) -> PageObservation<WorkflowRun> {
-      let page_num = match c {
-        OffsetPage { page: n } => n
-        _ => 1
+      let page_num: Int = match c {
+        OffsetPage { page: n } => n as Int
+        _ => 1  // unreachable: fetch is only called with OffsetPage cursors we create
       }
       let response = github.WorkflowRuns.ListWorkflowRuns(
         auth_token: auth_token,
@@ -241,11 +246,9 @@ fn collect_runs_in_window(
     )
     let observed = page_fold_observe(state: state, page: first_obs)
     match page_fold_pump(state: observed, fetch: fetch) {
-      PagesClosed { subject: _, pages_read: _, items: runs } =>
+      PagesClosed { items: runs } =>
         CollectionComplete { runs: runs }
       PagesRefused { refusal: r } =>
-        // page_fold_refusal_key distinguishes the refusal variant without importing
-        // every variant's field types (PositiveInt, PageCursor, NonNegativeInt, etc.).
         if page_fold_refusal_key(r) == "page_budget_exhausted" {
           PageLimitExceeded {
             collected: first.result.workflow_runs,
@@ -253,17 +256,7 @@ fn collect_runs_in_window(
             max_pages: max_run_pages,
           }
         } else {
-          // CursorDidNotAdvance, ContinuationShapeChanged, etc. — these should not
-          // occur with a fetch function that always advances (page_num + 1) and
-          // returns consistent OffsetPage cursors. If one does fire, it is a protocol
-          // error rather than a page-budget issue, but we surface it as PageLimitExceeded
-          // to keep the RunCollectionOutcome interface. The caller can distinguish by
-          // max_pages being max_run_pages (budget) vs 0 (protocol error).
-          PageLimitExceeded {
-            collected: first.result.workflow_runs,
-            reached_page: 0,
-            max_pages: 0,
-          }
+          FoldProtocolRefused { cause: page_fold_refusal_key(r) }
         }
     }
   }
@@ -752,6 +745,11 @@ func superseded_run_starvation_census(
         collected_pages: p - 1,
         reached_page: p,
         max_pages: m,
+      }
+    FoldProtocolRefused { cause: c } =>
+      CensusFoldRefused {
+        window: CensusWindow { from: from, through: through, observed_at: observed_at },
+        cause: c,
       }
   }
 }
