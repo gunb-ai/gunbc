@@ -16,6 +16,7 @@ import v1.std.core {
   qualified_last_segment,
   InferredNode, Resolved, TypeVariable,
   Cardinality, Required,
+  is_interpreter_blocking_diagnostic,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
   FieldAccessStyle, OptionalUnwrap,
@@ -43,7 +44,8 @@ import v1.compiler.infer_types {
   emit_map_has,
   enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity,
   kernel_profile_lookup,
-  instantiate_algebra_type
+  instantiate_algebra_type,
+  instantiate_algebra_field
 }
 
 import v1.compiler.infer_env {
@@ -990,28 +992,36 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
     StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
-    let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
-    if enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
+    let receiver_name = authored_name_at(source_indices: source_indices, node: receiver_type)
+    let enriched = enrich_kernel_type(name: receiver_name, base: receiver_type, source_indices: source_indices)
+    let profile = kernel_profile_lookup(name: receiver_name)
+    let template_match = match profile {
+      Present { value: p } =>
+        let templates = algebra_templates_for_profile(profile: p)
+        templates |> filter(t => t.name == method_name) |> first
+      Absent => none
+    }
+    let method_diagnostics = match template_match {
+      Present { value: t } =>
+        let field_type = instantiate_algebra_field(template: t, base: receiver_type, source_indices: source_indices)
+        field_type.diagnostics
+      Absent => []
+    }
+    let blocking_method_diagnostics = method_diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d.diagnostic))
+    if (blocking_method_diagnostics |> count) == 0 && enriched.ty.connective == Conj && (enriched.ty.children |> count) > 0 {
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Present { value: mfr } =>
-          let profile = kernel_profile_lookup(name: authored_name_at(source_indices: source_indices, node: receiver_type))
-          let template_match = match profile {
-            Present { value: p } =>
-              let templates = algebra_templates_for_profile(profile: p)
-              templates |> filter(t => t.name == method_name) |> first
-            Absent => none
-          }
           let resolution = match template_match {
             Present { value: t } =>
               Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Present { value: t } } }
             Absent => base_result
           }
-          StructuralMethodLookup { resolution: resolution, kernel_diagnostics: enriched.diagnostics }
-        Absent => StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
+          StructuralMethodLookup { resolution: resolution, kernel_diagnostics: method_diagnostics }
+        Absent => StructuralMethodLookup { resolution: none, kernel_diagnostics: method_diagnostics }
       }
     } else {
-      StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
+      StructuralMethodLookup { resolution: none, kernel_diagnostics: method_diagnostics }
     }
   }
 }

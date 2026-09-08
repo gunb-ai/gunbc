@@ -12,6 +12,8 @@ import gunbc.explicit_witness_admission {
   explicit_witness_admission_duplicate_count,
   explicit_witness_admission_duplicate_count_in,
   explicit_witness_admissions_well_formed_in,
+  explicit_witness_admission_cadence_executes,
+  is_transitional_admission_row,
   known_red_probe,
   known_red_probe_corpus_roster,
   known_red_probe_v1_envelope_roster,
@@ -43,6 +45,7 @@ import std.witness_admission {
   OfflineLocalRecipe,
   FalsifierSubstrateLongLane,
   QuarantineProbeExpectRed,
+  LocalRepoWetLane,
   SubstrateLongLaneEvalBudget,
   FastLaneEvalBudget,
   ExpectAssertionFalse,
@@ -209,6 +212,72 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
       }
     ]
   ) == false
+}
+
+// RED CONTROL: a synthetic admission row on an exempted cadence (QuarantineProbeExpectRed)
+// with an identity NOT in transitional_admission_exceptions is REFUSED by the well-formed
+// check — proving the wall is real and not just a rostered exemption list (DESIGN §4b(4)).
+// The entry/function pair is deliberately outside the exempted identities, so this test
+// would RED if someone adds the identity to the exception list (remove it from the probe).
+test fn red_control_synthetic_violation_on_exempted_cadence_reds() -> Bool {
+  explicit_witness_admissions_well_formed_in(
+    rows: [
+      ExplicitWitnessAdmission {
+        witness: ScheduleWitnessEntry {
+          entry: "dag/test/claim/synthetic_non_exempted_witness_test.dag",
+          function: "non_exempted_probe_holds",
+          kind: CorpusWitnessKind
+        },
+        cadence: QuarantineProbeExpectRed,
+        budget: FastLaneEvalBudget,
+        expected: ExpectAssertionFalse,
+        reason: "synthetic: a violating admission row outside the bounded exception list",
+        dissolution: unbound_dissolution(description: "synthetic: control only — this entry does not exist")
+      }
+    ]
+  ) == false
+}
+
+// LEGACY EXEMPTED ROW: an identity from the bounded exception list on an exempted cadence
+// (QuarantineProbeExpectRed) must be REFUSED by cadence_executes AND ADMITTED by the full
+// well-formed check — proving the exemption path works specifically through the bounded debt.
+// The cadence_executes check alone would refuse it; only is_transitional_admission_row saves it.
+test fn legacy_exempted_row_admitted_through_bounded_debt() -> Bool {
+  let legacy_row = ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry {
+      entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag",
+      function: "w_method_arg_infers_against_declared_contract_not_element_type_test",
+      kind: CorpusWitnessKind
+    },
+    cadence: QuarantineProbeExpectRed,
+    budget: FastLaneEvalBudget,
+    expected: ExpectAssertionFalse,
+    reason: "first exempted identity from transitional_admission_exception_identities — cell 2 of the 3-cell probe",
+    dissolution: unbound_dissolution(description: "synthetic: this exact identity is in the bounded exception list; do not delete the probe when the identity dissolves — update it to the next identity still in the list")
+  }
+  !explicit_witness_admission_cadence_executes(cadence: QuarantineProbeExpectRed)
+    && explicit_witness_admissions_well_formed_in(rows: [legacy_row])
+}
+
+// POSITIVE CONTROL: a synthetic admission row on a cadence with a live scheduled route
+// (LocalRepoWetLane) IS admitted — proving the well-formed check passes for valid rows.
+test fn synthetic_live_cadence_is_admitted() -> Bool {
+  explicit_witness_admissions_well_formed_in(
+    rows: [
+      ExplicitWitnessAdmission {
+        witness: ScheduleWitnessEntry {
+          entry: "dag/test/claim/synthetic_live_cadence_witness_test.dag",
+          function: "synthetic_live_cadence_probe_holds",
+          kind: CorpusWitnessKind
+        },
+        cadence: LocalRepoWetLane,
+        budget: FastLaneEvalBudget,
+        expected: ExpectWitnessHolds,
+        reason: "synthetic: positive control for the well-formed check",
+        dissolution: unbound_dissolution(description: "synthetic: control only — this entry does not exist")
+      }
+    ]
+  ) == true
 }
 
 test fn red_control_file_grain_admission_would_reach_the_sibling() -> Bool {
