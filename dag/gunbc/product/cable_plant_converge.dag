@@ -12,14 +12,14 @@ import product.cable_leg_observation {
   LegComplianceCodeNotUnderstood,
   assess_cable_leg,
 }
-import gunbc.world_converge {
-  WorldObservation, WorldObserved, WorldUnobservable,
-  WorldDifference, WorldInAgreement, WorldDiverged,
-  WorldActuation, WorldApplied, WorldActuationRefused,
-  WorldConvergenceHandler,
-  WorldConvergenceResult, WorldConverged, WorldNotConverged,
-  world_converge,
+import std.goal_assessment {
+  ObservationAttempt, ObservationEstablished, ObservationRefused,
+  GoalAssessment,
+  GoalInspection,
+  inspect_goal,
+  assess_by_deviations,
 }
+import v2.std.cardinality { Never }
 
 // THE INSTALLED CABLE PLANT AS A CONVERGENCE SUBJECT.
 //
@@ -29,19 +29,32 @@ import gunbc.world_converge {
 // standing question "does the copper in the floor still attest what we need", asked of the same
 // observation carrier and answered through the one global convergence shape.
 //
-// WHY IT IS BOUND TO gunbc.world_converge AND NOT GIVEN ITS OWN LOOP. Observe, difference, actuate,
-// receipt is not a cabling idea; it is THE convergence idea, and that authority is subject-agnostic
-// by construction. A second loop authored here would be a fork of it (DESIGN section 3) and would
-// arrive with its own opinion about what "converged" means.
+// WHY IT IS BOUND TO std.goal_assessment AND NOT GIVEN ITS OWN LOOP. Observe then assess is not a
+// cabling idea; it is THE assessment idea, and that authority is subject-agnostic by construction.
+// A second loop authored here would be a fork of it (DESIGN section 3) and would arrive with its
+// own opinion about what "agreement" means.
 //
-// THE ACTUATION ARM IS A REFUSAL, AND THAT IS THE HONEST RUNG, NOT A GAP. A transceiver's coding
+// IT NO LONGER CARRIES AN ACTUATION ARM, AND THAT IS WHY THIS READS BETTER THAN IT DID. The shape
+// it used to bind DEMANDED an `apply`, so this module supplied one that could only refuse -- and
+// that refusal then shared a coproduct with the two causes meaning the plant could not be OBSERVED
+// at all. An unread leg and a miscoded leg both arrived as "not converged, here is a refusal",
+// which is one verdict answering two different questions. The observation layer now refuses on its
+// own and the assessment reports deviations on its own, so a reader tells "we could not look" from
+// "we looked and it is wrong" without inspecting the cause.
+//
+// THE INABILITY TO REPAIR IS THE HONEST RUNG, NOT A GAP. A transceiver's coding
 // lives in EEPROM on the leg itself; writing it needs the vendor's programmer and their part
 // definition. This repository can observe the plant and can say exactly which legs diverge, and it
 // cannot repair one. DESIGN section 4b calls that column "outside the modeled guarantee": observed,
 // refused, or mitigated at a declared boundary, never fabricated. So divergence terminates at
-// `PlantCodingCannotBeActuatedHere` CARRYING THE DIVERGENT LEGS -- a located, countable refusal,
-// which is what the operator can act on -- rather than at a silent no-op that would let an
-// unrepaired plant read as converged.
+// `GoalDiverged` CARRYING THE DIVERGENT LEGS -- located and countable, which is what the operator
+// can act on -- rather than at a silent no-op that would let an unrepaired plant read as agreeing.
+//
+// THAT TERMINUS USED TO BE A REFUSAL CAUSE, `PlantCodingCannotBeActuatedHere`, and it is deleted
+// rather than kept: it existed only because the old shape had nowhere else to put a divergence once
+// the actuator refused, so it restated as a REFUSAL what the difference list already carried as a
+// VALUE. Two representations of one fact, and the weaker one was the arm the reader reached first.
+// The divergent legs now arrive as deviations, which is the same information without the fork.
 //
 // DISSOLVE-ON, NAMED AS A CAPABILITY: an admitted realization that writes a leg's extended
 // specification compliance bytes AND READS THEM BACK off the same leg afterwards. A programmer that
@@ -93,7 +106,6 @@ type CableLegOutcome sole_constructor {
 type CablePlantRefusal
   = PlantLegNeverRead { endpoint: NonEmptyStr }
   | PlantHoldsNoLegs { plant: NonEmptyStr }
-  | PlantCodingCannotBeActuatedHere { divergences: List<CableLegOutcome> }
 
 type CablePlantReceipt sole_constructor {
   legs_read: Nat
@@ -180,49 +192,37 @@ fn plant_read_legs(subject: CablePlant) -> List<ObservedLeg> {
 // where narrowing the population to what could be measured makes an unmeasured plant indistinguishable
 // from a healthy one. An empty plant refuses for the same reason one rung further out -- zero legs
 // trivially agree, and a subject that converges because nothing is in it carries no information.
-fn world_observe_cable_plant(
+fn observe_cable_plant_attempt(
   subject: CablePlant,
-  context: Bool,
-) -> WorldObservation<CablePlantObserved, CablePlantRefusal> {
+  _: Bool,
+) -> ObservationAttempt<CablePlantObserved, CablePlantRefusal> {
   match plant_unread_endpoints(subject: subject).first() {
-    Present { value: e } => WorldUnobservable { cause: PlantLegNeverRead { endpoint: e } }
+    Present { value: e } => ObservationRefused { cause: PlantLegNeverRead { endpoint: e } }
     Absent => {
       let legs = plant_read_legs(subject: subject)
       match legs.first() {
-        Absent => WorldUnobservable { cause: PlantHoldsNoLegs { plant: subject.plant } }
-        Present { value: l } => WorldObserved { value: CablePlantObserved { legs: legs } }
+        Absent => ObservationRefused { cause: PlantHoldsNoLegs { plant: subject.plant } }
+        Present { value: l } => ObservationEstablished { observed: CablePlantObserved { legs: legs } }
       }
     }
   }
 }
 
-fn world_cable_plant_differences(
+fn assess_cable_plant(
   subject: CablePlant,
-  context: Bool,
   observed: CablePlantObserved,
-) -> WorldDifference<CableLegOutcome> {
-  let divergences = plant_divergent_outcomes(subject: subject, observed: observed)
-  match divergences.first() {
-    Absent => WorldInAgreement
-    Present { value: d } => WorldDiverged { differences: divergences }
-  }
-}
-
-fn world_cable_plant_apply(
-  subject: CablePlant,
-  context: Bool,
-  observed: CablePlantObserved,
-  differences: List<CableLegOutcome>,
-) -> WorldActuation<CablePlantReceipt, CablePlantRefusal> {
-  WorldActuationRefused { cause: PlantCodingCannotBeActuatedHere { divergences: differences } }
+) -> GoalAssessment<CablePlantReceipt, CableLegOutcome, Never, Never> {
+  assess_by_deviations(
+    evidence: cable_plant_agreement_receipt(subject: subject, observed: observed),
+    deviations: plant_divergent_outcomes(subject: subject, observed: observed),
+  )
 }
 
 // A CONVERGED PLANT STILL CARRIES ITS CONDITIONS. A leg attesting the required mode only under
 // Clause 91 FEC has agreed, and the condition is a fact the deployment must honour -- so it rides in
 // the receipt rather than being discarded on the way to a green.
-fn world_cable_plant_unchanged_receipt(
+fn cable_plant_agreement_receipt(
   subject: CablePlant,
-  context: Bool,
   observed: CablePlantObserved,
 ) -> CablePlantReceipt {
   CablePlantReceipt {
@@ -231,17 +231,13 @@ fn world_cable_plant_unchanged_receipt(
   }
 }
 
-type CablePlantConvergenceHandler = WorldConvergenceHandler<CablePlant, Bool, CablePlantObserved, CableLegOutcome, CablePlantReceipt, CablePlantRefusal>
+type CablePlantInspection = GoalInspection<CablePlant, CablePlantObserved, CablePlantReceipt, CableLegOutcome, Never, CablePlantRefusal, Never>
 
-data cable_plant_convergence_handler: CablePlantConvergenceHandler = WorldConvergenceHandler {
-  observe: world_observe_cable_plant,
-  differences: world_cable_plant_differences,
-  apply: world_cable_plant_apply,
-  unchanged_receipt: world_cable_plant_unchanged_receipt,
-}
-
-type CablePlantConvergence = WorldConvergenceResult<CablePlant, CablePlantObserved, CablePlantReceipt, CablePlantRefusal>
-
-fn converge_cable_plant(subject: CablePlant) -> CablePlantConvergence {
-  world_converge(subject: subject, context: true, handler: cable_plant_convergence_handler)
+fn inspect_cable_plant(subject: CablePlant) -> CablePlantInspection {
+  inspect_goal(
+    subject: subject,
+    scope: true,
+    observe: observe_cable_plant_attempt,
+    assess: o => assess_cable_plant(subject: subject, observed: o),
+  )
 }
