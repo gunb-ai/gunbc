@@ -43,6 +43,13 @@ fn w_foreign_revision() -> VllmSourceRevision {
   )
 }
 
+fn w_fork_revision() -> VllmSourceRevision {
+  vllm_source_revision(
+    repository: "github.com/example/vllm-fork" as NonEmptyStr,
+    full_revision: vllm_source_revision_read.full_revision,
+  )
+}
+
 fn w_launch_id(invocation: String) -> VllmServingLaunch {
   vllm_serving_launch(
     group: FabricGroupA,
@@ -294,6 +301,29 @@ test fn a_layout_from_another_revision_refuses_instead_of_being_compared() -> Bo
           match r {
             KvLayoutInconsistent { launch: _, cause: c } =>
               string_contains(s: c as String, pattern: "not valid across revisions")
+            _ => false
+          }
+      }
+  }
+}
+
+// THE HASH ALONE IS NOT THE IDENTITY. VllmSourceRevision is repository plus revision; a fork at
+// the modelled hash used to compare equal and would have made revision_is_modelled green.
+test fn a_reading_from_a_fork_at_the_modelled_hash_refuses_instead_of_being_compared() -> Bool {
+  match w_admitted_pool(tokens: 1048576, revision: w_fork_revision()) {
+    Absent => false
+    Present { value: p } =>
+      match w_admit(
+        invocation: "inv-20-43",
+        layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: vllm_source_revision_read),
+        pool: p,
+        hundredths: 100,
+      ) {
+        Absent => false
+        Present { value: r } =>
+          match r {
+            KvLayoutInconsistent { launch: _, cause: c } =>
+              string_contains(s: c as String, pattern: "vllm-fork")
             _ => false
           }
       }
