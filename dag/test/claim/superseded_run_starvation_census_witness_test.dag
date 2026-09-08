@@ -25,6 +25,7 @@ import extdeps.github.workflow_runs {
   Success,
   Cancelled,
   Failure,
+  TimedOut,
 }
 
 test fn dead_start_before_registered_live_job_is_starvation() -> Bool {

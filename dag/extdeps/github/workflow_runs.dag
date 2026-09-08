@@ -264,6 +264,9 @@ service github.WorkflowRuns {
       run_id: String
       per_page: Int = default_workflow_runs_page_size
     }
+    output {
+      result: WorkflowJobRunList
+    }
     readonly
     transport rest {
       method: GET,
