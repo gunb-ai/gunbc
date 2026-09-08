@@ -142,6 +142,21 @@ type SystemdTimeSpanPart {
   unit: String
 }
 
+// THE UNIT SPELLINGS ARE SYSTEMD'S; THE SCALES ARE NOT, AND THIS LADDER STILL WRITES THEM. Which
+// words name a microsecond is systemd's fact and is owned here; how many microseconds are in a
+// second is a fact about the units, owned by std.measure. The five factors below are therefore a
+// second home for scales std.measure already carries -- the same defect as the deleted
+// `microseconds_per_second` row, four more times.
+//
+// IT CANNOT BE REPAIRED AT THIS SITE ALONE, WHICH IS WHY IT IS RECORDED RATHER THAN PATCHED.
+// Reading the factors from std.measure makes every arm a Nat magnitude, so the return becomes
+// `Nat?` -- and the single caller consumes it as an Int, signalling failure with a `0 - 1` sentinel
+// and testing `total < 0`. A Nat cannot carry that sentinel, so the repair is: return `Nat?`,
+// remove the sentinel in favour of the Optional the fold already threads, and reconcile
+// `vu.value * mult` where vu.value is an Int. That is a typed change to the parser's failure
+// protocol, not a substitution of five literals, and it is out of scope for the review that found
+// the row above. Measured: substituting the factors alone refuses with
+// "if branches resolve to incompatible types: Primitive(Int) vs Optional(Node(Nat<Magnitude>))".
 fn systemd_time_span_unit_usec(unit: String) -> Int? {
   if unit == "usec" || unit == "us" { Present { value: 1 } }
   else if unit == "msec" || unit == "ms" { Present { value: 1000 } }
