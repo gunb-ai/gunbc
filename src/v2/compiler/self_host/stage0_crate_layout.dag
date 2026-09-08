@@ -394,6 +394,7 @@ type WetActuatorGeneratedRegistration {
 
 data wet_actuator_generated_registrations: List<WetActuatorGeneratedRegistration> = [
   WetActuatorGeneratedRegistration { basename: "bootstrap_stage0_crate_layout_generated", declaration_route: PathIncluded },
+  WetActuatorGeneratedRegistration { basename: "bootstrap_seed_retention_frontier_generated", declaration_route: PathIncluded },
   WetActuatorGeneratedRegistration { basename: "v1_interpreter_dispatch_generated", declaration_route: MacroUsePubModSpliced },
   WetActuatorGeneratedRegistration { basename: "evaluation_budget_consequence_generated", declaration_route: PlainPubMod },
   WetActuatorGeneratedRegistration { basename: "gunbc_file_transport_generated", declaration_route: PlainPubMod }
