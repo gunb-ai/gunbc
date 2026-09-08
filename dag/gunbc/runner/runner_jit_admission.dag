@@ -1,14 +1,8 @@
 module gunbc.runner.runner_jit_admission
 
-import std.types { String, NonEmptyStr, Bool, HttpStatus }
+import std.types { NonEmptyStr, Bool, HttpStatus }
 import std.disposition { Disposition, SingleAuthority }
-import extdeps.github.actions_jit_runner {
-  org_generate_jitconfig_path, jit_config_conflict_status,
-}
-import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
-import gunbc.auth.github_apps {
-  gunbai_ci_declared, gunbai_ci_declared_installation_id,
-}
+import extdeps.github.actions_jit_runner { jit_config_conflict_status }
 
 data runner_jit_admission_disposition: Disposition = SingleAuthority
 
@@ -48,16 +42,6 @@ type JitAdmissionAxisStanding
       conflict_status: HttpStatus
       reason: NonEmptyStr
     }
-
-fn gunbai_ci_installation_token_url() -> String {
-  github_app_installation_access_token_url(
-    installation_id: gunbai_ci_declared_installation_id.value,
-  )
-}
-
-fn gunbai_org_generate_jitconfig_path() -> String {
-  org_generate_jitconfig_path(org_login: gunbai_ci_declared.owner_login)
-}
 
 fn jit_admission_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStanding {
   match axis {

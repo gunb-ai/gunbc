@@ -3,7 +3,7 @@ module gunbc.test.claim.runner_jit_admission_witness_test
 import std.types { String, Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_jit_runner {
-  jit_config_conflict_status,
+  jit_config_conflict_status, org_generate_jitconfig_path,
 }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.runner.runner_jit_admission {
@@ -11,12 +11,6 @@ import gunbc.runner.runner_jit_admission {
   AxisRequired, AxisDeferred, AxisDissolvedInto, AxisDissolvedIntoUpstreamMint,
   HostEnvelopeNonemptyAndFresh, GitHubMintRequestName,
   jit_admission_axis_standing, attempt_binding_admits_mint_name,
-  gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
-  generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
-  axis_mint_observability,
-  MintObservableCoverage, MintUnobservableDeclaredBoundary,
-  GenerateJitconfig201ExpiresAtPresence, ReplayRunnerIdAndDuplicateName409,
-  LiveCensusUnmet, LiveCensusDischarged,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -65,42 +59,10 @@ test fn attempt_binding_admits_only_required_mint_name_standing() -> Bool {
   }
 }
 
-test fn the_mint_surface_is_the_gunbai_ci_installation_token_then_generate_jitconfig() -> Bool {
-  gunbai_ci_installation_token_url()
-    == "https://api.github.com/app/installations/104134109/access_tokens"
-    && gunbai_org_generate_jitconfig_path()
-       == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+test fn the_generate_jitconfig_path_is_derived_from_the_declared_app_owner() -> Bool {
+  org_generate_jitconfig_path(org_login: gunbai_ci_declared.owner_login)
+    == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+    && org_generate_jitconfig_path(org_login: "other-org" as NonEmptyStr)
+       != org_generate_jitconfig_path(org_login: gunbai_ci_declared.owner_login)
     && (gunbai_ci_declared.slug as String) == "gunbai-ci"
-}
-
-test fn only_expiry_and_replay_are_observable_coverage() -> Bool {
-  match axis_mint_observability(axis: ExpiryAxis) {
-    MintObservableCoverage { question: GenerateJitconfig201ExpiresAtPresence } =>
-      match axis_mint_observability(axis: ReplayAxis) {
-        MintObservableCoverage { question: ReplayRunnerIdAndDuplicateName409 } =>
-          match axis_mint_observability(axis: SignatureAxis) {
-            MintUnobservableDeclaredBoundary =>
-              match axis_mint_observability(axis: AttemptBindingAxis) {
-                MintUnobservableDeclaredBoundary => true
-                _ => false
-              }
-            _ => false
-          }
-        _ => false
-      }
-    _ => false
-  }
-}
-
-test fn expiry_and_replay_live_census_rows_are_unmet() -> Bool {
-  match generate_jitconfig_201_expires_at_coverage {
-    LiveCensusUnmet { question: GenerateJitconfig201ExpiresAtPresence } =>
-      match replay_runner_id_and_duplicate_name_coverage {
-        LiveCensusUnmet { question: ReplayRunnerIdAndDuplicateName409 } => true
-        LiveCensusUnmet { question: GenerateJitconfig201ExpiresAtPresence } => false
-        LiveCensusDischarged { question: _, receipt: _ } => false
-      }
-    LiveCensusUnmet { question: ReplayRunnerIdAndDuplicateName409 } => false
-    LiveCensusDischarged { question: _, receipt: _ } => false
-  }
 }

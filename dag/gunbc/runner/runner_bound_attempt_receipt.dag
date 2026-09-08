@@ -3,6 +3,13 @@ module gunbc.runner.runner_bound_attempt_receipt
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.dissolution { dissolution_description }
 import gunbc.runner_jit_mint { plan_jit_mint_consumer_frontier }
+import gunbc.runner.runner_jit_admission {
+  ExpiryAxis, ReplayAxis, JitAdmissionAxis,
+  axis_mint_observability, MintObservableCoverage, MintUnobservableDeclaredBoundary,
+  GenerateJitconfig201ExpiresAtPresence, ReplayRunnerIdAndDuplicateName409,
+  generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
+  MintSurfaceLiveCensus, LiveCensusUnmet, LiveCensusDischarged,
+}
 import gunbc.runner.runner_host_image_placeability {
   HostImagePlaceability, host_image_placeability_standing, host_image_placeability_wet_probe_frontier,
   placeability_question_closed, placeability_answers_the_host_image, PlaceabilityRefused,
@@ -140,14 +147,40 @@ fn placeability_standing_open_item(outcome: HostImagePlaceability) -> NonEmptySt
 
 // ── still open ─────────────────────────────────────────────────────────────────────────────────
 
-data still_open: List<NonEmptyStr> = [
-  dissolution_description(condition: plan_jit_mint_consumer_frontier) as NonEmptyStr,
-  dissolution_description(condition: host_image_placeability_wet_probe_frontier) as NonEmptyStr,
-  placeability_standing_open_item(outcome: host_image_placeability_standing),
-  "host init still prints these axes as unchecked; standing is gunbc.runner.runner_jit_admission, not this receipt",
-  "actions/checkout, a JavaScript action, and a toolchain step over the filtered egress path",
-  "two attempts on ONE host boot, with absence of every previous attempt's resources proven BEFORE the second starts",
-  "metered vCPU-seconds against a declared interval, recorded separately from the capacity-held interval",
-  "boot_probe_verdict wired to an observed runner version rather than two values compared by a reader",
-  "moving the fetch above the jail so admission precedes all spending, not just all launches",
-]
+fn mint_census_open_item(census: MintSurfaceLiveCensus) -> NonEmptyStr {
+  match census {
+    LiveCensusUnmet { question: GenerateJitconfig201ExpiresAtPresence } =>
+      "generate-jitconfig 201 expires_at presence is unmet live census"
+    LiveCensusUnmet { question: ReplayRunnerIdAndDuplicateName409 } =>
+      "duplicate-name 409 replay observation is unmet live census"
+    LiveCensusDischarged { question: _, receipt: r } => r
+  }
+}
+
+fn still_open_from_mint_axis(axis: JitAdmissionAxis) -> List<NonEmptyStr> {
+  match axis_mint_observability(axis: axis) {
+    MintUnobservableDeclaredBoundary => []
+    MintObservableCoverage { question: GenerateJitconfig201ExpiresAtPresence } =>
+      [mint_census_open_item(census: generate_jitconfig_201_expires_at_coverage)]
+    MintObservableCoverage { question: ReplayRunnerIdAndDuplicateName409 } =>
+      [mint_census_open_item(census: replay_runner_id_and_duplicate_name_coverage)]
+  }
+}
+
+data still_open: List<NonEmptyStr> = concat(
+  still_open_from_mint_axis(axis: ExpiryAxis),
+  concat(
+    still_open_from_mint_axis(axis: ReplayAxis),
+    [
+      dissolution_description(condition: plan_jit_mint_consumer_frontier) as NonEmptyStr,
+      dissolution_description(condition: host_image_placeability_wet_probe_frontier) as NonEmptyStr,
+      placeability_standing_open_item(outcome: host_image_placeability_standing),
+      "host init still prints these axes as unchecked; standing is gunbc.runner.runner_jit_admission, not this receipt",
+      "actions/checkout, a JavaScript action, and a toolchain step over the filtered egress path",
+      "two attempts on ONE host boot, with absence of every previous attempt's resources proven BEFORE the second starts",
+      "metered vCPU-seconds against a declared interval, recorded separately from the capacity-held interval",
+      "boot_probe_verdict wired to an observed runner version rather than two values compared by a reader",
+      "moving the fetch above the jail so admission precedes all spending, not just all launches",
+    ]
+  )
+)
