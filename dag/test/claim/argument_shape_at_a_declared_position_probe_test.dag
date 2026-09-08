@@ -1,6 +1,6 @@
 module test.claim.argument_shape_at_a_declared_position_probe_test
 
-import gunbc.compile_census_probe { total_blocking_count_for }
+import gunbc.compile_census_probe { total_blocking_count_for, blocking_subject_count_for }
 import std.types { String, Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -77,12 +77,27 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // emission path, record-field positions as distinct from call arguments, and n-ary functions.
 
 
+// THE ORACLE IS PINNED TO A CLASS AND A SUBJECT WHEREVER THAT IS MEASURABLE, because a count of
+// ANY blocking diagnostic does not establish WHAT was refused, and every conclusion these rows
+// carry is class-specific. Two arms name TypeMismatch with subject Primitive(String) -- the class
+// half of the compiler's own histogram key, and for TypeMismatch the subject is the `got` type --
+// so an unrelated blocking class in a fixture cannot green them.
+//
+// THE FUNCTION-AT-A-CONCRETE-POSITION ARM STAYS ON THE TOTAL COUNT, AND THE REASON IS THAT THE
+// SUBJECT IS NOT MEASURABLE YET RATHER THAN THAT IT DOES NOT MATTER. An unapplied function value
+// is accepted at every position today, so no refusal exists whose subject render could be read;
+// writing a guessed one would author an assertion that either never greens when the wall lands or
+// greens for the wrong reason, which is worse than a wider oracle that is honest about its width.
+// It is measured, not assumed: the same value is accepted at a plain Bool position too, so the
+// defect is not specific to the generic carrier. When the wall lands, the lane that lands it reads
+// the subject the compiler actually emits and narrows this arm to it.
+
 // THE POSITIVE CONTROL. A String at a CONCRETE declared position. The compiler refuses this today,
 // located and typed, and this row is green now and must stay green.
 data string_at_concrete_position_source: String = "module probe_string_at_concrete\nimport std.types { Bool, String }\nimport v2.std.collection { Map }\nfn take_map(m: Map<String, Bool>) -> Bool { true }\nfn probe() -> Bool { take_map(m: \"definitely not a map\") }\n"
 
 test fn a_string_at_a_concrete_position_is_refused() -> Bool {
-  total_blocking_count_for(source: string_at_concrete_position_source) >= 1
+  blocking_subject_count_for(source: string_at_concrete_position_source, wanted_class: "TypeMismatch", wanted_subject: "Primitive(String)") >= 1
 }
 
 // THE DISCRIMINATING RED. An unapplied nullary function at that SAME concrete position. No
@@ -100,7 +115,7 @@ test fn an_unapplied_function_at_a_concrete_position_is_refused() -> Bool {
 data string_at_generic_position_source: String = "module probe_string_at_generic\nimport std.types { Bool, String }\nimport v2.std.collection { Map, map_insert }\nfn probe() -> Map<String, Bool> { map_insert(m: \"definitely not a map\", key: \"k\", value: true) }\n"
 
 test fn a_string_at_a_generic_position_is_refused() -> Bool {
-  total_blocking_count_for(source: string_at_generic_position_source) >= 1
+  blocking_subject_count_for(source: string_at_generic_position_source, wanted_class: "TypeMismatch", wanted_subject: "Primitive(String)") >= 1
 }
 
 // THE SECOND POSITIVE CONTROL, and it is the one that keeps the three rows above from passing on a
