@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.unresolved_name_is_reported_as_a_decidability_verdict
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unresolved_name_is_reported_as_a_decidability_verdict: RecurringFailureMode = RecurringFailureMode {
+  identity: "unresolved_name_is_reported_as_a_decidability_verdict" as NonEmptyStr,
+
+  receipts: [
+    "**an unresolved name is reported as a decidability verdict, and at the blocking end as a TYPE** (INVALID STATE: a reference that failed to resolve is reported in a category that presupposes it resolved -- as an undecidable position, or as a type spelled with the unresolved name -- so the report is true-sounding and the resolution deficit is destroyed at the point of reporting). ",
+
+    "HARM, AND IT HAS TWO ENDS THAT ARE THE SAME MECHANISM. The advisory end WIDENS: the arm cannot compute the precise answer -- this name does not resolve -- so it substitutes a wider one that is honestly true of some positions, that the position may be undecidable. Nothing is fabricated, which is exactly why it reads as diligent. The blocking end FABRICATES: an unresolved callee's AUTHORED NAME becomes a type in a type-equality verdict, so the compiler states that two branches have incompatible types where one of the two is not a type at all but the spelling of a function it failed to look up. That is a false statement about the program, which section 5 forbids outright as fabricated plausible output, and it sits below the section 4b floor, where values inhabiting declared types is baseline rather than differentiator. ",
+
+    "**MEASURED, and the measurement is the argument.** A controlled A/B over one corpus, the same invocation both arms, a binary built at each side: on the arm where the references resolved, the generic-formal reason fired 59 times; on the arm where a supply change stopped a class of references resolving, it fired 6,231. The population that reports as honest undecidability is therefore two orders of magnitude larger than the honest population, and every one of the added instances is a name that did not resolve. Three neighbouring diagnostic classes were INVARIANT across the same A/B, which is what makes this a mechanism rather than a coincidence. ",
+
+    "**THE CONCEALMENT IS WHY THIS IS STRUCTURAL AND NOT A WORDING DEFECT.** The honest arm for an unresolved formal EXISTS -- it is spelled UndecidableFormalUnresolved -- AND IT FIRED ZERO TIMES IN BOTH ARMS OF THE A/B. It cannot fire, because the name it tests is read from the AUTHORED SOURCE rather than from resolution: the authored spelling survives a failed lookup, so the formal never looks unresolved, and the next arm in the chain -- a type variable in the inferred slot -- is reached instead and reports the position as generic. A specimen names the falseness exactly: the declared parameter type is a product type declared with NO parameters, so `generic formal` is not imprecise about it, it is false about it. ",
+
+    "**WHY NOBODY LOOKED, WHICH IS THE TRANSFERABLE PART.** The defect was never hidden. It was REPORTED, in a category that reads as honest, at a population small enough that no one had reason to examine it. It became visible only when an unrelated change multiplied the population by a hundred, and it was PRE-EXISTING throughout -- the change made it loud, it did not cause it. So the recognition rule is not `look for missing diagnostics`: it is that a diagnostic category which is HONESTLY TRUE OF SOME POPULATION will absorb a failure it was not written for, and absorption is invisible in proportion to how plausible the category is. ",
+
+    "RECOGNITION RULE: a failure arm that answers a WIDER TRUE THING when it cannot compute the precise one -- the absorbing fallback of section 5, here at the DIAGNOSTIC layer rather than at an execution boundary. The mechanical tells: an honest arm that exists and never fires; a verdict that presupposes the very resolution that failed; and a category whose population moves by orders of magnitude under a change that should not have touched it. Its ceiling is structural -- a diagnostic may not name a category whose precondition is unestablished, which is decidable from the resolution result already in hand -- and the next-rung trigger is that the unresolved case be constructed rather than inferred: the reason arm chosen from the RESOLUTION OUTCOME rather than from an authored name that outlives the failure. ",
+  ],
+
+  evidence: [],
+}
