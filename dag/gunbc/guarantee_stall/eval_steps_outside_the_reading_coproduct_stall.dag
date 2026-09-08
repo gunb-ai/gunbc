@@ -1,0 +1,13 @@
+module gunbc.guarantee_stall.eval_steps_outside_the_reading_coproduct_stall
+
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data eval_steps_outside_the_reading_coproduct_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.floor_cost_distribution FloorCostRow carries eval_steps as a bare Int BESIDE the ClaimCostReading coproduct rather than inside its arms, so a right-censored row's observed-steps-before-censor and a completed row's performed-steps share one type and one constructor; a fold may compare them for equality and manufacture an equal-work cohort out of two observations that measured different things — a HALF-APPLIED construction, because the same file already models the CPU half correctly as ObservedCpuReading | RightCensoredCpuReading with an option-returning observed_cpu_ms beside a total cpu_at_least_ms, and one field did not follow the decision its sibling already made",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["gunbc.floor_cost_distribution"] },
+  next_rung_trigger: climbs_when(capability: "eval_steps moves INSIDE the ClaimCostReading arms, so an observed step count and an observed-so-far-before-censor count are reached through different constructors and no fold can compare them without first matching which it holds — sufficient that the equal-work pairing in identity_inflation_permille_at_equal_work cannot be written over a censored row at all, rather than being discouraged from it. TWO THINGS A LATER AUTHOR MUST NOT SKIP. FIRST, THE KNOWLEDGE ALREADY EXISTS IN THE WRONG CARRIER: this module's own prose states that an interrupted row's eval_steps is quantised by the deadline poll rather than by work. The instrument KNOWS, in a comment, while the type stays a bare Int — DESIGN 4c, an invariant belongs in a typed carrier and prose whose sole job is to hold a rule the type cannot enforce is misplaced data. That is also why a reader believes the instrument is safe: the discipline is written down, in the one place that cannot execute it. SECOND, THIS IS A REPLACEMENT MIGRATION AND NOT A REFINEMENT: eval_steps has 23 references inside this module and 31 outside it, and DESIGN 3's doctrine requires the root cut rather than a leaf-upward edit, because every intermediate state would leave two carriers answering one question. It needs a consumer census and a plan, not a rider on an unrelated change.")
+}

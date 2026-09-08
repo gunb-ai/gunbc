@@ -11,7 +11,7 @@ import extdeps.languages.json.parse {
 import product.capacity.pool {
   Pool, PoolOutcome, PoolAdvanced, PoolRefused, PoolRefusal, LedgerRefusal,
   PoolReading, PoolRead, PoolReadingRefused,
-  pool_acquire, pool_settle, pool_release, lapse_pass, observe_upstream_remaining, pool_reading_at, pool_refusal_wire, pool_reanchor,
+  pool_acquire, pool_replay_acquire, pool_settle, pool_release, lapse_pass, observe_upstream_remaining, pool_reading_at, pool_refusal_wire, pool_reanchor,
 }
 import extdeps.accounting.encumbrance { EncumbranceRefusal, ExceedsAppropriation }
 import product.capacity.event_chain {
@@ -221,7 +221,7 @@ fn pool_event_decode(text: String) -> PoolEventDecode {
 fn pool_apply_event<Q, S>(pool: Pool<Q, S>, env: ChainEnvelope<PoolEvent>) -> PoolOutcome<Q, S> {
   let at = env.event.recorded_at
   match env.event.payload {
-    PoolAcquired { reference: r, amount: a, term_seconds: t } => pool_acquire(pool: pool, reference: r, amount: Measure { count: a }, at: at, term_seconds: t)
+    PoolAcquired { reference: r, amount: a, term_seconds: t } => pool_replay_acquire(pool: pool, reference: r, amount: Measure { count: a }, at: at, term_seconds: t)
     PoolSettled { reference: r, actual: a } => pool_settle(pool: pool, reference: r, actual: Measure { count: a }, at: at)
     PoolReleased { reference: r, reason: why } => pool_release(pool: pool, reference: r, reason: why, at: at)
     PoolLapsed => PoolAdvanced { pool: lapse_pass(pool: pool, at: at).pool }
