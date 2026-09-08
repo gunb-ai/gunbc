@@ -9,7 +9,8 @@ import std.interval { degenerate_interval, OrderedClosedInterval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   HardConstraint, SelectionPolicy, UniqueSurvivorRequired, SelectionReceipt,
-  SelectionEvidenceNeed, CandidateFieldEstablished, CandidateFieldUnestablishedStanding, DecisionAssessment, DecisionSubject, DecisionVariable,
+  SelectionEvidenceNeed, CandidateFieldEstablished, CandidateFieldUnestablishedStanding,
+  DecisionAssessment, DecisionSubject, DecisionVariable,
   DecisionConstraint, DecisionRegion, ContextParameter, ObjectiveTerm, ObjectiveMeasure,
   ChoiceDomain, VariesAlong, MonotoneIncreasing, ConstraintSatisfied, ParameterBound,
   PhysicalModelEstablished, CausalModelEstablished, VendorDocumentedCoupling,
@@ -20,40 +21,41 @@ import std.decision {
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-// ── ONE MODEL IN, A RANKED SET OF WHOLE-FLEET DEPLOYMENT SHAPES OUT ───────────────────────────
+// ── ONE MODEL IN, A DEPLOYMENT SHAPE OR AN OBLIGATION OUT ─────────────────────────────────────
 //
 // WHY THIS EXISTS. Every deployment question this fleet has asked -- how many ranks, what context
 // ceiling, what memory fraction, whether to take a faster quantisation -- has been answered by
 // someone reading a benchmark and editing a launch script. That process has no terminating
 // condition: there is always another flag, and nothing records why the last value was chosen or
-// what would change it. The result is endless tuning.
+// what would change it.
 //
-// THE REPLACEMENT IS A FUNCTION, NOT A BETTER BENCHMARK. Given an exact model artifact, a fleet
-// snapshot, a workload demand, a quality policy and an evidence snapshot, it enumerates the whole
-// field of deployment shapes, derives which are physically possible, attaches the evidence each
-// axis actually has, and hands the choice to std.decision. Its answer changes when one of those
-// inputs changes and at no other time.
+// THE REPLACEMENT IS A FUNCTION, NOT A BETTER BENCHMARK. Given an exact artifact, an evidence
+// snapshot and a bounded choice domain, it derives the complete candidate field, attaches the
+// evidence each axis actually has, and hands the choice to std.decision. It answers with a shape
+// only when the evidence supports one, and otherwise names what is missing.
 //
 // WHAT THIS MODULE IS NOT. It is not a selector. std.decision.select_realization owns choosing and
 // std.pareto owns dominance; DESIGN section 3d is explicit that growing a second decision algebra
-// beside them is the fork that law exists to prevent. This module is a candidate generator, a
-// feasibility derivation and a projector -- it collapses domain-typed readings into the generic
-// scalar exactly once and then calls the spine, following the precedent gunbc.product.build_selection
-// set for build realizations.
+// beside them is the fork that law exists to prevent. This module generates candidates, derives
+// feasibility, and projects domain-typed readings into the generic scalar exactly once.
+//
+// AND IT IS NOT A LAUNCH. What it returns is a deployment SHAPE. Binding replica shapes to exact
+// hosts, network groups, failure domains and endpoints is the fabric's relation, and only that
+// relation may mint a launch. Two earlier versions of this module overstated their output and both
+// overstatements were caught in review rather than by a wall; the vocabulary below is chosen so the
+// third does not need catching.
 
-// ── THE ARTIFACT IS A CONTEXT PARAMETER, AND ITS FOOTPRINT IS OBSERVED OR UNREAD ──────────────
+// ── HOW A FOOTPRINT WAS OBTAINED IS PART OF WHAT IT MEANS ─────────────────────────────────────
 //
 // Weight footprint decides feasibility before any benchmark does, so it is the first thing that
-// must be real. A published parameter count or a figure from a model card is a citation about a
-// checkpoint, not a reading of the bytes this fleet will serve, and the difference has already
-// cost this investigation once: the outgoing model's footprint was MEASURED at 168,683,720,987
-// bytes and the whole topology feasibility argument rested on that reading rather than on a card.
-//
-// So an unread footprint yields no feasibility verdict at all. It does not default to "probably
-// fits" and it does not default to refusing -- both would be answers, and the honest state is that
-// the question has not been asked.
+// must be real. A figure from a model card or a third-party report is a citation about a checkpoint,
+// not a reading of the bytes THIS FLEET will serve -- and the previous version collapsed both into
+// one `FootprintMeasured` arm, so a number lifted from someone else's deployment write-up was typed
+// identically to one read on a Spark. Its own `how` field said as much while its constructor name
+// said "measured".
 type ArtifactFootprint
-  = FootprintMeasured { bytes: Nat, how: NonEmptyStr }
+  = FootprintObservedOnFleet { bytes: Nat, how: NonEmptyStr }
+  | FootprintReportedExternally { bytes: Nat, source: NonEmptyStr }
   | FootprintUnread { obligation: NonEmptyStr }
 
 type ModelArtifact {
@@ -63,43 +65,36 @@ type ModelArtifact {
   weight_treatment: NonEmptyStr
 }
 
-// The outgoing profile, footprint MEASURED on the serving host.
 data artifact_deepseek_v4_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_flash_native", field: WholeDeclaration },
-  label: "deepseek-ai/DeepSeek-V4-Flash @ 60d8d707, native" as NonEmptyStr,
-  footprint: FootprintMeasured {
+  label: "DeepSeek V4 Flash, native checkpoint" as NonEmptyStr,
+  footprint: FootprintObservedOnFleet {
     bytes: 168683720987,
-    how: "du -sb of the hub repository on the serving host, 2026-09-07" as NonEmptyStr,
+    how: "summed safetensors byte size read inside the serving container on a Spark, 2026-09-07" as NonEmptyStr,
   },
-  weight_treatment: "native checkpoint precision, no additional quantisation" as NonEmptyStr,
+  weight_treatment: "the checkpoint as published, no requantisation" as NonEmptyStr,
 }
 
-// The incoming profile. NOT YET READ, deliberately: a widely-quoted ~306 GiB figure exists and is
-// not a reading of this fleet's bytes. Until someone measures it, every candidate built on this
-// artifact is under-evidenced and the selector must say so rather than divide a rumour by four.
 data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
-  label: "zai-org/GLM-5.3-Flash, native" as NonEmptyStr,
+  label: "GLM 5.3 Flash, native checkpoint" as NonEmptyStr,
   footprint: FootprintUnread {
-    obligation: "measure the on-disk bytes of the exact snapshot this fleet will serve. A published ~306 GiB figure is a citation about a checkpoint and not a reading of these weights" as NonEmptyStr,
+    obligation: "nobody has read this checkpoint's bytes on this fleet. A parameter count divided by a bit width is an estimate about a family, not a reading of what will be loaded" as NonEmptyStr,
   },
-  weight_treatment: "native checkpoint precision, no additional quantisation" as NonEmptyStr,
+  weight_treatment: "the checkpoint as published, no requantisation" as NonEmptyStr,
 }
 
-// A DIFFERENT WEIGHT ARTIFACT, PRESENT SO THE QUALITY WALL HAS SOMETHING TO REFUSE. A 2.05-bit
-// build of the same model reportedly serves 64 tok/s on ONE host, against roughly 33 for a native
-// build on four. It is faster on every throughput axis and it is a different set of weights.
 data artifact_glm_53_flash_2bit: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_2bit", field: WholeDeclaration },
-  label: "GLM-5.3-Flash, 2.05-bpw EXL3 requantisation" as NonEmptyStr,
-  footprint: FootprintMeasured {
+  label: "GLM 5.3 Flash, 2.05 bits per weight" as NonEmptyStr,
+  footprint: FootprintReportedExternally {
     bytes: 85230000000,
-    how: "reported by the third-party deployment report; not read on this fleet" as NonEmptyStr,
+    source: "a third-party single-host deployment report; not read on this fleet, so it cannot support a feasibility verdict here" as NonEmptyStr,
   },
-  weight_treatment: "requantised to 2.05 bits per weight, a different set of weights from the native checkpoint" as NonEmptyStr,
+  weight_treatment: "requantised to 2.05 bits per weight, a DIFFERENT SET OF WEIGHTS from the native checkpoint" as NonEmptyStr,
 }
 
-// ── THE FLEET AS A SNAPSHOT, NOT AS A CONSTANT ────────────────────────────────────────────────
+// ── THE FLEET AS A SNAPSHOT ───────────────────────────────────────────────────────────────────
 type FleetSnapshot {
   host_count: Nat
   bytes_per_host: Nat
@@ -112,12 +107,28 @@ data spark_fleet_snapshot: FleetSnapshot = FleetSnapshot {
   how: "torch.cuda.get_device_properties(0).total_memory read inside the serving container on a GB10, 2026-09-07; NVML refuses this query on unified memory and must not be used for it" as NonEmptyStr,
 }
 
-// ── THE DECISION VARIABLES, BOUNDED ───────────────────────────────────────────────────────────
+// ── THE FIXED EXECUTION PARAMETERS, CARRIED ONCE SO A CANDIDATE CANNOT DISAGREE WITH THEM ─────
 //
-// A dimension held constant here is a CONTEXT PARAMETER and not a forgotten one. The batch budget
-// is fixed at 2048 and the executor at Ray, because no GLM evidence yet gives a reason to vary
-// them; when it does, each becomes a decision variable and std.decision's completeness law then
-// requires its relation to every funded objective term.
+// THE PREVIOUS VERSION LET EVERY CANDIDATE CARRY ITS OWN CONTEXT CEILING, MEMORY FRACTION AND
+// SPECULATIVE POLICY while the assessment declared those "fixed parameters" in prose. Nothing
+// joined the two, so a field could hold one candidate at 300K and another at 400K, one at 82% and
+// another at 150%, one with speculation off and one on, and the completeness join -- which keyed
+// only on artifact and topology -- would still call that field complete.
+//
+// THE REPAIR IS CONSTRUCTION, NOT A CHECK. A candidate no longer carries those values at all; it
+// carries the ONE variable this subject varies. The fixed values live here, once, on the domain. A
+// candidate that disagrees with the declared context ceiling is not caught by a fold -- it cannot be
+// written, because there is no field in which to write the disagreement. That is DESIGN's rung four
+// rather than rung two, and it is why no witness row asserts a mismatch refuses: the state has no
+// constructor, so such a row's red would be unauthorable and the check would be a decoration.
+//
+// WHAT REMAINS AUTHORABLE IS THE PARAMETER ITSELF being wrong, and that is checked below: a memory
+// fraction above 100 percent would hand the lower-bound screen more usable memory than the host
+// physically has, turning an impossible profile into a passing one.
+type ExecutorProfile = ExecutorRayProfile | ExecutorMpProfile
+
+type KvLayoutPolicy = KvAutoLayout | KvFp8DsMlaLayout
+
 type SpeculativePolicy = SpeculationOff | SpeculationOn
 
 fn speculative_policy_wire(s: SpeculativePolicy) -> NonEmptyStr {
@@ -127,44 +138,375 @@ fn speculative_policy_wire(s: SpeculativePolicy) -> NonEmptyStr {
   }
 }
 
-// A REPLICA IS A WHOLE SERVING PROFILE. The candidate is the fleet-wide shape rather than a bare
-// tensor-parallel degree, because "two independent four-rank replicas" and "one eight-rank replica"
-// differ in aggregate throughput, failure blast radius and warm-conversation capacity, and a bare
-// degree cannot express either of them.
-type ReplicaProfile {
-  tensor_parallel_degree: Nat
-  max_model_len: TokenCount
-  gpu_memory_utilisation_percent: Nat
-  speculative: SpeculativePolicy
+fn speculative_policy_eq(a: SpeculativePolicy, b: SpeculativePolicy) -> Bool {
+  match a {
+    SpeculationOff => match b { SpeculationOff => true, SpeculationOn => false }
+    SpeculationOn => match b { SpeculationOff => false, SpeculationOn => true }
+  }
 }
 
-type DeploymentCandidate {
-  identity: DeclarationRef
-  label: NonEmptyStr
-  artifact: ModelArtifact
-  replica: ReplicaProfile
+fn executor_wire(e: ExecutorProfile) -> NonEmptyStr {
+  match e {
+    ExecutorRayProfile => "ray" as NonEmptyStr
+    ExecutorMpProfile => "mp" as NonEmptyStr
+  }
+}
+
+fn kv_layout_wire(k: KvLayoutPolicy) -> NonEmptyStr {
+  match k {
+    KvAutoLayout => "auto" as NonEmptyStr
+    KvFp8DsMlaLayout => "fp8_ds_mla" as NonEmptyStr
+  }
+}
+
+type RuntimeRevision sole_constructor {
+  image: NonEmptyStr
+  vllm_revision: NonEmptyStr
+}
+
+fn runtime_revision(image: NonEmptyStr, vllm_revision: NonEmptyStr) -> RuntimeRevision {
+  RuntimeRevision { image: image, vllm_revision: vllm_revision }
+}
+
+fn runtime_revision_key(r: RuntimeRevision) -> String {
+  join([r.image as String, "@", r.vllm_revision as String], "")
+}
+
+type ServingDecisionParameters sole_constructor {
+  max_model_len: TokenCount
+  gpu_memory_utilisation_percent: Nat
+  max_num_batched_tokens: TokenCount
+  max_num_seqs: Nat
+  executor: ExecutorProfile
+  kv_layout: KvLayoutPolicy
+  speculative: SpeculativePolicy
+  runtime: RuntimeRevision
+}
+
+fn serving_decision_parameters(
+  max_model_len: TokenCount,
+  gpu_memory_utilisation_percent: Nat,
+  max_num_batched_tokens: TokenCount,
+  max_num_seqs: Nat,
+  executor: ExecutorProfile,
+  kv_layout: KvLayoutPolicy,
+  speculative: SpeculativePolicy,
+  runtime: RuntimeRevision,
+) -> ServingDecisionParameters {
+  ServingDecisionParameters {
+    max_model_len: max_model_len,
+    gpu_memory_utilisation_percent: gpu_memory_utilisation_percent,
+    max_num_batched_tokens: max_num_batched_tokens,
+    max_num_seqs: max_num_seqs,
+    executor: executor,
+    kv_layout: kv_layout,
+    speculative: speculative,
+    runtime: runtime,
+  }
+}
+
+fn parameters_key(p: ServingDecisionParameters) -> String {
+  join([
+    "ctx", to_string(token_count_value(t: p.max_model_len)),
+    "|util", to_string(p.gpu_memory_utilisation_percent),
+    "|batch", to_string(token_count_value(t: p.max_num_batched_tokens)),
+    "|seqs", to_string(p.max_num_seqs),
+    "|", executor_wire(e: p.executor) as String,
+    "|", kv_layout_wire(k: p.kv_layout) as String,
+    "|", speculative_policy_wire(s: p.speculative) as String,
+    "|", runtime_revision_key(r: p.runtime),
+  ], "")
+}
+
+// A memory fraction above the whole device is not a bold setting, it is an arithmetic error that
+// makes the feasibility screen generous in the one direction it must never be generous.
+fn parameters_defect(p: ServingDecisionParameters) -> NonEmptyStr? {
+  if p.gpu_memory_utilisation_percent > 100 {
+    Present { value: join([
+      "the declared GPU memory fraction is ", to_string(p.gpu_memory_utilisation_percent),
+      " percent, which claims more memory than the host has and would let an impossible weight profile pass the lower-bound screen",
+    ], "") as NonEmptyStr }
+  } else {
+    if p.gpu_memory_utilisation_percent == 0 {
+      Present { value: "a zero GPU memory fraction reserves nothing and cannot serve" as NonEmptyStr }
+    } else {
+      none
+    }
+  }
+}
+
+// ── THE CANDIDATE CARRIES ONLY WHAT VARIES ────────────────────────────────────────────────────
+type TopologyShape sole_constructor {
+  tensor_parallel_degree: Nat
   replica_count: Nat
 }
 
-// ── FEASIBILITY IS DERIVED FROM THE ARTIFACT AND THE FLEET, BEFORE ANY BENCHMARK ──────────────
+fn topology_shape(tensor_parallel_degree: Nat, replica_count: Nat) -> TopologyShape {
+  TopologyShape { tensor_parallel_degree: tensor_parallel_degree, replica_count: replica_count }
+}
+
+fn topology_shape_eq(a: TopologyShape, b: TopologyShape) -> Bool {
+  a.tensor_parallel_degree == b.tensor_parallel_degree && a.replica_count == b.replica_count
+}
+
+type DeploymentCandidate sole_constructor {
+  identity: DeclarationRef
+  label: NonEmptyStr
+  artifact: ModelArtifact
+  topology: TopologyShape
+}
+
+fn deployment_candidate(identity: DeclarationRef, label: NonEmptyStr, artifact: ModelArtifact, topology: TopologyShape) -> DeploymentCandidate {
+  DeploymentCandidate { identity: identity, label: label, artifact: artifact, topology: topology }
+}
+
+// ── THE EXACT EXECUTION PROFILE: THE SUBJECT OF EVERY PIECE OF EVIDENCE ───────────────────────
 //
-// This is the half of the decision that costs nothing to compute and settles most of it: weights
-// that do not fit make every performance number irrelevant. The derivation is deliberately a LOWER
-// BOUND on what a rank must hold -- it accounts for the sharded weights and nothing else, so
-// replicated tensors, runtime allocations, graph and workspace memory all make the true figure
-// larger. A candidate this fold admits may still fail at launch; a candidate it refuses cannot
-// possibly succeed, which is the direction that makes a cheap bound useful.
-// ── THE CHEAP CALCULATION CAN DISPROVE FEASIBILITY. IT CANNOT ESTABLISH IT ────────────────────
+// THE PREVIOUS SUBJECT WAS (artifact, degree, speculative policy) AND THAT WAS STILL TOO COARSE. A
+// receipt acquired at 128K context on runtime revision A would have satisfied a candidate at 400K on
+// revision B with a different executor and KV layout -- none of which is safely transportable. A
+// quality or feasibility observation belongs to the exact thing that was run.
 //
-// THIS ARM WAS PREVIOUSLY NAMED `WeightsFitWithHeadroom` AND THAT NAME CLAIMED THE OPPOSITE OF WHAT
-// THE ARITHMETIC SUPPORTS. It divides only the SHARDED artifact bytes by the rank count. It does not
-// account for replicated tensors, the runtime's own allocations, CUDA graph and workspace memory, or
-// a single token of KV state -- the module said so in prose while the constructor's name said the
-// candidate fits. So the positive arm is renamed for what it is: the lower bound did not rule this
-// candidate out. Only a runtime observation can establish that a profile actually loads and serves.
+// The profile is DERIVED from a candidate and the declared parameters rather than authored, so no
+// caller can describe a profile that no candidate expresses.
+type ServingExecutionProfile sole_constructor {
+  artifact: DeclarationRef
+  tensor_parallel_degree: Nat
+  parameters_digest: String
+}
+
+fn execution_profile_of(c: DeploymentCandidate, p: ServingDecisionParameters) -> ServingExecutionProfile {
+  ServingExecutionProfile {
+    artifact: c.artifact.identity,
+    tensor_parallel_degree: c.topology.tensor_parallel_degree,
+    parameters_digest: parameters_key(p: p),
+  }
+}
+
+fn execution_profile_eq(a: ServingExecutionProfile, b: ServingExecutionProfile) -> Bool {
+  declaration_ref_eq(a: a.artifact, b: b.artifact)
+    && a.tensor_parallel_degree == b.tensor_parallel_degree
+    && a.parameters_digest == b.parameters_digest
+}
+
+fn execution_profile_key(p: ServingExecutionProfile) -> String {
+  join([declaration_ref_display_key(ref: p.artifact), "|tp", to_string(p.tensor_parallel_degree), "|", p.parameters_digest], "")
+}
+
+// ── QUALITY: A REPORT IS ORDINARY DATA, A VERDICT IS NOT ──────────────────────────────────────
 //
-// The NEGATIVE arm keeps its full strength, and that asymmetry is the point: if even the minimum
-// possible per-rank share exceeds usable memory, no amount of unmodelled overhead can rescue it.
+// THIS IS THE DEFECT THE SECOND REVIEW CAUGHT AND IT WAS THE SAME MISTAKE AS THE FIRST, ONE LAYER
+// UP. The previous version sealed the launch mint by exporting no builder for the selected result --
+// and in the same change exported `serving_quality_receipt`, a public function taking a subject, an
+// arbitrary authority name and a prose note, returning an admitted quality receipt. Any caller could
+// mint "quality is fine" for any profile and satisfy the hard quality axis without an evaluation
+// having run. The record literal was sealed; the semantic constructor was public.
+//
+// So the two things are separated. A REPORT is observations -- freely constructible, because writing
+// down what a run produced is not a claim that it passed. A VERDICT is the comparison of a report
+// against a requirement, and its passing arm carries a payload with NO exported builder, so it can
+// only come from `assess_quality`. A caller may say what was measured; only the evaluator may say
+// whether that meets the bar.
+//
+// AND A FAILURE IS NOW REPRESENTABLE. Previously a same-artifact profile that FAILED a quality test
+// collapsed into the same state as one never tested: `QualityRefused` fired only on artifact
+// mismatch. A tested-and-bad profile is a decided negative and must not read as an open question.
+type ServingQualityReport sole_constructor {
+  subject: ServingExecutionProfile
+  suite: DeclarationRef
+  reference_profile: ServingExecutionProfile
+  max_selected_token_divergence_millinats: Nat
+  task_score_delta_hundredths: Int
+  how: NonEmptyStr
+}
+
+fn serving_quality_report(
+  subject: ServingExecutionProfile,
+  suite: DeclarationRef,
+  reference_profile: ServingExecutionProfile,
+  max_selected_token_divergence_millinats: Nat,
+  task_score_delta_hundredths: Int,
+  how: NonEmptyStr,
+) -> ServingQualityReport {
+  ServingQualityReport {
+    subject: subject,
+    suite: suite,
+    reference_profile: reference_profile,
+    max_selected_token_divergence_millinats: max_selected_token_divergence_millinats,
+    task_score_delta_hundredths: task_score_delta_hundredths,
+    how: how,
+  }
+}
+
+// THE REQUIREMENT IS THE FALSIFIABLE BAR. Without thresholds a "quality assessment" is a sentence;
+// with them, a report either clears them or does not, and the module computes which.
+type QualityRequirement sole_constructor {
+  identity: DeclarationRef
+  required_artifact: DeclarationRef
+  max_divergence_millinats: Nat
+  min_task_score_delta_hundredths: Int
+  rationale: NonEmptyStr
+}
+
+fn quality_requirement(
+  identity: DeclarationRef,
+  required_artifact: DeclarationRef,
+  max_divergence_millinats: Nat,
+  min_task_score_delta_hundredths: Int,
+  rationale: NonEmptyStr,
+) -> QualityRequirement {
+  QualityRequirement {
+    identity: identity,
+    required_artifact: required_artifact,
+    max_divergence_millinats: max_divergence_millinats,
+    min_task_score_delta_hundredths: min_task_score_delta_hundredths,
+    rationale: rationale,
+  }
+}
+
+// NO BUILDER IS EXPORTED FOR THIS TYPE. It is the payload of the passing arm, so `QualityPassed`
+// cannot be constructed outside this module however the coproduct is spelled -- the seal is on the
+// thing the arm must carry, not on the arm's name.
+type QualityVerdict sole_constructor {
+  subject: ServingExecutionProfile
+  requirement: DeclarationRef
+  suite: DeclarationRef
+  divergence_millinats: Nat
+  task_score_delta_hundredths: Int
+}
+
+type ServingQualityAssessment
+  = QualityPassed { verdict: QualityVerdict }
+  | QualityFailed { subject: ServingExecutionProfile, requirement: DeclarationRef, violations: List<NonEmptyStr> }
+  | QualityUnobserved { subject: ServingExecutionProfile, obligations: List<NonEmptyStr> }
+
+// THE ONLY PRODUCER OF A PASSING VERDICT, and it is a comparison rather than an assertion.
+fn assess_quality(report: ServingQualityReport, requirement: QualityRequirement) -> ServingQualityAssessment {
+  if !declaration_ref_eq(a: report.subject.artifact, b: requirement.required_artifact) {
+    QualityFailed {
+      subject: report.subject,
+      requirement: requirement.identity,
+      violations: ["the report's subject is not the artifact this requirement is about, so it answers a different question" as NonEmptyStr],
+    }
+  } else {
+    if report.max_selected_token_divergence_millinats <= requirement.max_divergence_millinats
+      && report.task_score_delta_hundredths >= requirement.min_task_score_delta_hundredths {
+      QualityPassed {
+        verdict: QualityVerdict {
+          subject: report.subject,
+          requirement: requirement.identity,
+          suite: report.suite,
+          divergence_millinats: report.max_selected_token_divergence_millinats,
+          task_score_delta_hundredths: report.task_score_delta_hundredths,
+        },
+      }
+    } else {
+      QualityFailed {
+        subject: report.subject,
+        requirement: requirement.identity,
+        violations: concat(
+          if report.max_selected_token_divergence_millinats > requirement.max_divergence_millinats {
+            [join([
+              "selected-token divergence of ", to_string(report.max_selected_token_divergence_millinats),
+              " millinats exceeds the permitted ", to_string(requirement.max_divergence_millinats),
+            ], "") as NonEmptyStr]
+          } else { [] },
+          if report.task_score_delta_hundredths < requirement.min_task_score_delta_hundredths {
+            [join([
+              "task score moved by ", to_string(report.task_score_delta_hundredths),
+              " hundredths against a floor of ", to_string(requirement.min_task_score_delta_hundredths),
+            ], "") as NonEmptyStr]
+          } else { [] }),
+      }
+    }
+  }
+}
+
+fn quality_assessment_subject(a: ServingQualityAssessment) -> ServingExecutionProfile {
+  match a {
+    QualityPassed { verdict: v } => v.subject
+    QualityFailed { subject: s, requirement: _, violations: _ } => s
+    QualityUnobserved { subject: s, obligations: _ } => s
+  }
+}
+
+// ── RUNTIME FEASIBILITY, KEYED ON THE SAME EXACT PROFILE ──────────────────────────────────────
+//
+// A receipt proving "this loaded at 128K on runtime A" must not authorize 400K on runtime B, which
+// is why this shares the execution-profile subject rather than carrying a looser one of its own.
+// Its passing payload is likewise unexported.
+type RuntimeFeasibilityWitness sole_constructor {
+  subject: ServingExecutionProfile
+  receipt: DeclarationRef
+  admitted_context: TokenCount
+  admitted_sequences: Nat
+}
+
+type RuntimeFeasibility
+  = RuntimeFeasibilityEstablished { witness: RuntimeFeasibilityWitness }
+  | RuntimeFeasibilityUnestablished { subject: ServingExecutionProfile, obligation: NonEmptyStr }
+
+fn runtime_feasibility_subject(r: RuntimeFeasibility) -> ServingExecutionProfile {
+  match r {
+    RuntimeFeasibilityEstablished { witness: w } => w.subject
+    RuntimeFeasibilityUnestablished { subject: s, obligation: _ } => s
+  }
+}
+
+// ── WORKLOAD DEMAND IS ESTABLISHED OR IT IS A SCENARIO ────────────────────────────────────────
+//
+// THE PREVIOUS VERSION CARRIED 300,000 TOKENS AS AN ORDINARY VALUE with prose calling it a
+// placeholder, and `covers_demand` then consumed it as a hard fact. A scenario number that settles a
+// deployment is worse than no number, because the conclusion inherits a confidence the input never
+// had. An unestablished demand must itself produce an obligation rather than waiting for some other
+// evidence to be missing first.
+type ContextReservePolicy sole_constructor {
+  retained_context: TokenCount
+  reserved_output: TokenCount
+  tool_growth_reserve: TokenCount
+}
+
+fn context_reserve_policy(retained_context: TokenCount, reserved_output: TokenCount, tool_growth_reserve: TokenCount) -> ContextReservePolicy {
+  ContextReservePolicy { retained_context: retained_context, reserved_output: reserved_output, tool_growth_reserve: tool_growth_reserve }
+}
+
+type WorkloadDemandStanding
+  = WorkloadDemandEstablished {
+      identity: DeclarationRef
+      required_context: TokenCount
+      population: DeclarationRef
+      reserve: ContextReservePolicy
+    }
+  | WorkloadDemandUnestablished {
+      identity: DeclarationRef
+      scenario_value: TokenCount
+      obligation: NonEmptyStr
+    }
+
+fn demand_context(d: WorkloadDemandStanding) -> TokenCount {
+  match d {
+    WorkloadDemandEstablished { identity: _, required_context: c, population: _, reserve: _ } => c
+    WorkloadDemandUnestablished { identity: _, scenario_value: v, obligation: _ } => v
+  }
+}
+
+fn demand_identity(d: WorkloadDemandStanding) -> DeclarationRef {
+  match d {
+    WorkloadDemandEstablished { identity: i, required_context: _, population: _, reserve: _ } => i
+    WorkloadDemandUnestablished { identity: i, scenario_value: _, obligation: _ } => i
+  }
+}
+
+fn demand_key(d: WorkloadDemandStanding) -> String {
+  match d {
+    WorkloadDemandEstablished { identity: i, required_context: c, population: _, reserve: _ } =>
+      join(["est|", declaration_ref_display_key(ref: i), "|", to_string(token_count_value(t: c))], "")
+    WorkloadDemandUnestablished { identity: i, scenario_value: v, obligation: _ } =>
+      join(["unest|", declaration_ref_display_key(ref: i), "|", to_string(token_count_value(t: v))], "")
+  }
+}
+
+// ── THE LOWER BOUND DISPROVES; IT CANNOT ESTABLISH ────────────────────────────────────────────
 type WeightFit
   = WeightsNotRuledOutByLowerBound { per_rank_bytes: Nat, usable_bytes: Nat, slack_bytes: Nat }
   | WeightsImpossibleByLowerBound { per_rank_bytes: Nat, usable_bytes: Nat }
@@ -174,281 +516,154 @@ fn usable_bytes_per_rank(fleet: FleetSnapshot, utilisation_percent: Nat) -> Nat 
   (fleet.bytes_per_host * utilisation_percent) / 100
 }
 
-// CEILING, NOT FLOOR. Floor division understates the per-rank requirement by up to one byte short of
-// a full rank's share, which biases the comparison toward admitting a candidate that does not fit --
-// the wrong direction for a bound whose whole job is to disprove feasibility. 101 bytes over 2 ranks
-// is 51 per rank, not 50.
-fn per_rank_bytes_ceiling(total: Nat, ranks: Nat) -> Nat {
-  (total + (ranks - 1)) / ranks
+// CEILING, NOT FLOOR, and it refuses zero ranks itself rather than trusting its callers to guard.
+// An exported helper whose contract depends on a guard somewhere else is a guard that will be
+// forgotten at the next call site.
+fn per_rank_bytes_ceiling(total: Nat, ranks: Nat) -> Nat? {
+  if ranks == 0 { none } else { Present { value: (total + (ranks - 1)) / ranks } }
 }
 
-fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot) -> WeightFit {
+fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisionParameters) -> WeightFit {
   match c.artifact.footprint {
     FootprintUnread { obligation: o } => WeightFitUnderivable { because: o }
-    FootprintMeasured { bytes: b, how: _ } =>
-      if c.replica.tensor_parallel_degree == 0 {
-        WeightFitUnderivable { because: "a zero tensor-parallel degree has no per-rank share" as NonEmptyStr }
-      } else {
-        if per_rank_bytes_ceiling(total: b, ranks: c.replica.tensor_parallel_degree) <= usable_bytes_per_rank(fleet: fleet, utilisation_percent: c.replica.gpu_memory_utilisation_percent) {
-          WeightsNotRuledOutByLowerBound {
-            per_rank_bytes: per_rank_bytes_ceiling(total: b, ranks: c.replica.tensor_parallel_degree),
-            usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: c.replica.gpu_memory_utilisation_percent),
-            slack_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: c.replica.gpu_memory_utilisation_percent) - per_rank_bytes_ceiling(total: b, ranks: c.replica.tensor_parallel_degree),
+    FootprintReportedExternally { bytes: _, source: src } =>
+      WeightFitUnderivable {
+        because: join(["the only footprint for this artifact is externally reported and not read on this fleet, so it cannot support a feasibility verdict here: ", src as String], "") as NonEmptyStr,
+      }
+    FootprintObservedOnFleet { bytes: b, how: _ } =>
+      match per_rank_bytes_ceiling(total: b, ranks: c.topology.tensor_parallel_degree) {
+        Absent => WeightFitUnderivable { because: "a zero tensor-parallel degree has no per-rank share" as NonEmptyStr }
+        Present { value: per_rank } =>
+          if per_rank <= usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent) {
+            WeightsNotRuledOutByLowerBound {
+              per_rank_bytes: per_rank,
+              usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent),
+              slack_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent) - per_rank,
+            }
+          } else {
+            WeightsImpossibleByLowerBound {
+              per_rank_bytes: per_rank,
+              usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent),
+            }
           }
-        } else {
-          WeightsImpossibleByLowerBound {
-            per_rank_bytes: per_rank_bytes_ceiling(total: b, ranks: c.replica.tensor_parallel_degree),
-            usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: c.replica.gpu_memory_utilisation_percent),
-          }
-        }
       }
   }
 }
 
-// ── AND THE POSITIVE FEASIBILITY CARRIER, WHICH NOTHING PRODUCES YET ──────────────────────────
-//
-// Establishing that a profile can actually run is an OBSERVATION of that exact profile: the model
-// loaded, the requested context was admitted by the allocator rather than merely printed as a pool
-// size, the required concurrency was admitted, and the memory plan was read back. No such receipt
-// exists on this fleet for any profile, so this roster is empty and every candidate's runtime
-// feasibility is unestablished. That absence is the honest state and it is why the real subjects
-// return evidence obligations rather than a winner.
-type RuntimeFeasibility
-  = RuntimeFeasibilityEstablished { subject: ServingQualitySubject, receipt: DeclarationRef, note: NonEmptyStr }
-  | RuntimeFeasibilityUnestablished { obligation: NonEmptyStr }
-
-data runtime_feasibility_receipts: List<RuntimeFeasibility> = []
-
-fn runtime_feasibility_of(c: DeploymentCandidate) -> RuntimeFeasibility {
-  fold(runtime_feasibility_receipts, init: RuntimeFeasibilityUnestablished {
-    obligation: "no runtime observation exists for this exact profile: that the model loads at this degree, that the allocator admits the requested context by block population rather than by a printed pool size, and that the required concurrency is admissible. A lower bound that does not rule the candidate out is not a demonstration that it runs" as NonEmptyStr,
-  }, f: (acc, r) =>
-    match r {
-      RuntimeFeasibilityEstablished { subject: sub, receipt: rec, note: n } =>
-        if quality_subject_eq(a: sub, b: quality_subject_of(c: c)) {
-          RuntimeFeasibilityEstablished { subject: sub, receipt: rec, note: n }
-        } else { acc }
-      RuntimeFeasibilityUnestablished { obligation: _ } => acc
-    })
-}
-
-// REPLICA COUNT AND CAPACITY SHARE ARE DERIVED, never carried beside the replica list where they
-// could disagree with it.
 fn hosts_consumed(c: DeploymentCandidate) -> Nat {
-  c.replica.tensor_parallel_degree * c.replica_count
+  c.topology.tensor_parallel_degree * c.topology.replica_count
 }
 
 // A DEGENERATE SHAPE IS NOT A CHEAP ONE. Zero replicas or zero ranks consume no hosts and would
-// otherwise satisfy a "fits the fleet" test by serving nothing at all -- the emptiest possible
-// fail-open, and it would then win every capacity axis it did not have to pay for.
+// otherwise satisfy a fleet-fit test by serving nothing at all, then win every capacity axis they
+// never had to pay for.
 fn fleet_fits(c: DeploymentCandidate, fleet: FleetSnapshot) -> Bool {
-  c.replica_count > 0
-    && c.replica.tensor_parallel_degree > 0
+  c.topology.replica_count > 0
+    && c.topology.tensor_parallel_degree > 0
     && hosts_consumed(c: c) <= fleet.host_count
 }
 
-// THE NAME THIS ONCE CARRIED CLAIMED MORE THAN THE ARITHMETIC. It was `blast_radius_percent`, which
-// reads as a physical failure-domain radius; what it computes is the share of EQUAL-CAPACITY
-// REPLICAS lost when one replica is lost. A real blast radius needs rank-to-host partitions and
-// declared failure domains -- which host holds which rank, which hosts share a switch, a PDU, a
-// rack -- and this module does not yet carry any of them. Until it does, the narrow name is the
-// honest one, and the axis it feeds should be read as replica granularity rather than as physical
-// fault isolation.
+// THE SHARE OF EQUAL-CAPACITY REPLICAS LOST WHEN ONE REPLICA IS LOST -- not a physical blast radius,
+// which would need rank-to-host partitions and declared failure domains this module does not carry.
 fn replica_capacity_share_lost_percent(c: DeploymentCandidate) -> Nat {
-  if c.replica_count == 0 { 100 } else { 100 / c.replica_count }
+  if c.topology.replica_count == 0 { 100 } else { 100 / c.topology.replica_count }
 }
 
-// ── QUALITY IS A GATE, NOT A WEIGHT ───────────────────────────────────────────────────────────
-//
-// The operator policy is that quality is not for sale: no amount of throughput compensates for a
-// quality regression. That is expressible only as a hard constraint. A weighted score -- even one
-// weighting quality heavily -- permits enough speed to buy a regression, and the exchange rate is
-// invisible in the result.
-//
-// AND THE RULE IS EXACT-ARTIFACT, NOT A BOOLEAN CALLED "NO QUANTISATION". The intended native
-// checkpoint may itself be an fp8 build, so "quantised" cannot carry the actual requirement. What
-// the policy says is that a DIFFERENT SET OF WEIGHTS is not fungible with the selected one unless
-// the operator changes the decision subject.
-//
-// THE THIRD ARM IS THE ONE THAT MATTERS MOST. Unread quality is not low quality. A candidate whose
-// quality has never been evidenced must produce an evidence obligation, because scoring it zero
-// silently rejects a possibly-good option and scoring it full silently admits an unknown one.
-type QualityStanding
-  = QualityAdmitted { evidence: NonEmptyStr }
-  | QualityRefused { violated: NonEmptyStr }
-  | QualityUnestablished { obligation: NonEmptyStr }
-
-// ── QUALITY IS A PROPERTY OF THE EXACT SERVED PROFILE, NOT OF THE WEIGHTS ─────────────────────
-//
-// THIS MODULE PREVIOUSLY GOT THIS WRONG AND THE EVIDENCE THAT REFUTES IT IS IN THIS REPOSITORY.
-// The earlier gate admitted any candidate carrying the required artifact with speculation off, and
-// said that meant "the served distribution is the checkpoint's own". That does not follow.
-// gunbc.spark.tensor_parallel_comparison measured the SAME DeepSeek artifact with NO draft model at
-// two tensor-parallel degrees: bit-identical within a topology across launches and across Spark
-// pairs, and 2.2387 nats apart across topologies on every one of four pairings. Topology
-// participates in numerical semantics, so exact weight identity cannot establish quality by itself,
-// and `topology_substitutable` already refuses substitution on exactly that ground.
-//
-// So the subject of a quality claim is the whole profile. Two profiles differing in ANY of these
-// fields are different numerical propositions and one's evidence does not answer for the other.
-type ServingQualitySubject sole_constructor {
-  artifact: DeclarationRef
-  tensor_parallel_degree: Nat
-  speculative: SpeculativePolicy
-}
-
-fn quality_subject_of(c: DeploymentCandidate) -> ServingQualitySubject {
-  ServingQualitySubject {
-    artifact: c.artifact.identity,
-    tensor_parallel_degree: c.replica.tensor_parallel_degree,
-    speculative: c.replica.speculative,
-  }
-}
-
-fn quality_subject_eq(a: ServingQualitySubject, b: ServingQualitySubject) -> Bool {
-  declaration_ref_eq(a: a.artifact, b: b.artifact)
-    && a.tensor_parallel_degree == b.tensor_parallel_degree
-    && speculative_policy_eq(a: a.speculative, b: b.speculative)
-}
-
-fn speculative_policy_eq(a: SpeculativePolicy, b: SpeculativePolicy) -> Bool {
-  match a {
-    SpeculationOff => match b { SpeculationOff => true, SpeculationOn => false }
-    SpeculationOn => match b { SpeculationOff => false, SpeculationOn => true }
-  }
-}
-
-// AN ADMISSION IS A RECEIPT SOMEONE ELSE ESTABLISHED, never a default this fold grants itself. The
-// receipt names the authority that established quality for that exact profile, so an empty roster
-// means the question was never answered rather than answered negatively.
-type QualityReceipt sole_constructor {
-  subject: ServingQualitySubject
-  established_by: DeclarationRef
-  note: NonEmptyStr
-}
-
-type QualityPolicy {
-  identity: DeclarationRef
-  required_artifact: DeclarationRef
-  admitted_profiles: List<QualityReceipt>
-  rationale: NonEmptyStr
-}
-
-// THE PRODUCTION POLICIES CARRY AN EMPTY ADMISSION ROSTER, AND THAT IS THE HONEST STATE. No
-// topology-specific quality receipt exists for either model on this fleet, so every real candidate
-// is QualityUnestablished and both production subjects return SelectionNeedsEvidence. That is the
-// function doing its job: it names the next decision-changing measurement instead of manufacturing
-// a winner out of the dimensions that happen to be populated.
-data native_artifact_only: QualityPolicy = QualityPolicy {
-  identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "native_artifact_only", field: WholeDeclaration },
-  required_artifact: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
-  admitted_profiles: [],
-  rationale: "operator policy 2026-09-08: do not sacrifice quality. A requantised build is a different set of weights and is not admissible against this subject however fast it is. Admitting a NATIVE profile additionally requires a topology-specific quality receipt, because the same weights at two degrees are deterministically different models" as NonEmptyStr,
-}
-
-fn admitted_receipt_for(subject: ServingQualitySubject, policy: QualityPolicy) -> QualityReceipt? {
-  fold(policy.admitted_profiles, init: none, f: (acc, r) =>
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent => if quality_subject_eq(a: r.subject, b: subject) { Present { value: r } } else { none }
-    })
-}
-
-// THE ORDER OF THESE ARMS IS LOAD-BEARING. A different artifact is REFUSED -- a decided negative,
-// which is what makes "quality is not for sale" a wall rather than a gap. An unmeasured profile of
-// the RIGHT artifact is UNESTABLISHED -- an obligation, because scoring it zero silently rejects a
-// possibly-good option and scoring it full silently admits an unknown one.
-fn quality_standing_of(c: DeploymentCandidate, policy: QualityPolicy) -> QualityStanding {
-  if !declaration_ref_eq(a: c.artifact.identity, b: policy.required_artifact) {
-    QualityRefused {
-      violated: join(["this candidate serves ", c.artifact.label as String, ", which is not the artifact the decision subject requires: ", c.artifact.weight_treatment as String], "") as NonEmptyStr,
-    }
+fn useful_context(p: ServingDecisionParameters, demand: WorkloadDemandStanding) -> Nat {
+  if token_count_value(t: p.max_model_len) >= token_count_value(t: demand_context(d: demand)) {
+    token_count_value(t: demand_context(d: demand))
   } else {
-    match admitted_receipt_for(subject: quality_subject_of(c: c), policy: policy) {
-      Present { value: r } => QualityAdmitted { evidence: r.note }
-      Absent => QualityUnestablished {
-        obligation: join([
-          "no quality receipt exists for this exact profile (artifact, tensor-parallel degree ",
-          to_string(c.replica.tensor_parallel_degree), ", ",
-          speculative_policy_wire(s: c.replica.speculative) as String,
-          "). The same weights at two degrees are deterministically different models -- 2.2387 nats apart against a bit-identical within-topology envelope, per gunbc.spark.tensor_parallel_comparison -- and which degree is closer to the intended semantics is unanswered. Speculative decoding is separately unevidenced on this fleet. Establish or refuse it; do not assume it",
-        ], "") as NonEmptyStr,
-      }
-    }
+    token_count_value(t: p.max_model_len)
   }
 }
 
-// ── VALUE SATURATES AT DEMAND, WHICH IS HOW DIMINISHING RETURNS ENTER WITHOUT A GUESSED CURVE ─
+fn covers_demand(p: ServingDecisionParameters, demand: WorkloadDemandStanding) -> Bool {
+  token_count_value(t: p.max_model_len) >= token_count_value(t: demand_context(d: demand))
+}
+
+// ── THE COMPLETE OBJECTIVE ROSTER, WITH THE UNFUNDED DIMENSIONS PRESENT AS GAPS ───────────────
 //
-// The machine can say what changed when a variable moved. It cannot say how much that change is
-// worth. Rather than fitting an exponential because latency "feels" exponentially bad, the value
-// projection clamps each axis at the declared requirement: once a candidate covers the demand,
-// exceeding it earns nothing further, so a shape that buys unused headroom while losing capacity
-// or isolation is dominated rather than merely scored lower.
+// THE PREVIOUS VERSION FUNDED FIVE AXES AND MENTIONED THE REST IN PROSE. That is how a selection
+// becomes green on a narrow question the moment its two blocking axes fill in: decode latency,
+// prefill throughput, goodput, KV capacity, victim stall, stability, power and operational cost were
+// invisible to the machine, so nothing would have stopped a topology being chosen without them.
 //
-// That produces the knee without anyone choosing a half-life, and the threshold that does exist is
-// a DECLARED WORKLOAD FACT rather than a tuning constant.
-type WorkloadDemand {
-  identity: DeclarationRef
-  required_context: TokenCount
-  basis: NonEmptyStr
-}
-
-data glm_first_profile_demand: WorkloadDemand = WorkloadDemand {
-  identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_first_profile_demand", field: WholeDeclaration },
-  required_context: token_count(count: 300000),
-  basis: "PLACEHOLDER pending a real context-demand distribution: a percentile over per-turn required context (retained context, new input, reserved output, tool-growth reserve), not a mean prompt length. Carried so the saturation is visible and revisable, not because 300,000 has been established" as NonEmptyStr,
-}
-
-fn useful_context(c: DeploymentCandidate, demand: WorkloadDemand) -> Nat {
-  if token_count_value(t: c.replica.max_model_len) >= token_count_value(t: demand.required_context) {
-    token_count_value(t: demand.required_context)
-  } else {
-    token_count_value(t: c.replica.max_model_len)
-  }
-}
-
-fn covers_demand(c: DeploymentCandidate, demand: WorkloadDemand) -> Bool {
-  token_count_value(t: c.replica.max_model_len) >= token_count_value(t: demand.required_context)
-}
-
-// ── THE FUNDED AXES, AND WHY EACH IS THE SHAPE IT IS ──────────────────────────────────────────
-//
-// Quality, weight fit and context coverage are funded as ORDINARY AXES carrying 1 or 0, and then
-// bounded at 1 by a hard constraint. That is not a trick: the spine excludes a candidate whose
-// reading is worse than its bound BEFORE dominance is computed, so a refused candidate is never
-// ranked against anything. And a candidate with no reading on such an axis produces an evidence
-// gap rather than a zero, which is precisely the distinction between "this fails" and "nobody
-// looked" that the whole decision rests on.
+// So every dimension that can change this decision is declared HERE, and the ones with no
+// measurement produce an AxisGap rather than being absent. The consequence is intended: the function
+// returns SelectionNeedsEvidence naming each missing reading, and it keeps doing so until the
+// measurements exist. No weights are guessed and no axis is dropped to obtain an answer.
 data ax_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_quality")
 data ax_weight_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_weight_fit")
+data ax_runtime_feasible: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_runtime_feasible")
 data ax_context_covered: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_context_covered")
+data ax_workload_established: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_workload_established")
+data ax_stability: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_stability")
 data ax_useful_context: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_useful_context")
 data ax_independent_replicas: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_independent_replicas")
 data ax_replica_capacity_share_lost: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_replica_capacity_share_lost")
-data ax_runtime_feasible: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_runtime_feasible")
+data ax_decode_latency: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_decode_latency")
+data ax_time_to_first_token: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_time_to_first_token")
+data ax_victim_inter_token_latency: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_victim_inter_token_latency")
+data ax_prefill_goodput: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_prefill_goodput")
+data ax_accepted_task_goodput: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_accepted_task_goodput")
+data ax_warm_conversation_capacity: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_warm_conversation_capacity")
+data ax_physical_failure_domains: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_physical_failure_domains")
+data ax_operating_power: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_operating_power")
+data ax_operational_complexity: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_operational_complexity")
 
 data serving_selection_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_quality, goal: HigherIsBetter },
   SelectionAxis { identity: ax_weight_fit, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_runtime_feasible, goal: HigherIsBetter },
   SelectionAxis { identity: ax_context_covered, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_workload_established, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_stability, goal: HigherIsBetter },
   SelectionAxis { identity: ax_useful_context, goal: HigherIsBetter },
   SelectionAxis { identity: ax_independent_replicas, goal: HigherIsBetter },
   SelectionAxis { identity: ax_replica_capacity_share_lost, goal: LowerIsBetter },
-  SelectionAxis { identity: ax_runtime_feasible, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_decode_latency, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_time_to_first_token, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_victim_inter_token_latency, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_prefill_goodput, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_accepted_task_goodput, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_warm_conversation_capacity, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_physical_failure_domains, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_operating_power, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_operational_complexity, goal: LowerIsBetter },
 ]
 
 data id_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_selection_constraints")
 
-// RUNTIME FEASIBILITY IS ITS OWN CONSTRAINT, because the weight-fit bound can only DISPROVE.
-// Nothing produces a runtime receipt yet, so that bound is what turns every real subject into an
-// evidence obligation rather than a winner -- which is the correct answer today, not a gap.
 data serving_selection_constraints: List<HardConstraint> = [
   HardConstraint { identity: id_constraint_authority, axis: ax_quality, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_weight_fit, bound_micro: 1 },
-  HardConstraint { identity: id_constraint_authority, axis: ax_context_covered, bound_micro: 1 },
   HardConstraint { identity: id_constraint_authority, axis: ax_runtime_feasible, bound_micro: 1 },
+  HardConstraint { identity: id_constraint_authority, axis: ax_context_covered, bound_micro: 1 },
+  HardConstraint { identity: id_constraint_authority, axis: ax_workload_established, bound_micro: 1 },
+  HardConstraint { identity: id_constraint_authority, axis: ax_stability, bound_micro: 1 },
 ]
+
+// THE MEASUREMENTS THAT DO NOT EXIST YET, each named so its absence is a located obligation rather
+// than a silence. A row leaves this list when a real observation carrier feeds its axis.
+data unfunded_performance_axes: List<DeclarationRef> = [
+  ax_stability,
+  ax_decode_latency,
+  ax_time_to_first_token,
+  ax_victim_inter_token_latency,
+  ax_prefill_goodput,
+  ax_accepted_task_goodput,
+  ax_warm_conversation_capacity,
+  ax_physical_failure_domains,
+  ax_operating_power,
+  ax_operational_complexity,
+]
+
+fn unfunded_axis_obligation(axis: DeclarationRef) -> NonEmptyStr {
+  join([
+    "no observation feeds ", declaration_ref_display_key(ref: axis),
+    " for this exact execution profile, and this decision cannot be settled while a dimension that could change it has no reading",
+  ], "") as NonEmptyStr
+}
 
 fn point(v: Int) -> OrderedClosedInterval<Int> { degenerate_interval(point: v) }
 
@@ -456,197 +671,426 @@ fn reading(axis: DeclarationRef, v: Int) -> AxisReading { AxisReading { axis: ax
 
 fn flag(b: Bool) -> Int { if b { 1 } else { 0 } }
 
-// ── THE PROJECTOR: DOMAIN-TYPED FACTS COLLAPSE TO THE GENERIC SCALAR EXACTLY ONCE ─────────────
+// ── THE EVIDENCE SNAPSHOT IS A VALUE, NOT A NAME BESIDE ONE ───────────────────────────────────
 //
-// Bytes, tokens, replica counts and percentages stay typed above this line and become plain
-// integers only here, in one place, following the precedent gunbc.product.build_selection set. An
-// unread fact becomes an AxisGap and never a zero, because a zero is a reading and would rank.
-fn quality_reading_of(c: DeploymentCandidate, policy: QualityPolicy) -> AxisReading? {
-  match quality_standing_of(c: c, policy: policy) {
-    QualityAdmitted { evidence: _ } => Present { value: reading(axis: ax_quality, v: 1) }
-    QualityRefused { violated: _ } => Present { value: reading(axis: ax_quality, v: 0) }
-    QualityUnestablished { obligation: _ } => none
-  }
-}
-
-fn weight_fit_reading_of(c: DeploymentCandidate, fleet: FleetSnapshot) -> AxisReading? {
-  match weight_fit_of(c: c, fleet: fleet) {
-    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } =>
-      Present { value: reading(axis: ax_weight_fit, v: flag(b: fleet_fits(c: c, fleet: fleet))) }
-    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => Present { value: reading(axis: ax_weight_fit, v: 0) }
-    WeightFitUnderivable { because: _ } => none
-  }
-}
-
-fn runtime_feasibility_gap(c: DeploymentCandidate) -> List<AxisGap> {
-  match runtime_feasibility_of(c: c) {
-    RuntimeFeasibilityUnestablished { obligation: o } => [AxisGap { axis: ax_runtime_feasible, cause: o }]
-    RuntimeFeasibilityEstablished { subject: _, receipt: _, note: _ } => []
-  }
-}
-
-fn runtime_feasibility_reading(c: DeploymentCandidate) -> AxisReading? {
-  match runtime_feasibility_of(c: c) {
-    RuntimeFeasibilityEstablished { subject: _, receipt: _, note: _ } => Present { value: reading(axis: ax_runtime_feasible, v: 1) }
-    RuntimeFeasibilityUnestablished { obligation: _ } => none
-  }
-}
-
-fn candidate_gaps(c: DeploymentCandidate, fleet: FleetSnapshot, policy: QualityPolicy) -> List<AxisGap> {
-  concat(runtime_feasibility_gap(c: c), concat(
-    match quality_standing_of(c: c, policy: policy) {
-      QualityUnestablished { obligation: o } => [AxisGap { axis: ax_quality, cause: o }]
-      QualityAdmitted { evidence: _ } => []
-      QualityRefused { violated: _ } => []
-    },
-    match weight_fit_of(c: c, fleet: fleet) {
-      WeightFitUnderivable { because: b } => [AxisGap { axis: ax_weight_fit, cause: b }]
-      WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => []
-      WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => []
-    }))
-}
-
-fn candidate_readings(c: DeploymentCandidate, fleet: FleetSnapshot, policy: QualityPolicy, demand: WorkloadDemand) -> List<AxisReading> {
-  concat(
-    concat(
-      match quality_reading_of(c: c, policy: policy) {
-        Present { value: r } => [r]
-        Absent => []
-      },
-      concat(
-        match weight_fit_reading_of(c: c, fleet: fleet) {
-          Present { value: r } => [r]
-          Absent => []
-        },
-        match runtime_feasibility_reading(c: c) {
-          Present { value: r } => [r]
-          Absent => []
-        })),
-    [
-      reading(axis: ax_context_covered, v: flag(b: covers_demand(c: c, demand: demand))),
-      reading(axis: ax_useful_context, v: useful_context(c: c, demand: demand)),
-      reading(axis: ax_independent_replicas, v: c.replica_count),
-      reading(axis: ax_replica_capacity_share_lost, v: replica_capacity_share_lost_percent(c: c)),
-    ])
-}
-
-fn project_candidate(c: DeploymentCandidate, fleet: FleetSnapshot, policy: QualityPolicy, demand: WorkloadDemand) -> ParetoEntry {
-  ParetoEntry {
-    identity: c.identity,
-    display_label: c.label,
-    readings: candidate_readings(c: c, fleet: fleet, policy: policy, demand: demand),
-    missing_inputs: candidate_gaps(c: c, fleet: fleet, policy: policy),
-  }
-}
-
-// ── THE RESULT IS DOMAIN-TYPED, AND ONLY ONE ARM CAN LAUNCH ANYTHING ──────────────────────────
-// ── THE CHOICE DOMAIN IS THE VALUE POPULATIONS, AND COMPLETENESS IS A JOIN AGAINST IT ─────────
+// THE PREVIOUS VERSION PUT THE RUNTIME-FEASIBILITY POPULATION IN A MODULE GLOBAL and passed an
+// `evidence_snapshot` DeclarationRef beside it, so adding a receipt changed the answer while the
+// caller supplied an identical snapshot identity. Identities sat next to values without being joined
+// to them, and the receipt then named authorities that did not describe what was computed.
 //
-// THE MODULE USED TO CLAIM COMPLETENESS IN PROSE AND CHECK NOTHING. It said the eight GLM rows were
-// every combination of the declared domain, but no code derived the expected roster or compared it
-// with the rows actually present. Deleting `glm_native_tp4_x2` would not have made the field
-// unestablished, so an author could obtain a preferred winner by omitting the candidate that beat
-// it -- the precise failure completeness exists to prevent, left to diligence.
+// Here the evidence IS the snapshot. Its identity is DERIVED from its contents, so there is no second
+// spelling to disagree with, and any change to the population changes the identity.
+type ServingDeploymentEvidenceSnapshot sole_constructor {
+  quality: List<ServingQualityAssessment>
+  runtime_feasibility: List<RuntimeFeasibility>
+  workload: WorkloadDemandStanding
+  fleet: FleetSnapshot
+  fleet_receipt: DeclarationRef
+}
+
+fn serving_evidence_snapshot(
+  quality: List<ServingQualityAssessment>,
+  runtime_feasibility: List<RuntimeFeasibility>,
+  workload: WorkloadDemandStanding,
+  fleet: FleetSnapshot,
+  fleet_receipt: DeclarationRef,
+) -> ServingDeploymentEvidenceSnapshot {
+  ServingDeploymentEvidenceSnapshot {
+    quality: quality,
+    runtime_feasibility: runtime_feasibility,
+    workload: workload,
+    fleet: fleet,
+    fleet_receipt: fleet_receipt,
+  }
+}
+
+fn quality_assessment_key(a: ServingQualityAssessment) -> String {
+  match a {
+    QualityPassed { verdict: v } => join(["pass|", execution_profile_key(p: v.subject), "|", to_string(v.divergence_millinats)], "")
+    QualityFailed { subject: s, requirement: _, violations: vs } => join(["fail|", execution_profile_key(p: s), "|", to_string(count(vs))], "")
+    QualityUnobserved { subject: s, obligations: _ } => join(["unobs|", execution_profile_key(p: s)], "")
+  }
+}
+
+fn runtime_feasibility_key(r: RuntimeFeasibility) -> String {
+  match r {
+    RuntimeFeasibilityEstablished { witness: w } =>
+      join(["ok|", execution_profile_key(p: w.subject), "|", to_string(token_count_value(t: w.admitted_context))], "")
+    RuntimeFeasibilityUnestablished { subject: s, obligation: _ } => join(["no|", execution_profile_key(p: s)], "")
+  }
+}
+
+fn evidence_snapshot_key(e: ServingDeploymentEvidenceSnapshot) -> String {
+  join([
+    "q[", join(map(e.quality, a => quality_assessment_key(a: a)), ","), "]",
+    "|r[", join(map(e.runtime_feasibility, r => runtime_feasibility_key(r: r)), ","), "]",
+    "|w", demand_key(d: e.workload),
+    "|f", to_string(e.fleet.host_count), "x", to_string(e.fleet.bytes_per_host),
+  ], "")
+}
+
+// ── THE CHOICE DOMAIN, AND COMPLETENESS AS A STRUCTURAL JOIN ──────────────────────────────────
 //
-// std.decision establishes that a field is nonempty, duplicate-free and structurally sound. It
-// cannot know that THIS domain is artifacts x topologies, because that is a serving fact. So the
-// populations are declared here and the roster is DERIVED from their product.
-//
-// THE SINGLETON CASE STAYS LEGAL AND STAYS DISTINGUISHABLE. A settled choice is a domain whose
-// populations genuinely yield one combination -- one artifact, one topology -- which is a different
-// state from a multi-value domain with every other row omitted. A count of one cannot tell those
-// apart; a join against the declared populations can.
-type TopologyShape sole_constructor {
-  tensor_parallel_degree: Nat
-  replica_count: Nat
+// The expected roster is DERIVED from the declared value populations, so a winner cannot be obtained
+// by omitting the candidate that would have beaten it. Two repairs over the previous version: the
+// combination key is a STRUCTURAL value with its own equality rather than a rendered string, and a
+// duplicate in the DECLARED domain refuses -- previously two identical expected keys both matched the
+// same single actual row, so a duplicated declaration passed unnoticed.
+type CombinationKey sole_constructor {
+  artifact: DeclarationRef
+  topology: TopologyShape
+}
+
+fn combination_key_eq(a: CombinationKey, b: CombinationKey) -> Bool {
+  declaration_ref_eq(a: a.artifact, b: b.artifact) && topology_shape_eq(a: a.topology, b: b.topology)
+}
+
+fn combination_key_render(k: CombinationKey) -> String {
+  join([declaration_ref_display_key(ref: k.artifact), "|tp", to_string(k.topology.tensor_parallel_degree), "|x", to_string(k.topology.replica_count)], "")
 }
 
 type ServingDeploymentChoiceDomain sole_constructor {
   artifacts: List<ModelArtifact>
   topologies: List<TopologyShape>
+  parameters: ServingDecisionParameters
 }
 
-fn combination_key(artifact: DeclarationRef, shape: TopologyShape) -> String {
-  join([declaration_ref_display_key(ref: artifact), "|tp", to_string(shape.tensor_parallel_degree), "|x", to_string(shape.replica_count)], "")
+fn serving_deployment_domain(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>, parameters: ServingDecisionParameters) -> ServingDeploymentChoiceDomain {
+  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies, parameters: parameters }
 }
 
-fn expected_combination_keys(domain: ServingDeploymentChoiceDomain) -> List<String> {
-  flat_map(domain.artifacts, a => map(domain.topologies, t => combination_key(artifact: a.identity, shape: t)))
+fn expected_combinations(d: ServingDeploymentChoiceDomain) -> List<CombinationKey> {
+  flat_map(d.artifacts, a => map(d.topologies, t => CombinationKey { artifact: a.identity, topology: t }))
 }
 
-fn candidate_combination_key(c: DeploymentCandidate) -> String {
-  combination_key(
-    artifact: c.artifact.identity,
-    shape: TopologyShape { tensor_parallel_degree: c.replica.tensor_parallel_degree, replica_count: c.replica_count },
-  )
+fn candidate_combination(c: DeploymentCandidate) -> CombinationKey {
+  CombinationKey { artifact: c.artifact.identity, topology: c.topology }
 }
 
-fn count_occurrences(keys: List<String>, key: String) -> Nat {
-  fold(keys, init: 0, f: (acc, k) => if k == key { acc + 1 } else { acc })
+fn key_occurrences(keys: List<CombinationKey>, k: CombinationKey) -> Nat {
+  fold(keys, init: 0, f: (acc, other) => if combination_key_eq(a: other, b: k) { acc + 1 } else { acc })
 }
 
-type ServingFieldStanding
-  = ServingFieldEstablished
-  | ServingFieldUnestablished { causes: List<NonEmptyStr> }
-
-// BIDIRECTIONAL, AND DUPLICATES COUNT AS A DEFECT. A missing combination lets an author delete a
-// rival; an extra one lets a candidate enter that the declared domain never admitted; a duplicate
-// makes the population ambiguous. All three refuse.
-fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> ServingFieldStanding {
-  let expected = expected_combination_keys(domain: field.domain)
-  let actual = map(field.candidates, c => candidate_combination_key(c: c))
-  let missing = filter(expected, k => count_occurrences(keys: actual, key: k) == 0)
-  let extra = filter(actual, k => count_occurrences(keys: expected, key: k) == 0)
-  let duplicated = filter(expected, k => count_occurrences(keys: actual, key: k) > 1)
-  if count(missing) == 0 && count(extra) == 0 && count(duplicated) == 0 {
-    ServingFieldEstablished
-  } else {
-    ServingFieldUnestablished {
-      causes: concat(
-        concat(
-          map(missing, k => join(["the declared choice domain admits the combination ", k, " and the candidate field does not contain it, so this field cannot be complete over its own domain"], "") as NonEmptyStr),
-          map(extra, k => join(["the candidate field carries the combination ", k, ", which the declared choice domain does not admit"], "") as NonEmptyStr)),
-        map(duplicated, k => join(["the combination ", k, " appears more than once, so the field's population is ambiguous"], "") as NonEmptyStr)),
-    }
-  }
+fn domain_key_render(d: ServingDeploymentChoiceDomain) -> String {
+  join([
+    join(map(expected_combinations(d: d), k => combination_key_render(k: k)), ","),
+    "|", parameters_key(p: d.parameters),
+  ], "")
 }
 
-// ── THE FIELD AND ITS IDENTITY ARE ONE VALUE, NOT TWO CALLER-SUPPLIED SPELLINGS ───────────────
-//
-// THE PREVIOUS VERSION HAD A REAL DEFECT HERE AND ITS WITNESSES DID NOT CATCH IT. `select` accepted
-// an arbitrary candidate list and then always told std.decision the field was `glm_candidate_field`.
-// Selections over the DeepSeek field, over a mixed fixture and over a singleton all produced
-// receipts naming the GLM roster, which destroys exactly the stale-choice and field-scoping property
-// the receipt exists to provide. Counting the identities inside a receipt proves the population has
-// one member; it does not prove the receipt names the field that supplied it.
-//
-// Passing the identity as a second argument beside the list would not fix it -- two caller-supplied
-// spellings can disagree, and nothing would notice. So they are sealed into one value whose single
-// constructor takes both, and selection accepts only that.
 type ServingDeploymentCandidateField sole_constructor {
   identity: DeclarationRef
   domain: ServingDeploymentChoiceDomain
   candidates: List<DeploymentCandidate>
 }
 
-// ── AND THE WHOLE DECISION IS ONE SEALED INPUT ────────────────────────────────────────────────
+fn serving_candidate_field(identity: DeclarationRef, domain: ServingDeploymentChoiceDomain, candidates: List<DeploymentCandidate>) -> ServingDeploymentCandidateField {
+  ServingDeploymentCandidateField { identity: identity, domain: domain, candidates: candidates }
+}
+
+// THE FIELD'S REVISION IS DERIVED FROM ITS CONTENT, so a persisted receipt distinguishes the old
+// field from the same declaration name carrying changed candidates.
+fn candidate_field_revision(f: ServingDeploymentCandidateField) -> String {
+  join([
+    declaration_ref_display_key(ref: f.identity),
+    "|dom", domain_key_render(d: f.domain),
+    "|cand", join(map(f.candidates, c => combination_key_render(k: candidate_combination(c: c))), ","),
+  ], "")
+}
+
+type ServingFieldStanding
+  = ServingFieldEstablished
+  | ServingFieldUnestablished { causes: List<NonEmptyStr> }
+
+fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> ServingFieldStanding {
+  let expected = expected_combinations(d: field.domain)
+  let actual = map(field.candidates, c => candidate_combination(c: c))
+  let missing = filter(expected, k => key_occurrences(keys: actual, k: k) == 0)
+  let extra = filter(actual, k => key_occurrences(keys: expected, k: k) == 0)
+  let duplicated_actual = filter(expected, k => key_occurrences(keys: actual, k: k) > 1)
+  let duplicated_declared = filter(expected, k => key_occurrences(keys: expected, k: k) > 1)
+  let param_defect = match parameters_defect(p: field.domain.parameters) {
+    Present { value: d } => [d]
+    Absent => []
+  }
+  if count(missing) == 0 && count(extra) == 0 && count(duplicated_actual) == 0
+    && count(duplicated_declared) == 0 && count(param_defect) == 0 {
+    ServingFieldEstablished
+  } else {
+    ServingFieldUnestablished {
+      causes: concat(
+        concat(
+          concat(
+            map(missing, k => join(["the declared domain admits ", combination_key_render(k: k), " and the field does not contain it, so the field is not complete over its own domain"], "") as NonEmptyStr),
+            map(extra, k => join(["the field carries ", combination_key_render(k: k), ", which the declared domain does not admit"], "") as NonEmptyStr)),
+          concat(
+            map(duplicated_actual, k => join(["the combination ", combination_key_render(k: k), " appears more than once among the candidates, so the population is ambiguous"], "") as NonEmptyStr),
+            map(duplicated_declared, k => join(["the DECLARED domain produces ", combination_key_render(k: k), " more than once, so its expected population is ambiguous and a duplicate would be satisfied by a single candidate"], "") as NonEmptyStr))),
+        param_defect),
+    }
+  }
+}
+
+// ── THE PROJECTOR ─────────────────────────────────────────────────────────────────────────────
 //
-// The module's thesis is that the answer changes when an input changes and at no other time. The
-// previous version could not keep that promise: the values that decide the answer -- fleet, demand,
-// policy -- arrived as arguments, while the identities recorded in the receipt were module-level
-// globals. Moving the required context from 300,000 to 400,000 produced a different winner under a
-// receipt whose named authorities were byte-identical. The subject is therefore one value carrying
-// the identity of every load-bearing input.
+// Domain-typed facts collapse to the generic scalar exactly once, here. An unread fact becomes an
+// AxisGap and never a zero, because a zero is a reading and would rank.
+fn quality_for(profile: ServingExecutionProfile, e: ServingDeploymentEvidenceSnapshot) -> ServingQualityAssessment {
+  fold(e.quality, init: QualityUnobserved {
+    subject: profile,
+    obligations: ["no quality assessment in this evidence snapshot has this exact execution profile as its subject. The same weights at two tensor-parallel degrees are deterministically different models -- 2.2387 nats apart against a bit-identical within-topology envelope, per gunbc.spark.tensor_parallel_comparison -- so a receipt for another profile does not answer for this one" as NonEmptyStr],
+  }, f: (acc, a) =>
+    if execution_profile_eq(a: quality_assessment_subject(a: a), b: profile) { a } else { acc })
+}
+
+fn runtime_for(profile: ServingExecutionProfile, e: ServingDeploymentEvidenceSnapshot) -> RuntimeFeasibility {
+  fold(e.runtime_feasibility, init: RuntimeFeasibilityUnestablished {
+    subject: profile,
+    obligation: "no runtime observation exists for this exact execution profile: that the model loads at this degree, that the allocator admits the requested context by block population rather than by a printed pool size, and that the required sequence population is admissible. A lower bound that does not rule the candidate out is not a demonstration that it runs" as NonEmptyStr,
+  }, f: (acc, r) =>
+    if execution_profile_eq(a: runtime_feasibility_subject(r: r), b: profile) { r } else { acc })
+}
+
+fn quality_reading(profile: ServingExecutionProfile, e: ServingDeploymentEvidenceSnapshot) -> AxisReading? {
+  match quality_for(profile: profile, e: e) {
+    QualityPassed { verdict: _ } => Present { value: reading(axis: ax_quality, v: 1) }
+    QualityFailed { subject: _, requirement: _, violations: _ } => Present { value: reading(axis: ax_quality, v: 0) }
+    QualityUnobserved { subject: _, obligations: _ } => none
+  }
+}
+
+fn quality_gap(profile: ServingExecutionProfile, e: ServingDeploymentEvidenceSnapshot) -> List<AxisGap> {
+  match quality_for(profile: profile, e: e) {
+    QualityUnobserved { subject: _, obligations: os } => map(os, o => AxisGap { axis: ax_quality, cause: o })
+    QualityPassed { verdict: _ } => []
+    QualityFailed { subject: _, requirement: _, violations: _ } => []
+  }
+}
+
+fn runtime_reading(profile: ServingExecutionProfile, e: ServingDeploymentEvidenceSnapshot) -> AxisReading? {
+  match runtime_for(profile: profile, e: e) {
+    RuntimeFeasibilityEstablished { witness: _ } => Present { value: reading(axis: ax_runtime_feasible, v: 1) }
+    RuntimeFeasibilityUnestablished { subject: _, obligation: _ } => none
+  }
+}
+
+fn runtime_gap(profile: ServingExecutionProfile, e: ServingDeploymentEvidenceSnapshot) -> List<AxisGap> {
+  match runtime_for(profile: profile, e: e) {
+    RuntimeFeasibilityUnestablished { subject: _, obligation: o } => [AxisGap { axis: ax_runtime_feasible, cause: o }]
+    RuntimeFeasibilityEstablished { witness: _ } => []
+  }
+}
+
+fn weight_fit_reading(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> AxisReading? {
+  match weight_fit_of(c: c, fleet: e.fleet, p: p) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } =>
+      Present { value: reading(axis: ax_weight_fit, v: flag(b: fleet_fits(c: c, fleet: e.fleet))) }
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => Present { value: reading(axis: ax_weight_fit, v: 0) }
+    WeightFitUnderivable { because: _ } => none
+  }
+}
+
+fn weight_fit_gap(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisGap> {
+  match weight_fit_of(c: c, fleet: e.fleet, p: p) {
+    WeightFitUnderivable { because: b } => [AxisGap { axis: ax_weight_fit, cause: b }]
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => []
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => []
+  }
+}
+
+// AN UNESTABLISHED WORKLOAD IS ITS OWN GAP on its own hard-bounded axis, so a scenario number cannot
+// settle a deployment by hiding behind whichever other evidence happens to be missing first.
+fn workload_reading(e: ServingDeploymentEvidenceSnapshot) -> AxisReading? {
+  match e.workload {
+    WorkloadDemandEstablished { identity: _, required_context: _, population: _, reserve: _ } =>
+      Present { value: reading(axis: ax_workload_established, v: 1) }
+    WorkloadDemandUnestablished { identity: _, scenario_value: _, obligation: _ } => none
+  }
+}
+
+fn workload_gap(e: ServingDeploymentEvidenceSnapshot) -> List<AxisGap> {
+  match e.workload {
+    WorkloadDemandUnestablished { identity: _, scenario_value: _, obligation: o } => [AxisGap { axis: ax_workload_established, cause: o }]
+    WorkloadDemandEstablished { identity: _, required_context: _, population: _, reserve: _ } => []
+  }
+}
+
+fn optional_reading(r: AxisReading?) -> List<AxisReading> {
+  match r {
+    Present { value: v } => [v]
+    Absent => []
+  }
+}
+
+fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisReading> {
+  concat(
+    concat(
+      concat(optional_reading(r: quality_reading(profile: execution_profile_of(c: c, p: p), e: e)),
+             optional_reading(r: runtime_reading(profile: execution_profile_of(c: c, p: p), e: e))),
+      concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
+             optional_reading(r: workload_reading(e: e)))),
+    [
+      reading(axis: ax_context_covered, v: flag(b: covers_demand(p: p, demand: e.workload))),
+      reading(axis: ax_useful_context, v: useful_context(p: p, demand: e.workload)),
+      reading(axis: ax_independent_replicas, v: c.topology.replica_count),
+      reading(axis: ax_replica_capacity_share_lost, v: replica_capacity_share_lost_percent(c: c)),
+    ])
+}
+
+fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisGap> {
+  concat(
+    concat(
+      concat(quality_gap(profile: execution_profile_of(c: c, p: p), e: e),
+             runtime_gap(profile: execution_profile_of(c: c, p: p), e: e)),
+      concat(weight_fit_gap(c: c, e: e, p: p), workload_gap(e: e))),
+    map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) }))
+}
+
+fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> ParetoEntry {
+  ParetoEntry {
+    identity: c.identity,
+    display_label: c.label,
+    readings: candidate_readings(c: c, e: e, p: p),
+    missing_inputs: candidate_gaps(c: c, e: e, p: p),
+  }
+}
+
+// ── THE DECISION INPUT: ONE VALUE, ONE DERIVED IDENTITY, NO SECOND SPELLING ────────────────────
+//
+// Every load-bearing input arrives as a VALUE and the snapshot identity is DERIVED from all of them,
+// so there is nothing to disagree with. The previous version accepted `subject_identity`,
+// `fleet_identity` and an independently authored `DecisionAssessment` beside the values they were
+// supposed to describe, used none of them for the computation, and let a receipt name authorities
+// that did not correspond to what was computed. The assessment is now derived here rather than
+// accepted, which removes the last place two spellings could differ.
 type ServingDeploymentDecisionInput sole_constructor {
-  subject_identity: DeclarationRef
   field: ServingDeploymentCandidateField
-  fleet: FleetSnapshot
-  fleet_identity: DeclarationRef
-  quality_policy: QualityPolicy
-  demand: WorkloadDemand
-  evidence_snapshot: DeclarationRef
+  evidence: ServingDeploymentEvidenceSnapshot
+  quality_requirement: QualityRequirement
   selection_policy: DeclarationRef
-  assessment: DecisionAssessment
+}
+
+fn serving_decision_input(
+  field: ServingDeploymentCandidateField,
+  evidence: ServingDeploymentEvidenceSnapshot,
+  quality_requirement: QualityRequirement,
+  selection_policy: DeclarationRef,
+) -> ServingDeploymentDecisionInput {
+  ServingDeploymentDecisionInput {
+    field: field,
+    evidence: evidence,
+    quality_requirement: quality_requirement,
+    selection_policy: selection_policy,
+  }
+}
+
+// THE DECISION'S IDENTITY. Change the fleet, the demand, the quality requirement, the evidence
+// population, the fixed parameters or the candidate roster and this string changes; change nothing
+// and it does not. That is the property the receipt's named authorities could not carry.
+fn decision_snapshot_key(input: ServingDeploymentDecisionInput) -> String {
+  join([
+    "field{", candidate_field_revision(f: input.field), "}",
+    "|evidence{", evidence_snapshot_key(e: input.evidence), "}",
+    "|requirement{", declaration_ref_display_key(ref: input.quality_requirement.identity),
+    "|", to_string(input.quality_requirement.max_divergence_millinats),
+    "|", to_string(input.quality_requirement.min_task_score_delta_hundredths), "}",
+    "|policy{", declaration_ref_display_key(ref: input.selection_policy), "}",
+  ], "")
+}
+
+// ── THE SUBJECT CLOSURE, DERIVED FROM THE INPUT ───────────────────────────────────────────────
+data tensor_parallel_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vllm.ai/en/latest/serving/distributed_serving.html" },
+}
+
+data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_deployment_subject")
+data id_var_topology: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "var_fleet_topology")
+data id_term_isolation: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "term_failure_isolation")
+data id_param_execution: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_execution_parameters")
+data id_region: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_topology_region")
+
+data var_fleet_topology: DecisionVariable = DecisionVariable { identity: id_var_topology }
+
+// A tensor-parallel replica FAILS AS A UNIT across its ranks -- upstream's documented behaviour, not
+// something this repository decided. The division that turns that into a percentage is downstream of
+// the fact; citing the division would be citing our own arithmetic back to ourselves.
+data term_failure_isolation: ObjectiveTerm = ObjectiveTerm {
+  identity: id_term_isolation,
+  ground: CitedToAuthority { authority: tensor_parallel_authority },
+}
+
+data param_execution_parameters: ContextParameter = ContextParameter { identity: id_param_execution }
+data constraint_cell: DecisionConstraint = DecisionConstraint { identity: id_constraint_authority }
+data serving_topology_region: DecisionRegion = DecisionRegion { identity: id_region }
+
+data serving_objective: ObjectiveMeasure = ObjectiveMeasure {
+  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_objective"),
+  goal: HigherIsBetter,
+  terms: [term_failure_isolation],
+}
+
+data serving_choice_domain_cell: ChoiceDomain = ChoiceDomain {
+  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_choice_domain_cell"),
+  variables: [var_fleet_topology],
+}
+
+data serving_deployment_subject: DecisionSubject = DecisionSubject {
+  identity: id_subject,
+  question: "which whole-fleet deployment shape serves this exact artifact under this exact execution profile" as NonEmptyStr,
+  parameters: [param_execution_parameters],
+  constraints: [constraint_cell],
+  objective: serving_objective,
+  choice_domain: serving_choice_domain_cell,
+}
+
+// DERIVED, NOT ACCEPTED. The parameter's binding evidence quotes the actual declared parameters, so
+// the assessment cannot describe a closure other than the one being decided.
+fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
+  DecisionAssessment {
+    subject: serving_deployment_subject,
+    sensitivities: [
+      VariesAlong {
+        term: id_term_isolation,
+        variable: id_var_topology,
+        region: serving_topology_region,
+        relation: MonotoneIncreasing,
+        coupling: CitedToAuthority { authority: tensor_parallel_authority },
+      },
+    ],
+    constraints: [
+      ConstraintSatisfied {
+        constraint: id_constraint_authority,
+        evidence: "quality, weight fit, runtime feasibility, context coverage, workload standing and stability are each bounded at one and excluded before dominance" as NonEmptyStr,
+      },
+    ],
+    parameters: [
+      ParameterBound {
+        parameter: id_param_execution,
+        evidence: join(["every candidate is built at exactly one declared execution profile, and carries no field in which to disagree with it: ", parameters_key(p: input.field.domain.parameters)], "") as NonEmptyStr,
+      },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_term_isolation] },
+    causal_model: CausalModelEstablished {
+      couplings: [
+        VendorDocumentedCoupling {
+          authority: tensor_parallel_authority,
+          term: id_term_isolation,
+          variable: id_var_topology,
+          subject: id_subject,
+        },
+      ],
+    },
+  }
+}
+
+// ── THE SEALED RESULT, AND IT IS A SHAPE RATHER THAN A LAUNCH ─────────────────────────────────
+type SelectedServingDeployment sole_constructor {
+  input: ServingDeploymentDecisionInput
+  candidate: DeploymentCandidate
+  receipt: SelectionReceipt
+  snapshot_key: String
 }
 
 type ServingDeploymentSelection
@@ -655,24 +1099,6 @@ type ServingDeploymentSelection
   | ServingDeploymentNeedsPolicy { survivors: List<DeclarationRef> }
   | NoFeasibleServingDeployment { causes: List<NonEmptyStr> }
   | ServingDeploymentSelectionRefused { defects: List<NonEmptyStr> }
-
-// ── THE SEALED RESULT: THE ONLY THING A LAUNCH MAY BE BUILT FROM ──────────────────────────────
-//
-// THE PREVIOUS WALL WAS BYPASSABLE AND THE BYPASS IS WORTH STATING PLAINLY, because it is the exact
-// shape of failure this module exists to refuse. `admit_launch` took a selection AND a candidate
-// list as separate arguments, so a caller could select identity X from field A, keep A's genuine
-// receipt, then hand admit_launch a field B in which X named a DIFFERENT ReplicaProfile. The receipt
-// described A; the launched value came from B. The guarantee was only "a profile was built through
-// admit_launch", never "the profile launched is the candidate the receipt selected".
-//
-// The repair is that the same call which reaches std.decision mints this value, binding the input,
-// the resolved candidate and the receipt together. admit_launch takes this and nothing else, so
-// there is no second argument through which a different value can enter.
-type SelectedServingDeployment sole_constructor {
-  input: ServingDeploymentDecisionInput
-  candidate: DeploymentCandidate
-  receipt: SelectionReceipt
-}
 
 fn resolve_in_field(field: ServingDeploymentCandidateField, identity: DeclarationRef) -> DeploymentCandidate? {
   fold(field.candidates, init: none, f: (acc, k) =>
@@ -687,14 +1113,14 @@ fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDe
     ServingFieldUnestablished { causes: c } => ServingDeploymentSelectionRefused { defects: c }
     ServingFieldEstablished =>
       match select_realization(
-        assessment: input.assessment,
+        assessment: assessment_for(input: input),
         candidate_field_identity: input.field.identity,
-        field: map(input.field.candidates, c => project_candidate(c: c, fleet: input.fleet, policy: input.quality_policy, demand: input.demand)),
+        field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: input.field.domain.parameters)),
         axes: serving_selection_axes,
         constraints: serving_selection_constraints,
         constraint_authority: id_constraint_authority,
         policy: UniqueSurvivorRequired { identity: input.selection_policy },
-        evidence_snapshot: input.evidence_snapshot,
+        evidence_snapshot: input.evidence.fleet_receipt,
       ) {
         SelectedWithin { candidate: e, receipt: r } =>
           match resolve_in_field(field: input.field, identity: e.identity) {
@@ -702,7 +1128,12 @@ fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDe
               defects: ["the spine selected an identity that resolves to no candidate in the sealed field, which is a projector contradiction rather than a decision" as NonEmptyStr],
             }
             Present { value: chosen } => ServingDeploymentSelected {
-              selected: SelectedServingDeployment { input: input, candidate: chosen, receipt: r },
+              selected: SelectedServingDeployment {
+                input: input,
+                candidate: chosen,
+                receipt: r,
+                snapshot_key: decision_snapshot_key(input: input),
+              },
             }
           }
         SelectionNeedsEvidence { needs: n } => ServingDeploymentNeedsEvidence { needs: n }
@@ -714,82 +1145,65 @@ fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDe
   }
 }
 
-data id_selection_policy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "native_artifact_only")
-data id_evidence_snapshot: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot")
-
-// ── ONLY A SELECTION MAY PRODUCE A LAUNCH, AND A LAUNCH IS A WHOLE-FLEET PLAN ─────────────────
+// ── THE OUTPUT IS A SHAPE AWAITING FABRIC PLACEMENT, NOT A LAUNCH ─────────────────────────────
 //
-// THE OUTPUT USED TO DROP THE DEPLOYMENT IT CLAIMED TO SELECT. The whole argument of this module is
-// that the candidate is a fleet-wide shape -- "four two-rank replicas" versus "two four-rank
-// replicas" -- and the launch profile then carried a single ReplicaProfile, an identity and a
-// receipt. It could describe A two-rank replica; it could not express FOUR DISJOINT ONES, which is
-// the distinction the selection was made on. Nothing downstream could actuate the winner.
+// TWO EARLIER VERSIONS OVERSTATED THIS BOUNDARY. The first returned a single ReplicaProfile and
+// called it a launch profile, which could not even express the multi-replica shape the decision
+// turned on. The second returned a `ServingDeploymentPlan` with `LaunchAdmitted`, while its own
+// rank indices were derived positionally from a host count and no failure-domain identity existed
+// anywhere in the module. A plan that cannot say which host holds which rank is not a launch plan.
 //
-// So the launch output is a plan over the fleet. It carries the exact artifact, one placement per
-// replica, and the hosts left unassigned -- because unassigned capacity is a fact about the plan and
-// silently dropping it is how a shape that strands half the fleet looks free.
-//
-// WHAT THIS STILL DOES NOT CARRY, stated so the rung is not inflated a second time: the placements
-// below are DERIVED positionally from the fleet's host count, not read from a fabric authority, and
-// no failure-domain identity exists -- which host shares a switch, a PDU or a rack with which. Until
-// that arrives, `replica_capacity_share_lost_percent` is replica granularity and not physical fault
-// isolation, and it is named accordingly.
-type ServingReplicaPlacement sole_constructor {
-  profile: ReplicaProfile
-  rank_index_first: Nat
-  rank_count: Nat
+// So the result says what it is: a SHAPE, admitted for placement. The fabric cut binds these replica
+// shapes to exact hosts, network groups, failure domains, endpoints and launch arguments, and only
+// that relation may mint a launch. This keeps rank partitions deferred without understating it.
+type ServingReplicaShape sole_constructor {
+  tensor_parallel_degree: Nat
+  replica_ordinal: Nat
 }
 
-type ServingDeploymentPlan sole_constructor {
+type ServingDeploymentShape sole_constructor {
   artifact: DeclarationRef
   candidate: DeclarationRef
-  replicas: List<ServingReplicaPlacement>
-  hosts_assigned: Nat
+  parameters: ServingDecisionParameters
+  replicas: List<ServingReplicaShape>
+  hosts_required: Nat
   hosts_unassigned: Nat
   selected_by: SelectionReceipt
+  snapshot_key: String
 }
 
-// One placement per replica, ranks laid out contiguously. Accumulator loop in the shape
-// std.render_repeat_string_bootstrap uses, counting down so the emitted indices ascend.
-fn placements_loop(c: DeploymentCandidate, remaining: Nat, acc: List<ServingReplicaPlacement>) -> List<ServingReplicaPlacement> {
+fn replica_shapes_loop(degree: Nat, remaining: Nat, acc: List<ServingReplicaShape>) -> List<ServingReplicaShape> {
   if remaining == 0 {
     acc
   } else {
-    placements_loop(
-      c: c,
+    replica_shapes_loop(
+      degree: degree,
       remaining: remaining - 1,
-      acc: concat([ServingReplicaPlacement {
-        profile: c.replica,
-        rank_index_first: (remaining - 1) * c.replica.tensor_parallel_degree,
-        rank_count: c.replica.tensor_parallel_degree,
-      }], acc),
+      acc: concat([ServingReplicaShape { tensor_parallel_degree: degree, replica_ordinal: remaining - 1 }], acc),
     )
   }
 }
 
-fn placements_for(c: DeploymentCandidate) -> List<ServingReplicaPlacement> {
-  placements_loop(c: c, remaining: c.replica_count, acc: [])
-}
-
-fn plan_of(selected: SelectedServingDeployment) -> ServingDeploymentPlan {
-  ServingDeploymentPlan {
+fn shape_of(selected: SelectedServingDeployment) -> ServingDeploymentShape {
+  ServingDeploymentShape {
     artifact: selected.candidate.artifact.identity,
     candidate: selected.candidate.identity,
-    replicas: placements_for(c: selected.candidate),
-    hosts_assigned: hosts_consumed(c: selected.candidate),
-    hosts_unassigned: selected.input.fleet.host_count - hosts_consumed(c: selected.candidate),
+    parameters: selected.input.field.domain.parameters,
+    replicas: replica_shapes_loop(degree: selected.candidate.topology.tensor_parallel_degree, remaining: selected.candidate.topology.replica_count, acc: []),
+    hosts_required: hosts_consumed(c: selected.candidate),
+    hosts_unassigned: selected.input.evidence.fleet.host_count - hosts_consumed(c: selected.candidate),
     selected_by: selected.receipt,
+    snapshot_key: selected.snapshot_key,
   }
 }
 
-type LaunchAdmission
-  = LaunchAdmitted { plan: ServingDeploymentPlan }
-  | LaunchRefused { because: NonEmptyStr }
+type ShapeAdmission
+  = ShapeAdmittedForPlacement { shape: ServingDeploymentShape }
+  | FabricPlacementRequired { because: NonEmptyStr }
 
-// THE FIELD SIZE THE RECEIPT ACTUALLY RECORDS. A caller can count what was compared without
-// trusting a sentence: one identity means the decision was settled in advance and said so. It does
-// NOT establish that the one candidate was the complete intended domain -- that is what the
-// candidate-field completeness join answers, and the two are deliberately separate questions.
+// THE FIELD SIZE THE RECEIPT RECORDS. One identity means the decision was settled in advance and
+// said so. It does NOT establish that the one candidate was the complete intended domain -- the
+// completeness join answers that, and the two are deliberately separate questions.
 fn compared_candidate_count(r: SelectionReceipt) -> Nat {
   match r.candidate_field_standing {
     CandidateFieldEstablished { identities: ids } => count(ids)
@@ -797,369 +1211,195 @@ fn compared_candidate_count(r: SelectionReceipt) -> Nat {
   }
 }
 
-// ONE ARGUMENT, AND IT IS THE SEALED RESULT. There is no second candidate list through which a
-// different value could enter, so the plan launched is necessarily built from the candidate the
-// receipt selected, out of the field the receipt names.
-fn admit_launch(s: ServingDeploymentSelection) -> LaunchAdmission {
+fn admit_shape(s: ServingDeploymentSelection) -> ShapeAdmission {
   match s {
-    ServingDeploymentSelected { selected: sel } => LaunchAdmitted { plan: plan_of(selected: sel) }
+    ServingDeploymentSelected { selected: sel } => ShapeAdmittedForPlacement { shape: shape_of(selected: sel) }
     ServingDeploymentNeedsEvidence { needs: n } =>
-      LaunchRefused { because: join(["the decision is under-evidenced: ", to_string(count(n)), " obligation(s) outstanding"], "") as NonEmptyStr }
+      FabricPlacementRequired { because: join(["the decision is under-evidenced: ", to_string(count(n)), " obligation(s) outstanding"], "") as NonEmptyStr }
     ServingDeploymentNeedsPolicy { survivors: s2 } =>
-      LaunchRefused { because: join([to_string(count(s2)), " candidates are non-dominated and no policy separates them"], "") as NonEmptyStr }
+      FabricPlacementRequired { because: join([to_string(count(s2)), " candidates are non-dominated and no policy separates them"], "") as NonEmptyStr }
     NoFeasibleServingDeployment { causes: _ } =>
-      LaunchRefused { because: "no candidate satisfies the hard constraints" as NonEmptyStr }
+      FabricPlacementRequired { because: "no candidate satisfies the hard constraints" as NonEmptyStr }
     ServingDeploymentSelectionRefused { defects: _ } =>
-      LaunchRefused { because: "the selection itself is defective and states so rather than choosing" as NonEmptyStr }
+      FabricPlacementRequired { because: "the selection itself is defective and states so rather than choosing" as NonEmptyStr }
   }
 }
 
-// ── THE SUBJECT CLOSURE'S IDENTITIES ──────────────────────────────────────────────────────────
-data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_deployment_subject")
-data id_var_topology: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "var_fleet_topology")
-data id_term_isolation: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "term_failure_isolation")
-data id_param_context: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_context_ceiling")
-data id_constraint_cell: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_selection_constraints")
-data id_physical_authority: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot")
-
-// THE COUPLING IS A VENDOR FACT, NOT AN ARITHMETIC ONE. Blast radius moves with topology only
-// because a tensor-parallel replica FAILS AS A UNIT across its ranks -- one rank lost takes the
-// replica, which is upstream's documented behaviour and not something this repository decided. The
-// division that turns that into a percentage is downstream of the fact; citing the division would
-// be citing our own arithmetic back to ourselves.
-data tensor_parallel_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "docs.vllm.ai/en/latest/serving/distributed_serving.html",
-  },
-}
-
-data var_fleet_topology: DecisionVariable = DecisionVariable { identity: id_var_topology }
-
-data term_failure_isolation: ObjectiveTerm = ObjectiveTerm {
-  identity: id_term_isolation,
-  ground: CitedToAuthority { authority: tensor_parallel_authority },
-}
-
-data param_context_ceiling: ContextParameter = ContextParameter { identity: id_param_context }
-
-// THE ENGINE-SHAPE LITERALS ARE NAMED HERE RATHER THAN OMITTED, because a parameter this subject
-// does not mention is indistinguishable from one nobody thought of. gunbc.spark.serving_deployment_
-// decision_pending rosters eight literals authored across the serving path with no derivation behind
-// them; the four that are properties of a REPLICA belong to this subject. Three of them are held at
-// one value each and carried as context parameters, with the roster's own basis restated as the
-// binding evidence -- held fixed is a position, and it is a different position from unconsidered.
-// The fourth, topology, is this subject's one decision variable.
-data id_param_memory_fraction: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_memory_fraction")
-data id_param_scheduler_population: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_scheduler_population")
-data id_param_batch_budget: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_batch_budget")
-
-data param_memory_fraction: ContextParameter = ContextParameter { identity: id_param_memory_fraction }
-data param_scheduler_population: ContextParameter = ContextParameter { identity: id_param_scheduler_population }
-data param_batch_budget: ContextParameter = ContextParameter { identity: id_param_batch_budget }
-data constraint_cell: DecisionConstraint = DecisionConstraint { identity: id_constraint_cell }
-
-data serving_topology_region: DecisionRegion = DecisionRegion {
-  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_topology_region"),
-}
-
-data serving_objective: ObjectiveMeasure = ObjectiveMeasure {
-  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_objective"),
-  goal: HigherIsBetter,
-  terms: [term_failure_isolation],
-}
-
-data serving_choice_domain: ChoiceDomain = ChoiceDomain {
-  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_choice_domain"),
-  variables: [var_fleet_topology],
-}
-
-data serving_deployment_subject: DecisionSubject = DecisionSubject {
-  identity: id_subject,
-  question: "which whole-fleet deployment shape serves this exact artifact at the declared context" as NonEmptyStr,
-  parameters: [param_context_ceiling, param_memory_fraction, param_scheduler_population, param_batch_budget],
-  constraints: [constraint_cell],
-  objective: serving_objective,
-  choice_domain: serving_choice_domain,
-}
-
-// FEWER RANKS PER REPLICA IS MORE ISOLATION, over the region this domain spans and no further. The
-// relation is stated as monotone because within eight hosts a smaller replica is strictly more of
-// them; it is NOT a claim about topologies this fleet cannot express.
-data serving_deployment_assessment: DecisionAssessment = DecisionAssessment {
-  subject: serving_deployment_subject,
-  sensitivities: [
-    VariesAlong {
-      term: id_term_isolation,
-      variable: id_var_topology,
-      region: serving_topology_region,
-      relation: MonotoneIncreasing,
-      coupling: CitedToAuthority { authority: tensor_parallel_authority },
-    },
-  ],
-  constraints: [
-    ConstraintSatisfied {
-      constraint: id_constraint_cell,
-      evidence: "quality, weight fit and context coverage are each bounded at one and excluded before dominance" as NonEmptyStr,
-    },
-  ],
-  parameters: [
-    ParameterBound {
-      parameter: id_param_context,
-      evidence: "every candidate is built at one declared context ceiling, and value saturates at the declared demand rather than at the model's limit; widening it is a domain change" as NonEmptyStr,
-    },
-    ParameterBound {
-      parameter: id_param_memory_fraction,
-      evidence: "the operator's observed-safe fraction for the outgoing model, carried unchanged; nothing derives it and no headroom law is modelled, so it is held rather than chosen" as NonEmptyStr,
-    },
-    ParameterBound {
-      parameter: id_param_scheduler_population,
-      evidence: "the concurrent-sequence bound is measured in one launch scenario and explicitly barred from travelling to another model, quantisation or KV layout, so this subject holds it fixed rather than ranking against it" as NonEmptyStr,
-    },
-    ParameterBound {
-      parameter: id_param_batch_budget,
-      evidence: "the prefill batch budget is FIXED BY CURRENT OPERATOR POLICY on outgoing-profile evidence, not by a physical invariance. An earlier version of this row said a larger budget only costs KV pool; the prefill investigation measured otherwise -- a larger budget modestly RAISES prefill throughput, sharply WORSENS co-tenant stall, and reduces KV capacity, so it is a three-way trade rather than a strict loss. That trade was measured on DeepSeek and GLM must reacquire it" as NonEmptyStr,
-    },
-  ],
-  selected_candidate: Absent,
-  term_drops: [],
-  physical_model: PhysicalModelEstablished { terms: [id_term_isolation] },
-  causal_model: CausalModelEstablished {
-    couplings: [
-      VendorDocumentedCoupling {
-        authority: tensor_parallel_authority,
-        term: id_term_isolation,
-        variable: id_var_topology,
-        subject: id_subject,
-      },
-    ],
-  },
-}
-
-
-// ── BUILDERS FOR THE SEALED INPUT TYPES ───────────────────────────────────────────────────────
+// ── THE TWO PRODUCTION SUBJECTS, AND WHY BOTH RETURN OBLIGATIONS ──────────────────────────────
 //
-// A sole_constructor type cannot be built outside its defining module, which is the seal doing its
-// job: a caller cannot fabricate a decision input, a candidate field or a quality receipt out of
-// thin air in some other file. Fixtures and future callers still need to CONSTRUCT those inputs, so
-// the module exports builders for them.
+// Neither answers with a deployment shape, and that is the correct answer rather than a gap in the
+// machinery. Each carries obligations on SEVERAL independent grounds, which matters: a single
+// blocking axis would mean the whole question turned on one measurement, and filling it would let
+// everything else stay invisible.
 //
-// THERE IS DELIBERATELY NO BUILDER FOR `SelectedServingDeployment`. That value is the one thing a
-// caller must not be able to make, because possessing it IS the proof that the spine chose this
-// candidate out of this field. `select_serving_deployment` is its only producer, and the language
-// enforces that rather than a convention.
-fn topology_shape(tensor_parallel_degree: Nat, replica_count: Nat) -> TopologyShape {
-  TopologyShape { tensor_parallel_degree: tensor_parallel_degree, replica_count: replica_count }
-}
-
-fn serving_deployment_domain(artifacts: List<ModelArtifact>, topologies: List<TopologyShape>) -> ServingDeploymentChoiceDomain {
-  ServingDeploymentChoiceDomain { artifacts: artifacts, topologies: topologies }
-}
-
-fn serving_candidate_field(identity: DeclarationRef, domain: ServingDeploymentChoiceDomain, candidates: List<DeploymentCandidate>) -> ServingDeploymentCandidateField {
-  ServingDeploymentCandidateField { identity: identity, domain: domain, candidates: candidates }
-}
-
-fn serving_quality_subject(artifact: DeclarationRef, tensor_parallel_degree: Nat, speculative: SpeculativePolicy) -> ServingQualitySubject {
-  ServingQualitySubject { artifact: artifact, tensor_parallel_degree: tensor_parallel_degree, speculative: speculative }
-}
-
-fn serving_quality_receipt(subject: ServingQualitySubject, established_by: DeclarationRef, note: NonEmptyStr) -> QualityReceipt {
-  QualityReceipt { subject: subject, established_by: established_by, note: note }
-}
-
-fn serving_decision_input(
-  subject_identity: DeclarationRef,
-  field: ServingDeploymentCandidateField,
-  fleet: FleetSnapshot,
-  fleet_identity: DeclarationRef,
-  quality_policy: QualityPolicy,
-  demand: WorkloadDemand,
-  evidence_snapshot: DeclarationRef,
-  selection_policy: DeclarationRef,
-  assessment: DecisionAssessment,
-) -> ServingDeploymentDecisionInput {
-  ServingDeploymentDecisionInput {
-    subject_identity: subject_identity,
-    field: field,
-    fleet: fleet,
-    fleet_identity: fleet_identity,
-    quality_policy: quality_policy,
-    demand: demand,
-    evidence_snapshot: evidence_snapshot,
-    selection_policy: selection_policy,
-    assessment: assessment,
-  }
-}
-
-// ── THE TWO PRODUCTION SUBJECTS, AND WHY BOTH RETURN OBLIGATIONS TODAY ────────────────────────
+// Standing obligations for both: no quality assessment for any exact execution profile; no runtime
+// feasibility observation for any profile; an UNESTABLISHED workload demand; and ten unfunded
+// performance dimensions (stability, decode latency, TTFT, victim inter-token latency, prefill
+// goodput, accepted-task goodput, warm-conversation capacity, physical failure domains, operating
+// power, operational complexity). GLM additionally has no footprint read on this fleet.
 //
-// Neither of these answers with a deployment shape, and that is the correct answer rather than a
-// gap in the machinery. Both quality policies carry an EMPTY admission roster and no runtime
-// feasibility receipt exists for any profile, so every candidate is short a funded reading on two
-// hard-bounded axes and the spine returns SelectionNeedsEvidence naming exactly what is missing.
-//
-// THAT IS THE FUNCTION ENDING THE TUNING RATHER THAN JOINING IT. A version that answered today
-// would be ranking on the dimensions that happen to be populated -- isolation and replica count --
-// while the dimensions that decide a serving deployment (topology-specific quality, per-request
-// decode latency, prefill throughput, KV and warm-conversation capacity, runtime stability, power)
-// sit unfunded. The honest output is the next decision-changing measurement, not a winner.
-data glm_choice_domain: ServingDeploymentChoiceDomain = ServingDeploymentChoiceDomain {
+// THAT IS THE FUNCTION ENDING THE TUNING RATHER THAN JOINING IT. The previous version funded five
+// axes and would have answered the moment two of them filled; this one names every dimension that
+// could change the decision, so the answer stays an obligation until they are measured. No weights
+// are guessed and no axis is dropped to obtain a winner.
+data spark_runtime: RuntimeRevision = runtime_revision(
+  image: "the serving container image currently deployed on the Sparks" as NonEmptyStr,
+  vllm_revision: "the vLLM revision pinned in that image" as NonEmptyStr,
+)
+
+data serving_parameters_current: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 300000),
+  gpu_memory_utilisation_percent: 82,
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_layout: KvFp8DsMlaLayout,
+  speculative: SpeculationOff,
+  runtime: spark_runtime,
+)
+
+data eight_host_topologies: List<TopologyShape> = [
+  topology_shape(tensor_parallel_degree: 8, replica_count: 1),
+  topology_shape(tensor_parallel_degree: 4, replica_count: 2),
+  topology_shape(tensor_parallel_degree: 2, replica_count: 4),
+  topology_shape(tensor_parallel_degree: 1, replica_count: 8),
+]
+
+// THE WORKLOAD IS A SCENARIO AND SAYS SO. 300,000 tokens was authored as a working window with no
+// derived population behind it, and the checkpoint's own 1,048,576-token ceiling is a LIMIT rather
+// than a requirement -- using a limit as a requirement is what makes an over-provisioned shape look
+// free. This standing puts the scenario value where it cannot be mistaken for the demand.
+data serving_workload_standing: WorkloadDemandStanding = WorkloadDemandUnestablished {
+  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_workload_standing"),
+  scenario_value: token_count(count: 300000),
+  obligation: "no per-turn context distribution has been derived for this fleet's traffic: retained context, new input, reserved output and tool-growth reserve at a stated percentile. Until that exists this value is a scenario parameter and cannot settle a deployment" as NonEmptyStr,
+}
+
+data glm_quality_requirement: QualityRequirement = quality_requirement(
+  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_quality_requirement"),
+  required_artifact: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
+  max_divergence_millinats: 0,
+  min_task_score_delta_hundredths: 0,
+  rationale: "operator policy 2026-09-08: do not sacrifice quality. A requantised build is a DIFFERENT SET OF WEIGHTS and is not admissible against this subject however fast it is. The divergence bar is zero against the reference profile because no task-level tolerance has been established for this fleet, and a nonzero bar without one would be a guessed exchange rate" as NonEmptyStr,
+)
+
+data deepseek_quality_requirement: QualityRequirement = quality_requirement(
+  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_quality_requirement"),
+  required_artifact: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_flash_native", field: WholeDeclaration },
+  max_divergence_millinats: 0,
+  min_task_score_delta_hundredths: 0,
+  rationale: "the deployed checkpoint is the subject, and a requantisation is a different artifact rather than a cheaper way to serve this one. gunbc.spark.tensor_parallel_comparison measured 2238 millinats between tensor-parallel degrees on these weights against a bit-identical within-topology envelope, so a per-topology assessment is required and no degree inherits another's standing" as NonEmptyStr,
+)
+
+// NO QUALITY ASSESSMENTS AND NO RUNTIME RECEIPTS. The empty lists are the honest state, and they are
+// what make both subjects answer with obligations.
+data serving_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evidence_snapshot(
+  quality: [],
+  runtime_feasibility: [],
+  workload: serving_workload_standing,
+  fleet: spark_fleet_snapshot,
+  fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot"),
+)
+
+data glm_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_glm_53_flash_native, artifact_glm_53_flash_2bit],
-  topologies: [
-    TopologyShape { tensor_parallel_degree: 8, replica_count: 1 },
-    TopologyShape { tensor_parallel_degree: 4, replica_count: 2 },
-    TopologyShape { tensor_parallel_degree: 2, replica_count: 4 },
-    TopologyShape { tensor_parallel_degree: 1, replica_count: 8 },
-  ],
-}
+  topologies: eight_host_topologies,
+  parameters: serving_parameters_current,
+)
 
-data glm_ctx: TokenCount = token_count(count: 300000)
-data glm_util: Nat = 82
-
-fn glm_replica(tp: Nat) -> ReplicaProfile {
-  ReplicaProfile {
-    tensor_parallel_degree: tp,
-    max_model_len: glm_ctx,
-    gpu_memory_utilisation_percent: glm_util,
-    speculative: SpeculationOff,
-  }
-}
-
-fn candidate(name: String, label: NonEmptyStr, art: ModelArtifact, tp: Nat, replicas: Nat) -> DeploymentCandidate {
-  DeploymentCandidate {
+fn glm_candidate(name: String, label: NonEmptyStr, art: ModelArtifact, t: TopologyShape) -> DeploymentCandidate {
+  deployment_candidate(
     identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: name),
     label: label,
     artifact: art,
-    replica: glm_replica(tp: tp),
-    replica_count: replicas,
-  }
+    topology: t,
+  )
 }
 
-// EVERY COMBINATION THE DOMAIN ADMITS, and the completeness join refuses the field if one is
-// missing, extra or duplicated -- so a winner cannot be obtained by omitting the candidate that
-// would have beaten it.
-data glm_native_tp8_x1: DeploymentCandidate = candidate(name: "glm_native_tp8_x1", label: "GLM native, one eight-rank replica" as NonEmptyStr, art: artifact_glm_53_flash_native, tp: 8, replicas: 1)
-data glm_native_tp4_x2: DeploymentCandidate = candidate(name: "glm_native_tp4_x2", label: "GLM native, two four-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, tp: 4, replicas: 2)
-data glm_native_tp2_x4: DeploymentCandidate = candidate(name: "glm_native_tp2_x4", label: "GLM native, four two-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, tp: 2, replicas: 4)
-data glm_native_tp1_x8: DeploymentCandidate = candidate(name: "glm_native_tp1_x8", label: "GLM native, eight single-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, tp: 1, replicas: 8)
-data glm_2bit_tp8_x1: DeploymentCandidate = candidate(name: "glm_2bit_tp8_x1", label: "GLM 2.05-bpw, one eight-rank replica" as NonEmptyStr, art: artifact_glm_53_flash_2bit, tp: 8, replicas: 1)
-data glm_2bit_tp4_x2: DeploymentCandidate = candidate(name: "glm_2bit_tp4_x2", label: "GLM 2.05-bpw, two four-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, tp: 4, replicas: 2)
-data glm_2bit_tp2_x4: DeploymentCandidate = candidate(name: "glm_2bit_tp2_x4", label: "GLM 2.05-bpw, four two-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, tp: 2, replicas: 4)
-data glm_2bit_tp1_x8: DeploymentCandidate = candidate(name: "glm_2bit_tp1_x8", label: "GLM 2.05-bpw, eight single-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, tp: 1, replicas: 8)
+data glm_native_tp8_x1: DeploymentCandidate = glm_candidate(name: "glm_native_tp8_x1", label: "GLM native, one eight-rank replica" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
+data glm_native_tp4_x2: DeploymentCandidate = glm_candidate(name: "glm_native_tp4_x2", label: "GLM native, two four-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
+data glm_native_tp2_x4: DeploymentCandidate = glm_candidate(name: "glm_native_tp2_x4", label: "GLM native, four two-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
+data glm_native_tp1_x8: DeploymentCandidate = glm_candidate(name: "glm_native_tp1_x8", label: "GLM native, eight single-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
+data glm_2bit_tp8_x1: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp8_x1", label: "GLM 2.05-bpw, one eight-rank replica" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
+data glm_2bit_tp4_x2: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp4_x2", label: "GLM 2.05-bpw, two four-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
+data glm_2bit_tp2_x4: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp2_x4", label: "GLM 2.05-bpw, four two-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
+data glm_2bit_tp1_x8: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp1_x8", label: "GLM 2.05-bpw, eight single-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
 
-data glm_candidate_field: ServingDeploymentCandidateField = ServingDeploymentCandidateField {
+data glm_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_candidate_field"),
-  domain: glm_choice_domain,
+  domain: glm_domain,
   candidates: [
     glm_native_tp8_x1, glm_native_tp4_x2, glm_native_tp2_x4, glm_native_tp1_x8,
     glm_2bit_tp8_x1, glm_2bit_tp4_x2, glm_2bit_tp2_x4, glm_2bit_tp1_x8,
   ],
-}
+)
 
-data glm_first_decision_input: ServingDeploymentDecisionInput = ServingDeploymentDecisionInput {
-  subject_identity: id_subject,
+data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
   field: glm_candidate_field,
-  fleet: spark_fleet_snapshot,
-  fleet_identity: id_physical_authority,
-  quality_policy: native_artifact_only,
-  demand: glm_first_profile_demand,
-  evidence_snapshot: id_physical_authority,
-  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "native_artifact_only"),
-  assessment: serving_deployment_assessment,
+  evidence: serving_evidence_current,
+  quality_requirement: glm_quality_requirement,
+  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_quality_requirement"),
+)
+
+fn glm_serving_selection() -> ServingDeploymentSelection {
+  select_serving_deployment(input: glm_decision_input)
 }
 
-fn glm_first_serving_selection() -> ServingDeploymentSelection {
-  select_serving_deployment(input: glm_first_decision_input)
+fn glm_shape_admission() -> ShapeAdmission {
+  admit_shape(s: glm_serving_selection())
 }
 
-fn glm_first_launch_admission() -> LaunchAdmission {
-  admit_launch(s: glm_first_serving_selection())
-}
-
-// ── THE DEEPSEEK ARM, ROUTED THROUGH THE SAME SPINE ───────────────────────────────────────────
+// ── THE DEEPSEEK ARM ──────────────────────────────────────────────────────────────────────────
 //
-// The convergence serving today authors its replica shape as literals: 82 percent, a context
-// ceiling equal to the model's own limit, and a tensor-parallel degree taken from `length(hosts)`
-// -- which is not a choice at all but an accident of how many hosts landed in a group.
+// The convergence serving today authors its replica shape as literals: 82 percent, a context ceiling
+// equal to the model's own limit, and a tensor-parallel degree taken from `length(hosts)` -- which is
+// not a choice at all but an accident of how many hosts landed in a group.
 //
-// AN EARLIER VERSION OF THIS MODULE ANSWERED THIS QUESTION AND THE ANSWER WAS NOT EARNED. It
-// selected four two-rank replicas over the deployed two four-rank replicas, on a field whose only
+// AN EARLIER VERSION OF THIS MODULE ANSWERED THIS QUESTION AND THE ANSWER WAS NOT EARNED. It selected
+// four two-rank replicas over the deployed two four-rank replicas, on a field whose only
 // discriminating axes were replica count and the capacity share one replica loss removes -- so the
 // shape with the most replicas won both, by construction. It could not have concluded otherwise.
-// Worse, it admitted quality on weight identity alone, while this repository's own measurement
-// shows the same DeepSeek weights at TP=2 and TP=4 are 2.2387 nats apart on a deterministic forward
-// pass against a bit-identical within-topology envelope. Recommending a topology change on a
-// quality gate that cannot see topology is exactly backwards, and the recommendation is withdrawn.
-//
-// The demand is also NOT established. 300,000 tokens was authored as a working window with no
-// derived workload population behind it, and the checkpoint's own 1,048,576-token ceiling is a
-// LIMIT rather than a requirement.
-data deepseek_deployed_demand: WorkloadDemand = WorkloadDemand {
-  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_deployed_demand"),
-  required_context: token_count(count: 300000),
-  basis: "UNESTABLISHED, carried as a scenario parameter and not as the real requirement: no per-turn context distribution, percentile or output reserve has been derived for this fleet's traffic. The checkpoint's 1,048,576-token ceiling is a limit rather than a demand, and using a limit as a requirement is what makes an over-provisioned shape look free" as NonEmptyStr,
-}
-
-data deepseek_native_only: QualityPolicy = QualityPolicy {
-  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_native_only"),
-  required_artifact: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_flash_native"),
-  admitted_profiles: [],
-  rationale: "the deployed checkpoint is the subject, and a requantisation is a different artifact rather than a cheaper way to serve this one. The roster is EMPTY because no topology-specific quality receipt exists: gunbc.spark.tensor_parallel_comparison established that TP=2 and TP=4 are deterministically different models on these weights, and which is closer to the intended semantics is unanswered" as NonEmptyStr,
-}
-
-data deepseek_choice_domain: ServingDeploymentChoiceDomain = ServingDeploymentChoiceDomain {
+// Worse, it admitted quality on weight identity alone while this repository's own measurement shows
+// the same weights at TP=2 and TP=4 are 2238 millinats apart on a deterministic forward pass.
+// Recommending a topology change on a quality gate blind to topology is exactly backwards, and the
+// recommendation is withdrawn rather than restated more carefully.
+data deepseek_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_deepseek_v4_flash_native],
-  topologies: [
-    TopologyShape { tensor_parallel_degree: 8, replica_count: 1 },
-    TopologyShape { tensor_parallel_degree: 4, replica_count: 2 },
-    TopologyShape { tensor_parallel_degree: 2, replica_count: 4 },
-    TopologyShape { tensor_parallel_degree: 1, replica_count: 8 },
-  ],
-}
+  topologies: eight_host_topologies,
+  parameters: serving_parameters_current,
+)
 
-fn deepseek_candidate(name: String, label: NonEmptyStr, tp: Nat, replicas: Nat) -> DeploymentCandidate {
-  DeploymentCandidate {
+fn deepseek_candidate(name: String, label: NonEmptyStr, t: TopologyShape) -> DeploymentCandidate {
+  deployment_candidate(
     identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: name),
     label: label,
     artifact: artifact_deepseek_v4_flash_native,
-    replica: ReplicaProfile {
-      tensor_parallel_degree: tp,
-      max_model_len: token_count(count: 300000),
-      gpu_memory_utilisation_percent: glm_util,
-      speculative: SpeculationOff,
-    },
-    replica_count: replicas,
-  }
+    topology: t,
+  )
 }
 
-data deepseek_tp8_x1: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp8_x1", label: "DeepSeek, one eight-rank replica" as NonEmptyStr, tp: 8, replicas: 1)
-data deepseek_tp4_x2: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp4_x2", label: "DeepSeek, two four-rank replicas (DEPLOYED TODAY)" as NonEmptyStr, tp: 4, replicas: 2)
-data deepseek_tp2_x4: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp2_x4", label: "DeepSeek, four two-rank replicas" as NonEmptyStr, tp: 2, replicas: 4)
-data deepseek_tp1_x8: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp1_x8", label: "DeepSeek, eight single-rank replicas" as NonEmptyStr, tp: 1, replicas: 8)
+data deepseek_tp8_x1: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp8_x1", label: "DeepSeek, one eight-rank replica" as NonEmptyStr, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
+data deepseek_tp4_x2: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp4_x2", label: "DeepSeek, two four-rank replicas (DEPLOYED TODAY)" as NonEmptyStr, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
+data deepseek_tp2_x4: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp2_x4", label: "DeepSeek, four two-rank replicas" as NonEmptyStr, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
+data deepseek_tp1_x8: DeploymentCandidate = deepseek_candidate(name: "deepseek_tp1_x8", label: "DeepSeek, eight single-rank replicas" as NonEmptyStr, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
 
-data deepseek_candidate_field: ServingDeploymentCandidateField = ServingDeploymentCandidateField {
+data deepseek_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_candidate_field"),
-  domain: deepseek_choice_domain,
+  domain: deepseek_domain,
   candidates: [deepseek_tp8_x1, deepseek_tp4_x2, deepseek_tp2_x4, deepseek_tp1_x8],
-}
+)
 
-data deepseek_decision_input: ServingDeploymentDecisionInput = ServingDeploymentDecisionInput {
-  subject_identity: id_subject,
+data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
   field: deepseek_candidate_field,
-  fleet: spark_fleet_snapshot,
-  fleet_identity: id_physical_authority,
-  quality_policy: deepseek_native_only,
-  demand: deepseek_deployed_demand,
-  evidence_snapshot: id_physical_authority,
-  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_native_only"),
-  assessment: serving_deployment_assessment,
-}
+  evidence: serving_evidence_current,
+  quality_requirement: deepseek_quality_requirement,
+  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_quality_requirement"),
+)
 
 fn deepseek_serving_selection() -> ServingDeploymentSelection {
   select_serving_deployment(input: deepseek_decision_input)
 }
 
-fn deepseek_launch_admission() -> LaunchAdmission {
-  admit_launch(s: deepseek_serving_selection())
+fn deepseek_shape_admission() -> ShapeAdmission {
+  admit_shape(s: deepseek_serving_selection())
 }
