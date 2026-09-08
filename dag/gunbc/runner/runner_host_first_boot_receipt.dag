@@ -1,0 +1,128 @@
+module gunbc.runner.runner_host_first_boot_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.pci.identity { PciAddress }
+
+// THE FIRST BOOT OF AN IMAGE THIS REPOSITORY BUILT, on the Mt. Collins unit, 2026-09-06. It matters
+// as a receipt rather than as news because it DISCHARGES the four things
+// gunbc.runner.runner_host_hardware_observation listed as unobserved until Linux ran. A PCI id is a
+// prediction about which driver will bind; this is the binding.
+//
+// WHAT WAS DELIVERED AND HOW: an aarch64 EFI-stub Linux 6.12.108 with its initramfs built in,
+// wrapped in an ISO carrying the loader both as an El Torito no-emulation ESP and at the
+// removable-media default path, published to the export as the automation principal, attached
+// through the modeled MegaRAC media path, selected with an IPMI boot-device override, and started
+// with a power cycle. Every step of that chain already existed; this is the first artifact of our
+// own to travel it.
+type FirstBootReceipt {
+  unit_endpoint: NonEmptyStr
+  observed_at: NonEmptyStr
+  image_build_id: NonEmptyStr
+  kernel_release: NonEmptyStr
+  machine: NonEmptyStr
+  capture_artifact: NonEmptyStr
+  capture_sha256: NonEmptyStr
+  capture_byte_count: Int
+}
+
+data mtcollins1_first_own_image_boot: FirstBootReceipt = FirstBootReceipt {
+  unit_endpoint: "192.168.1.228",
+  observed_at: "2026-09-06",
+  image_build_id: "slice0c",
+  kernel_release: "6.12.108",
+  machine: "aarch64",
+  capture_artifact: "artifacts/bmc/mtcollins1-first-own-image-boot.log",
+  capture_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3",
+  capture_byte_count: 213944,
+}
+
+// ── the discharged predictions ──────────────────────────────────────────────────────────────────
+
+// THE DRIVER BOUND THE FUNCTIONS THE ENUMERATION NAMED. The UEFI capture predicted igb from vendor
+// 8086 device 1521 at 02:02:00.00 and .01; Linux bound igb at 0002:02:00.0 and .1 -- the same two
+// functions in Linux's domain-prefixed spelling. The qualification held, and it is now a reading
+// rather than an inference.
+type DriverBindingObservation {
+  driver: NonEmptyStr
+  bound_addresses: List<PciAddress>
+}
+
+data mtcollins1_igb_binding: DriverBindingObservation = DriverBindingObservation {
+  driver: "igb",
+  bound_addresses: ["0002:02:00.0" as PciAddress, "0002:02:00.1" as PciAddress],
+}
+
+// THE MAC JOIN IS THE POINT OF RECORDING INTERFACES AT ALL. eth0 presents 28:c1:3c:8a:d6:4a, which
+// is the address the firmware reported when it attempted PXE -- so the port the fleet reaches and
+// the port the firmware boots from are the same port, established rather than assumed.
+//
+// usb0 IS NOT A HOST NIC AND IS RECORDED SO NOBODY LATER MISTAKES IT FOR ONE. It is the BMC's
+// virtual USB ethernet, which appears because the controller presents a composite USB device; it
+// belongs to the management path, not to the fabric.
+type InterfaceObservation {
+  name: NonEmptyStr
+  mac: NonEmptyStr
+  role: NonEmptyStr
+}
+
+data mtcollins1_observed_interfaces: List<InterfaceObservation> = [
+  InterfaceObservation {
+    name: "eth0",
+    mac: "28:c1:3c:8a:d6:4a",
+    role: "host NIC port 1; the address the firmware reported during its PXE attempt",
+  },
+  InterfaceObservation {
+    name: "eth1",
+    mac: "28:c1:3c:8a:d6:4b",
+    role: "host NIC port 2, the second function of the same I350",
+  },
+  InterfaceObservation {
+    name: "usb0",
+    mac: "8e:62:e1:06:67:60",
+    role: "the BMC's virtual USB ethernet, present because the controller offers a composite USB device; management path, not fabric",
+  },
+]
+
+// /dev/kvm EXISTS ON THIS HARDWARE UNDER THIS KERNEL. Everything downstream -- jailer, Firecracker,
+// one guest per admitted attempt -- rests on this one character device, so it is its own row rather
+// than a line in a health summary.
+type KvmAvailability = KvmDevicePresent | KvmDeviceAbsent
+
+data mtcollins1_kvm: KvmAvailability = KvmDevicePresent
+
+// ── what the boot cost to get right ─────────────────────────────────────────────────────────────
+
+// TWO FAILURES PRECEDED THIS RECEIPT AND BOTH ARE RECORDED, because the second one invalidated the
+// diagnosis of the first and that is the kind of thing a later reader needs.
+//
+// THE PANIC: the first boot ran /init for 34ms with no output and died with "Attempted to kill
+// init! exitcode=0x0". The cause was that CONFIG_INITRAMFS_SOURCE pointing at a DIRECTORY cannot
+// carry device nodes, so /dev was empty -- PID 1 had no /dev/console, every echo went nowhere, and
+// the shell it exec'd read immediate EOF and exited. The gen_init_cpio SPEC form declares nodes
+// without needing root to mknod them, and PID 1 no longer has an exit path at all.
+//
+// THE WRONG DIAGNOSIS, kept because it was confidently held: the doubled kernel messages were read
+// as CONFIG_CMDLINE_EXTEND appending to a firmware-supplied command line, leaving the wrong console
+// last. The capture disproves it -- "Kernel command line:" shows exactly the built-in string and
+// nothing prepended, so firmware passed none and the doubling is two UART devices both reaching
+// SOL. A rebuild was spent on that theory.
+//
+// THE METHOD ERROR UNDERNEATH BOTH: three earlier console reads began 150 seconds after the reset,
+// by which time the panic had scrolled away, so a crashing machine was indistinguishable from a
+// quiet one. Attaching the console BEFORE the power cycle is what turned silence into a diagnosis.
+data first_boot_defects_encountered: List<NonEmptyStr> = [
+  "directory-sourced initramfs carries no device nodes; PID 1 had no /dev/console and exited, panicking the kernel",
+  "PID 1 exec'd a shell that could exit, so any shell exit was a kernel panic",
+  "console doubling was misread as an appended firmware command line; the capture shows firmware passed none",
+  "console captures started after the reset, so a panic that had already scrolled read as a silent machine",
+]
+
+// STILL UNOBSERVED, and listed for the same reason the hardware lane listed its own gaps: this boot
+// establishes binding and device presence, not fabric participation or virtualization actually
+// working.
+data unobserved_after_first_boot: List<NonEmptyStr> = [
+  "that either interface carries traffic; no address was configured and nothing was pinged",
+  "that KVM can start a guest -- /dev/kvm existing is a precondition, not a demonstration",
+  "that the image is reachable over SSH; no network or sshd exists in this slice",
+  "that the host survives detaching the boot medium, which is the claim the initramfs design rests on",
+]
