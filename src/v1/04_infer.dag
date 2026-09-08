@@ -593,12 +593,12 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 }
 
 // constructor_binding_authority: the locals binding carries the OWNER coproduct NODE.
-// Do not re-derive it through lookup_type_for / lookup_type_by_name: those project a
-// unique unit arm of the same spelling (variant_arm_type_projection) and then a parent-name
-// miss falls through to that leaf. The production specimen is Primitive(Observed) vs
-// Coproduct(BeltObserve) at gunbc.roadmap.roadmap_belt_actuate belt_sessions_observe_for_instance
-// — the same source, flipped by an unrelated import that changes whether the name lookup
-// hits. Reading the edge already in locals is closure-invariant.
+// infer_record_lit used to re-derive that owner through lookup_type_by_name(parent_name)
+// and, on a miss, fall through to lookup_type_by_name(arm) / variant_arm_type_projection.
+// That miss is what differs between typechecking a module as its own subject (local
+// str_bindings hit) and resolving a larger entry over the same bytes (shared intern /
+// census / overlay can miss). It is not the three refuted bind stories (foreign unit
+// arm as competitor, Unique/Ambiguous owner-count, global_bare Conj insert).
 fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
