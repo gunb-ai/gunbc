@@ -129,7 +129,7 @@ fn r2_account_resource_name(account_id: String) -> String {
 data r2_s3_region: NonEmptyStr = "auto"
 
 type R2S3SecretDerivation
-  = Sha256OfApiTokenValue
+  = Sha256OfApiTokenValue {}
 
 type R2S3AccessPair {
   access_key_id: NonEmptyStr
@@ -139,7 +139,7 @@ type R2S3AccessPair {
 fn r2_s3_access_pair_from_created_token(token: CreatedAccountToken) -> R2S3AccessPair {
   R2S3AccessPair {
     access_key_id: token.id,
-    secret_derivation: Sha256OfApiTokenValue
+    secret_derivation: Sha256OfApiTokenValue {}
   }
 }
 

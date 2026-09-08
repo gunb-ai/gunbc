@@ -36,9 +36,10 @@ import extdeps.cloudflare.r2 {
   workers_r2_storage_bucket_item_read_permission_group_id_citation,
   r2_s3_access_key_is_created_token_id_citation,
   r2_s3_secret_is_sha256_of_create_value_citation,
-  Sha256OfApiTokenValue,
   r2_tokens_doc_as_of
 }
+import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.cloudflare.r2_token_mint {
   bootstrap_can_mint_account_tokens,
   minted_r2_token_can_read_objects,
@@ -48,9 +49,8 @@ import gunbc.cloudflare.r2_token_mint {
   cloudflare_r2_object_read_token_shape,
   admit_r2_object_read_api_mint,
   admit_bootstrap_token_api_mint,
-  cloudflare_account_tokens_create_consumption,
-  DeclaredFrontier,
-  ConsumedInThisChange
+  cloudflare_r2_token_mint_frontier_rows,
+  vendor_cloudflare_frontier_rows
 }
 
 test fn cloudflare_client_v4_base_is_the_documented_host() -> Bool {
@@ -132,7 +132,9 @@ test fn r2_s3_access_key_id_is_the_created_token_id() -> Bool {
   }
   let pair = r2_s3_access_pair_from_created_token(token: token)
   pair.access_key_id == token.id
-    && pair.secret_derivation == Sha256OfApiTokenValue
+    && match pair.secret_derivation {
+      Sha256OfApiTokenValue {} => true
+    }
 }
 
 test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Bool {
@@ -179,11 +181,37 @@ test fn r2_s3_derivation_and_permission_group_id_cite_the_r2_tokens_doc() -> Boo
       == "6a018a9f2fc74eb6b293b0c548f38b39"
 }
 
-test fn create_operation_is_a_declared_frontier_not_a_silent_dangling_row() -> Bool {
-  match cloudflare_account_tokens_create_consumption {
-    DeclaredFrontier { later_consumer: c, trigger: _ } =>
-      string_contains(s: c, pattern: "admit_r2_object_read_api_mint")
-        && string_contains(s: c, pattern: "the witness is not a consumer")
-    ConsumedInThisChange { consumer: _, executing_route: _ } => false
+fn frontier_row_names_decl(row: FrontierRow, ref: DeclarationRef) -> Bool {
+  match row.subject {
+    DeclSubject { ref: r } => declaration_ref_eq(a: r, b: ref)
+    PathSubject { path: _ } => false
   }
+}
+
+test fn r2_token_mint_frontier_rows_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: cloudflare_r2_token_mint_frontier_rows)
+    && frontier_rows_well_formed(rows: vendor_cloudflare_frontier_rows)
+}
+
+test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
+  any(cloudflare_r2_token_mint_frontier_rows, row =>
+    frontier_row_names_decl(
+      row: row,
+      ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_read_api_mint"),
+    ))
+    && any(cloudflare_r2_token_mint_frontier_rows, row =>
+      frontier_row_names_decl(
+        row: row,
+        ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_bootstrap_token_api_mint"),
+      ))
+    && any(cloudflare_r2_token_mint_frontier_rows, row =>
+      frontier_row_names_decl(
+        row: row,
+        ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "admit_account_token_api_mint"),
+      ))
+    && any(vendor_cloudflare_frontier_rows, row =>
+      frontier_row_names_decl(
+        row: row,
+        ref: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
+      ))
 }
