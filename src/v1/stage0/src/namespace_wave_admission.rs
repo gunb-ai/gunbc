@@ -1620,17 +1620,22 @@ pub struct TransitionAdmission {
 ///
 /// EIGHTH TRANSITION (2026-09-08, gunbc#10783), and it is the SEVENTH's shape arriving a second
 /// time from another lane, which is the evidence that this is a standing cost rather than an
-/// incident. Two recurring-failure-mode classes are filed as their own files under
+/// incident. ONE recurring-failure-mode class is filed as its own file under
 /// `dag/gunbc/recurring_failure_mode/`, and the generated roster's existing declaration newly
-/// resolves `unapplied_function_value_admitted_at_a_value_position` into the class's own module.
+/// resolves `unapplied_function_value_admitted_at_a_value_position` into that module.
 /// `NewPoolCoincidenceResolution`, for the same reason #10813's row is: the ledger's membership IS
 /// the directory, so filing a class is a binding motion.
 ///
-/// ONE ROW, THOUGH THE CHANGE FILES TWO CLASS MODULES AND ONE STALL MODULE. Only this spelling
-/// produced a binding delta in the required run; the rest are `ExplicitlyEvaluatedZeroDelta` and
+/// ONE ROW, AND THE CHANGE ADDS THREE MODULES: this class, one `guarantee_stall` module, and one
+/// probe-test module. Only this spelling produced a binding delta in the required run -- the stall
+/// module is named by a HAND-AUTHORED roster, so its reference is an authored one rather than a
+/// pool coincidence, and the probe module is named by nothing. The rest are
+/// `ExplicitlyEvaluatedZeroDelta` and
 /// auto-admit. The row names the tuple the wall reported rather than a rule covering "new class
-/// files", because this roster's population is an enumeration and never a predicate -- which is
-/// also why #10813's row and this one stand side by side instead of being generalised into one.
+/// files", because this roster's population is an enumeration and never a predicate. #10813's row
+/// stood beside this one until its class landed on main and its own trigger collected it in the
+/// paragraph above; the two were never generalised into a single predicate covering "new class
+/// files", which is what let each retire on its own class rather than on the other's.
 ///
 /// TRIGGER: it goes when this class is on main, at which point base and head both resolve the
 /// spelling into the class's module, the row reports CONSUMED, and it comes due on the roster's
