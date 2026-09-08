@@ -21,6 +21,7 @@ import gunbc.doc_graph_roots {
   hand_authored_doc_binds,
   hand_authored_binds_to_keyed_rows,
   hand_authored_bind_key_eq,
+  hand_authored_doc_path,
   HandAuthoredDocBind, PlanDoc,
   HandAuthoredDocBindsBuilt,
   HandAuthoredDocBindsDuplicateKey,
@@ -58,12 +59,26 @@ test fn doc_graph_registered_plan_roots_all_admitted() -> Bool {
   return doc_graph_admitted_root_count(doc_graph_roots_all()) == doc_graph_roots_all().count()
 }
 
-// Discriminating RED for a doc bind (or extra root) naming a slug with no file: the host
-// admits an extra root only when it is present in the doc universe. The specimen is the
-// host-converge-inventory markdown deleted in #9635 while ROADMAP and a HandAuthoredDocBind
-// still named it.
+// Extra-root admission, not HandAuthoredDocBind construction. A bind with a well-formed
+// primary_work and a slug that has no file still enters the keyed roster: construction
+// checks key uniqueness and works-refs, not slug-to-file. The host then derives
+// docs/plans/<slug>.md and does not admit it (cli_run build_doc_graph_report). Specimen
+// is synthetic (same slug as plan_projects_committed_markdown's missing-file-slug)
+// so it stays absent by construction, not by a historical deletion.
 test fn doc_graph_missing_plan_slug_is_not_admitted() -> Bool {
-  return doc_graph_admitted_root_count(["docs/plans/host-converge-inventory.md"]) == 0
+  return doc_graph_admitted_root_count(["docs/plans/missing-file-slug.md"]) == 0
+}
+
+test fn hand_authored_bind_with_missing_slug_is_not_admitted_as_root() -> Bool {
+  let b = HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "missing-file-slug",
+    primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_path", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic: bind whose derived path is not in the doc universe") },
+  }
+  return hand_authored_doc_path(b: b) == "docs/plans/missing-file-slug.md"
+    && doc_graph_admitted_root_count([hand_authored_doc_path(b: b)]) == 0
 }
 
 test fn doc_graph_hand_authored_slugs_not_registered() -> Bool {
