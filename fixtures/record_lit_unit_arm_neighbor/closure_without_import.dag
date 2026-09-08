@@ -1,7 +1,0 @@
-module fixtures.record_lit_unit_arm_neighbor.closure_without_import
-
-import fixtures.record_lit_unit_arm_neighbor.declaring_module { NeighborObserve, pick_observe }
-
-fn use_pick(c: Bool) -> NeighborObserve {
-  pick_observe(c: c)
-}

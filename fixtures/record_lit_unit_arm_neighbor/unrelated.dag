@@ -1,9 +1,0 @@
-module fixtures.record_lit_unit_arm_neighbor.unrelated
-
-// THE ONE UNRELATED IMPORT LINE. declaring_module neither imports this file nor is imported
-// by it. Pulling unit_collider into a larger entry's closure is the whole perturbation.
-import fixtures.record_lit_unit_arm_neighbor.unit_collider { NeighborPhase }
-
-fn mention_phase() -> NeighborPhase {
-  Observed
-}

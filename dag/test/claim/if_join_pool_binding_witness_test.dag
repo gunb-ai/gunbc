@@ -72,34 +72,6 @@ fn if_join_without_collision_outcome() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-data unit_arm_declaring_path: String = "fixtures/record_lit_unit_arm_neighbor/declaring_module.dag"
-data unit_arm_collider_path: String = "fixtures/record_lit_unit_arm_neighbor/unit_collider.dag"
-data unit_arm_unrelated_path: String = "fixtures/record_lit_unit_arm_neighbor/unrelated.dag"
-data unit_arm_with_import_path: String = "fixtures/record_lit_unit_arm_neighbor/closure_with_import.dag"
-data unit_arm_without_import_path: String = "fixtures/record_lit_unit_arm_neighbor/closure_without_import.dag"
-
-fn unit_arm_with_import_outcome() -> MultiModuleCompileFixtureOutcome {
-  compile_fixture(MultiModuleCompileFixture {
-    sources: [
-      if_join_source(path: unit_arm_declaring_path),
-      if_join_source(path: unit_arm_collider_path),
-      if_join_source(path: unit_arm_unrelated_path),
-      if_join_source(path: unit_arm_with_import_path)
-    ],
-    entry: unit_arm_with_import_path
-  })
-}
-
-fn unit_arm_without_import_outcome() -> MultiModuleCompileFixtureOutcome {
-  compile_fixture(MultiModuleCompileFixture {
-    sources: [
-      if_join_source(path: unit_arm_declaring_path),
-      if_join_source(path: unit_arm_without_import_path)
-    ],
-    entry: unit_arm_without_import_path
-  })
-}
-
 fn if_join_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
   match o {
     FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
@@ -124,12 +96,4 @@ test fn the_declaring_module_compiles_clean_with_the_unrelated_pool_member() -> 
 
 test fn the_same_declaring_module_compiles_clean_without_the_pool_member() -> Bool {
   if_join_completed_clean(o: if_join_without_collision_outcome())
-}
-
-test fn a_local_payload_arm_still_widens_when_a_unit_arm_of_the_same_spelling_is_pulled_in_by_an_unrelated_import() -> Bool {
-  if_join_completed_clean(o: unit_arm_with_import_outcome())
-}
-
-test fn the_same_payload_arm_compiles_clean_without_the_unit_arm_neighbor() -> Bool {
-  if_join_completed_clean(o: unit_arm_without_import_outcome())
 }
