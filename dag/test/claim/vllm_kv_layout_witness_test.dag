@@ -9,7 +9,7 @@ import std.measure {
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
   AttentionLayerCount, attention_layer_count,
 }
-import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize }
+import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency }
 import extdeps.vllm.kv_cache {
   VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused,
   vllm_observed_kv_pool_from_reading,
@@ -19,7 +19,7 @@ import extdeps.vllm.kv_cache {
 import extdeps.vllm.kv_layout {
   KvGroupKind, FullAttention, SlidingWindowAttention, MambaState,
   KvGroupLayout, ResolvedKvLayout, resolved_kv_layout,
-  VllmReportedCapacity, vllm_reported_capacity,
+  VllmReportedCapacity, VllmReportedCapacityAdmission, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
   BlocksPerRequest, BlocksPerRequestRecovered, BlocksPerRequestUnrecoverable,
   recovered_blocks_per_max_length_request,
   PrintedLinesAgreement, PrintedLinesAgree, PrintedLinesDisagree, PrintedLinesUncheckable, printed_lines_agree,
@@ -48,8 +48,18 @@ fn w_admitted_pool() -> VllmObservedKvPool? {
   }
 }
 
-fn w_reported(pool: VllmObservedKvPool) -> VllmReportedCapacity {
-  vllm_reported_capacity(pool: pool, max_concurrency: percent(count: 1122))
+fn w_concurrency_reading() -> VllmStartupReading {
+  vllm_startup_reading(
+    line: MaximumConcurrency,
+    captured_text: "Maximum concurrency for 1,048,576 tokens per request: 11.22x" as NonEmptyStr,
+  )
+}
+
+fn w_reported(pool: VllmObservedKvPool) -> VllmReportedCapacity? {
+  match vllm_reported_capacity(pool: pool, max_concurrency: percent(count: 1122), reading: w_concurrency_reading()) {
+    ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+    ReportedCapacityRefused { cause: _ } => none
+  }
 }
 
 // The allocator inventory read off the same engine's cache_config_info.
@@ -72,9 +82,13 @@ test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines
   match w_admitted_pool() {
     Absent => false
     Present { value: p } =>
-      match recovered_blocks_per_max_length_request(layout: w_layout(groups: []), reported: w_reported(pool: p)) {
-        BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4854
-        BlocksPerRequestUnrecoverable { cause: _ } => false
+      match w_reported(pool: p) {
+        Absent => false
+        Present { value: reported } =>
+          match recovered_blocks_per_max_length_request(layout: w_layout(groups: []), reported: reported) {
+            BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4854
+            BlocksPerRequestUnrecoverable { cause: _ } => false
+          }
       }
   }
 }
@@ -91,22 +105,26 @@ test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines
 test fn the_printed_line_check_does_not_see_the_inventory_which_is_why_a_receipt_is_still_needed() -> Bool {
   match w_admitted_pool() {
     Absent => false
-    Present { value: p } => {
-      let other = resolved_kv_layout(
-        allocator_blocks: allocator_block_count(count: 55328),
-        scheduler_block_size: token_count(count: 16),
-        hash_block_size: token_count(count: 16),
-        max_model_len: token_count(count: 1048576),
-        max_num_batched_tokens: token_count(count: 8192),
-        groups: [],
-      )
-      (match printed_lines_agree(layout: w_layout(groups: []), reported: w_reported(pool: p)) { PrintedLinesAgree => true  _ => false })
-        && (match printed_lines_agree(layout: other, reported: w_reported(pool: p)) { PrintedLinesAgree => true  _ => false })
-        && (match recovered_blocks_per_max_length_request(layout: other, reported: w_reported(pool: p)) {
-              BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4930
-              BlocksPerRequestUnrecoverable { cause: _ } => false
-            })
-    }
+    Present { value: p } =>
+      match w_reported(pool: p) {
+        Absent => false
+        Present { value: reported } => {
+          let other = resolved_kv_layout(
+            allocator_blocks: allocator_block_count(count: 55328),
+            scheduler_block_size: token_count(count: 16),
+            hash_block_size: token_count(count: 16),
+            max_model_len: token_count(count: 1048576),
+            max_num_batched_tokens: token_count(count: 8192),
+            groups: [],
+          )
+          (match printed_lines_agree(layout: w_layout(groups: []), reported: reported) { PrintedLinesAgree => true  _ => false })
+            && (match printed_lines_agree(layout: other, reported: reported) { PrintedLinesAgree => true  _ => false })
+            && (match recovered_blocks_per_max_length_request(layout: other, reported: reported) {
+                  BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4930
+                  BlocksPerRequestUnrecoverable { cause: _ } => false
+                })
+        }
+      }
   }
 }
 
@@ -115,13 +133,33 @@ test fn the_printed_line_check_does_not_see_the_inventory_which_is_why_a_receipt
 test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Bool {
   match w_admitted_pool() {
     Absent => false
-    Present { value: p } => {
-      let wrong = vllm_reported_capacity(pool: p, max_concurrency: percent(count: 440))
-      match printed_lines_agree(layout: w_layout(groups: []), reported: wrong) {
-        PrintedLinesDisagree { implied: i, reported: r } => percent_count(p: i) == 1122 && percent_count(p: r) == 440
-        _ => false
+    Present { value: p } =>
+      match vllm_reported_capacity(pool: p, max_concurrency: percent(count: 440), reading: w_concurrency_reading()) {
+        ReportedCapacityRefused { cause: _ } => false
+        ReportedCapacityAdmitted { capacity: wrong } =>
+          match printed_lines_agree(layout: w_layout(groups: []), reported: wrong) {
+            PrintedLinesDisagree { implied: i, reported: r } => percent_count(p: i) == 1122 && percent_count(p: r) == 440
+            _ => false
+          }
       }
-    }
+  }
+}
+
+test fn a_concurrency_figure_bound_to_the_pool_line_is_refused() -> Bool {
+  match w_admitted_pool() {
+    Absent => false
+    Present { value: p } =>
+      match vllm_reported_capacity(
+        pool: p,
+        max_concurrency: percent(count: 1122),
+        reading: vllm_startup_reading(
+          line: GpuKvCacheSize,
+          captured_text: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens" as NonEmptyStr,
+        ),
+      ) {
+        ReportedCapacityRefused { cause: c } => string_contains(s: c as String, pattern: "MaximumConcurrency")
+        ReportedCapacityAdmitted { capacity: _ } => false
+      }
   }
 }
 

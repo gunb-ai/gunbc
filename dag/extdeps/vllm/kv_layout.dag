@@ -15,6 +15,9 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.kv_cache { VllmObservedKvPool }
+import extdeps.vllm.log_lines {
+  VllmStartupReading, VllmStartupLine, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -156,11 +159,32 @@ type VllmReportedCapacity sole_constructor {
   observed_at_revision: VllmSourceRevision
 }
 
-fn vllm_reported_capacity(pool: VllmObservedKvPool, max_concurrency: Percent) -> VllmReportedCapacity {
-  VllmReportedCapacity {
-    pool: pool,
-    max_concurrency: max_concurrency,
-    observed_at_revision: pool.observed_at_revision,
+type VllmReportedCapacityAdmission
+  = ReportedCapacityAdmitted { capacity: VllmReportedCapacity }
+  | ReportedCapacityRefused { cause: NonEmptyStr }
+
+fn vllm_reported_capacity(
+  pool: VllmObservedKvPool,
+  max_concurrency: Percent,
+  reading: VllmStartupReading,
+) -> VllmReportedCapacityAdmission {
+  match reading.line {
+    MaximumConcurrency =>
+      ReportedCapacityAdmitted {
+        capacity: VllmReportedCapacity {
+          pool: pool,
+          max_concurrency: max_concurrency,
+          observed_at_revision: pool.observed_at_revision,
+        },
+      }
+    GpuKvCacheSize =>
+      ReportedCapacityRefused {
+        cause: "the concurrency figure must be bound to the MaximumConcurrency startup line, not the GPU KV cache size line" as NonEmptyStr,
+      }
+    ResolvedKvCacheFormat =>
+      ReportedCapacityRefused {
+        cause: "the concurrency figure must be bound to the MaximumConcurrency startup line, not the resolved KV cache format line" as NonEmptyStr,
+      }
   }
 }
 

@@ -4,6 +4,7 @@ import std.types { Bool, String, NonEmptyStr, EpochSecs }
 import std.content_hash { ContentHash, Sha256Hash, Sha1Hash, Sha256Digest, Sha1Digest, Sha256DigestHex, Sha1DigestHex }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.fleet_intent_network { operator_host_srv9 }
 import gunbc.spark.vllm_serving_launch {
   VllmServingLaunch, vllm_serving_launch,
   LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction,
@@ -79,6 +80,21 @@ test fn one_invocation_with_a_disagreeing_field_is_a_contradiction_not_turnover(
           _ => false
         })
     && !join_is_admissible(j: same_launch(a: w_first(), b: rebuilt))
+    && (match same_launch(
+          a: w_first(),
+          b: vllm_serving_launch(
+            group: FabricGroupA,
+            head: operator_host_srv9,
+            systemd_invocation: "inv-16-36" as NonEmptyStr,
+            container_id: "gunbc-spark-pair" as NonEmptyStr,
+            executable_digest: w_sha256(hex: w_exe_a),
+            unit_digest: w_sha256(hex: w_unit),
+            started_at: 1788000000,
+          ),
+        ) {
+          LaunchContradiction { invocation: i, field: f } => (i as String) == "inv-16-36" && (f as String) == "head"
+          _ => false
+        })
 }
 
 // AN INCOMPARABLE DIGEST PAIR IS NOT A DIFFERENCE. Two observers that hashed one launch under
@@ -108,4 +124,5 @@ test fn the_join_wire_names_both_invocations() -> Bool {
   let second = w_launch(invocation: "inv-20-43", container: "gunbc-spark-pair", exe: w_exe_a, started: 1788000000)
   string_contains(s: launch_join_wire(j: same_launch(a: w_first(), b: second)), pattern: "inv-16-36")
     && string_contains(s: launch_join_wire(j: same_launch(a: w_first(), b: second)), pattern: "inv-20-43")
+    && string_contains(s: launch_join_wire(j: same_launch(a: w_first(), b: second)), pattern: "different-launch")
 }
