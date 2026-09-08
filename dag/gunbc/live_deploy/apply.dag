@@ -612,9 +612,8 @@ func live_deploy_retract_srv1_operator_wet() -> ProcessExit {
 // RLM_APPLY_RUN_ID, RLM_PLAN_ARTIFACT_HASH) and carries it as provenance, never as eligibility; (3)
 // it mints gunbc.live_deploy.apply_receipt LiveDeployApplyReceipt after the fold returns, with one
 // independent post-apply /healthz observation and a completion instant, and writes it to the
-// artifact path the workflow uploads. A TerminalNoOp target decision is recorded as such and exits
-// nonzero HERE, unlike the plain entry: within the transaction, 'R was already running' means this
-// run installed nothing, and the join must see that rather than a converged-looking receipt.
+// artifact path the workflow uploads. Whether the fold installed anything is LiveDeployApplyOutcome
+// on that receipt, not a deleted target-decision label: the join reads apply_outcome.
 
 fn live_deploy_post_apply_readiness(access: DeployAccess) -> LiveDeployReadinessOutcome {
   match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: deployment_spec_srv1()), transport: access.transport) {

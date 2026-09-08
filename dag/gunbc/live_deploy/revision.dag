@@ -1,12 +1,10 @@
 module gunbc.live_deploy.revision
 
-import std.types { NonEmptyStr, FilePath, CommitSha }
-import gunbc.fleet_intent { srv1_host }
-import product.placement_supply { HostIdentity }
+import std.types { NonEmptyStr }
 
 // WHAT THIS MODULE IS NOW: the ancestry RELATION between two revisions, and nothing about deploys.
-// gunbc.fleet_main_revision is its consumer, asking how two revisions relate for fleet revision
-// tracking.
+// gunbc.fleet_main_revision is its consumer: it projects a merge-base observation into
+// revision_relation_from_ancestry_facts. It does not consume a probe fold; there is none here.
 //
 // IT USED TO GATE DEPLOYS AND NO LONGER DOES (operator ruling 2026-09-07). The prose that stood
 // here argued for a freshness precondition on automated deploys: main-push runs are not cancelled,
@@ -40,26 +38,6 @@ import product.placement_supply { HostIdentity }
 // input: wall-clock ordering of CI runs is exactly the signal that is already inverted, and commit
 // dates are attacker- and rebase-controlled.
 
-type DeployTargetId {
-  host: HostIdentity
-  destination: FilePath
-  service_unit: NonEmptyStr
-}
-
-// The mutex identity is the DEPLOYMENT DOMAIN — the host, the directory the deploy rsyncs into, and
-// the service unit it restarts — never the workflow job name. A job id is a CI-side label: renaming
-// the job silently mints a different lock while the same three host resources are still being
-// mutated, and two differently-named stages that touch the same directory would serialize against
-// nothing. Deriving the identity from what is actually mutated makes 'same target' mean 'same bytes
-// at risk', which is the only reading under which a mutex is a safety property rather than a naming
-// convention.
-
-data srv1_dashboard_target: DeployTargetId = DeployTargetId {
-  host: srv1_host.identity,
-  destination: "/opt/gunbc/gunbc" as FilePath,
-  service_unit: "gunbc-dashboard" as NonEmptyStr,
-}
-
 type DeployRevisionRelation
   = SameRevision
   | DeployedIsAncestor
@@ -77,28 +55,15 @@ type DeployRevisionRelation
 // owns and answers better -- that one decides per member from OBSERVATION of the host, this one
 // decided for the whole release from ANCESTRY -- and when the two disagreed the coarse one won.
 //
-// WHAT SURVIVES HERE is the relation itself and the ancestry probes beneath it, which
-// gunbc.fleet_main_revision consumes for fleet revision tracking. That consumer is unaffected: it
+// WHAT SURVIVES HERE is the relation itself and revision_relation_from_ancestry_facts, which
+// gunbc.fleet_main_revision consumes via a merge-base observation. That consumer is unaffected: it
 // asks how two revisions relate, not whether a deploy may proceed.
 
-// The (deployed→candidate, candidate→deployed) probe pair folded into a relation. SHA equality is
-// checked first and short-circuits both probes. Note that (true,true) is reachable ONLY when the
-// SHAs are equal — a commit is its own ancestor and ancestry is antisymmetric — so this arm is
-// defensive rather than expected, and it agrees with the equality short-circuit instead of
-// contradicting it.
-
-// THE CLASSIFICATION IS ONE AUTHORITY WITH TWO EVIDENCE REALIZATIONS.
-//
-// This body was reachable only through the probe-pair projection below, which meant a second
-// evidence shape -- a single merge-base object, which decides both directions at once -- had to
-// re-derive the same three-way answer to use it. That is the §3 fork in its quietest form: not two
-// names for one concept, but two places computing one decision, agreeing today and free to drift
-// apart tomorrow. A later correction to either would leave two different meanings of
-// CandidateIsAncestor with nothing to notice.
-//
-// So the decision takes ANCESTRY FACTS and the evidence shapes project into it: two directional
-// probes here, one merge-base object in gunbc.fleet_main_revision. Reusing the five variant names
-// was never enough -- the vocabulary was shared while the policy was copied.
+// THE CLASSIFICATION IS ONE AUTHORITY. The decision takes ANCESTRY FACTS and the merge-base
+// evidence shape in gunbc.fleet_main_revision projects into it. A deleted probe-pair projection
+// used to sit beside this fold; keeping both would have been the §3 fork of two places computing
+// one decision. Reusing the variant names was never enough -- the vocabulary was shared while the
+// policy was copied.
 fn revision_relation_from_ancestry_facts(
   same: Bool,
   deployed_is_ancestor_of_candidate: Bool,
@@ -120,42 +85,4 @@ fn revision_relation_from_ancestry_facts(
 // ancestor arm had been folded into the no-common-ancestor arm, so the refusal named a force-push
 // that never happened. revision_relation_from_ancestry_facts is reached only once a merge base was
 // REPORTED (relation_from_merge_base_oid), so 'neither' there means diverged; a merge-base exit of 1
-// reaches UnrelatedHistories on its own path. Two bare is-ancestor probes cannot tell the two apart,
-// so the probe fold below says so rather than picking one.
-fn deploy_revision_relation_from_probes(
-  deployed: CommitSha,
-  candidate: CommitSha,
-  deployed_is_ancestor_of_candidate: Bool,
-  candidate_is_ancestor_of_deployed: Bool,
-) -> DeployRevisionRelation {
-  if deployed == candidate {
-    SameRevision
-  } else if deployed_is_ancestor_of_candidate {
-    DeployedIsAncestor
-  } else if candidate_is_ancestor_of_deployed {
-    CandidateIsAncestor
-  } else {
-    RelationUnverifiable { cause: "two is-ancestor probes answered no in both directions, which cannot distinguish diverged histories from unrelated ones; a merge-base observation decides" as NonEmptyStr }
-  }
-}
-
-// The deployed-revision record lives OUTSIDE the directory the deploy rsyncs into, and that
-// placement is load-bearing rather than tidy. A marker inside the deployed tree is destroyed or
-// overwritten by the very rsync whose outcome it is supposed to describe, so after a partial or
-// interrupted deploy the record would describe a tree that was never fully written — the state the
-// guard exists to detect becomes the state it cannot see. Keeping it beside the destination instead
-// means the record is written ONLY after the service has restarted and the deployed surface has
-// been read back, so a crash mid-deploy leaves the previous revision recorded and the next run
-// correctly classifies the incomplete tree as still-at-the-old-revision rather than trusting a
-// marker the failed run had already advanced.
-
-fn deploy_revision_state_path(target: DeployTargetId) -> FilePath {
-  concat(concat("/var/lib/gunbc/deploy-revision/", target.service_unit as String), ".sha") as FilePath
-}
-
-fn deploy_target_mutex_group(target: DeployTargetId) -> String {
-  concat(
-    concat(concat("gunbc-deploy-", target.host as String), "-"),
-    target.service_unit as String
-  )
-}
+// reaches UnrelatedHistories on its own path.
