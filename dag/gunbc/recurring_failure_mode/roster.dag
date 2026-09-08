@@ -11,7 +11,6 @@ module gunbc.recurring_failure_mode.roster
 
 import std.types { List }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
-import gunbc.recurring_failure_mode.disjoint_chains_admitted_while_meeting_chains_decline { disjoint_chains_admitted_while_meeting_chains_decline }
 import gunbc.recurring_failure_mode.a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry { a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry }
 import gunbc.recurring_failure_mode.censored_estimator_drops_its_own_tail { censored_estimator_drops_its_own_tail }
 import gunbc.recurring_failure_mode.selection_view_read_as_population { selection_view_read_as_population }
@@ -187,7 +186,6 @@ import gunbc.recurring_failure_mode.declared_refusal_unreachable_from_its_own_co
 import gunbc.recurring_failure_mode.enforcement_gate_positioned_after_the_effect_it_guards { enforcement_gate_positioned_after_the_effect_it_guards }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
-  disjoint_chains_admitted_while_meeting_chains_decline,
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
   censored_estimator_drops_its_own_tail,
   selection_view_read_as_population,

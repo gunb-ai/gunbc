@@ -1138,15 +1138,9 @@ fn floor_expected_red_chunk_24() -> List<String> {
   tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused", tail: Empty {} } } } } } }
 }
 
-// THE DISJOINT-CHAIN FLOOR HOLE, enrolled red because the defect is LIVE, not because it is new.
-// A branded where-refinement value at an ordinary product formal reaches no refusal at the direct
-// call argument seam, so a value of an unrelated constructor is accepted at a declared position.
-// The two chains share no link, which makes this the STRONGER incompatibility: pairs whose chains
-// merely MEET are at least reported undecidable, while this one is admitted outright.
-// PRE-EXISTING AND MEASURED ON BOTH SIDES: the same control over the same fixtures and corpus,
-// against two compilers differing only in the three stage0 infer mirrors, returns false under both.
-// Authority for the class and its capability-grain trigger:
-// gunbc.recurring_failure_mode.disjoint_chains_admitted_while_meeting_chains_decline.
+// The disjoint-chain floor hole, enrolled red because the defect is LIVE rather than new.
+// Class, mechanism, attribution and capability-grain trigger:
+// gunbc.recurring_failure_mode.absence_classifier_default_bucket.
 fn floor_expected_red_chunk_disjoint_refinement_chains() -> List<String> {
   Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses", tail: Empty {} }
 }

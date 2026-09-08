@@ -317,27 +317,23 @@ test fn w_a_phantom_type_argument_with_identical_representation_is_still_separat
   violation_count(source: phantom_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
-// A BRANDED REFINEMENT AT AN UNRELATED PRODUCT FORMAL IS ADMITTED IN SILENCE, AND THIS ARM IS
-// ENROLLED RED BECAUSE THE DEFECT IS LIVE RATHER THAN BECAUSE IT IS NEW. HostIdentity is
-// `NonEmptyStr where brand(...)`; Box is an ordinary product. Their chains share NOTHING -- this is
-// the STRONGER incompatibility, not the weaker one -- and yet the pair reaches no refusal, while
-// pairs whose chains merely MEET are at least reported undecidable. A positive inhabitance claim is
-// minted for the case that should refuse most clearly, which is the DESIGN 4b floor sentence
-// `values inhabit declared types` failing at a direct call argument.
-//
-// ATTRIBUTION, MEASURED ON BOTH SIDES RATHER THAN ASSERTED: this is PRE-EXISTING. The same control,
-// same fixtures, same corpus, run against two compilers differing only in the three stage0 infer
-// mirrors, FAILS UNDER BOTH -- main's mirrors and the candidate's alike. It was surfaced by review
-// 62172 against a where-refinement exclusion in the nominal-product arm, and that attribution does
-// not survive the measurement: removing the exclusion does not change this result, because the
-// product arm was not making the refusal that the exclusion was thought to suppress.
-//
-// THE PAIR FORM IS THE ORACLE, not a literal: violation_count reports every row of the class in the
-// fixture's whole import closure, so the partner differs on exactly the produced-value axis and the
-// shared closure term cancels.
-data disjoint_refinement_at_product_source: String = "module probe_disjoint_refinement_at_product\nimport std.types { Int, String }\nimport product.placement_supply { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_host_d) }\n"
+// THE TWO FIXTURES CARRY IDENTICAL CLOSURES AND DIFFER ON EXACTLY ONE TOKEN -- the actual passed.
+// Both import std.types AND product.placement_supply, and both DECLARE both values; only the
+// argument differs. An earlier form imported placement_supply on the failing side alone, so the
+// counts were taken over DIFFERENT closures and the shared term did not cancel by construction --
+// the assertion was false only because two unequal closures happened to contribute equally today.
+// That is not a flaky test here, it is a FALSE DISSOLUTION TRIGGER: this control is enrolled as an
+// expected RED whose greening is a counted un-quarantine that DELETES its admission row, so any
+// DeclaredTypeNotInhabited appearing anywhere in placement_supply's closure would green it for a
+// reason unrelated to the disjoint-chain defect and retire the admission while the defect stayed
+// live. GitHub review 5136486384, 2026-09-08.
+// The disjoint-chain floor hole: a branded where-refinement value at an ordinary product
+// formal reaches no refusal at this seam. Class, mechanism, the both-sides attribution
+// measurement and the capability-grain trigger are the row's, not this file's:
+// gunbc.recurring_failure_mode.absence_classifier_default_bucket. Enrolled ExpectAssertionFalse.
+data disjoint_refinement_at_product_source: String = "module probe_disjoint_refinement_at_product\nimport std.types { Int, String }\nimport product.placement_supply { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_host_d) }\n"
 
-data disjoint_partner_source: String = "module probe_disjoint_partner\nimport std.types { Int, String }\ntype Box { v: String }\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
+data disjoint_partner_source: String = "module probe_disjoint_partner\nimport std.types { Int, String }\nimport product.placement_supply { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
 
 test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool {
   violation_count(source: disjoint_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
