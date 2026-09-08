@@ -41,10 +41,10 @@ fn w_pool_admission() -> VllmKvPoolAdmission {
   )
 }
 
-fn with_admitted_pool(f: fn (VllmObservedKvPool) -> Bool) -> Bool {
+fn w_admitted_pool() -> VllmObservedKvPool? {
   match w_pool_admission() {
-    KvPoolAdmitted { pool: p } => f(p)
-    KvPoolRefused { cause: _ } => false
+    KvPoolAdmitted { pool: p } => Present { value: p }
+    KvPoolRefused { cause: _ } => none
   }
 }
 
@@ -69,12 +69,14 @@ fn w_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
 // the engine's own group-aware arithmetic recovered, not re-derived from fields whose reductions
 // differ, and it is the only per-request cost today's evidence yields.
 test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines() -> Bool {
-  with_admitted_pool(f: (p) =>
-    match recovered_blocks_per_max_length_request(layout: w_layout(groups: []), reported: w_reported(pool: p)) {
-      BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4854
-      BlocksPerRequestUnrecoverable { cause: _ } => false
-    }
-  )
+  match w_admitted_pool() {
+    Absent => false
+    Present { value: p } =>
+      match recovered_blocks_per_max_length_request(layout: w_layout(groups: []), reported: w_reported(pool: p)) {
+        BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4854
+        BlocksPerRequestUnrecoverable { cause: _ } => false
+      }
+  }
 }
 
 // THE LIMIT OF TODAY'S EVIDENCE, ASSERTED RATHER THAN ASSUMED. The printed-line check tests the pool
@@ -87,34 +89,40 @@ test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines
 // blocks, 4,930 against group B's 55,328), which is what makes the cost a function of the launch
 // while the agreement check is not.
 test fn the_printed_line_check_does_not_see_the_inventory_which_is_why_a_receipt_is_still_needed() -> Bool {
-  with_admitted_pool(f: (p) => {
-    let other = resolved_kv_layout(
-      allocator_blocks: allocator_block_count(count: 55328),
-      scheduler_block_size: token_count(count: 16),
-      hash_block_size: token_count(count: 16),
-      max_model_len: token_count(count: 1048576),
-      max_num_batched_tokens: token_count(count: 8192),
-      groups: [],
-    )
-    (match printed_lines_agree(layout: w_layout(groups: []), reported: w_reported(pool: p)) { PrintedLinesAgree => true  _ => false })
-      && (match printed_lines_agree(layout: other, reported: w_reported(pool: p)) { PrintedLinesAgree => true  _ => false })
-      && (match recovered_blocks_per_max_length_request(layout: other, reported: w_reported(pool: p)) {
-            BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4930
-            BlocksPerRequestUnrecoverable { cause: _ } => false
-          })
-  })
+  match w_admitted_pool() {
+    Absent => false
+    Present { value: p } => {
+      let other = resolved_kv_layout(
+        allocator_blocks: allocator_block_count(count: 55328),
+        scheduler_block_size: token_count(count: 16),
+        hash_block_size: token_count(count: 16),
+        max_model_len: token_count(count: 1048576),
+        max_num_batched_tokens: token_count(count: 8192),
+        groups: [],
+      )
+      (match printed_lines_agree(layout: w_layout(groups: []), reported: w_reported(pool: p)) { PrintedLinesAgree => true  _ => false })
+        && (match printed_lines_agree(layout: other, reported: w_reported(pool: p)) { PrintedLinesAgree => true  _ => false })
+        && (match recovered_blocks_per_max_length_request(layout: other, reported: w_reported(pool: p)) {
+              BlocksPerRequestRecovered { blocks: b } => allocator_block_count_value(c: b) == 4930
+              BlocksPerRequestUnrecoverable { cause: _ } => false
+            })
+    }
+  }
 }
 
 // AND THE CHECK IS NOT VACUOUS: a mistranscribed concurrency line breaks it. Without this row the
 // one above could be satisfied by a function that returns Agree unconditionally.
 test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Bool {
-  with_admitted_pool(f: (p) => {
-    let wrong = vllm_reported_capacity(pool: p, max_concurrency: percent(count: 440))
-    match printed_lines_agree(layout: w_layout(groups: []), reported: wrong) {
-      PrintedLinesDisagree { implied: i, reported: r } => percent_count(p: i) == 1122 && percent_count(p: r) == 440
-      _ => false
+  match w_admitted_pool() {
+    Absent => false
+    Present { value: p } => {
+      let wrong = vllm_reported_capacity(pool: p, max_concurrency: percent(count: 440))
+      match printed_lines_agree(layout: w_layout(groups: []), reported: wrong) {
+        PrintedLinesDisagree { implied: i, reported: r } => percent_count(p: i) == 1122 && percent_count(p: r) == 440
+        _ => false
+      }
     }
-  })
+  }
 }
 
 fn w_full(layers: Nat, block: Nat) -> KvGroupLayout {
