@@ -1598,54 +1598,52 @@ pub struct TransitionAdmission {
 /// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
 /// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
 ///
-/// SIXTH TRANSITION (2026-09-07, gunbc#10688). `call_semantics_target` moved from
-/// `v1.compiler.emit_rust` to `v1.std.core`, so the two emit-side bindings of that spelling report
-/// `TargetChanged`. It is a re-home and not a re-spelling: the function reads a `CallSemantics` and
-/// answers a `CallTargetIdentity`, both declared in `v1.std.core`, and this change gave that
-/// coproduct a `LocallyBoundCall` arm — so the reduction is now consumed by `v1.compiler.infer` and
-/// `v1.compiler.service` as well as by emission. Leaving it in `v1.compiler.emit_rust` would have
-/// made the inference and effect tiers import the EMITTER to ask what a call names, which is the
-/// second-representation pressure DESIGN §3 forbids: the alternative on offer was a second copy
-/// beside the type. It sits beside `CallSemantics` because that is the declaration it destructures.
+/// SEVENTH TRANSITION (2026-09-08, gunbc#10783). Filing a new recurring-failure-mode class is now
+/// a BINDING motion rather than only a new file, because `dag/gunbc/recurring_failure_mode/roster`
+/// is generated from the directory before compile: the class file appears, the generated roster
+/// gains a reference to it, and the spelling `unapplied_function_value_admitted_at_a_value_position`
+/// goes from binding nothing at the base to binding the new module at the head. The wall reports
+/// that as `NewPoolCoincidenceResolution`, correctly -- a spelling authored on both sides now
+/// admits a declaration it did not admit before.
 ///
-/// TWO ROWS, ONE PER BINDING SITE, enumerated rather than matched by module pattern, for the same
-/// reason the fourth transition was: the roster's population is an enumeration, never a predicate.
-/// The membership deltas this change also produces are `ExplicitlyEvaluatedZeroDelta` and
-/// auto-admit, and the `resolved_plain_call_target_for_outcome` delta is an
-/// `AuthoredReferenceResolution`, so all of them are deliberately absent here.
+/// ONE ROW, AND IT IS NOT A PATTERN. The change files two class modules and one stall module; only
+/// this spelling produces a binding delta, and the row names the exact tuple the wall reported
+/// rather than a rule covering "new class files", because the roster's population is an
+/// enumeration and never a predicate. The membership deltas the same change produces are
+/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent here.
 ///
-/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
-/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
-/// touch. Adjudicate that deletion by joining each row against main on its own
-/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
-const CALL_SEMANTICS_TARGET_REHOME_LABEL: &str =
-    "gunbc#10688 call-target identity re-home: `call_semantics_target` moves from \
-     v1.compiler.emit_rust to v1.std.core beside the `CallSemantics` it reads and the \
-     `CallTargetIdentity` it answers, so inference and the effect pass read one reduction \
-     instead of importing the emitter";
+/// WHAT THIS RECORDS BEYOND THE ROW, so the next lane is not surprised: since membership of the
+/// failure-mode ledger became THE DIRECTORY, every future class file will produce this same delta
+/// shape and owe its own row. That is a standing cost of the generated-roster design, not a defect
+/// in this change, and it is stated here rather than absorbed silently.
+///
+/// TRIGGER: it goes when this class file is on main, at which point base and head both bind the
+/// spelling to the same module, the row reports CONSUMED, and it comes due on the roster's next
+/// touch. Adjudicate that deletion by joining the row against main on its own
+/// (module, in_declaration, spelling, target) tuple, never by trusting this sentence.
+const RECURRING_FAILURE_MODE_CLASS_FILING_LABEL: &str =
+    "gunbc#10783 recurring-failure-mode class filing: the generated \
+     gunbc.recurring_failure_mode.roster gains a reference to the newly filed class module, so the \
+     spelling binds a declaration at the head that the base did not declare";
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_rust_expr_call",
-            spelling: "call_semantics_target",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
+/// THIRTIETH DISSOLUTION (2026-09-08, gunbc#10783). Both `gunbc#10688` call-target re-home rows are
+/// deleted, and CALL_SEMANTICS_TARGET_REHOME_LABEL with them. #10688 is on main: `v1.std.core`
+/// declares `call_semantics_target` and `v1.compiler.emit_rust` imports it, so base and head both
+/// resolve the spelling to the target the rows name, and this run reported both CONSUMED. Their own
+/// trigger says they come due on the roster's next touch, which this change is. The join was run
+/// against main on each row's (module, in_declaration, spelling, target) tuple rather than on the
+/// trigger sentence, as that sentence requires.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: RECURRING_FAILURE_MODE_CLASS_FILING_LABEL,
+    subject: AdmissionSubject::Binding {
+        module: "gunbc.recurring_failure_mode.roster",
+        in_declaration: "recurring_failure_mode_roster",
+        spelling: "unapplied_function_value_admitted_at_a_value_position",
+        target:
+            "gunbc.recurring_failure_mode.unapplied_function_value_admitted_at_a_value_position",
     },
-    TransitionAdmission {
-        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_rust_tco_non_self_call",
-            spelling: "call_semantics_target",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+    disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
