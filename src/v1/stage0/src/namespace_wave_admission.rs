@@ -1588,21 +1588,15 @@ pub struct TransitionAdmission {
 ///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
 ///   the correct reading for all nine.
 ///
-/// THE EXIT_OK ROWS DISSOLVED HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THE VERY NEXT ROSTER
-/// TOUCH. Seven `TargetChanged` bindings in `tools.floor_effect_gate_witness` resolved `exit_ok` at
-/// base to `tools.ci_gates` and at head to `std.process`; their trigger said they go once the
-/// relocation is on main, at which point they report CONSUMED and come due on the roster's next
-/// touch. The relocation is on main, the run reports all seven CONSUMED, and this change is that
-/// touch -- it was authored to admit the `call_semantics_target` re-home and inherited the deletion,
-/// which is the roster working as designed rather than scope creep.
+/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
+/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
+/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
+/// permissions standing over nothing.
 ///
-/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
-/// directions. `std.process` DECLARES `fn exit_ok`. `tools.ci_gates` does not declare it and
-/// carries no occurrence of the spelling at all. The single consumer,
-/// `gunbc.instruments.floor_effect_gate_witness`, IMPORTS it as `import std.process { exit_ok }` and
-/// uses it at seven call sites -- the seven `<gate>_passes` declarations those rows named. So base
-/// and head bind the spelling to the same declarer, no run can produce those seven deltas, and
-/// CONSUMED is the correct reading.
+/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
+/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
+/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
+/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
 ///
 /// SIXTH TRANSITION (2026-09-07, gunbc#10688). `call_semantics_target` moved from
 /// `v1.compiler.emit_rust` to `v1.std.core`, so the two emit-side bindings of that spelling report

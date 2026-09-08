@@ -1,0 +1,237 @@
+module gunbc.runner.runner_first_job_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THE FIRST GITHUB ACTIONS JOB TO RUN ON THE MT. COLLINS HOST, on build runner-canary-4.
+// A machine with no boot drive, booted over out-of-band media from an image this repository builds,
+// executed a real CI job in a microVM and reported success to GitHub.
+
+data receipt_subject_build: NonEmptyStr = "runner-canary-4"
+data receipt_subject_kernel_digest: NonEmptyStr = "8f870bef2a5ce43e32bb4bff180d1f2212254b9e057889b62e33481aa72a367f"
+data receipt_subject_guest_digest: NonEmptyStr = "2e6522ae4e753cbb2f76b5019059b3c1b1b9bf0978e04c33b439ec23cf699cef"
+data receipt_subject_run: NonEmptyStr = "actions run 34086151842, workflow mtcollins-canary, conclusion success"
+
+// ── the chain, end to end ──────────────────────────────────────────────────────────────────────
+
+// EVERY LINK IS OBSERVED RATHER THAN INFERRED FROM THE ONE AFTER IT. A green job at the end would
+// be consistent with several of these steps having been skipped or done by something else, so each
+// carries its own line in the host or guest log.
+data execution_chain: List<NonEmptyStr> = [
+  "the BMC attached the published ISO and the firmware booted our EFI-stub kernel",
+  "the host configured its static uplink, created the routed /30 tap, and installed the filter",
+  "the host fetched a JIT config over the LAN: jitconfig-bytes=4076",
+  "the host wrote it to a raw block device owned by the attempt uid: jit-device-owner=1000:1000 400",
+  "the jailer dropped privilege and exec'd Firecracker inside the attempt cgroup",
+  "the guest booted, read the credential off /dev/vdb, and copied a runner tree into tmpfs",
+  "the runner registered and reported: Listening for Jobs at 05:20:04Z",
+  "GitHub dispatched the queued job: Running job: canary at 05:20:05Z",
+  "the job finished: Job canary completed with result: Succeeded at 05:20:14Z",
+  "the guest's runner exited 0 and the attempt retired with an empty, removed cgroup",
+]
+
+// ── the artifact that ran, which was NOT the one the model named ───────────────────────────────
+
+// THE CANARY EXECUTED RUNNER 2.337.0 WHILE gunbc.runner_microvm's GUEST IMAGE ROW SAID 2.336.0.
+// An earlier revision of this receipt recorded "a 446MB runner" and nothing else. SIZE IS NOT
+// IDENTITY: that figure cannot distinguish the release that was intended from another of similar
+// extracted size, and it was the only thing said about the artifact at the centre of the run.
+//
+// THE FORK IS AUTHORING, NOT RUNTIME, AND BOTH HALVES ARE OBSERVED. The shipped tarball's sha256
+// equals the digest actions/runner publishes for v2.337.0 in its release body, so the artifact was
+// the genuine upstream release. And a JIT config decoded from the generate-jitconfig endpoint
+// carries DisableUpdate = True, so the runner could not have replaced itself in flight. What was
+// wrong was the model's claim about which release the guest image contained.
+//
+// NOTHING IN THIS REPOSITORY CAUGHT IT, and that is the finding rather than the version number. A
+// human read it out of a job log. The comparator that would decide it already exists --
+// gunbc.runner_microvm_boot_probe's boot_probe_verdict takes a modeled release and an observed
+// console and refuses a mismatch -- and the Mt. Collins path never invoked it, because that path is
+// a hand-built image rather than the modeled guest image.
+type RunnerArtifactIdentity
+  = RunnerArtifactVerifiedAgainstUpstream { version: NonEmptyStr, upstream_digest: NonEmptyStr }
+  | RunnerArtifactKnownOnlyBySize { size: NonEmptyStr }
+
+data runner_artifact_that_ran: RunnerArtifactIdentity = RunnerArtifactVerifiedAgainstUpstream {
+  version: "2.337.0",
+  upstream_digest: "9b1dc70626422526e3c94767cf024896beb15da5342a3f4819bf2feac13e0393",
+}
+
+data runner_artifact_model_disagreement: NonEmptyStr = "gunbc.runner_microvm named 2.336.0 while 2.337.0 ran; the row is now pinned to 2.337.0 and the fleet's host-slot pin deliberately still reads 2.336.0, a divergence that module declares and this receipt does not close"
+
+// ── what the job saw ───────────────────────────────────────────────────────────────────────────
+
+data job_observed_environment: List<NonEmptyStr> = [
+  "uname: Linux gunbc-mtcollins-1 6.1.128 aarch64 -- a guest kernel, not the host's",
+  "cpus: 4, memory: 3935 MB -- the machine-config this host handed the VMM",
+  "os-release: Ubuntu 24.04.1 LTS",
+  "root: /dev/vda -- the digest-verified squashfs, read-only",
+]
+
+// ── the isolation claim, asserted from INSIDE the job ───────────────────────────────────────────
+
+// THE JOB PROVED ITS OWN CONTAINMENT RATHER THAN TRUSTING THE HOST RECEIPT FOR IT. A step attempted
+// to open a connection to the BMC that controls the very machine it was running on, and required
+// that attempt to fail. That is the failure this whole lane exists to prevent, and a host-side
+// counter alone would have been a claim about the host made by the host.
+//
+// AND THE TWO OBSERVERS AGREE WITHOUT SHARING AN INSTRUMENT. GitHub's job log carries the guest's
+// conclusion; the host's ruleset carries the packets. Neither can produce the other's evidence.
+type ContainmentCorroboration {
+  asserted_by_the_job: NonEmptyStr
+  observed_by_the_host: NonEmptyStr
+}
+
+data bmc_unreachable_from_the_job: ContainmentCorroboration = ContainmentCorroboration {
+  asserted_by_the_job: "the canary step opened /dev/tcp to the BMC on 443, required it to fail, and logged 'ok: the BMC is unreachable from inside the job'",
+  observed_by_the_host: "the guest-to-bmc drop rule advanced by exactly 3 packets -- the SYN and its two retransmits -- during the same window",
+}
+
+// ── the counters under a real workload ─────────────────────────────────────────────────────────
+
+// THE PREVIOUS EGRESS RECEIPT MEASURED A PROBE THAT SENT ONLY WHAT IT WAS TOLD TO SEND. This run is
+// the first where the traffic was chosen by GitHub's runner and not by us: 567 established packets
+// and 432KB through the forward chain, 32 DNS queries, 32 masqueraded flows.
+//
+// forward-default-drop STAYED AT ZERO UNDER THAT LOAD, and the claim is exactly that. A nonzero
+// count would have named a destination no author considered; none appeared once the traffic stopped
+// being ours.
+//
+// IT IS NOT EVIDENCE THAT THE POLICY IS NARROW. The guest-tls rule admits port 443 to ANY
+// destination, so a job reaching an arbitrary host on 443 produces zero default drops while being
+// far broader than a destination policy. A zero here says every packet matched a written rule, not
+// that the written rules are tight, and gunbc.runner.runner_host_filtered_egress already records
+// that narrowing 443 properly means an authenticated egress proxy.
+//
+// AND IT DOES NOT ESTABLISH THE ENVELOPE. The BMC row below proves ONE port on ONE address by ONE
+// rule. Another BMC port, another management address, IPv6, an alternate route, or a guest that
+// rewrites its own routing table are all untested. This receipt composes with the ruleset identity
+// and readback in gunbc.runner.runner_filtered_egress_receipt; it does not promote counters alone
+// to a standing default-deny guarantee.
+data counters_under_real_load: List<NonEmptyStr> = [
+  "forward established,related: 567 packets, 432370 bytes",
+  "guest-dns: 32 packets accepted",
+  "guest-tls: 16 packets accepted",
+  "guest-snat: 32 flows masqueraded",
+  "guest-to-bmc: 3 packets dropped",
+  "forward-default-drop: 0",
+  "host input-default-drop: 28 packets -- unsolicited inbound the host refused while the job ran",
+]
+
+// ── the credential path ────────────────────────────────────────────────────────────────────────
+
+// NOTHING IN THE PUBLISHED IMAGE CARRIES A CREDENTIAL. The host asks for one at boot; a JIT config
+// registers exactly one ephemeral runner and is spent when redeemed. The image on the NFS export is
+// therefore no more sensitive than the kernel it contains, which is what makes republishing it
+// ordinary rather than a disclosure.
+//
+// THE ENDPOINT SERVING IT IS UNAUTHENTICATED AND THAT IS A REAL GAP. Any host on the segment that
+// reached it first would take the registration instead. It is admissible for a first proof because
+// the window is one boot and the prize is one ephemeral runner for one job, and it is recorded here
+// rather than left for a reader to discover in a shell script.
+type CredentialDelivery
+  = FetchedFromUnauthenticatedOneShotEndpoint { gap: NonEmptyStr, terminal_form: NonEmptyStr }
+  | FetchedFromAuthenticatedControlPlane
+  | BakedIntoThePublishedImage { why_refused: NonEmptyStr }
+
+data runner_credential_delivery: CredentialDelivery = FetchedFromUnauthenticatedOneShotEndpoint {
+  gap: "any host on the segment could take the registration by reaching the endpoint first; the server mints on demand, answers once, and exits, so the window is one boot",
+  terminal_form: "the host authenticates to a fleet control plane, which is its own slice and is not started here",
+}
+
+data credential_baking_refused: CredentialDelivery = BakedIntoThePublishedImage {
+  why_refused: "the image lives on an NFS export the whole segment reads, and a baked credential would sit there for the life of the artifact rather than for one boot",
+}
+
+// ── what this run does NOT establish ───────────────────────────────────────────────────────────
+
+// THE JOB WAS TRIVIAL ON PURPOSE AND THE CLAIM IS SIZED TO IT. Two shell steps, no checkout, no
+// action download, no toolchain, no cache, nine seconds. What is established is that a job reaches
+// this machine, executes, and reports -- not that this host can serve the repository's real CI.
+data not_yet_established: List<NonEmptyStr> = [
+  "no JS action ran, so the action-download path and the runner's bundled node are unexercised",
+  "no checkout ran, so git over the filtered egress path is unproven",
+  "no toolchain ran; a cargo build's dependency fetches are a much wider destination set than two shell steps",
+  "one job on one boot -- nothing here shows a second attempt starting cleanly after a first, which is what a runner host actually has to do",
+  "the guest ran as root, which is correct for a single-purpose VM destroyed after one job and would not be for anything reused",
+  "GitHub warned 'only 0 MB of available disk space left' during this run: the guest had no writable block device at all, which is WHY two echo steps could pass where a checkout could not -- the green result and the missing workspace are the same fact seen twice",
+]
+
+// AND THE WORKFLOW THAT PROVIDED THE JOB IS A SCAFFOLD BY ITS OWN ADMISSION. It is hand-authored
+// YAML beside gunbc.witness_floor_workflow, which is the modeled carrier every other workflow here
+// is emitted from. It makes no standing claim on a paid runner -- the trigger is a push to one
+// branch -- and its dissolution is stated in the file: delete it when the host image is built from
+// the model and the canary is a row in that carrier.
+data canary_workflow_disposition: NonEmptyStr = "the canary workflow is a declared scaffold: parallel authority beside the modeled CI carrier, no standing runner claim, deleted when the host image build is driven from the model"
+
+// ── four defects this sequence found, all in the instruments ───────────────────────────────────
+
+// EVERY ONE OF THESE PRESENTED AS A FAILURE OF THE THING BEING MEASURED. That is what makes them
+// worth a row: the host looked dead three times when it had booted, and the guest looked like a
+// missing runner when it was a missing mountpoint.
+data defects_found: List<NonEmptyStr> = [
+  "the boot-marker grep matched a string the kernel log interleaves into, so a successful boot read as a failed one",
+  "script(1) block-buffers its stdout when it is not a tty, so polling the capture read an empty file and two boots were scored as never reaching the loader while the host had booted and fetched its credential",
+  "the guest root is a read-only squashfs: the tmpfs mountpoint could not be created, the copy silently wrote nothing, and the first line to fail named the runner directory three steps later",
+  "PID 1 started by the kernel inherits no PATH, so the first dispatched job was accepted and executed and then failed on 'sh: command not found', naming neither the binary nor the variable",
+  "a cleanup check for a leftover helper matched the checking command's OWN argv, so the observer became its own positive result -- the same class as every instrument defect above, committed while confirming that nothing was left running",
+]
+
+// ── two cleanup readings, which close different resources ──────────────────────────────────────
+
+// A NAME MATCH IS NOT AN ABSENCE PROOF, and the pgrep self-match is the cheapest possible
+// demonstration: the pattern appeared in the searching process's own command line, so the search
+// reported a survivor that was the search. The sound reading is by IDENTITY -- no process from the
+// attempt's own launch lineage remains, where identity is boot id, pid and start time rather than a
+// name that anything may spell.
+//
+// AND THE TWO POPULATIONS ARE READ SEPARATELY BECAUSE THEY CAN DISAGREE. A listener process can be
+// gone while a stale offline registration remains at GitHub, and a registration can vanish before
+// every local helper has exited. Reporting one as though it settled the other would let a leak in
+// either direction pass.
+type CleanupReading {
+  subject: NonEmptyStr
+  method: NonEmptyStr
+  result: NonEmptyStr
+}
+
+data cleanup_readings: List<CleanupReading> = [
+  CleanupReading {
+    subject: "the attempt's local process population",
+    method: "the attempt cgroup read for membership and then for removal, plus a survivor scan -- NOT a process-name match, which produced a false positive on this very run",
+    result: "post-cgroup-empty=yes, post-cgroup-removed=yes, no surviving firecracker or jailer",
+  },
+  CleanupReading {
+    subject: "the registration population at GitHub",
+    method: "a listing read of the repository's self-hosted runners, which is an API observation and not a statement about any local process",
+    result: "the listing succeeded and returned an empty runner population",
+  },
+]
+
+// ── the host-side capture ──────────────────────────────────────────────────────────────────────
+
+// THE GITHUB RUN IS EXCELLENT EVIDENCE FOR WHAT HAPPENED INSIDE THE JOB AND CANNOT SPEAK FOR THE
+// HOST. Which ISO the BMC attached, which bytes booted, which cgroup held the VMM, which ruleset
+// was live and whether it was removed are all facts no job log contains, and an earlier revision of
+// this receipt authored them as strings with nothing behind them.
+//
+// THE SERIAL CAPTURE IS COMMITTED AND ADDRESSED. It is an extract -- the console carries firmware
+// checkpoints and a full kernel boot before this repository writes anything -- so the full
+// capture's digest and the cut point travel with it.
+//
+// AN EARLIER REVISION CALLED THAT "checkable" AND IT IS NOT. The full bytes are not committed, so a
+// reader can verify this extract against its own digest but cannot re-cut it from a source they do
+// not have. The digest IDENTIFIES the source; it does not make the extraction reproducible.
+data host_capture_artifact: NonEmptyStr = "docs/probes/mtcollins_first_job_host_capture_2026-09-07.txt"
+data host_capture_full_digest: NonEmptyStr = "ea32a067a9fac8b764d8f41636d4a48f6b06484a6ebbd772c63c9344aa720266"
+data host_capture_extract_digest: NonEmptyStr = "d38c39ed7bcfc42b161b784f2c0c5094a91b9be09a343782f70fa0df60812d7d"
+
+// THE JOIN BETWEEN THE TWO OBSERVERS IS STILL BY TIMESTAMP, and that is a real weakness rather than
+// a detail. Nothing in the dispatched job carried the host attempt id, so the run and the capture
+// are matched by the minute they share. The canary workflow now takes an attempt input for exactly
+// this reason; this receipt predates it and does not get to claim the stronger join.
+data observer_join_standing: NonEmptyStr = "the GitHub run and the host capture are joined by time, not by a shared attempt identity; the workflow now carries an attempt input so the next receipt can do better"
+
+// THE GUEST LOG IS NOW DUMPED WHOLE, and that change is what made the last two findable. Every
+// previous reading went through a fixed grep plus a head, and each time the line that mattered was
+// outside the patterns -- a filter is a hypothesis about the failure, applied before anyone knows.
+data instrument_change: NonEmptyStr = "the host prints the entire guest log rather than a grep-filtered excerpt; the read-only-root and PATH causes were both outside the previous pattern list"

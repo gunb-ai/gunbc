@@ -9,7 +9,6 @@ use std::rc::Rc;
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;
 use v1_compiler::v1_compiler_compile::PipelineResult;
-use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at, NewlineIndex,
 };
@@ -434,21 +433,29 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             dependency_pool_index,
             entry,
         } => {
-            // #6967/§13 silent-pick piggyback: drain resolution silent-pick
-            // telemetry over this same compile. This is NOT the join-filtered
-            // resolution-divergence census (deleted 2026-08-18 — see
-            // gunbc.ci_layer_roots resolution_divergence_silent_pick_gate_retirement_receipt).
-            // That path required a second whole-corpus resolve plus parent-plan
-            // capture this compile route never had. This is a deliberately narrower,
-            // cost-motivated proxy, asymmetric in both directions (review 41032):
-            //   - fn_parent_first_hit: red-on-any raw count here (bare reference
-            //     resolved by first-hit among multiple parents — containment-ambiguous).
-            //   - global_bare_lcp: skipped entirely here (whole-pool name overlap
-            //     alone — benign at compile-time scope, not genuine under §13
-            //     unique-on-chain).
-            // Join-filtered silent-pick divergence detection has no enrolled
-            // witness today; the retirement receipt carries the rung drop and
-            // rebuild constraints.
+            // THE SILENT-PICK PIGGYBACK GATE THAT STOOD IN THIS HANDLER IS DELETED, AND THE
+            // PARAGRAPH THAT DESCRIBED IT IS THE CITATION THE DELETION CORRECTS. It claimed a
+            // live check — "fn_parent_first_hit: red-on-any raw count here" — over a vector that
+            // cannot be non-empty: the only producer of `fn_parent_first_hits` is
+            // `v1.compiler.infer_sigs` `lookup_resolved_sig_with_telemetry`, reached solely from
+            // the `else` of `name_resolution_policy_is_namespace_only()` in `lookup_resolved_sig`
+            // (the legacy ImportScoped arm), and that policy is a thread-local defaulting to TRUE
+            // whose only setters are two Rust tests. So the gate was permanently green by
+            // construction and held no rung; removing it declares no `gunbc.rung_drop` row
+            // because there was no rung to drop — what ends is a false claim of coverage.
+            //
+            // A SECOND REASON, INDEPENDENT AND ALSO FATAL, applied to THIS copy only: it sits
+            // BELOW the `--source-root` transaction's `std::process::exit(0)`, so it guarded the
+            // legacy `--source-dir` flat scan and nothing in the repository passes that flag. The
+            // twin gate inside `cli_run::compile_emission` — the one every modern compile reaches
+            // — was armed and live, and is deleted in the same change for the first reason alone.
+            //
+            // The `v1_rt` recording hooks themselves are LEFT IN PLACE deliberately: they were
+            // PRESERVED by an operator decision (`gunbc.ci_layer_roots`
+            // `resolution_divergence_silent_pick_gate_retirement_receipt`, 2026-08-18) whose
+            // stated premise — that they are a compile-path proxy — this measurement refutes.
+            // Overturning that preservation is the operator's call, not this change's; the
+            // refutation is recorded on the failure-mode row for that decision.
             let render_targets = parse_render_targets(&target);
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);
 
@@ -564,8 +571,6 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                     }
                 }
             }
-
-            v1_rt::resolution_silent_pick_enable();
 
             // THE WHOLE-ROOT PIPELINE THAT STOOD HERE IS DELETED, NOT DISABLED: ~200 lines
             // re-implementing indexing, memory admission, entry-set discovery, the import walk,
@@ -706,24 +711,6 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                     "compiled: {} files emitted, {} diagnostics",
                     total_files, total_diagnostics
                 );
-            }
-
-            let silent_pick = v1_rt::resolution_silent_pick_disable();
-            if !silent_pick.fn_parent_first_hits.is_empty() {
-                eprintln!(
-                    "SILENT-PICK-GATE: {} fn_parent_first_hit silent pick(s) in this compile (raw-count proxy gate, not the join-filtered resolution_divergence_silent_pick_refusal authority — §13 fail-open — a bare reference resolved by first-hit-among-multiple-parents, i.e. containment-ambiguous):",
-                    silent_pick.fn_parent_first_hits.len()
-                );
-                for site in &silent_pick.fn_parent_first_hits {
-                    eprintln!(
-                        "  SILENT-PICK-GATE fn_parent_first_hit module={} name={} parent_match_count={} chosen_parent_module={}",
-                        site.env_module_path,
-                        site.name,
-                        site.parent_match_count,
-                        site.chosen_parent_module
-                    );
-                }
-                std::process::exit(1);
             }
         }
 
