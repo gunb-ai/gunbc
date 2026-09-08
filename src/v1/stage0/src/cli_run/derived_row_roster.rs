@@ -32,8 +32,10 @@ use std::path::Path;
 pub const ROSTER_BASENAME: &str = "roster.dag";
 /// Module path of the row files; `ROW_DIR_REL` is this spelling with `/` for `.`.
 pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
-/// Module path of the DERIVED roster itself. One spelling, consumed by the row join and by the
-/// namespace wave's base reconstruction, so neither carries its own copy (DESIGN 3).
+/// Module path of the DERIVED roster itself. ONE SPELLING, consumed by the row join, by the
+/// namespace wave's base reconstruction, and by the writer below that emits it -- the producer
+/// included, because the wave FINDS this module by identity and a divergence would make that find
+/// miss silently (DESIGN 3).
 pub const ROSTER_MODULE: &str = "gunbc.recurring_failure_mode.roster";
 pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
@@ -119,18 +121,26 @@ fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
 }
 
 pub fn render_roster(names: &[String]) -> String {
-    let mut out = String::from(
-        "module gunbc.recurring_failure_mode.roster\n\
+    // THE MODULE PATHS COME FROM THE CONSTS, NOT FROM A LITERAL REPEATED HERE. The writer used to
+    // spell `gunbc.recurring_failure_mode.roster` itself while `ROSTER_MODULE` held the same string,
+    // and the namespace wave's base reconstruction FINDS the head roster BY THAT MODULE IDENTITY.
+    // Two spellings of one fact means a divergence makes the find miss, the skip never fires, and
+    // the silently HEAD-inherited base this repair exists to remove comes back with no diagnostic --
+    // this file's own bug, re-armed by a second copy of its own name (review 62663, DESIGN 3).
+    let mut out = format!(
+        "module {ROSTER_MODULE}\n\
          \n\
          // DERIVED from sibling RecurringFailureMode row files. Do not hand-edit.\n\
          // Membership is the directory; order is the sorted filename stem, which is the\n\
          // declaration name. An append is a new file in this directory, never an edit here.\n\
          \n\
-         import std.types { List }\n\
-         import gunbc.recurring_failure_mode { RecurringFailureMode }\n",
+         import std.types {{ List }}\n\
+         import {ROW_MODULE} {{ RecurringFailureMode }}\n"
     );
     for name in names {
-        out.push_str("import gunbc.recurring_failure_mode.");
+        out.push_str("import ");
+        out.push_str(ROW_MODULE);
+        out.push('.');
         out.push_str(name);
         out.push_str(" { ");
         out.push_str(name);
