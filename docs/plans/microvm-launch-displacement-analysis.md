@@ -136,7 +136,16 @@ gh api "repos/gunb-ai/gunbc-private/git/trees/HEAD?recursive=1" -q '.tree[]|sele
 
 So **this organisation has already taken an outage from exactly this class**, on the sibling of the very path under discussion, and the remedy applied then was to commit the script and reconcile the host copy from it. The micro-VM path is in the pre-remedy state today.
 
-**And the carrier is a single unreplicated artifact.** `gunbc.runner.runner_host_image_store` records the host images at `/srv/bmc` on srv1, NFS-exported, `known: true`, **`resilient: false`** — no replication, no backup — with the loss consequence stated as receipts outliving the bytes they cite. The boot script lives *inside* those images. So the thing that starts every production micro-VM on Mt. Collins exists as **one copy on one disk, with no source to rebuild it from**, and that store's own `first_reap` row records how much of it a single reap has already removed.
+**And the carrier is a single unreplicated artifact.** `gunbc.runner.runner_host_image_store` records the host images at `/srv/bmc` on srv1, NFS-exported, `known: true`, **`resilient: false`** — no replication, no backup — with the loss consequence stated as receipts outliving the bytes they cite. The boot script lives *inside* those images. So the only thing that has ever started a micro-VM CI job exists as **one copy on one disk, with no source to rebuild it from**, and that store's own `first_reap` row records how much of it a single reap has already removed.
+
+> **Stated precisely, because an earlier revision of this document overstated it.** It said "every production micro-VM", which reads as though the fleet's CI runs on this path. It does not. A census of `runner_name` across every job of the last completed runs returns `srv1`/`srv2`/`srv3`/`srv4` only — the bare-metal hosts running ctrl's `jit-runner.sh` — and **no Mt. Collins runner at all**. The instrument, named rather than transcribed, so it re-derives:
+> ```
+> for r in $(gh run list --limit 8 --status completed --json databaseId -q '.[].databaseId'); do
+>   gh api repos/gunb-ai/gunbc/actions/runs/$r/jobs --jq '.jobs[]|.runner_name'
+> done | grep -v null | sed 's/-[0-9]*-[0-9]*$//' | sort | uniq -c | sort -rn
+> ```
+> Its control is built in: the query does not filter by host, so a Mt. Collins runner would appear in the tally if one had served a job.
+> Mt. Collins has served micro-VM *canary* jobs and nothing more. The narrower claim is the load-bearing one and it is stronger, not weaker: this unauthored script is the **sole path any micro-VM migration must go through**, so the risk is not that production runs on unversionable code today, but that **the migration cannot proceed except through code nobody can rebuild.**
 
 **Why this belongs to the operator rather than a lane.** Unauthored production actuation on the January critical path is a decision about accepted risk, not a modelling preference — and this is the strongest form of the two-homes class filed on #10674: not *one home modeled and one hand-authored*, but **one home modeled and the other outside the corpus entirely.** That single sentence is the fact a reader should leave this document with.
 
