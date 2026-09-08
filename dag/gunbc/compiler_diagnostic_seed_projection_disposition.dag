@@ -17,7 +17,7 @@ import gunbc.seed_growth_admission {
 }
 import std.decl_ref { DeclarationRef }
 import std.types { List, String }
-import v2.std.algebra { fold_list, length, list_append, list_map }
+import v2.std.algebra { filter, fold_list, length, list_map }
 
 // THE CompilerDiagnostic SEED PROJECTION, STATED IN THE VOCABULARY THE CORPUS ALREADY OWNS.
 //
@@ -35,11 +35,16 @@ import v2.std.algebra { fold_list, length, list_append, list_map }
 // justification would have inflated the addition census by an item nobody added.
 data compiler_diagnostic_seed_projection_dispositions: List<SeedGrowthChangeDisposition> = list_map(xs: compiler_diagnostic_seed_projection_anchors, f: anchor_disposition)
 
-// THE OTHER HALF OF THE JOIN. This match and `anchor_shape_clause` in the leaf are both TOTAL over
-// AnchorChangeShape, so the sentence the receipt RENDERS and the CapabilityOrigin it DISPOSES are
-// two projections of one field rather than two independent assertions. This function used to
-// construct NoNewCapability as a constant while the leaf spelled the same fact in English; either
-// could have been edited alone and nothing would have refused.
+// THE OTHER HALF OF THE JOIN, AND IT IS A PASS-THROUGH RATHER THAN A MATCH. The anchor's `origin`
+// field reaches the disposition unread here and reaches the rendered sentence through
+// `anchor_origin_clause` in the leaf, so the two are projections of ONE field. This function used
+// to construct `NoNewCapability` as a constant while the leaf spelled the same fact in English;
+// either could have been edited alone and nothing would have refused.
+//
+// The revision that introduced this comment cited `anchor_shape_clause` and `AnchorChangeShape` --
+// symbols from an abandoned first attempt that exist nowhere in the tree -- and called this
+// pass-through a match. A stale citation authored inside the receipt migration whose subject is
+// stale citations (review 62238).
 fn anchor_disposition(a: CoproductProjectionAnchor) -> SeedGrowthChangeDisposition {
   ExistingSeedItemModified {
     item: a.item,
@@ -105,17 +110,15 @@ fn disposition_item_key(d: SeedGrowthChangeDisposition) -> String {
   }
 }
 
+// CONSUMED, NOT RE-FOLDED. This was a hand-rolled fold that called disposition_refusal TWICE per
+// element and accumulated with list_append(left: acc, right: [x]) -- the copied accumulator whose
+// cost is quadratic in the row count, which section 6's bare-minimum-cost rule says is always fixed
+// regardless of the realized n, because "n is small here" is not a time-stable fact. filter and
+// list_map already exist and are the canonical surface (review 62238).
 fn seed_projection_refusals(rows: List<SeedGrowthChangeDisposition>) -> List<String> {
-  fold_list(
-    xs: rows,
-    empty: [] as List<String>,
-    cons: fn(acc, d) {
-      if disposition_refusal(d: d) == "" {
-        acc
-      } else {
-        list_append(left: acc, right: [disposition_refusal(d: d)])
-      }
-    }
+  filter(
+    xs: list_map(xs: rows, f: disposition_refusal),
+    predicate: fn(refusal) { refusal != "" }
   )
 }
 

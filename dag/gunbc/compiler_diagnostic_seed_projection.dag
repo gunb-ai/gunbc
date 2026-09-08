@@ -93,9 +93,17 @@ fn compiler_diagnostic_dag_authority() -> DeclarationRef {
 // this revision: `anchor_paragraph` spelled "originates no capability" in English while
 // `anchor_disposition` in the sibling constructed `NoNewCapability` independently, so the rendered
 // receipt and the typed disposition asserted one fact twice with nothing joining them -- a fork of
-// exactly the kind this migration exists to remove, rebuilt inside the migration. Both are now
-// TOTAL MATCHES over this closed shape, so a future anchor whose change is a different shape
-// cannot render one claim and dispose as another: neither match compiles until both are extended.
+// exactly the kind this migration exists to remove, rebuilt inside the migration.
+//
+// WHAT THE JOIN ACTUALLY BUYS, AT ITS HONEST RUNG (review 62238, and the correction is the point).
+// This annotation claimed both readers were TOTAL MATCHES and that neither compiled until both were
+// extended. That is false and was rung inflation in prose: `anchor_origin_clause` matches, and
+// `anchor_disposition` passes the field straight through. What holds is weaker and still worth
+// having -- ONE FIELD, TWO READERS, so the sentence and the disposition cannot disagree, because
+// there is only one thing to disagree about. What does NOT hold is exhaustiveness forcing the two
+// sides to change together: a new CapabilityOrigin variant reds `anchor_origin_clause` alone, and
+// the pass-through takes it silently. An annotation is never evidence that a machine claim holds
+// (section 4c), which is exactly why this one had to be corrected rather than argued.
 type CoproductProjectionAnchor {
   item: DeclarationRef
   origin: CapabilityOrigin
