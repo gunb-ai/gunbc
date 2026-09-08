@@ -41,6 +41,7 @@ data derived_row_roster_seed_growth_justification: SeedGrowthJustification = See
     DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join.file_roster_join_tests", decl_name: "roster_member_without_a_file_refuses", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join.file_roster_join_tests", decl_name: "equal_file_and_roster_sets_are_silent", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROSTER_MODULE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "the_roster_module_is_the_row_module_plus_the_roster_stem", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.namespace_wave_admission", decl_name: "base_derived_roster_body", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.tests.namespace_wave_admission", decl_name: "the_base_roster_names_the_base_rows_and_not_a_row_the_change_adds", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.tests.namespace_wave_admission", decl_name: "an_empty_base_row_set_renders_a_present_empty_roster_not_an_absent_one", field: WholeDeclaration }
