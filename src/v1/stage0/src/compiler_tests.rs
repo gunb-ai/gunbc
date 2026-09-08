@@ -39,6 +39,15 @@ mod compiler_tests {
         root: &std::path::Path,
         out: &mut Vec<(String, String)>,
     ) {
+        if crate::cli_run::derived_row_roster::is_recurring_failure_mode_row_dir(dir) {
+            crate::cli_run::derived_row_roster::ensure_derived_recurring_failure_mode_roster(dir)
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "failed to derive recurring_failure_mode roster in {:?}: {}",
+                        dir, e
+                    )
+                });
+        }
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();

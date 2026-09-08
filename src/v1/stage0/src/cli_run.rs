@@ -88,6 +88,7 @@ mod active_workset;
 mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
+pub mod derived_row_roster;
 mod required_floor_runner;
 pub mod rostered_row_join;
 mod serve_budget_refusal;
@@ -332,6 +333,14 @@ fn collect_dag_files_result(
     dir: &std::path::Path,
     files: &mut Vec<std::path::PathBuf>,
 ) -> Result<(), String> {
+    if derived_row_roster::is_recurring_failure_mode_row_dir(dir) {
+        derived_row_roster::ensure_derived_recurring_failure_mode_roster(dir).map_err(|e| {
+            format!(
+                "failed to derive recurring_failure_mode roster in {:?}: {}",
+                dir, e
+            )
+        })?;
+    }
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
         .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
@@ -22930,6 +22939,14 @@ pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
+    if derived_row_roster::is_recurring_failure_mode_row_dir(dir) {
+        if let Err(e) = derived_row_roster::ensure_derived_recurring_failure_mode_roster(dir) {
+            panic!(
+                "failed to derive recurring_failure_mode roster in {:?}: {}",
+                dir, e
+            );
+        }
+    }
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,

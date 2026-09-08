@@ -23,19 +23,18 @@ import tools.generated_artifact_gate { generated_artifact_agreement_verdict }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE EXCEPTION IS EXACTLY THE TWO LEDGER PROJECTIONS, not all documentation: only
-// DesignFailureModesArtifact and DesignRungDropsArtifact answer HealRegeneratesAfterProvisionalMerge,
-// because their authority is a small roster append while the projection is unbounded. count == 2
-// is that policy population, not a measurement copied from the current tree.
+// THE EXCEPTION IS THE COMMITTED RUNG-DROP LEDGER, not all documentation: only
+// DesignRungDropsArtifact answers HealRegeneratesAfterProvisionalMerge. The failure-mode
+// projection is NotCommitted, so it is not a heal subject. count == 1 is that policy
+// population, not a measurement copied from the current tree.
 
 test fn only_design_ledgers_delegate_concurrent_regeneration_to_heal() -> Bool {
   let paths = heal_regenerated_after_provisional_merge_paths()
-  count(paths) == 2
-    && any(paths, p => p == "docs/design-failure-modes.md")
+  count(paths) == 1
     && any(paths, p => p == "docs/design-rung-drops.md")
     && match concurrent_divergence_repair(a: DesignFailureModesArtifact) {
-         HealRegeneratesAfterProvisionalMerge => true
-         AuthorRegeneratesBeforeMerge => false
+         HealRegeneratesAfterProvisionalMerge => false
+         AuthorRegeneratesBeforeMerge => true
        }
     && match concurrent_divergence_repair(a: DesignRungDropsArtifact) {
          HealRegeneratesAfterProvisionalMerge => true
