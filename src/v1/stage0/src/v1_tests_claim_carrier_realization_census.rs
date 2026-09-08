@@ -532,7 +532,7 @@ pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
             }
             Some(g) => typed_census_tsv(g.modules.clone().iter().cloned().fold(
                 no_typed_rows(),
-                |acc: _, m: _| {
+                |acc: _, m: Rc<TypedModule>| {
                     v1_rt::concat(
                         acc,
                         typed_module_rows(m.clone(), result.source_indices.clone()),
