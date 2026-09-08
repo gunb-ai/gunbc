@@ -28,6 +28,13 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // literal's field-init children carry no inferred type at all. A refusal there is one no
 // author can discharge, and it turns a correct emission into a refusal -- the emitted bytes
 // for that probe are byte-identical to the seed's with the wall advisory.
+//
+// EXECUTING EVIDENCE: test.claim.algebra_expansion_evidence_witness_test, discovered on the
+// roots the floor walks. Its red-direction cell asserts the diagnostic IS raised on the
+// expansion receiver, and it discriminates rather than merely passing -- run against a
+// claim_batch built from main, where this diagnostic does not exist, that cell FAILS while
+// its accepted control (the same fold over a declared List parameter) PASSES on both trees.
+// So the red is about the construct and not about the harness.
 data algebra_expansion_positional_argument_stall: GuaranteeStall = GuaranteeStall {
   subject: "algebra type arguments read positionally off a structural expansion, where the position is a variant or a field rather than an argument",
   current: Mitigatable,
