@@ -119,18 +119,20 @@ fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
 }
 
 pub fn render_roster(names: &[String]) -> String {
-    let mut out = String::from(
-        "module gunbc.recurring_failure_mode.roster\n\
+    let mut out = format!(
+        "module {ROSTER_MODULE}\n\
          \n\
          // DERIVED from sibling RecurringFailureMode row files. Do not hand-edit.\n\
          // Membership is the directory; order is the sorted filename stem, which is the\n\
          // declaration name. An append is a new file in this directory, never an edit here.\n\
          \n\
-         import std.types { List }\n\
-         import gunbc.recurring_failure_mode { RecurringFailureMode }\n",
+         import std.types {{ List }}\n\
+         import {ROW_MODULE} {{ RecurringFailureMode }}\n"
     );
     for name in names {
-        out.push_str("import gunbc.recurring_failure_mode.");
+        out.push_str("import ");
+        out.push_str(ROW_MODULE);
+        out.push_str(".");
         out.push_str(name);
         out.push_str(" { ");
         out.push_str(name);
@@ -152,7 +154,7 @@ mod tests {
     fn absent_is_not_an_empty_list_render_of_no_names_is_a_present_empty_literal() {
         let body = super::render_roster(&[]);
         assert!(
-            body.contains("module gunbc.recurring_failure_mode.roster"),
+            body.contains(&format!("module {}", super::ROSTER_MODULE)),
             "absence of members is a present module with an empty list, not a missing module"
         );
         assert!(body.contains("= [\n]\n"));

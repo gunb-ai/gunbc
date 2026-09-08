@@ -2025,7 +2025,10 @@ fn an_empty_base_row_set_renders_a_present_empty_roster_not_an_absent_one() {
         "dag/gunbc/recurring_failure_mode/roster.dag",
     );
     assert!(
-        body.contains("module gunbc.recurring_failure_mode.roster"),
+        body.contains(&format!(
+            "module {}",
+            v1_compiler::cli_run::derived_row_roster::ROSTER_MODULE
+        )),
         "an empty base row set must still render the module, got:\n{body}"
     );
 }
