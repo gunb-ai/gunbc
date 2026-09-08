@@ -477,7 +477,7 @@ test fn w_a_bare_literal_at_a_refinement_formal_declines_and_a_cast_one_does_not
 // gunbc.recurring_failure_mode.absence_classifier_default_bucket. Enrolled ExpectAssertionFalse.
 data disjoint_refinement_at_product_source: String = "module probe_disjoint_refinement_at_product\nimport std.types { Int, String }\nimport product.placement_supply { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_host_d) }\n"
 
-data disjoint_partner_source: String = "module probe_disjoint_partner\nimport std.types { Int, String }\nimport product.placement_supply { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
+data disjoint_partner_source: String = "module probe_disjoint_refinement_at_product\nimport std.types { Int, String }\nimport product.placement_supply { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
 
 test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool {
   violation_count(source: disjoint_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
