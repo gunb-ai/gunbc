@@ -14,6 +14,10 @@ import gunbc.runner.runner_jit_admission {
   jit_admission_axis_standing, jit_admission_axis_is_deferred, axis_standing_is_deferred,
   gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
   mint_field_can_carry_attempt_binding, mint_surface_live_app_read, mint_fact_needed,
+  mint_surface_live_census, mint_surface_live_census_is_unmet, LiveCensusDischarged,
+  GunbaiCiHoldsOrganizationSelfHostedRunnersWrite, GenerateJitconfig201FieldPresence,
+  DuplicateNameConflictsWith409,
+  gunbai_ci_runners_write_coverage, generate_jitconfig_201_fields_coverage, duplicate_name_409_coverage,
   EncodedBlobIsOpaque, InstallationHoldsRunnersWrite, JitconfigResponseHasExpiresAtField,
   DuplicateNameConflicts, JitconfigResponseCarriesRunnerId,
   RequestNameIsPersistedRunnerIdentity, RequestAdmitsLabels,
@@ -113,4 +117,23 @@ test fn mint_facts_needed_are_per_axis_not_the_whole_mint() -> Bool {
     && !mint_fact_needed(axis: BootBindingAxis, fact: RequestHasNoHostField)
     && mint_fact_needed(axis: AttemptBindingAxis, fact: RequestNameIsPersistedRunnerIdentity)
     && mint_fact_needed(axis: AttemptBindingAxis, fact: RequestAdmitsLabels)
+}
+
+// THE LIVE CENSUS IS UNMET IN THE OBSERVING LAYER. Item 3 closed on published schema; these three
+// questions are coverage obligations for a later token-holding lane. encoded_jit_config is not one
+// of them.
+test fn gunbai_ci_mint_live_census_is_an_unmet_downstream_obligation() -> Bool {
+  mint_surface_live_census_is_unmet(census: mint_surface_live_census(
+    question: GunbaiCiHoldsOrganizationSelfHostedRunnersWrite,
+  ))
+    && mint_surface_live_census_is_unmet(census: mint_surface_live_census(
+         question: GenerateJitconfig201FieldPresence,
+       ))
+    && mint_surface_live_census_is_unmet(census: mint_surface_live_census(
+         question: DuplicateNameConflictsWith409,
+       ))
+    && !mint_surface_live_census_is_unmet(census: LiveCensusDischarged {
+         question: GunbaiCiHoldsOrganizationSelfHostedRunnersWrite,
+         receipt: "not yet" as NonEmptyStr,
+       })
 }

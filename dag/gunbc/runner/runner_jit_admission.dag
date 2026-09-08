@@ -170,6 +170,8 @@ fn mint_fact_needed(axis: JitAdmissionAxis, fact: MintSurfaceFact) -> Bool {
     }
   }
 }
+
+fn mint_field_can_carry_attempt_binding(field: JitMintAdmittedRequestField) -> Bool {
   match field {
     JitMintName => true
     JitMintLabels => true
@@ -178,6 +180,43 @@ fn mint_fact_needed(axis: JitAdmissionAxis, fact: MintSurfaceFact) -> Bool {
   }
 }
 
+// LIVE CENSUS IS A DOWNSTREAM COVERAGE OBLIGATION, not an Unobserved property on the upstream
+// module. DESIGN §3: observations this repository produces are receipts in the observing layer;
+// extdeps.github.actions_jit_runner models the cited spec. Closing item 3 on the published schema
+// is the right layer. These three questions remain unmet until a later lane with an installation
+// token discharges them. encoded_jit_config contents are out of scope — do not decode the blob.
+type MintSurfaceCoverageQuestion
+  = GunbaiCiHoldsOrganizationSelfHostedRunnersWrite
+  | GenerateJitconfig201FieldPresence
+  | DuplicateNameConflictsWith409
+
+type MintSurfaceLiveCensus
+  = LiveCensusUnmet { question: MintSurfaceCoverageQuestion }
+  | LiveCensusDischarged { question: MintSurfaceCoverageQuestion, receipt: NonEmptyStr }
+
+fn mint_surface_live_census(question: MintSurfaceCoverageQuestion) -> MintSurfaceLiveCensus {
+  LiveCensusUnmet { question: question }
+}
+
+fn mint_surface_live_census_is_unmet(census: MintSurfaceLiveCensus) -> Bool {
+  match census {
+    LiveCensusUnmet { question: _ } => true
+    LiveCensusDischarged { question: _, receipt: _ } => false
+  }
+}
+
 fn mint_surface_live_app_read(status: Int) -> Bool {
   status == 200
+}
+
+data gunbai_ci_runners_write_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
+  question: GunbaiCiHoldsOrganizationSelfHostedRunnersWrite,
+}
+
+data generate_jitconfig_201_fields_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
+  question: GenerateJitconfig201FieldPresence,
+}
+
+data duplicate_name_409_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
+  question: DuplicateNameConflictsWith409,
 }
