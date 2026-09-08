@@ -121,22 +121,6 @@ fn leg_standing(finding: CableLegFinding) -> LegStanding {
   }
 }
 
-fn leg_standing_is_divergent(s: LegStanding) -> Bool {
-  match s {
-    LegDiverges => true
-    LegAgrees => false
-    LegAgreesSubjectToFec => false
-  }
-}
-
-fn leg_standing_is_conditional(s: LegStanding) -> Bool {
-  match s {
-    LegAgreesSubjectToFec => true
-    LegAgrees => false
-    LegDiverges => false
-  }
-}
-
 fn plant_leg_outcome(required: LinkMode, leg: ObservedLeg) -> CableLegOutcome {
   CableLegOutcome {
     endpoint: leg.endpoint,
@@ -148,14 +132,28 @@ fn plant_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<Cab
   map(observed.legs, l => plant_leg_outcome(required: subject.required_mode, leg: l))
 }
 
+// SELECTION IS THE SAME FOLD, NOT A PREDICATE OVER IT. An `is_divergent(s) -> Bool` beside
+// `leg_standing` would be the per-question `match ... -> Bool` this file names as residue four
+// declarations above, reintroduced one layer later over the classification instead of over the
+// finding -- and a new LegStanding arm would then need remembering at each predicate rather than
+// being decided once. Each selector matches the classification directly and emits the row or
+// nothing, which is the same shape `plant_unread_endpoints` uses below.
 fn plant_divergent_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<CableLegOutcome> {
-  filter(plant_outcomes(subject: subject, observed: observed),
-         o => leg_standing_is_divergent(s: leg_standing(finding: o.finding)))
+  flat_map(plant_outcomes(subject: subject, observed: observed), o =>
+    match leg_standing(finding: o.finding) {
+      LegDiverges => [o]
+      LegAgrees => []
+      LegAgreesSubjectToFec => []
+    })
 }
 
 fn plant_conditional_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<CableLegOutcome> {
-  filter(plant_outcomes(subject: subject, observed: observed),
-         o => leg_standing_is_conditional(s: leg_standing(finding: o.finding)))
+  flat_map(plant_outcomes(subject: subject, observed: observed), o =>
+    match leg_standing(finding: o.finding) {
+      LegAgreesSubjectToFec => [o]
+      LegAgrees => []
+      LegDiverges => []
+    })
 }
 
 // ================= THE FOUR HANDLER STAGES =================
