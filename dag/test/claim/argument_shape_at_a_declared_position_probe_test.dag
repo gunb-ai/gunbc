@@ -57,13 +57,17 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // meta-obligation (4) they do not retire at that point: they convert to permanent regression
 // controls.
 //
-// THEY ARE NOT ENROLLED IN v2.workflow.floor_expected_red AND MUST NOT BE DESCRIBED AS IF THEY WERE.
-// This module matches no prefix in v2.workflow.required_floor required_gate_prefixes, so the floor
-// suppresses these identities as dormant -- discovered, not run -- and that roster's rule is that
-// enrolling an identity asserts it REACHES ITS SUBJECT AND ANSWERS. Their reds are therefore real
-// and unrouted rather than held: nothing is suppressing them because nothing is running them. The
-// exit is stated in gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall,
-// which names gate admission as its own trigger.
+// THEY ARE ENROLLED IN v2.workflow.floor_expected_red, AND THE PREFIX ROSTER IS NOT THE WHOLE
+// ADMISSION RULE. This module matches no prefix in v2.workflow.required_floor required_gate_prefixes,
+// which is why no ORDINARY floor run repeats this measurement -- but the floor ALSO plans a witness
+// whose file the change touches, so every change to this module runs these identities, including the
+// change that lands them. That roster's rule is that enrolling an identity asserts it REACHES ITS
+// SUBJECT AND ANSWERS, and these arms do: they evaluate and return false with cause claim_failed,
+// which is a reached answer rather than a never-executed row. Un-enrolled they would block their own
+// landing change. The residual gap -- that between changes the rung rests on a human-run command --
+// is stated in gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall, which
+// names required_gate_prefixes admission as its own trigger, separately from the compiler capability
+// that retires the class.
 //
 // AND THE STRING-AT-A-CONCRETE-POSITION ARM IS NOT DECORATION. It is what makes the function arm
 // mean anything: without it, a red on the function arm would be indistinguishable from a probe whose
