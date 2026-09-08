@@ -245,6 +245,20 @@ test fn a_free_count_exceeding_the_inventory_refuses_rather_than_reading_as_satu
 test fn a_windowed_group_carries_its_window_by_construction() -> Bool {
   let g = w_window(layers: 1, block: 16, window: 128)
   (match g.kind { SlidingWindowAttention { window: w } => token_count_value(t: w) == 128  _ => false })
-    && group_blocks_for(group: g, sequence: token_count(count: 1048576)) == 8
-    && group_blocks_for(group: w_full(layers: 1, block: 16), sequence: token_count(count: 1048576)) == 65536
+    && (match group_blocks_for(group: g, sequence: token_count(count: 1048576)) { Present { value: n } => n == 8  Absent => false })
+    && (match group_blocks_for(group: w_full(layers: 1, block: 16), sequence: token_count(count: 1048576)) { Present { value: n } => n == 65536  Absent => false })
+}
+
+test fn a_zero_block_size_group_refuses_rather_than_dividing() -> Bool {
+  match cold_admission_blocks(layout: w_layout(groups: [w_full(layers: 40, block: 0)]), sequence_budget: token_count(count: 500000)) {
+    AdmissionCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "zero block size")
+    AdmissionCostBlocks { blocks: _ } => false
+  }
+}
+
+test fn a_zero_layer_group_refuses_rather_than_looking_free() -> Bool {
+  match cold_admission_blocks(layout: w_layout(groups: [w_full(layers: 0, block: 16)]), sequence_budget: token_count(count: 500000)) {
+    AdmissionCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "zero layer count")
+    AdmissionCostBlocks { blocks: _ } => false
+  }
 }
