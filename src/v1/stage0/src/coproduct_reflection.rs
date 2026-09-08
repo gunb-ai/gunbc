@@ -1001,10 +1001,14 @@ where
             if name.is_empty() {
                 continue;
             }
+            // Identity-keyed registry (owner.decl): a bare-leaf `get` misses every row and the
+            // `continue` below then deleted the whole population from the observed set with no
+            // diagnostic. Within one module the authored leaf is unique, so scan that module's
+            // values instead of reconstructing the owner spelling.
             let info = module
                 .item_registry
-                .get(&name)
-                .or_else(|| module.item_registry.get(&item.name));
+                .values()
+                .find(|candidate| candidate.name == name || candidate.name == item.name);
             let Some(info) = info else { continue };
             if !kind_ok(info.kind) {
                 continue;

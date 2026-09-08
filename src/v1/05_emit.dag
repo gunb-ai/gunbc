@@ -6,6 +6,8 @@ import std.coercion { TypeRealizationDecision }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
+  call_semantics_target, callable_identity, DeclaredCallableIdentity,
+  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   Node, ErrorNode, make_error_node, TransportEmissionNotModeled, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
@@ -304,8 +306,18 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   }
 }
 
-fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
-  map_get(registry, name)
+// THE REGISTRY IS OPENED BY IDENTITY, NEVER BY A SPELLING.
+//
+// This replaced lookup_item(registry, name: String), which took whatever spelling the caller had to
+// hand — an authored call target, a bare leaf, a module-qualified string — and asked one bare-keyed
+// map for it. That made three consumers key the same registry three different ways, and the Rust
+// path's qualified reads returned the right declaration carrying stale effects. Taking the identity
+// record means the caller must have RESOLVED the declaration before it can ask, so a caller that
+// only has a spelling cannot reach the registry at all; it has to go through the target inference
+// first. The projection to a map key stays inside here so the key's shape is not a fact any consumer
+// has to know or agree with.
+fn lookup_item_by_identity(registry: Map<String, ItemInfo>, id: DeclaredCallableIdentity) -> ItemInfo? {
+  map_get(registry, callable_identity(id: id))
 }
 
 // THE ARM IS NAMED HERE RATHER THAN IN A SHARED PROJECTION THAT FORGETS IT.
@@ -1651,20 +1663,25 @@ fn block_stmts_init(stmts: List<Node>) -> List<Node> {
   else { stmts |> take(n: (stmts |> count) - 1) }
 }
 
-fn is_tco_eligible(name: String, body: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match lookup_item(registry: registry, name: name) {
+// THE DECLARATION BEING EMITTED IS ASKED FOR BY ITS IDENTITY, NOT ITS LEAF.
+// The registry read used to key on the bare leaf, so emitting `run` in one module could be told
+// about `run` in another — and the Absent arm, which rescans this body, silently covered for it.
+// Taking the identity means the Present arm answers about THIS declaration and the Absent arm means
+// the declaration genuinely has no registry row, which is the case the rescan is actually for.
+fn is_tco_eligible(id: DeclaredCallableIdentity, body: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match lookup_item_by_identity(registry: registry, id: id) {
     Present { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
     Absent => {
-      expr_has_self_call(texpr: body, fn_name: name, source_indices: source_indices)
-        && expr_has_non_tail_self_call(texpr: body, fn_name: name, in_tail: true, source_indices: source_indices) == false
+      expr_has_self_call(texpr: body, fn_name: id.decl_name, source_indices: source_indices)
+        && expr_has_non_tail_self_call(texpr: body, fn_name: id.decl_name, in_tail: true, source_indices: source_indices) == false
     }
   }
 }
 
-fn is_self_recursive(name: String, body: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match lookup_item(registry: registry, name: name) {
+fn is_self_recursive(id: DeclaredCallableIdentity, body: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match lookup_item_by_identity(registry: registry, id: id) {
     Present { value: info } => info.is_self_recursive
-    Absent => expr_has_self_call(texpr: body, fn_name: name, source_indices: source_indices)
+    Absent => expr_has_self_call(texpr: body, fn_name: id.decl_name, source_indices: source_indices)
   }
 }
 
@@ -3351,11 +3368,27 @@ fn emit_go_v2rt_free_call(func: String, arg_strs: List<String>) -> String {
   concat("v2rt.", emit_export_ident(name: bridge_method_name_unified(method_name: func, target: Go), target: Go), "(", arg_strs |> join(separator: ", "), ")")
 }
 
+// THE CALLEE IS THE ONE TARGET INFERENCE RESOLVED, NOT THE ONE THE SPELLING SUGGESTS.
+// The callee read inside used to key the registry on `func`, the authored call spelling, so a call
+// to a leaf declared in two modules could be answered by whichever module the flat registry happened
+// to hold — and the effect facts of an unrelated declaration then decided whether this call site
+// received service arguments. The semantics carrier already names the declaration that was actually
+// resolved; asking it means an unresolved or primitive target yields Absent, which is the honest
+// answer, instead of a plausible row belonging to someone else.
 fn emit_typed_call_unified(func: String, args: List<Node>, call_semantics: CallSemantics?, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
   let ordered_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
   let arg_strs = ordered_args |> map(a => recurse(arg_value(n: a)))
-  let callee = lookup_item(registry: registry, name: func)
+  let callee = match call_semantics_target(cs: call_semantics) {
+    SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+      lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity {
+        owner_module_path: owner,
+        decl_name: decl
+      })
+    RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => Absent
+    LocallyBoundCall { name: _ } => Absent
+    CallableTargetUndetermined => Absent
+  }
   let extra_args = match callee {
     Present { value: info } =>
       let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0

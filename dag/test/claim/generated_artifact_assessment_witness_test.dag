@@ -1,6 +1,6 @@
 module test.claim.generated_artifact_assessment
 
-import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, ConcurrentDivergenceRepair, AuthorRegeneratesBeforeMerge, HealRegeneratesAfterProvisionalMerge, concurrent_divergence_repair, heal_regenerated_after_provisional_merge_paths, artifact_path, artifact_directory, artifact_name }
+import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, SeedRetentionFrontierGeneratedRsArtifact, ConcurrentDivergenceRepair, AuthorRegeneratesBeforeMerge, HealRegeneratesAfterProvisionalMerge, concurrent_divergence_repair, heal_regenerated_after_provisional_merge_paths, artifact_path, artifact_directory, artifact_name }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
@@ -23,19 +23,18 @@ import tools.generated_artifact_gate { generated_artifact_agreement_verdict }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE EXCEPTION IS EXACTLY THE TWO LEDGER PROJECTIONS, not all documentation: only
-// DesignFailureModesArtifact and DesignRungDropsArtifact answer HealRegeneratesAfterProvisionalMerge,
-// because their authority is a small roster append while the projection is unbounded. count == 2
-// is that policy population, not a measurement copied from the current tree.
+// THE EXCEPTION IS THE COMMITTED RUNG-DROP LEDGER, not all documentation: only
+// DesignRungDropsArtifact answers HealRegeneratesAfterProvisionalMerge. The failure-mode
+// projection is NotCommitted, so it is not a heal subject. count == 1 is that policy
+// population, not a measurement copied from the current tree.
 
 test fn only_design_ledgers_delegate_concurrent_regeneration_to_heal() -> Bool {
   let paths = heal_regenerated_after_provisional_merge_paths()
-  count(paths) == 2
-    && any(paths, p => p == "docs/design-failure-modes.md")
+  count(paths) == 1
     && any(paths, p => p == "docs/design-rung-drops.md")
     && match concurrent_divergence_repair(a: DesignFailureModesArtifact) {
-         HealRegeneratesAfterProvisionalMerge => true
-         AuthorRegeneratesBeforeMerge => false
+         HealRegeneratesAfterProvisionalMerge => false
+         AuthorRegeneratesBeforeMerge => true
        }
     && match concurrent_divergence_repair(a: DesignRungDropsArtifact) {
          HealRegeneratesAfterProvisionalMerge => true
@@ -325,6 +324,7 @@ test fn artifact_path_is_byte_identical_after_the_location_split() -> Bool {
     && (artifact_path(a: GithooksPrePushArtifact) == ".githooks/pre-push")
     && (artifact_path(a: GeneratedArtifactMergeDriverArtifact) == ".githooks/generated-artifact-merge")
     && (artifact_path(a: Stage0CrateLayoutGeneratedRsArtifact) == "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs")
+    && (artifact_path(a: SeedRetentionFrontierGeneratedRsArtifact) == "src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs")
 }
 
 // THE ROOT IS A LISTABLE DIRECTORY, NOT AN ABSENT ONE. A consumer that lists the directory to

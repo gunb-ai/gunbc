@@ -3,6 +3,15 @@ module v2.compiler.emit_module
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.target_carriers { target_source_medium }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.emission_provenance {
+  EmissionAuthoredFragment,
+  EmissionContribution,
+  EmissionSourceComposition,
+  EmissionUnobservedFragment,
+  emission_contribution_source
+}
+import std.types { NonEmptyStr }
 import v2.std.compilers.target_model { TargetModel }
 import extdeps.communication.medium { Medium }
 import v2.std.collection { List }
@@ -14,48 +23,118 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.text { String }
-import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_append }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list }
 
 data emit_module_decl_separator: String = "\n\n"
 
-fn emit_module_append_decl(
-  partial: String,
+// The module source is ASSEMBLED FROM the contribution tree, never reconstructed by concatenating
+// strings beside it (std.emission_provenance): emit_module_text materializes what
+// emit_module_contribution built, so there is one authority for what bytes this fold produces and
+// where they came from. A refused declaration still REFUSES -- EmissionUnobservedFragment records
+// missing ORIGINS, never a missing emission, so this is not a widening failure arm (DESIGN.md S5).
+data emit_module_emit_origins_unobserved_cause: String = "v2.compiler.emit yields Medium<String> carrying no contribution structure, so the origins of one declaration's emitted text are not observed at this seam"
+
+fn emit_module_emit_unobserved_fragment(source: String) -> EmissionContribution {
+  EmissionUnobservedFragment {
+    producer: decl_ref(module_path: "v2.compiler.emit", decl_name: "emit"),
+    cause: emit_module_emit_origins_unobserved_cause as NonEmptyStr,
+    source: source
+  }
+}
+
+// The separator is AUTHORED: its bytes are the literal declared above in this .dag file, so its
+// origin is that declaration and not the fold that placed it.
+fn emit_module_separator_fragment() -> EmissionContribution {
+  EmissionAuthoredFragment {
+    origin: decl_ref(module_path: "v2.compiler.emit_module", decl_name: "emit_module_decl_separator"),
+    source: emit_module_decl_separator
+  }
+}
+
+fn emit_module_decl_contribution(
   tree: InferredTree,
   target: TargetModel
-) -> Outcome<String> {
+) -> Outcome<EmissionContribution> {
   bind_outcome(
     o: emit(tree: tree, target: target),
     f: fn(medium) {
       outcome_accepted(
-        value: list_append(
-          left: list_append(left: partial, right: medium.carried),
-          right: emit_module_decl_separator
-        )
+        value: EmissionSourceComposition {
+          origin: decl_ref(
+            module_path: "v2.compiler.emit_module",
+            decl_name: "emit_module_decl_contribution"
+          ),
+          parts: [
+            emit_module_emit_unobserved_fragment(source: medium.carried),
+            emit_module_separator_fragment()
+          ]
+        }
       )
     }
   )
 }
 
-fn emit_module_step(
-  acc: Outcome<String>,
-  tree: InferredTree,
-  target: TargetModel
-) -> Outcome<String> {
+// ONE accumulation for every contribution fold in this module. The module fold and the family
+// fold differ only in how an element becomes a contribution, so that difference is a parameter,
+// not a second copy of the fold (DESIGN.md S2): a fix to the seed, the append order or the
+// composition wrap cannot land on one and miss the other.
+fn emit_contribution_parts_step<T>(
+  acc: Outcome<FreeMonoid<EmissionContribution>>,
+  item: T,
+  contribution_of: fn(T) -> Outcome<EmissionContribution>
+) -> Outcome<FreeMonoid<EmissionContribution>> {
   bind_outcome(
     o: acc,
-    f: fn(partial) {
-      emit_module_append_decl(partial: partial, tree: tree, target: target)
+    f: fn(parts) {
+      bind_outcome(
+        o: contribution_of(item),
+        f: fn(part) {
+          outcome_accepted(value: parts.append(part))
+        }
+      )
     }
   )
 }
 
+fn emit_contribution_composition<T>(
+  items: List<T>,
+  origin: DeclarationRef,
+  contribution_of: fn(T) -> Outcome<EmissionContribution>
+) -> Outcome<EmissionContribution> {
+  bind_outcome(
+    o: fold_list(
+      xs: items,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, item) {
+        emit_contribution_parts_step(acc: acc, item: item, contribution_of: contribution_of)
+      }
+    ),
+    f: fn(parts) {
+      outcome_accepted(value: EmissionSourceComposition { origin: origin, parts: parts })
+    }
+  )
+}
+
+fn emit_module_contribution(
+  decls: List<InferredTree>,
+  target: TargetModel
+) -> Outcome<EmissionContribution> {
+  emit_contribution_composition(
+    items: decls,
+    origin: decl_ref(
+      module_path: "v2.compiler.emit_module",
+      decl_name: "emit_module_contribution"
+    ),
+    contribution_of: fn(tree) { emit_module_decl_contribution(tree: tree, target: target) }
+  )
+}
+
 fn emit_module_text(decls: List<InferredTree>, target: TargetModel) -> Outcome<String> {
-  fold_list(
-    xs: decls,
-    empty: Accepted { value: Empty, diagnostics: None },
-    cons: fn(acc, tree) {
-      emit_module_step(acc: acc, tree: tree, target: target)
+  bind_outcome(
+    o: emit_module_contribution(decls: decls, target: target),
+    f: fn(contribution) {
+      outcome_accepted(value: emission_contribution_source(contribution: contribution))
     }
   )
 }
@@ -80,34 +159,24 @@ type EmitFamilyMember {
   target: TargetModel
 }
 
-fn emit_family_append_member(
-  partial: String,
-  member: EmitFamilyMember
-) -> Outcome<String> {
-  bind_outcome(
-    o: emit(tree: member.tree, target: member.target),
-    f: fn(medium) {
-      outcome_accepted(
-        value: list_append(
-          left: list_append(left: partial, right: medium.carried),
-          right: emit_module_decl_separator
-        )
-      )
+fn emit_family_contribution(members: List<EmitFamilyMember>) -> Outcome<EmissionContribution> {
+  emit_contribution_composition(
+    items: members,
+    origin: decl_ref(
+      module_path: "v2.compiler.emit_module",
+      decl_name: "emit_family_contribution"
+    ),
+    contribution_of: fn(member) {
+      emit_module_decl_contribution(tree: member.tree, target: member.target)
     }
   )
 }
 
 fn emit_family_text(members: List<EmitFamilyMember>) -> Outcome<String> {
-  fold_list(
-    xs: members,
-    empty: Accepted { value: Empty, diagnostics: None },
-    cons: fn(acc, member) {
-      bind_outcome(
-        o: acc,
-        f: fn(partial) {
-          emit_family_append_member(partial: partial, member: member)
-        }
-      )
+  bind_outcome(
+    o: emit_family_contribution(members: members),
+    f: fn(contribution) {
+      outcome_accepted(value: emission_contribution_source(contribution: contribution))
     }
   )
 }

@@ -413,7 +413,17 @@ fn project_resolved_rust_fn_signatures(
                     }
                     // Prefer the expanded graph registry row when it still names this module —
                     // transitive service expansion is applied there, not on TypedModule.item_registry.
-                    let info = match graph.item_registry.get(&local.name) {
+                    // The graph registry is keyed on the DECLARATION IDENTITY (owner.decl), not on
+                    // the bare leaf: a leaf spelled the same in two modules occupies two rows, so a
+                    // bare-name read here missed every time and silently took the unexpanded local
+                    // row, dropping transitive service_names at this seam.
+                    let identity = crate::v1_std_core::callable_identity(std::rc::Rc::new(
+                        crate::v1_std_core::DeclaredCallableIdentity {
+                            owner_module_path: local.module_name.clone(),
+                            decl_name: local.name.clone(),
+                        },
+                    ));
+                    let info = match graph.item_registry.get(&identity) {
                         Some(expanded) if expanded.module_name == local.module_name => expanded,
                         _ => local,
                     };
