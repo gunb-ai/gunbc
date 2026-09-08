@@ -1,0 +1,40 @@
+module gunbc.guarantee_stall.wet_route_model_lags_seed_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+// RECOVERED 2026-09-07 from commit 32815827ef8 on gunbc#9725 (closed unmerged). The three
+// comment blocks below, the subject, current, ceiling, blocker, and population members are
+// that commit's text. FRESH: `next_rung_trigger` is now `NextRungTrigger`; `climbs_when`
+// wraps the recovered capability string verbatim. No field was re-derived from the live tree.
+
+// THE MODEL LAGS THE SEED ON THREE NAMED DEFECTS, WHICH IS THE DIVERGENCE RUNNING BACKWARDS
+// (gunbc#9725). The substrate is supposed to be the authority and the seed one realization of it;
+// here the EXECUTING path is strictly stricter than the authored model, on three counts that were
+// repaired in `v1_compiler.cli_run.required_floor_runner` and not in `v2.workflow.floor_wet_route`.
+//
+// WHY THE MODEL WAS NOT REPAIRED WITH IT, and it is a hard constraint rather than a preference:
+// that module is a TERM OF THE WET SEMANTIC SUBJECT, and the subject is `closure_content_digest`
+// over RAW FILE CONTENT. Any byte changed there -- a comment included -- moves the digest the
+// committed receipt is pinned to and voids the operator-granted lease that admits it, forcing a
+// ~2.5h re-dispatch and a second grant to repair an artifact that has no executing consumer.
+//
+// THE DIVERGENCE DIRECTION IS SAFE AND STILL WRONG. A stricter seed cannot ADMIT anything the
+// model would refuse, so nothing is fail-open today; what is wrong is that the authority is the
+// laggard, so a reader consulting the substrate learns the weaker rule and any consumer generated
+// from it inherits the weaker rule. It is filed as a countable debt rather than left inside the
+// admission stall's prose, because it will be invisible the moment that PR merges.
+data wet_route_model_lags_seed_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2.workflow.floor_wet_route authors three rules its own seed realization has already superseded: the executor arm returns fifth of nine rather than last (so ExecutorSnapshotDifferent means only that executor disagreement was the FIRST blocking arm reached, with roster join, identity conformance, outcome vocabulary, age sanity and staleness unevaluated); wet_route_gate_disposition_for_receipt accepts `envelope` and `envelope_digest` as independent parameters rather than deriving the digest from the envelope it judges; and the negative-age arm, while present here, is the one the seed had to be taught separately",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: [
+      "v2.workflow.floor_wet_route wet_lane_receipt_standing -- executor arm ordered fifth of nine",
+      "v2.workflow.floor_wet_route wet_route_gate_disposition_for_receipt -- envelope and envelope_digest are independent parameters, demonstrated constructible by v2.test.floor_wet_route.wet_lease_admits_an_envelope_whose_content_the_digest_does_not_name",
+      "v2.workflow.floor_wet_route -- the module is a term of its own semantic subject, so repairing it requires a re-dispatch and a fresh lease grant"
+    ]
+  },
+  next_rung_trigger: climbs_when(capability: "the three rules are authored in v2.workflow.floor_wet_route itself, landed on a head whose wet receipt was dispatched AFTER them so the subject digest covers them -- which means the repair rides a re-dispatch rather than waiting for one, and the admitting witness above flips from a recorded observation to a refusal control in the same change. NOT satisfied by the seed continuing to be stricter, which is the state this row exists to count.")
+}

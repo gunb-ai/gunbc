@@ -3056,6 +3056,29 @@ pub struct MultiModuleFixtureSource {
     pub content: String,
 }
 
+/// Per-function **resolved-registry** projection for the Rust emit target: source identity plus
+/// the ordered parameter name list taken from `ItemInfo` with `emit_ident` /
+/// `service_var_name` transforms. See `tools.multi_module_compile_fixture`
+/// `ResolvedRustFnSignature`. Not a read of emitted file bytes — the type name admits the Rust
+/// target, not emit-path observation.
+///
+/// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types.
+///
+/// **Registry mirror, not emit join (below ceiling — order and membership):** DESIGN §3b middle
+/// value — deliberate divergence with stated reason (see `tools.multi_module_compile_fixture`
+/// `ResolvedRustFnSignature`). Nothing refuses if `emit_func_params` / `emit_func_def` and this
+/// projection disagree (resource arm already reads `ItemInfo.resource_names` while emit folds
+/// `uses` via `resource_use_name_at`). **Next-rung trigger:** derive from the same source
+/// `emit_func_params` reads (or from its emit result). **Why unbuilt:** emit_rust seed
+/// regeneration would couple this instrument PR to #10688's live surface. DESIGN §5: an in-diff
+/// approval claim does not authorize the debt; the technical reason does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedRustFnSignature {
+    pub owner_module: String,
+    pub declaration_name: String,
+    pub ordered_parameter_names: Vec<String>,
+}
+
 /// Outcome of [`compile_dag_multi_module_fixture`]. THE THREE ARMS HAVE THREE DIFFERENT OWNERS:
 /// `InstrumentRefused` is the harness's own fault (malformed manifest, entry naming no supplied
 /// module, panic), `CompileRefused` is the SUBJECT's fault and carries the compiler's judgment,
@@ -3081,6 +3104,7 @@ pub enum MultiModuleCompileFixtureOutcome {
     CompileCompleted {
         module_count: i64,
         emitted_files: Vec<String>,
+        resolved_rust_functions: Vec<ResolvedRustFnSignature>,
         diagnostics: Vec<CompileDiagnosticCensusRow>,
         source_digest: String,
         compiler_digest: String,
@@ -40519,6 +40543,20 @@ fn long_home_storage_agreement(
     }
 }
 
+/// ONE BLOCKING CHANGED-WITNESS ROW AS ITS CONSUMER RECEIVES IT: the identity, and the CAUSE that
+/// made it block. Host mirror of `v2.workflow.floor_changed_witness` `ChangedWitnessBlocker`.
+///
+/// The pair travels together because the identity alone is what this population used to carry,
+/// and the cause is exactly what its consumer could not recover: `claim_executor` had one
+/// constant to stamp, so a declined witness that never executed and a claim that ran and failed
+/// arrived at the merge gate as the same bit. `cause` is never empty on a blocking row —
+/// `changed_witness_projection_rows` refuses rather than emitting one that is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedWitnessBlocker {
+    pub identity: String,
+    pub cause: String,
+}
+
 /// What one required-floor attempt did. The three identity counts are separate fields rather
 /// than one `total` because the operator's acceptance census asks them to be EQUAL, and a
 /// single number cannot be compared with itself: a run that planned 9,267 claims, executed
@@ -40712,9 +40750,19 @@ pub struct RequiredFloorOutcome {
     pub changed_witness_rows: usize,
     /// The changed identities whose `ChangedWitnessExecutionStanding`
     /// (`v2.workflow.floor_changed_witness`) BLOCKS — declined, missing from the disposition
-    /// receipt, or planned without a terminal Passed verdict. Non-empty reds the required
-    /// context; see `required_floor_outcome_is_clean` in `claim_executor`.
-    pub changed_witness_blocking: Vec<String>,
+    /// receipt, or planned without a terminal Passed verdict — EACH WITH THE CAUSE THAT MADE IT
+    /// BLOCK. Non-empty reds the required context; see `required_floor_outcome_is_clean` in
+    /// `claim_executor`.
+    ///
+    /// THIS WAS A `Vec<String>` AND THE CAUSE WAS THE DEFECT. The standings above are computed
+    /// per row and were dropped on the way into this field, so `claim_executor` had one constant
+    /// to stamp on all of them and the merge gate received one bit for four materially different
+    /// states. Measured on gunbc#10757: fifteen identities that never executed (the disposition
+    /// artifact counts them `declined_changed_witness_outside_discovery=15`) reached the
+    /// measurement receipt as `cause=changed_witness_blocking`, indistinguishable from a claim
+    /// that ran and failed, in a run where zero claims failed. Authority for the cause spelling:
+    /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`.
+    pub changed_witness_blocking: Vec<ChangedWitnessBlocker>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {

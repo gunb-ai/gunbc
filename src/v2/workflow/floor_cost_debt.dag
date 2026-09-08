@@ -807,13 +807,19 @@ fn floor_cost_debt_straddling_chunk_00() -> List<String> {
 // production-apply ordering coverage. The two repository-transition admission consultation
 // witnesses execute on ordinary floors as well.
 //
-// THE COMPLETED CHANGED-DEBT VERDICT MEASURED THE COST honestly: 587ms marginal CPU, versus 563ms
-// for `apply_script_stays_within_ci_runner_grants` -- gunbc#10724 renamed that witness from
-// `apply_script_and_tree_sync_unit_stay_within_ci_runner_grants` when the publication member stopped
-// writing a tree-sync unit; the subject and the withhold are unchanged -- over the same production
-// apply-script subject. The ordering predicate contributes about 24ms; the emitted subject, not
-// the predicate, is the demonstrated cost boundary. Three earlier executions were preempted at
-// the ceiling and supplied no cost measurement; those interrupt points are not reused as figures.
+// THAT WITNESS WAS RENAMED BY #10724 AND THE ROSTER FOLLOWED IT (#10763, #10769): the live
+// identity is `test.claim.live_deploy.emit.apply_script_stays_within_ci_runner_grants`, because
+// the publication member stopped writing two programs to one unit name and the tree-sync half
+// of the subject went away. Do not attribute a historical two-program measurement to that
+// narrowed name.
+//
+// THE COMPLETED CHANGED-DEBT VERDICT MEASURED COST AGAINST THIS ENROLLED IDENTITY
+// (`test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback`)
+// and that sibling withhold. Re-derive both from the required floor's per-claim cost receipt —
+// do not copy a millisecond figure here. The demonstrated cost boundary is the emitted
+// production apply script, not the ordering predicate. Three earlier executions were preempted
+// at the ceiling and supplied no cost measurement; those interrupt points are not reused as
+// figures.
 //
 // TRIGGER (CAPABILITY, NOT ROSTER ERASURE): emission witnesses can reach a terminal verdict over
 // the production apply script, either because that script becomes a shared fill-netted artifact
