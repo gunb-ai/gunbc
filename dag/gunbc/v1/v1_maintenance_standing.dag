@@ -63,6 +63,32 @@ type MaintenanceRefusal =
   | SeedFeatureCompletion
   | PublicSurfaceGrowth
 
+// A DISPOSITION IS NOT AN ADJUDICATION, and this carrier exists so the difference cannot be
+// recorded as prose. A change can reach main without the purpose test ever being applied to it --
+// merged over an objection that was raised and never answered -- and that fact has to be filed
+// somewhere, because an unrecorded exception is worse than a refused one: the next author either
+// repeats the blocked work or quietly assumes the class is dead.
+//
+// WHY IT IS NOT AN ARM OF MaintenanceAdmissionInstance, which is the whole reason it is a separate
+// type. That vocabulary records shapes the purpose test has been satisfied BY; an unadjudicated
+// merge satisfied nothing and failed nothing, so adding an arm there would mint the ruling that was
+// asked for and not given -- the self-authored boundary change this standing warns against three
+// declarations above. It is equally not a refusal record: no refusal was issued either.
+//
+// WHAT CONSUMES IT (DESIGN section 3c, answered rather than left dangling): the same route that
+// consumes v1_seed_standing itself. DESIGN states the rung for this authority honestly -- "the
+// vocabulary is consumed by review diligence, not by any gate" -- so a row here reaches its
+// consumer when a reviewer classifies a proposed v1 change against this standing. That is the
+// declared route and this row's honest state, not a claim that a fold reads it.
+
+type UnadjudicatedDisposition =
+    MergedWhileObjectionStood {
+      change: String,
+      merged_as: String,
+      objecting_review: String,
+      refusal_at_issue: MaintenanceRefusal,
+    }
+
 data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: MaintenanceActive }
 
 // OPERATOR RULING 2026-08-18, and the reason it is a reclassification rather than a loophole. The
@@ -442,7 +468,81 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 
 data v1_maintenance_typecheck_progress_admission_note: String = "AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST, recorded in the same PR as the change it admits, because an admission written afterwards is indistinguishable from an author's own classification. THE RULING, verbatim and relayed through the requesting session's parent (snappy-dove-250, import/namespace manager) on 2026-08-25: 'ah yeah - we need to fix the typecheckmoduleresult issue'. There is no PR review or transcript to point at; the relay is the record and this row is the citation, stated plainly rather than dressed up as pointing at a document that does not exist -- the same shape as v1_maintenance_purpose_ruling_note above.\n\nTHE DEFECT, at the grain that makes it a defect rather than an improvement. v1.compiler.infer typecheck_module has an early return: when build_type_env yields error diagnostics it hands back a TypedModule whose items list is EMPTY and never reaches item analysis. The seed therefore renders two different facts as one value -- a module that COMPLETED item checking and legitimately has no items, and a module that was ABANDONED before item checking started. Every downstream reader of TypedModule.items receives the same empty list for both, so a consumer wanting the distinction must infer it from 'items is empty AND there are error diagnostics', and that inference is unreliable in the direction that matters: a module that completed and has item-level errors presents identically. This is the state-space conflation DESIGN names, in the seed, on a carrier read by the whole back end.\n\nWHY THE FIELD LANDS ON TypedModule AND NOT ON TypecheckModuleResult, since the ruling names the result type and the change does not edit it. realize_module destructures the result and inserts only .typed into the module index; a progress field on the result alone would be discarded one line after it was set, which is this same defect one level out. The result type is where the issue was NOTICED; the carrier that survives the destructure is where the fact has to live.\n\nTHE EXHIBITED COST, because a defect with no demonstrated victim is a preference. A demand oracle built in this lane to score resolution producers read TypedModule.items to derive per-module demand, and was found DEAD as a scoring instrument for exactly this reason: an abandoned module reports total_arm1=1, which is indistinguishable from a genuine single-ask module, so the instrument's error is ANTI-CORRELATED with the defect it was built to find -- the modules most likely to abandon are the ones whose demand it most understates. That oracle was discarded rather than repaired, which is the measured price of the conflation and is why this is not speculative hardening.\n\nWHY IT SERVES THE V2 SELF-HOST PROGRAM, which is the whole admission test. The v2 resolution work this lane exists to do reads seed-produced TypedModule values to measure and compare producers. An instrument that cannot tell 'not checked' from 'nothing to check' cannot score a producer, and the program's next steps (one closure authority, exact denotation) are measurement-gated. This repairs the seed's report of its own progress; it adds no language behavior, no compatibility obligation, no escape hatch, and completes no seed feature.\n\nTHE SCOPE LIMIT, stated because this row will be cited and its limit is the part most likely to be dropped in the citing. THE RULING ADMITS THIS CHANGE ONLY. It does NOT settle whether PublicSurfaceGrowth means a NEW EXPORTED DECLARATION or ANY CHANGE TO EXPORTED SURFACE -- this change adds a coproduct and a record field to a type the seed exports, so it sits squarely on that unresolved boundary and was ruled admissible without the boundary being drawn. Nobody may cite this row as the answer to that question. A later proposal that needs the boundary decided must route it for its own ruling; treating this admission as precedent for a general reading of PublicSurfaceGrowth would be the authority-substitution failure DESIGN names -- borrowing one authority's answer to settle a question it never addressed. The five refused classes are untouched and still dominate every admission, including this one."
 
-data v1_maintenance_inhabitance_relation_unadjudicated_merged_instance_note: String = "AN UNADJUDICATED MERGED INSTANCE, NOT AN ADMISSION PRECEDENT, AND THE GRAIN DISTINCTION IS THE ENTIRE CONTENT OF THIS ROW. gunbc#10727 merged on 2026-09-08 as 7fb62e6e5e7 carrying FIVE NEW EXPORTED DECLARATIONS in the emitted v1 seed -- a refinement-inhabitance relation, its chain-identity helpers, its verdict coproduct and two undecidable reasons -- WHILE PublicSurfaceGrowth remained a dominating refusal in this standing and WHILE the specific boundary question was unresolved and escalated. THIS MERGE SETTLES THE DISPOSITION OF THIS EXACT CHANGE, NOT THE SEMANTICS OF THE PublicSurfaceGrowth CLASS. It establishes that this exact change landed; it does NOT establish that PublicSurfaceGrowth permits exported declarations for defect repair, for self-host work, or for integration closure. Future changes matching PublicSurfaceGrowth still require classification under this standing, or an explicit ruling that changes it.\n\nWHY IT IS FILED BESIDE THE ROSTERS AND NOT IN THEM, deliberately and at three grains. It is NOT listed under what this standing has admitted so far, because that population records changes for which the purpose test was ADJUDICATED AND SATISFIED, at exact identity grain, and its whole value is being countable and exact. FOR THIS CHANGE THE PURPOSE TEST WAS NEVER ADJUDICATED AT ALL -- it was merged over an open objection -- so it has no place in a population of adjudicated satisfactions. THE PHRASING MATTERS AND AN EARLIER DRAFT GOT IT WRONG: saying the change 'satisfied no test' asserts that it FAILED, which is itself a ruling, and this row exists precisely to say that no ruling was made. Same placement conclusion, no verdict smuggled in. It mints NO fifth MaintenanceAdmissionInstance arm: the four are BehaviorPreservingCorrectness, BehaviorPreservingRedundancyRemoval, BoundedOperationalFix and DefectRepairDiagnosticsMayMove, and adding a surface-growth arm would be the self-authored boundary change this standing warns against -- an author minting the ruling that was asked for and not given. And it is NOT filed only elsewhere: the dangerous future inference happens while somebody is reading THIS authority and thinks 'but #10727 merged', so the corrective fact has to sit adjacent to it, explicitly typed as a historical exception rather than a normative admission.\n\nTHE OBJECTION IS ON RECORD; THE RULING IS WHAT NEVER EXISTED, AND THAT DISTINCTION IS THIS ROW'S WHOLE SUBJECT, so an earlier draft saying 'there is no review to point at' was wrong exactly where it could least afford to be. THERE WAS A REVIEW: the exact-head REQUEST_CHANGES on gunbc#10727, GitHub review 5135375330, which is what RAISED the PublicSurfaceGrowth objection. What is absent is any RULING resolving it -- no ruling text, no transcript, nothing that answers the question the review asked. THE MERGE IS THEREFORE THE ONLY DISPOSITION, and a disposition is not an adjudication. This row differs from v1_maintenance_purpose_ruling_note and v1_maintenance_typecheck_progress_admission_note above in precisely that way: those record a RULING, this records an ACTION taken while the objection stood unanswered.\n\nWHY IT WAS A STRUCTURAL QUESTION RATHER THAN A PLEA ABOUT ONE PR: THE SEED HAS NO PRIVATE FORM, AND THE CLAIM STANDS ON TWO INDEPENDENT LEGS, EITHER OF WHICH ALONE SUPPORTS THE CONSEQUENCE. LEG ONE, THE SOURCE LANGUAGE CANNOT ASK: `.dag` has no module-private declaration concept, so no declaration can REQUEST privacy. That authority is not minted here -- v1.compiler.emit_rust already carries it, in the ceiling note above rust_scalar_checkpoint_reference_base: '.dag has no function-privacy concept, so the shared body cannot be made unreachable however it is written', stated against a parser with no privacy keyword to reach for, with NEXT-RUNG TRIGGER 'a module-private function boundary in the language'. LEG TWO, THE EMISSION PATH CANNOT ANSWER: v1.compiler.languages declares VisibilitySpec as KeywordVisibility { prefix: String } or CaseVisibility { export_case: NamingCase } -- ONE prefix per target, with no representation anywhere in the type of a public/private PAIR. Rust binds KeywordVisibility { prefix: rust_visibility }, and extdeps.languages.rust.emit declares rust_visibility as 'pub '. v1.compiler.emit_rust rust_visibility_prefix takes NO ARGUMENT and reads that single bound value, so every declaration rendered through it gets 'pub ' and there is no second value to select. A COUNTEREXAMPLE THAT LOOKS DECISIVE AND IS NOT, recorded because it was raised and refuted during this row's review and would otherwise be raised again: v1.compiler.emit_rust emit_cli_root_struct does take a `public: Bool` and does emit a bare `struct Cli` when it is false. That is a bespoke local conditional for ONE hand-written struct in the CLI emitter; it is not derived from the language model and it is not the declaration path. Generalising from it is generalising from a hit that is not on the route the claim is about. THE CENSUS BELOW IS THE OBSERVED CONFIRMATION OF THOSE TWO LEGS, NOT THE PROOF OF THEM. Across the 46 GENERATED MIRRORS -- src/v1/stage0/src/v1_compiler_*.rs, each carrying the generated-by-v1 banner -- there are 3169 pub fn and ZERO non-pub, 574 pub types and ZERO non-pub, measured on main after this merge. The scope is stated narrowly on purpose: the claim is FALSE of src/v1/stage0/src as a whole, where hand-authored files sit beside the mirrors and do carry bare declarations. Scoped to the mirrors -- which is exactly PublicSurfaceGrowth's subject, a diff over the EMITTED seed's exported declarations -- the count is exactly right, and it is the shadow the two legs above cast on the emitted seed. THE CONSEQUENCE: any repair needing a helper declaration hits this class, and it does so because of a missing language capability with an existing next-rung trigger, not because of a flag somebody could teach the emitter. That is why the boundary is a structural question to be drawn once rather than re-litigated per PR.\n\nTHE FACT THAT WOULD HAVE SUPPORTED AN ADMISSION, recorded because it is evidence and not because it adjudicates anything: the REFUSAL SET IS IDENTICAL BY IDENTITY ACROSS THE CHANGE -- the same 7 sites before and after, re-derived with one instrument over one corpus and two binaries differing only in the three stage0 infer mirrors. Nothing the seed accepted is now rejected and nothing it rejected is now accepted. EVERYTHING ELSE THAT MOVED IS NON-BLOCKING, AND IT MOVED IN BOTH DIRECTIONS -- an earlier draft said only 'which non-blocking reason a decline reports', which understates the matrix by omitting the direction that carries the repair. Diagnostic to NO diagnostic: 8425 sites where a spurious UndecidableGenericFormal decline is cleared outright, because the declared side's identity is no longer overwritten before the judgment runs. And in the opposite direction, the new relation FIRES rather than merely existing: 4989 introduction sites plus 5 peer chains. Reason-to-reason transitions are the third kind and not the only kind. The producer is the same single instrument run over one corpus against two binaries differing only in the three stage0 infer mirrors; re-derive from it rather than quoting these figures if the question is whether they still hold. And 3707 of the 8425 cleared misclassifications, 44 percent, are in src/v2 itself, so the compiler that BUILDS v2 was overwriting the declared identity at 3707 positions in the self-host program's own sources. These facts were offered in support of admission and the admission was never ruled on; they are recorded here as the evidence that existed, not as a finding that the class permits the change.\n\nWHY IT IS RECORDED AT ALL RATHER THAN LEFT AS A MERGED FACT: an unrecorded exception is worse than a refused one. The change is on main either way, but with no row the next author either repeats the blocked work or quietly assumes the class is dead. Recording it honestly -- including that the governing rule remains undrawn -- is what keeps a merge from becoming a silent precedent."
+// gunbc#10727 MERGED WHILE ITS OBJECTION STOOD UNANSWERED, filed as the row below. The mechanical
+// facts are in the row's fields; what follows is the irreducible rationale that the fields do not
+// structurally say, which is why it is an annotation and not a String declaration.
+//
+// THE SCOPE LIMIT IS THE ROW'S ENTIRE POINT: this merge settles the disposition of THIS EXACT
+// CHANGE, not the semantics of the PublicSurfaceGrowth class. It establishes that this exact change
+// landed. It does NOT establish that PublicSurfaceGrowth permits exported declarations for defect
+// repair, for self-host work, or for integration closure. Future changes matching the class still
+// require classification under this standing, or an explicit ruling that changes it.
+//
+// THE OBJECTION IS ON RECORD; THE RULING IS WHAT NEVER EXISTED, and getting that backwards would
+// break the row at exactly the point it exists to make. The objecting_review field names the
+// exact-head REQUEST_CHANGES on gunbc#10727, which is what RAISED the PublicSurfaceGrowth
+// objection. What is absent is any ruling resolving it -- no ruling text, no transcript, nothing
+// answering the question the review asked. The merge is therefore the only disposition. This
+// differs from the ruling notes elsewhere in this file in precisely that way: those record a
+// RULING, this records an ACTION taken while the objection stood.
+//
+// WHY THE PURPOSE TEST'S ROSTER IS THE WRONG PLACE: that population records changes for which the
+// test was ADJUDICATED AND SATISFIED, at exact identity grain, and its whole value is being
+// countable and exact. For this change the test was never adjudicated at all. Saying it "satisfied
+// no test" would assert that it FAILED, which is itself a ruling -- and no ruling was made.
+//
+// WHY IT WAS A STRUCTURAL QUESTION RATHER THAN A PLEA ABOUT ONE PR: THE SEED HAS NO PRIVATE FORM,
+// on two independent legs, either of which alone supports the consequence.
+//   LEG ONE, THE SOURCE LANGUAGE CANNOT ASK. `.dag` has no module-private declaration concept, so
+//   no declaration can REQUEST privacy. The authority is not minted here: v1.compiler.emit_rust
+//   already carries it, in the ceiling note above rust_scalar_checkpoint_reference_base, whose
+//   next-rung trigger is "a module-private function boundary in the language".
+//   LEG TWO, THE EMISSION PATH CANNOT ANSWER. v1.compiler.languages declares VisibilitySpec with
+//   ONE prefix per target and no representation anywhere in the type of a public/private PAIR; Rust
+//   binds KeywordVisibility { prefix: rust_visibility }; extdeps.languages.rust.emit declares
+//   rust_visibility as "pub "; and v1.compiler.emit_rust rust_visibility_prefix takes NO ARGUMENT,
+//   so there is no parameter through which a caller could select a second visibility.
+// A COUNTEREXAMPLE THAT LOOKS DECISIVE AND IS NOT, recorded because it was raised and refuted in
+// review and would otherwise be raised again: emit_cli_root_struct does take a `public: Bool` and
+// does emit a bare `struct Cli` when false. That is a bespoke local conditional for ONE
+// hand-written struct in the CLI emitter -- not derived from the language model, not the
+// declaration path. Generalising from it generalises from a hit that is not on the route.
+// THE CONSEQUENCE: any repair needing a helper declaration hits this class, and it does so because
+// of a missing language capability with an existing next-rung trigger, not because of a flag
+// somebody could teach the emitter.
+//
+// THE PRODUCERS FOR EVERY FIGURE THIS DISPOSITION RESTS ON, NAMED RATHER THAN TRANSCRIBED, per
+// DESIGN section 6 -- a number copied into prose rots the moment anyone doubts it, and none of the
+// figures below is asserted on this row's authority.
+//   THE SURFACE CENSUS is a predicate, not a reading: over the generated mirrors
+//   src/v1/stage0/src/v1_compiler_*.rs -- the files carrying the generated-by-v1 banner -- count
+//   declarations spelled `pub fn` against those spelled bare `fn`, and likewise `pub` types against
+//   bare. Re-derive it; do not quote it. Read on main after 7fb62e6e5e7 the bare counts were zero
+//   in both categories, and that is a DATED OBSERVATION of what the two legs above predict, not the
+//   proof of them. Its scope limit is load-bearing and survives re-derivation: the same predicate
+//   over src/v1/stage0/src AS A WHOLE is FALSE, because hand-authored files sit beside the mirrors
+//   and do carry bare declarations. The mirrors are the subject because PublicSurfaceGrowth's
+//   subject is a diff over the EMITTED seed's exported declarations.
+//   THE BEHAVIOURAL MATRIX is one instrument run over one corpus against two binaries differing
+//   only in the three stage0 infer mirrors. What it established, at the grain that matters and
+//   without leaning on its counts: the refusal set is IDENTICAL BY IDENTITY across the change --
+//   nothing the seed accepted is now rejected and nothing it rejected is now accepted. Everything
+//   else that moved is non-blocking and moved IN BOTH DIRECTIONS: sites clearing a spurious
+//   UndecidableGenericFormal decline outright, and sites where the new relation newly fires.
+//   Reason-to-reason transitions are the third kind, not the only kind. A substantial share of the
+//   cleared population is in src/v2 itself, so the compiler that BUILDS v2 was overwriting the
+//   declared identity in the self-host program's own sources. Re-derive from the instrument if the
+//   question is whether any of that still holds.
+// THESE FACTS WERE OFFERED IN SUPPORT OF ADMISSION AND THE ADMISSION WAS NEVER RULED ON. They are
+// recorded as the evidence that existed, not as a finding that the class permits the change.
+
+data v1_maintenance_inhabitance_relation_merged_disposition: UnadjudicatedDisposition =
+  MergedWhileObjectionStood {
+    change: "gunbc#10727",
+    merged_as: "7fb62e6e5e7",
+    objecting_review: "github-review-5135375330",
+    refusal_at_issue: PublicSurfaceGrowth,
+  }
 
 // THE EXCESS-FIELD FLOOR ADMISSION, recorded in the same PR as the change it admits, per the
 // typecheck-progress row's own rule: an admission written afterwards is indistinguishable from an
