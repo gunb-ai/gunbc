@@ -53,8 +53,20 @@ import extdeps.uri { Uri, Https }
 // one `FootprintMeasured` arm, so a number lifted from someone else's deployment write-up was typed
 // identically to one read on a Spark. Its own `how` field said as much while its constructor name
 // said "measured".
+// FOUR PROVENANCES, NOT TWO, BECAUSE THE MIDDLE TWO ARE NOT THE SAME KIND OF THING. An earlier
+// revision had one non-fleet arm and lumped together a stranger's deployment write-up and the
+// publishing Hub's own file manifest at an exact content-addressed revision. Those differ in what
+// they can support: a write-up cites a number someone else remembers, while a manifest at a pinned
+// revision is the authority that serves the bytes stating their sizes, re-readable by anyone.
+//
+// WHAT THE UPSTREAM ARM MAY DO IS BOUNDED BY THE ASYMMETRY THE BOUND ALREADY HAS. Disproving
+// feasibility needs only a floor on the size, and upstream's own manifest is a sound floor -- if the
+// publisher says 305.8 GiB, no rank smaller than that share can hold it. Establishing feasibility was
+// never something the bound could do from ANY footprint, so admitting this arm widens nothing: it
+// still yields "not ruled out", and runtime feasibility remains a separate, unsatisfied axis.
 type ArtifactFootprint
   = FootprintObservedOnFleet { bytes: Nat, how: NonEmptyStr }
+  | FootprintDeclaredByUpstreamAtRevision { bytes: Nat, revision: NonEmptyStr, instrument: NonEmptyStr }
   | FootprintReportedExternally { bytes: Nat, source: NonEmptyStr }
   | FootprintUnread { obligation: NonEmptyStr }
 
@@ -78,8 +90,10 @@ data artifact_deepseek_v4_flash_native: ModelArtifact = ModelArtifact {
 data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
   label: "GLM 5.3 Flash, native checkpoint" as NonEmptyStr,
-  footprint: FootprintUnread {
-    obligation: "nobody has read this checkpoint's bytes on this fleet. A parameter count divided by a bit width is an estimate about a family, not a reading of what will be loaded" as NonEmptyStr,
+  footprint: FootprintDeclaredByUpstreamAtRevision {
+    bytes: 328337455672,
+    revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+    instrument: "sum of the safetensors sibling sizes from the Hub model API for zai-org/GLM-5.3-Flash at that exact revision, read 2026-09-08: 62 shards, 328,337,455,672 bytes. The response's own sha and lastModified (2026-09-07T12:13:47Z) match the pin recorded in gunbc.spark.model_snapshot_acquisition glm_5_3_flash_snapshot, so the pin is verified against the authority it cites rather than trusted. NOT a fleet reading -- these bytes are not on any Spark yet" as NonEmptyStr,
   },
   weight_treatment: "the checkpoint as published, no requantisation" as NonEmptyStr,
 }
@@ -527,30 +541,39 @@ fn per_rank_bytes_ceiling(total: Nat, ranks: Nat) -> Nat? {
   if ranks == 0 { none } else { Present { value: (total + (ranks - 1)) / ranks } }
 }
 
+// ONE ARITHMETIC FOR EVERY PROVENANCE THAT CARRIES BYTES. The two arms that have a size run the same
+// bound; only whether a size EXISTS differs between them, and that difference belongs in the match
+// above rather than in two copies of the division.
+fn weight_fit_from_bytes(bytes: Nat, c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisionParameters) -> WeightFit {
+  match per_rank_bytes_ceiling(total: bytes, ranks: c.topology.tensor_parallel_degree) {
+    Absent => WeightFitUnderivable { because: "a zero tensor-parallel degree has no per-rank share" as NonEmptyStr }
+    Present { value: per_rank } =>
+      if per_rank <= usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent) {
+        WeightsNotRuledOutByLowerBound {
+          per_rank_bytes: per_rank,
+          usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent),
+          slack_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent) - per_rank,
+        }
+      } else {
+        WeightsImpossibleByLowerBound {
+          per_rank_bytes: per_rank,
+          usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent),
+        }
+      }
+  }
+}
+
 fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisionParameters) -> WeightFit {
   match c.artifact.footprint {
     FootprintUnread { obligation: o } => WeightFitUnderivable { because: o }
     FootprintReportedExternally { bytes: _, source: src } =>
       WeightFitUnderivable {
-        because: join(["the only footprint for this artifact is externally reported and not read on this fleet, so it cannot support a feasibility verdict here: ", src as String], "") as NonEmptyStr,
+        because: join(["the only footprint for this artifact is a third-party report and not read on this fleet, so it cannot support a verdict here: ", src as String], "") as NonEmptyStr,
       }
+    FootprintDeclaredByUpstreamAtRevision { bytes: b, revision: _, instrument: _ } =>
+      weight_fit_from_bytes(bytes: b, c: c, fleet: fleet, p: p)
     FootprintObservedOnFleet { bytes: b, how: _ } =>
-      match per_rank_bytes_ceiling(total: b, ranks: c.topology.tensor_parallel_degree) {
-        Absent => WeightFitUnderivable { because: "a zero tensor-parallel degree has no per-rank share" as NonEmptyStr }
-        Present { value: per_rank } =>
-          if per_rank <= usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent) {
-            WeightsNotRuledOutByLowerBound {
-              per_rank_bytes: per_rank,
-              usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent),
-              slack_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent) - per_rank,
-            }
-          } else {
-            WeightsImpossibleByLowerBound {
-              per_rank_bytes: per_rank,
-              usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent),
-            }
-          }
-      }
+      weight_fit_from_bytes(bytes: b, c: c, fleet: fleet, p: p)
   }
 }
 

@@ -399,17 +399,23 @@ fn unit_name_segment(s: String) -> String {
 // the false-success shape this module has already been bitten by once, reached from a different
 // direction -- and it survives a correct verifier, because the poll answers before verification runs.
 //
-// WHAT THIS DOES NOT YET CARRY IS THE SOURCE. Two sources for one key would still collide, and the
-// reason is structural rather than an oversight: `spark_transfer_clear` and `spark_transfer_state`
-// receive only the subject, so a source-bearing name would differ between the process that STARTS the
-// unit and the process that POLLS it -- which fails closed as a spurious TransferAbsent, but fails.
-// Threading the source through the supervision surface is the fix and it is not made here.
-fn spark_transfer_unit_for(subject: AcquisitionSubject) -> NonEmptyStr {
+// AND IT NOW CARRIES THE SOURCE, which the previous revision named as a declared gap rather than an
+// oversight: the supervision surface received only the subject, so a source-bearing name would have
+// differed between the process that STARTED the unit and the one that POLLED it. That gap was
+// tolerable while one source fetched one seed. IT IS LOAD-BEARING FOR A FOUR-RANK ROLLOUT, whose
+// source population is ordered -- rail peer first, Hub fallback second -- so two sources share one
+// key by construction. A re-run could attach to a unit started for the OTHER transport, read its
+// clean exit, and attribute the result to the source it was asked about.
+//
+// The fix is the mechanical one the old annotation named: origin is threaded through every function
+// that computes, reads, clears or supervises the unit, so the name is identical at every touch.
+fn spark_transfer_unit_for(subject: AcquisitionSubject, origin: AcquisitionSource) -> NonEmptyStr {
   join([
     "gunbc-materialize",
     unit_name_segment(s: subject.identity as String),
     unit_name_segment(s: acquisition_key_wire(key: subject.key) as String),
     unit_name_segment(s: subject.install_path as String),
+    unit_name_segment(s: origin.identity as String),
   ], "") as NonEmptyStr
 }
 
@@ -431,8 +437,8 @@ type SparkTransferState
   | TransferExitedFailed { status: String }
   | TransferStateUnreadable { cause: String }
 
-fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> SparkTransferState {
-  match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ActiveState", "--value"]) {
+fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> SparkTransferState {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject, origin: origin) as String, "--property=ActiveState", "--value"]) {
     RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
     RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
       if state == "active" || state == "activating" || state == "deactivating" {
@@ -440,7 +446,7 @@ fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
       } else if state == "" || state == "inactive" {
         TransferAbsent
       } else {
-        match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ExecMainStatus", "--value"]) {
+        match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject, origin: origin) as String, "--property=ExecMainStatus", "--value"]) {
           RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
           RemoteRan { exit_code: _, stdout: code, stderr: _ } =>
             if trim(s: code) == "0" { TransferExitedClean } else { TransferExitedFailed { status: trim(s: code) } }
@@ -459,8 +465,8 @@ fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
 // THE IGNORE IS REAL AND IT IS THE RETURN TYPE. Clearing a stale unit is best-effort by design: there
 // may be nothing to clear, which is the ordinary case. Discarding the exit code says that in the one
 // place a reader will believe.
-fn spark_transfer_clear(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
-  match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_for(subject: subject) as String]) {
+fn spark_transfer_clear(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_for(subject: subject, origin: origin) as String]) {
     RemoteUnreachable { cause: _ } => false
     RemoteRan { exit_code: _, stdout: _, stderr: _ } => true
   }
@@ -497,15 +503,15 @@ fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
         "this source carries a URL locator (", u as String,
         ") and the snapshot transport executes a command on the target; it has no downloader, so there is no argv to run",
       ], "") as NonEmptyStr }
-    SourceArgv { argv: a } => spark_transfer_start_argv(ctx: ctx, subject: subject, argv: a)
+    SourceArgv { argv: a } => spark_transfer_start_argv(ctx: ctx, subject: subject, origin: origin, argv: a)
   }
 }
 
-fn spark_transfer_start_argv(ctx: SparkMaterializeContext, subject: AcquisitionSubject, argv: List<String>) -> TransferStartOutcome {
+fn spark_transfer_start_argv(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource, argv: List<String>) -> TransferStartOutcome {
   match spark_remote_run(ctx: ctx, argv: concat(
     [
       "systemd-run",
-      join(["--unit=", spark_transfer_unit_for(subject: subject) as String], ""),
+      join(["--unit=", spark_transfer_unit_for(subject: subject, origin: origin) as String], ""),
       "--description=gunbc model snapshot materialize",
       "--",
     ],
@@ -545,8 +551,8 @@ type SparkTransferSupervision
 // oneshot is reaped and leaves nothing behind, and so does a unit that never started -- so it gets its
 // own name rather than being aliased onto the clean exit. Verification is the arbiter for both, but the
 // receipt now says which one it was arbitrating.
-fn spark_transfer_supervise(ctx: SparkMaterializeContext, subject: AcquisitionSubject, remaining: Nat) -> SparkTransferSupervision {
-  match spark_transfer_state(ctx: ctx, subject: subject) {
+fn spark_transfer_supervise(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource, remaining: Nat) -> SparkTransferSupervision {
+  match spark_transfer_state(ctx: ctx, subject: subject, origin: origin) {
     TransferExitedClean => SupervisedExitClean
     TransferExitedFailed { status: st } => SupervisedExitFailed { status: st }
     TransferAbsent => SupervisedTransferUnitAbsent
@@ -554,20 +560,20 @@ fn spark_transfer_supervise(ctx: SparkMaterializeContext, subject: AcquisitionSu
       if remaining == 0 {
         SupervisionLost { cause: c }
       } else {
-        spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
+        spark_transfer_wait_then_poll(ctx: ctx, subject: subject, origin: origin, remaining: remaining)
       }
     TransferRunning =>
       if remaining == 0 {
         SupervisedStillRunning { polls: spark_transfer_poll_budget }
       } else {
-        spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
+        spark_transfer_wait_then_poll(ctx: ctx, subject: subject, origin: origin, remaining: remaining)
       }
   }
 }
 
-fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, subject: AcquisitionSubject, remaining: Nat) -> SparkTransferSupervision {
+fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource, remaining: Nat) -> SparkTransferSupervision {
   let slept = spark_remote_run(ctx: ctx, argv: ["sleep", to_string(spark_transfer_poll_interval_seconds)])
-  spark_transfer_supervise(ctx: ctx, subject: subject, remaining: remaining - 1)
+  spark_transfer_supervise(ctx: ctx, subject: subject, origin: origin, remaining: remaining - 1)
 }
 
 // ONE SOURCE'S ATTEMPT, AND ITS THREE OUTCOMES ARE DECIDED BY TWO SEPARATE FACTS. The transfer's own
@@ -583,17 +589,17 @@ fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, subject: Acquisit
 // left running; re-running apply reattaches to it. Killing it would throw away hours of progress to
 // report a cleaner state.
 fn spark_snapshot_attempt(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match spark_transfer_state(ctx: ctx, subject: subject) {
+  match spark_transfer_state(ctx: ctx, subject: subject, origin: origin) {
     TransferStateUnreadable { cause: _ } => AttemptUnreachable
     TransferRunning => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
     TransferExitedClean =>
-      if !spark_transfer_clear(ctx: ctx, subject: subject) {
+      if !spark_transfer_clear(ctx: ctx, subject: subject, origin: origin) {
         AttemptUnreachable
       } else {
         spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
       }
     TransferExitedFailed { status: _ } =>
-      if !spark_transfer_clear(ctx: ctx, subject: subject) {
+      if !spark_transfer_clear(ctx: ctx, subject: subject, origin: origin) {
         AttemptUnreachable
       } else {
         spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
@@ -611,7 +617,7 @@ fn spark_snapshot_start_and_supervise(ctx: SparkMaterializeContext, verify: List
 }
 
 fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match spark_transfer_supervise(ctx: ctx, subject: subject, remaining: spark_transfer_poll_budget) {
+  match spark_transfer_supervise(ctx: ctx, subject: subject, origin: origin, remaining: spark_transfer_poll_budget) {
     SupervisionLost { cause: _ } => AttemptUnreachable
     SupervisedStillRunning { polls: n } =>
       AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {

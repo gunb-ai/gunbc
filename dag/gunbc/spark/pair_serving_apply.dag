@@ -27,7 +27,7 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_runtime_build_dir, exec_word_is_plain,
 }
 import gunbc.spark.pair_serving_observed { first_pair_container_runtime }
-import gunbc.spark.model_snapshot_acquisition { ModelSnapshotRole, model_snapshot_role_for }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotRole, SnapshotRoleUndecidable, model_snapshot_role_for, model_snapshot_fleet_seed }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 
 // THE FIRST APPLY OF THE RENDERED PAIR, OVER THE ADMINISTRATOR'S PASSWORD SESSION. Each host gets
@@ -88,7 +88,7 @@ fn unit_render_text(u: SparkPairUnitRender) -> String? {
 // rather than deciding from head-versus-worker. A host whose rail address is unresolved is handled
 // there, by falling back to upstream rather than replicating from an address nobody resolved.
 fn spark_pair_member_role(host: HostIdentity) -> ModelSnapshotRole {
-  model_snapshot_role_for(member_rail: fabric_rail_address(host: host))
+  model_snapshot_role_for(member_rail: fabric_rail_address(host: host), seed: model_snapshot_fleet_seed)
 }
 
 // The privileged script for one host of the pair. THE RESTART IS CONDITIONAL: the unit is bounced
