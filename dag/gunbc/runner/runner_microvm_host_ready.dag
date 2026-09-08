@@ -12,8 +12,10 @@ import gunbc.runner_microvm_footprint_probe {
   InstrumentObservation, InstrumentPresent, InstrumentAbsent, InstrumentUnreadable,
   InstrumentStanding, instrument_standing_text,
 }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryInterfaceFile, MemoryPeak, cgroup_memory_interface_file_name }
 import extdeps.tools.gnu_time { gnu_time_binary_path }
-import extdeps.systemd.systemctl { systemctl_version_command }
+import extdeps.systemd.systemctl { systemctl_version_command, SystemdReportsMemoryPeak, SystemdTooOldForMemoryPeak, SystemdVersionUnreadable, systemd_memory_peak_support }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
@@ -102,7 +104,12 @@ type FirecrackerHostStanding {
 
 // The ROOT cgroup's file, whose presence is a kernel-support fact rather than a statement about any
 // particular scope. cgroup v2 gained memory.peak in Linux 5.19.
-data cgroup_v2_memory_peak_path: String = "/sys/fs/cgroup/memory.peak"
+fn cgroup_v2_memory_peak_path() -> String {
+  cgroup_v2_child_path(
+    parent: cgroup_v2_mount_point,
+    child: cgroup_memory_interface_file_name(f: MemoryPeak),
+  ) as String
+}
 
 fn footprint_instrument_text(f: FootprintInstrumentStanding) -> String {
   join(["footprint-instruments: ", join(map(f.instruments, s => instrument_standing_text(s: s)), " ")], "")
@@ -224,7 +231,7 @@ func observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStand
     }
   } else { "" }
   let gnu_time = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: gnu_time_binary_path), transport: LocalExec))
-  let cgroup_peak = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: cgroup_v2_memory_peak_path), transport: LocalExec))
+  let cgroup_peak = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: cgroup_v2_memory_peak_path()), transport: LocalExec))
   let systemd_version = match run_shell_command_capture(command: systemctl_version_command(), transport: LocalExec) {
     ProcessOutputPresent { text: t } =>
       match first(split(trim(s: t), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
@@ -246,10 +253,11 @@ func observe_firecracker_host_standing_wet(root: String) -> FirecrackerHostStand
         },
         InstrumentStanding {
           instrument: SystemdMemoryPeak,
-          observation: if trim(s: systemd_version) == "" {
-            InstrumentUnreadable { cause: "systemctl --version produced no readable line" }
-          } else {
-            InstrumentPresent
+          observation: match systemd_memory_peak_support(version_line: systemd_version) {
+            SystemdReportsMemoryPeak { version: _ } => InstrumentPresent
+            SystemdTooOldForMemoryPeak { version: _ } => InstrumentAbsent
+            SystemdVersionUnreadable =>
+              InstrumentUnreadable { cause: "systemctl --version produced no line this could read a major version from" }
           },
         },
       ],

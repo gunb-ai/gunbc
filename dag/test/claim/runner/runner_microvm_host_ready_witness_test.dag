@@ -17,6 +17,7 @@ import gunbc.runner_microvm_host_ready {
   kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_standing_text,
   firecracker_fetch_commands, firecracker_install_commands, firecracker_installed_binary, firecracker_install_root,
 }
+import extdeps.systemd.systemctl { SystemdReportsMemoryPeak, SystemdTooOldForMemoryPeak, SystemdVersionUnreadable, systemd_memory_peak_support }
 import gunbc.runner_microvm_footprint_probe {
   GnuTimeMaxRss, SystemdMemoryPeak, CgroupMemoryPeak,
   InstrumentStanding, InstrumentPresent, InstrumentAbsent, InstrumentUnreadable,
@@ -129,6 +130,49 @@ test fn host_readiness_is_independent_of_the_footprint_instruments() -> Bool {
   firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: installed, footprint_instruments: bare })
     && firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceWritable, binary: installed, footprint_instruments: equipped })
     && !firecracker_host_ready(standing: FirecrackerHostStanding { kvm: KvmDeviceAbsent, binary: installed, footprint_instruments: equipped })
+}
+
+// THE VERSION GATE, WHICH NOTHING EXERCISED UNTIL NOW AND WHICH WAS WRONG THE WHOLE TIME. Before
+// this control the standing reported SystemdMemoryPeak as `present` for ANY non-empty version line,
+// so a host on v249 -- which cannot report MemoryPeak at all -- rendered `systemd-memory-peak=present`
+// on the receipt a human reads to decide what can measure the reserve. That is a fabricated answer
+// in the STRONGER direction, which is worse than the absorbing one: it does not merely lose
+// information, it asserts a capability the host does not have.
+//
+// Three inputs because the outcome is three-valued, and the middle one is what the boolean shape
+// could not express: below the threshold is a statement ABOUT THE HOST, unreadable is a statement
+// about our OBSERVATION, and they must not render alike.
+test fn the_systemd_instrument_reads_the_version_rather_than_its_presence() -> Bool {
+  match systemd_memory_peak_support(version_line: "systemd 255 (255.4-1ubuntu8)") {
+    SystemdReportsMemoryPeak { version: v } => v == 255
+    SystemdTooOldForMemoryPeak { version: _ } => false
+    SystemdVersionUnreadable => false
+  }
+    && match systemd_memory_peak_support(version_line: "systemd 249 (249.11-0ubuntu3)") {
+      SystemdTooOldForMemoryPeak { version: v } => v == 249
+      SystemdReportsMemoryPeak { version: _ } => false
+      SystemdVersionUnreadable => false
+    }
+    && match systemd_memory_peak_support(version_line: "") {
+      SystemdVersionUnreadable => true
+      SystemdReportsMemoryPeak { version: _ } => false
+      SystemdTooOldForMemoryPeak { version: _ } => false
+    }
+}
+
+// THE BOUNDARY ITSELF, because 254 is the cited upstream fact and an off-by-one here reports the
+// exact version that gained MemoryPeak as unable to report it.
+test fn the_memory_peak_threshold_admits_254_and_refuses_253() -> Bool {
+  match systemd_memory_peak_support(version_line: "systemd 254 (254.1-1)") {
+    SystemdReportsMemoryPeak { version: _ } => true
+    SystemdTooOldForMemoryPeak { version: _ } => false
+    SystemdVersionUnreadable => false
+  }
+    && match systemd_memory_peak_support(version_line: "systemd 253 (253.5-1)") {
+      SystemdTooOldForMemoryPeak { version: _ } => true
+      SystemdReportsMemoryPeak { version: _ } => false
+      SystemdVersionUnreadable => false
+    }
 }
 
 // THE RECEIPT MUST SAY WHICH INSTRUMENTS EXIST, because the whole point of the observation is that a
