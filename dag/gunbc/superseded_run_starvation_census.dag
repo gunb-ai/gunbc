@@ -375,7 +375,7 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
 }
 
 type DurationResult
-  = DurationComputed { seconds: Second }
+  = DurationComputed { seconds: Seconds }
   | DurationClockRefused { end_raw: String, start_raw: String }
   | DurationInsufficientData
   | DurationInconsistentTimestamps { end: Timestamp, start: Timestamp }
@@ -389,7 +389,7 @@ fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
         Present { value: start_s } =>
           if end_s >= start_s {
             let diff_nat: Nat = (end_s - start_s) as Nat
-            DurationComputed { seconds: second(count: diff_nat) }
+            DurationComputed { seconds: diff_nat }
           } else { DurationInconsistentTimestamps { end: end, start: start } }
         Absent => DurationClockRefused {
           end_raw: end_clock.unix_secs,
