@@ -37,6 +37,7 @@ import std.page_fold {
   page_fold_begin,
   page_fold_observe,
   page_fold_pump,
+  page_fold_refusal_key,
   PageBound,
   PageCursor,
   OffsetPage,
@@ -242,15 +243,27 @@ fn collect_runs_in_window(
     match page_fold_pump(state: observed, fetch: fetch) {
       PagesClosed { subject: _, pages_read: _, items: runs } =>
         CollectionComplete { runs: runs }
-      PagesRefused { refusal: _ } =>
-        // Refusals from std.page_fold indicate a protocol error that the fetch
-        // function should prevent (CursorDidNotAdvance, ContinuationShapeChanged,
-        // etc.) or the safety bound at 1000 pages — neither should occur with this
-        // fetch function and the pre-checked data_pages bound.
-        PageLimitExceeded {
-          collected: first.result.workflow_runs,
-          reached_page: data_pages + 1,
-          max_pages: max_run_pages,
+      PagesRefused { refusal: r } =>
+        // page_fold_refusal_key distinguishes the refusal variant without importing
+        // every variant's field types (PositiveInt, PageCursor, NonNegativeInt, etc.).
+        if page_fold_refusal_key(r) == "page_budget_exhausted" {
+          PageLimitExceeded {
+            collected: first.result.workflow_runs,
+            reached_page: data_pages + 1,
+            max_pages: max_run_pages,
+          }
+        } else {
+          // CursorDidNotAdvance, ContinuationShapeChanged, etc. — these should not
+          // occur with a fetch function that always advances (page_num + 1) and
+          // returns consistent OffsetPage cursors. If one does fire, it is a protocol
+          // error rather than a page-budget issue, but we surface it as PageLimitExceeded
+          // to keep the RunCollectionOutcome interface. The caller can distinguish by
+          // max_pages being max_run_pages (budget) vs 0 (protocol error).
+          PageLimitExceeded {
+            collected: first.result.workflow_runs,
+            reached_page: 0,
+            max_pages: 0,
+          }
         }
     }
   }
@@ -376,7 +389,10 @@ type DurationResult
   | DurationInconsistentTimestamps { end: Timestamp, start: Timestamp }
 
 fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
-  DurationComputed { end: end, start: start }
+  // Timestamp = String, ISO-8601 timestamps are lexicographically ordered,
+  // so '<' works for detecting out-of-order pairs.
+  if end < start { DurationInconsistentTimestamps { end: end, start: start } }
+  else { DurationComputed { end: end, start: start } }
 }
 
 fn dead_time_under_hold_seconds(prior_jobs_completed_at: Timestamp?, terminal_laggard_started_at: Timestamp?) -> DurationResult {
