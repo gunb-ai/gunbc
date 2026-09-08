@@ -381,12 +381,10 @@ fn dashboard_receipt_blockers(s: RoadmapLaunchDeploymentSubject, plan: PlanRecei
           ),
         ),
         concat(
-          concat(
-            match d.apply_outcome {
+          match d.apply_outcome {
               LiveDeployApplyConverged => []
               LiveDeployApplyNotConverged { reason: why } => blocker(member: "dashboard_receipt", detail: join(["deploy did not converge: ", why], ""))
             },
-          ),
           concat(
             match d.readiness {
               LiveDeployReadinessObserved { revision: r, surface: _ } =>
