@@ -7,6 +7,7 @@ import std.measure {
   TokenCount, token_count, token_count_value,
   Percent, percent, percent_count,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+  AttentionLayerCount, attention_layer_count,
 }
 import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache {
@@ -16,7 +17,7 @@ import extdeps.vllm.kv_cache {
   vllm_pool_reconstruction_is_authoritative,
 }
 import extdeps.vllm.kv_layout {
-  KvBlockSize, KvLayerCount, KvGroupKind, FullAttention, SlidingWindowAttention, MambaState,
+  KvGroupKind, FullAttention, SlidingWindowAttention, MambaState,
   KvGroupLayout, ResolvedKvLayout, resolved_kv_layout,
   VllmReportedCapacity, vllm_reported_capacity,
   BlocksPerRequest, BlocksPerRequestRecovered, BlocksPerRequestUnrecoverable,
@@ -116,12 +117,12 @@ test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Boo
   })
 }
 
-fn w_full(layers: KvLayerCount, block: KvBlockSize) -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: block }
+fn w_full(layers: Nat, block: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block) }
 }
 
-fn w_window(layers: KvLayerCount, block: KvBlockSize, window: Int) -> KvGroupLayout {
-  KvGroupLayout { kind: SlidingWindowAttention { window: token_count(count: window) }, layer_count: layers, block_size: block }
+fn w_window(layers: Nat, block: Nat, window: Int) -> KvGroupLayout {
+  KvGroupLayout { kind: SlidingWindowAttention { window: token_count(count: window) }, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block) }
 }
 
 // THE DISCRIMINATING ROW FOR THE WHOLE MODULE: two layouts with the SAME allocator inventory and the
