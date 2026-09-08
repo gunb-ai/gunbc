@@ -1,6 +1,7 @@
 module gunbc.spark.vllm_serving_launch
 
 import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, compare_content_hash, ContentHashComparison, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import product.placement_supply { HostIdentity }
@@ -197,3 +198,5 @@ fn launch_join_wire(j: LaunchJoin) -> String {
 fn launch_wire(i: VllmServingLaunch) -> String {
   join([fabric_group_wire(g: i.group) as String, "@", i.systemd_invocation as String], "")
 }
+
+data serving_launch_join_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.spark.vllm_kv_layout_observe seating_authority_for (and the pair-serving apply that grants seats) joins live observations through same_launch. SUFFICIENT FOR: a live capacity or seat decision cannot be joined on FabricGroup alone. pair_serving_observed.group_kv_pool_observed stays a historical fixture census keyed by group until that apply lands; rewriting it onto same_launch would demand an incarnation the fixture rows do not carry." as NonEmptyStr)
