@@ -106,10 +106,29 @@ Not chased, since this session has no Mt. Collins access. What would have to be 
 
 This was mis-filed as needing host access. It is a search, and it comes back **outcome three: the host boot script has no authoring home anywhere.**
 
-**What was searched, and the controls.** Org-wide GitHub code search for the banner and the marker stream returns **11 hits, all in `gunb-ai/gunbc`, and every one a capture, receipt or BMC artifact** — never producing code. The instrument was positive-controlled first (the same query against a string known to exist returns those 11), and each private repository was controlled separately rather than trusted:
+**The instrument, named so it re-derives rather than transcribed.** The census is four queries, and what makes the result trustworthy is which *controls* were run beside them, not the counts they happened to return. Every claim below is re-derivable by running the query named with it; the numbers are stated as what that query returned **at the time of writing**, and the query is the authority for the current answer.
 
-- **`gunb-ai/ctrl` — searchable and clean.** A universal-word control returns 914 hits, so the index reaches it. `firecracker` returns 2 hits, both planning `.md`; `jailer` returns 0; no path names Mt. Collins or `canary`.
-- **`gunb-ai/gunbc-private` — not searchable, so not trusted to search.** A universal-word control returns **0**, meaning the index does not reach it. Cleared instead by reading its tree directly: 178 blobs, strategy documents only.
+```
+# 1. the subject: does the banner or marker stream appear in any producing code, org-wide?
+gh api -X GET search/code -f q='"gunbc-runner-host-boot" org:gunb-ai'
+gh api -X GET search/code -f q='"guest-boot-begin" org:gunb-ai'
+
+# 2. POSITIVE CONTROL for the instrument — the same query where a hit is known to exist
+gh api -X GET search/code -f q='"gunbc-runner-host-boot" repo:gunb-ai/gunbc'
+
+# 3. REACHABILITY CONTROL, per private repo — a universal word, to prove the index sees it at all
+gh api -X GET search/code -f q='the repo:gunb-ai/ctrl'
+gh api -X GET search/code -f q='the repo:gunb-ai/gunbc-private'
+
+# 4. the fallback for any repo control 3 shows the index cannot reach
+gh api "repos/gunb-ai/gunbc-private/git/trees/HEAD?recursive=1" -q '.tree[]|select(.type=="blob")|.path'
+```
+
+**What those returned when this was written, and — the load-bearing part — what each control decided:**
+
+- The subject queries returned hits **only in `gunb-ai/gunbc`, and every path was a capture, receipt or BMC artifact** — never producing code. Query 2 returning the same set is what says the instrument works rather than that the corpus is empty.
+- **`gunb-ai/ctrl` — searchable, so its clean result counts.** Control 3 returned a large hit count, so the index reaches it; `firecracker` then returned only planning `.md`, `jailer` returned nothing, and no path named Mt. Collins or `canary`.
+- **`gunb-ai/gunbc-private` — NOT searchable, so its clean result would have counted for nothing.** Control 3 returned **zero for a universal word**, which is the tell that the index does not reach the repo at all. Cleared by query 4 instead — a direct tree read, strategy documents only. *An org-wide sweep alone would have reported this repo as clean while never having looked at it.*
 
 **What ctrl does carry is a sibling, and its history is the precedent.** `scripts/session-dashboard/host/jit-runner.sh` is the ephemeral-runner wrapper for the **non-micro-VM** hosts (srv1, srv2): it mints a JIT config from the App, runs one job, exits, looped by `systemd Restart=always`. It is not the Mt. Collins boot script and does not start a VM. Its header records why it is in the repository at all:
 
@@ -117,7 +136,7 @@ This was mis-filed as needing host access. It is a search, and it comes back **o
 
 So **this organisation has already taken an outage from exactly this class**, on the sibling of the very path under discussion, and the remedy applied then was to commit the script and reconcile the host copy from it. The micro-VM path is in the pre-remedy state today.
 
-**And the carrier is a single unreplicated artifact.** `gunbc.runner.runner_host_image_store` records the host images at `/srv/bmc` on srv1, NFS-exported, `known: true`, **`resilient: false`** — no replication, no backup — with the loss consequence stated as receipts outliving the bytes they cite. The boot script lives *inside* those images. So the thing that starts every production micro-VM on Mt. Collins exists as **one copy on one disk, with no source to rebuild it from**, and the same store has already had a reap delete 17 of 20 images.
+**And the carrier is a single unreplicated artifact.** `gunbc.runner.runner_host_image_store` records the host images at `/srv/bmc` on srv1, NFS-exported, `known: true`, **`resilient: false`** — no replication, no backup — with the loss consequence stated as receipts outliving the bytes they cite. The boot script lives *inside* those images. So the thing that starts every production micro-VM on Mt. Collins exists as **one copy on one disk, with no source to rebuild it from**, and that store's own `first_reap` row records how much of it a single reap has already removed.
 
 **Why this belongs to the operator rather than a lane.** Unauthored production actuation on the January critical path is a decision about accepted risk, not a modelling preference — and this is the strongest form of the two-homes class filed on #10674: not *one home modeled and one hand-authored*, but **one home modeled and the other outside the corpus entirely.** That single sentence is the fact a reader should leave this document with.
 
@@ -146,4 +165,4 @@ One structural fact constrains several axes at once: `extdeps.github.actions_jit
 
 ## What this document deliberately does not do
 
-It does not schedule the work, choose an owner, or propose an executor design. It gives each of the six admission axes a stated disposition rather than a verdict on all six, and where the honest disposition is *deferred* it names the trigger instead of guessing the axis' meaning — four of the six are deferred precisely because this repository carries no definition of them. And it transcribes no measurement: every number and marker here is cited to the probe capture that produced it, which remains the authority.
+It does not schedule the work, choose an owner, or propose an executor design. It gives each of the six admission axes a stated disposition rather than a verdict on all six, and where the honest disposition is *deferred* it names the trigger instead of guessing the axis' meaning — four of the six are deferred precisely because this repository carries no definition of them. And it names its instruments rather than transcribing them: the markers and magnitudes are cited to the probe capture that produced them, and the search census is stated as the four queries that re-derive it — with its controls, which are the part that decides the result. *An earlier revision claimed outright that the document transcribed no measurement. That was false while the census carried bare hit counts with no named producer, and a false self-assessment is worse than the defect it covers, because the section then reads as already-checked.*
