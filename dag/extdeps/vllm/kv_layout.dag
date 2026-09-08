@@ -6,7 +6,9 @@ import std.measure {
   TokenCount, token_count, token_count_value,
   Percent, percent, percent_count,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+  AttentionLayerCount, attention_layer_count_value,
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat, nat_min }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -67,8 +69,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // it downstream would put a division-by-zero branch in every cost function and force each one to
 // invent an answer for a layout that cannot exist; refining the field removes the state instead
 // (DESIGN section 4b: construction over validation).
-type KvBlockSize = Int where range(min: 1, max: 1048576)
-type KvLayerCount = Int where range(min: 1, max: 4096)
+// THE CARRIER IS TokenCount, not a second Int. Group block_size and scheduler_block_size are the
+// same quantity (tokens per block) in a min relation; a bare-Int sibling was a §2/§3 fork.
+// `where range` is the Int/Nat refinement form; it is applied to the token carrier so min:1 still
+// makes ceil_div total without minting a second unit type.
+type KvBlockSize = TokenCount where range(min: 1, max: 1048576)
+type KvLayerCount = AttentionLayerCount where range(min: 1, max: 4096)
 
 // THE WINDOW LIVES IN THE VARIANT THAT HAS ONE. It was a separate optional field beside the kind,
 // which made two states writable that the engine cannot produce: a windowed group with no window,
@@ -286,17 +292,18 @@ fn cold_admission_blocks(layout: ResolvedKvLayout, sequence_budget: TokenCount) 
 // sequence regardless of length.
 fn group_blocks_for(group: KvGroupLayout, sequence: TokenCount) -> Nat {
   match group.kind {
-    MambaState => group.layer_count
+    MambaState => attention_layer_count_value(c: group.layer_count)
     FullAttention =>
-      ceil_div(numerator: token_count_value(t: sequence), denominator: group.block_size) * group.layer_count
+      ceil_div(numerator: token_count_value(t: sequence), denominator: group.block_size) * attention_layer_count_value(c: group.layer_count)
     SlidingWindowAttention { window: w } =>
-      ceil_div(numerator: nat_min(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) * group.layer_count
+      ceil_div(numerator: nat_min(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) * attention_layer_count_value(c: group.layer_count)
   }
 }
 
 // The denominator is a KvBlockSize, which cannot be zero, so this is total without a guard.
 fn ceil_div(numerator: Nat, denominator: KvBlockSize) -> Nat {
-  (numerator + denominator - 1) / denominator
+  let d = token_count_value(t: denominator)
+  (numerator + d - 1) / d
 }
 
 // ── THE ONE NON-CIRCULAR CHECK: THE GROUPS MUST REPRODUCE THE PRINTED CONCURRENCY ─────────────
@@ -413,3 +420,5 @@ fn allocator_usage(layout: ResolvedKvLayout, free_blocks: AllocatorBlockCount) -
 // numerator mixes live references with evictable retention, and nothing here can separate them.
 // A constant predicate claiming "this is not occupancy" would be a decoration whose RED is
 // unauthorable; the absence of the conversion is the wall.
+
+data kv_layout_receipt_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.spark.vllm_kv_layout_observe admit_kv_layout consumes ResolvedKvLayout. SUFFICIENT FOR: this module is not a dangling type museum; live capacity folds go through the receipt bound to a launch." as NonEmptyStr)
