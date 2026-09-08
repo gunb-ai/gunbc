@@ -1,0 +1,155 @@
+module gunbc.runner_microvm_execution_authorization
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.virtualization.firecracker { FirecrackerVmConfig }
+import extdeps.github.effect { GitHubOrganizationRef }
+import extdeps.github.actions_jit_runner { JitRunnerConfigRequest, JitRunnerGroupId, JitRunnerLabel }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_credential { GitHubCredentialAuthority, CredentialCapability }
+import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
+import gunbc.runner_unit { RunnerUnitLifecycleIntent }
+import gunbc.runner_microvm {
+  RealizationReserve,
+  RunnerMicroVmAdmission, RunnerMicroVmAdmitted, RunnerMicroVmRefusedOrphanableUnit,
+  RunnerMicroVmRefusedSharedCredential, RunnerMicroVmRefusedMalformedVm,
+  RunnerMicroVmRefusedEnvelopeDisagreement, RunnerMicroVmRefusedEnvelopeUnresolved,
+  RunnerMicroVmConfigResolution, MicroVmConfigResolved, MicroVmConfigUnresolved,
+  RunnerMicroVmNetworking, VmmProcessTopology,
+  gunbc_runner_microvm_vm_config, gunbc_runner_jit_transport, runner_microvm_admission,
+  gunbc_runner_microvm_realization_reserve,
+}
+import product.fabric.execution { ExecutionGrant, grant_lease_generation }
+import product.fabric.identity { fabric_identity_eq, FabricIdentity, WorkKey, DemandKey, OfferKey }
+import product.fabric.budget { MoneyAccount, fence_admits }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
+  bind_microvm_to_cell,
+}
+import gunbc.runner_jit_mint {
+  JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
+  plan_jit_mint,
+}
+
+data runner_microvm_execution_authorization_disposition: Disposition = SingleAuthority
+
+// MINTING IS LAST, AND THE ORDER IS THE WHOLE REASON THIS MODULE EXISTS RATHER THAN ITS CALLERS
+// COMPOSING THE FOUR STAGES THEMSELVES.
+//
+// A JIT mint is not a local computation: it creates a RUNNER IDENTITY AT GITHUB. Every other stage
+// here is pure and free to fail -- an unowned cell, an unresolved size, a topology that can orphan
+// its VMM -- but if any of them refuses AFTER a mint, the identity is already registered against an
+// organization for a VM that will never start. Nothing on this host then knows to delete it,
+// because the plan that would have named it refused. Orphaned registrations accumulate silently,
+// count against the org, and are reconcilable only by name.
+//
+// So the mint is the LAST stage, and it is not merely "called last": its authorized value is
+// reachable only from inside LaunchAdmitted, so a caller cannot hold a mint authorization for a
+// launch that was refused. Ordering enforced by an author remembering it is exactly the arrangement
+// that produced the ownership-before-credential defect this fleet already paid for.
+//
+// THE REFUSAL ARMS ARE NOT COLLAPSED INTO ONE `cause` STRING. Each names the authority that owns
+// the remedy -- the cell belongs to gunbc.fabric_required_build_cell, the size to
+// gunbc.runner_slot_allocation, the topology to gunbc.runner_unit, the credential to
+// gunbc.auth.github_credential -- because collapsing them is the state-space conflation DESIGN
+// names, and it sends an operator to the wrong module.
+// THE AUTHORIZATION RULE, FACTORED OUT OF THE SEAL SO IT HAS AN AUTHORABLE RED.
+//
+// RequiredBuildCellSnapshot is sole_constructor precisely so a caller cannot manufacture a
+// reservation, which also means no witness outside its module can build one -- so a control aimed
+// at seal_execution_binding could never construct the disagreeing input it exists to catch. Its RED
+// would be unauthorable and the check would be a DESIGN 4b decoration: permanently green, cited as
+// coverage. Exposing a snapshot builder for tests would instead punch the hole the seal exists to
+// close, which is the tradeoff runner_microvm_attempt's own witness records.
+//
+// So the rule lives here, over the coordinates themselves, where a witness CAN construct a
+// disagreeing pair; the seal reads those coordinates off the snapshot and delegates. One authority,
+// and the discriminating input is writable.
+type AuthorizationAgreement
+  = AuthorizationAgrees
+  | AuthorizationDisagrees { cause: String }
+
+fn grant_authorizes_reservation(
+  grant: ExecutionGrant<NonEmptyStr>,
+  account: MoneyAccount,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> AuthorizationAgreement {
+  if !fence_admits(
+    a: account,
+    reference: grant.money_reservation,
+    presented: grant_lease_generation(g: grant),
+  ) {
+    AuthorizationDisagrees {
+      cause: "the execution grant presented for this launch does not fence against the account that issued it, so the authorization is stale or superseded and no target process may start",
+    }
+  } else if !fabric_identity_eq(left: grant.context.work, right: work) {
+    AuthorizationDisagrees {
+      cause: "the execution grant authorizes a different Work than the reserved cell holds, so this launch would run one subject under another's authorization",
+    }
+  } else if !fabric_identity_eq(left: grant.context.demand, right: demand) {
+    AuthorizationDisagrees {
+      cause: "the execution grant answers a different Demand than the reservation was taken for, so the two describe different executions",
+    }
+  } else if !fabric_identity_eq(left: grant.object.offer, right: offer) {
+    AuthorizationDisagrees {
+      cause: "the execution grant was issued against a different Offer than the cell was reserved from, so the supply it priced is not the supply this launch would consume",
+    }
+  } else {
+    AuthorizationAgrees
+  }
+}
+
+// THE SEALED AUTHORIZATION, AND WHY A GRANT PARAMETER ALONE WAS NOT FABRIC INTEGRATION.
+//
+// Requiring an ExecutionGrant closed the absent-grant case and nothing else. The grant and the cell
+// binding arrived as INDEPENDENT arguments, and the only thing read off the grant was its money
+// reservation, so a grant issued for execution A composed with the reserved cell for execution B
+// passed whenever the supplied account fenced A. That is worse than no grant: the grant's presence
+// reads as authorization while authorizing nothing about the subject.
+//
+// The grant already carries the coordinates that close it -- work, demand, offer, lease, executor,
+// attempt -- and the reserved snapshot carries work, demand and offer of its own. So the join is
+// available, and the honest form is CONSTRUCTION rather than a check inside the planner: the
+// mismatched pair must have no constructor at all. MicroVmExecutionBinding is sole_constructor and
+// reachable only through seal_execution_binding, which refuses unless every coordinate agrees.
+//
+// WHAT THIS STILL DOES NOT ESTABLISH, stated because the type name would otherwise read as more
+// than it is. ExecutionGrant is an ordinary constructible record, so a caller can author one; this
+// seal proves AGREEMENT between a presented grant and a presented reservation, not that fabric
+// issuance durably committed either. The unforgeable form is a persistent executor that re-reads
+// the committed grant from durable storage after the submitter terminates, which is FCI-3's own
+// exit predicate and the next slice -- not something a pure planner can assert about itself.
+type MicroVmExecutionBinding sole_constructor {
+  grant: ExecutionGrant<NonEmptyStr>
+  binding: MicroVmCellBinding
+}
+
+type MicroVmExecutionSeal
+  = ExecutionBindingSealed { sealed: MicroVmExecutionBinding }
+  | ExecutionBindingRefusedSubject { cause: String }
+
+fn seal_execution_binding(
+  grant: ExecutionGrant<NonEmptyStr>,
+  account: MoneyAccount,
+  snapshot: RequiredBuildCellSnapshot,
+) -> MicroVmExecutionSeal {
+  match grant_authorizes_reservation(
+    grant: grant,
+    account: account,
+    work: snapshot.work,
+    demand: snapshot.demand,
+    offer: snapshot.offer,
+  ) {
+    AuthorizationDisagrees { cause: c } => ExecutionBindingRefusedSubject { cause: c }
+    AuthorizationAgrees =>
+      ExecutionBindingSealed {
+        sealed: MicroVmExecutionBinding {
+          grant: grant,
+          binding: bind_microvm_to_cell(snapshot: snapshot),
+        },
+      }
+  }
+}
