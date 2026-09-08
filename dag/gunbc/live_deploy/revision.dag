@@ -64,6 +64,13 @@ type DeployRevisionRelation
 // used to sit beside this fold; keeping both would have been the §3 fork of two places computing
 // one decision. Reusing the variant names was never enough -- the vocabulary was shared while the
 // policy was copied.
+//
+// DIVERGED IS NOT UNRELATED. The srv1 deploy of 2026-09-04 refused with 'share no ancestry' when the
+// running release was a sibling of the candidate with a merge base two commits back: the neither-
+// ancestor arm had been folded into the no-common-ancestor arm, so the refusal named a force-push
+// that never happened. revision_relation_from_ancestry_facts is reached only once a merge base was
+// REPORTED (relation_from_merge_base_oid), so 'neither' there means diverged; a merge-base exit of 1
+// reaches UnrelatedHistories on its own path.
 fn revision_relation_from_ancestry_facts(
   same: Bool,
   deployed_is_ancestor_of_candidate: Bool,
@@ -80,9 +87,3 @@ fn revision_relation_from_ancestry_facts(
   }
 }
 
-// DIVERGED IS NOT UNRELATED. The srv1 deploy of 2026-09-04 refused with 'share no ancestry' when the
-// running release was a sibling of the candidate with a merge base two commits back: the neither-
-// ancestor arm had been folded into the no-common-ancestor arm, so the refusal named a force-push
-// that never happened. revision_relation_from_ancestry_facts is reached only once a merge base was
-// REPORTED (relation_from_merge_base_oid), so 'neither' there means diverged; a merge-base exit of 1
-// reaches UnrelatedHistories on its own path.
