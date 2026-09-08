@@ -2208,9 +2208,9 @@ fn admission_consumed_at_base(
 /// symbol: DESIGN's state-space conflation.
 ///
 /// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
-/// consults authorship (`membership_supported`), which admitted the membership edge of the very
-/// change this arm refused. So `authored_here` is passed in, not re-derived: see
-/// `locally_authored_claim_added`.
+/// consults authorship (`membership_declared`, over `membership_bound_through`), which admitted
+/// the membership edge of the very change this arm refused. So `authored_here` is passed in, not
+/// re-derived: see `locally_authored_claim_added`.
 fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
