@@ -197,6 +197,4 @@ fn bring_up_was_clean(s: ServingStanding) -> Bool {
   }
 }
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-
 data pair_serving_apply_attempt_observation_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: pair_serving_apply records PairServingLaunchAttempt rows from the systemd invocation and journal of the apply it just ran, then folds serving_standing over that list. Until then the apply outcome carries serving_standing over the empty list — ServingStandingUnobserved — rather than reading `echo restarted` as a clean bring-up. SUFFICIENT FOR: SparkPairHostApplied.standing is produced from observed attempts, not from the empty list." as NonEmptyStr)
