@@ -7,10 +7,10 @@ import extdeps.mikrotik.crs812 { crs812_qsfp56_dd_ports, crs812_lane_interface }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2 }
 import extdeps.transceiver.sff_8636 {
   transceiver_identifier_from_byte, sff8636_encoding_from_byte,
-  sff8636_nominal_rate_from_byte140,
+  sff8636_nominal_rate_from_byte140, ExtendedRateObserved,
 }
 import product.cable_leg_observation {
-  CableLegObservation, SecondaryNotObserved, cable_leg_observation,
+  CableLegObservation, SecondaryObserved, cable_leg_observation,
 }
 import product.cable_plant_converge {
   CablePlant, cable_plant, CableLegReading, LegReadingTaken, CablePlantConvergence,
@@ -84,9 +84,10 @@ data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved 
   coding: cable_leg_observation(
     identifier: transceiver_identifier_from_byte(code: 17),
     primary_compliance_code: 11,
-    secondary_compliance: SecondaryNotObserved,
+    secondary_compliance: SecondaryObserved { code: 0 },
     encoding: sff8636_encoding_from_byte(code: 8),
-    nominal_rate: sff8636_nominal_rate_from_byte140(code: 255)),
+    nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+    extended_rate: ExtendedRateObserved { code: 106 }),
   nic_supported_speeds: "50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028)" as NonEmptyStr,
   linked_speed_gbps: 50,
 }

@@ -7,6 +7,8 @@ import extdeps.mikrotik.crs812 { crs812_lane_speed_wire, Lane50GCr2, crs812_pass
 import extdeps.transceiver.sff_8636 {
   Sff8636NominalRate, NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
 }
+import std.measure { symbol_rate_count }
+import product.cable_leg_observation { cable_leg_signalling_rate }
 import gunbc.spark.fabric_switch_observed {
   fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
   FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
@@ -41,12 +43,24 @@ test fn the_link_speed_is_the_cable_codings_ceiling_and_forced_mode_is_required(
 }
 
 
-// THE ESCAPE IS CARRIED AS AN ESCAPE, NOT AS A RATE. `ethtool -m` printed "BR, nominal: 25500 Mb/s"
-// for these legs, and 25500 is 255 x 100 -- the escape value multiplied out. An earlier head of this
-// change recorded that number as an observed field, and retyping it to SymbolRate to satisfy a
-// unit review moved a sentinel INTO the type minted to make that conflation unwritable. This witness
-// holds the honest answer: byte 140 at FFh resolves to NominalRateEscaped and to no measurement at
-// all. It goes red the moment anyone reconstitutes a rate from the escape.
+// BYTE 222 WAS READ ON 2026-09-08, AND IT IS 6Ah. `ethtool -m <dev> raw on` on spark-a3ee and
+// spark-ac79 (both FS QDD-400G-4QPC015 legs) returned byte 140 = FFh and byte 222 = 6Ah = 106, which
+// at the specification's 250 MBd unit is 26,500 MBd. So the escape resolves to 26.5 GBd, and the
+// 25500 that `ethtool` PRINTED was the sentinel multiplied out -- wrong by a thousand baud per unit
+// AND in the wrong quantity. This witness is what stops that figure coming back: it holds the
+// resolved rate against the byte, so reconstituting 25500 from byte 140 fails here.
+test fn the_escape_resolves_to_the_rate_byte_222_actually_holds() -> Bool {
+  match cable_leg_signalling_rate(obs: fabric_leg_cable_observed.coding) {
+    NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 26500000000
+    NominalRateEscaped => false
+    NominalRateUnspecified => false
+  }
+}
+
+// THE RAW BYTE IS STILL AN ESCAPE, and resolution does not rewrite it. Following byte 222 answers
+// what the leg signals at; it does not turn byte 140 into a direct rate, and a later reader must
+// still see that this observation stands on an escape that was followed rather than on a byte that
+// spoke for itself. Kept beside the resolved witness because the two are different facts.
 test fn the_escaped_nominal_rate_is_not_a_measurement() -> Bool {
   match fabric_leg_cable_observed.coding.nominal_rate {
     NominalRateEscaped => true

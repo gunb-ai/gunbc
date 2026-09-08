@@ -5,6 +5,9 @@ import std.types { Bool, List }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
 import extdeps.transceiver.sff_8636 {
   TransceiverIdentifier, Sff8636Encoding, Sff8636NominalRate,
+  NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
+  Sff8636ExtendedRateObservation, ExtendedRateNotObserved, ExtendedRateObserved,
+  sff8636_resolve_nominal_rate,
   EncodingUnspecified, Encoding64b66b, EncodingPam4, EncodingUnmodelled,
   AttestedMode, FecCondition, FecUnconditional, RequiresClause91Fec,
   ComplianceInterpretation, ComplianceUnderstood, ComplianceUnspecified,
@@ -42,6 +45,7 @@ type CableLegObservation sole_constructor {
   secondary_compliance: SecondaryComplianceObservation
   encoding: Sff8636Encoding
   nominal_rate: Sff8636NominalRate
+  extended_rate: Sff8636ExtendedRateObservation
 }
 
 fn cable_leg_observation(
@@ -50,6 +54,7 @@ fn cable_leg_observation(
   secondary_compliance: SecondaryComplianceObservation,
   encoding: Sff8636Encoding,
   nominal_rate: Sff8636NominalRate,
+  extended_rate: Sff8636ExtendedRateObservation,
 ) -> CableLegObservation {
   CableLegObservation {
     identifier: identifier,
@@ -57,6 +62,7 @@ fn cable_leg_observation(
     secondary_compliance: secondary_compliance,
     encoding: encoding,
     nominal_rate: nominal_rate,
+    extended_rate: extended_rate,
   }
 }
 
@@ -76,12 +82,33 @@ type CableLegField
   | PrimaryComplianceField
   | EncodingField
   | NominalRateField
+  | ExtendedRateField
 
+// AN UNREAD BYTE 222 IS A COVERAGE GAP ONLY WHERE THE ESCAPE MAKES IT ONE. A leg whose byte 140
+// carries a direct rate does not need byte 222 at all, so reporting it as unread there would blame
+// a field whose reading would change nothing. The census asks the resolved question: is this
+// observation still standing on an escape it could not follow?
 fn cable_leg_unread_fields(obs: CableLegObservation) -> List<CableLegField> {
-  match obs.secondary_compliance {
-    SecondaryNotObserved => [SecondaryComplianceField]
-    SecondaryObserved { code: sc } => []
-  }
+  flat_map([obs], o =>
+    flat_map(
+      [
+        match o.secondary_compliance {
+          SecondaryNotObserved => [SecondaryComplianceField]
+          SecondaryObserved { code: sc } => []
+        },
+        match sff8636_resolve_nominal_rate(primary: o.nominal_rate, extended: o.extended_rate) {
+          NominalRateEscaped => [ExtendedRateField]
+          NominalRateDirect { rate: r } => []
+          NominalRateUnspecified => []
+        },
+      ], f => f))
+}
+
+// THE RATE THIS LEG ACTUALLY SIGNALS AT, escape followed where it was read. Every consumer asks
+// this rather than obs.nominal_rate, so a leg that resolved its escape and one that never had to
+// answer the same way, and a leg still standing on an unfollowed escape stays visibly escaped.
+fn cable_leg_signalling_rate(obs: CableLegObservation) -> Sff8636NominalRate {
+  sff8636_resolve_nominal_rate(primary: obs.nominal_rate, extended: obs.extended_rate)
 }
 
 // ================= INTERPRETABILITY: WHICH READ VALUES THE DECODER UNDERSTOOD =================

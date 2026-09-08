@@ -10,6 +10,7 @@ import extdeps.ethernet.link_mode {
   ieee_25gbase_cr, ieee_50gbase_cr2, ieee_100gbase_cr4, ieee_100gbase_cr2,
 }
 import extdeps.transceiver.sff_8636 {
+  ExtendedRateNotObserved,
   NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
   ComplianceUnderstood, ComplianceUnspecified, ComplianceCodeUnmodelled,
   sff8636_nominal_rate_from_byte140, sff8636_interpret_extended_compliance,
@@ -97,7 +98,8 @@ data delivered_fs_leg: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 11,
   secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateNotObserved)
 
 fn is_insufficient(f: CableLegFinding) -> Bool {
   match f {
@@ -174,7 +176,8 @@ data leg_with_unmodelled_code: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 254,
   secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateNotObserved)
 
 test fn an_unmodelled_code_is_not_understood_rather_than_attesting_nothing() -> Bool {
   code_not_understood(f: assess_cable_leg(
@@ -290,7 +293,8 @@ data secondary_unspecified_leg: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 11,
   secondary_compliance: SecondaryObserved { code: 0 },
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateNotObserved)
 
 test fn reading_an_unspecified_secondary_does_not_make_the_profile_decidable() -> Bool {
   consistency_gap_is_compliance_unspecified(c: cable_leg_consistency(obs: secondary_unspecified_leg))
@@ -312,7 +316,8 @@ data fully_understood_leg: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 11,
   secondary_compliance: SecondaryObserved { code: 64 },
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateNotObserved)
 
 test fn a_fully_read_profile_is_undecidable_only_for_interface_scope() -> Bool {
   consistency_cause_is_scope(c: cable_leg_consistency(obs: fully_understood_leg))
@@ -338,7 +343,8 @@ data encoding_unspecified_leg: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 11,
   secondary_compliance: SecondaryObserved { code: 64 },
   encoding: sff8636_encoding_from_byte(code: 0),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateNotObserved)
 
 test fn an_unspecified_encoding_is_named_rather_than_blamed_on_interface_scope() -> Bool {
   consistency_gap_is_encoding_unspecified(c: cable_leg_consistency(

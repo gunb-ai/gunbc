@@ -3,6 +3,7 @@ module test.claim.cable_order_admission_witness
 import std.types { Bool, NonEmptyStr }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_100gbase_cr4 }
 import extdeps.transceiver.sff_8636 {
+  ExtendedRateNotObserved,
   sff8636_nominal_rate_from_byte140,
   transceiver_identifier_from_byte, sff8636_encoding_from_byte,
 }
@@ -84,7 +85,8 @@ data delivered_leg: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 11,
   secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateNotObserved)
 
 data admitted_purchase: CableOrderAdmission = admit_cable_order(
   evidence: LegCodingVendorAsserted { asserted_mode: ieee_100gbase_cr2, citation: fs_listing },
@@ -135,7 +137,8 @@ data correctly_coded_leg: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 11,
   secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateNotObserved)
 
 // The CR4 requirement is one 0x0B genuinely attests, so this exercises the honouring path against
 // the same decoder the divergence path uses.
