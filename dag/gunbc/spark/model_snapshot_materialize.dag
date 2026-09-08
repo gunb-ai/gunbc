@@ -145,27 +145,36 @@ fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> L
 // can only appear if the instrument ran. Its ABSENCE is proof the instrument did not run; its
 // presence carries the verdict. No failure text is interpreted, so no future failure text can be
 // missing from a list.
-data verify_ran_sentinel: NonEmptyStr = "GUNBC_VERIFY_RAN=" as NonEmptyStr
+// TWO SENTINELS RATHER THAN ONE CARRYING A PARSED NUMBER. A first attempt echoed the exit status and
+// read it back with `to_int`, which the interpreter does not implement -- and parsing a number out of
+// captured output would have been a second decoder to get wrong in any case. Two distinct words carry
+// the same information with no parsing at all: the shell picks which one to emit.
+data verify_ok_sentinel: NonEmptyStr = "GUNBC-VERIFY-OK" as NonEmptyStr
+data verify_failed_sentinel: NonEmptyStr = "GUNBC-VERIFY-FAILED" as NonEmptyStr
 
 fn with_execution_sentinel(argv: List<String>) -> List<String> {
-  ["sh", "-c", join([shell_command_line(argv: argv), "; echo ", verify_ran_sentinel as String, "$?"], "")]
+  ["sh", "-c", join([
+    shell_command_line(argv: argv),
+    " && echo ", verify_ok_sentinel as String,
+    " || echo ", verify_failed_sentinel as String,
+  ], "")]
 }
 
 type InstrumentReading
   = InstrumentDidNotRun
-  | InstrumentRan { exit_code: Int }
+  | InstrumentVerified
+  | InstrumentRejectedTheSubject
 
-// THE SENTINEL IS PARSED FROM STDOUT, and its absence is the whole signal. A reading that cannot find
-// it makes no claim about the subject at all.
+// NEITHER SENTINEL PRESENT MEANS THE INSTRUMENT NEVER REACHED ITS OWN `echo`, so nothing was learned
+// about the subject. That is a THIRD state, not a bad verdict, and keeping it distinct is the entire
+// point: a permission error, a missing image and a genuinely corrupt checkpoint must not share an arm.
 fn read_instrument(stdout: String) -> InstrumentReading {
-  let parts = split(s: stdout, delimiter: verify_ran_sentinel as String)
-  if list_length(items: parts) < 2 {
-    InstrumentDidNotRun
+  if stdout.contains(verify_ok_sentinel as String) {
+    InstrumentVerified
+  } else if stdout.contains(verify_failed_sentinel as String) {
+    InstrumentRejectedTheSubject
   } else {
-    match parts.last() {
-      Absent => InstrumentDidNotRun
-      Present { value: tail } => InstrumentRan { exit_code: to_int(s: trim(s: tail)) }
-    }
+    InstrumentDidNotRun
   }
 }
 
@@ -208,8 +217,8 @@ fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<
       match read_instrument(stdout: out) {
         InstrumentDidNotRun =>
           AcquisitionProbeFailed { reason: join(["the verification instrument never executed, so nothing was learned about the snapshot: ", err], "") as NonEmptyStr }
-        InstrumentRan { exit_code: verdict } =>
-          if verdict == 0 { AcquisitionVerified } else { AcquisitionDigestMismatch }
+        InstrumentVerified => AcquisitionVerified
+        InstrumentRejectedTheSubject => AcquisitionDigestMismatch
       }
   }
 }
@@ -274,7 +283,8 @@ data spark_transfer_poll_interval_seconds: Nat = 20
 type SparkTransferState
   = TransferAbsent
   | TransferRunning
-  | TransferExited { exit_code: Int }
+  | TransferExitedClean
+  | TransferExitedFailed { status: String }
   | TransferStateUnreadable { cause: String }
 
 fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> SparkTransferState {
@@ -288,7 +298,8 @@ fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
       } else {
         match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ExecMainStatus", "--value"]) {
           RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
-          RemoteRan { exit_code: _, stdout: code, stderr: _ } => TransferExited { exit_code: to_int(s: code) }
+          RemoteRan { exit_code: _, stdout: code, stderr: _ } =>
+            if trim(s: code) == "0" { TransferExitedClean } else { TransferExitedFailed { status: trim(s: code) } }
         }
       }
   }
@@ -337,7 +348,8 @@ fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
 }
 
 type SparkTransferSupervision
-  = SupervisedExit { exit_code: Int }
+  = SupervisedExitClean
+  | SupervisedExitFailed { status: String }
   | SupervisedStillRunning { polls: Nat }
   | SupervisionLost { cause: String }
 
@@ -350,8 +362,9 @@ fn spark_transfer_supervise(ctx: SparkMaterializeContext, subject: AcquisitionSu
     SupervisedStillRunning { polls: spark_transfer_poll_budget }
   } else {
     match spark_transfer_state(ctx: ctx, subject: subject) {
-      TransferExited { exit_code: c } => SupervisedExit { exit_code: c }
-      TransferAbsent => SupervisedExit { exit_code: 0 }
+      TransferExitedClean => SupervisedExitClean
+      TransferExitedFailed { status: st } => SupervisedExitFailed { status: st }
+      TransferAbsent => SupervisedExitClean
       TransferStateUnreadable { cause: _ } => spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
       TransferRunning => spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
     }
@@ -379,7 +392,13 @@ fn spark_snapshot_attempt(ctx: SparkMaterializeContext, verify: List<String>, su
   match spark_transfer_state(ctx: ctx, subject: subject) {
     TransferStateUnreadable { cause: _ } => AttemptUnreachable
     TransferRunning => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
-    TransferExited { exit_code: _ } =>
+    TransferExitedClean =>
+      if !spark_transfer_clear(ctx: ctx, subject: subject) {
+        AttemptUnreachable
+      } else {
+        spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
+      }
+    TransferExitedFailed { status: _ } =>
       if !spark_transfer_clear(ctx: ctx, subject: subject) {
         AttemptUnreachable
       } else {
@@ -409,10 +428,8 @@ fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<Stri
           " polls and has not been killed; re-run to reattach to it. This is not a failed transfer",
         ], "") as NonEmptyStr,
       } } }
-    SupervisedExit { exit_code: e } =>
-      if e != 0 {
-        AttemptUnreachable
-      } else {
+    SupervisedExitFailed { status: _ } => AttemptUnreachable
+    SupervisedExitClean => {
         match spark_remote_run(ctx: ctx, argv: with_execution_sentinel(argv: executor_wrap(executor: ctx.executor, argv: verify))) {
           RemoteUnreachable { cause: c } =>
             AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
