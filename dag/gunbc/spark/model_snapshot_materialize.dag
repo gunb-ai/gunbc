@@ -54,11 +54,19 @@ type SparkRemoteRun
   = RemoteRan { exit_code: Int, stdout: String, stderr: String }
   | RemoteUnreachable { cause: String }
 
+// EVERY LEG IS PRIVILEGED, BECAUSE THE DAEMON IT MUST REACH IS. Acquisition drives docker on the
+// target, and docker's socket is root-owned on these hosts -- an unprivileged run answers
+// `permission denied while trying to connect to the docker API`, which is what the first real
+// acquisition hit. The privilege comes from the shape gunbc.spark.pair_serving_apply already uses for
+// the same hosts -- `sudo -S` with the credential on stdin ahead of the command -- rather than a
+// second mechanism invented here. `sudo -n` was tried first and is wrong: it requires passwordless
+// sudo, which this fleet does not grant.
+//
 // ONE REMOTE EXECUTION, AND THE TWO FAILURES IT KEEPS APART. "the ssh leg never landed" and "the
 // command ran and exited non-zero" are different facts with different remedies, and collapsing them
 // is what would make an unreachable host read as a corrupt download.
 fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRemoteRun {
-  match portable_remote_words(raws: ["sh", "-s"]) {
+  match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
     Absent => RemoteUnreachable { cause: "the remote invocation is not expressible as portable remote words" }
     Present { value: words } =>
       match spark_reach_endpoint(host: ctx.host, path: ctx.path) {
@@ -74,7 +82,7 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
               },
               words: words,
             ),
-            stdin_payload: join([shell_command_line(argv: argv), "\n"], ""),
+            stdin_payload: join([ctx.admin_credential as String, "\n", shell_command_line(argv: argv), "\n"], ""),
           )
           RemoteRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
         }
@@ -105,6 +113,9 @@ type SnapshotAcquisitionExecutor
   = HostCli
   | ContainerizedCli { image: NonEmptyStr, host_path: NonEmptyStr, container_path: NonEmptyStr }
 
+// THE EXECUTOR DOES NOT ADD PRIVILEGE OF ITS OWN. Every remote leg already runs under `sudo -S`
+// (see spark_remote_run), so wrapping `sudo` here too would nest it -- and a second privilege
+// mechanism beside the first is the fork this module keeps refusing elsewhere.
 fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> List<String> {
   match executor {
     HostCli => argv
@@ -115,6 +126,46 @@ fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> L
          "--entrypoint", "/opt/env/bin/hf", img as String],
         argv.skip(n: 1),
       )
+  }
+}
+
+// ── EXECUTION PROVENANCE, REPLACING A STDERR PATTERN ROSTER ────────────────────────────────────
+//
+// THE ROSTER WAS A HEURISTIC AND IT FAILED ON ITS FIRST REAL INPUT. A previous revision decided
+// whether the verification INSTRUMENT had run by matching stderr against a list of known failure
+// strings -- `command not found`, `Unable to find image`, `401`, and so on -- with anything
+// unrecognised falling through to "the bytes are wrong". The first live acquisition produced
+// `permission denied while trying to connect to the docker API`, which was on no list, so a
+// PERMISSION ERROR was reported as a digest mismatch: the exact conflation the roster existed to
+// prevent, reintroduced by the mechanism meant to fix it.
+//
+// A CLOSED SYSTEM DOES NOT NEED THE GUESS. The question is not "does this text look like a tooling
+// failure" but "did the verification command execute at all", and that is answerable structurally:
+// run it behind a shell that prints a sentinel carrying the command's own exit status. The sentinel
+// can only appear if the instrument ran. Its ABSENCE is proof the instrument did not run; its
+// presence carries the verdict. No failure text is interpreted, so no future failure text can be
+// missing from a list.
+data verify_ran_sentinel: NonEmptyStr = "GUNBC_VERIFY_RAN=" as NonEmptyStr
+
+fn with_execution_sentinel(argv: List<String>) -> List<String> {
+  ["sh", "-c", join([shell_command_line(argv: argv), "; echo ", verify_ran_sentinel as String, "$?"], "")]
+}
+
+type InstrumentReading
+  = InstrumentDidNotRun
+  | InstrumentRan { exit_code: Int }
+
+// THE SENTINEL IS PARSED FROM STDOUT, and its absence is the whole signal. A reading that cannot find
+// it makes no claim about the subject at all.
+fn read_instrument(stdout: String) -> InstrumentReading {
+  let parts = split(s: stdout, delimiter: verify_ran_sentinel as String)
+  if list_length(items: parts) < 2 {
+    InstrumentDidNotRun
+  } else {
+    match parts.last() {
+      Absent => InstrumentDidNotRun
+      Present { value: tail } => InstrumentRan { exit_code: to_int(s: trim(s: tail)) }
+    }
   }
 }
 
@@ -151,27 +202,16 @@ fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, su
 // UNRECOGNISED OUTPUT FALLS THROUGH TO MISMATCH, which is the conservative direction: a real mismatch
 // misreported as an instrument failure would leave bad bytes installed and called present.
 fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionObservation {
-  match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
+  match spark_remote_run(ctx: ctx, argv: with_execution_sentinel(argv: executor_wrap(executor: ctx.executor, argv: verify))) {
     RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
-    RemoteRan { exit_code: ok, stdout: _, stderr: err } =>
-      if ok == 0 {
-        AcquisitionVerified
-      } else if verify_output_indicates_instrument_failure(err: err) {
-        AcquisitionProbeFailed { reason: join(["the verification instrument did not run: ", err], "") as NonEmptyStr }
-      } else {
-        AcquisitionDigestMismatch
+    RemoteRan { exit_code: _, stdout: out, stderr: err } =>
+      match read_instrument(stdout: out) {
+        InstrumentDidNotRun =>
+          AcquisitionProbeFailed { reason: join(["the verification instrument never executed, so nothing was learned about the snapshot: ", err], "") as NonEmptyStr }
+        InstrumentRan { exit_code: verdict } =>
+          if verdict == 0 { AcquisitionVerified } else { AcquisitionDigestMismatch }
       }
   }
-}
-
-fn verify_output_indicates_instrument_failure(err: String) -> Bool {
-  err.contains("No such file or directory")
-    || err.contains("command not found")
-    || err.contains("Unable to find image")
-    || err.contains("no such option")
-    || err.contains("unrecognized arguments")
-    || err.contains("401")
-    || err.contains("403")
 }
 
 fn spark_snapshot_ensure_parent(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
@@ -373,7 +413,7 @@ fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<Stri
       if e != 0 {
         AttemptUnreachable
       } else {
-        match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
+        match spark_remote_run(ctx: ctx, argv: with_execution_sentinel(argv: executor_wrap(executor: ctx.executor, argv: verify))) {
           RemoteUnreachable { cause: c } =>
             AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
               identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
