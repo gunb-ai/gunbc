@@ -310,7 +310,7 @@ fn group_report(group: FabricGroup) -> GroupStanding {
                       Absent => refused_standing(text: join([name, ": the captured maximum-concurrency reading was refused by its own carrier"], ""))
                       Present { value: reported } => {
                     let receipt = admit_kv_layout(
-                      incarnation: launch,
+                      launch: launch,
                       layout: layout_from_fields(f: f),
                       reported: reported,
                       source_capture_digest: Fnv1a64(content_hash_atom(value: result.stdout as NonEmptyStr)),

@@ -56,11 +56,11 @@ type CapacityFloorStanding
 
 fn capacity_floor_standing(receipt: VllmKvLayoutReceipt, floor: MinimumColdSessions) -> CapacityFloorStanding {
   match receipt {
-    KvLayoutUnreadable { incarnation: _, cause: c } =>
+    KvLayoutUnreadable { launch: _, cause: c } =>
       FloorUnestablished { cause: join(["the layout capture was unreadable: ", c as String], "") as NonEmptyStr }
-    KvLayoutInconsistent { incarnation: _, cause: c } =>
+    KvLayoutInconsistent { launch: _, cause: c } =>
       FloorUnestablished { cause: join(["the layout is inconsistent: ", c as String], "") as NonEmptyStr }
-    KvLayoutObserved { incarnation: _, layout: layout, reported: _, blocks_per_max_request: _, source_capture_digest: _ } =>
+    KvLayoutObserved { launch: _, layout: layout, reported: _, blocks_per_max_request: _, source_capture_digest: _ } =>
       match cold_admission_blocks(layout: layout, sequence_budget: floor.maximum_sequence_tokens) {
         AdmissionCostUnestablished { cause: c } => FloorUnestablished { cause: c }
         AdmissionCostBlocks { blocks: per_request } => {
@@ -185,17 +185,17 @@ fn restart_admission(
 // and a receipt describing the incarnation that was just replaced does not count, which is why the
 // fresh receipt is joined rather than assumed.
 type ReAdmission
-  = ReAdmitted { incarnation: VllmServingLaunch, available_blocks: AllocatorBlockCount }
+  = ReAdmitted { launch: VllmServingLaunch, available_blocks: AllocatorBlockCount }
   | ReAdmissionRefused { cause: NonEmptyStr }
 
 fn re_admit(fresh: VllmKvLayoutReceipt, floor: MinimumColdSessions) -> ReAdmission {
   match capacity_floor_standing(receipt: fresh, floor: floor) {
     MeetsFloor { required_blocks: _, available_blocks: a } =>
       match fresh {
-        KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: _ } =>
-          ReAdmitted { incarnation: i, available_blocks: a }
-        KvLayoutUnreadable { incarnation: _, cause: c } => ReAdmissionRefused { cause: c }
-        KvLayoutInconsistent { incarnation: _, cause: c } => ReAdmissionRefused { cause: c }
+        KvLayoutObserved { launch: i, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: _ } =>
+          ReAdmitted { launch: i, available_blocks: a }
+        KvLayoutUnreadable { launch: _, cause: c } => ReAdmissionRefused { cause: c }
+        KvLayoutInconsistent { launch: _, cause: c } => ReAdmissionRefused { cause: c }
       }
     BelowFloor { required_blocks: r, available_blocks: a } =>
       ReAdmissionRefused {

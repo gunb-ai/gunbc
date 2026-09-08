@@ -96,7 +96,7 @@ fn w_receipt_from(invocation: String, blocks: Nat, pool: VllmObservedKvPool) -> 
     Present { value: reported } =>
       Present {
         value: admit_kv_layout(
-          incarnation: w_inc(invocation: invocation),
+          launch: w_inc(invocation: invocation),
           layout: w_layout(blocks: blocks, groups: [w_full(layers: 1)]),
           reported: reported,
           source_capture_digest: w_digest(hex: w_hex),
@@ -159,7 +159,7 @@ test fn an_unestablished_capacity_withdraws_the_engine() -> Bool {
         Absent => false
         Present { value: reported } => {
           let inconsistent = admit_kv_layout(
-            incarnation: w_inc(invocation: "inv-a"),
+            launch: w_inc(invocation: "inv-a"),
             layout: w_layout(blocks: 54475, groups: []),
             reported: reported,
             source_capture_digest: w_digest(hex: w_hex),
@@ -256,10 +256,10 @@ test fn re_admission_is_decided_by_the_new_receipt_not_by_the_restart_having_hap
                 Present { value: ok_r } =>
                   (match re_admit(fresh: short_r, floor: spark_pair_serving_minimum_cold_sessions) {
                      ReAdmissionRefused { cause: c } => string_contains(s: c as String, pattern: "still below the floor")
-                     ReAdmitted { incarnation: _, available_blocks: _ } => false
+                     ReAdmitted { launch: _, available_blocks: _ } => false
                    })
                     && (match re_admit(fresh: ok_r, floor: spark_pair_serving_minimum_cold_sessions) {
-                          ReAdmitted { incarnation: _, available_blocks: a } => allocator_block_count_value(c: a) == 93750
+                          ReAdmitted { launch: _, available_blocks: a } => allocator_block_count_value(c: a) == 93750
                           ReAdmissionRefused { cause: _ } => false
                         })
               }
