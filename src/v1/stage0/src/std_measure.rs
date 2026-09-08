@@ -1340,6 +1340,19 @@ pub fn percent_count(p: Percent) -> Nat {
     measure_count(p.clone())
 }
 
+pub type ConcurrentRequestHundredths = Rc<Measure<Dimensionless, One, i64>>;
+
+pub fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn concurrent_request_hundredths_count(c: ConcurrentRequestHundredths) -> Nat {
+    measure_count(c.clone())
+}
+
 pub fn permyriad_half_for_round_half_up() -> i64 {
     (crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count() / 2)
 }
