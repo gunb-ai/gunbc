@@ -142,6 +142,9 @@ type CensusResult
       max_pages: Int
     }
 
+// declared residue: dissolves into std.page_fold when a production consumer
+// of that module makes the fold driver live — then the census's page-loop
+// becomes a page_fold_run over a WorkflowRuns page transport.
 fn collect_runs_in_window(
   auth_token: String,
   owner: String,
