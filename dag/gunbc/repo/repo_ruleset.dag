@@ -1277,6 +1277,14 @@ fn render_unknowns(us: List<RulesetUnknown>) -> String {
 // EVERY NON-SATISFIED ARM EXITS FAILURE, and each renders the located facts it holds rather than a
 // summary. The indeterminate arm renders BOTH sides deliberately: the unknown says what could not
 // be read, and the drift beside it is what the previous shape suppressed.
+//
+// THE GoalAssessmentRefused ARM BELOW IS UNREACHABLE BY CONSTRUCTION, not by convention: this
+// assessment instantiates AssessRefusal at v2.std.cardinality Never, which has no constructor
+// anywhere, so no value can arrive there. It is written because the coproduct is CLOSED -- the
+// property that makes a fifth assessment arm a compile error rather than a silent fall-through --
+// and its reason is stated here rather than beside it because DESIGN section 4c models annotations
+// at module-item grain only. An annotation inside a body is a parse refusal, which is how this
+// note came to be here.
 func verify() -> ProcessExit {
   match inspect_goal(
     subject: RepositoryRulesetConvergenceSubject {
@@ -1308,10 +1316,6 @@ func verify() -> ProcessExit {
         ],
         "",
       ))
-    // UNREACHABLE BY CONSTRUCTION, not by convention: this assessment's AssessRefusal is
-    // v2.std.cardinality Never, which has no constructor anywhere, so no value can arrive here.
-    // The arm is written because the coproduct is closed -- which is the property that would make
-    // a FIFTH assessment arm a compile error rather than a silent fall-through.
     GoalInspected { subject: _, observed: _, assessment: GoalAssessmentRefused { cause: _ } } =>
       exit_failure(reason: "repo ruleset verify refused: unreachable assessment refusal")
   }
