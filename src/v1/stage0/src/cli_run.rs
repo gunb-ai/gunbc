@@ -22945,7 +22945,9 @@ pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
-    derived_row_roster::ensure_if_row_dir_or_panic(dir);
+    // This walk swallows unreadable directories. Write failure here must not abort it;
+    // `run_dag_parse_sweep` is the loud required-CI writer.
+    let _ = derived_row_roster::ensure_if_row_dir(dir);
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,

@@ -4,11 +4,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
 import gunbc.generated_artifact {
-  GeneratedArtifact,
   artifact_path,
-  artifact_commit_policy,
-  CommitRequired,
-  NotCommitted,
   DesignFailureModesArtifact,
   DesignRungDropsArtifact
 }
@@ -29,8 +25,9 @@ fn write_docs_projection(path: String, content: String) -> ProcessExit {
 // gunbc.generated_artifact_emit pulls every generator (plans, workflows, CAD, stage0 mirrors).
 // This entry still imports gunbc.generated_artifact for artifact_path only — the location
 // authority — not generated_artifact_emit. claim_executor --required-regen never owns these
-// files: is_compared_generated_basename is ends_with .rs. That ownership gap is the motive;
-// this entry returns ProcessExit over the two ledger paths.
+// files: is_compared_generated_basename is ends_with .rs. That ownership gap is the motive.
+// regen writes both ledger paths locally. main agrees only the committed rung-drop ledger:
+// agreeing DesignFailureModesArtifact would be permanently green (NotCommitted).
 func regen() -> ProcessExit {
   let first = write_docs_projection(
     path: artifact_path(a: DesignFailureModesArtifact),
@@ -56,28 +53,13 @@ fn agree_one(path: String, expected: String) -> ProcessExit {
   }
 }
 
-// A NotCommitted ledger has no committed bytes to agree. Regen may still write a local copy.
+// A NotCommitted ledger has no committed bytes to agree. This gate does not call agree for
+// DesignFailureModesArtifact: that would be permanently green. Regen still writes a local copy.
 // Requiring a checkout of docs/design-failure-modes.md would restore the 1.19MB merge surface.
-fn agree_if_committed(a: GeneratedArtifact, expected: String) -> ProcessExit {
-  match artifact_commit_policy(a: a) {
-    NotCommitted => ExitSuccess
-    CommitRequired { consumer: _ } => agree_one(
-      path: artifact_path(a: a),
-      expected: expected
-    )
-  }
-}
 
 func main() -> ProcessExit {
-  let first = agree_if_committed(
-    a: DesignFailureModesArtifact,
-    expected: expected_design_failure_modes_md()
+  agree_one(
+    path: artifact_path(a: DesignRungDropsArtifact),
+    expected: expected_design_rung_drops_md()
   )
-  match first {
-    ExitSuccess => agree_if_committed(
-      a: DesignRungDropsArtifact,
-      expected: expected_design_rung_drops_md()
-    )
-    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
-  }
 }
