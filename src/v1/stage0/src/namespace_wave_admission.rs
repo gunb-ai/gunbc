@@ -2496,6 +2496,37 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
 
+pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
+    let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
+        vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+            path: rel.to_string(),
+            content: content.to_string(),
+        })]
+        .into(),
+    ));
+    if !fill.diagnostics.is_empty() {
+        return Err(format!(
+            "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
+             declarations cannot be read",
+            fill.diagnostics.len()
+        ));
+    }
+    let source_indices: std::rc::Rc<
+        im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
+    > = std::rc::Rc::new(
+        fill.newline_indices
+            .iter()
+            .fold(im::HashMap::new(), |acc, i| {
+                acc.update(i.file.clone(), i.clone())
+            }),
+    );
+    Ok(fill
+        .modules
+        .iter()
+        .map(|module| record_from_module(module, &source_indices, rel, &fill.occurrence_transport))
+        .collect())
+}
+
 /// The derived roster AS THE BASE TREE WOULD HAVE PRODUCED IT, from the base's own row files.
 ///
 /// THIS EXISTS BECAUSE A GENERATED, GITIGNORED ARTIFACT HAS NO BASE BLOB TO READ. `git show
@@ -2526,37 +2557,6 @@ pub fn base_derived_roster_body(
         .collect();
     stems.sort();
     crate::cli_run::derived_row_roster::render_roster(&stems)
-}
-
-pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
-    let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
-        vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-            path: rel.to_string(),
-            content: content.to_string(),
-        })]
-        .into(),
-    ));
-    if !fill.diagnostics.is_empty() {
-        return Err(format!(
-            "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
-             declarations cannot be read",
-            fill.diagnostics.len()
-        ));
-    }
-    let source_indices: std::rc::Rc<
-        im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
-    > = std::rc::Rc::new(
-        fill.newline_indices
-            .iter()
-            .fold(im::HashMap::new(), |acc, i| {
-                acc.update(i.file.clone(), i.clone())
-            }),
-    );
-    Ok(fill
-        .modules
-        .iter()
-        .map(|module| record_from_module(module, &source_indices, rel, &fill.occurrence_transport))
-        .collect())
 }
 
 /// Run the wall for one required CI invocation.
