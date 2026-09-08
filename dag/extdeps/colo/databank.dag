@@ -1,11 +1,12 @@
 module extdeps.colo.databank
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
+  CabinetDensityClaim, DensityUnread, DensityMarketedAirOnly,
+  PublishedRealPower,
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -14,7 +15,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.databank.com/data-centers/new-york-city/orangeburg-campus/lga4/"
+    locator: "www.databank.com/data-centers/new-york-city/"
   }
 }
 
@@ -22,12 +23,19 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.databank",
-      decl_name: "databank_lga4_orangeburg",
+      decl_name: "databank_facilities",
       field: WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri {
+        scheme: Https
+        locator: "www.databank.com/data-centers/new-york-city/orangeburg-campus/lga4/"
+      }
+    }
+  ]
 }
 
 // DATABANK WAS ABSENT FROM THE 2026-08-18 CENSUS ENTIRELY, and its absence hid two things at
@@ -72,9 +80,50 @@ data databank_lga4_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   citation: "databank.com Orangeburg campus LGA4 page, read 2026-09-08",
 }
 
-data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
-  contact_route: "databank.com sales",
-  obligation: "No cabinet or power pricing is published on the facility pages read 2026-09-08. A quote is required, and the density claim above is what makes the quote worth requesting.",
+data databank_lga1_hudson: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank LGA1 Downtown New York City",
+  address: AddressListed {
+    street: "60 Hudson Street, Suite 1903, New York, NY 10013",
+    citation: "databank.com Hudson Street LGA1 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "23,940 IT square feet, 0.74 MW critical IT load, 92 on-site carriers, 2N power and N+1 cooling per the operator page read 2026-09-08. Digital Realty JFK12 and Colocation America NYDC1 sell from the same building under their own modules. Five-borough site; density is a separate marketed claim, not the building's 0.74 MW.",
+}
+
+data databank_lga1_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 5000) },
+  claim_wording: "5kW+ Cab Density Air",
+  citation: "databank.com Hudson Street LGA1 page, read 2026-09-08. The plus sign is the operator's own wording, so 5 is the stated numeral on a marketed floor rather than an exact ceiling.",
+}
+
+data databank_lga1_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets Colocation",
+  citation: "databank.com Hudson Street LGA1 page, read 2026-09-08",
+}
+
+data databank_lga2_eighth: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank LGA2 Downtown New York City",
+  address: AddressListed {
+    street: "111 Eighth Avenue, Suite 311A, New York, NY 10011",
+    citation: "databank.com Eighth Avenue LGA2 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "10,200 IT square feet, 0.68 MW critical IT load, 50 on-site carriers, N+1 power and cooling per the operator page read 2026-09-08. Equinix NY9 and Digital Realty JFK10 occupy the same building under their own modules.",
+}
+
+data databank_lga2_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 5000) },
+  claim_wording: "5kW+ Cab Density Air",
+  citation: "databank.com Eighth Avenue LGA2 page, read 2026-09-08. Same plus-sign reading as LGA1.",
+}
+
+data databank_lga2_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets Colocation",
+  citation: "databank.com Eighth Avenue LGA2 page, read 2026-09-08",
 }
 
 // A SECOND SITE THIS OPERATOR RUNS IN NEW JERSEY, NAMED BUT NOT MODELLED. A review relayed into
@@ -170,4 +219,17 @@ data databank_phl1_density: CabinetDensityClaim = DensityUnread {
 
 data databank_phl1_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "The Philadelphia page read 2026-09-08 describes interconnection and location and does not itemise cabinets, cages or suites for this site. The spec-strip wording carried on the LGA4 row above is that page's, not this one's - and that strip is exactly the template whose adjacent cells four independent readers fused into invented sentences, so nothing is carried across from it. Confirm the smallest sellable unit at PHL1 with sales.",
+}
+
+data databank_facilities: List<ColoFacilityRow> = [
+  databank_lga4_orangeburg,
+  databank_lga1_hudson,
+  databank_lga2_eighth,
+  databank_ewr1_newark,
+  databank_phl1_philadelphia,
+]
+
+data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "databank.com sales",
+  obligation: "No cabinet or power pricing is published on the facility pages read 2026-09-08. A quote is required, and the density claims above are what make the quote worth requesting.",
 }

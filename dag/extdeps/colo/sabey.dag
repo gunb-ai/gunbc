@@ -1,0 +1,57 @@
+module extdeps.colo.sabey
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "sabey.com/real-estate/375-pearl-manhattan"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.sabey",
+      decl_name: "sabey_375_pearl",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data sabey_375_pearl: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Sabey Data Centers",
+  facility_label: "Sabey 375 Pearl (Intergate.Manhattan)",
+  address: AddressListed {
+    street: "375 Pearl Street, New York, NY 10038",
+    citation: "sabey.com 375 Pearl Manhattan page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "Marketed as New York City's only purpose-built data center: 18 MW ramping to 40 MW on N+2 Con Edison high-tension service at 13,200 V, 37,000 square foot plates, DE-CIX and a listed carrier set (AT&T, Cogent, Lightpath, Verizon, Zayo, ZenFi and others) per the operator page read 2026-09-08. 365 Data Centers lists an in-building POP under its own module.",
+}
+
+data sabey_375_pearl_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The 375 Pearl page read 2026-09-08 publishes building power (18 MW ramping to 40 MW) and N+2 feeder capacity, not a marketed kilowatts-per-cabinet ceiling. Reading campus megawatts as cabinet density is refused.",
+}
+
+data sabey_375_pearl_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Deploy powered shell, colocation or build-to-suit data centers",
+  citation: "sabey.com 375 Pearl Manhattan page, read 2026-09-08. 'Colocation' is named beside powered shell and build-to-suit; the page does not separately say single cabinet, so a quote must confirm the smallest sellable unit.",
+}
+
+data sabey_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "sabey.com 375 Pearl leasing contacts",
+  obligation: "No cabinet or power pricing is published on the page read 2026-09-08.",
+}

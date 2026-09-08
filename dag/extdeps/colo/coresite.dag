@@ -2,7 +2,11 @@ module extdeps.colo.coresite
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -24,6 +28,27 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
+}
+
+data coresite_ny1: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "CoreSite",
+  facility_label: "CoreSite NY1 New York",
+  address: AddressListed {
+    street: "32 Avenue of the Americas, New York, NY 10013",
+    citation: "coresite.com NY1 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "48,000-plus square feet in the 32 Avenue of the Americas carrier hotel per the operator page read 2026-09-08; Any2Exchange, NYIIX and DE-CIX New York on-ramps; dark-fiber tether to CoreSite NY2 Secaucus. Digital Realty JFK13 sells from the same building under its own module. The page states liquid cooling is offered at CoreSite New York data centers without a per-cabinet kilowatt figure.",
+}
+
+data coresite_ny1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The NY1 page read 2026-09-08 lists cabinets and cages, AC and DC power, and that liquid cooling is offered, but no marketed kilowatts per cabinet. Do not invent a density from building square footage.",
+}
+
+data coresite_ny1_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "from locking cabinets to private cages",
+  citation: "coresite.com NY1 page, read 2026-09-08",
 }
 
 data coresite_ny2: ColoFacilityRow = ColoFacilityRow {
@@ -49,7 +74,7 @@ data coresite_ny3: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Second Secaucus building on the operator's New York campus listing, read 2026-08-18.",
 }
 
-data coresite_facilities: List<ColoFacilityRow> = [coresite_ny2, coresite_ny3]
+data coresite_facilities: List<ColoFacilityRow> = [coresite_ny1, coresite_ny2, coresite_ny3]
 
 data coresite_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "coresite.com sales",
