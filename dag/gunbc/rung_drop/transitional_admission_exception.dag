@@ -55,7 +55,7 @@ fn transitional_admission_exception() -> RungDrop {
       temporary: OutsideTheLadder,
       reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml, deleted at 611fd02770 (#8283)" },
       population: transitional_admission_exception_identities,
-      restoration_trigger: "each named identity carries a cadence with a live scheduled route, at which point each row above is removed from transitional_admission_exception_identities and the identity's exception in explicit_witness_admission.dag is deleted (the gate consumes the list, so removing from the list retires the exception). Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category — waiters of that capability retire together or not at all",
+      restoration_trigger: "each named identity carries a cadence with a live scheduled route, at which point each row above is removed from transitional_admission_exception_identities and the identity's exception in explicit_witness_admission.dag is deleted (the gate consumes the list, so removing from the list retires the exception). The cadence category those routes need is gunbc.rung_drop.shared_capability missing_cadence_category; the remainder is the per-identity migration onto a live route. Waiters whose remaining unsatisfied condition is only that capability retire together. When the category fires and any named identity still lacks a live scheduled route, this identity is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and this row stays Standing until every named identity has that route. If every named identity already has a live scheduled route when the category fires, retire with the enrolled set.",
     }
   }
 }

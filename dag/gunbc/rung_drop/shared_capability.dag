@@ -159,7 +159,11 @@ fn typed_waiters_cite_capability(cap: SharedCapability, ds: List<RungDrop>) -> B
 // Waiters are DISJOINT populations over that one capability. floor_cut_falsifier_cadence and
 // transitional_admission_exception wait on the same missing category without having copied the
 // hazard paragraph the typed three originally carried; both are enrolled here so the join cannot
-// report AllWaitersStanding while either stands outside the list.
+// report AllWaitersStanding while either stands outside the list. Compound waiters
+// (witness_deferral_freeze_forward_rule remainder (b); transitional_admission_exception
+// per-identity route migration) stay Standing after the category fires if that remainder is
+// unsatisfied: they are delisted in the same change as the pure waiters retiring, so the join
+// does not become a second retirement gate keyed off co-waiter standing.
 data missing_cadence_category: SharedCapability = SharedCapability {
   identity: "missing_cadence_category" as NonEmptyStr,
 

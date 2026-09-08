@@ -39,6 +39,6 @@ data deleted_cadence_reference_drop: RungDrop = RungDrop {
     "v2.std.live_tree live_tree_disposition_stamp_provenance",
     "v1_compiler.cli_run parse_entry_live_tree_disposition",
     ],
-    restoration_trigger: "a workflow or scheduled entry point exists that runs a predict-only cold comparison over the corpus, at which point each row above is reclassified from PremiseInvalidated to ReboundToExecutingConsumer with that consumer's receipt. Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category — waiters of that capability retire together or not at all",
+    restoration_trigger: "a workflow or scheduled entry point exists that runs a predict-only cold comparison over the corpus, at which point each row above is reclassified from PremiseInvalidated to ReboundToExecutingConsumer with that consumer's receipt. Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category. Waiters whose remaining unsatisfied condition is only that capability retire together. A waiter whose remainder is still unsatisfied is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and stays Standing until its own trigger is fully satisfied.",
   }
 }

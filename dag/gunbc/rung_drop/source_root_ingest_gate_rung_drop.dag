@@ -62,6 +62,6 @@ data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
     "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag",
     "src/v2/test/claim/self_host/crate_layout_witness_test.dag"
     ],
-    restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci_layer_roots exclusion rows above name a consumer that executes. Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category — waiters of that capability retire together or not at all"
+    restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci_layer_roots exclusion rows above name a consumer that executes. Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category. Waiters whose remaining unsatisfied condition is only that capability retire together. A waiter whose remainder is still unsatisfied is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and stays Standing until its own trigger is fully satisfied."
   }
 }
