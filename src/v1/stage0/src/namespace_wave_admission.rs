@@ -1621,7 +1621,20 @@ pub struct TransitionAdmission {
 ///
 /// SIXTH DISSOLUTION (2026-09-08). #10688 merged; both rows report consumed. This change touches
 /// the roster (base-side reconstruction of the gitignored failure-mode fold), so the deletion is
-/// owed here. The roster is empty again; empty is not permissive.
+/// owed here.
+///
+/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch.
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE: a required run reported
+/// both as already satisfied at the base -- consumed by its own merge.
+///
+/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
+/// `cumulative_metric_read_as_per_event`, is added as its own file under
+/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
+/// That class is now on main. This roster touch therefore deletes its admission row rather than
+/// carrying a consumed permission. The same reconstruction that makes an authored class add
+/// `AuthoredReferenceResolution` (auto-admit) is why this PR's own new class does not take its
+/// place. Empty is not permissive.
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 

@@ -2,7 +2,7 @@ module test.claim.plan_lens_witness
 
 import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanHasNoRetirement, PlanProjectsCommittedMarkdown, plan_has_retirement, plans_all_have_retirement, plan_title_is_present, plans_all_titled }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanHasNoRetirement, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly, plan_has_retirement, plans_all_have_retirement, plan_title_is_present, plans_all_titled, plan_projects_committed_markdown }
 import gunbc.plan_registry { all_plans }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -59,4 +59,15 @@ test fn missing_title_is_detected() -> Bool {
   plan_title_is_present(p: plan_with_trigger())
     && (plan_title_is_present(p: plan_untitled()) == false)
     && (plans_all_titled(plans: [plan_with_trigger(), plan_untitled()]) == false)
+}
+
+test fn authority_only_plan_is_not_a_committed_markdown_root() -> Bool {
+  plan_projects_committed_markdown(p: plan_with_trigger())
+    && (plan_projects_committed_markdown(p: Plan {
+      projection: PlanIsAuthorityOnly { ruling: "synthetic: markdown projection deleted" },
+      slug: "missing-file-slug",
+      title: "x",
+      body: [],
+      retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic") },
+    }) == false)
 }
