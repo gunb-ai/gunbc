@@ -70,6 +70,7 @@ fn ct_file_discovery_helpers() -> String {
     "        root: &std::path::Path,\n",
     "        out: &mut Vec<(String, String)>,\n",
     "    ) {\n",
+    "        crate::cli_run::derived_row_roster::ensure_if_row_dir_or_panic(dir);\n",
     "        if let Ok(entries) = std::fs::read_dir(dir) {\n",
     "            for entry in entries.flatten() {\n",
     "                let path = entry.path();\n",

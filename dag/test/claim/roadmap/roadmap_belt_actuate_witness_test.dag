@@ -62,6 +62,10 @@ import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema }
 import gunbc.roadmap_belt_actuate {
+  BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
+  CommitSubjectUnaddressable,
+  belt_commit_outcome_is_failure, belt_commit_outcome_is_recorded,
+  belt_commit_pass_outcome_from, belt_commit_outcome_json_value,
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
   belt_exec,
   belt_exec_all,
@@ -2306,4 +2310,54 @@ test fn staged_post_transition_halt_refuses_without_listing_tmux() -> Bool {
     SpawnNotAdmitted { node_id: _, refusal: LaunchTransitionInhibited { reason: _ } } => true
     _ => false
   }
+}
+
+
+// A KEYLESS ATTEMPT IS UNADDRESSABLE, AND THAT MUST NOT FAIL THE PASS.
+//
+// Measured on srv1 2026-09-07: commit_pass failed on every tick for eighteen hours, verify deferred
+// for "no attempt is ready", and the roadmap moved nothing. The cause was seven legacy attempts
+// carrying an EMPTY attempt_key. dispatch_worktree_path_for_instance joins node_id, "-a" and the key
+// unconditionally, so an empty key addresses <root>/<node>-a, which cannot exist -- the keyless
+// worktrees on that host are <root>/<node>, with no suffix. `git status` in a directory that is not
+// there exits nonzero, that became CommitFailed, and ONE CommitFailed fails the whole pass.
+//
+// THE FAILURE WAS NEVER IN THE COMMIT. No git operation was refused and nothing was wrong with the
+// other worktrees; the pass computed an address for an attempt that has none. Reporting that as
+// CommitFailed is the not-applicable-rendered-as-malformed conflation -- one symbol over "this
+// commit was refused" and "this attempt cannot be addressed", which have different owners and
+// different repairs.
+test fn a_keyless_attempt_is_unaddressable_and_does_not_fail_the_commit_pass() -> Bool {
+  let unaddressable = CommitSubjectUnaddressable { node_id: "legacy-node", reason: "no key" }
+  !belt_commit_outcome_is_failure(o: unaddressable)
+    && !belt_commit_outcome_is_recorded(o: unaddressable)
+}
+
+// THE DISCRIMINATOR, and without it the arm above would pass equally well if the pass had simply
+// stopped failing on everything. A real CommitFailed must still fail it, and a pass carrying both an
+// unaddressable legacy row and a genuine failure must report the failure rather than being softened
+// by its neighbour.
+test fn a_real_commit_failure_still_fails_the_pass_beside_an_unaddressable_one() -> Bool {
+  let with_both = belt_commit_pass_outcome_from(outcomes: [
+    CommitSubjectUnaddressable { node_id: "legacy-node", reason: "no key" },
+    CommitFailed { node_id: "real-node", detail: "commit: git exited 1" },
+  ])
+  let only_unaddressable = belt_commit_pass_outcome_from(outcomes: [
+    CommitSubjectUnaddressable { node_id: "legacy-node", reason: "no key" },
+  ])
+  let failed = match with_both { BeltPassFailed { reason: _ } => true  _ => false }
+  let not_failed = match only_unaddressable { BeltPassFailed { reason: _ } => false  _ => true }
+  failed && not_failed
+}
+
+// AN UNADDRESSABLE ATTEMPT IS COUNTED, NOT SILENTLY DROPPED. It is a real defect in whatever wrote a
+// keyless attempt, so the tick receipt names it; what changed is only that it stops halting its
+// siblings. A row that vanished from the receipt would zero the deficit's frequency by construction.
+test fn the_unaddressable_outcome_is_named_in_the_tick_receipt() -> Bool {
+  let rendered = serialize_json(v: belt_commit_outcome_json_value(o: CommitSubjectUnaddressable {
+    node_id: "legacy-node",
+    reason: "no key",
+  }))
+  string_contains(s: rendered, pattern: "subject-unaddressable")
+    && string_contains(s: rendered, pattern: "legacy-node")
 }

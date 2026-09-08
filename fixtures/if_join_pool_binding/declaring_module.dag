@@ -6,11 +6,12 @@ module fixtures.if_join_pool_binding.declaring_module
 // disagree about it -- that invariance is the whole instrument.
 //
 // A coproduct ARM is pool-visible corpus-wide while NOT being a local binding under its own
-// spelling, so `PoolSpecimenSquare` below misses local lookup and lands in the pool. When
-// `colliding_module` is present it binds THERE, the arm stops widening to its owner coproduct,
-// and the if-join then compares a widened arm against a bare product. Inside this module not even
-// the unlisted-import advisory fires, because the spelling is in `source_visible_names` here --
-// which is why the class is silent at the site that causes it.
+// spelling, so `PoolSpecimenSquare` below misses local lookup and used to land in the pool. When
+// `colliding_module` was present it bound THERE, the arm stopped widening to its owner coproduct,
+// and the if-join compared a widened arm against a bare product. The product-channel repair keeps
+// that unimported pool product from counting as "declares this type", so this module's arm still
+// widens. Inside this module not even the unlisted-import advisory fires, because the spelling is
+// in `source_visible_names` here -- which is why the class was silent at the site that caused it.
 type PoolSpecimenShape
   = PoolSpecimenCircle { r: Int }
   | PoolSpecimenSquare { s: Int }

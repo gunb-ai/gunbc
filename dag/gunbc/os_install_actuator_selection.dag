@@ -82,15 +82,6 @@ data srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger: Di
   }
 }
 
-data srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.os_install_actuator_selection",
-    decl_name: "srv3_os_install_actuator_host",
-    field: WholeDeclaration
-  }
-}
-
 data live_srv3_actuator_reach_facts: OsInstallActuatorReachFacts = OsInstallActuatorReachFacts {
   srv1_reaches_target_bmc: true,
   srv2_reaches_target_bmc: true,
@@ -368,11 +359,6 @@ data srv3_os_install_actuator_selection: OsInstallActuatorSelection = select_os_
   reach_facts: live_srv3_actuator_reach_facts,
   tie_break: srv3_os_install_actuator_tie_break_policy,
 )
-
-data srv3_os_install_actuator_host: ComputeHost = match srv3_os_install_actuator_selection {
-  ActuatorSelected { host: h } => h
-  ActuatorUnsatisfiable { reason: _ } => srv1_host
-}
 
 fn srv3_os_install_actuator_selection_is_selected_on_live_fleet() -> Bool {
   match srv3_os_install_actuator_selection {

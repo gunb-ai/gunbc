@@ -1,0 +1,33 @@
+module test.claim.harness_turn_completion_test
+
+import std.types { Bool, String }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.harness.harness_turn {
+  HarnessTurnOutcome, TurnCompletedByArtifact, TurnStepBudgetExhausted,
+  HarnessTurnCompletion, CompletesOnProviderStop, CompletesWhenEntryPresent,
+  HarnessCompletionObservation, CompletionNotReached, CompletionReached, CompletionIndeterminate,
+  harness_completion_observe, harness_outcome_label, harness_outcome_detail,
+}
+import gunbc.harness.harness_cli { harness_turn_exit }
+
+// A TURN THAT PRODUCED ITS ARTIFACT IS COMPLETE AND EXITS ZERO; the budget-exhausted turn beside it
+// still exits one. The first live review run wrote a verdict at round 19 and then failed on budget at
+// round 20 -- this is the pair that distinguishes those two ends.
+test fn a_turn_completed_by_its_artifact_exits_zero_and_a_budget_exhausted_one_does_not() -> Bool {
+  let done = TurnCompletedByArtifact { path: "/state/review/abc.json", steps_taken: 3 }
+  let spent = TurnStepBudgetExhausted { steps_taken: 20 }
+  (match harness_turn_exit(outcome: done) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+    && (match harness_turn_exit(outcome: spent) { ExitSuccess => false  ExitFailure { code, reason: _ } => code == 1 })
+    && harness_outcome_label(outcome: done) == "completed-by-artifact"
+    && string_contains(s: harness_outcome_detail(outcome: done), pattern: "/state/review/abc.json")
+}
+
+// A PROVIDER-STOP TURN NEVER OBSERVES COMPLETION: the worker's completion is not a file, so the
+// observation is not-reached by construction and touches no filesystem.
+test fn a_provider_stop_completion_is_never_reached() -> Bool {
+  match harness_completion_observe(completion: CompletesOnProviderStop) {
+    CompletionNotReached => true
+    CompletionReached { path: _ } => false
+    CompletionIndeterminate { cause: _ } => false
+  }
+}

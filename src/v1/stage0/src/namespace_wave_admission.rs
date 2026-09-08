@@ -1561,36 +1561,6 @@ pub struct TransitionAdmission {
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
 
-/// THE SCM REPOSITORY BUILDER MOVES TO A SHARED FIXTURE (2026-09-06, gunbc#10676). No ordinal is
-/// claimed, for the reason the entries above give.
-///
-/// `test.claim.scm_merge_base_witness` authored a repository builder -- `MbBuild` with its two arms
-/// `MbBuilt` and `MbSetupFailed`, and the six operations `mb_start`, `mb_stage`, `mb_commit`,
-/// `mb_at`, `mb_head`, `mb_root_of` -- to construct scenes through the real store and mint rather
-/// than by forging rows. The squash-merge verb's witness needs that construction VERBATIM. Copying
-/// it would put one construction rule in two files, and the drift would be INVISIBLE: each copy
-/// would keep passing its own claims while the two fixtures quietly stopped describing the same
-/// repository (DESIGN.md §2). So the builder is rehomed to `test.fixture.scm_repository_builder`,
-/// which is where this repository already puts fixtures shared across claims, and both witnesses
-/// import it.
-///
-/// NINE BINDINGS IN ONE MODULE resolve to the new declarer, which is `TargetChanged` and is not
-/// auto-admitted: seven inside `mb_scene` and two inside
-/// `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`. Every spelling is identical
-/// on both sides; only the declaring module differs, which is the membership motion this roster
-/// exists to adjudicate.
-///
-/// ONE CHANGE CLASS, AND NOTHING IS REQUALIFIED. No spelling changes, no behaviour changes, and the
-/// evidence that the move is behaviour-preserving is executed rather than asserted: all twelve
-/// `scm_merge_base_witness` claims pass unchanged against the shared fixture. That is the positive
-/// control for a rehome -- a builder that had silently changed would show up as a claim that
-/// stopped discriminating, not as a compile error.
-///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10676 merges. Main then declares
-/// the builder in `test.fixture.scm_repository_builder`, base and head bind each spelling
-/// identically, and all nine report CONSUMED, coming due on this roster's next touch. Adjudicate
-/// that deletion by joining each row against main's tree on its own
-/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
 /// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
 /// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
 /// next roster-touching change, which is this one.
@@ -1604,99 +1574,74 @@ pub struct TransitionAdmission {
 /// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
 /// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
 /// reading rather than an author error.
-const SCM_REPOSITORY_BUILDER_REHOME_LABEL: &str =
-    "gunbc#10676 scm fixture extraction: the repository builder moves from \
-     test.claim.scm_merge_base_witness to test.fixture.scm_repository_builder, so the merge_base \
-     and squash_merge witnesses read one construction rule instead of two copies";
+///
+/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
+/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
+/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
+///
+///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
+///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
+///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
+///   as an import from the fixture (and as uses inside `mb_scene` and
+///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
+///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
+///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
+///   the correct reading for all nine.
+///
+/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
+/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
+/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
+/// permissions standing over nothing.
+///
+/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
+/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
+/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
+/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
+///
+/// SIXTH TRANSITION (2026-09-07, gunbc#10688). `call_semantics_target` moved from
+/// `v1.compiler.emit_rust` to `v1.std.core`, so the two emit-side bindings of that spelling report
+/// `TargetChanged`. It is a re-home and not a re-spelling: the function reads a `CallSemantics` and
+/// answers a `CallTargetIdentity`, both declared in `v1.std.core`, and this change gave that
+/// coproduct a `LocallyBoundCall` arm — so the reduction is now consumed by `v1.compiler.infer` and
+/// `v1.compiler.service` as well as by emission. Leaving it in `v1.compiler.emit_rust` would have
+/// made the inference and effect tiers import the EMITTER to ask what a call names, which is the
+/// second-representation pressure DESIGN §3 forbids: the alternative on offer was a second copy
+/// beside the type. It sits beside `CallSemantics` because that is the declaration it destructures.
+///
+/// TWO ROWS, ONE PER BINDING SITE, enumerated rather than matched by module pattern, for the same
+/// reason the fourth transition was: the roster's population is an enumeration, never a predicate.
+/// The membership deltas this change also produces are `ExplicitlyEvaluatedZeroDelta` and
+/// auto-admit, and the `resolved_plain_call_target_for_outcome` delta is an
+/// `AuthoredReferenceResolution`, so all of them are deliberately absent here.
+///
+/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
+/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
+/// touch. Adjudicate that deletion by joining each row against main on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+const CALL_SEMANTICS_TARGET_REHOME_LABEL: &str =
+    "gunbc#10688 call-target identity re-home: `call_semantics_target` moves from \
+     v1.compiler.emit_rust to v1.std.core beside the `CallSemantics` it reads and the \
+     `CallTargetIdentity` it answers, so inference and the effect pass read one reduction \
+     instead of importing the emitter";
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "MbBuilt",
-            target: "test.fixture.scm_repository_builder",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_rust_expr_call",
+            spelling: "call_semantics_target",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
+        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
         subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "MbSetupFailed",
-            target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_start",
-            target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_stage",
-            target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_commit",
-            target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_at",
-            target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "mb_scene",
-            spelling: "mb_head",
-            target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on",
-            spelling: "MbBuilt",
-            target: "test.fixture.scm_repository_builder",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: SCM_REPOSITORY_BUILDER_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.scm_merge_base_witness",
-            in_declaration: "scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on",
-            spelling: "mb_root_of",
-            target: "test.fixture.scm_repository_builder",
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_rust_tco_non_self_call",
+            spelling: "call_semantics_target",
+            target: "v1.std.core",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

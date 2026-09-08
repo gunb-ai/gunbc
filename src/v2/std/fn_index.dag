@@ -3,25 +3,27 @@ module v2.std.fn_index
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v2.std.algebra {
+  Cons,
+  Empty,
   HeadAbsent,
   HeadFound,
   TailAbsent,
   TailFound,
-  any,
   contains,
   filter,
   fold_list,
   list_append,
   list_head,
+  list_reverse,
   list_snoc_item,
   list_tail
 }
-import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
+import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_nodes }
+import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v2.std.node_query { call_callee_target, node_is_call }
 import v2.std.text { String }
 
@@ -174,10 +176,6 @@ fn fn_arrow_decl_eq(a: FnArrowDecl, b: FnArrowDecl) -> Bool {
   fn_index_string_eq(a: a.qualified_name, b: b.qualified_name)
 }
 
-fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
-  any(xs: xs, predicate: fn(d) { fn_arrow_decl_eq(a: d, b: decl) })
-}
-
 fn decls_matching_callee(
   decls: List<FnArrowDecl>,
   modules: List<String>,
@@ -286,71 +284,150 @@ fn callee_text_from_call(node: Node) -> String? {
   }
 }
 
+// EXTRACTED DURING TRAVERSAL, NOT FILTERED OUT OF A MATERIALIZED SUBTREE.
+//
+// THE DEMAND IS "THE CALLEES IN THIS NODE", so nothing larger than that is produced to answer it --
+// DESIGN 2, minimize the demand graph before materializing its answers. What this function no
+// longer does is build a list of EVERY node in the declaration's subtree and then keep the few that
+// are calls; what it still does, and the paragraph below says why, is scan its own accumulator on
+// every hit to deduplicate.
+//
+// THE ACCUMULATOR IS BUILT REVERSED AND TURNED ONCE, and that is the whole reason
+// callee_texts_in_subtree_reversed exists as its own function rather than being inlined. fold_node's
+// step receives a child's ALREADY-FOLDED result, so the only way to combine is a concat, and a
+// concat costs its LEFT argument. Appending the child onto the accumulator therefore copies
+// everything gathered so far on every edge; appending the accumulator onto the child copies only
+// that child's subtree. Each sub arrives reversed, so the reversed concatenations compose into
+// exact reverse preorder and one list_reverse at the top restores preorder. The named split is what
+// keeps the reversal from being invisible to a reader of either half.
+//
+// DEDUPLICATION IS A LIST SCAN AND NOT A KEYED MAP. The rationale a reader cannot recover from the
+// code is that the keyed arm was WRITTEN and measured SLOWER here: a map is the one repair in this
+// family that does not REMOVE work, buying asymptotic behaviour with an allocation, a hash per
+// element and a second traversal, and at the callee counts one declaration carries that constant
+// loses to scanning a short list. The obligation this leaves open is not stated here -- it is a
+// declared status with a dissolution condition, so it is carried as data by
+// gunbc.rung_drop.determinism_transitive_reachability, which also names the instrument that
+// re-derives the figures.
+//
+// The two repairs in this function that DO strictly remove work -- extracting during traversal
+// instead of materializing and filtering, and the concat that costs its left argument -- are kept,
+// because neither can be slower than what it replaced.
+//
+// FIRST-OCCURRENCE ORDER IS PRESERVED EXACTLY, which is not incidental: the walk seeds its worklist
+// from this list, so a different order would reorder `reached` and change what every caller
+// observes. A reordering here would be a semantics change wearing a performance change's clothes.
+//
+// The cost figures that motivated this shape are not transcribed here. They are re-derived by the
+// arms named in gunbc.rung_drop.determinism_transitive_reachability, which cites the instrument that
+// produces them.
+fn callee_texts_in_subtree_reversed(node: Node) -> List<String> {
+  fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(self) {
+        match callee_text_from_call(node: self) {
+          Present { value: text } => Cons { head: text, tail: Empty }
+          Absent => empty_fn_arrow_string_list
+        }
+      },
+      step: fn(acc, _edge, sub) { list_append(left: sub, right: acc) }
+    }
+  )
+}
+
+fn callee_texts_in_subtree(node: Node) -> List<String> {
+  list_reverse(xs: callee_texts_in_subtree_reversed(node: node))
+}
+
 fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {
   fold_list(
-    xs: node_subtree_nodes(root: node),
+    xs: callee_texts_in_subtree(node: node),
     empty: empty_fn_arrow_string_list,
-    cons: fn(acc, subtree_node) {
-      match callee_text_from_call(node: subtree_node) {
-        Present { value: text } =>
-          if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq)
-            || contains(xs: acc, item: text, eq: fn_index_string_eq) {
-            acc
-          } else {
-            list_snoc_item(xs: acc, item: text)
-          }
-        Absent => acc
+    cons: fn(acc, text) {
+      if contains(xs: terminal_callee_symbols, item: text, eq: fn_index_string_eq) {
+        acc
+      } else {
+        if contains(xs: acc, item: text, eq: fn_index_string_eq) {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: text)
+        }
       }
     }
   )
 }
 
+// THE WALK'S PER-STEP BOOKKEEPING, MADE LINEAR. THREE SITES, ONE DEFECT.
+//
+// NOTHING PROPORTIONAL TO THE WHOLE INPUT IS REBUILT PER STEP. Membership is a map lookup rather
+// than a scan of everything reached so far; the accumulator is prepended to and turned once rather
+// than copied per addition; and the worklist is left alone when there is nothing to add to it,
+// which at file grain is every step, because the closure is empty and no callee resolves. That is
+// one shape at three sites, and DESIGN 2's bare-minimum-cost rule fixes it regardless of the
+// realized n -- n is not a time-stable fact here, since the same walk runs at directory grain over
+// a far larger seed set.
+//
+// WHAT IS PRESERVED, DELIBERATELY AND EXACTLY: the ORDER and MULTIPLICITY of `reached`. The
+// membership map is keyed by qualified_name -- the same key `fn_arrow_decl_eq` already compared, so
+// it decides identically -- and prepend-then-reverse reproduces snoc order element for element. The
+// worklist still APPENDS callee declarations after the remaining seeds rather than prepending them,
+// because prepending would turn a breadth-first drain into a depth-first one and reorder the
+// result. A cheaper traversal order was available and is not taken: this function's output order is
+// observed by its callers, so changing it would be a semantics change wearing a performance
+// change's clothes.
 fn call_reachable_decls_go(
   seeds: List<FnArrowDecl>,
   terminal_callee_symbols: List<String>,
   closure_modules: List<String>,
   decls: List<FnArrowDecl>,
-  reached: List<FnArrowDecl>
+  reached_reversed: List<FnArrowDecl>,
+  seen: Map<String, Bool>
 ) -> List<FnArrowDecl> {
   match list_head(xs: seeds) {
-    HeadAbsent => reached
+    HeadAbsent => list_reverse(xs: reached_reversed)
     HeadFound { value: seed } =>
       let rest = tail_decls(xs: seeds)
-      if decl_in_list(decl: seed, xs: reached) {
-        call_reachable_decls_go(
-          seeds: rest,
-          terminal_callee_symbols: terminal_callee_symbols,
-          closure_modules: closure_modules,
-          decls: decls,
-          reached: reached
-        )
-      } else {
-        let next_reached = list_snoc_item(xs: reached, item: seed)
-        let callees = callees_from_node(
-          node: seed.output,
-          terminal_callee_symbols: terminal_callee_symbols
-        )
-        let callee_decls = fold_list(
-          xs: callees,
-          empty: empty_fn_arrow_decl_list,
-          cons: fn(acc, callee) {
-            list_append(
-              left: acc,
-              right: decls_matching_callee(
-                decls: decls,
-                modules: closure_modules,
-                callee: callee
+      match map_lookup(m: seen, key: seed.qualified_name) {
+        Present { value: _ } =>
+          call_reachable_decls_go(
+            seeds: rest,
+            terminal_callee_symbols: terminal_callee_symbols,
+            closure_modules: closure_modules,
+            decls: decls,
+            reached_reversed: reached_reversed,
+            seen: seen
+          )
+        Absent =>
+          let callees = callees_from_node(
+            node: seed.output,
+            terminal_callee_symbols: terminal_callee_symbols
+          )
+          let callee_decls = fold_list(
+            xs: callees,
+            empty: empty_fn_arrow_decl_list,
+            cons: fn(acc, callee) {
+              list_append(
+                left: acc,
+                right: decls_matching_callee(
+                  decls: decls,
+                  modules: closure_modules,
+                  callee: callee
+                )
               )
-            )
-          }
-        )
-        call_reachable_decls_go(
-          seeds: list_append(left: rest, right: callee_decls),
-          terminal_callee_symbols: terminal_callee_symbols,
-          closure_modules: closure_modules,
-          decls: decls,
-          reached: next_reached
-        )
+            }
+          )
+          call_reachable_decls_go(
+            seeds: match list_head(xs: callee_decls) {
+              HeadAbsent => rest
+              HeadFound { value: _ } => list_append(left: rest, right: callee_decls)
+            },
+            terminal_callee_symbols: terminal_callee_symbols,
+            closure_modules: closure_modules,
+            decls: decls,
+            reached_reversed: Cons { head: seed, tail: reached_reversed },
+            seen: map_insert(m: seen, key: seed.qualified_name, value: true)
+          )
       }
   }
 }
@@ -369,7 +446,8 @@ fn call_reachable_decls(
     terminal_callee_symbols: terminal_callee_symbols,
     closure_modules: closure_modules,
     decls: decls,
-    reached: empty_fn_arrow_decl_list
+    reached_reversed: empty_fn_arrow_decl_list,
+    seen: empty_map()
   )
 }
 
@@ -405,6 +483,7 @@ fn call_reachable_decls_from_root(
     terminal_callee_symbols: terminal_callee_symbols,
     closure_modules: closure_modules,
     decls: decls,
-    reached: empty_fn_arrow_decl_list
+    reached_reversed: empty_fn_arrow_decl_list,
+    seen: empty_map()
   )
 }

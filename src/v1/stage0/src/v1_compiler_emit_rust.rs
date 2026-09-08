@@ -53,7 +53,8 @@ pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_mod
 pub use crate::gunbc_structural_realization_bindings::{
     structural_connective_rows, structural_ordering_rows,
 };
-pub use crate::std_algebra::trim;
+pub use crate::std_algebra::AlgebraFieldTemplate;
+pub use crate::std_algebra::{is_collection_filter_template, trim};
 pub use crate::std_coercion::TypeCheckpoint;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
@@ -148,7 +149,7 @@ pub use crate::v1_compiler_emit::{
     emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
     extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
     is_self_recursive, is_tco_eligible, is_tco_identity_passthrough,
-    keyed_container_has_target_inhabitant, lookup_item, module_emit_scope,
+    keyed_container_has_target_inhabitant, lookup_item_by_identity, module_emit_scope,
     order_typed_call_args_from_semantics, render_node_type, render_tuple_parts,
     rust_literal_for_pattern, scope_after_expr, seed_bindings, service_fallback_transport,
     service_field_ctors, service_field_decls, shell_emission_refusal_fact,
@@ -195,7 +196,10 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
-pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
+pub use crate::v1_compiler_infer_items::{
+    ItemInfo, ItemKind, ItemLookup, ResolvedGraph, TypedModule,
+};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup;
 use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup::{
@@ -249,13 +253,13 @@ use crate::v1_std_core::CallSemantics::{
     ResolvedDirectCallSemantics,
 };
 use crate::v1_std_core::CallTargetIdentity::{
-    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+    CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
-    InternalError, ParameterDefaultFormNotAdmitted, ReferenceDerivedImportExportUnproven,
-    ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
+    EmissionConstructUnprojectable, InternalError, ParameterDefaultFormNotAdmitted,
+    ReferenceDerivedImportExportUnproven, ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -269,6 +273,7 @@ use crate::v1_std_core::FieldAccessStyle::{
 };
 use crate::v1_std_core::FieldValueShape::OptionalValue;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -279,29 +284,31 @@ use crate::v1_std_core::ParsedModuleItemKind::{
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::*;
+use crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition;
 use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
-    binop_right, cast_expr, cast_target, declaration_provenance_of, empty_intern_table,
-    expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at,
-    expr_var_name_at, field_access_base, field_access_field_at, field_binding_name_at,
-    field_binding_pattern, field_from_key_property_name, field_init_node_name_at,
-    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named,
-    find_property, foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at,
-    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
-    index_base, index_expr, is_compiler_error, is_rest_transport, lambda_body,
-    lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
-    make_error_node, make_expr_node, make_named_expr_node, match_arm_nodes,
-    match_pattern_is_irrefutable, match_scrutinee, method_arg_nodes, method_receiver,
-    module_imports, module_items, no_span, param_node_default_value, param_node_name_at,
-    param_node_type_expr, qualified_last_segment, record_lit_named_field_value_optional,
-    record_lit_type_name_at, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
-    resource_use_resource, return_value, service_config_auth, service_config_auth_input,
-    service_config_auth_source, service_config_endpoint, slice_base, slice_end, slice_start,
-    transport_auth_basic, transport_auth_header_name, transport_auth_token, transport_base_path,
-    transport_base_url, transport_env, transport_has_auth, transport_headers, transport_method,
+    binop_right, call_semantics_target, cast_expr, cast_target, declaration_provenance_of,
+    empty_intern_table, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
+    expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
+    field_binding_name_at, field_binding_pattern, field_from_key_property_name,
+    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
+    find_child_named, find_property, foreach_body, foreach_collection, foreach_variable_at,
+    generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
+    import_specific_names_at, index_base, index_expr, is_compiler_error, is_error_diagnostic,
+    is_rest_transport, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
+    match_arm_nodes, match_pattern_is_irrefutable, match_scrutinee, method_arg_nodes,
+    method_receiver, module_imports, module_items, no_span, param_node_default_value,
+    param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_named_field_value_optional, record_lit_type_name_at,
+    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
+    return_value, service_config_auth, service_config_auth_input, service_config_auth_source,
+    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
+    transport_auth_header_name, transport_auth_token, transport_base_path, transport_base_url,
+    transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
     transport_stdin, transport_tls_posture, tuple_type_name, type_reference_provenance,
     with_required_cardinality,
@@ -309,8 +316,9 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
     DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
-    ResolvedCallFormal, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    InferredNode, LeafOwner, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    ParsedModuleItemKind, ResolvedCallFormal, StringPart, TextFile, UnaryOpKind,
+    UnprojectableConstruct, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -5064,7 +5072,7 @@ pub fn resolve_local_coproduct_wire_policy(
 pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Rc<HashMap<String, Rc<Node>>>, tm: _| {
+        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
             let module_name = crate::v1_std_core::authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -5099,138 +5107,95 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
     )
 }
 
-pub fn build_qualified_item_registry(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        |acc: _, tm: _| {
-            let module_name = crate::v1_std_core::authored_name_at(
-                tm.type_env.clone().source_indices.clone(),
-                tm.module.clone(),
-            );
-            Rc::new(v1_rt::map_keys(&tm.item_registry.clone()))
-                .iter()
-                .cloned()
-                .fold(acc, |acc2: _, item_name: String| {
-                    match v1_rt::map_get(&tm.item_registry.clone(), item_name.clone()) {
-                        Some(info) => {
-                            let qualified_name = v1_rt::concat(
-                                v1_rt::concat(module_name.clone(), ".".to_string()),
-                                item_name.clone(),
-                            );
-                            match v1_rt::map_get(&acc2, qualified_name.clone()) {
-                                Some(_) => v1_rt::rc_map_insert(
-                                    acc2.clone(),
-                                    qualified_name.clone(),
-                                    duplicate_qualified_item_registry_marker(
-                                        qualified_name.clone(),
-                                    ),
-                                ),
-                                std::option::Option::None => v1_rt::rc_map_insert(
-                                    acc2.clone(),
-                                    qualified_name.clone(),
-                                    info.clone(),
-                                ),
-                            }
-                        }
-                        std::option::Option::None => acc2.clone(),
-                    }
-                })
-        },
-    )
-}
-
-pub fn merge_item_registries(
-    bare: Rc<HashMap<String, Rc<ItemInfo>>>,
-    qualified: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    Rc::new(v1_rt::map_keys(&qualified)).iter().cloned().fold(
-        bare.clone(),
-        |acc: _, key: String| match v1_rt::map_get(&qualified, key.clone()) {
-            Some(info) => v1_rt::rc_map_insert(acc.clone(), key.clone(), info.clone()),
-            std::option::Option::None => acc.clone(),
-        },
-    )
-}
-
-pub fn duplicate_qualified_item_registry_marker_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry inserts this sentinel instead of last-write-wins. Consumers: emit_qualified_value_ref_crate_ident (dotted Present path), value_ref_item_info_refusal (emit_var_ref / emit_typed_expr_base Present arms) — both refuse via emit_error_expr when is_duplicate_qualified_item_registry_marker holds. DEFINE-AND-CONSUME, not define-only.".to_string()
-        };
+pub fn item_lookup_of_optional(found: Option<Rc<ItemInfo>>) -> Rc<ItemLookup> {
+    match found.clone() {
+        Some(info) => Rc::new(ItemLookup::ItemFound { info: info.clone() }),
+        std::option::Option::None => Rc::new(ItemLookup::ItemNotFound),
     }
-    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn duplicate_qualified_item_registry_marker(name: String) -> Rc<ItemInfo> {
-    Rc::new(ItemInfo {
-        name: name.clone(),
-        module_name: "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string(),
-        kind: ItemKind::OtherItem,
-        service_names: Rc::new(vec![]),
-        resource_names: Rc::new(vec![]),
-        params: Rc::new(vec![]),
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-    })
-}
-
-pub fn is_duplicate_qualified_item_registry_marker(info: Rc<ItemInfo>) -> bool {
-    (info.module_name.clone() == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string())
-}
-
-pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
-    {
-        let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
-        if (qualifier.clone() == "".to_string()) {
-            value_ref_qualified_leaf(resolved_name.clone())
-        } else {
-            resolved_name.clone()
-        }
+pub fn lookup_item_by_leaf(
+    leaf: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<ItemLookup> {
+    match v1_rt::map_get(&emit_info.item_leaf_owner_modules.clone(), leaf.clone()) {
+        Some(owner) => match (*owner.clone()).clone() {
+            LeafOwner::SingleOwner { module: m, .. } => {
+                item_lookup_of_optional(crate::v1_compiler_emit::lookup_item_by_identity(
+                    registry.clone(),
+                    Rc::new(DeclaredCallableIdentity {
+                        owner_module_path: m.clone(),
+                        decl_name: leaf.clone(),
+                    }),
+                ))
+            }
+            LeafOwner::LeafAmbiguous => {
+                Rc::new(ItemLookup::ItemLeafAmbiguous { leaf: leaf.clone() })
+            }
+        },
+        std::option::Option::None => Rc::new(ItemLookup::ItemNotFound),
     }
 }
 
 pub fn lookup_item_for_value_ref(
     resolved_name: String,
+    self_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Option<Rc<ItemInfo>> {
-    crate::v1_compiler_emit::lookup_item(
-        registry.clone(),
-        value_ref_registry_lookup_key(resolved_name.clone()),
-    )
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<ItemLookup> {
+    {
+        let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
+        let leaf = value_ref_qualified_leaf(resolved_name.clone());
+        if (qualifier.clone() != "".to_string()) {
+            item_lookup_of_optional(crate::v1_compiler_emit::lookup_item_by_identity(
+                registry.clone(),
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: qualifier.clone(),
+                    decl_name: leaf.clone(),
+                }),
+            ))
+        } else {
+            match crate::v1_compiler_emit::lookup_item_by_identity(
+                registry.clone(),
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: self_module.clone(),
+                    decl_name: leaf.clone(),
+                }),
+            ) {
+                Some(info) => Rc::new(ItemLookup::ItemFound { info: info.clone() }),
+                std::option::Option::None => {
+                    lookup_item_by_leaf(leaf.clone(), registry.clone(), emit_info.clone())
+                }
+            }
+        }
+    }
 }
 
 pub fn emit_qualified_value_ref_crate_ident(
     leaf: String,
     info: Rc<ItemInfo>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    if is_duplicate_qualified_item_registry_marker(info.clone()) {
-        crate::v1_compiler_emit::emit_error_expr(
-            "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay"
-                .to_string(),
-            RenderTarget::Rust,
-        )
-    } else {
+    v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(
-                    "crate::".to_string(),
-                    crate::v1_compiler_emit_core_support::module_to_filename(
-                        info.module_name.clone(),
-                    ),
-                ),
-                "::".to_string(),
+                "crate::".to_string(),
+                crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone()),
             ),
-            emit_import_name(leaf.clone(), registry.clone()),
-        )
-    }
+            "::".to_string(),
+        ),
+        emit_import_name(info.module_name.clone(), leaf.clone(), registry.clone()),
+    )
 }
 
-pub fn value_ref_item_info_refusal(info: Rc<ItemInfo>) -> String {
+pub fn ambiguous_leaf_refusal(leaf: String) -> String {
     crate::v1_compiler_emit::emit_error_expr(
-        "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay".to_string(),
+        v1_rt::concat(
+            v1_rt::concat("ambiguous leaf '".to_string(), leaf.clone()),
+            "' — two modules declare it, so no single declaration can be named".to_string(),
+        ),
         RenderTarget::Rust,
     )
 }
@@ -5869,7 +5834,7 @@ pub fn build_shared_types(
             .cloned()
             .fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, summary: _| {
+                |acc: Rc<BTreeSet<String>>, summary: Rc<TypeSummary>| {
                     maybe_mark_shared_type(
                         acc,
                         summary.clone(),
@@ -5917,32 +5882,31 @@ pub struct OwnershipBuildResult {
 
 pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
-        let callable_set =
-            modules
+        let callable_set = modules.iter().cloned().fold(
+            v1_rt::rc_empty_set::<_>(),
+            |acc: _, m: Rc<TypedModule>| {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for item in m.items.clone().iter().cloned() {
+                        if (item.body.clone() != std::option::Option::None) {
+                            __result.push(item);
+                        }
+                    }
+                    __result
+                })
                 .iter()
                 .cloned()
-                .fold(v1_rt::rc_empty_set::<_>(), |acc: _, m: _| {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for item in m.items.clone().iter().cloned() {
-                            if (item.body.clone() != std::option::Option::None) {
-                                __result.push(item);
-                            }
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner: _, item: Rc<Node>| {
-                        v1_rt::rc_set_union(
-                            inner,
-                            crate::v1_compiler_ownership::collect_callable_refs(
-                                item.body.clone().clone().unwrap(),
-                                m.type_env.clone().source_indices.clone(),
-                            ),
-                        )
-                    })
-                });
+                .fold(acc, |inner: _, item: Rc<Node>| {
+                    v1_rt::rc_set_union(
+                        inner,
+                        crate::v1_compiler_ownership::collect_callable_refs(
+                            item.body.clone().clone().unwrap(),
+                            m.type_env.clone().source_indices.clone(),
+                        ),
+                    )
+                })
+            },
+        );
         let proofs = Rc::new({
             let mut __result = Vec::new();
             for m in modules.iter().cloned() {
@@ -6013,7 +5977,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                 ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             }),
-            |acc: Rc<OwnershipBuildResult>, entry: _| {
+            |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let read_only = if v1_rt::set_contains(
@@ -6145,7 +6109,7 @@ pub fn merged_module_source_indices(
 ) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: _| {
+        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
             v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
@@ -6168,7 +6132,10 @@ pub struct EmitRustContext {
 
 pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> {
     {
-        let base_info = crate::v1_compiler_infer::build_emit_graph_info(typed.modules.clone());
+        let base_info = crate::v1_compiler_infer::build_emit_graph_info(
+            typed.modules.clone(),
+            typed.item_registry.clone(),
+        );
         let ownership = build_ownership_results(typed.modules.clone());
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
@@ -6195,6 +6162,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 merged_module_source_indices(typed.modules.clone()),
             );
         let emit_info = Rc::new(EmitGraphInfo {
+            item_leaf_owner_modules: base_info.item_leaf_owner_modules.clone(),
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
             fn_decl_items: base_info.fn_decl_items.clone(),
@@ -6216,10 +6184,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
         });
-        let registry = merge_item_registries(
-            typed.item_registry.clone(),
-            build_qualified_item_registry(typed.modules.clone()),
-        );
+        let registry = typed.item_registry.clone();
         let data_items = build_data_item_index(typed.modules.clone());
         let workflow_funcs = collect_workflow_funcs(
             typed.modules.clone(),
@@ -6258,7 +6223,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
         });
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, tm: _| {
+            |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
                 let svc_items = Rc::new({
                     let mut __result = Vec::new();
                     for item in tm.items.clone().iter().cloned() {
@@ -6294,7 +6259,10 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
         let test_projections =
             crate::v1_compiler_emit_core_support::extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
-        let module_index = build_module_index(typed.modules.clone());
+        let module_index = build_module_index(
+            typed.modules.clone(),
+            emit_info.item_leaf_owner_modules.clone(),
+        );
         let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
         Rc::new(EmitRustContext {
             emit_info: emit_info.clone(),
@@ -6416,27 +6384,98 @@ pub fn emit_rust_selected(
             }
             __result
         });
-        let module_files = Rc::new({
+        let published_module_emissions = Rc::new({
             let mut __result = Vec::new();
             for e in module_emissions.iter().cloned() {
+                if ((Rc::new({
+                    let mut __result = Vec::new();
+                    for r in e.module_refusals.clone().iter().cloned() {
+                        if crate::v1_std_core::is_error_diagnostic(r.diagnostic.clone()) {
+                            __result.push(r);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    == 0)
+                {
+                    __result.push(e);
+                }
+            }
+            __result
+        });
+        let unpublished_module_paths = Rc::new({
+            let mut __result = Vec::new();
+            for e in Rc::new({
+                let mut __result = Vec::new();
+                for e in module_emissions.iter().cloned() {
+                    if ((Rc::new({
+                        let mut __result = Vec::new();
+                        for r in e.module_refusals.clone().iter().cloned() {
+                            if crate::v1_std_core::is_error_diagnostic(r.diagnostic.clone()) {
+                                __result.push(r);
+                            }
+                        }
+                        __result
+                    })
+                    .len() as i64)
+                        > 0)
+                    {
+                        __result.push(e);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(e.file.clone().path.clone());
+            }
+            __result
+        });
+        let module_files = Rc::new({
+            let mut __result = Vec::new();
+            for e in published_module_emissions.iter().cloned() {
                 __result.push(e.file.clone());
             }
             __result
         });
-        let import_refusals = Rc::new({
+        let module_refusals = Rc::new({
             let mut __result = Vec::new();
             for e in module_emissions.iter().cloned() {
-                __result.extend((*e.import_refusals.clone()).iter().cloned());
+                __result.extend((*e.module_refusals.clone()).iter().cloned());
             }
             __result
         });
         let module_paths = Rc::new({
             let mut __result = Vec::new();
-            for tm in typed.modules.clone().iter().cloned() {
-                __result.push(rust_module_emit_path(crate::v1_std_core::authored_name_at(
-                    tm.type_env.clone().source_indices.clone(),
-                    tm.module.clone(),
-                )));
+            for path in Rc::new({
+                let mut __result = Vec::new();
+                for tm in typed.modules.clone().iter().cloned() {
+                    __result.push(rust_module_emit_path(crate::v1_std_core::authored_name_at(
+                        tm.type_env.clone().source_indices.clone(),
+                        tm.module.clone(),
+                    )));
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if ((Rc::new({
+                    let mut __result = Vec::new();
+                    for p in unpublished_module_paths.iter().cloned() {
+                        if (p.clone() == path.clone()) {
+                            __result.push(p);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    == 0)
+                {
+                    __result.push(path);
+                }
             }
             __result
         });
@@ -6455,7 +6494,7 @@ pub fn emit_rust_selected(
             .iter()
             .cloned()
             {
-                if ((Rc::new({
+                if (((Rc::new({
                     let mut __result = Vec::new();
                     for p in test_projections.iter().cloned() {
                         if (p.module_name.clone() == name.clone()) {
@@ -6466,6 +6505,17 @@ pub fn emit_rust_selected(
                 })
                 .len() as i64)
                     > 0)
+                    && ((Rc::new({
+                        let mut __result = Vec::new();
+                        for p in unpublished_module_paths.iter().cloned() {
+                            if (p.clone() == rust_module_emit_path(name.clone())) {
+                                __result.push(p);
+                            }
+                        }
+                        __result
+                    })
+                    .len() as i64)
+                        == 0))
                 {
                     __result.push(name);
                 }
@@ -6655,7 +6705,7 @@ pub fn emit_rust_selected(
         );
         Rc::new(EmitResult {
             files: files.clone(),
-            diagnostics: import_refusals.clone(),
+            diagnostics: module_refusals.clone(),
         })
     }
 }
@@ -7209,8 +7259,10 @@ pub fn emit_module(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
-        let base_info =
-            crate::v1_compiler_infer::build_emit_graph_info(Rc::new(vec![typed_module.clone()]));
+        let base_info = crate::v1_compiler_infer::build_emit_graph_info(
+            Rc::new(vec![typed_module.clone()]),
+            registry.clone(),
+        );
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
             base_info.recursive_type_set.clone(),
@@ -7236,6 +7288,7 @@ pub fn emit_module(
                 merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             );
         let emit_info = Rc::new(EmitGraphInfo {
+            item_leaf_owner_modules: base_info.item_leaf_owner_modules.clone(),
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
             fn_decl_items: base_info.fn_decl_items.clone(),
@@ -7259,7 +7312,10 @@ pub fn emit_module(
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
-        let module_index = build_module_index(Rc::new(vec![typed_module.clone()]));
+        let module_index = build_module_index(
+            Rc::new(vec![typed_module.clone()]),
+            emit_info.item_leaf_owner_modules.clone(),
+        );
         emit_module_full(
             typed_module.clone(),
             registry.clone(),
@@ -7282,7 +7338,7 @@ pub fn build_module_export_sets(
 ) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        |acc: _, tm: _| {
+        |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, tm: Rc<TypedModule>| {
             let m_name = crate::v1_std_core::authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -9125,6 +9181,7 @@ pub enum ReferenceDerivedCandidateDisposition {
     CandidateVariantDelegatedToParent { parent_enum: String },
     CandidateVariantParentUnresolved,
     CandidateRegistryAbsent,
+    CandidateLeafAmbiguous,
     CandidateExportProofFailed { provider_module: String },
 }
 
@@ -9138,6 +9195,7 @@ pub struct ReferenceDerivedCandidateRow {
 pub fn reference_derived_candidate_disposition(
     name: String,
     this_module_name: String,
+    emit_info: Rc<EmitGraphInfo>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
@@ -9167,8 +9225,11 @@ pub fn reference_derived_candidate_disposition(
             }
         }
     } else {
-        match v1_rt::map_get(&registry, name.clone()) {
-            Some(info) => {
+        match (*lookup_item_by_leaf(name.clone(), registry.clone(), emit_info.clone())).clone() {
+            ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => {
+                Rc::new(ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous)
+            }
+            ItemLookup::ItemFound { info: info, .. } => {
                 if (info.module_name.clone() == this_module_name.clone()) {
                     Rc::new(ReferenceDerivedCandidateDisposition::CandidateOwnModule)
                 } else {
@@ -9192,7 +9253,7 @@ pub fn reference_derived_candidate_disposition(
                     }
                 }
             }
-            std::option::Option::None => {
+            ItemLookup::ItemNotFound => {
                 Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent)
             }
         }
@@ -9235,6 +9296,7 @@ pub fn reference_derived_row_diagnostics(
                     ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
                         Rc::new(vec![])
                     }
+                    ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous => Rc::new(vec![]),
                 })
                 .iter()
                 .cloned(),
@@ -9273,6 +9335,9 @@ pub fn reference_derived_disposition_name(
         ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
             "registry-absent".to_string()
         }
+        ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous => {
+            "leaf-ambiguous".to_string()
+        }
         ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
             provider_module: _,
             ..
@@ -9288,6 +9353,7 @@ pub struct ReferenceDerivedCensus {
     pub variant_delegated_to_parent: i64,
     pub variant_parent_unresolved: i64,
     pub registry_absent: i64,
+    pub leaf_ambiguous: i64,
     pub export_proof_failed: i64,
 }
 
@@ -9302,6 +9368,7 @@ pub fn reference_derived_census(
             variant_delegated_to_parent: 0,
             variant_parent_unresolved: 0,
             registry_absent: 0,
+            leaf_ambiguous: 0,
             export_proof_failed: 0,
         },
         |acc: ReferenceDerivedCensus, r: Rc<ReferenceDerivedCandidateRow>| match (*r
@@ -9318,6 +9385,7 @@ pub fn reference_derived_census(
                 variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
+                leaf_ambiguous: acc.leaf_ambiguous.clone(),
                 export_proof_failed: acc.export_proof_failed.clone(),
             },
             ReferenceDerivedCandidateDisposition::CandidateOwnModule => ReferenceDerivedCensus {
@@ -9327,6 +9395,7 @@ pub fn reference_derived_census(
                 variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
+                leaf_ambiguous: acc.leaf_ambiguous.clone(),
                 export_proof_failed: acc.export_proof_failed.clone(),
             },
             ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
@@ -9339,6 +9408,7 @@ pub fn reference_derived_census(
                 variant_delegated_to_parent: (acc.variant_delegated_to_parent.clone() + 1),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
+                leaf_ambiguous: acc.leaf_ambiguous.clone(),
                 export_proof_failed: acc.export_proof_failed.clone(),
             },
             ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved => {
@@ -9349,6 +9419,7 @@ pub fn reference_derived_census(
                     variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                     variant_parent_unresolved: (acc.variant_parent_unresolved.clone() + 1),
                     registry_absent: acc.registry_absent.clone(),
+                    leaf_ambiguous: acc.leaf_ambiguous.clone(),
                     export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
@@ -9360,6 +9431,19 @@ pub fn reference_derived_census(
                     variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                     variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                     registry_absent: (acc.registry_absent.clone() + 1),
+                    leaf_ambiguous: acc.leaf_ambiguous.clone(),
+                    export_proof_failed: acc.export_proof_failed.clone(),
+                }
+            }
+            ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous => {
+                ReferenceDerivedCensus {
+                    candidates: (acc.candidates.clone() + 1),
+                    survived: acc.survived.clone(),
+                    own_module: acc.own_module.clone(),
+                    variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                    variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                    registry_absent: acc.registry_absent.clone(),
+                    leaf_ambiguous: (acc.leaf_ambiguous.clone() + 1),
                     export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
@@ -9373,6 +9457,7 @@ pub fn reference_derived_census(
                 variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
+                leaf_ambiguous: acc.leaf_ambiguous.clone(),
                 export_proof_failed: (acc.export_proof_failed.clone() + 1),
             },
         },
@@ -9385,12 +9470,18 @@ pub struct ReferenceDerivedUseLinePlan {
     pub rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceDerivedProviderBinding {
+    pub name: String,
+    pub provider_module: String,
+}
+
 pub fn reference_derived_use_line_plan(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
     this_module_name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     local_type_names: Rc<Vec<String>>,
     already_imported_names: Rc<Vec<String>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
@@ -9661,6 +9752,7 @@ pub fn reference_derived_use_line_plan(
                             disposition: reference_derived_candidate_disposition(
                                 name.clone(),
                                 this_module_name.clone(),
+                                emit_info.clone(),
                                 registry.clone(),
                                 export_sets.clone(),
                                 typed_modules.clone(),
@@ -9699,17 +9791,36 @@ pub fn reference_derived_use_line_plan(
             }
             __result
         });
-        let providers = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let resolved = Rc::new({
             let mut __result = Vec::new();
             for name in unlisted.iter().cloned() {
                 __result.extend(
-                    (*match v1_rt::map_get(&registry, name.clone()) {
-                        Some(info) => Rc::new(vec![info.module_name.clone()]),
-                        std::option::Option::None => Rc::new(vec![]),
+                    (*match (*lookup_item_by_leaf(
+                        name.clone(),
+                        registry.clone(),
+                        emit_info.clone(),
+                    ))
+                    .clone()
+                    {
+                        ItemLookup::ItemFound { info: info, .. } => {
+                            Rc::new(vec![Rc::new(ReferenceDerivedProviderBinding {
+                                name: name.clone(),
+                                provider_module: info.module_name.clone(),
+                            })])
+                        }
+                        ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => Rc::new(vec![]),
+                        ItemLookup::ItemNotFound => Rc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
                 );
+            }
+            __result
+        });
+        let providers = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for b in resolved.iter().cloned() {
+                __result.push(b.provider_module.clone());
             }
             __result
         }));
@@ -9717,10 +9828,7 @@ pub fn reference_derived_use_line_plan(
             let mut __result = Vec::new();
             for provider in providers.iter().cloned() {
                 __result.extend((*{
-            let names = Rc::new({ let mut __result = Vec::new(); for name in unlisted.iter().cloned() { if match v1_rt::map_get(&registry, name.clone()) {
-    Some(info) => (info.module_name.clone() == provider.clone()),
-    std::option::Option::None => false,
-} { __result.push(name); } } __result });
+            let names = Rc::new({ let mut __result = Vec::new(); for b in Rc::new({ let mut __result = Vec::new(); for b in resolved.iter().cloned() { if (b.provider_module.clone() == provider.clone()) { __result.push(b); } } __result }).iter().cloned() { __result.push(b.name.clone()); } __result });
 let plan_module_env = match v1_rt::map_get(&module_index.by_name.clone(), this_module_name.clone()) {
     Some(tm) => Some(tm.type_env.clone()),
     std::option::Option::None => std::option::Option::None,
@@ -9736,7 +9844,7 @@ let fallback = Rc::new({ let mut __result = Vec::new(); for nm in names.iter().c
                 Rc::new(vec![])
             } else {
                 if provider_proven_exports_symbol(nm.clone(), provider.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
-                    Rc::new(vec![v1_rt::concat(rust_visibility_prefix(), v1_rt::concat("use crate::".to_string(), v1_rt::concat(crate::v1_compiler_emit_core_support::module_to_filename(provider.clone()), v1_rt::concat("::".to_string(), v1_rt::concat(emit_import_name(nm.clone(), registry.clone()), ";".to_string())))))])
+                    Rc::new(vec![v1_rt::concat(rust_visibility_prefix(), v1_rt::concat("use crate::".to_string(), v1_rt::concat(crate::v1_compiler_emit_core_support::module_to_filename(provider.clone()), v1_rt::concat("::".to_string(), v1_rt::concat(emit_import_name(provider.clone(), nm.clone(), registry.clone()), ";".to_string())))))])
                 } else {
                     Rc::new(vec![])
                 }
@@ -9773,6 +9881,7 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
                 __result
             }),
             this_module_name.clone(),
+            emit_info.clone(),
             already.clone(),
             names_already_in_lines.clone(),
             registry.clone(),
@@ -9793,6 +9902,7 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
 pub fn qualified_type_reference_rows(
     names: Rc<Vec<String>>,
     this_module_name: String,
+    emit_info: Rc<EmitGraphInfo>,
     already: Rc<HashMap<String, bool>>,
     names_already_in_lines: Rc<Vec<String>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -9845,15 +9955,28 @@ pub fn qualified_type_reference_rows(
                             {
                                 Rc::new(vec![])
                             } else {
-                                match v1_rt::map_get(&registry, leaf.clone()) {
-                                    std::option::Option::None => {
+                                match (*lookup_item_by_leaf(
+                                    leaf.clone(),
+                                    registry.clone(),
+                                    emit_info.clone(),
+                                ))
+                                .clone()
+                                {
+                                    ItemLookup::ItemNotFound => {
                                         Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
     module_name: this_module_name.clone(),
     name: name.clone(),
     disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
 })])
                                     }
-                                    Some(info) => {
+                                    ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => {
+                                        Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+    module_name: this_module_name.clone(),
+    name: name.clone(),
+    disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous),
+})])
+                                    }
+                                    ItemLookup::ItemFound { info: info, .. } => {
                                         if !registry_row_is_type_declared_in(
                                             info.clone(),
                                             qualifier.clone(),
@@ -9937,6 +10060,7 @@ pub fn qualified_type_reference_use_lines(
                                 "::".to_string(),
                             ),
                             emit_import_name(
+                                provider.clone(),
                                 crate::v1_std_core::qualified_last_segment(r.name.clone()),
                                 registry.clone(),
                             ),
@@ -9973,8 +10097,8 @@ pub fn reference_derived_use_lines(
             items.clone(),
             unlisted_type_names.clone(),
             this_module_name.clone(),
-            registry.clone(),
             emit_info.clone(),
+            registry.clone(),
             local_type_names.clone(),
             already_imported_names.clone(),
             export_sets.clone(),
@@ -9992,7 +10116,7 @@ pub fn reference_derived_use_lines(
 pub struct ModuleEmission {
     pub file: Rc<TextFile>,
     pub reference_rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
-    pub import_refusals: Rc<Vec<Rc<ErrorNode>>>,
+    pub module_refusals: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn emit_module_full_with_dispositions(
@@ -10039,6 +10163,7 @@ pub fn emit_module_full(
         let m = typed_module.module.clone();
         let scope = crate::v1_compiler_emit::module_emit_scope(typed_module.clone());
         let emit_info = Rc::new(EmitGraphInfo {
+            item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
             type_summaries: emit_info.type_summaries.clone(),
             type_decl_items: emit_info.type_decl_items.clone(),
             fn_decl_items: emit_info.fn_decl_items.clone(),
@@ -10248,8 +10373,8 @@ pub fn emit_module_full(
             typed_module.items.clone(),
             unlisted_type_names.clone(),
             crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
-            registry.clone(),
             emit_info.clone(),
+            registry.clone(),
             local_type_names.clone(),
             already_imported_names.clone(),
             export_sets.clone(),
@@ -10277,12 +10402,18 @@ pub fn emit_module_full(
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
                 __result.extend(
-                    (*match v1_rt::map_get(
-                        &registry,
-                        crate::v1_compiler_infer_env::authored_name(
-                            scope.type_env.clone(),
-                            item.clone(),
-                        ),
+                    (*match crate::v1_compiler_emit::lookup_item_by_identity(
+                        registry.clone(),
+                        Rc::new(DeclaredCallableIdentity {
+                            owner_module_path: crate::v1_compiler_infer_env::authored_name(
+                                scope.type_env.clone(),
+                                m.clone(),
+                            ),
+                            decl_name: crate::v1_compiler_infer_env::authored_name(
+                                scope.type_env.clone(),
+                                item.clone(),
+                            ),
+                        }),
                     ) {
                         Some(info) => info.service_names.clone(),
                         std::option::Option::None => Rc::new(vec![]),
@@ -10448,17 +10579,182 @@ pub fn emit_module_full(
                 content: content.clone(),
             }),
             reference_rows: reference_plan.rows.clone(),
-            import_refusals: reference_derived_row_diagnostics(
-                reference_plan.rows.clone(),
-                m.span.clone(),
+            module_refusals: v1_rt::concat(
+                reference_derived_row_diagnostics(reference_plan.rows.clone(), m.span.clone()),
+                module_projection_refusals(
+                    typed_module.items.clone(),
+                    crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
+                ),
             ),
         })
     }
 }
 
-pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
+pub fn module_projection_refusals(
+    items: Rc<Vec<Rc<Node>>>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in items.iter().cloned() {
+            __result.extend(
+                (*collect_unprojectable_construct_refusals(item.clone(), module_name.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn collect_unprojectable_construct_refusals(
+    n: Rc<Node>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprIf => collect_filter_in_guard_refusals(
+                crate::v1_std_core::if_condition(n.clone()),
+                module_name.clone(),
+            ),
+            _ => Rc::new(vec![]),
+        };
+        let from_children = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprIf => v1_rt::concat(
+                v1_rt::concat(
+                    collect_unprojectable_construct_refusals(
+                        crate::v1_std_core::if_condition(n.clone()),
+                        module_name.clone(),
+                    ),
+                    collect_unprojectable_construct_refusals(
+                        crate::v1_std_core::if_then_branch(n.clone()),
+                        module_name.clone(),
+                    ),
+                ),
+                match crate::v1_std_core::if_else_branch(n.clone()) {
+                    Some(e) => {
+                        collect_unprojectable_construct_refusals(e.clone(), module_name.clone())
+                    }
+                    std::option::Option::None => Rc::new(vec![]),
+                },
+            ),
+            _ => Rc::new({
+                let mut __result = Vec::new();
+                for c in n.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*collect_unprojectable_construct_refusals(c.clone(), module_name.clone()))
+                            .iter()
+                            .cloned(),
+                    );
+                }
+                __result
+            }),
+        };
+        let from_body = match n.body.clone() {
+            Some(b) => collect_unprojectable_construct_refusals(b.clone(), module_name.clone()),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            v1_rt::concat(here.clone(), from_children.clone()),
+            from_body.clone(),
+        )
+    })
+}
+
+pub fn collect_filter_in_guard_refusals(
+    n: Rc<Node>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for call in collect_filter_method_calls(n.clone()).iter().cloned() {
+            __result.push(crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::EmissionConstructUnprojectable {
+                    construct: UnprojectableConstruct::FilterInBranchCondition {},
+                    span: call.span.clone(),
+                }),
+                module_name.clone(),
+            ));
+        }
+        __result
+    })
+}
+
+pub fn is_algebra_filter_method(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
+    if (method_semantics.clone() != std::option::Option::None) {
+        match (*method_semantics.clone().unwrap()).clone() {
+            MethodSemantics::AlgebraMethodSemantics {
+                algebra_template: t,
+                ..
+            } => match t.clone() {
+                Some(tmpl) => crate::std_algebra::is_collection_filter_template(tmpl.clone()),
+                std::option::Option::None => false,
+            },
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
+pub fn collect_filter_method_calls(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*n.expr_data.clone()).clone() {
+            ExprData::ExprIf => Rc::new(vec![]),
+            ExprData::ExprMethodCall {
+                method_semantics: method_semantics,
+                ..
+            } => v1_rt::concat(
+                v1_rt::concat(
+                    if is_algebra_filter_method(method_semantics.clone()) {
+                        Rc::new(vec![n.clone()])
+                    } else {
+                        Rc::new(vec![])
+                    },
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in n.children.clone().iter().cloned() {
+                            __result
+                                .extend((*collect_filter_method_calls(c.clone())).iter().cloned());
+                        }
+                        __result
+                    }),
+                ),
+                match n.body.clone() {
+                    Some(b) => collect_filter_method_calls(b.clone()),
+                    std::option::Option::None => Rc::new(vec![]),
+                },
+            ),
+            _ => v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result.extend((*collect_filter_method_calls(c.clone())).iter().cloned());
+                    }
+                    __result
+                }),
+                match n.body.clone() {
+                    Some(b) => collect_filter_method_calls(b.clone()),
+                    std::option::Option::None => Rc::new(vec![]),
+                },
+            ),
+        }
+    })
+}
+
+pub fn emit_import_name(
+    owner_module: String,
+    n: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> String {
     {
-        let is_data = match v1_rt::map_get(&registry, n.clone()) {
+        let is_data = match crate::v1_compiler_emit::lookup_item_by_identity(
+            registry.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: owner_module.clone(),
+                decl_name: n.clone(),
+            }),
+        ) {
             Some(info) => (info.kind.clone() == ItemKind::DataItem),
             std::option::Option::None => false,
         };
@@ -10466,6 +10762,38 @@ pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) 
             crate::v1_compiler_emit_core_support::to_snake(n.clone())
         } else {
             n.clone()
+        }
+    }
+}
+
+pub fn graph_type_import_module_path(
+    name: String,
+    import_module: String,
+    mod_name: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> String {
+    if has_physical_type_def_in_module_filename(
+        name.clone(),
+        mod_name.clone(),
+        typed_modules.clone(),
+        source_indices.clone(),
+        module_index.clone(),
+    ) {
+        import_module.clone()
+    } else {
+        match reexport_source_module_name(
+            name.clone(),
+            import_module.clone(),
+            typed_modules.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        ) {
+            Some(src) => src.clone(),
+            std::option::Option::None => import_module.clone(),
         }
     }
 }
@@ -10546,15 +10874,25 @@ pub fn is_import_graph_type_name(
     }
 }
 
+pub fn ambiguous_leaf_module_refusal(leaf: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat("__ambiguous_leaf__".to_string(), leaf.clone()),
+        "__declared_by_two_modules".to_string(),
+    )
+}
+
 pub fn item_defining_module_filename(
     name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    module_index: Rc<ModuleIndex>,
     fallback: String,
 ) -> String {
-    match crate::v1_compiler_emit::lookup_item(registry.clone(), name.clone()) {
-        Some(info) => {
-            crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone())
-        }
+    match v1_rt::map_get(&module_index.leaf_owner_modules.clone(), name.clone()) {
+        Some(owner) => match (*owner.clone()).clone() {
+            LeafOwner::SingleOwner { module: m, .. } => {
+                crate::v1_compiler_emit_core_support::module_to_filename(m.clone())
+            }
+            LeafOwner::LeafAmbiguous => ambiguous_leaf_module_refusal(name.clone()),
+        },
         std::option::Option::None => fallback,
     }
 }
@@ -10563,13 +10901,17 @@ pub fn item_defining_module_filename(
 pub struct ModuleIndex {
     pub by_name: Rc<HashMap<String, Rc<TypedModule>>>,
     pub by_filename: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>,
+    pub leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 }
 
-pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> {
+pub fn build_module_index(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
+) -> Rc<ModuleIndex> {
     {
         let by_name = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: _, tm: _| {
+            |acc: Rc<HashMap<String, Rc<TypedModule>>>, tm: Rc<TypedModule>| {
                 let nm = crate::v1_std_core::authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
@@ -10584,7 +10926,7 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
         );
         let by_filename = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<Rc<TypedModule>>>>(),
-            |acc: _, tm: _| {
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>, tm: Rc<TypedModule>| {
                 let fname = crate::v1_compiler_emit_core_support::module_to_filename(
                     crate::v1_std_core::authored_name_at(
                         tm.type_env.clone().source_indices.clone(),
@@ -10606,6 +10948,7 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
         Rc::new(ModuleIndex {
             by_name: by_name.clone(),
             by_filename: by_filename.clone(),
+            leaf_owner_modules: leaf_owner_modules.clone(),
         })
     }
 }
@@ -11488,7 +11831,7 @@ pub fn variant_parent_defining_module_filename(
                     source_indices.clone(),
                     item_defining_module_filename(
                         parent_enum.clone(),
-                        registry.clone(),
+                        module_index.clone(),
                         fallback.clone(),
                     ),
                     module_index.clone(),
@@ -11501,7 +11844,11 @@ pub fn variant_parent_defining_module_filename(
             typed_modules.clone(),
             export_sets.clone(),
             source_indices.clone(),
-            item_defining_module_filename(parent_enum.clone(), registry.clone(), fallback.clone()),
+            item_defining_module_filename(
+                parent_enum.clone(),
+                module_index.clone(),
+                fallback.clone(),
+            ),
             module_index.clone(),
         ),
     }
@@ -11756,7 +12103,23 @@ pub fn alias_rhs_base_module_filename(
     {
         let local_mod =
             crate::v1_compiler_emit_core_support::module_to_filename(alias_module.clone());
-        match crate::v1_compiler_emit::lookup_item(scope.item_registry.clone(), name.clone()) {
+        let owner_info =
+            match v1_rt::map_get(&module_index.leaf_owner_modules.clone(), name.clone()) {
+                Some(owner) => match (*owner.clone()).clone() {
+                    LeafOwner::SingleOwner { module: m, .. } => {
+                        crate::v1_compiler_emit::lookup_item_by_identity(
+                            registry.clone(),
+                            Rc::new(DeclaredCallableIdentity {
+                                owner_module_path: m.clone(),
+                                decl_name: name.clone(),
+                            }),
+                        )
+                    }
+                    LeafOwner::LeafAmbiguous => std::option::Option::None,
+                },
+                std::option::Option::None => std::option::Option::None,
+            };
+        match owner_info.clone() {
             Some(info) => {
                 if (((info.module_name.clone() == alias_module.clone())
                     && ((info.kind.clone() == ItemKind::TypeItem)
@@ -11902,7 +12265,7 @@ pub fn alias_rhs_base_module_from_import_or_registry(
                 crate::v1_compiler_emit_core_support::module_to_filename(import_module.clone())
             }
             std::option::Option::None => {
-                item_defining_module_filename(name.clone(), registry.clone(), local_mod.clone())
+                item_defining_module_filename(name.clone(), module_index.clone(), local_mod.clone())
             }
         },
     }
@@ -12942,6 +13305,15 @@ pub fn emit_specific_import_block(
                                         let mut __result = Vec::new();
                                         for n in group.iter().cloned() {
                                             __result.push(emit_import_name(
+                                                graph_type_import_module_path(
+                                                    n.clone(),
+                                                    import_module.clone(),
+                                                    mod_name.clone(),
+                                                    typed_modules.clone(),
+                                                    export_sets.clone(),
+                                                    source_indices.clone(),
+                                                    module_index.clone(),
+                                                ),
                                                 n.clone(),
                                                 registry.clone(),
                                             ));
@@ -12978,7 +13350,11 @@ pub fn emit_specific_import_block(
                         let names_str = Rc::new({
                             let mut __result = Vec::new();
                             for n in other_direct_names.iter().cloned() {
-                                __result.push(emit_import_name(n.clone(), registry.clone()));
+                                __result.push(emit_import_name(
+                                    import_module.clone(),
+                                    n.clone(),
+                                    registry.clone(),
+                                ));
                             }
                             __result
                         })
@@ -13072,7 +13448,7 @@ pub fn emit_specific_import_block(
                                     ),
                                     std::option::Option::None => item_defining_module_filename(
                                         p.clone(),
-                                        registry.clone(),
+                                        module_index.clone(),
                                         mod_name.clone(),
                                     ),
                                 }
@@ -13094,7 +13470,7 @@ pub fn emit_specific_import_block(
 } { __result.push(n); } } __result }).first().cloned();
 match rep_variant.clone() {
     Some(v) => (variant_parent_defining_module_filename(p.clone(), v.clone(), import_module.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), registry.clone(), mod_name.clone(), module_index.clone()) == def_mod.clone()),
-    std::option::Option::None => (item_defining_module_filename(p.clone(), registry.clone(), mod_name.clone()) == def_mod.clone()),
+    std::option::Option::None => (item_defining_module_filename(p.clone(), module_index.clone(), mod_name.clone()) == def_mod.clone()),
 }
 } { __result.push(p); } } __result });
 if ((group.clone().len() as i64) > 0) {
@@ -13164,7 +13540,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                         } { __result.push(n); } } __result });
 let parent_mod = match variants.clone().first().cloned() {
     Some(v) => variant_parent_defining_module_filename(parent.clone(), v.clone(), import_module.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), registry.clone(), mod_name.clone(), module_index.clone()),
-    std::option::Option::None => item_defining_module_filename(parent.clone(), registry.clone(), mod_name.clone()),
+    std::option::Option::None => item_defining_module_filename(parent.clone(), module_index.clone(), mod_name.clone()),
 };
 let vars_str = variants.clone().join(&", ".to_string());
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("use crate::".to_string(), parent_mod.clone()), "::".to_string()), parent.clone()), "::{".to_string()), vars_str.clone()), "};".to_string())
@@ -13574,7 +13950,7 @@ pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Rc<Vec<Strin
                         found_current: false,
                         covered: false,
                     },
-                    |inner: _, other: String| {
+                    |inner: BracedImportCoverAccum, other: String| {
                         if (inner.found_current.clone() || inner.covered.clone()) {
                             inner.clone()
                         } else {
@@ -14873,7 +15249,13 @@ pub fn emit_typed_item(
                         std::option::Option::None => v1_rt::rc_empty_set::<String>(),
                     };
                     let item_is_tco = crate::v1_compiler_emit::is_tco_eligible(
-                        crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
+                        Rc::new(DeclaredCallableIdentity {
+                            owner_module_path: module_name.clone(),
+                            decl_name: crate::v1_compiler_infer_env::authored_name(
+                                env.clone(),
+                                item.clone(),
+                            ),
+                        }),
                         fn_body.clone(),
                         registry.clone(),
                         env.source_indices.clone(),
@@ -14890,6 +15272,7 @@ pub fn emit_typed_item(
                         }
                     };
                     let fn_emit_info = Rc::new(EmitGraphInfo {
+                        item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                         type_summaries: emit_info.type_summaries.clone(),
                         type_decl_items: emit_info.type_decl_items.clone(),
                         fn_decl_items: emit_info.fn_decl_items.clone(),
@@ -14913,9 +15296,15 @@ pub fn emit_typed_item(
                         fn_return_type: emit_info.fn_return_type.clone(),
                         expected_type: emit_info.expected_type.clone(),
                     });
-                    let is_effectful = match crate::v1_compiler_emit::lookup_item(
+                    let is_effectful = match crate::v1_compiler_emit::lookup_item_by_identity(
                         registry.clone(),
-                        crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
+                        Rc::new(DeclaredCallableIdentity {
+                            owner_module_path: module_name.clone(),
+                            decl_name: crate::v1_compiler_infer_env::authored_name(
+                                env.clone(),
+                                item.clone(),
+                            ),
+                        }),
                     ) {
                         Some(info) => {
                             (((info.service_names.clone().len() as i64) > 0)
@@ -17770,60 +18159,86 @@ pub fn v1_call_forwarding_clone_bound_param_names(
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((generic_param_names.clone().len() as i64) == 0) {
+            return Rc::new(vec![]);
+        }
+        let here = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => v1_call_site_clone_forwarded_param_names(
+                body.clone(),
+                generic_param_names.clone(),
+                fn_decl_items.clone(),
+                emit_info.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            ),
+            _ => Rc::new(vec![]),
+        };
+        body.children.clone().iter().cloned().fold(
+            here.clone(),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                    acc,
+                    v1_call_forwarding_clone_bound_param_names(
+                        generic_param_names.clone(),
+                        child.clone(),
+                        fn_decl_items.clone(),
+                        emit_info.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                    ),
+                )
+            },
+        )
+    })
+}
+
+pub fn v1_call_site_clone_forwarded_param_names(
+    call: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let si = source_indices.clone();
-        let call_node = match (*body.expr_data.clone()).clone() {
-            ExprData::ExprCall { .. } => Some(body.clone()),
-            ExprData::ExprLambda => {
-                let lb = crate::v1_std_core::lambda_body(body.clone());
-                match (*lb.expr_data.clone()).clone() {
-                    ExprData::ExprCall { .. } => Some(lb.clone()),
-                    _ => std::option::Option::None,
-                }
-            }
-            _ => std::option::Option::None,
-        };
-        match call_node.clone() {
+        let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
+        match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
             std::option::Option::None => Rc::new(vec![]),
-            Some(call) => {
-                let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
-                match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
-                    std::option::Option::None => Rc::new(vec![]),
-                    Some(callee_item) => match callee_item.body.clone() {
-                        std::option::Option::None => Rc::new(vec![]),
-                        Some(callee_body) => {
-                            let callee_params = callee_item.params.clone();
-                            let callee_type_params = function_type_params(callee_params.clone());
-                            let callee_generic_param_names = Rc::new({
-                                let mut __result = Vec::new();
-                                for p in callee_type_params.iter().cloned() {
-                                    __result.push(crate::v1_std_core::generic_param_name_at(
-                                        p.clone(),
-                                        si.clone(),
-                                    ));
-                                }
-                                __result
-                            });
-                            let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
-                                callee_params.clone(),
-                                crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
-                                callee_body.clone(),
-                                emit_info.clone(),
-                                shared_types.clone(),
+            Some(callee_item) => match callee_item.body.clone() {
+                std::option::Option::None => Rc::new(vec![]),
+                Some(callee_body) => {
+                    let callee_params = callee_item.params.clone();
+                    let callee_type_params = function_type_params(callee_params.clone());
+                    let callee_generic_param_names = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in callee_type_params.iter().cloned() {
+                            __result.push(crate::v1_std_core::generic_param_name_at(
+                                p.clone(),
                                 si.clone(),
-                            );
-                            v1_call_forwarding_forwarded_param_names(
-                                call.clone(),
-                                function_value_params(callee_params.clone()),
-                                callee_generic_param_names.clone(),
-                                callee_clone_param_names.clone(),
-                                generic_param_names.clone(),
-                                si.clone(),
-                            )
+                            ));
                         }
-                    },
+                        __result
+                    });
+                    let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
+                        callee_params.clone(),
+                        crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
+                        callee_body.clone(),
+                        emit_info.clone(),
+                        shared_types.clone(),
+                        si.clone(),
+                    );
+                    v1_call_forwarding_forwarded_param_names(
+                        call.clone(),
+                        function_value_params(callee_params.clone()),
+                        callee_generic_param_names.clone(),
+                        callee_clone_param_names.clone(),
+                        generic_param_names.clone(),
+                        si.clone(),
+                    )
                 }
-            }
+            },
         }
     }
 }
@@ -18121,13 +18536,19 @@ pub fn emit_fn_def(
             crate::v1_compiler_infer::build_params_scope(scope.clone(), value_params.clone());
         let depth = 0;
         let use_tco = crate::v1_compiler_emit::is_tco_eligible(
-            name.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: scope.module_name.clone(),
+                decl_name: name.clone(),
+            }),
             body.clone(),
             registry.clone(),
             si.clone(),
         );
         let needs_stacker = (crate::v1_compiler_emit::is_self_recursive(
-            name.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: scope.module_name.clone(),
+                decl_name: name.clone(),
+            }),
             body.clone(),
             registry.clone(),
             si.clone(),
@@ -18723,11 +19144,16 @@ pub fn emit_func_def(
             return v1_rt::concat(v1_rt::concat("compile_error!(\"emit_func_def saw type params in `".to_string(), name.clone()), "` — func/pattern/interface don't route through the generic-fn split today; the parser invariant at parse_block_body_from_prefix has changed. Plumb type_params through this path or dissolve via ParamKind/params-slot partition.\");\n".to_string());
         }
         let depth = 0;
-        let service_names =
-            match crate::v1_compiler_emit::lookup_item(registry.clone(), name.clone()) {
-                Some(info) => info.service_names.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
+        let service_names = match crate::v1_compiler_emit::lookup_item_by_identity(
+            registry.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: scope.module_name.clone(),
+                decl_name: name.clone(),
+            }),
+        ) {
+            Some(info) => info.service_names.clone(),
+            std::option::Option::None => Rc::new(vec![]),
+        };
         let params_str = emit_func_params(
             params.clone(),
             uses.clone(),
@@ -18746,17 +19172,17 @@ pub fn emit_func_def(
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
         let si = scope.type_env.clone().source_indices.clone();
-        let body_scope = uses
-            .iter()
-            .cloned()
-            .fold(body_scope.clone(), |s: _, u: Rc<Node>| {
-                crate::v1_compiler_infer::extend_scope(
-                    s,
-                    crate::v1_std_core::resource_use_name_at(u.clone(), si.clone()),
-                    crate::v1_std_core::resource_use_resource(u.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
-                )
-            });
+        let body_scope =
+            uses.iter()
+                .cloned()
+                .fold(body_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| {
+                    crate::v1_compiler_infer::extend_scope(
+                        s,
+                        crate::v1_std_core::resource_use_name_at(u.clone(), si.clone()),
+                        crate::v1_std_core::resource_use_resource(u.clone()),
+                        Rc::new(SubValueRelation::SubValueUnknown),
+                    )
+                });
         let body_str = emit_func_body(
             body.clone(),
             registry.clone(),
@@ -21262,6 +21688,7 @@ pub fn variant_ref_self_wraps(
 
 pub fn emit_value_ref_ident(
     name: String,
+    self_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -21270,18 +21697,28 @@ pub fn emit_value_ref_ident(
             let leaf = value_ref_qualified_leaf(name.clone());
             let qualifier = value_ref_qualifier_prefix(name.clone());
             if (qualifier.clone() != "".to_string()) {
-                match lookup_item_for_value_ref(name.clone(), registry.clone()) {
-    Some(info) => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone()),
-    std::option::Option::None => crate::v1_compiler_emit::emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
+                match (*lookup_item_for_value_ref(name.clone(), self_module.clone(), registry.clone(), emit_info.clone())).clone() {
+    ItemLookup::ItemFound { info: info, .. } => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone(), emit_info.clone()),
+    ItemLookup::ItemLeafAmbiguous { leaf: ambiguous_leaf, .. } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+    ItemLookup::ItemNotFound => crate::v1_compiler_emit::emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
 }
             } else {
-                match v1_rt::map_get(&registry, leaf.clone()) {
-                    Some(info) => emit_qualified_value_ref_crate_ident(
-                        leaf.clone(),
-                        info.clone(),
-                        registry.clone(),
-                    ),
-                    std::option::Option::None => {
+                match (*lookup_item_by_leaf(leaf.clone(), registry.clone(), emit_info.clone()))
+                    .clone()
+                {
+                    ItemLookup::ItemFound { info: info, .. } => {
+                        emit_qualified_value_ref_crate_ident(
+                            leaf.clone(),
+                            info.clone(),
+                            registry.clone(),
+                            emit_info.clone(),
+                        )
+                    }
+                    ItemLookup::ItemLeafAmbiguous {
+                        leaf: ambiguous_leaf,
+                        ..
+                    } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+                    ItemLookup::ItemNotFound => {
                         if freemonoid_empty_from_emit_info(leaf.clone(), emit_info.clone()) {
                             emit_freemonoid_empty_rc_value()
                         } else {
@@ -21379,77 +21816,77 @@ pub fn emit_var_ref(
                                 body.clone()
                             }
                         }
-                        std::option::Option::None => {
-                            match lookup_item_for_value_ref(resolved_name.clone(), registry.clone())
-                            {
-                                Some(info) => {
-                                    if is_duplicate_qualified_item_registry_marker(info.clone()) {
-                                        value_ref_item_info_refusal(info.clone())
-                                    } else {
-                                        {
-                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                            if is_data.clone() {
-                                                v1_rt::concat(
-                                                    emit_value_ref_ident(
-                                                        name.clone(),
-                                                        registry.clone(),
-                                                        emit_info.clone(),
-                                                    ),
-                                                    "()".to_string(),
-                                                )
+                        std::option::Option::None => match (*lookup_item_for_value_ref(
+                            resolved_name.clone(),
+                            module_name.clone(),
+                            registry.clone(),
+                            emit_info.clone(),
+                        ))
+                        .clone()
+                        {
+                            ItemLookup::ItemLeafAmbiguous {
+                                leaf: ambiguous_leaf,
+                                ..
+                            } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+                            ItemLookup::ItemFound { info: info, .. } => {
+                                let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                if is_data.clone() {
+                                    v1_rt::concat(
+                                        emit_value_ref_ident(
+                                            name.clone(),
+                                            module_name.clone(),
+                                            registry.clone(),
+                                            emit_info.clone(),
+                                        ),
+                                        "()".to_string(),
+                                    )
+                                } else {
+                                    {
+                                        let is_function_value =
+                                            match binding_kind.clone().as_deref().cloned() {
+                                                Some(VarBindingKind::FunctionValueBinding) => true,
+                                                _ => false,
+                                            };
+                                        let ident = emit_value_ref_ident(
+                                            resolved_name.clone(),
+                                            module_name.clone(),
+                                            registry.clone(),
+                                            emit_info.clone(),
+                                        );
+                                        let ident_str = if is_function_value.clone() {
+                                            ident.clone()
+                                        } else {
+                                            if moves_by_value.clone() {
+                                                ident.clone()
                                             } else {
-                                                {
-                                                    let is_function_value = match binding_kind
-                                                        .clone()
-                                                        .as_deref()
-                                                        .cloned()
-                                                    {
-                                                        Some(
-                                                            VarBindingKind::FunctionValueBinding,
-                                                        ) => true,
-                                                        _ => false,
-                                                    };
-                                                    let ident = emit_value_ref_ident(
-                                                        resolved_name.clone(),
-                                                        registry.clone(),
-                                                        emit_info.clone(),
-                                                    );
-                                                    let ident_str = if is_function_value.clone() {
-                                                        ident.clone()
-                                                    } else {
-                                                        if moves_by_value.clone() {
-                                                            ident.clone()
-                                                        } else {
-                                                            match resolved_type.clone() {
+                                                match resolved_type.clone() {
     Some(_) => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), ident.clone()),
     _ => ident.clone(),
 }
-                                                        }
-                                                    };
-                                                    ident_str.clone()
-                                                }
                                             }
-                                        }
+                                        };
+                                        ident_str.clone()
                                     }
                                 }
-                                std::option::Option::None => {
-                                    let ident = emit_value_ref_ident(
-                                        resolved_name.clone(),
-                                        registry.clone(),
-                                        emit_info.clone(),
-                                    );
-                                    let ident_str = if moves_by_value.clone() {
-                                        ident.clone()
-                                    } else {
-                                        match resolved_type.clone() {
+                            }
+                            ItemLookup::ItemNotFound => {
+                                let ident = emit_value_ref_ident(
+                                    resolved_name.clone(),
+                                    module_name.clone(),
+                                    registry.clone(),
+                                    emit_info.clone(),
+                                );
+                                let ident_str = if moves_by_value.clone() {
+                                    ident.clone()
+                                } else {
+                                    match resolved_type.clone() {
     Some(_) => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), ident.clone()),
     _ => ident.clone(),
 }
-                                    };
-                                    ident_str.clone()
-                                }
+                                };
+                                ident_str.clone()
                             }
-                        }
+                        },
                     };
                     ref_str
                 }
@@ -21526,39 +21963,42 @@ pub fn emit_typed_expr_base(
                                     n.clone(),
                                     scope.module_name.clone(),
                                 );
-                                match lookup_item_for_value_ref(
+                                match (*lookup_item_for_value_ref(
                                     resolved_name.clone(),
+                                    scope.module_name.clone(),
                                     registry.clone(),
-                                ) {
-                                    Some(info) => {
-                                        if is_duplicate_qualified_item_registry_marker(info.clone())
-                                        {
-                                            value_ref_item_info_refusal(info.clone())
+                                    emit_info.clone(),
+                                ))
+                                .clone()
+                                {
+                                    ItemLookup::ItemLeafAmbiguous {
+                                        leaf: ambiguous_leaf,
+                                        ..
+                                    } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+                                    ItemLookup::ItemFound { info: info, .. } => {
+                                        let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                        if is_data.clone() {
+                                            v1_rt::concat(
+                                                emit_value_ref_ident(
+                                                    n.clone(),
+                                                    scope.module_name.clone(),
+                                                    registry.clone(),
+                                                    emit_info.clone(),
+                                                ),
+                                                "()".to_string(),
+                                            )
                                         } else {
-                                            {
-                                                let is_data =
-                                                    (info.kind.clone() == ItemKind::DataItem);
-                                                if is_data.clone() {
-                                                    v1_rt::concat(
-                                                        emit_value_ref_ident(
-                                                            n.clone(),
-                                                            registry.clone(),
-                                                            emit_info.clone(),
-                                                        ),
-                                                        "()".to_string(),
-                                                    )
-                                                } else {
-                                                    emit_value_ref_ident(
-                                                        resolved_name.clone(),
-                                                        registry.clone(),
-                                                        emit_info.clone(),
-                                                    )
-                                                }
-                                            }
+                                            emit_value_ref_ident(
+                                                resolved_name.clone(),
+                                                scope.module_name.clone(),
+                                                registry.clone(),
+                                                emit_info.clone(),
+                                            )
                                         }
                                     }
-                                    std::option::Option::None => emit_value_ref_ident(
+                                    ItemLookup::ItemNotFound => emit_value_ref_ident(
                                         resolved_name.clone(),
+                                        scope.module_name.clone(),
                                         registry.clone(),
                                         emit_info.clone(),
                                     ),
@@ -22463,24 +22903,13 @@ pub fn call_semantics_supplied_application_plan(
     })
 }
 
-pub fn call_semantics_target(cs: Option<Rc<CallSemantics>>) -> Rc<CallTargetIdentity> {
-    match cs.clone().as_deref().cloned() {
-        Some(CallSemantics::PlainCallSemantics { target: target, .. }) => target.clone(),
-        Some(CallSemantics::ResolvedDirectCallSemantics { target, .. }) => target.clone(),
-        Some(CallSemantics::LookupCallSemantics { target: target, .. }) => target.clone(),
-        Some(CallSemantics::FunctionValueCallSemantics) => {
-            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
-        }
-        std::option::Option::None => Rc::new(CallTargetIdentity::CallableTargetUndetermined),
-    }
-}
-
 pub fn call_target_runtime_primitive_name(target: Rc<CallTargetIdentity>) -> Option<String> {
     match (*target.clone()).clone() {
         CallTargetIdentity::RuntimePrimitiveCall { primitive_name, .. } => {
             Some(primitive_name.clone())
         }
         CallTargetIdentity::SourceDeclarationCall { .. } => std::option::Option::None,
+        CallTargetIdentity::LocallyBoundCall { name: _, .. } => std::option::Option::None,
         CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
     }
 }
@@ -22495,6 +22924,7 @@ pub fn call_target_projected_declaration(
     match (*target.clone()).clone() {
         CallTargetIdentity::RuntimePrimitiveCall { projected_from, .. } => projected_from.clone(),
         CallTargetIdentity::SourceDeclarationCall { .. } => std::option::Option::None,
+        CallTargetIdentity::LocallyBoundCall { name: _, .. } => std::option::Option::None,
         CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
     }
 }
@@ -22528,7 +22958,7 @@ pub fn emit_rust_expr_call(
                 expr.inferred.clone(),
                 cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
-                call_semantics_target(cs.clone()),
+                crate::v1_std_core::call_semantics_target(cs.clone()),
                 registry.clone(),
                 scope.clone(),
                 depth.clone(),
@@ -24074,9 +24504,12 @@ pub fn emit_typed_call(
                 owner_module_path: owner,
                 decl_name: decl,
                 ..
-            } => crate::v1_compiler_emit::lookup_item(
+            } => crate::v1_compiler_emit::lookup_item_by_identity(
                 registry.clone(),
-                v1_rt::concat(v1_rt::concat(owner.clone(), ".".to_string()), decl.clone()),
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: owner.clone(),
+                    decl_name: decl.clone(),
+                }),
             ),
             _ => std::option::Option::None,
         };
@@ -24266,6 +24699,9 @@ pub fn emit_typed_call(
                             crate::v1_compiler_emit::emit_ident(decl.clone(), RenderTarget::Rust),
                         )
                     }
+                }
+                CallTargetIdentity::LocallyBoundCall { name: n, .. } => {
+                    crate::v1_compiler_emit::emit_ident(n.clone(), RenderTarget::Rust)
                 }
                 CallTargetIdentity::CallableTargetUndetermined => {
                     crate::v1_compiler_emit::emit_error_expr(
@@ -24886,7 +25322,7 @@ pub fn lambda_scope_from_children(
     )
     .iter()
     .cloned()
-    .fold(scope.clone(), |acc: _, pair: (i64, String)| {
+    .fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
         let idx = pair.0.clone();
         let param_name = pair.1.clone();
         let param_type = match param_nodes
@@ -25436,6 +25872,7 @@ pub fn emit_rust_fold_method_call(
                     );
                     match ps.clone().first().cloned() {
                         Some(acc_name) => Rc::new(EmitGraphInfo {
+                            item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                             type_summaries: emit_info.type_summaries.clone(),
                             type_decl_items: emit_info.type_decl_items.clone(),
                             fn_decl_items: emit_info.fn_decl_items.clone(),
@@ -25481,6 +25918,7 @@ pub fn emit_rust_fold_method_call(
                         );
                         match ps.clone().first().cloned() {
                             Some(acc_name) => Rc::new(EmitGraphInfo {
+                                item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
                                 type_summaries: emit_info.type_summaries.clone(),
                                 type_decl_items: emit_info.type_decl_items.clone(),
                                 fn_decl_items: emit_info.fn_decl_items.clone(),
@@ -28108,7 +28546,7 @@ pub fn emit_typed_match_arm_strs(
                         seen: Rc::new(vec![]),
                         out: Rc::new(vec![]),
                     }),
-                    |acc: Rc<RcGroupedArmAcc>, e: _| {
+                    |acc: Rc<RcGroupedArmAcc>, e: Rc<RcGroupedArmEntry>| {
                         let representative = if e.plan.clone().groupable.clone() {
                             rc_group_representative(entries.clone(), e.plan.clone().variant.clone())
                         } else {
@@ -31520,7 +31958,7 @@ pub fn emit_rust_tco_non_self_call(
                 frame.expr.clone().children.clone(),
                 cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
-                call_semantics_target(cs.clone()),
+                crate::v1_std_core::call_semantics_target(cs.clone()),
                 registry.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
@@ -34201,7 +34639,7 @@ pub fn emit_wire_struct_path_chain(
                 node: Some(wire_node.clone()),
                 ok: true,
             }),
-            |acc: _, seg: String| {
+            |acc: Rc<WirePathProjection>, seg: String| {
                 advance_wire_path_projection(
                     acc,
                     seg.clone(),
@@ -35262,7 +35700,7 @@ pub fn emit_unrealizable_shell_channel(channel: ShellResultChannel) -> String {
         crate::v1_compiler_emit::shell_emission_refusal_fact(Rc::new(
             ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
                 key: crate::v1_compiler_emit::shell_result_channel_key(channel.clone()),
-                target_name: render_target_name(RenderTarget::Rust),
+                target_name: crate::v1_compiler_emit::render_target_name(RenderTarget::Rust),
             },
         )),
         RenderTarget::Rust,
@@ -36784,10 +37222,9 @@ pub fn record_data_decl(
 }
 
 pub fn build_data_decl_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<DataDeclIndex> {
-    modules
-        .iter()
-        .cloned()
-        .fold(empty_data_decl_index(), |acc: _, tm: _| {
+    modules.iter().cloned().fold(
+        empty_data_decl_index(),
+        |acc: Rc<DataDeclIndex>, tm: Rc<TypedModule>| {
             let si = tm.type_env.clone().source_indices.clone();
             let module_path = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
             let seeded = Rc::new(DataDeclIndex {
@@ -36803,11 +37240,9 @@ pub fn build_data_decl_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<DataDeclIn
                     si.clone(),
                 ),
             });
-            tm.items
-                .clone()
-                .iter()
-                .cloned()
-                .fold(seeded.clone(), |inner: _, i: Rc<Node>| {
+            tm.items.clone().iter().cloned().fold(
+                seeded.clone(),
+                |inner: Rc<DataDeclIndex>, i: Rc<Node>| {
                     if (crate::v1_compiler_infer_items::item_kind(i.clone()) != ItemKind::DataItem)
                     {
                         inner.clone()
@@ -36822,8 +37257,10 @@ pub fn build_data_decl_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<DataDeclIn
                             std::option::Option::None => inner.clone(),
                         }
                     }
-                })
-        })
+                },
+            )
+        },
+    )
 }
 
 pub fn data_decl_in_module(
@@ -36927,17 +37364,20 @@ pub fn data_decl_reexporting_modules(
                 })
                 .iter()
                 .cloned()
-                .fold(empty_data_decl_reach(), |acc: _, e: _| {
-                    merge_data_decl_reach(
-                        acc,
-                        data_decl_reexporting_modules(
-                            index.clone(),
-                            e.module_path.clone(),
-                            name.clone(),
-                            (depth.clone() + 1),
-                        ),
-                    )
-                }),
+                .fold(
+                    empty_data_decl_reach(),
+                    |acc: Rc<DataDeclReach>, e: Rc<DataImportEdge>| {
+                        merge_data_decl_reach(
+                            acc,
+                            data_decl_reexporting_modules(
+                                index.clone(),
+                                e.module_path.clone(),
+                                name.clone(),
+                                (depth.clone() + 1),
+                            ),
+                        )
+                    },
+                ),
             }
         }
     })
@@ -36968,17 +37408,20 @@ pub fn data_decl_visible_modules(
             })
             .iter()
             .cloned()
-            .fold(empty_data_decl_reach(), |acc: _, e: _| {
-                merge_data_decl_reach(
-                    acc,
-                    data_decl_reexporting_modules(
-                        index.clone(),
-                        e.module_path.clone(),
-                        name.clone(),
-                        1,
-                    ),
-                )
-            });
+            .fold(
+                empty_data_decl_reach(),
+                |acc: Rc<DataDeclReach>, e: Rc<DataImportEdge>| {
+                    merge_data_decl_reach(
+                        acc,
+                        data_decl_reexporting_modules(
+                            index.clone(),
+                            e.module_path.clone(),
+                            name.clone(),
+                            1,
+                        ),
+                    )
+                },
+            );
             Rc::new(DataDeclReach {
                 modules: crate::v1_compiler_emit_core_support::unique_strings(
                     reached.modules.clone(),
@@ -37275,11 +37718,16 @@ pub fn to_workflow_func(
 ) -> Rc<WorkflowFunc> {
     {
         let item_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-        let svc_names =
-            match crate::v1_compiler_emit::lookup_item(registry.clone(), item_name.clone()) {
-                Some(info) => info.service_names.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
+        let svc_names = match crate::v1_compiler_emit::lookup_item_by_identity(
+            registry.clone(),
+            Rc::new(DeclaredCallableIdentity {
+                owner_module_path: module_name.clone(),
+                decl_name: item_name.clone(),
+            }),
+        ) {
+            Some(info) => info.service_names.clone(),
+            std::option::Option::None => Rc::new(vec![]),
+        };
         let param_defaults = item.params.clone().iter().cloned().fold(Rc::new(WorkflowParamDefaults {
     resolved: v1_rt::rc_empty_map::<String, String>(),
     ambiguous: v1_rt::rc_empty_map::<String, Rc<UnresolvableDataReference>>(),
@@ -37336,6 +37784,7 @@ match (*resolve_param_default(p.clone(), index.clone(), module_name.clone(), sou
 
 pub fn is_workflow_item(
     item: Rc<Node>,
+    module_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -37345,9 +37794,15 @@ pub fn is_workflow_item(
         if ((item.uses.clone().len() as i64) > 0) {
             true
         } else {
-            match crate::v1_compiler_emit::lookup_item(
+            match crate::v1_compiler_emit::lookup_item_by_identity(
                 registry.clone(),
-                crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: module_name.clone(),
+                    decl_name: crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        item.clone(),
+                    ),
+                }),
             ) {
                 Some(info) => {
                     (((info.service_names.clone().len() as i64) > 0)
@@ -37377,6 +37832,10 @@ pub fn collect_workflow_funcs(
                             for item in tm.items.clone().iter().cloned() {
                                 if is_workflow_item(
                                     item.clone(),
+                                    crate::v1_std_core::authored_name_at(
+                                        tm.type_env.clone().source_indices.clone(),
+                                        tm.module.clone(),
+                                    ),
                                     registry.clone(),
                                     tm.type_env.clone().source_indices.clone(),
                                 ) {
