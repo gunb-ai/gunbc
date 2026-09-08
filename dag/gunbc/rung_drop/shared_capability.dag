@@ -24,8 +24,10 @@ import gunbc.rung_drop {
 // AllWaitersStanding over the identities it knows. That is the same shape as a hand-authored list
 // standing in for a derived population. Measured here rather than predicted: the first census
 // counted drops that copy-pasted a hazard paragraph; this list includes floor_cut_falsifier_cadence
-// because it names the same scheduled predict-only cold comparison without that paragraph. A
-// future waiter can be missed the same way.
+// because it names the same scheduled predict-only cold comparison without that paragraph. That
+// row's second arm (operator withdrawal) is not the shared capability firing: it retires this
+// identity by removing it from waiter_identities in the same change. A future waiter can be
+// missed the same way as an unenrolled cadence waiter.
 //
 // CURRENT RUNG: 2, mechanically preventable -- and only over the enrolled set. Safety depends on
 // the witness executing and on an author remembering to append waiter_identities. It is not
@@ -133,7 +135,9 @@ fn every_shared_capability_holds(caps: List<SharedCapability>, ds: List<RungDrop
 // TYPED WAITERS MUST CITE THIS CAPABILITY'S IDENTITY in their restoration_trigger, so the unique
 // remainder cannot silently become a private trigger again. A prose waiter has no typed trigger
 // field; its membership in waiter_identities is the join, and requiring a substring of a paragraph
-// would be a second, positional naming scheme for the same fact.
+// would be a second, positional naming scheme for the same fact. A prose waiter that also admits
+// an operator-withdrawal arm must name delisting from waiter_identities on that arm, or the join
+// treats a legitimate single-row retirement as SplitRetirement.
 fn typed_waiters_cite_capability(cap: SharedCapability, ds: List<RungDrop>) -> Bool {
   fold(waiter_rows(cap: cap, ds: ds), init: true, f: fn(acc, d) {
     acc && match d.declaration {
