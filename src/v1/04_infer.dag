@@ -609,9 +609,10 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 // and emitted OperandIdentityUnavailableAt for `+` in std.import.
 // Locals fill every other arm: name-lookup miss, parent-enum miss (lookup_type_for
 // on the locals node fails under composed intern while the Disj node is still in
-// locals — #10838 only filled the name-lookup miss, so roadmap_belt_actuate:3532
-// stayed Primitive(Observed) vs Coproduct(BeltObserve) on bdec61e28b), and a HIT
-// that is not that owner (unit-arm projection).
+// locals — #10838 only filled the name-lookup miss, so
+// gunbc.roadmap_belt_actuate belt_sessions_observe_for_instance still refused when
+// resolved as a dependency of tools.generated_artifact_gate rather than as its own
+// --entry), and a HIT that is not that owner (unit-arm projection).
 fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
