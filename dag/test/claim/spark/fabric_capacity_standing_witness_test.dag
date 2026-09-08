@@ -2,10 +2,14 @@ module test.claim.spark.fabric_capacity_standing_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
+import std.measure { concurrent_request_hundredths_count }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
+import extdeps.vllm.log_lines { vllm_startup_line_prefix, GpuKvCacheSize, MaximumConcurrency }
 import gunbc.instruments.fabric_capacity_standing {
   CapacityProbeRead, ProbeFields, ProbeUnreadable, decode_probe,
   ProbeReadings, ProbeReadingsReady, ProbeReadingsRefused, readings_from_fields,
+  tokens_from_gpu_kv_cache_size_line, hundredths_from_maximum_concurrency_line,
+  capacity_probe_script,
 }
 
 fn w_lines(running: String, waiting: String) -> String {
@@ -15,8 +19,8 @@ fn w_lines(running: String, waiting: String) -> String {
     "deadbeef",
     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "1788000000",
-    "1500000",
-    "1122",
+    "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens",
+    "Maximum concurrency for 1,048,576 tokens per request: 11.22x",
     "54475",
     "16",
     "1048576",
@@ -75,7 +79,35 @@ test fn a_supplied_revision_is_the_one_the_readings_carry() -> Bool {
             && (reported.observed_at_revision.full_revision as String) == "0000000000000000000000000000000000000000"
             && (layout.established_at_revision.full_revision as String) == "0000000000000000000000000000000000000000"
             && (pool.observed_at_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String)
+            && (pool.captured_line as String) == "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens"
+            && concurrent_request_hundredths_count(c: reported.max_concurrency) == 1122
       }
   }
+}
+
+// THE CAPTURED TEXT IS THE ENGINE'S LINE, NOT A LINE THIS INSTRUMENT WROTE. A bare integer, or a
+// string this module used to synthesize, is not a startup line and cannot inhabit the carrier.
+test fn a_synthesized_or_bare_integer_is_not_a_startup_line() -> Bool {
+  (match tokens_from_gpu_kv_cache_size_line(line: "11767856") { Absent => true  Present { value: _ } => false })
+    && (match hundredths_from_maximum_concurrency_line(line: "Maximum concurrency for tokens per request: 1122 hundredths") {
+          Absent => true
+          Present { value: _ } => false
+        })
+    && (match tokens_from_gpu_kv_cache_size_line(line: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens") {
+          Present { value: n } => n == 11767856
+          Absent => false
+        })
+    && (match hundredths_from_maximum_concurrency_line(line: "Maximum concurrency for 1,048,576 tokens per request: 11.22x") {
+          Present { value: n } => n == 1122
+          Absent => false
+        })
+}
+
+test fn the_probe_script_greps_the_declared_startup_prefixes_and_emits_the_line() -> Bool {
+  let script = capacity_probe_script()
+  string_contains(s: script, pattern: vllm_startup_line_prefix(line: GpuKvCacheSize) as String)
+    && string_contains(s: script, pattern: vllm_startup_line_prefix(line: MaximumConcurrency) as String)
+    && !string_contains(s: script, pattern: "s/.*size: //")
+    && !string_contains(s: script, pattern: "s/.*request: //")
 }
 

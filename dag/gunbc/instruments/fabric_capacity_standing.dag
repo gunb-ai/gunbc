@@ -16,7 +16,7 @@ import gunbc.spark.managed_access_apply { spark_managed_login }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.server { VllmSourceRevision }
-import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency }
+import extdeps.vllm.log_lines { vllm_startup_reading, vllm_startup_line_prefix, GpuKvCacheSize, MaximumConcurrency, VllmStartupLine }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout { ResolvedKvLayout, resolved_kv_layout, VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity }
 import gunbc.spark.vllm_kv_layout_observe {
@@ -42,11 +42,12 @@ import gunbc.spark.pair_serving_capacity_floor {
 // number that says 99% and means something else. The instrument earns its keep the day the answer
 // changes without anyone intending it to.
 //
-// ONE ROUND TRIP PER GROUP, and the far side does the text handling. The head curls its OWN metrics
-// endpoint, greps its own launch log and normalises everything into fixed-position lines, so this
-// module parses integers at known offsets instead of carrying a Prometheus parser and a log parser
-// it would then have to keep in step with two upstream formats. A field the far side cannot produce
-// is a literal "-", which fails to parse here and refuses -- it never arrives as a zero.
+// ONE ROUND TRIP PER GROUP. The head curls its own metrics and greps its own launch log. The two
+// startup figures travel as the LAST matching LINE, not as a sed-extracted integer -- the carrier
+// they inhabit exists so the only inhabitant is one the engine printed. The grep prefixes are
+// interpolated from extdeps.vllm.log_lines vllm_startup_line_prefix; they are not a second spelling
+// of the upstream surface. A field the far side cannot produce is a literal "-", which refuses
+// here and never arrives as a zero.
 
 data capacity_probe_unit: String = "gunbc-spark-pair-head"
 data capacity_probe_container: String = "gunbc-spark-pair"
@@ -54,7 +55,7 @@ data capacity_probe_log: String = "/var/log/gunbc/spark-pair-head.log"
 
 data capacity_probe_script_brace_workaround_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a heads-only (or full) module index whose brace matching is token-aware. SUFFICIENT FOR: a --format template or a shell function body to inhabit a .dag string without flattening (gunbc.recurring_failure_mode.heads_only_index_counts_braces_inside_string_literals). Until then this script is flattened because the reader cannot tell a string from structure. Token-aware matching does not emit this program as typed argv." as NonEmptyStr)
 
-data capacity_probe_script_shell_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) realizes this remote inventory probe as typed orchestration intent (or typed host-effect argv) and group_report ships that realization rather than stdin_payload: capacity_probe_script(). SUFFICIENT FOR: emit_field and capacity_probe_script delete together; ExecPortableWordsWithStdin no longer carries a hand-assembled 12-field bash program. Until then this is the marked shell-as-string fact." as NonEmptyStr)
+data capacity_probe_script_shell_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) realizes this remote inventory probe as typed orchestration intent (or typed host-effect argv) and group_report ships that realization rather than stdin_payload: capacity_probe_script(). SUFFICIENT FOR: emit_field and capacity_probe_script delete together; ExecPortableWordsWithStdin no longer carries a hand-assembled 12-field bash program. The which-prefix decision is already this module's: vllm_startup_line_prefix is interpolated into the payload. Until then this is the marked shell-as-string fact for transport and field order, not for the upstream log surface." as NonEmptyStr)
 
 data observed_engine_revision_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the live probe observes the engine's vLLM source revision as VllmSourceRevision (repository plus full git object), not /version and not the container image digest (extdeps.vllm.server), and group_report passes that Present value into readings_from_fields instead of none. SUFFICIENT FOR: ProbeReadingsReady is reachable from fabric_capacity_standing, so admit_kv_layout, capacity_floor_standing and admission_posture run on the live path and ExitSuccess is authorable. Until then none is the honest observation, not a stamp of vllm_source_revision_read." as NonEmptyStr)
 
@@ -82,8 +83,8 @@ fn capacity_probe_script() -> String {
     "docker ps -q --filter name=$c | head -1",
     "docker inspect $c | sed -n 's/.*\"Image\": \"sha256:\\([0-9a-f]*\\)\".*/\\1/p' | head -1",
     "date -d \"$(systemctl show $u -p ExecMainStartTimestamp --value)\" +%s",
-    "grep -a 'GPU KV cache size' \"$log\" | tail -1 | sed 's/.*size: //; s/ tokens.*//; s/,//g'",
-    "grep -a 'Maximum concurrency' \"$log\" | tail -1 | sed 's/.*request: //; s/x.*//; s/[.]//'",
+    join(["grep -a '", vllm_startup_line_prefix(line: GpuKvCacheSize) as String, "' \"$log\" | tail -1"], ""),
+    join(["grep -a '", vllm_startup_line_prefix(line: MaximumConcurrency) as String, "' \"$log\" | tail -1"], ""),
     "printf '%s' \"$m\" | grep -o 'num_gpu_blocks=\"[0-9]*\"' | head -1 | tr -dc '0-9'",
     "printf '%s' \"$m\" | grep -o 'block_size=\"[0-9]*\"' | head -1 | tr -dc '0-9'",
     "curl -s --max-time 8 http://127.0.0.1:30000/v1/models | grep -o 'max_model_len\":[0-9]*' | tr -dc '0-9'",
@@ -98,8 +99,8 @@ type CapacityProbeFields {
   container: String
   image_sha: String
   started_at: Int
-  pool_tokens: Int
-  concurrency_hundredths: Int
+  pool_line: String
+  concurrency_line: String
   allocator_blocks: Int
   block_size: Int
   max_model_len: Int
@@ -119,6 +120,46 @@ fn int_at(lines: List<String>, n: Nat) -> Int? {
   parse_int(s: field_at(lines: lines, n: n))
 }
 
+fn captured_line_at(lines: List<String>, n: Nat) -> String? {
+  let s = field_at(lines: lines, n: n)
+  if s == "-" || s == "" {
+    none
+  } else {
+    Present { value: s }
+  }
+}
+
+fn after_startup_prefix(line: String, kind: VllmStartupLine) -> String? {
+  let parts = split(s: line, delimiter: vllm_startup_line_prefix(line: kind) as String)
+  if list_length(items: parts) < 2 {
+    none
+  } else {
+    Present { value: trim(s: field_at(lines: parts, n: 1)) }
+  }
+}
+
+fn tokens_from_gpu_kv_cache_size_line(line: String) -> Int? {
+  match after_startup_prefix(line: line, kind: GpuKvCacheSize) {
+    Absent => none
+    Present { value: after } =>
+      parse_int(s: replace(s: trim(s: split(s: after, delimiter: " ").first()), from: ",", to: ""))
+  }
+}
+
+fn hundredths_from_maximum_concurrency_line(line: String) -> Int? {
+  match after_startup_prefix(line: line, kind: MaximumConcurrency) {
+    Absent => none
+    Present { value: after } => {
+      let segs = split(s: after, delimiter: ":")
+      if list_length(items: segs) < 2 {
+        none
+      } else {
+        parse_int(s: replace(s: replace(s: trim(s: field_at(lines: segs, n: list_length(items: segs) - 1)), from: "x", to: ""), from: ".", to: ""))
+      }
+    }
+  }
+}
+
 fn decode_probe(stdout: String) -> CapacityProbeRead {
   let lines = split(s: trim(s: stdout), delimiter: "\n")
   if list_length(items: lines) < 12 {
@@ -127,12 +168,12 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
     match int_at(lines: lines, n: 4) {
       Absent => ProbeUnreadable { detail: "the unit start instant did not parse as epoch seconds" }
       Present { value: started } =>
-        match int_at(lines: lines, n: 5) {
+        match captured_line_at(lines: lines, n: 5) {
           Absent => ProbeUnreadable { detail: "the engine's GPU KV cache size line was not found in the launch log" }
-          Present { value: pool } =>
-            match int_at(lines: lines, n: 6) {
+          Present { value: pool_line } =>
+            match captured_line_at(lines: lines, n: 6) {
               Absent => ProbeUnreadable { detail: "the engine's maximum concurrency line was not found in the launch log" }
-              Present { value: conc } =>
+              Present { value: conc_line } =>
                 match int_at(lines: lines, n: 7) {
                   Absent => ProbeUnreadable { detail: "num_gpu_blocks was not present in the engine's cache-config metric" }
                   Present { value: blocks } =>
@@ -154,8 +195,8 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                                       container: field_at(lines: lines, n: 2),
                                       image_sha: field_at(lines: lines, n: 3),
                                       started_at: started,
-                                      pool_tokens: pool,
-                                      concurrency_hundredths: conc,
+                                      pool_line: pool_line,
+                                      concurrency_line: conc_line,
                                       allocator_blocks: blocks,
                                       block_size: bs,
                                       max_model_len: ctx,
@@ -217,31 +258,39 @@ type ProbeReadings
   | ProbeReadingsRefused { cause: NonEmptyStr }
 
 fn pool_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision) -> VllmObservedKvPool? {
-  match vllm_observed_kv_pool_from_reading(
-    tokens: token_count(count: f.pool_tokens),
-    reading: vllm_startup_reading(
-      line: GpuKvCacheSize,
-      captured_text: join(["GPU KV cache size: ", to_string(f.pool_tokens), " tokens"], "") as NonEmptyStr,
-      observed_at_revision: revision,
-    ),
-  ) {
-    KvPoolAdmitted { pool: p } => Present { value: p }
-    KvPoolRefused { cause: _ } => none
+  match tokens_from_gpu_kv_cache_size_line(line: f.pool_line) {
+    Absent => none
+    Present { value: tokens } =>
+      match vllm_observed_kv_pool_from_reading(
+        tokens: token_count(count: tokens),
+        reading: vllm_startup_reading(
+          line: GpuKvCacheSize,
+          captured_text: f.pool_line as NonEmptyStr,
+          observed_at_revision: revision,
+        ),
+      ) {
+        KvPoolAdmitted { pool: p } => Present { value: p }
+        KvPoolRefused { cause: _ } => none
+      }
   }
 }
 
 fn reported_from_fields(pool: VllmObservedKvPool, f: CapacityProbeFields, revision: VllmSourceRevision) -> VllmReportedCapacity? {
-  match vllm_reported_capacity(
-    pool: pool,
-    max_concurrency: concurrent_request_hundredths(count: f.concurrency_hundredths),
-    reading: vllm_startup_reading(
-      line: MaximumConcurrency,
-      captured_text: join(["Maximum concurrency for tokens per request: ", to_string(f.concurrency_hundredths), " hundredths"], "") as NonEmptyStr,
-      observed_at_revision: revision,
-    ),
-  ) {
-    ReportedCapacityAdmitted { capacity: c } => Present { value: c }
-    ReportedCapacityRefused { cause: _ } => none
+  match hundredths_from_maximum_concurrency_line(line: f.concurrency_line) {
+    Absent => none
+    Present { value: hundredths } =>
+      match vllm_reported_capacity(
+        pool: pool,
+        max_concurrency: concurrent_request_hundredths(count: hundredths),
+        reading: vllm_startup_reading(
+          line: MaximumConcurrency,
+          captured_text: f.concurrency_line as NonEmptyStr,
+          observed_at_revision: revision,
+        ),
+      ) {
+        ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+        ReportedCapacityRefused { cause: _ } => none
+      }
   }
 }
 
@@ -336,8 +385,8 @@ fn group_report(group: FabricGroup) -> GroupStanding {
                   ProbeReadingsRefused { cause: c } => refused_standing(text: join([
                     name, " @ ", address as String, " invocation=", f.invocation, "\n",
                     "    engine: ", to_string(f.running), " running, ", to_string(f.waiting), " waiting; inventory ",
-                    to_string(f.allocator_blocks), " blocks of ", to_string(f.block_size), "; printed pool ",
-                    to_string(f.pool_tokens), " tokens at ", to_string(f.concurrency_hundredths), " hundredths\n",
+                    to_string(f.allocator_blocks), " blocks of ", to_string(f.block_size), "\n",
+                    "    printed: ", f.pool_line, " / ", f.concurrency_line, "\n",
                     "    receipt: refused -- ", c as String,
                   ], ""))
                   ProbeReadingsReady { pool: _, reported: reported, layout: layout } => {
@@ -354,8 +403,8 @@ fn group_report(group: FabricGroup) -> GroupStanding {
                       text: join([
                       name, " @ ", address as String, " invocation=", f.invocation, "\n",
                       "    engine: ", to_string(f.running), " running, ", to_string(f.waiting), " waiting; inventory ",
-                      to_string(f.allocator_blocks), " blocks of ", to_string(f.block_size), "; printed pool ",
-                      to_string(f.pool_tokens), " tokens at ", to_string(f.concurrency_hundredths), " hundredths\n",
+                      to_string(f.allocator_blocks), " blocks of ", to_string(f.block_size), "\n",
+                      "    printed: ", f.pool_line, " / ", f.concurrency_line, "\n",
                       "    receipt: ", receipt_wire(r: receipt), "\n",
                       "    floor:   ", standing_wire(s: floor), "\n",
                       "    posture: ", posture_wire(p: posture),
