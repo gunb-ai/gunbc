@@ -594,8 +594,6 @@ fn count_jobs_with_status(jobs: List<WorkflowJobRun>, status: WorkflowRunStatus)
   }
 }
 
-}
-
 fn count_jobs(jobs: List<WorkflowJobRun>) -> Int {
   match jobs {
     Empty {} => 0
