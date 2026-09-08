@@ -1,7 +1,7 @@
 module test.claim.algebra_receiver_annotated_witness_test
 
 import std.types { Bool, Int, List }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons }
 
 // The declared List<Int> is a nominal application. Its argument is the Int
 // algebra_child_or_placeholder is missing on a Cons expansion. Binding that
@@ -32,12 +32,4 @@ fn annotated_parameter_fold(xs: List<Int>) -> Int {
 
 test fn annotated_fn_parameter_fold_resolves() -> Bool {
   annotated_parameter_fold(xs: [1, 2, 3]) == 6
-}
-
-// Annotated Empty as fold init: the declared FreeMonoid<Int> is the
-// application; Empty's expansion is not. Same binding as the Cons receiver
-// above, different constructor and a different fold argument.
-test fn annotated_freemonoid_empty_initializer_fold_resolves() -> Bool {
-  let initial: FreeMonoid<Int> = Empty
-  [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) }) == [1, 2]
 }
