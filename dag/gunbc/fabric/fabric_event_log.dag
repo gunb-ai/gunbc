@@ -23,7 +23,7 @@ import product.capacity.pool_events {
   PoolEvent, pool_event_wire_text, pool_event_decode, PoolEventDecode, PoolEventDecoded, PoolEventUndecodable,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
 }
-import product.capacity.lease { LeasePolicy, LeaseGrant }
+import product.capacity.lease { LeasePolicy, LeaseGrant, ReleaseLaw, FencedResource, QuiescenceRequired, release_law_wire }
 
 // THE FABRIC EVENT LOG: THE CARRIER FOR EVERY CAPACITY TRANSACTION, REALIZED ON THE SCM SUBSTRATE.
 // One immutable object per event, addressed by its content; one ref per partition, advanced by a
@@ -374,7 +374,32 @@ fn seat_attempt(layout: EventLogLayout, partition: PartitionId, root: Pool<Count
   }
 }
 
+// THE RELEASE LAW IS SPELLED TWICE HERE AND THE TWO SPELLINGS MUST AGREE. The pool root carries the
+// law it enforces on its own history; the caller's LeasePolicy carries the law it believes it is
+// acquiring under. Nothing joined them, so a pool could hold a seat past expiry while the caller and
+// its witnesses described a fence that frees it -- a safety law with two independent spellings drifts,
+// and the drift is invisible because each side is internally consistent. A mismatch is refused before
+// anything is appended rather than resolved in favour of either side: neither is authoritative over
+// the other, and picking one silently would be the same fail-open in a different costume.
+fn release_laws_agree(left: ReleaseLaw, right: ReleaseLaw) -> Bool {
+  match left {
+    FencedResource => match right { FencedResource => true  QuiescenceRequired => false }
+    QuiescenceRequired => match right { QuiescenceRequired => true  FencedResource => false }
+  }
+}
+
 fn fabric_seat_acquire(layout: EventLogLayout, partition: PartitionId, root: Pool<Count, One>, actor: NonEmptyStr, request: SeatRequest, policy: LeasePolicy, attempts: Nat, budget: Nat) -> SeatAcquisition {
+  if !release_laws_agree(left: root.release_law, right: policy.release_law) {
+    SeatAcquireRefused {
+      step: "release-law",
+      reason: join([
+        "the pool root enforces ", release_law_wire(law: root.release_law),
+        " while the lease policy declares ", release_law_wire(law: policy.release_law),
+        ", so the seat would be held under one law and released under another",
+      ], ""),
+      attempts_used: 0,
+    }
+  } else {
   let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: SeatAttemptState { done: none, attempted: 0 }, f: (acc, i) =>
     match acc.done {
       Present { value: _ } => acc
@@ -383,6 +408,7 @@ fn fabric_seat_acquire(layout: EventLogLayout, partition: PartitionId, root: Poo
   match st.done {
     Present { value: d } => d
     Absent => SeatContended { attempts: attempts }
+  }
   }
 }
 

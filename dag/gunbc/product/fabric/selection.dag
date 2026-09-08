@@ -24,7 +24,7 @@ import product.fabric.supply {
   QuotedTotal, QuotedTotalDerived, QuotedTotalNeedsDuration,
   GrantDuration, ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
   grant_duration_bound_seconds,
-  EqualCostOfferTieBreak, StableRosterOrder, AffinityKeyedRendezvous,
+  EqualCostOfferTieBreak, StableRosterOrder, AffinityKeyedRendezvous, PlacementAffinityKey,
 }
 
 // SELECTION IS THE FOLD product.fabric.supply DECLINED TO WRITE, AND THIS MODULE IS WHY IT
@@ -1059,14 +1059,14 @@ fn cohort_at_total<P>(priced: List<PricedCandidate<P>>, total: Nat) -> List<Pric
 // IT MUST SURVIVE A RETRY. A value minted per attempt would spread one demand across offers on
 // successive tries, which is worse than concentrating it -- so the caller passes a stable value and
 // the ranking is derived here rather than accepted as a rank.
-fn rendezvous_digest(affinity: NonEmptyStr, offer_key: NonEmptyStr) -> Fnv1a64Structural {
+fn rendezvous_digest(affinity: PlacementAffinityKey, offer_key: NonEmptyStr) -> Fnv1a64Structural {
   content_hash_combine_structural(
-    left: content_hash_atom(value: affinity),
+    left: content_hash_atom(value: affinity as NonEmptyStr),
     right: content_hash_atom(value: offer_key),
   )
 }
 
-fn candidate_digest<P>(c: PricedCandidate<P>, affinity: NonEmptyStr) -> Fnv1a64StructuralDigestHex {
+fn candidate_digest<P>(c: PricedCandidate<P>, affinity: PlacementAffinityKey) -> Fnv1a64StructuralDigestHex {
   rendezvous_digest(affinity: affinity, offer_key: c.candidate.offer.id.key).digest
 }
 
@@ -1081,7 +1081,7 @@ type KeyedCandidate<P> {
   digest: Fnv1a64StructuralDigestHex
 }
 
-fn key_cohort<P>(cohort: List<PricedCandidate<P>>, affinity: NonEmptyStr) -> List<KeyedCandidate<P>> {
+fn key_cohort<P>(cohort: List<PricedCandidate<P>>, affinity: PlacementAffinityKey) -> List<KeyedCandidate<P>> {
   map(cohort, c => KeyedCandidate { candidate: c, digest: candidate_digest(c: c, affinity: affinity) })
 }
 
@@ -1126,7 +1126,7 @@ type EqualCostOutcome<P>
 fn resolve_cohort<P>(
   cohort: List<PricedCandidate<P>>,
   tie: EqualCostOfferTieBreak,
-  affinity: NonEmptyStr,
+  affinity: PlacementAffinityKey,
 ) -> EqualCostOutcome<P>? {
   match tie {
     StableRosterOrder =>
@@ -1156,7 +1156,7 @@ fn select_supply<P>(
   budget_currency: CurrencyCode,
   delay_valuation: MoneyPerSecond,
   tie: EqualCostOfferTieBreak,
-  affinity: NonEmptyStr,
+  affinity: PlacementAffinityKey,
 ) -> SupplySelection<P> {
   let ranked = fold(
     candidates,

@@ -9,7 +9,7 @@ import product.fabric.selection {
   CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   select_supply,
 }
-import product.fabric.supply { StableRosterOrder }
+import product.fabric.supply { StableRosterOrder, PlacementAffinityKey }
 import gunbc.fabric_witness_run {
   floor_execution_requirements, floor_grant_duration, floor_buy_terms, floor_admission_terms,
   floor_satisfaction_requirement,
@@ -86,7 +86,7 @@ fn floor_supply_selection(
   candidates: List<CandidateOffer<NonEmptyStr>>,
   maximum_buy_order: MoneyAmountMicro,
   delay_valuation: MoneyPerSecond,
-  affinity: NonEmptyStr,
+  affinity: PlacementAffinityKey,
 ) -> SupplySelection<NonEmptyStr> {
   select_supply(
     requirements: floor_execution_requirements(),

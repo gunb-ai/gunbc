@@ -14,15 +14,19 @@ import v2.std.optional { Present, Absent }
 import gunbc.fabric_event_log_host {
   HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host, now_epoch_seconds,
 }
-import product.capacity.pool { Pool, NoReplenishment, pool_of }
-import product.capacity.event_chain { PartitionId, HeadAbsent, HeadAt, ChainEvent }
-import product.capacity.pool_events { PoolReleased, SeatRequest }
+import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_release, pool_refusal_wire, PoolAdvanced, PoolRefused }
+import product.capacity.event_chain {
+  PartitionId, EventId, HeadAbsent, HeadAt, ChainEvent, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+}
+import product.capacity.pool_events {
+  PoolEvent, PoolAcquired, PoolReleased, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
+}
 import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity, QuiescenceRequired }
 import gunbc.fabric_event_log {
   EventLogLayout, HeadExpectation, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
   EventAppendStale, EventAppendRefused, event_log_append, SeatGranted, SeatFull, SeatContended,
   SeatAcquireRefused, fabric_seat_acquire, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved,
-  fabric_seat_observe,
+  fabric_seat_observe, PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,
 }
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelAbsent, HarnessBackendUnreachable,
@@ -30,7 +34,7 @@ import gunbc.harness.harness_backend {
 }
 import gunbc.harness.harness_wire { HarnessWireShape, harness_backend_url_for_address, harness_engine_model }
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity }
-import product.fabric.supply { EstimatedGrantDuration, AffinityKeyedRendezvous }
+import product.fabric.supply { EstimatedGrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
 import product.fabric.selection {
   CandidateOffer, CandidateBound, DispatchInputsNameAnotherOffer, bind_candidate, PayAsYouGo,
   OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply,
@@ -365,18 +369,26 @@ fn harness_candidate_for_key(candidates: List<HarnessCandidate>, key: NonEmptySt
 // included, so a reference of actor-plus-epoch-seconds collides with itself whenever one actor
 // places twice inside one second and stays refused forever after (review 62155).
 //
-// AND THE ROUND ORDINAL DOES NOT SEPARATE TWO PROCESSES, which is what the first repair missed. It
-// separates the attempts of ONE placement loop; two independent invocations both begin at round one,
-// so the same actor selecting the same offer in the same second mints one reference twice, and the
-// second is refused permanently rather than losing an ordinary race. The head the partition is at is
-// what distinguishes them: it advances on every append, so the loser of a compare-and-set re-observes
-// a head the winner moved and its next round mints a different reference. That turns a permanent
-// poisoning back into the transient contention it actually is.
+// AND NEITHER THE ROUND ORDINAL NOR THE HEAD SEPARATES TWO CONCURRENT PROCESSES, which two repairs
+// in a row got wrong and this one states exactly. The round separates the attempts of ONE placement
+// loop; two independent invocations both begin at round one. The head separates placements that ran
+// after one another, because an append moves it -- but two processes that READ THE SAME HEAD are
+// exactly the case it cannot tell apart, since the head only advances once one of them has already
+// won. So the uniqueness of a reference rests on the ATTEMPT IDENTITY the caller supplies, and this
+// module says so rather than claiming a property its inputs do not have.
+//
+// WHAT THE CALLER OWES, AND WHAT HAPPENS IF IT DOES NOT PAY. The attempt identity must be distinct
+// per placement attempt: a worktree for a worker, a verdict path for a reviewer, the router's own
+// request identity for a proxied turn. A caller that reuses one gets a duplicate reference, which the
+// pool REFUSES over its whole history -- so the failure is a loud, permanent refusal for that caller,
+// never two processes sharing a seat. That is the fail-closed direction, and it is the reason this is
+// an obligation rather than a hazard; a process identity in the substrate would let this module mint
+// the value itself, which is the trigger for removing the obligation.
 //
 // A HEAD THAT COULD NOT BE READ IS NOT A ZERO. It has no reference to mint, so the acquisition
 // refuses -- minting one against an unread head would be a reference that cannot be shown unique.
-fn harness_seat_reference(actor: NonEmptyStr, offer_key: NonEmptyStr, now: EpochSecs, round: Nat, head: NonEmptyStr) -> NonEmptyStr {
-  join([actor as String, "@", to_string(now), "#", to_string(round), "/", offer_key as String, "^", head as String], "") as NonEmptyStr
+fn harness_seat_reference(attempt: NonEmptyStr, offer_key: NonEmptyStr, now: EpochSecs, round: Nat, head: NonEmptyStr) -> NonEmptyStr {
+  join([attempt as String, "@", to_string(now), "#", to_string(round), "/", offer_key as String, "^", head as String], "") as NonEmptyStr
 }
 
 fn harness_head_word(head: HeadExpectation) -> NonEmptyStr {
@@ -457,7 +469,7 @@ fn harness_fence_grant(candidate: HarnessCandidate, layout: EventLogLayout, part
   }
 }
 
-fn harness_acquire_on(candidate: HarnessCandidate, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
+fn harness_acquire_on(candidate: HarnessCandidate, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
   match harness_seat_capacity(group: candidate.group) {
     AdmissionCeilingUnestablished { group: _, cause: why } =>
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: why as String) }
@@ -468,7 +480,7 @@ fn harness_acquire_on(candidate: HarnessCandidate, layout: EventLogLayout, shape
           AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the partition head could not be read at ", st, ", so no unique acquisition reference exists: ", why], "")) }
         HeadObserved { head: h } => {
       let request = SeatRequest {
-        reference: harness_seat_reference(actor: actor, offer_key: candidate.key, now: now, round: round, head: harness_head_word(head: h)),
+        reference: harness_seat_reference(attempt: attempt, offer_key: candidate.key, now: now, round: round, head: harness_head_word(head: h)),
         amount: 1,
         at: now,
         term_seconds: policy.maximum_duration_seconds,
@@ -509,7 +521,7 @@ fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBi
   }
 }
 
-fn harness_placement_round(acc: PlacementRound, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> PlacementRound {
+fn harness_placement_round(acc: PlacementRound, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> PlacementRound {
   match acc.done {
     Present { value: _ } => acc
     Absent => {
@@ -524,7 +536,7 @@ fn harness_placement_round(acc: PlacementRound, layout: EventLogLayout, shape: H
         budget_currency: Usd,
         delay_valuation: serving_delay_valuation,
         tie: AffinityKeyedRendezvous,
-        affinity: actor,
+        affinity: actor as PlacementAffinityKey,
       ) {
         NoAdmissibleOffer { considered: _ } =>
           PlacementRound {
@@ -550,7 +562,7 @@ fn harness_placement_round(acc: PlacementRound, layout: EventLogLayout, shape: H
                 retryable: retryable,
               }
             Present { value: c } =>
-              match harness_acquire_on(candidate: c, layout: layout, shape: shape, actor: actor, policy: policy, now: now, round: round) {
+              match harness_acquire_on(candidate: c, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round) {
                 AcquisitionGranted { binding: b } =>
                   PlacementRound { done: Present { value: b }, excluded: acc.excluded, notes: notes, retryable: retryable }
                 AcquisitionRefused { detail: d } =>
@@ -569,7 +581,7 @@ data harness_placement_rounds: Nat = 3
 // NO ADMISSIBLE OFFER IS A REFUSAL OR A PENDING, NEVER A DEGRADED PATH. The arm this replaces walked
 // the roster and took whatever granted a seat, which is the same shape as the router's "the request
 // has to go somewhere".
-fn harness_bind_seat(short_hostname: String, shape: HarnessWireShape, actor: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
+fn harness_bind_seat(short_hostname: String, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
   match event_log_layout_for_host(short_hostname: short_hostname) {
     HostLayoutRefused { detail: d } => HarnessSeatRefused { detail: d }
     HostLayoutResolved { layout: layout, executor: _ } =>
@@ -577,7 +589,7 @@ fn harness_bind_seat(short_hostname: String, shape: HarnessWireShape, actor: Non
         Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } => {
           let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false }, f: (acc, round) =>
-            harness_placement_round(acc: acc, layout: layout, shape: shape, actor: actor, policy: policy, now: now, round: round))
+            harness_placement_round(acc: acc, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round))
           match placed.done {
             Present { value: b } => b
             Absent =>
@@ -598,23 +610,53 @@ type ReleaseFold {
   done: HarnessSeatRelease?
 }
 
+// A RELEASE IS PROVEN AGAINST THE CHAIN BEFORE IT IS PUBLISHED, exactly as an acquisition is. The
+// earlier shape appended PoolReleased straight at the head: a reference that names no held entry, or
+// one already released, committed successfully and made the NEXT fold refuse the whole partition --
+// so a bad release did not fail, it poisoned the history for everyone, and the refusal surfaced far
+// from the caller that caused it. Reading the chain, folding it, and running pool_release purely
+// first turns that into a typed refusal before anything is written.
+fn release_proposal(pool: Pool<Count, One>, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> String? {
+  match pool_release(pool: pool, reference: reference, reason: reason, at: now) {
+    PoolAdvanced { pool: _ } => none
+    PoolRefused { refusal: r } => Present { value: pool_refusal_wire(r: r) }
+  }
+}
+
 fn release_append(layout: EventLogLayout, partition: PartitionId, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease? {
-  match event_log_observe_head(layout: layout, partition: partition) {
-    HeadObservationRefused { step: s, reason: why } => Present { value: HarnessSeatReleaseRefused { detail: join([s, ": ", why], "") } }
-    HeadObserved { head: head } => {
-      let event = ChainEvent {
-        partition: partition,
-        parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
-        recorded_at: now,
-        actor: reference,
-        payload: PoolReleased { reference: reference, reason: reason },
+  match event_log_read_partition(layout: layout, partition: partition, budget: 4096) {
+    PartitionReadRefused { step: s, reason: why } => Present { value: HarnessSeatReleaseRefused { detail: join([s, ": ", why], "") } }
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+          Present { value: HarnessSeatReleaseRefused { detail: join(["the partition chain is missing event ", m as String], "") } }
+        ChainBudgetExhausted { at: a } =>
+          Present { value: HarnessSeatReleaseRefused { detail: join(["the partition chain exceeded the read budget at ", a as String], "") } }
+        ChainWalked { oldest_first: xs } =>
+          match pool_fold(root: harness_seat_pool_root(partition: partition), oldest_first: xs) {
+            PoolFoldRefused { at_event: e, wire: w } =>
+              Present { value: HarnessSeatReleaseRefused { detail: join(["the partition does not fold: event ", e as String, " refused: ", w], "") } }
+            PoolFolded { pool: p, generation: _ } =>
+              match release_proposal(pool: p, reference: reference, reason: reason, now: now) {
+                Present { value: why } =>
+                  Present { value: HarnessSeatReleaseRefused { detail: join(["this release does not apply to the standing pool: ", why], "") } }
+                Absent => {
+                  let event = ChainEvent {
+                    partition: partition,
+                    parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+                    recorded_at: now,
+                    actor: reference,
+                    payload: PoolReleased { reference: reference, reason: reason },
+                  }
+                  match event_log_append(layout: layout, partition: partition, event: event, expected: head) {
+                    EventAppended { id: _ } => Present { value: HarnessSeatReleased { partition: partition } }
+                    EventAppendStale { expected: _, observed: _ } => none
+                    EventAppendRefused { step: s, reason: why } => Present { value: HarnessSeatReleaseRefused { detail: join([s, ": ", why], "") } }
+                  }
+                }
+              }
+          }
       }
-      match event_log_append(layout: layout, partition: partition, event: event, expected: head) {
-        EventAppended { id: _ } => Present { value: HarnessSeatReleased { partition: partition } }
-        EventAppendStale { expected: _, observed: _ } => none
-        EventAppendRefused { step: s, reason: why } => Present { value: HarnessSeatReleaseRefused { detail: join([s, ": ", why], "") } }
-      }
-    }
   }
 }
 
@@ -711,6 +753,30 @@ fn harness_release_held(short_hostname: String, capability: HarnessReleaseCapabi
 // the one the grant was issued under -- other seats have been taken and released since, which is
 // ordinary -- but it can never be behind, and a partition that reads older than the grant is a
 // different history than the one that admitted it.
+// THE GRANT IS CHECKED, NOT MERELY CARRIED. Holding the grant identity in the capability and never
+// consulting it made it decoration: a caller could pair the right partition with somebody else's
+// reference and any grant string at all and still reach the append. So the chain is read and the
+// event that ADMITTED this reference is found; the capability's grant must be that event's id. That
+// is what makes possession of the capability mean "this bearer holds this seat" rather than "this
+// bearer knows a reference".
+fn admitting_event_for(walk: ChainWalk<PoolEvent>, reference: NonEmptyStr) -> EventId? {
+  match walk {
+    ChainIncomplete { missing: _, newest_first_so_far: _ } => none
+    ChainBudgetExhausted { at: _ } => none
+    ChainWalked { oldest_first: xs } =>
+      fold(xs, init: none, f: (acc, env) =>
+        match acc {
+          Present { value: e } => Present { value: e }
+          Absent =>
+            match env.event.payload {
+              PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
+                if (r as String) == (reference as String) { Present { value: env.id } } else { none }
+              _ => none
+            }
+        })
+  }
+}
+
 fn harness_release_fenced(layout: EventLogLayout, capability: HarnessReleaseCapability, observed: Nat, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
   if observed < capability.generation {
     HarnessSeatReleaseRefused {
@@ -721,7 +787,29 @@ fn harness_release_fenced(layout: EventLogLayout, capability: HarnessReleaseCapa
       ], ""),
     }
   } else {
-    release_retry(layout: layout, partition: capability.partition, reference: capability.reference, reason: reason, now: now)
+    match event_log_read_partition(layout: layout, partition: capability.partition, budget: 4096) {
+      PartitionReadRefused { step: st, reason: why } =>
+        HarnessSeatReleaseRefused { detail: join(["the partition could not be read at ", st, ", so the grant could not be checked: ", why], "") }
+      PartitionReadOk { head: _, walk: walk } =>
+        match admitting_event_for(walk: walk, reference: capability.reference) {
+          Absent =>
+            HarnessSeatReleaseRefused {
+              detail: join(["no acquisition of ", capability.reference as String, " appears in the partition at ", capability.partition as String], ""),
+            }
+          Present { value: admitting } =>
+            if (admitting as String) != (capability.grant as String) {
+              HarnessSeatReleaseRefused {
+                detail: join([
+                  "this capability names grant ", capability.grant as String,
+                  " while ", capability.reference as String, " was admitted by ", admitting as String,
+                  ", so its bearer does not hold this seat",
+                ], ""),
+              }
+            } else {
+              release_retry(layout: layout, partition: capability.partition, reference: capability.reference, reason: reason, now: now)
+            }
+        }
+    }
   }
 }
 

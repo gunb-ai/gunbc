@@ -2,6 +2,7 @@ module gunbc.harness.harness_cli
 
 import std.types { String, Int, FilePath, NonEmptyStr }
 import std.nat { Nat }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
 import gunbc.harness.harness_throughput { harness_round_budget_steps }
@@ -286,12 +287,29 @@ fn harness_placement_pending_exit(detail: String) -> ProcessExit {
 // THE ENDPOINT PRINTED IS THE ONE THE GRANT NAMES. A caller that takes this url is talking to the
 // engine the seat was taken against; a caller that ignores it and picks its own host has left the
 // boundary, which is the capability router_realization forbids by name.
+// THE ATTEMPT IDENTITY IS THE ROUTER'S TO SUPPLY, and it is a separate argument from the actor
+// because the two answer different questions: the actor says WHO is placing, the attempt says WHICH
+// placement this is. One router placing two requests in the same second is one actor and two attempts,
+// and the acquisition reference is only unique if the second fact is actually distinct. A router that
+// reuses one gets a duplicate reference, which the pool refuses over its whole history -- loud, and
+// never two requests sharing a seat.
+//
+// THE PROBE ENTRIES DERIVE THEIRS FROM THE CLOCK, which is honest about what it buys: two probes
+// started in the same second on the same partition head collide and the second refuses. That is rare,
+// loud and fail-closed, and it is the shape that goes away when the substrate can name a process.
+fn harness_probe_attempt(label: String) -> NonEmptyStr {
+  match now_epoch_seconds() {
+    Absent => label as NonEmptyStr
+    Present { value: now } => join([label, "@", to_string(now)], "") as NonEmptyStr
+  }
+}
+
 // THE RECEIPT CARRIES THE EXACT PARTITION AND THE GRANT'S FENCE, not the group name alone. A release
 // that re-derived the partition from the group would address a newer partition than the one holding
 // the seat the moment the ceiling is versioned again, and a bare reference names an entry without
 // establishing that its bearer is the holder.
-fn harness_place_cli(actor: String, receipt: String) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: actor as NonEmptyStr, policy: harness_seat_policy)
+fn harness_place_cli(actor: String, attempt: String, receipt: String) -> ProcessExit {
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: actor as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -358,7 +376,7 @@ fn harness_release_cli(partition: String, reference: String, grant: String, gene
 // bypass that only a diagnostic uses is still a bypass, and it is the one most likely to be run
 // while something else is in flight.
 fn harness_probe_cli() -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: "probe" as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -453,7 +471,7 @@ fn harness_worker_cli(
   repo_root: String,
   gunbc_program: String,
 ) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: join(["worker:", worktree, "@", events_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -535,7 +553,7 @@ fn harness_reviewer_cli(
   verdict_name: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -604,7 +622,7 @@ fn harness_auditor_cli(
   verdict_name: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -631,7 +649,7 @@ fn harness_auditor_cli(
 // AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall
 // with a door beside it.
 fn harness_probe_report() -> String {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: "probe-report" as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
     HarnessSeatPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")

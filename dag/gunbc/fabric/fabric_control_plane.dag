@@ -420,7 +420,7 @@ fn broker_reserve_for_demand(
     candidates: fabric_cell_roster_candidates(roster: partition.admitted),
     maximum_buy_order: maximum_buy_order,
     delay_valuation: delay_valuation,
-    affinity: demand.id.key,
+    affinity: (demand.id.key as String) as PlacementAffinityKey,
   ) {
     NoAdmissibleOffer { considered: c } =>
       NoCellAdmissible { considered: c, refused: partition.refused }
