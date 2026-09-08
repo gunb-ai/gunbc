@@ -9,6 +9,9 @@ import std.algebra { Cons }
 // Unannotated Cons/Empty refusals wait on #10625's evidence wall and are not
 // enrolled here: on this main they still execute, so a census for
 // AlgebraApplicationEvidenceUnavailable would be a premature red, not a discriminator.
+// Discriminating RED for this Cons arm is authorable only on a compiler that
+// already has that wall; on current main both this arm and the annotated
+// parameter arm PASS without this change.
 test fn annotated_list_cons_fold_resolves() -> Bool {
   let l: List<Int> = Cons { head: 1, tail: [2, 3] }
   l |> fold(init: 0, f: fn(acc, x) { acc + x }) == 6
@@ -30,6 +33,7 @@ fn annotated_parameter_fold(xs: List<Int>) -> Int {
   xs |> fold(init: 0, f: fn(acc, x) { acc + x })
 }
 
+// Stay-green on the #10625 wall without this change; not a discriminating arm.
 test fn annotated_fn_parameter_fold_resolves() -> Bool {
   annotated_parameter_fold(xs: [1, 2, 3]) == 6
 }
