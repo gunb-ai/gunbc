@@ -4,7 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
-import std.measure { TokenCount, token_count, percent, AllocatorBlockCount, allocator_block_count, allocator_block_count_value }
+import std.measure { TokenCount, token_count, percent, AllocatorBlockCount, allocator_block_count, allocator_block_count_value, attention_layer_count }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
@@ -12,7 +12,7 @@ import extdeps.vllm.server { vllm_source_revision_read }
 import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout {
-  KvBlockSize, KvLayerCount, KvGroupLayout, FullAttention, ResolvedKvLayout, resolved_kv_layout,
+  KvGroupLayout, FullAttention, ResolvedKvLayout, resolved_kv_layout,
   VllmReportedCapacity, vllm_reported_capacity,
 }
 import gunbc.spark.vllm_kv_layout_observe { VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutInconsistent, admit_kv_layout }
@@ -60,8 +60,8 @@ fn with_pool(tokens: Int, f: (VllmObservedKvPool) -> Bool) -> Bool {
   }
 }
 
-fn w_full(layers: KvLayerCount) -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: 16 }
+fn w_full(layers: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: 16) }
 }
 
 fn w_layout(blocks: Nat, groups: List<KvGroupLayout>) -> ResolvedKvLayout {
