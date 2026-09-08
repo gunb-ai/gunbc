@@ -147,6 +147,8 @@ test fn witness_systemd_duration_normalizes_equal_spellings() -> Bool {
     && (match systemd_duration_usec(text: "5s") { Present { value: v } => microsecond_count(v) == 5000000  Absent => false })
     && (match systemd_duration_usec(text: "2 fortnights") { Present { value: _ } => false  Absent => true })
     && (match systemd_duration_usec(text: "") { Present { value: _ } => false  Absent => true })
+    && (match systemd_duration_usec(text: "1min 30fortnights") { Present { value: _ } => false  Absent => true })
+    && (match systemd_duration_usec(text: "min") { Present { value: _ } => false  Absent => true })
 }
 
 // (9) RED (review 5061891290 P1-3): a timer whose EFFECTIVE cadence is not R's emitted value

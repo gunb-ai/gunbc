@@ -1,0 +1,22 @@
+module test.claim.systemd_time_span_witness
+
+import std.types { Bool }
+import std.measure { microsecond_count }
+import extdeps.systemd { systemd_duration_usec }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Positive control: "60s" and "1min" compare equal at systemd's microsecond resolution.
+// Discriminating red: unknown units, empty input, a malformed part, and a mixed span whose
+// second token is unknown all refuse — never a partial sum.
+test fn witness_systemd_duration_normalizes_equal_spellings() -> Bool {
+  (match systemd_duration_usec(text: "60s") { Present { value: v } => microsecond_count(v) == 60000000  Absent => false })
+    && (match systemd_duration_usec(text: "1min") { Present { value: v } => microsecond_count(v) == 60000000  Absent => false })
+    && (match systemd_duration_usec(text: "1min 30s") { Present { value: v } => microsecond_count(v) == 90000000  Absent => false })
+    && (match systemd_duration_usec(text: "5s") { Present { value: v } => microsecond_count(v) == 5000000  Absent => false })
+    && (match systemd_duration_usec(text: "2 fortnights") { Present { value: _ } => false  Absent => true })
+    && (match systemd_duration_usec(text: "") { Present { value: _ } => false  Absent => true })
+    && (match systemd_duration_usec(text: "1min 30fortnights") { Present { value: _ } => false  Absent => true })
+    && (match systemd_duration_usec(text: "min") { Present { value: _ } => false  Absent => true })
+}
