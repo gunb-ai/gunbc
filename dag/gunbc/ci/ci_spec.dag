@@ -15,6 +15,7 @@ import gunbc.spark.credential_workflow {
   spark_administrator_password_secret_ref_at_version,
 }
 import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
+import gunbc.host_reset_return { host_reset_return_receipt_path }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -769,6 +770,34 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
   function: "runner_microvm_host_converge_wet",
 }
 
+// THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes no arguments: the dispatch names the OBSERVER, the
+// step hands that label over by environment, and the subject is derived from the label through the
+// modeled assignment. There is no input of any kind through which a caller could name a subject,
+// which is what keeps a reset job from being pointed at its own host.
+//
+// THE CREDENTIAL ROUTE IS NOT LANDED, and this annotation previously said it was. The entry reads
+// gunbc.host.host_reset_return_run host_reset_bmc_credential_path_env and refuses when it is unset,
+// but no step in fleet_converge_host_reset_return_job materializes it, so the emitted mode can today
+// only reach that first refusal. The materialization has the shape the Spark prelude already
+// establishes at gunbc_ci_spark_grant_install_credential_prelude; what is missing is the secret resource
+// itself, which is an operator fact and not something this module may invent -- a plausible resource
+// name here would render a step that fetches nothing and writes an empty file. The frontier is
+// declared in the annotation above gunbc.host.host_reset_return reset_return_verdict_of_mint, and is
+// retired by that secret existing, not by any edit here.
+data gunbc_ci_host_reset_return_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_reset_return_run.dag",
+  function: "host_reset_return_wet",
+}
+
+// THE DISPATCH ADMISSION TARGET. It takes no arguments: both values it reads -- the mode and the
+// observer label -- arrive by environment on the step, which is the same route the reset entry uses
+// for the label. It runs in the BUILD job, after the release binaries exist, because the reset job
+// cannot be scheduled at all in the state this refuses.
+data gunbc_ci_host_reset_dispatch_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_reset_return_run.dag",
+  function: "host_reset_return_dispatch_admission_wet",
+}
+
 data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_microvm_boot_probe.dag",
   function: "runner_microvm_boot_probe_wet",
@@ -914,6 +943,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
     gunbc_ci_runner_microvm_boot_probe_target,
+    gunbc_ci_host_reset_return_target,
+    gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_apply_target,
@@ -1679,6 +1710,26 @@ fn gunbc_ci_runner_microvm_host_converge_invoke() -> String {
     function: gunbc_ci_runner_microvm_host_converge_target.function,
     claim_run: false,
     receipt_rel: "target/runner-microvm-host-standing.txt"
+  )
+}
+
+fn gunbc_ci_host_reset_return_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_reset_return_target.entry,
+    function: gunbc_ci_host_reset_return_target.function,
+    claim_run: false,
+    receipt_rel: host_reset_return_receipt_path as String
+  )
+}
+
+fn gunbc_ci_host_reset_dispatch_admission_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_reset_dispatch_admission_target.entry,
+    function: gunbc_ci_host_reset_dispatch_admission_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

@@ -1,0 +1,109 @@
+module gunbc.runner.runner_checkout_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THE FIRST CANARY CARRYING A CREDENTIAL WORTH STEALING, run only after the envelope path was
+// authenticated in both directions. Build checkout-2, actions run 34166021289.
+//
+// EVERY EARLIER CANARY WAS DELIBERATELY TRIVIAL. Two echo steps prove a job reaches the machine and
+// reports; they do not touch the resolver, do not open TLS to more than one host, do not write a
+// working tree, and do not hold a token. This one does all four.
+
+data receipt_subject_build: NonEmptyStr = "checkout-2"
+data receipt_subject_run: NonEmptyStr = "actions run 34166021289, conclusion success"
+data receipt_subject_iso_digest: NonEmptyStr = "eeb4df937b422c4668369cffd1091b11eb01c3251f47e830c3ee55ec3049ab2b"
+data receipt_subject_guest_digest: NonEmptyStr = "6b9d380eee2019bfa4054407e23342db96a51931a467f12386e4fe2e3634391e"
+
+data host_capture_artifact: NonEmptyStr = "docs/probes/mtcollins_checkout_and_js_action_2026-09-07.txt"
+data host_capture_full_digest: NonEmptyStr = "b543fc3db0cef5cb59aae385c07584847a9b5b10c1d7bdd169763c15d820d3b0"
+data host_capture_extract_digest: NonEmptyStr = "2f29b1067e4cab60ff55c19a2051dcb4241fd2806f59110bbe1d7d4c5fe24c31"
+
+// ── the checkout, asserted rather than assumed ─────────────────────────────────────────────────
+
+// A STEP COMPLETING SAYS THE ACTION EXITED ZERO. That the tree exists, holds this repository's own
+// files, and sits at the commit this run was dispatched for are three further facts, and they are
+// the ones worth having -- a checkout that silently produced an empty or wrong tree would pass a
+// completion check and fail all three.
+data checkout_evidence: List<NonEmptyStr> = [
+  "git version 2.43.0, the release staged into the guest",
+  "HEAD dca4b4f2c84a5ce7d1369b8875edd90e6e849a02, compared against GITHUB_SHA rather than merely printed",
+  "5832 tracked files",
+  "DESIGN.md and dag/gunbc/runner present, so the tree is this repository and not an empty init",
+]
+
+// ── the JavaScript action ──────────────────────────────────────────────────────────────────────
+
+// CHOSEN SO ITS SUCCESS DOES NOT DEPEND ON GIT. actions/checkout is itself a JS action, so proving
+// it works proves both paths at once and distinguishes neither. github-script exercises the action
+// download and the runner's bundled node independently.
+data js_action_evidence: NonEmptyStr = "node v24.19.0 on arm64 linux, from the runner's own externals; the action was downloaded and executed on this host"
+
+// ── the filter under real CI load ──────────────────────────────────────────────────────────────
+
+// EVERY PREVIOUS COUNTER READING MEASURED TRAFFIC THIS LANE CHOSE. A probe sends what it was told to
+// send. This run's traffic was chosen by actions/checkout, the action downloader and the runner's
+// own telemetry -- 23.8 MB of it -- and the policy was written before any of it was seen.
+data counters_under_real_ci: List<NonEmptyStr> = [
+  "forward established,related: 4952 packets, 23832563 bytes",
+  "guest-dns: 46 packets accepted",
+  "guest-tls: 21 packets accepted",
+  "guest-snat: 44 flows masqueraded on attempt 1, 10 on attempt 2",
+  "guest-to-bmc: 3 packets dropped -- the containment assertion still fires",
+  "forward-default-drop: 0",
+]
+
+// forward-default-drop = 0 UNDER 23.8 MB IS THE READING THAT MATTERS, and its meaning is still
+// narrow. Every packet a real checkout produced matched a rule written for it; that says nothing
+// about the rules being TIGHT, because guest-tls admits 443 to any destination. A zero here remains
+// evidence that nothing unanticipated was attempted, not that the policy is narrow.
+data default_drop_reading: NonEmptyStr = "zero fall-through under real CI traffic means no unanticipated destination was reached; it does not mean the 443 grant is narrow, and narrowing it still needs an egress proxy"
+
+// ── two staging defects, both about placement rather than content ──────────────────────────────
+
+// THE FIRST RUN FAILED ON A MISSING LIBRARY THAT WAS PRESENT. git-remote-https could not load
+// libcurl-gnutls.so.4, and the file had been copied into the rootfs -- as a SYMLINK whose target was
+// never copied, because `cp -a` preserves links where the plain `cp` used by the nft and openssl
+// stagers dereferences them. ldconfig then pruned the dangling link, so the library that was
+// "already staged" had silently ceased to exist.
+data symlink_staging_defect: NonEmptyStr = "ldd resolves a SONAME to a path that is itself usually a symlink; cp -a preserved the link and left the target behind, and only this stager used -a"
+
+// AND A COPIED FILE IS NOT A LOADABLE LIBRARY. The guest's /etc/ld.so.cache was generated when the
+// base image was built, so anything dropped in afterwards is invisible to glibc regardless of where
+// it sits. Regenerating the cache against the root is what completes the staging.
+//
+// THESE ARE THE SAME CLASS AS THE PUBLISHER WRITING TO AN UNSERVED DIRECTORY: content verified
+// correctly in a place nothing reads. gunbc.runner.runner_artifact_lifecycle's read-back invariant
+// covers content and not placement, and this is the second demonstration in one session that the
+// missing half is the one that bites.
+data loader_cache_defect: NonEmptyStr = "a library copied into a rootfs is not loadable until ld.so.cache is regenerated; verifying the file exists says nothing about whether the loader can find it"
+
+data placement_invariant_gap: NonEmptyStr = "read-back proves content at a destination and never proves the destination is the one a consumer reads; twice in one session that gap produced a failure that looked like a missing artifact"
+
+// ── metering, including an attempt that did nothing ────────────────────────────────────────────
+
+// ATTEMPT 2 HAD NO JOB DISPATCHED AND BURNED ITS FULL DEADLINE. 1780 vCPU-seconds against attempt
+// 1's 176 -- an admitted attempt with nothing to run costs the whole deadline, because a JIT runner
+// waits rather than exiting.
+//
+// THAT IS A REAL BILLING SHAPE, NOT AN ANOMALY. Any scheduler that admits attempts ahead of demand
+// pays for the gap, and the meter shows it rather than hiding it inside an average.
+data metering: List<NonEmptyStr> = [
+  "attempt 1: 176 vCPU-seconds of VM execution, 54 seconds of capacity held",
+  "attempt 2: 1780 vCPU-seconds -- no job was dispatched to its label, so it listened until the deadline",
+]
+
+// ── retirement ─────────────────────────────────────────────────────────────────────────────────
+
+data retirement: List<NonEmptyStr> = [
+  "both attempts: jail-removed=yes, post-jit-device-present=no, post-workspace-present=no",
+  "the workspace that held a 5832-file checkout is gone, not merely emptied",
+]
+
+// ── what remains ───────────────────────────────────────────────────────────────────────────────
+
+data still_open: List<NonEmptyStr> = [
+  "a toolchain step -- a cargo build's dependency fetches are a far wider destination set than checkout plus one action",
+  "the guest rootfs is still assembled by copying a running system's files rather than from a declared package set",
+  "the placement half of the artifact read-back invariant, now demonstrated twice",
+  "a release that fails or returns ambiguously, still the oldest unexercised arm",
+]
