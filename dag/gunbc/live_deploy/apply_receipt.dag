@@ -37,8 +37,9 @@ import gunbc.actions_run_binding {
 // THE PLAN HASH IS PROVENANCE HERE, NOT ELIGIBILITY. R is the shared safety key across the four
 // runs; the plan and apply run identities ride on this receipt so the final join cannot pair an
 // arbitrary fleet transaction with an arbitrary dashboard transaction, but nothing about a plan
-// hash decides whether this deploy may proceed -- that stays with the target decision and the
-// candidate observation the existing fold already performs.
+// hash decides whether this deploy may proceed -- that stays with the candidate observation
+// the existing fold already performs, and with per-member identity on the host. There is no
+// target-decision field on this receipt.
 // 
 // THE CANDIDATE TREE OID IS `git rev-parse HEAD:` -- the colon form names the root tree of HEAD,
 // and it is the one spelling of that object the fleet portability wall admits
