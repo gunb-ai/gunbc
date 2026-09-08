@@ -198,7 +198,10 @@ fn rebuild_scope_extend_with_executable(
 // so a probe may build them and must terminate as packages-built-executable-unassembled: it may
 // not feed the fixed-point receipt or the second pass. Making that a typed question the host asks
 // -- rather than a sentence in a comment the host is trusted to have read -- is what keeps
-// "we derived the scope" from being spent as "we rebuilt from it".
+// "we derived the scope" from being spent as "we rebuilt from it". ReleaseScopeEmpty is
+// ACTUATABLE BECAUSE THERE IS NOTHING TO COMPILE, not because there is nothing to verify: the
+// host still runs the build, and the exclusion set (every package) makes any compilation a
+// located refusal rather than an unnoticed widening.
 fn stage0_partition_rebuild_is_actuatable(decision: PartitionRebuildDecision) -> Bool {
   match decision {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: assembly } =>
@@ -206,9 +209,6 @@ fn stage0_partition_rebuild_is_actuatable(decision: PartitionRebuildDecision) ->
         PartitionAssembledExecutable { package_name: _, bin_name: _ } => true
         ExecutableAssemblyUnavailable { trigger: _, detail: _ } => false
       }
-    // ACTUATABLE BECAUSE THERE IS NOTHING TO COMPILE, not because there is nothing to verify:
-    // the host still runs the build, and the exclusion set (every package) makes any
-    // compilation a located refusal rather than an unnoticed widening.
     ReleaseScopeEmpty { changed_mirrors: _ } => true
     WholeCompilerRebuildRequired { cause: _ } => false
     RebuildScopeRefused { cause: _ } => false
@@ -339,6 +339,13 @@ fn rebuild_scope_changed_outside_roster(changed_mirrors: List<String>, roster: L
 // the executable-coverage check with an empty closure and report ExecutableAssemblyNotCovered,
 // which is a true sentence about a question nobody asked and a false one about the tree. A round
 // that installed nothing is not a round whose executable is uncovered.
+//
+// RELEASE-EXCLUDED MIRRORS ARE PARTITIONED OFF FIRST inside the non-empty arm: they contribute
+// no owning package to any build the round can run, so owner resolution must not be asked about
+// them -- its refusal is for mirrors whose release scope EXISTS and cannot be answered, and a
+// cfg(test)-gated file is not one. When nothing release-visible remains, the answer is the
+// empty scope as a first-class verdict, not the ExecutableAssemblyNotCovered refusal an empty
+// closure would otherwise meet below: the executable is UNAFFECTED, not uncovered.
 fn stage0_partition_rebuild_decision(
   changed_mirrors: List<String>,
   unlocatable: List<String>,
@@ -355,12 +362,6 @@ fn stage0_partition_rebuild_decision(
   } else if count(changed_mirrors) == 0 {
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild }
   } else {
-    // RELEASE-EXCLUDED MIRRORS ARE PARTITIONED OFF FIRST: they contribute no owning package to
-    // any build the round can run, so owner resolution must not be asked about them -- its
-    // refusal is for mirrors whose release scope EXISTS and cannot be answered, and a
-    // cfg(test)-gated file is not one. When nothing release-visible remains, the answer is the
-    // empty scope as a first-class verdict, not the ExecutableAssemblyNotCovered refusal an
-    // empty closure would otherwise meet below: the executable is UNAFFECTED, not uncovered.
     let release_changed = rebuild_scope_changed_outside_roster(changed_mirrors: changed_mirrors, roster: rebuild_scope_release_excluded_mirrors)
     if count(release_changed) == 0 {
       ReleaseScopeEmpty { changed_mirrors: changed_mirrors }
@@ -549,14 +550,14 @@ fn stage0_partition_rebuild_release_scope_empty_today(
 // touches one of them is a located refusal rather than an unnoticed widening: an exclusion no
 // consumer can read is not evidence of anything, and this is the exclusion the whole
 // change-denominated claim rests on. The emit shell is a partition package, so it appears here
-// whenever the changed mirrors do not reach it.
+// whenever the changed mirrors do not reach it. UNDER ReleaseScopeEmpty THE CLOSURE IS EMPTY BY
+// CONSTRUCTION, so this answers EVERY package: the guarantee the host enforces is that the
+// verification build compiles no partition package, and an exclusion that names every package
+// is what makes a single compiled crate a located refusal.
 fn stage0_partition_rebuild_excluded_today(
   changed_mirrors: List<String>,
   unlocatable: List<String>
 ) -> List<String> {
-  // UNDER ReleaseScopeEmpty THE CLOSURE IS EMPTY BY CONSTRUCTION, so this answers EVERY package:
-  // the guarantee the host enforces is that the verification build compiles nothing, and an
-  // exclusion that names every package is what makes a single compiled crate a located refusal.
   rebuild_scope_excluded_packages(
     closure: stage0_partition_rebuild_packages_today(
       changed_mirrors: changed_mirrors,
