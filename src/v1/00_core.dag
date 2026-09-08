@@ -193,13 +193,65 @@ type DeclaredCallableIdentity {
 type CallTargetIdentity
   = RuntimePrimitiveCall { primitive_name: String, projected_from: DeclaredCallableIdentity? }
   | SourceDeclarationCall { owner_module_path: String, decl_name: String }
+  | LocallyBoundCall { name: String }
   | CallableTargetUndetermined
+
+// WHO OWNS A LEAF SPELLING, WITH AMBIGUITY AS AN ARM RATHER THAN AS A VALUE THE OWNER FIELD CANNOT
+// HOLD. The reverse of the item registry's key -- registry rows answer "what is THIS declaration",
+// and emission repeatedly asks "which module declares this spelling". The first encoding of that
+// index answered a contested leaf with the empty string, on the argument that an empty string is not
+// a legal module path so every consumer would miss and refuse. That argument is the one this
+// compiler already retired once, under `__DUPLICATE_ITEM_IDENTITY__`: the illegal state stayed
+// representable, and safety depended on every producer remembering to mint the sentinel and every
+// reader remembering to test for it. Four readers had to remember. As a coproduct the test is an
+// exhaustiveness arm the compiler demands, the producer cannot forget to mark ambiguity because
+// there is no other way to write it, and a reader that would have widened has to write the widening
+// down where a reviewer can see it. DESIGN section 5: correctness by construction, not validation.
+type LeafOwner
+  = SingleOwner { module: String }
+  | LeafAmbiguous
 
 type CallSemantics
   = PlainCallSemantics { target: CallTargetIdentity }
   | ResolvedDirectCallSemantics { target: CallTargetIdentity, application_plan: List<ResolvedCallFormal> }
   | LookupCallSemantics { target: CallTargetIdentity }
   | FunctionValueCallSemantics
+
+// THE RESOLVED CALLEE IDENTITY, PROJECTED WHERE THE TYPE IS DECLARED RATHER THAN AT ONE CONSUMER.
+//
+// This answers "which declaration does this call reach", and it is asked by two consumers that sit
+// on opposite sides of the pipeline: Rust emission, which needs the identity to name a symbol, and
+// transitive effect analysis, which needs it to key one summary per callable. It lived next to the
+// first consumer, so the second either had to depend on the Rust emitter -- inference importing an
+// emitter is a layer inversion -- or re-derive the answer from the authored spelling, which is the
+// owner-discarding join that made two modules' same-named declarations share one effect summary.
+//
+// A function value has no callable declaration to name, and a call carrying no recorded semantics
+// predates the carrier; both are Undetermined, which refuses at the seam that must produce an
+// identifier rather than silently reverting to name matching.
+// THE REGISTRY-KEY PROJECTION OF AN IDENTITY THAT ALREADY HAS A CARRIER.
+//
+// `DeclaredCallableIdentity` is the identity; this is only its spelling as a map key, and it takes
+// the RECORD rather than two loose strings for two reasons. It cannot be called with an authored
+// name that happens to contain a dot, which is the join this repair exists to remove. And it keeps
+// one spelling of the key: effect analysis and emission would otherwise agree by coincidence until
+// one of them changed its separator.
+//
+// Consumers carry the identity and project only at the map boundary. Projecting earlier throws
+// away the distinction the record exists to hold.
+fn callable_identity(id: DeclaredCallableIdentity) -> String {
+  concat(id.owner_module_path, ".", id.decl_name)
+}
+
+fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity {
+  match cs {
+    Present { value: PlainCallSemantics { target: target } } => target
+    Present { value: ResolvedDirectCallSemantics { target: target, application_plan: _ } } => target
+    Present { value: LookupCallSemantics { target: target } } => target
+    Present { value: FunctionValueCallSemantics } => CallableTargetUndetermined
+    Absent => CallableTargetUndetermined
+  }
+}
 
 // One declaration-produced fact, carried intact through application. These fields are not
 // independently recoverable at the call site: parameter identity orders named arguments,
@@ -378,6 +430,8 @@ type CompilerDiagnostic
   | ParameterDefaultFormNotAdmitted { parameter: String, admitted: List<String>, span: SourceSpan }
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
+  | EffectSummaryIncompleteAtFunctionValue { caller: String, span: SourceSpan }
+  | EffectSummaryIncompleteAtLocalBinding { caller: String, name: String, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
   | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
@@ -597,6 +651,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: s } => s
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
+    EffectSummaryIncompleteAtFunctionValue { caller: _, span: s } => s
+    EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
     CallArgumentDuplicate { callee: _, argument: _, span: s } => s
@@ -694,6 +750,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("default value for parameter '", p, "' is not an admitted form (admitted: ", join(forms, separator: ", "), ")")
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
+    EffectSummaryIncompleteAtFunctionValue { caller: c, span: _ } => concat("effect summary incomplete: ", c, " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer")
+    EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, span: _ } => concat(concat(concat(concat("effect summary incomplete: ", c), " calls the local binding '"), n), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
     CallPositionalSurplus { callee: c, supplied: s, capacity: cap, span: _ } =>
@@ -823,6 +881,8 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AmbiguousAnonymousRecordLiteral { candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EffectSummaryIncompleteAtFunctionValue { caller: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CallArgumentDuplicate { callee: _, argument: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

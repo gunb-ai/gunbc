@@ -16,6 +16,7 @@ use self::FieldAccessStyle::*;
 use self::FieldValueShape::*;
 use self::FunctionSizeEffect::*;
 use self::InferredNode::*;
+use self::LeafOwner::*;
 use self::MatchPattern::*;
 use self::MethodSemantics::*;
 use self::NodeFieldRole::*;
@@ -288,7 +289,25 @@ pub enum CallTargetIdentity {
         owner_module_path: String,
         decl_name: String,
     },
+    LocallyBoundCall {
+        name: String,
+    },
     CallableTargetUndetermined,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum LeafOwner {
+    SingleOwner { module: String },
+    LeafAmbiguous,
+}
+impl LeafOwner {
+    pub fn module(&self) -> String {
+        match self {
+            LeafOwner::SingleOwner { module: __val, .. } => __val.clone(),
+            LeafOwner::LeafAmbiguous => panic!("no module on unit variant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -314,6 +333,25 @@ impl CallSemantics {
             CallSemantics::LookupCallSemantics { target: __val, .. } => __val.clone(),
             CallSemantics::FunctionValueCallSemantics => panic!("no target on unit variant"),
         }
+    }
+}
+
+pub fn callable_identity(id: Rc<DeclaredCallableIdentity>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(id.owner_module_path.clone(), ".".to_string()),
+        id.decl_name.clone(),
+    )
+}
+
+pub fn call_semantics_target(cs: Option<Rc<CallSemantics>>) -> Rc<CallTargetIdentity> {
+    match cs.clone().as_deref().cloned() {
+        Some(CallSemantics::PlainCallSemantics { target: target, .. }) => target.clone(),
+        Some(CallSemantics::ResolvedDirectCallSemantics { target, .. }) => target.clone(),
+        Some(CallSemantics::LookupCallSemantics { target: target, .. }) => target.clone(),
+        Some(CallSemantics::FunctionValueCallSemantics) => {
+            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        }
+        std::option::Option::None => Rc::new(CallTargetIdentity::CallableTargetUndetermined),
     }
 }
 
@@ -730,6 +768,15 @@ pub enum CompilerDiagnostic {
         modules: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    EffectSummaryIncompleteAtFunctionValue {
+        caller: String,
+        span: Rc<SourceSpan>,
+    },
+    EffectSummaryIncompleteAtLocalBinding {
+        caller: String,
+        name: String,
+        span: Rc<SourceSpan>,
+    },
     CallArgumentNameUnknown {
         callee: String,
         argument: String,
@@ -940,6 +987,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { span: s, .. } => s.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { span: s, .. } => s.clone(),
+        CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { span: s, .. } => s.clone(),
+        CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentDuplicate { span: s, .. } => s.clone(),
@@ -1007,6 +1056,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("default value for parameter '".to_string(), p.clone()), "' is not an admitted form (admitted: ".to_string()), forms.clone().join(&", ".to_string())), ")".to_string()),
     CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
     CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
+    CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller: c, .. } => v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer".to_string()),
+    CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls the local binding '".to_string()), n.clone()), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
     CompilerDiagnostic::CallArgumentDuplicate { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': argument '".to_string()), a.clone()), "' supplied more than once".to_string()),
@@ -1246,6 +1297,14 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     CompilerDiagnostic::ModuleFilenameCollision { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::CallArgumentNameUnknown { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
