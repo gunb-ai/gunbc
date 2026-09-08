@@ -579,54 +579,9 @@ fn count_jobs_with_conclusion(jobs: List<WorkflowJobRun>, conclusion: WorkflowRu
     Empty {} => 0
     Cons { head: j, tail: rest } =>
       (match j.conclusion {
-        Present { value: c } => if conclusion_eq(c: c, target: conclusion) { 1 } else { 0 }
+        Present { value: c } => if c == conclusion { 1 } else { 0 }
         Absent => 0
       }) + count_jobs_with_conclusion(jobs: rest, conclusion: conclusion)
-  }
-}
-
-fn conclusion_eq(c: WorkflowRunConclusion, target: WorkflowRunConclusion) -> Bool {
-  match c {
-    Success =>
-      match target {
-        Success => true
-        _ => false
-      }
-    Failure =>
-      match target {
-        Failure => true
-        _ => false
-      }
-    Cancelled =>
-      match target {
-        Cancelled => true
-        _ => false
-      }
-    Neutral =>
-      match target {
-        Neutral => true
-        _ => false
-      }
-    Skipped =>
-      match target {
-        Skipped => true
-        _ => false
-      }
-    TimedOut =>
-      match target {
-        TimedOut => true
-        _ => false
-      }
-    ActionRequired =>
-      match target {
-        ActionRequired => true
-        _ => false
-      }
-    StartupFailure =>
-      match target {
-        StartupFailure => true
-        _ => false
-      }
   }
 }
 
@@ -634,44 +589,11 @@ fn count_jobs_with_status(jobs: List<WorkflowJobRun>, status: WorkflowRunStatus)
   match jobs {
     Empty {} => 0
     Cons { head: j, tail: rest } =>
-      (if status_eq(s: j.status, target: status) { 1 } else { 0 })
+      (if j.status == status { 1 } else { 0 })
       + count_jobs_with_status(jobs: rest, status: status)
   }
 }
 
-fn status_eq(s: WorkflowRunStatus, target: WorkflowRunStatus) -> Bool {
-  match s {
-    Queued =>
-      match target {
-        Queued => true
-        _ => false
-      }
-    InProgress =>
-      match target {
-        InProgress => true
-        _ => false
-      }
-    Completed =>
-      match target {
-        Completed => true
-        _ => false
-      }
-    Waiting =>
-      match target {
-        Waiting => true
-        _ => false
-      }
-    Requested =>
-      match target {
-        Requested => true
-        _ => false
-      }
-    Pending =>
-      match target {
-        Pending => true
-        _ => false
-      }
-  }
 }
 
 fn count_jobs(jobs: List<WorkflowJobRun>) -> Int {
