@@ -1,4 +1,4 @@
-module gunbc.test.claim.runner.runner_microvm_execution_authorization_witness_test
+module test.claim.fabric_grant_authorization_witness
 
 import std.types { NonEmptyStr, Bool, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -11,12 +11,13 @@ import test.claim.fabric_grant_issuance_witness {
 }
 import product.fabric.execution { ExecutionGrant }
 import product.fabric.identity { FabricIdentity }
-import product.fabric.grant_issue { GrantCommitted, GrantRefused }
-import product.fabric.budget { MoneyAccount }
-import gunbc.runner_microvm_execution_authorization {
-  AuthorizationAgreement, AuthorizationAgrees, AuthorizationDisagrees,
+import product.fabric.grant_issue {
+  GrantCommitted, GrantRefused,
+  GrantAuthorization, GrantAuthorizes, GrantFenceRefused,
+  GrantAuthorizesDifferentWork, GrantAnswersDifferentDemand, GrantIssuedAgainstDifferentOffer,
   grant_authorizes_reservation,
 }
+import product.fabric.budget { MoneyAccount }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -26,8 +27,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // refuses every time. Splitting the pair is what makes that error writable, so it is not split.
 //
 // Derived through production issuance rather than authored as literals -- a hand-built
-// ExecutionGrant would let this witness assert a launch against an authorization the fabric would
-// never have issued, which is the failure the grant exists to prevent.
+// ExecutionGrant would let this witness assert an execution against an authorization the fabric
+// would never have issued, which is the failure the grant exists to prevent.
 //
 // This returns a LIST rather than one pair on purpose. A helper that had to produce a single grant
 // would need an arm for "issuance committed nothing", and the only things to put there are a
@@ -53,15 +54,13 @@ fn issued_authorizations() -> List<IssuedAuthorization> {
   }
 }
 
-// THE GRANT CONTROLS, DRIVING THE RULE DIRECTLY. An earlier revision of this comment said the rule
-// was "factored out of the seal above it" and that "the seal delegates to it". BOTH SENTENCES ARE
-// NOW FALSE: the seal was deleted as unconsumed, and `bind_microvm_to_cell` takes only a snapshot
-// and never sees an ExecutionGrant. They are recorded as false rather than quietly removed, because
-// a 4c annotation is read by no Accepted program -- so a false one never reds, and this one asserted
-// a relationship between two declarations that does not exist in the corpus.
+// THE GRANT CONTROLS, DRIVING THE RULE DIRECTLY. Each control matches ONE named variant rather
+// than a substring of a cause string: a refusal that named the wrong authority would still carry
+// the right words, so a string match cannot separate "refused for this reason" from "refused for
+// some reason whose text happens to contain these words".
 //
-// What remains true is why the rule takes COORDINATES rather than a snapshot: RequiredBuildCellSnapshot
-// is sole_constructor, so no fixture outside its module can build a DISAGREEING one, and a control
+// Why the rule takes COORDINATES rather than a snapshot: RequiredBuildCellSnapshot is
+// sole_constructor, so no fixture outside its module can build a DISAGREEING one, and a control
 // aimed at a snapshot-taking rule would have an unauthorable RED -- a 4b decoration. FabricIdentity
 // is an ordinary record, so over coordinates the disagreement is writable, and four claims write it.
 //
@@ -77,8 +76,11 @@ test fn a_grant_that_does_not_fence_authorizes_nothing() -> Bool {
         demand: auth.grant.context.demand,
         offer: auth.grant.object.offer,
       ) {
-        AuthorizationDisagrees { cause: c } => string_contains(s: c, pattern: "does not fence")
-        AuthorizationAgrees => false
+        GrantFenceRefused => true
+        GrantAuthorizes => false
+        GrantAuthorizesDifferentWork => false
+        GrantAnswersDifferentDemand => false
+        GrantIssuedAgainstDifferentOffer => false
       }
     Empty {} => false
   }
@@ -98,8 +100,11 @@ test fn a_grant_for_another_work_authorizes_nothing() -> Bool {
         demand: auth.grant.context.demand,
         offer: auth.grant.object.offer,
       ) {
-        AuthorizationDisagrees { cause: c } => string_contains(s: c, pattern: "different Work")
-        AuthorizationAgrees => false
+        GrantAuthorizesDifferentWork => true
+        GrantAuthorizes => false
+        GrantFenceRefused => false
+        GrantAnswersDifferentDemand => false
+        GrantIssuedAgainstDifferentOffer => false
       }
     Empty {} => false
   }
@@ -109,15 +114,6 @@ test fn a_grant_for_another_work_authorizes_nothing() -> Bool {
 // joins and each needs its own RED: with only the Work control enrolled, a rule that dropped the
 // Demand and Offer checks entirely would still green every claim in this file, so the join would be
 // reported at a rung its executed evidence does not establish.
-//
-// WHY THESE REDS ARE AUTHORABLE WHEN THE SEAL'S IS NOT, since the two questions sound identical and
-// get opposite answers. A control is a 4b DECORATION when its forbidden state cannot be written
-// anywhere the check could run -- permanently green, and worse than absent because it gets cited as
-// coverage. The seal's input is a sole_constructor RequiredBuildCellSnapshot, so a DISAGREEING
-// snapshot has no constructor a fixture can reach: a control aimed there would be a decoration.
-// FabricIdentity is an ordinary constructible record, so a disagreeing demand or offer IS writable
-// right here. Same question, different constructor, opposite answer -- and the constructor is what
-// decides it, not how important the check feels.
 test fn a_grant_for_another_demand_authorizes_nothing() -> Bool {
   match issued_authorizations() {
     Cons { head: auth, tail: _ } =>
@@ -128,8 +124,11 @@ test fn a_grant_for_another_demand_authorizes_nothing() -> Bool {
         demand: FabricIdentity { principal: "gunbc", key: "demand-2" },
         offer: auth.grant.object.offer,
       ) {
-        AuthorizationDisagrees { cause: c } => string_contains(s: c, pattern: "different Demand")
-        AuthorizationAgrees => false
+        GrantAnswersDifferentDemand => true
+        GrantAuthorizes => false
+        GrantFenceRefused => false
+        GrantAuthorizesDifferentWork => false
+        GrantIssuedAgainstDifferentOffer => false
       }
     Empty {} => false
   }
@@ -145,15 +144,18 @@ test fn a_grant_for_another_offer_authorizes_nothing() -> Bool {
         demand: auth.grant.context.demand,
         offer: FabricIdentity { principal: "gunbc", key: "offer-2" },
       ) {
-        AuthorizationDisagrees { cause: c } => string_contains(s: c, pattern: "different Offer")
-        AuthorizationAgrees => false
+        GrantIssuedAgainstDifferentOffer => true
+        GrantAuthorizes => false
+        GrantFenceRefused => false
+        GrantAuthorizesDifferentWork => false
+        GrantAnswersDifferentDemand => false
       }
     Empty {} => false
   }
 }
 
 // THE POSITIVE CONTROL FOR THE SAME RULE. Without it every row above is satisfied by a rule that
-// disagrees unconditionally -- which is exactly the shape that passed here once already, when the
+// refuses unconditionally -- which is exactly the shape that passed here once already, when the
 // fence was checked against the pre-issuance account and refused everything.
 test fn the_issued_grant_authorizes_its_own_reservation() -> Bool {
   match issued_authorizations() {
@@ -165,8 +167,11 @@ test fn the_issued_grant_authorizes_its_own_reservation() -> Bool {
         demand: auth.grant.context.demand,
         offer: auth.grant.object.offer,
       ) {
-        AuthorizationAgrees => true
-        AuthorizationDisagrees { cause: _ } => false
+        GrantAuthorizes => true
+        GrantFenceRefused => false
+        GrantAuthorizesDifferentWork => false
+        GrantAnswersDifferentDemand => false
+        GrantIssuedAgainstDifferentOffer => false
       }
     Empty {} => false
   }
