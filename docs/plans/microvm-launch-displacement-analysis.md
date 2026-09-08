@@ -4,6 +4,12 @@
 
 *Filed against the class `gunbc.recurring_failure_mode.production_actuation_unmodeled_beside_a_modeled_probe`, which this analysis is the natural continuation of.*
 
+## The headline, before the verdict
+
+**Half the census is already done, and the displacement mechanism is proven in production.** Steps 1–2 of the live path — host convergence and guest image build — are already displaced: production actuates them by running `gunbc run --entry … --function …` with `LocalExec`, out of `fleet-converge.yml`, on the host itself. So the open question is **not** "can a modeled entry point actuate a host" — that is answered, wet, today. It is "can one actuate at a *different point in the attempt lifecycle*", which is a much smaller unknown.
+
+The verdict below is *medium and gap-intolerant*, and a reader who stops there will take that as the headline and miss this. Both are true at once.
+
 ## Why this document and not the executor
 
 `gunbc.fabric_ci_program` FCI-3 asks *what causes the target process*, and its exit predicate is that a persistent executor **re-reads the committed Grant before starting**, so an absent, corrupt or expired Grant yields **zero** target processes.
@@ -68,8 +74,51 @@ The doctrine's test is not "does Y work" but "does X's authority end in one moti
 - **The credential is one-shot.** A JIT registration is served exactly once. A staged cutover cannot A/B the two paths on the same attempt, and a failed cutover attempt burns the registration. This is a **gap-intolerant boundary** in the doctrine's sense, which argues for the staged carve-out — Y built in shadow, then one transition — rather than plain delete-first.
 - **Six admission axes are unchecked today.** The capture reads `jit-admission-unchecked=signature unit-binding boot-binding attempt-binding expiry replay`. A displacement that reproduces the live behaviour reproduces six absent checks; a displacement that adds them is a larger change than a like-for-like cutover. Which of these the minimum Y must carry is a decision, not a detail — §3 requires the minimum Y to preserve **every required refusal**, so any axis judged required today cannot be dropped to make the cut smaller.
 
-**The verdict this analysis supports.** The cut is **medium and gap-intolerant**, not small. It is one ordered driver over largely-existing facts, which is tractable; but its boundary is a host-side pre-boot lifecycle nobody has run a modeled executor in, and its credential cannot be replayed across a staged transition. The next question is therefore not "who builds FCI-3" but a single measurement: **can a modeled entry point run on the host at the point in the attempt lifecycle where step 9 happens?** If yes, the cut is a dispatch. If no, the missing host-side execution lifecycle is the real subject and FCI-3 waits on it.
+**The verdict this analysis supports.** The cut is **medium and gap-intolerant**, not small. It is one ordered driver over largely-existing facts, which is tractable; but its boundary is a host-side pre-boot lifecycle nobody has run a modeled executor in, and its credential cannot be replayed across a staged transition. The next question is therefore not "who builds FCI-3" but a single measurement: **can a modeled entry point run on the host at the point in the attempt lifecycle where step 9 happens?**
+
+That measurement has since been split and its reading half answered — **no**, for a causal reason rather than a contingent one. See *The reading half of the measurement, answered* below; the paragraphs above are left as the reasoning that produced the question.
+
+## The reading half of the measurement, answered
+
+The measurement this document asked for splits: one half is a reading of what exists, needing no host, and one half needs Mt. Collins. The reading half is done, and it settles the branch this document left open.
+
+**What the proven mechanism actually requires.** The steps 1–2 displacement runs `"$ROOT/target/release/gunbc" run … --function …_wet`, and `runner_microvm_host_ready` performs its effects with transport **`LocalExec`** — the workflow job runs *on the target host*, dispatched to a self-hosted runner labelled with that host's name. So the mechanism presupposes three things on the host: **a running self-hosted runner** to receive the job, **a checkout** of this repository, and **a built binary**.
+
+**None of the three exists at step 9's point in the lifecycle, and that is causal rather than incidental.** The attempt host boots from BMC-attached virtual media onto a **tmpfs root** (`root-fstype=tmpfs`, `/dev/sr0` virtual CDROM), and the banner appears ~17 seconds after kernel start. There is no runner yet — **bringing a runner into being is the entire purpose of the boot**, and it will live inside the guest, not on the host. So the mechanism that displaced steps 1–2 **cannot** displace step 9: it presupposes exactly the thing step 9 creates. The dependency is circular, and no amount of care in placing the entry point removes it.
+
+**And the host boot script is not in this repository at all.** The banner `=gunbc-runner-host-boot`, the `attempt=` identity, and the ordered marker stream appear in **captures, receipts and BMC artifacts only** — never in producing code, in any language, anywhere in the tree. `gunbc.runner.runner_artifact_lifecycle` records the standing that a *repository-built host image* requires `DurablyMirrored`, so the image is understood to be ours; the boot script that image runs is not authored here.
+
+**So the answer to "can a modeled entry point run where the jailer exec happens" is no**, and this document's own suspicion is confirmed: **the missing host-side execution lifecycle is the real subject.** That is a more tractable statement than it sounds, because it names a specific shape rather than an open problem — the modeled executor would have to be *carried in the host image and invoked at boot*, taking over the boot script's role, which is a question about host-image **content** rather than about a new execution channel. What this analysis cannot say is whether that is cheap or expensive, because the host image build is not visible from here.
+
+### The execution half, named for routing
+
+Not chased, since this session has no Mt. Collins access. What would have to be run, and what each would establish:
+
+1. **Where is the host boot script authored, and what builds `runner-canary-N`?** Establishes whether adding a binary and replacing the script's role is in-scope for this repository or is another owner's surface. **This gates everything else** — a cheap answer that may make the rest unnecessary.
+2. **Can a `gunbc` binary be carried in the host image and executed on tmpfs at boot?** Establishes the modeled executor's placeability directly, and is the minimum viable displacement probe.
+3. **What is the credential's admission surface at mint time?** Needed for the axis dispositions below, which cannot be closed by reading this repository.
+
+## The six admission axes: dispositions, and what reading them found
+
+`jit-admission-unchecked=signature unit-binding boot-binding attempt-binding expiry replay`.
+
+**The first finding is about the roster itself: none of these six terms is defined anywhere in this repository.** The marker string is their only occurrence. They are named by host tooling that is not authored here, so this repository has no authority saying what any of them checks. Assigning "required" to a term whose meaning I would have to invent is exactly the fabrication that would make this table worse than absent, so the dominant disposition is *deferred with a named trigger*, and the trigger is the same for most rows.
+
+One structural fact constrains several axes at once: `extdeps.github.actions_jit_runner` records that the credential is minted for **one runner identity** and arrives as an **opaque blob**. A host therefore *cannot* check binding axes by parsing the credential; it can only check them against what the **minter** recorded. So unit/boot/attempt binding are mint-side obligations that a host-side check cannot discharge, whatever they turn out to mean.
+
+| axis | disposition | reason / trigger |
+|---|---|---|
+| signature | **required for cutover** | The receipted failure is on this axis' side of the line: `jitconfig-bytes=0`, **no `jit-admission` verdict recorded at all**, and the host proceeded to create the drive and launch. Whatever "signature" means precisely, a credential that is not established as authentic-and-present must not reach step 9 — that is FCI-3's predicate, not a preference. |
+| expiry | **required for cutover** | An expired credential yields a guest that cannot register, i.e. a target process for work that cannot run. FCI-3 names expired grants explicitly alongside absent and corrupt ones, so admitting one is admitting the state the predicate forbids. |
+| replay | **deferred** | Trigger: **an authority stating whether one-shot delivery is enforced upstream or must be enforced host-side.** A JIT registration is served once, so replay may already be structurally impossible at GitHub's end — in which case a host-side check is a second authority for an upstream fact. Cannot be settled from here. |
+| unit-binding | **deferred** | Trigger: **an authority defining the axis and naming which side can check it.** Not host-checkable against an opaque blob; a mint-side obligation if it is one at all. |
+| boot-binding | **deferred** | Same trigger. Additionally suspect as a *distinct* axis: the attempt id already changes every boot, so this may be a second name for attempt-binding — a §3 question to resolve before either is priced. |
+| attempt-binding | **deferred** | Same trigger. The join that made the receipted mis-identification possible was a reused **build** label rather than an attempt id, so whatever discharges this axis is load-bearing for evidence identity as well as admission. |
+
+**What this means for sizing the cut.** Two axes are required and both are properties of the credential *as a whole* — is it authentic and present, is it live — rather than bindings needing a parse. Four are deferred behind one trigger, and at least one may dissolve into another. So on today's reading the cut is **not** a six-way credential-admission programme; it is two whole-credential checks plus a definition question. That is the "small" branch merry-bear-25 named — but it rests on the deferred four actually being deferrable, which the axis-definition authority decides, not this document.
+
+**Like-for-like remains the one answer that is definitely wrong.** A cutover reproducing all six absent checks reproduces the receipted fail-open, and §3 forbids dropping a required refusal to shrink the minimum Y.
 
 ## What this document deliberately does not do
 
-It does not schedule the work, choose an owner, or propose an executor design. It does not claim the six unchecked admission axes are each required — it names them as a decision. And it transcribes no measurement: every number and marker here is cited to the probe capture that produced it, which remains the authority.
+It does not schedule the work, choose an owner, or propose an executor design. It gives each of the six admission axes a stated disposition rather than a verdict on all six, and where the honest disposition is *deferred* it names the trigger instead of guessing the axis' meaning — four of the six are deferred precisely because this repository carries no definition of them. And it transcribes no measurement: every number and marker here is cited to the probe capture that produced it, which remains the authority.
