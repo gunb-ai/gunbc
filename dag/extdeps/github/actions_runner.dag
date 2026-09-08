@@ -129,6 +129,49 @@ data actions_runner_release_2_336_0: ActionsRunnerRelease = ActionsRunnerRelease
   digest_x86_64: sha256_digest(hex: "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d"),
 }
 
+// 2.337.0 IS PINNED BECAUSE A RUN EXECUTED IT WHILE THIS MODULE STILL SAID 2.336.0. The Mt. Collins
+// canary reported "Current runner version: 2.337.0" to GitHub, and gunbc.runner_microvm's guest
+// image row named 2.336.0 -- one concept, two answers, which is the fork this file exists to
+// prevent. Adding the row is how the model catches up to what shipped, not a version bump for its
+// own sake.
+//
+// THE SHIPPED TARBALL'S DIGEST EQUALS THE ONE BELOW, which is the only reason this is a fork and not
+// a compromise: the artifact that ran was verifiably the genuine upstream release, and what was
+// wrong was the model's claim about which release that was.
+//
+// THE DIGESTS ARE THE UPSTREAM'S OWN, from the v2.337.0 release body, exactly as the 2.336.0 row
+// above takes its values from that release's body rather than recomputing them here.
+data actions_runner_release_2_337_0: ActionsRunnerRelease = ActionsRunnerRelease {
+  version: "2.337.0",
+  digest_aarch64: sha256_digest(hex: "9b1dc70626422526e3c94767cf024896beb15da5342a3f4819bf2feac13e0393"),
+  digest_x86_64: sha256_digest(hex: "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613"),
+}
+
+// A PIN THE RUNTIME MAY OVERWRITE IS NOT A PIN, so whether the runner updates itself decides whether
+// the digests above describe the tarball that was downloaded or the code that ran the job. An
+// earlier revision of this row declared a `--disableupdate` flag for the JIT path. THAT WOULD HAVE
+// BEEN INERT: with `run.sh --jitconfig` there is no `config.sh` invocation to pass a flag to, so the
+// declaration would have sat here reading like a control while controlling nothing.
+//
+// THE UPSTREAM ALREADY SETS IT, AND THAT IS OBSERVED RATHER THAN ASSUMED. Decoding a JIT config
+// minted by POST /repos/{owner}/{repo}/actions/runners/generate-jitconfig shows the encoded `.runner`
+// settings document carrying:
+//
+//   DisableUpdate = True
+//   Ephemeral     = True
+//   WorkFolder    = _work
+//
+// So for the JIT path self-update is off by construction and one-job lifetime is off by
+// construction, both decided by the endpoint rather than by anything this fleet passes. That is why
+// the version a JIT runner reports is the version that was baked into the image -- which in turn is
+// why the Mt. Collins canary reporting 2.337.0 established an AUTHORING fork and not a runtime one.
+//
+// `--disableupdate` REMAINS THE HOST-SLOT PATH'S CONCERN, where config.sh does run and the flag is
+// real. It is not declared here because this module has no consumer for it yet, and a flag with no
+// caller is the same inert declaration by a different route.
+data actions_runner_jit_settings_disable_update_member: String = "DisableUpdate"
+data actions_runner_jit_settings_ephemeral_member: String = "Ephemeral"
+
 data actions_runner_base_dir: String = "/opt/actions-runner"
 
 // `config.sh` writes `.runner` beside the binaries when a runner registers with GitHub, and
