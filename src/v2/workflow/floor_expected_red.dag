@@ -698,16 +698,13 @@ fn floor_expected_red_chunk_21() -> List<String> {
 // into the vacancy below, so the sequence stays contiguous and `floor_expected_red_chunks` names
 // every index it reaches.
 //
-// OBSERVED RED, 2026-08-25 at parked/twin-source-standing-blocked 62d6de284c1 after restoring the
-// roster gate's missing execution-closure imports. The sanctioned-reader snippet reaches
-// SourceFindingsEstablished and the analyzer then emits a Suspect for that unchanged canonical
-// safe shape (last fixture-content edit: 6f3d374de0c). Owner and dissolution live on the exact
-// admission row in gunbc.explicit_witness_admission; this polarity row is deliberately the same
-// exact function identity. When the analyzer repair makes it pass, stale quarantine names the row
-// and both enrollments delete while the witness remains as an ordinary regression control.
-fn floor_expected_red_chunk_22() -> List<String> {
-  Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Empty {} }
-}
+// RETIRED chunk_22 EXPECTED-RED ADMISSION. The sanctioned-reader positive control
+// (`green_control_sanctioned_reader_body_not_flagged`) now holds: mention collection skips
+// ^dag_surface_pattern subtrees, so Accepted/Rejected constructors and pattern binders no longer
+// inflate remaining. THE WITNESS IS NOT DELETED (DESIGN 4b(4)): it stays as the ordinary
+// regression control beside red_control_planted_identity_escape_still_alarms and
+// red_control_planted_identity_escape_finding_count_is_one. The exact known-red admission in
+// gunbc.explicit_witness_admission is deleted in the same change.
 
 // RETIRED chunk_23 EXPECTED-RED ADMISSION history. PositionGenericTypeArgument now constructs the
 // missing element obligation at the direct-call seam; the witness remains enrolled as an ordinary
@@ -1150,7 +1147,7 @@ fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in
