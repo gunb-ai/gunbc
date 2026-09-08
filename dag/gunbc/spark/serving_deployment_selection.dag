@@ -1341,13 +1341,6 @@ data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input
   selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_quality_requirement"),
 )
 
-fn glm_serving_selection() -> ServingDeploymentSelection {
-  select_serving_deployment(input: glm_decision_input)
-}
-
-fn glm_shape_admission() -> ShapeAdmission {
-  admit_shape(s: glm_serving_selection())
-}
 
 // ── THE DEEPSEEK ARM ──────────────────────────────────────────────────────────────────────────
 //
@@ -1396,10 +1389,29 @@ data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_
   selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_quality_requirement"),
 )
 
-fn deepseek_serving_selection() -> ServingDeploymentSelection {
-  select_serving_deployment(input: deepseek_decision_input)
-}
 
-fn deepseek_shape_admission() -> ShapeAdmission {
-  admit_shape(s: deepseek_serving_selection())
-}
+// ── WHAT CONSUMES THIS MODULE TODAY, STATED PLAINLY ───────────────────────────────────────────
+//
+// NOTHING IN PRODUCTION DOES. The only importer is the witness, which exercises the fold over both
+// declared subjects and every refusal path. That makes this module a DECLARED FRONTIER under DESIGN
+// section 3c rather than a consumed authority, and a frontier is admissible only with its trigger
+// stated beside it, so here it is.
+//
+// THE NAMED CONSUMER is gunbc.spark.pair_serving_desired, whose engine arguments are authored as
+// literals today -- 82 percent, a context ceiling equal to the model's own limit, and a
+// tensor-parallel degree taken from `length(hosts)`, which is not a choice but an accident of group
+// membership. Those literals become a function of a selected shape.
+//
+// THE TRIGGER IS NOT "THIS MERGES". It is the FABRIC PLACEMENT RELATION: a binding from
+// ServingDeploymentShape's replica ordinals to exact hosts, network groups, failure domains and
+// endpoints. Until that exists there is nothing a convergence path could actuate from a shape, so
+// wiring it would produce a second authority for the launch arguments rather than replacing the
+// first -- and the review that ordered this deferral (item 17) was right to.
+//
+// FOUR WRAPPER FUNCTIONS WERE DELETED HERE RATHER THAN LEFT WAITING FOR THAT CONSUMER.
+// glm_shape_admission and deepseek_shape_admission had NO caller anywhere, not even the witness --
+// exactly section 6's experimental-residue tell, authored in advance of a consumer that does not
+// exist. glm_serving_selection and deepseek_serving_selection were thin wrappers over the decision
+// inputs below, which the witness can call directly. The fabric cut will know what shape it needs
+// and can compose select_serving_deployment and admit_shape itself; guessing its entry points now is
+// speculative inventory.

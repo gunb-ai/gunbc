@@ -29,7 +29,7 @@ import gunbc.spark.serving_deployment_selection {
   ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
   select_serving_deployment,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
-  glm_serving_selection, deepseek_serving_selection,
+  glm_decision_input, deepseek_decision_input,
   deepseek_quality_requirement,
 }
 
@@ -40,14 +40,14 @@ import gunbc.spark.serving_deployment_selection {
 // unestablished workload demand, and ten unfunded performance dimensions. A single blocking axis
 // would mean the whole question turned on one measurement.
 test fn the_real_deepseek_subject_returns_obligations_rather_than_a_topology() -> Bool {
-  match deepseek_serving_selection() {
+  match select_serving_deployment(input: deepseek_decision_input) {
     ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
     _ => false
   }
 }
 
 test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
-  match glm_serving_selection() {
+  match select_serving_deployment(input: glm_decision_input) {
     ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
     _ => false
   }
@@ -351,7 +351,7 @@ test fn a_passing_quality_and_established_demand_still_need_the_performance_evid
 // and endpoints is the fabric's relation, and the shape carries replica ORDINALS rather than host
 // identities so it cannot pretend otherwise.
 test fn an_under_evidenced_decision_cannot_reach_placement() -> Bool {
-  match admit_shape(s: deepseek_serving_selection()) {
+  match admit_shape(s: select_serving_deployment(input: deepseek_decision_input)) {
     FabricPlacementRequired { because: _ } => true
     ShapeAdmittedForPlacement { shape: _ } => false
   }
