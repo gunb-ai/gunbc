@@ -1598,24 +1598,6 @@ pub struct TransitionAdmission {
 /// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
 /// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
 ///
-/// SEVENTH TRANSITION (2026-09-08, gunbc#10783). Filing a new recurring-failure-mode class is now
-/// a BINDING motion rather than only a new file, because `dag/gunbc/recurring_failure_mode/roster`
-/// is generated from the directory before compile: the class file appears, the generated roster
-/// gains a reference to it, and the spelling `unapplied_function_value_admitted_at_a_value_position`
-/// goes from binding nothing at the base to binding the new module at the head. The wall reports
-/// that as `NewPoolCoincidenceResolution`, correctly -- a spelling authored on both sides now
-/// admits a declaration it did not admit before.
-///
-/// ONE ROW, AND IT IS NOT A PATTERN. The change files two class modules and one stall module; only
-/// this spelling produces a binding delta, and the row names the exact tuple the wall reported
-/// rather than a rule covering "new class files", because the roster's population is an
-/// enumeration and never a predicate. The membership deltas the same change produces are
-/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent here.
-///
-/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
-/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
-/// touch. Adjudicate that deletion by joining each row against main on its own
-/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
 /// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
 /// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and adding
 /// the row below is it. ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE:
