@@ -1,0 +1,5 @@
+{
+  "arm": "tp2",
+  "prompt_tokens": 22,
+  "text": " The input embedding is split along the hidden dimension. Step two: The attention heads are distributed across devices, each computing a partial self-attention. Step three: The feed-forward network is split, with each device computing a portion of the intermediate"
+}
