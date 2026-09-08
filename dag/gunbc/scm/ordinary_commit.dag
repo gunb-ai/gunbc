@@ -35,8 +35,8 @@ import gunbc.scm.repository_envelope {
   OrdinaryCommitSubjectAllocatorInvalid, OrdinaryCommitSubjectParentMissing,
   OrdinaryAncestralSubjectAdmission, OrdinaryAncestralSubjectAdmitted,
   OrdinaryAncestralSubjectAllocatorInvalid,
-  AdmittedCommitAncestry,
-  admit_ordinary_commit_subject, admit_ordinary_commit_subject_from_ancestry,
+  AdmittedCommitBasis,
+  admit_ordinary_commit_subject, admit_commit_subject_from_basis,
   mint_repository_commit_admitted,
 }
 
@@ -84,23 +84,24 @@ fn mint_ordinary_commit(
 // THE NARROW MINT. Two arms rather than three, because its caller hands it an ancestry that was
 // ADMITTED where the parent was found rather than a reference this function would have to look up.
 //
-// IT TAKES `AdmittedCommitAncestry`, NOT `CommitAncestry`, AND THE FIRST VERSION TOOK THE LATTER. A
-// bare `CommitAncestry` states a relation and evidences nothing, so this public mint would accept
-// `DescendsFrom { parent: <absent> }` and answer with a commit whose ancestry dangles -- strictly
-// worse than the parent-missing arm its introduction deleted. Found by external review.
+// IT TAKES ONE `AdmittedCommitBasis` AND NOTHING BESIDE IT, AND THE FIRST TWO VERSIONS DID NOT.
+//
+// The first took a bare `CommitAncestry`, which states a relation and evidences nothing, so this
+// public mint accepted `DescendsFrom { parent: <absent> }` and answered with a commit whose ancestry
+// dangles -- strictly worse than the parent-missing arm its introduction deleted. The second sealed
+// the ancestry but still took the SUBJECT as a separate argument, so evidence admitted against one
+// repository could be paired with a subject from another and dangle in that one instead. The subject
+// now travels inside the evidence, so this signature has nothing left to mis-pair. Both found by
+// external review.
 type AncestralCommitMint
   = AncestralCommitMinted(MintedCommit)
   | AncestralCommitAllocatorInvalid { next_ordinal: Int }
 
 fn mint_ancestral_commit(
-  subject: RepositoryManifestRoot,
+  basis: AdmittedCommitBasis,
   message: String,
-  admitted_ancestry: AdmittedCommitAncestry,
 ) -> AncestralCommitMint {
-  match admit_ordinary_commit_subject_from_ancestry(
-    subject: subject,
-    admitted_ancestry: admitted_ancestry,
-  ) {
+  match admit_commit_subject_from_basis(basis: basis) {
     OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: n } =>
       AncestralCommitAllocatorInvalid { next_ordinal: n }
     OrdinaryAncestralSubjectAdmitted(admitted) =>

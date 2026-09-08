@@ -63,9 +63,9 @@ import gunbc.scm.repository_envelope {
   commit_at_reference,
   OrdinaryAncestralSubjectAdmission, OrdinaryAncestralSubjectAdmitted,
   OrdinaryAncestralSubjectAllocatorInvalid,
-  admit_commit_subject_from_ancestry, mint_repository_commit_admitted,
-  AdmittedCommitAncestry, CommitAncestryAdmitted, CommitAncestryParentAbsent,
-  admit_ancestry_in,
+  admit_commit_subject_from_basis, mint_repository_commit_admitted,
+  AdmittedCommitBasis, BasisAdmitted, BasisParentAbsent, BasisIntegrationSourceAbsent,
+  admit_merge_basis,
   RepositoryManifestRootStored, RepositoryManifestRootDuplicatePath,
   RepositoryManifestRootLocatorCollision, repository_root_by_storing,
 }
@@ -221,33 +221,37 @@ fn carry_ancestral_mint(
 // `MergeBaseDerived` required `ancestry_walk` to TRACE both sides, so target and source are already
 // established in this repository's history; asking the generic mint to look them up again produced two
 // arms this route cannot reach, which is the `carry_mint` shape -- honest about the callee's domain,
-// dishonest about the operation's. Both now reach `admit_commit_subject_from_ancestry`, whose only
+// dishonest about the operation's. Both now reach `admit_commit_subject_from_basis`, whose only
 // refusal is the allocator, and `SquashMergeMintParentMissing` and
 // `SquashMergeMintIntegrationSourceMissing` are DELETED.
 //
-// WHAT HOLDS THAT UP IS PROVENANCE, NOT A TYPE, AND SAYING SO IS THE POINT. The `DescendsFrom` and
-// `SquashIntegrated` values are CONSTRUCTED at the mint call below; they are not handed over by an
-// admission that checked anything. What makes the construction honest is that `AdmittedMergeSubject`
-// is `sole_constructor` with exactly ONE construction site, inside the `MergeBaseDerived` arm, so no
-// caller can reach this route without the walks having succeeded. That is the same argument the
-// staging seal rests on, and it is strictly weaker than the staging one: there `base_snapshot` HANDED
-// BACK the reference it had just resolved, here the refs are the ones passed IN and their historicity
-// is established by a sibling call rather than carried in the value.
+// WHAT HOLDS THE ANCESTRY UP IS NOW A TYPE, NOT THIS MODULE'S CARE, AND THAT IS THE CORRECTION.
 //
-// THE STRONGER FORM IS AVAILABLE AND IS DELIBERATELY NOT BUILT YET: `ancestry_walk` could mint a
-// sole-constructed historical reference on its success path, and `MergeBaseDerived` could carry one
-// per side, so this site would unwrap a proof instead of asserting one. It is not built because it is
-// the SAME QUESTION as whether the walk should carry `RepositoryCommit` rows -- the open item below --
-// and building the weaker half first risks landing something a ruling would discard.
+// An earlier revision CONSTRUCTED `DescendsFrom` and `SquashIntegrated` at the mint call and handed
+// them to an admission that accepted any values, so the honesty rested on `AdmittedMergeSubject`
+// having one construction site rather than on anything the mint could check. Review then found the
+// residual hole one level up: even a sealed ancestry proved admission in SOME repository while the
+// subject arrived separately, so the two could come from different ones.
+//
+// `admit_merge_basis` closes both. It takes the stored subject and establishes BOTH anchors in that
+// subject's own repository, so the parent relation and the integration source are derived rather than
+// asserted, and there is no second argument to mis-pair. The integration source matters as much as the
+// parent: it is the row a LATER merge reads to refuse a second consumption, so a source this
+// repository does not hold would write a receipt naming nothing.
+//
+// THE ORDER OF THE TWO STEPS HAD TO FLIP TO GET THIS. The subject does not exist until the merged
+// entries are stored, so the basis cannot be admitted before the store -- an earlier revision admitted
+// the ancestry first, against the repository, precisely because it had no subject to bind to yet.
 //
 // WHAT IS NOT DELETED, AND WHY IT IS NAMED RATHER THAN QUIETLY KEPT: `SquashMergeResultDuplicatePath`
-// and `SquashMergeCommitMissing` survive. The first needs a carrier attesting that the merge algebra's
-// grouped output is path-unique, and minting one across the manifest_merge/object_store boundary would
-// be another public constructor over a raw list -- the exact forge a previous round removed. The second
-// needs the ancestry walk to carry `RepositoryCommit` ROWS rather than refs, which `AncestryStep`
-// deliberately does not, and which would force every hand-built ancestry fixture to invent a root it
-// makes no claim about. Both are real modelling questions, put to review rather than answered by
-// relocating the lookup and calling the question absent.
+// survives. It needs a carrier attesting that the merge algebra's grouped output is path-unique, and
+// minting one across the manifest_merge/object_store boundary would be another public constructor over
+// a raw list -- the exact forge a previous round removed. That is a real modelling question, put to
+// review rather than answered by relocating the lookup and calling the question absent.
+//
+// `SquashMergeCommitMissing` now HAS a producer on this route -- two, one per side -- rather than
+// being an unreachable arm carried for shape. Whether it should instead be absent, via a
+// merge-specific resolved topology minted on the successful merge-base path, remains the open ruling.
 type AdmittedMergeSubject sole_constructor {
   repository: RepositoryEnvelope
   target: RepositoryCommitRef
@@ -259,55 +263,30 @@ fn commit_merged_manifest(
   admitted: AdmittedMergeSubject,
   message: String,
 ) -> SquashMergeOutcome {
-  let repository = admitted.repository
-  let target = admitted.target
-  let source = admitted.source
-  match admit_ancestry_in(repository: repository, parent: target) {
-    CommitAncestryParentAbsent { parent: p } =>
-      SquashMergeCommitMissing { side: MergeTargetCommit, reference: p }
-    CommitAncestryAdmitted(admitted_ancestry) =>
-      store_and_mint_merge(
-        admitted: admitted,
-        admitted_ancestry: admitted_ancestry,
-        message: message,
-      )
-  }
-}
-
-// THE ANCESTRY IS ADMITTED BY THE REPOSITORY, NOT ASSERTED BY THIS MODULE, and that is the correction
-// rather than a step backwards. An earlier revision constructed `DescendsFrom { parent: target }` here
-// and handed it to a mint that accepted any `CommitAncestry`, so the seal rested on this module's own
-// care -- the forgeable-fact defect external review found one layer deeper. `admit_ancestry_in` is the
-// repository envelope's own lookup, so the relation and the store it holds in travel together.
-//
-// ITS ABSENT ARM IS TYPED RATHER THAN UNREACHABLE-AND-IGNORED, and it reports the fact it actually
-// found: the target commit is not in this repository. That arm and the reader's
-// `SquashMergeCommitMissing` are THE SAME QUESTION asked twice, and the ruling on this route is that
-// both disappear together behind a merge-specific resolved topology minted on the successful
-// merge-base path -- carrying base, source and target rows -- rather than by teaching generic ancestry
-// to carry non-ancestry facts. That carrier is the next change here, and it is deliberately not
-// half-built now.
-fn store_and_mint_merge(
-  admitted: AdmittedMergeSubject,
-  admitted_ancestry: AdmittedCommitAncestry,
-  message: String,
-) -> SquashMergeOutcome {
-  let repository = admitted.repository
-  let source = admitted.source
-  match repository_root_by_storing(repository: repository, entries: admitted.entries) {
+  match repository_root_by_storing(
+    repository: admitted.repository,
+    entries: admitted.entries,
+  ) {
     RepositoryManifestRootDuplicatePath { path: p } =>
       SquashMergeResultDuplicatePath { path: p as String }
     RepositoryManifestRootLocatorCollision { identity: i } =>
       SquashMergeResultLocatorCollision { identity: i }
     RepositoryManifestRootStored(subject) =>
-      carry_ancestral_mint(
-        admission: admit_commit_subject_from_ancestry(
-          subject: subject,
-          admitted_ancestry: admitted_ancestry,
-          integration: SquashIntegrated { source: source },
-        ),
-        message: message,
-      )
+      match admit_merge_basis(
+        subject: subject,
+        parent: admitted.target,
+        source: admitted.source,
+      ) {
+        BasisParentAbsent { parent: p } =>
+          SquashMergeCommitMissing { side: MergeTargetCommit, reference: p }
+        BasisIntegrationSourceAbsent { source: sref } =>
+          SquashMergeCommitMissing { side: MergeSourceCommit, reference: sref }
+        BasisAdmitted(basis) =>
+          carry_ancestral_mint(
+            admission: admit_commit_subject_from_basis(basis: basis),
+            message: message,
+          )
+      }
   }
 }
 

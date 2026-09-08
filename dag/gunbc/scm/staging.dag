@@ -70,9 +70,9 @@ import gunbc.scm.repository_envelope {
 }
 import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom }
 import gunbc.scm.repository_envelope {
-  AdmittedCommitAncestry,
+  AdmittedCommitBasis,
   BaseAdmission, BaseAdmitted, BaseAbsentInRepository,
-  admitted_root_ancestry, admit_base_in,
+  admit_root_basis, admit_base_in,
   RepositoryManifestRoot, RepositoryManifestRootResolution,
   RepositoryManifestRootResolved, RepositoryManifestRootMissing,
   RepositoryManifestRootIsAuthoredSource, RepositoryManifestRootIsSemanticNode,
@@ -207,19 +207,22 @@ fn staged_entries(repository: RepositoryEnvelope) -> StagedEntries {
 // which snapshot the candidate is being compared against, and both must distinguish "no base" from
 // "a base that cannot be resolved" -- so the resolution is named rather than performed twice.
 type BaseSnapshot
-  = BaseAtCommit { ancestry: AdmittedCommitAncestry, root: CorpusManifestObjectRef }
+  = BaseAtCommit { basis: AdmittedCommitBasis, root: CorpusManifestObjectRef }
   | NoBaseSelected
   | BaseRefused { cause: StagingRefusal }
 
-fn base_snapshot(repository: RepositoryEnvelope) -> BaseSnapshot {
-  match repository.checked_out {
+// THE SUBJECT IS THE PARAMETER, NOT THE REPOSITORY, because the basis this returns must be evidence
+// about the very root that will be committed. Taking the repository separately is what let admitted
+// evidence and a subject come from two different repositories.
+fn base_snapshot(subject: RepositoryManifestRoot) -> BaseSnapshot {
+  match subject.repository.checked_out {
     Absent => NoBaseSelected
     Present { value: reference } =>
-      match admit_base_in(repository: repository, reference: reference) {
+      match admit_base_in(subject: subject, reference: reference) {
         BaseAbsentInRepository { reference: r } =>
           BaseRefused { cause: StageBaseUnresolved { reference: r } }
-        BaseAdmitted { ancestry: a, root: committed } =>
-          BaseAtCommit { ancestry: a, root: committed }
+        BaseAdmitted { basis: b, committed: committed } =>
+          BaseAtCommit { basis: b, root: committed }
       }
   }
 }
@@ -248,7 +251,8 @@ fn base_snapshot(repository: RepositoryEnvelope) -> BaseSnapshot {
 // commit ONCE and hands back the admitted ancestry beside the root it committed, so by the time
 // `StageDiffersFromBase` is constructed the parent has been FOUND in this repository's commits;
 // `StageWithNoBase` is reached only from `NoBaseSelected`, where there is no parent to find. Carrying
-// an `AdmittedCommitAncestry` -- sole-constructed by the repository envelope, never by a caller --
+// an `AdmittedCommitBasis` -- sole-constructed by the repository envelope, never by a caller, and
+// naming the very subject it is evidence about --
 // hands that established fact forward, so the mint downstream consumes it instead
 // of re-asking a question whose answer this type already knows -- and the parent-missing arm it used
 // to need disappears from `gunbc.scm.write_spine` rather than being carried as an unreachable cause.
@@ -258,9 +262,9 @@ type StageStanding
   | StageDiffersFromBase {
       candidate: RepositoryManifestRoot,
       committed: CorpusManifestObjectRef,
-      ancestry: AdmittedCommitAncestry
+      basis: AdmittedCommitBasis
     }
-  | StageWithNoBase { candidate: RepositoryManifestRoot, ancestry: AdmittedCommitAncestry }
+  | StageWithNoBase { candidate: RepositoryManifestRoot, basis: AdmittedCommitBasis }
   | NoCandidateAndNoBase
   | StageStandingRefused { cause: StagingRefusal }
 
@@ -307,18 +311,18 @@ fn stage_standing_with_root(
   candidate: CorpusManifestObjectRef,
   root: RepositoryManifestRoot,
 ) -> StageStanding {
-  match base_snapshot(repository: repository) {
+  match base_snapshot(subject: root) {
     BaseRefused { cause: c } => StageStandingRefused { cause: c }
     NoBaseSelected =>
-      StageWithNoBase { candidate: root, ancestry: admitted_root_ancestry() }
-    BaseAtCommit { ancestry: admitted, root: committed } =>
+      StageWithNoBase { candidate: root, basis: admit_root_basis(subject: root) }
+    BaseAtCommit { basis: admitted, root: committed } =>
       if committed.locator == candidate.locator {
         StageMatchesBase { candidate: candidate }
       } else {
         StageDiffersFromBase {
           candidate: root,
           committed: committed,
-          ancestry: admitted,
+          basis: admitted,
         }
       }
   }

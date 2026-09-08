@@ -870,117 +870,146 @@ fn admit_commit_subject(
 // admission with a question that has no subject removed. The arm is therefore ABSENT from this
 // outcome rather than unreachable within it, which is the difference between a caller that cannot ask
 // and a caller that must match and invent.
-// AN ANCESTRY THIS REPOSITORY ADMITTED, WHICH A BARE `CommitAncestry` IS NOT.
+// A BASIS THIS REPOSITORY ADMITTED -- SUBJECT, ANCESTRY AND INTEGRATION AS ONE FACT.
 //
-// The first version of this route took an ordinary public `CommitAncestry` and checked only the
-// allocator, and `mint_ancestral_commit` exposed it. `CommitAncestry` STATES A RELATION; it is not
-// evidence that any repository admitted one. So a caller could resolve a valid `RepositoryManifestRoot`,
-// construct `DescendsFrom { parent: <a reference this repository does not hold> }`, and be handed a
-// `MintedCommit` whose ancestry DANGLES -- which is worse than the parent-missing arm that repair
-// deleted, because the arm at least refused. The author's own annotation had said the seal rested on
-// provenance rather than on a type, and then relied on it anyway; documenting a hole is not closing
-// one. Found by external review.
+// The first version took an ordinary public `CommitAncestry` and checked only the allocator.
+// `CommitAncestry` STATES A RELATION; it is not evidence that any repository admitted one, so a caller
+// could construct `DescendsFrom { parent: <a reference this repository does not hold> }` and be handed
+// a `MintedCommit` whose ancestry DANGLES.
 //
-// `AdmittedCommitAncestry` is `sole_constructor`, so only this module mints it, and the only two mints
-// are the ones below: a root commit, which needs no parent, and a parent this module has just FOUND in
-// the repository it will be minted into. The relation and the repository travel together.
-type AdmittedCommitAncestry sole_constructor {
+// Sealing the ancestry alone did not close it, and the second external review said why: an
+// `AdmittedCommitAncestry` proved admission in SOME repository, while the subject arrived as a
+// SEPARATE argument carrying its own. An ancestry admitted against repository A could therefore be
+// paired with a subject from repository B and mint a dangling parent in B -- the same defect one level
+// up, because the evidence was still not bound to the thing it was evidence ABOUT. The integration had
+// the identical hole: `CommitIntegration` arrived raw, its source never established anywhere.
+//
+// A COMPARISON WOULD HAVE BEEN VALIDATION WHERE CONSTRUCTION WAS AVAILABLE (DESIGN 5). Checking that
+// the ancestry's repository equals the subject's is a check that can be satisfied while the realization
+// still lies. So the three facts became ONE sealed value instead: the subject travels INSIDE the
+// evidence, and every mint below derives the ancestry and the integration from `subject.repository`
+// rather than accepting them. There are no two arguments left to mis-pair.
+type AdmittedCommitBasis sole_constructor {
+  subject: RepositoryManifestRoot
   ancestry: CommitAncestry
+  integration: CommitIntegration
 }
 
-fn admitted_root_ancestry() -> AdmittedCommitAncestry {
-  AdmittedCommitAncestry { ancestry: RootCommit }
+type BasisAdmission
+  = BasisAdmitted(AdmittedCommitBasis)
+  | BasisParentAbsent { parent: RepositoryCommitRef }
+  | BasisIntegrationSourceAbsent { source: RepositoryCommitRef }
+
+// A ROOT COMMIT HAS NO PARENT AND NO SOURCE, so this mint cannot refuse: both questions have no
+// subject rather than an unknown answer.
+fn admit_root_basis(subject: RepositoryManifestRoot) -> AdmittedCommitBasis {
+  AdmittedCommitBasis {
+    subject: subject,
+    ancestry: RootCommit,
+    integration: NoSquashIntegration,
+  }
 }
 
-type CommitAncestryAdmission
-  = CommitAncestryAdmitted(AdmittedCommitAncestry)
-  | CommitAncestryParentAbsent { parent: RepositoryCommitRef }
-
-fn admit_ancestry_in(
-  repository: RepositoryEnvelope,
+fn admit_descendant_basis(
+  subject: RepositoryManifestRoot,
   parent: RepositoryCommitRef,
-) -> CommitAncestryAdmission {
-  match admit_base_in(repository: repository, reference: parent) {
-    BaseAbsentInRepository { reference: r } => CommitAncestryParentAbsent { parent: r }
-    BaseAdmitted { ancestry: a, root: _ } => CommitAncestryAdmitted(a)
+) -> BasisAdmission {
+  match admit_base_in(subject: subject, reference: parent) {
+    BaseAbsentInRepository { reference: r } => BasisParentAbsent { parent: r }
+    BaseAdmitted { basis: b, committed: _ } => BasisAdmitted(b)
+  }
+}
+
+// THE MERGE MINT ESTABLISHES BOTH ANCHORS IN THE SUBJECT'S OWN REPOSITORY. The integration source is
+// the row a LATER merge reads to refuse a second consumption, so a source this repository does not
+// hold would write a receipt naming nothing.
+fn admit_merge_basis(
+  subject: RepositoryManifestRoot,
+  parent: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+) -> BasisAdmission {
+  match admit_base_in(subject: subject, reference: parent) {
+    BaseAbsentInRepository { reference: r } => BasisParentAbsent { parent: r }
+    BaseAdmitted { basis: _, committed: _ } =>
+      match commit_at_reference(commits: subject.repository.commits, reference: source) {
+        Absent => BasisIntegrationSourceAbsent { source: source }
+        Present { value: _ } =>
+          BasisAdmitted(
+            AdmittedCommitBasis {
+              subject: subject,
+              ancestry: DescendsFrom { parent: parent },
+              integration: SquashIntegrated { source: source },
+            }
+          )
+      }
   }
 }
 
 // ONE RESOLUTION ANSWERING BOTH QUESTIONS A BASE IS ASKED.
 //
-// A caller selecting a base wants two facts about the same commit: that this repository admits it as
-// a parent, and what root it committed. They are established by ONE `commit_at_reference`, so asking
-// them as two calls walks the commit list twice and -- worse -- gives the second call a
-// parent-missing arm the first has already excluded, which is the very shape the annotation below
-// warns about. Naming the pair here keeps the seal inside this module and leaves the caller with no
-// unreachable cause to invent. `admit_ancestry_in` is this function with the root dropped, so the
-// two are one authority rather than two resolutions that could drift.
+// A caller selecting a base wants two facts about the same commit: that the subject's repository
+// admits it as a parent, and what root it committed. They are established by ONE
+// `commit_at_reference`, so asking them as two calls walks the commit list twice and -- worse -- gives
+// the second call a parent-missing arm the first has already excluded. Naming the pair here keeps the
+// seal inside this module and leaves the caller with no unreachable cause to invent.
 type BaseAdmission
-  = BaseAdmitted { ancestry: AdmittedCommitAncestry, root: CorpusManifestObjectRef }
+  = BaseAdmitted { basis: AdmittedCommitBasis, committed: CorpusManifestObjectRef }
   | BaseAbsentInRepository { reference: RepositoryCommitRef }
 
 fn admit_base_in(
-  repository: RepositoryEnvelope,
+  subject: RepositoryManifestRoot,
   reference: RepositoryCommitRef,
 ) -> BaseAdmission {
-  match commit_at_reference(commits: repository.commits, reference: reference) {
+  match commit_at_reference(commits: subject.repository.commits, reference: reference) {
     Absent => BaseAbsentInRepository { reference: reference }
     Present { value: commit } =>
       BaseAdmitted {
-        ancestry: AdmittedCommitAncestry { ancestry: DescendsFrom { parent: reference } },
-        root: commit.root,
+        basis: AdmittedCommitBasis {
+          subject: subject,
+          ancestry: DescendsFrom { parent: reference },
+          integration: NoSquashIntegration,
+        },
+        committed: commit.root,
       }
   }
 }
 
-// THE ANCESTRY-TAKING ADMISSION, FOR CALLERS THAT ALREADY ESTABLISHED THE PARENT.
+// THE BASIS-TAKING ADMISSION, FOR CALLERS WHOSE FACTS THIS MODULE ALREADY ESTABLISHED.
 //
 // `admit_ordinary_commit_subject` asks two questions and can refuse on either. A caller that reached
-// its subject through a route which ALREADY found the parent in this repository's commits -- the
-// staging standing does exactly that, via `commit_at_reference` inside `base_snapshot` -- would then
-// carry a parent-missing arm it cannot reach, and would have to invent a cause or explain in a comment
-// that the arm is dead. That is the `carry_mint` shape this stack has now paid for four times: honest
-// about the callee's domain, dishonest about the operation's.
+// its subject through a route which ALREADY found the parent in that subject's repository -- the
+// staging standing does exactly that, via `admit_base_in` inside `base_snapshot` -- would then carry a
+// parent-missing arm it cannot reach, and would have to invent a cause or explain in a comment that
+// the arm is dead. That is the `carry_mint` shape this stack has now paid for four times: honest about
+// the callee's domain, dishonest about the operation's.
 //
-// So the fact travels as a `CommitAncestry` and the question is ABSENT from this route. The allocator
-// question is NOT absent, because it is a property of the repository rather than of the parent, and
-// nothing upstream has answered it. Found by external review.
+// So the parent and source questions are ABSENT from this route, having been answered where the basis
+// was minted. The allocator question is NOT absent, because it is a property of the repository rather
+// than of the parent, and nothing upstream has answered it.
+//
+// THIS TAKES THE BASIS AND NOTHING ELSE. An earlier revision took the subject, an admitted ancestry
+// and a raw integration as three arguments, which is what let a caller pair evidence from one
+// repository with a subject from another. Found by external review, twice: once for the ancestry being
+// unsealed, and again for the seal not naming what it was evidence about.
 type OrdinaryAncestralSubjectAdmission
   = OrdinaryAncestralSubjectAdmitted(AdmittedCommitSubject)
   | OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: Int }
 
-fn admit_commit_subject_from_ancestry(
-  subject: RepositoryManifestRoot,
-  admitted_ancestry: AdmittedCommitAncestry,
-  integration: CommitIntegration,
+fn admit_commit_subject_from_basis(
+  basis: AdmittedCommitBasis,
 ) -> OrdinaryAncestralSubjectAdmission {
-  let ancestry = admitted_ancestry.ancestry
-  match admit_commit_allocator(repository: subject.repository) {
+  match admit_commit_allocator(repository: basis.subject.repository) {
     CommitAllocatorInvalid { next_ordinal: n } =>
       OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: n }
     CommitAllocatorAdmitted =>
       OrdinaryAncestralSubjectAdmitted(
         AdmittedCommitSubject {
-          subject: subject,
-          ancestry: ancestry,
-          integration: integration,
+          subject: basis.subject,
+          ancestry: basis.ancestry,
+          integration: basis.integration,
         }
       )
   }
-}
-
-// THE ORDINARY ROUTE IS THE SAME ADMISSION WITH NO INTEGRATION, and it delegates rather than
-// repeating the allocator question, because two spellings of one rule is what `admit_commit_allocator`
-// was factored out to end.
-fn admit_ordinary_commit_subject_from_ancestry(
-  subject: RepositoryManifestRoot,
-  admitted_ancestry: AdmittedCommitAncestry,
-) -> OrdinaryAncestralSubjectAdmission {
-  admit_commit_subject_from_ancestry(
-    subject: subject,
-    admitted_ancestry: admitted_ancestry,
-    integration: NoSquashIntegration,
-  )
 }
 
 type OrdinaryCommitSubjectAdmission

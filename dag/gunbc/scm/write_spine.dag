@@ -31,7 +31,7 @@ import gunbc.scm.object_store {
 import gunbc.scm.ancestry { CommitAncestry }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommitRef,
-  RepositoryManifestRoot,
+  RepositoryManifestRoot, AdmittedCommitBasis,
   RepositoryManifestRootResolved, RepositoryManifestRootMissing,
   RepositoryManifestRootIsAuthoredSource, RepositoryManifestRootIsSemanticNode,
   repository_root_by_resolving,
@@ -205,7 +205,7 @@ fn stage_into(
 // reaches its two freezable arms only through `base_snapshot`, which finds the checked-out commit in
 // this repository's commits before it can report a base at all -- so by the time there is something to
 // freeze, the parent has been FOUND, and `StageWithNoBase` is the arm where there is no parent to
-// find. Both arms now carry the `CommitAncestry` that establishes it, and this verb mints through
+// find. Both arms now carry the `AdmittedCommitBasis` that establishes it, and this verb mints through
 // `mint_ancestral_commit`, whose admission does not ask. An earlier revision carried the generic
 // mint's parent-missing arm here and could not have produced it; that is the same `carry_mint` shape
 // as the integration arm below, found by external review one layer later than the last time.
@@ -241,9 +241,12 @@ type StagedCommit
 // `CommittableStage` is sole-constructed by `commit_staged` at exactly the two `stage_standing` arms
 // that mean there is a change to freeze. Everything downstream consumes it, and the selection-plus-
 // stage-consumption step is not reachable except through it.
+// IT CARRIES THE BASIS AND NOT A ROOT BESIDE IT. The basis already names the subject it is evidence
+// about, so a second `root` field here would be a second answer to a question the basis has answered
+// -- and the pair could disagree, which is exactly the mis-pairing the basis was introduced to make
+// unwritable.
 type CommittableStage sole_constructor {
-  root: RepositoryManifestRoot
-  ancestry: AdmittedCommitAncestry
+  basis: AdmittedCommitBasis
 }
 
 fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommit {
@@ -251,14 +254,14 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
     StageStandingRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
     NoCandidateAndNoBase => StagedCommitNothingToFreeze
     StageMatchesBase { candidate: _ } => StagedCommitNothingToFreeze
-    StageWithNoBase { candidate: root, ancestry: ancestry } =>
+    StageWithNoBase { candidate: _, basis: basis } =>
       freeze_committable(
-        committable: CommittableStage { root: root, ancestry: ancestry },
+        committable: CommittableStage { basis: basis },
         message: message,
       )
-    StageDiffersFromBase { candidate: root, committed: _, ancestry: ancestry } =>
+    StageDiffersFromBase { candidate: _, committed: _, basis: basis } =>
       freeze_committable(
-        committable: CommittableStage { root: root, ancestry: ancestry },
+        committable: CommittableStage { basis: basis },
         message: message,
       )
   }
@@ -281,11 +284,7 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
 // the OLD snapshot, and leaving the stage in place would make the next commit freeze the same manifest
 // again under a new identity.
 fn freeze_committable(committable: CommittableStage, message: String) -> StagedCommit {
-  match mint_ancestral_commit(
-    subject: committable.root,
-    message: message,
-    admitted_ancestry: committable.ancestry,
-  ) {
+  match mint_ancestral_commit(basis: committable.basis, message: message) {
     AncestralCommitAllocatorInvalid { next_ordinal: n } =>
       StagedCommitAllocatorInvalid { next_ordinal: n }
     AncestralCommitMinted(minted) =>
