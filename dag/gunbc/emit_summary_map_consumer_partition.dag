@@ -818,9 +818,9 @@ data emit_summary_map_guard_rows: List<GuardRow> = [
     return_type_can_express_the_answer: false,
   },
   {
-    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "build_qualified_item_registry"),
-    trigger_preservation: HoldsHere { how: "it keys on the qualified module.leaf, so two declarations sharing a leaf remain two entries and a genuine duplicate is still distinguishable" },
-    refusal: HoldsHere { how: "an exact duplicate key inserts duplicate_qualified_item_registry_marker, which its consumers refuse through emit_error_expr -- define-and-consume" },
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "lookup_item_by_leaf"),
+    trigger_preservation: HoldsHere { how: "it completes a leaf to the declaration's own identity before reading the registry, so two declarations sharing a leaf remain two entries and neither can answer for the other. It replaces build_qualified_item_registry, whose citation this row carried until that overlay was deleted for being a second key space over the same question" },
+    refusal: HoldsHere { how: "a leaf two modules declare reaches ItemLeafAmbiguous, which consumers cannot read past without an arm and which ambiguous_leaf_refusal renders -- define-and-consume" },
     return_type_can_express_the_answer: true,
   },
 ]
