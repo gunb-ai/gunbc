@@ -74,7 +74,13 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotE
 // non-test `.dag` in `dag/` and `src/`: a module that imports at least five declarations by name AND
 // enumerates at least five of those same names again as bare entries of a list literal. It returned
 // thirteen carriers, headed by this carrier's own roster and by
-// `gunbc.recurring_failure_mode.roster`. TWO BLIND SPOTS ARE KNOWN AND NAMED. It UNDER-reports: the
+// `gunbc.recurring_failure_mode.roster`. `gunbc.recurring_failure_mode.roster` LEFT THAT SET in
+// gunbc#10822: its list is derived from sibling row files, so an author files a row and does not
+// write a roster entry. The double authoring this row names is gone for that member. What remains
+// there is a host directory fold (`v1_compiler.cli_run.derived_row_roster`) plus the parse join
+// that still refuses a skip. That is NOT this row's declared climb (declaration VALUE binding).
+// It is a second path beside that climb, and it does not retire this stall: the other enrolled
+// carriers, including this carrier's own roster, still re-enumerate by hand. TWO BLIND SPOTS ARE KNOWN AND NAMED. It UNDER-reports: the
 // `std.primitives` contract roster is intra-module, so its second enumeration imports nothing and
 // the rule cannot see it, and the same holds for every future roster of same-module rows. It
 // OVER-reports: a list literal of imported names is not necessarily a second enumeration of a
@@ -96,9 +102,12 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotE
 // out of the parse that phase has already performed, because a list literal's element NAMES are
 // reachable only there.
 //
-// WHAT IT ESTABLISHES IS THE OMISSION GOING LOUD, AND NOTHING MORE. Every author still writes the
-// row and then writes the roster entry; the double authoring is untouched, the invalid state stays
-// writable, and safety depends on this check executing and staying enrolled. That is
+// WHAT IT ESTABLISHES IS THE OMISSION GOING LOUD, AND NOTHING MORE, FOR EVERY CARRIER THAT STILL
+// HAND-APPENDS. Every author of those carriers still writes the row and then writes the roster
+// entry; the double authoring is untouched there, the invalid state stays writable, and safety
+// depends on this check executing and staying enrolled. `gunbc.recurring_failure_mode.roster` is
+// no longer in that set. Calling the RecurringFailureMode directory fold a climb of this stall
+// would be inflation: the host writer is not value binding, and the join remains enrolled. That is
 // `MechanicallyPreventable` by the definition in DESIGN section 4b, and calling it anything higher
 // would be the inflation the paragraphs above already warn about.
 //

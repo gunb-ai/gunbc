@@ -56,10 +56,16 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // operations with output {} (Close, Click, Fill, UploadFile, Screenshot, Wait) are a
 // finding for that upstream, not a floor witness.
 // A Hamming-1 relation (same program and flags; one position a declaration literal vs a
-// generic bound-slot) would catch shell.Codegen.Check versus shell.Test.IsFile. It is a
-// second named relation, not list identity, not "same policy" (undecidable), and was not
-// built: the identity population that would justify it is two, and it remains blind on
-// composed argv regardless.
+// generic bound-slot) would catch the class this join cannot see: an operation that bakes
+// its parameter in as a literal never shares an argv with the general operation it
+// duplicates, so the identity join reports a LOWER BOUND and is blind in the direction of
+// the worst offenders -- the more policy an operation hardcodes, the less likely it is to
+// join. It is a second named relation, not list identity, not "same policy" (undecidable),
+// and was not built. The specimen that motivated it was deleted rather than repaired: it
+// had no consumer, so deletion cost nothing the relation would have protected. That
+// disposition is why the relation stays unbuilt AND why its absence is not evidence the
+// class is empty -- the census found this one by reading the module, not by joining.
+// The relation remains blind on composed argv regardless.
 
 data operation_argv_expression_residue_note: String = "The residue is a DEFICIT HELD CONSTANT, not a regression: 7 operations carry an argv element that is a call or a field access, which materialization does not evaluate. Established by execution against the OLD builtin before this change -- all 7 refused there too (4 with `unsupported expr`, 3 with `unbound param` reached first), so no operation that materialized before refuses now. What changed is the shape of the refusal: an untyped host error string became a typed, located, counted ArgvExpressionUnsupported. The count is pinned so the deficit can only shrink deliberately; the operations are git.Core.DiffUnified0, git.Core.DiffNameStatus, http.Client.GetLocalhostBounded, sudo.NopasswdExecuteProbe.Check, gunbc.Cli.Run, claim_executor.Executor.RunPlan and claim_executor.Executor.VerifyBuildArtifacts. Dissolves when argv element evaluation lands, which is a separate lane."
 

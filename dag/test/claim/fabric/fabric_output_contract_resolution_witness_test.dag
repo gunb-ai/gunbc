@@ -2,7 +2,7 @@ module test.claim.fabric_output_contract_resolution_witness
 
 import std.types { NonEmptyStr, Bool, String, Int, List }
 import std.measure { hardware_thread_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CensusObserved, CensusNotRunnable,
   census_rows_of_class, census_total_count,
@@ -21,7 +21,11 @@ import product.fabric.identity { WorkKey }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ReadsLiveTree: this body calls compile_dag_diagnostic_census, which walks the live checkout.
+// The SubstrateInputsOnly stamp that landed with gunbc#10713 was the lie a reviewer flagged
+// on the duplicate auto-open gunbc#10808.
 
 // OutputContractRef meaning-fork cut: opaque identity survives; obligations are a
 // separate carrier; a terminal-success-eligible roster is sealed behind resolution.

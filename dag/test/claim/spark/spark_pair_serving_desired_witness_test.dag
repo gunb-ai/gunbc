@@ -5,8 +5,15 @@ import std.nat { Nat }
 import std.measure { token_count_value, percent_count }
 import product.placement_supply { host_identity_eq }
 import extdeps.network.ipv4 { ipv4_address_eq }
-import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
+import v2.std.optional { Present, Absent }
+import std.measure { token_count, percent }
+import extdeps.vllm.engine_args {
+  vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire,
+  VllmEngineArgs, vllm_memory_utilization, KvFp8DsMla, ExecutorRay,
+}
 import extdeps.deepseek.deepseek_v4 { deepseek_v4_context_length }
+import gunbc.spark.pair_serving_realization { spark_pair_vllm_serve_argv }
+import gunbc.spark.model_snapshot_acquisition { deepseek_v4_flash_snapshot }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
@@ -18,6 +25,46 @@ import gunbc.spark.pair_serving_desired {
   SparkPairServingSeqCapacity, SeqCapacityMeasured, SeqCapacityUnmeasured, SeqCapacityByOperatorPolicy,
   spark_pair_serving_seq_capacity, spark_pair_serving_seq_capacity_for, spark_pair_serving_groups, spark_pair_serving_desired_hosts,
   spark_pair_serving_unit_wire,
+}
+
+// THE RENDERED LINE IS REACHED THROUGH THE DECLARED SNAPSHOT, because that is what the renderer now
+// takes. These two assertions arrived on main against a one-argument renderer; this branch made the
+// model path come from the snapshot, so the call is adapted rather than the assertions weakened -- an
+// unpinned snapshot renders NOTHING, and a witness that silently accepted that would assert about a
+// line nobody launches.
+fn w_serve_line(args: VllmEngineArgs) -> String {
+  match spark_pair_vllm_serve_argv(args: args, snapshot: deepseek_v4_flash_snapshot) {
+    Absent => ""
+    Present { value: argv } => join(argv, " ")
+  }
+}
+
+// THE PINNED BATCH BUDGET REACHES THE ARGV, which is the only place it can affect the engine. The
+// field is optional and its ABSENT arm renders nothing, so a desired row that silently reverted to
+// `none` would still typecheck, still build a valid launch, and still serve -- on whatever default
+// the runtime's device probe happened to resolve. That is the exact failure this pin exists to
+// prevent, and it is invisible without an assertion on the rendered text.
+test fn the_pinned_prefill_budget_is_rendered_into_the_serve_argv() -> Bool {
+  string_contains(
+    s: w_serve_line(args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32)),
+    pattern: "--max-num-batched-tokens 2048")
+}
+
+// THE DISCRIMINATING NEGATIVE. An unrequested policy must emit NO batch flag at all, rather than
+// emitting a default we would then be inheriting twice. Without this arm the row above would still
+// pass if the renderer hard-coded the flag regardless of the field.
+test fn an_unrequested_prefill_policy_renders_no_batch_flag() -> Bool {
+  !string_contains(
+    s: w_serve_line(args: VllmEngineArgs {
+      prefill_scheduling: none,
+      tensor_parallel_size: 4,
+      gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
+      max_model_len: token_count(count: 1048576),
+      max_num_seqs: 32,
+      kv_cache_dtype: KvFp8DsMla,
+      distributed_executor_backend: ExecutorRay,
+    }),
+    pattern: "--max-num-batched-tokens")
 }
 
 // THE ENGINE TUPLE FOR THE ROUTE THAT ACTUALLY SERVES DEEPSEEK. `fp8_ds_mla` is the cache layout of

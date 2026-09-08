@@ -392,6 +392,10 @@ pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
 pub type TokenCount = Rc<Measure<Count, One, i64>>;
 
+pub type AllocatorBlockCount = Rc<Measure<Count, One, i64>>;
+
+pub type AttentionLayerCount = Rc<Measure<Count, One, i64>>;
+
 pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
 
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
@@ -1104,6 +1108,28 @@ pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
 }
 
+pub fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn allocator_block_count_value(c: AllocatorBlockCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn attention_layer_count(count: Nat) -> AttentionLayerCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn attention_layer_count_value(c: AttentionLayerCount) -> Nat {
+    measure_count(c.clone())
+}
+
 pub fn cpu_core_count(count: Nat) -> CpuCoreCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1338,6 +1364,19 @@ pub fn percent(count: Nat) -> Percent {
 
 pub fn percent_count(p: Percent) -> Nat {
     measure_count(p.clone())
+}
+
+pub type ConcurrentRequestHundredths = Rc<Measure<Dimensionless, One, i64>>;
+
+pub fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn concurrent_request_hundredths_count(c: ConcurrentRequestHundredths) -> Nat {
+    measure_count(c.clone())
 }
 
 pub fn permyriad_half_for_round_half_up() -> i64 {

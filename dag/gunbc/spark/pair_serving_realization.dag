@@ -2,11 +2,12 @@ module gunbc.spark.pair_serving_realization
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
 import std.nat { Nat }
+import v2.std.optional { Present, Absent }
 import std.measure { Percent, percent_count, token_count_value, millisecond_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire }
+import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire, ChunkedPrefillRequested, ChunkedPrefillNotRequested }
 import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory_name }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned,
@@ -136,10 +137,33 @@ fn vllm_utilization_wire(p: Percent) -> String {
   if n >= 100 { "1.0" } else if n >= 10 { join(["0.", to_string(n)], "") } else { join(["0.0", to_string(n)], "") }
 }
 
+// THE PREFILL SCHEDULING FLAGS ARE RENDERED ONLY WHEN REQUESTED, and the unrequested case emits
+// NOTHING rather than emitting the upstream default. Rendering a value here because we happen to
+// know what upstream would pick would make the launch text assert a choice nobody made, and the
+// whole point of the optional field is that absence is a distinct fact -- see
+// extdeps.vllm.batch_defaults for what upstream then does with that absence on a GB10.
+fn spark_pair_prefill_scheduling_argv(args: VllmEngineArgs) -> List<String> {
+  match args.prefill_scheduling {
+    Absent => []
+    Present { value: p } =>
+      concat(
+        ["--max-num-batched-tokens", to_string(token_count_value(t: p.max_num_batched_tokens))],
+        match p.chunked_prefill {
+          ChunkedPrefillRequested => ["--enable-chunked-prefill"]
+          ChunkedPrefillNotRequested => []
+        }
+      )
+  }
+}
+
+// THE MODEL PATH COMES FROM THE DECLARED SNAPSHOT, WHICH IS WHY THIS RENDER IS OPTIONAL. An unpinned
+// snapshot has no path to serve from, and answering with a hardcoded one would launch an engine
+// against whatever happened to be on the disk. The two changes compose: main decides WHICH FLAGS the
+// prefill policy contributes, this branch decides WHETHER THERE IS A LINE AT ALL.
 fn spark_pair_vllm_serve_argv(args: VllmEngineArgs, snapshot: ModelSnapshotDesired) -> List<String>? {
   match spark_pair_model_path_in_container(snapshot: snapshot) {
     Absent => none
-    Present { value: model_path } => Present { value: [
+    Present { value: model_path } => Present { value: concat([
     sparkrun_vllm_ds4_gb10_vllm_binary as String, "serve", model_path,
     "--served-model-name", spark_pair_served_model_name as String,
     "--host", "0.0.0.0", "--port", to_string(spark_pair_serve_port),
@@ -152,7 +176,7 @@ fn spark_pair_vllm_serve_argv(args: VllmEngineArgs, snapshot: ModelSnapshotDesir
     "--kv-cache-dtype", vllm_kv_cache_dtype_wire(request: args.kv_cache_dtype) as String,
     "--gpu-memory-utilization", vllm_utilization_wire(p: args.gpu_memory_utilization.fraction),
     "--enable-prefix-caching",
-  ] }
+  ], spark_pair_prefill_scheduling_argv(args: args)) }
   }
 }
 
