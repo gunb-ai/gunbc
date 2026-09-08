@@ -8179,6 +8179,25 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
     }
 }
 
+pub fn annotated_let_declared_type(texpr: Rc<Node>) -> Option<Rc<Node>> {
+    if ((texpr.type_annotation.clone() != std::option::Option::None)
+        && crate::v1_compiler_infer_types::is_type_expr_annotation(
+            texpr.type_annotation.clone().clone().unwrap(),
+        ))
+    {
+        Some(texpr.type_annotation.clone().clone().unwrap())
+    } else {
+        std::option::Option::None
+    }
+}
+
+pub fn annotated_let_bound_type(texpr: Rc<Node>, val_type: Rc<Node>) -> Rc<Node> {
+    match annotated_let_declared_type(texpr.clone()) {
+        Some(declared) => declared.clone(),
+        std::option::Option::None => val_type,
+    }
+}
+
 pub fn extend_scope(
     scope: Rc<InferScope>,
     name: String,
@@ -11558,37 +11577,32 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 },
                 std::option::Option::None => false,
             };
-            let val_expected = if ((texpr.type_annotation.clone() != std::option::Option::None)
-                && crate::v1_compiler_infer_types::is_type_expr_annotation(
-                    texpr.type_annotation.clone().clone().unwrap(),
-                )) {
-                Some(texpr.type_annotation.clone().clone().unwrap())
-            } else {
-                if is_tail_return.clone() {
-                    expected.clone()
-                } else {
-                    std::option::Option::None
+            let declared_let_type = annotated_let_declared_type(texpr.clone());
+            let val_expected = match declared_let_type.clone() {
+                Some(declared) => Some(declared.clone()),
+                std::option::Option::None => {
+                    if is_tail_return.clone() {
+                        expected.clone()
+                    } else {
+                        std::option::Option::None
+                    }
                 }
             };
             let val_result = infer_expr(val_expr.clone(), scope.clone(), val_expected.clone());
             let val_typed = val_result.typed.clone();
             let val_type = crate::v1_compiler_infer_types::resolved_type(val_typed.clone());
-            let val_annotation_diags = if ((texpr.type_annotation.clone()
-                != std::option::Option::None)
-                && crate::v1_compiler_infer_types::is_type_expr_annotation(
-                    texpr.type_annotation.clone().clone().unwrap(),
-                )) {
-                declared_type_conformance_diags(
-                    texpr.type_annotation.clone().clone().unwrap(),
+            let val_annotation_diags = match declared_let_type.clone() {
+                Some(declared) => declared_type_conformance_diags(
+                    declared.clone(),
                     val_type.clone(),
                     val_expr.span.clone(),
                     scope.clone(),
-                )
-            } else {
-                Rc::new(vec![])
+                ),
+                std::option::Option::None => Rc::new(vec![]),
             };
             let val_diags =
                 v1_rt::concat(val_result.diagnostics.clone(), val_annotation_diags.clone());
+            let bound_type = annotated_let_bound_type(texpr.clone(), val_type.clone());
             if (body_expr.clone() == std::option::Option::None) {
                 {
                     let let_texpr = crate::v1_std_core::make_named_expr_node(
@@ -11597,7 +11611,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         Rc::new(ExprData::ExprLet),
                         Rc::new(vec![val_typed.clone()]),
                         Some(Rc::new(InferredNode::Resolved {
-                            node: val_type.clone(),
+                            node: bound_type.clone(),
                         })),
                         span.clone(),
                         crate::v1_std_core::node_name_span(texpr.clone()),
@@ -11612,7 +11626,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     let extended = extend_scope(
                         scope.clone(),
                         let_name.clone(),
-                        val_type.clone(),
+                        bound_type.clone(),
                         classify_binding_provenance(val_typed.clone(), scope.clone()),
                     );
                     let body_result = infer_expr(
