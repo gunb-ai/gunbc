@@ -562,28 +562,26 @@ fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<Stri
 
 fn spark_verify_after_transfer(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
   match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
-          RemoteUnreachable { cause: c } =>
-            AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
-              identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
-            } } }
-          RemoteRan { exit_code: _, stdout: out, stderr: err } =>
-            match read_instrument(stdout: out) {
-              InstrumentDidNotRun =>
-                AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
-                  identity: subject.identity, source: origin.identity,
-                  reason: join(["the verification instrument never executed after the transfer, so the transferred bytes were never checked: ", err], "") as NonEmptyStr,
-                } } }
-              InstrumentVerified =>
-                AttemptTerminal { outcome: AcquisitionFetched {
-                  identity: subject.identity, install_path: subject.install_path, source: origin,
-                } }
-              InstrumentRejectedTheSubject =>
-                AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
-                  identity: subject.identity, source: origin.identity,
-                  reason: join(["the transfer completed and verification then refused it; this repository cannot yet distinguish a digest mismatch from an upstream, auth or argument failure in the verifier, so it does NOT claim the bytes are wrong: ", err], "") as NonEmptyStr,
-                } } }
-            }
-        }
+    RemoteUnreachable { cause: c } =>
+      AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+        identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
+      } } }
+    RemoteRan { exit_code: _, stdout: out, stderr: err } =>
+      match read_instrument(stdout: out) {
+        InstrumentDidNotRun =>
+          AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+            identity: subject.identity, source: origin.identity,
+            reason: join(["the verification instrument never executed after the transfer, so the transferred bytes were never checked: ", err], "") as NonEmptyStr,
+          } } }
+        InstrumentVerified =>
+          AttemptTerminal { outcome: AcquisitionFetched {
+            identity: subject.identity, install_path: subject.install_path, source: origin,
+          } }
+        InstrumentRejectedTheSubject =>
+          AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+            identity: subject.identity, source: origin.identity,
+            reason: join(["the transfer completed and verification then refused it; this repository cannot yet distinguish a digest mismatch from an upstream, auth or argument failure in the verifier, so it does NOT claim the bytes are wrong: ", err], "") as NonEmptyStr,
+          } } }
       }
   }
 }
