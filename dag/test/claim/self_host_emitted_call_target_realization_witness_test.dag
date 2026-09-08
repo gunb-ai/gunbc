@@ -64,6 +64,41 @@ test fn w_host_map_record_shape_refuses_instead_of_constructing_a_second_carrier
   )
 }
 
+// THE OPEN-SUPPORT CARRIER CONSTRUCTS STRUCTURALLY, THE DISCRIMINATING RED for the fossil-row
+// class. PointwisePower<T> is the power set presented as a characteristic function (std.algebra,
+// OpenSupport) — no finite BTreeSet can realize an open membership oracle — but all four target
+// inhabitant rosters carried a pre-split "PointwisePower" -> finite-set row, and the construction
+// arm consulted it while the type renderer (keyed on declaration provenance) did not: the type
+// rendered structurally and the literal emitted the record-shaped-carrier refusal panic. Measured
+// on the emitted 00_compile closure's first native run (2026-09-07): twelve such panic sites, hit
+// through dag_language_model().canonical_symbols. The rows are removed; the literal now takes the
+// same structural path the type renderer already took (Rc'd closure field, phantom filled — the
+// bool_boolean_algebra pattern).
+test fn w_pointwise_power_record_shape_constructs_its_structural_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.pointwise_power_record_shape_probe\nimport std.algebra { PointwisePower }\nimport std.types { Int }\nfn probe(only: Int) -> PointwisePower<Int> { PointwisePower { member: fn(n) { n == only } } }\n",
+    "src/test_claim_pointwise_power_record_shape_probe.rs",
+    ["PointwisePower {", "member:"],
+    ["record-shaped carrier has no realization", "BTreeSet"]
+  )
+}
+
+// THE BOUNDARY CONTROL. FinitePowerSet — the finite counterpart the fossil row actually described
+// — keeps its BTreeSet inhabitant row, and with it the construction refusal: a record literal
+// still cannot construct the finite-set host inhabitant from characteristic-function fields. A
+// repair that cleared the set-carrier rows wholesale instead of removing only the open-support
+// fossil greens the panic arm and reds here. (Type position is not the discriminator: the
+// provenance-keyed renderer emits both carriers structurally today — measured 2026-09-07, the
+// type-position form of this probe renders FinitePowerSet<Int>, not BTreeSet<i64>.)
+test fn w_finite_power_set_record_shape_still_refuses_while_its_row_stands() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.finite_power_set_record_shape_probe\nimport std.algebra { FinitePowerSet }\nimport std.types { Int }\nfn probe(s: FinitePowerSet<Int>) -> FinitePowerSet<Int> { FinitePowerSet { member: fn(n) { s.member(n) }, union: fn(other) { s }, intersect: fn(other) { s }, diff: fn(other) { s }, contains: fn(n) { s.contains(n) }, count: fn() { s.count() }, length: fn() { s.length() } } }\n",
+    "src/test_claim_finite_power_set_record_shape_probe.rs",
+    ["record-shaped carrier has no realization"],
+    ["FinitePowerSet {"]
+  )
+}
+
 // THE PROBE IMPORTS v2.std.collection AND THEN CALLS IT BY ITS QUALIFIED NAME, which looks
 // redundant and is not. compile_dag_rust_emit_check compiles through the witness harness's
 // restricted pool (2973 modules against the corpus's 4261), and a qualified spelling alone does not
