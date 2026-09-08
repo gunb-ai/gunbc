@@ -203,7 +203,7 @@ fn collect_runs_in_window(
     let subject = github_listing_subject(
       operation: census_subject
     )
-    let fetch = fn(c: PageCursor) -> PageObservation<WorkflowRun> {
+    let fetch = fn(c) {
       let page_num = match c {
         OffsetPage { page: n } => n
         _ => 1
