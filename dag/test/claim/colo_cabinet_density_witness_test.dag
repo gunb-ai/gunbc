@@ -1,0 +1,98 @@
+module test.claim.colo_cabinet_density_witness
+
+import std.types { Bool, Int }
+import std.measure { Watt, watt, watt_count, volt_ampere }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.colo.types {
+  CabinetDensityClaim, DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
+  CabinetPowerFigure, PublishedRealPower, PublishedApparentPower,
+  cabinet_density_air_established, cabinet_density_air_upper_bound,
+  RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
+}
+import extdeps.colo.databank { databank_lga4_density, databank_lga4_retail_grain }
+import extdeps.colo.iron_mountain {
+  iron_mountain_nje1_density, iron_mountain_wpa1_density, iron_mountain_nje1_retail_grain,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CARRIER'S CONSUMER. Review 62722 found the first cut of this module dangling: a type, two
+// functions and six data rows that nothing read, with the controls living only in a scratch probe
+// the author ran and deleted. A probe that is deleted is not evidence the wall stays standing -
+// DESIGN section 3c is explicit that a declaration nobody consumes is red regardless of how well
+// it is modelled, and section 5 that a run nobody can repeat is not a consumer. These are those
+// controls, enrolled.
+
+fn established_watts(d: CabinetDensityClaim) -> Int {
+  match cabinet_density_air_established(d: d) {
+    Present { value } => watt_count(w: value),
+    Absent => 0 - 1,
+  }
+}
+
+fn bound_watts(d: CabinetDensityClaim) -> Int {
+  match cabinet_density_air_upper_bound(d: d) {
+    Present { value } => watt_count(w: value),
+    Absent => 0 - 1,
+  }
+}
+
+// A FIXTURE REPRODUCING THE READING THAT FOUND THE DEFECT. Telehouse Chelsea publishes "standard
+// power to rack at 3.5kVA with scalable options to 5kVA", and an earlier carrier had no arm for
+// apparent power, so the numeral landed in a field named for kilowatts. The fixture lives here
+// rather than in an operator module because it is evidence about the CARRIER, not a census row -
+// the real Telehouse rows belong to whichever lane reads that operator.
+data apparent_power_fixture: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedApparentPower { power: volt_ampere(count: 5000) },
+  claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
+  citation: "witness fixture reproducing the Telehouse Chelsea publication shape; the live rows are carried by the operator's own module",
+}
+
+// POSITIVE CONTROL. A published kilowatt figure yields an established watt reading equal to what
+// the operator marketed, and the same figure as its own upper bound.
+test fn w_published_kilowatts_establish_real_power() -> Bool {
+  established_watts(d: databank_lga4_density) == 35000
+    && established_watts(d: iron_mountain_nje1_density) == 30000
+    && bound_watts(d: databank_lga4_density) == 35000
+}
+
+// THE DISCRIMINATING RED, AND THE REASON THE APPARENT-POWER ARM EXISTS. A kVA publication
+// establishes NO real-power reading: kW = kVA x power factor, no power factor is published, and
+// assuming unity would overstate the cabinet in the flattering direction. If this ever returns
+// 5000 instead of refusing, the carrier has silently equated apparent and real power again.
+test fn w_apparent_power_establishes_no_real_power() -> Bool {
+  established_watts(d: apparent_power_fixture) == 0 - 1
+}
+
+// The same figure DOES bound real power from above, because kW <= kVA. That is what makes it
+// usable to reject a cabinet too small even at the bound, and useless to admit one.
+test fn w_apparent_power_still_bounds_real_power_above() -> Bool {
+  bound_watts(d: apparent_power_fixture) == 5000
+}
+
+// AN UNREAD CLAIM YIELDS NOTHING ON EITHER AXIS. The earlier accessor answered 0 here - a
+// fabricated in-band reading on the same axis as real ones - and this is the control that keeps
+// the zero unconstructible. WPA-1 is the live row: a review asserted 20 kW cabinets there, the
+// page states no density at all, and the row records the absence rather than the assertion.
+test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
+  established_watts(d: iron_mountain_wpa1_density) == 0 - 1
+    && bound_watts(d: iron_mountain_wpa1_density) == 0 - 1
+}
+
+// A READ DENSITY AND A SELLABLE GRAIN ARE INDEPENDENT FACTS. A cabinet marketed at 30 kW that the
+// operator will only sell as part of a suite is not a candidate for one cabinet, and a 3 kW
+// cabinet sold singly is. Fusing them would have made one of the two unaskable.
+fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
+  match g {
+    SingleCabinetOffered { wording, citation } => true,
+    CageOrSuiteMinimum { wording, citation } => false,
+    RetailGrainUnread { obligation } => false,
+  }
+}
+
+test fn w_density_and_grain_are_separate_facts() -> Bool {
+  grain_admits_single_cabinet(g: databank_lga4_retail_grain)
+    && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
+    && established_watts(d: databank_lga4_density) == 35000
+}
