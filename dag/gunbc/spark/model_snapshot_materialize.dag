@@ -18,7 +18,7 @@ import gunbc.artifact_acquisition {
   AcquisitionProbeFailed,
   AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptRejected, AttemptUnreachable,
   AcquisitionOutcome, AcquisitionFetched, AcquisitionRefused, VerifyMechanismFailed,
-  acquire_artifact,
+  acquire_artifact, acquisition_key_wire,
 }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotRole,
@@ -345,10 +345,23 @@ fn unit_name_segment(s: String) -> String {
   join(["-", join(split(join(split(s, "/"), "-"), " "), "-")], "")
 }
 
+// THE UNIT NAME CARRIES THE KEY, because a transfer is identified by WHAT IT IS FETCHING and not only
+// by where it lands. Keyed on identity and path alone, two runs pinned to DIFFERENT REVISIONS of the
+// same checkpoint share one unit name: the second run polls the first one's unit, reads its clean exit,
+// and reports the revision it wanted as transferred when the bytes on disk are the other one. That is
+// the false-success shape this module has already been bitten by once, reached from a different
+// direction -- and it survives a correct verifier, because the poll answers before verification runs.
+//
+// WHAT THIS DOES NOT YET CARRY IS THE SOURCE. Two sources for one key would still collide, and the
+// reason is structural rather than an oversight: `spark_transfer_clear` and `spark_transfer_state`
+// receive only the subject, so a source-bearing name would differ between the process that STARTS the
+// unit and the process that POLLS it -- which fails closed as a spurious TransferAbsent, but fails.
+// Threading the source through the supervision surface is the fix and it is not made here.
 fn spark_transfer_unit_for(subject: AcquisitionSubject) -> NonEmptyStr {
   join([
     "gunbc-materialize",
     unit_name_segment(s: subject.identity as String),
+    unit_name_segment(s: acquisition_key_wire(key: subject.key) as String),
     unit_name_segment(s: subject.install_path as String),
   ], "") as NonEmptyStr
 }
@@ -391,8 +404,16 @@ fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
 
 // A FINISHED UNIT IS CLEARED BEFORE THE NEXT START, because systemd keeps a failed transient unit
 // around and a stale one would be read as this run's result.
+// THE TRAILING `|| true` WAS NOT SHELL AND NEVER RAN AS SHELL. These argv words go to exec, not to an
+// interpreter, so systemctl received `||` and `true` as two additional UNIT NAMES to reset -- and the
+// command it was meant to protect therefore failed slightly harder than it would have unaided. It read
+// as a deliberate ignore-the-failure idiom while doing nothing of the kind.
+//
+// THE IGNORE IS REAL AND IT IS THE RETURN TYPE. Clearing a stale unit is best-effort by design: there
+// may be nothing to clear, which is the ordinary case. Discarding the exit code says that in the one
+// place a reader will believe.
 fn spark_transfer_clear(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
-  match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_for(subject: subject) as String, "||", "true"]) {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_for(subject: subject) as String]) {
     RemoteUnreachable { cause: _ } => false
     RemoteRan { exit_code: _, stdout: _, stderr: _ } => true
   }
@@ -435,23 +456,43 @@ type SparkTransferSupervision
   = SupervisedExitClean
   | SupervisedExitFailed { status: String }
   | SupervisedStillRunning { polls: Nat }
+  | SupervisedTransferUnitAbsent
   | SupervisionLost { cause: String }
 
-// THE POLL LOOP IS BOUNDED AND FORWARD, and its exhausted case is a NAMED terminal rather than a
-// silent stop (DESIGN section 4). The sleep happens on the remote host so a poll is one round trip,
-// and a poll whose ssh leg fails is NOT fatal -- the unit is still running and the next poll will
-// find it -- so only an unreadable state at the very end is reported as lost.
+// THE BUDGET IS CHECKED WHERE THE STATE IS KNOWN, and an earlier shape checked it one level too early.
+// Testing `remaining == 0` BEFORE observing meant exhaustion always answered SupervisedStillRunning,
+// whatever the last poll had actually seen -- so a host that had gone away entirely was reported as a
+// transfer still in progress, and SupervisionLost was declared, matched, and CONSTRUCTED NOWHERE. The
+// annotation that stood here described the lost case as though it were implemented; it was not, which
+// is precisely what DESIGN section 4c means by an annotation never being evidence that a claim holds.
+//
+// NOW EACH TERMINAL IS PRODUCED BY THE STATE THAT CAUSED IT. Exhausted while the unit was RUNNING is
+// still-running; exhausted while its state was UNREADABLE is lost, and carries the cause that made it
+// unreadable. A mid-run poll failure remains non-fatal, because the unit really is still running and
+// the next poll will find it -- only the LAST such failure is terminal. The loop is bounded and forward
+// either way (DESIGN section 4).
+//
+// A UNIT THAT IS ABSENT IS NOT A UNIT THAT SUCCEEDED. Absence is genuinely ambiguous -- a completed
+// oneshot is reaped and leaves nothing behind, and so does a unit that never started -- so it gets its
+// own name rather than being aliased onto the clean exit. Verification is the arbiter for both, but the
+// receipt now says which one it was arbitrating.
 fn spark_transfer_supervise(ctx: SparkMaterializeContext, subject: AcquisitionSubject, remaining: Nat) -> SparkTransferSupervision {
-  if remaining == 0 {
-    SupervisedStillRunning { polls: spark_transfer_poll_budget }
-  } else {
-    match spark_transfer_state(ctx: ctx, subject: subject) {
-      TransferExitedClean => SupervisedExitClean
-      TransferExitedFailed { status: st } => SupervisedExitFailed { status: st }
-      TransferAbsent => SupervisedExitClean
-      TransferStateUnreadable { cause: _ } => spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
-      TransferRunning => spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
-    }
+  match spark_transfer_state(ctx: ctx, subject: subject) {
+    TransferExitedClean => SupervisedExitClean
+    TransferExitedFailed { status: st } => SupervisedExitFailed { status: st }
+    TransferAbsent => SupervisedTransferUnitAbsent
+    TransferStateUnreadable { cause: c } =>
+      if remaining == 0 {
+        SupervisionLost { cause: c }
+      } else {
+        spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
+      }
+    TransferRunning =>
+      if remaining == 0 {
+        SupervisedStillRunning { polls: spark_transfer_poll_budget }
+      } else {
+        spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
+      }
   }
 }
 
@@ -514,8 +555,13 @@ fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<Stri
       } } }
     SupervisedExitFailed { status: st } =>
       AttemptRejected { detail: join(["the transfer unit exited with status ", st, "; the host and command were reached, so this is not a reachability failure"], "") as NonEmptyStr }
-    SupervisedExitClean => {
-        match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
+    SupervisedTransferUnitAbsent => spark_verify_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+    SupervisedExitClean => spark_verify_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+  }
+}
+
+fn spark_verify_after_transfer(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
           RemoteUnreachable { cause: c } =>
             AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
               identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
