@@ -35,13 +35,17 @@ import gunbc.rung_drop {
 // completeness of the waiter population would be the 4b(1) inflation this paragraph exists to
 // refuse.
 //
-// CEILING: 3, structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT A PR:
-// each RungDrop declares the shared capability it waits on as data, and this join FOLDS the
-// roster for enrolment rather than filtering by a hand-authored identity list, so a waiter
-// that is not enrolled is unwritable rather than unreported. Sufficient for deleting
-// waiter_identities as an authority. Until that fires, the list stays the mechanically
-// preventable wall. #10828 landed second-relative-to-this-branch: transitional_admission_exception
-// is now an enrolled waiter, which closes that sequencing hole and does not discharge this trigger.
+// CEILING: 3, structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT A PR
+// -- the same fact as gunbc.recurring_failure_mode handwritten_population_wrong_by_gain_and_by_loss:
+// active_waiters(capability) = standing drops whose currently-unsatisfied retirement condition
+// includes the capability, and this join FOLDS that derived set. Then omission (a real waiter
+// never listed) and staleness (a drop retired through another legitimate arm) both vanish by
+// construction. A static census of drops that mention the capability identity is NOT this
+// trigger: it would still list floor_cut_falsifier_cadence after operator withdrawal.
+// Sufficient for deleting waiter_identities as an authority. Until that fires, the list stays
+// the mechanically preventable wall over enrolled identities only. #10828 landed
+// second-relative-to-this-branch: transitional_admission_exception is now an enrolled waiter,
+// which closes that sequencing hole and does not discharge this trigger.
 
 type SharedCapability {
   identity: NonEmptyStr
@@ -68,7 +72,7 @@ fn waiter_rows(cap: SharedCapability, ds: List<RungDrop>) -> List<RungDrop> {
   filter(ds, d => length(xs: filter(cap.waiter_identities, w => identity_equals(d: d, want: w))) == 1)
 }
 
-fn waiter_occurrences_on_roster(cap: SharedCapability, ds: List<RungDrop>, want: String) -> Int {
+fn waiter_occurrences_on_roster(ds: List<RungDrop>, want: String) -> Int {
   length(xs: filter(ds, d => identity_equals(d: d, want: want)))
 }
 
@@ -84,11 +88,11 @@ fn shared_capability_verdict(cap: SharedCapability, ds: List<RungDrop>) -> Share
     if length(xs: list_dups) > 0 {
       WaiterListHasDuplicates { identities: list_dups }
     } else {
-      let missing = filter(cap.waiter_identities, w => waiter_occurrences_on_roster(cap: cap, ds: ds, want: w) == 0)
+      let missing = filter(cap.waiter_identities, w => waiter_occurrences_on_roster(ds: ds, want: w) == 0)
       if length(xs: missing) > 0 {
         WaiterAbsent { identities: missing }
       } else {
-        let doubled = filter(cap.waiter_identities, w => waiter_occurrences_on_roster(cap: cap, ds: ds, want: w) > 1)
+        let doubled = filter(cap.waiter_identities, w => waiter_occurrences_on_roster(ds: ds, want: w) > 1)
         if length(xs: doubled) > 0 {
           WaiterDuplicatedOnRoster { identities: doubled }
         } else {

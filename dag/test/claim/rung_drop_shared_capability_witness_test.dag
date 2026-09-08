@@ -67,7 +67,7 @@ data uniform_retired_roster: List<RungDrop> = [
   ),
 ]
 
-// THE LIVE JOIN. Four waiters, all standing today, each rostered once. This is the positive
+// THE LIVE JOIN. Five waiters, all standing today, each rostered once. This is the positive
 // control: the capability exists and its waiters have not split.
 test fn live_missing_cadence_waiters_are_uniformly_standing() -> Bool {
   match shared_capability_verdict(cap: missing_cadence_category, ds: rung_drop_roster) {
