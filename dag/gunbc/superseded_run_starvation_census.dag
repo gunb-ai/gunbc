@@ -146,7 +146,6 @@ fn collect_runs_in_window(
   created_range: String,
   max_run_pages: Int,
 ) -> RunCollectionOutcome {
-  // Phase 1: fetch the first page to learn total_count (GitHub returns it on every page).
   let first = github.WorkflowRuns.ListWorkflowRuns(
     auth_token: auth_token,
     owner: owner,
@@ -157,11 +156,8 @@ fn collect_runs_in_window(
     page: 1,
   )
   let total = first.result.total_count
-  // The listing is complete in ceil(total / 100) data pages. We allow one extra page
-  // (the first empty page that confirms exhaustion) so the fold terminates naturally.
   let data_pages = (total + 99) / 100
   if data_pages == 0 {
-    // No runs in the window. Return the (empty) first page as complete.
     CollectionComplete { runs: first.result.workflow_runs }
   } else if data_pages > max_run_pages {
     PageLimitExceeded {
@@ -170,7 +166,6 @@ fn collect_runs_in_window(
       max_pages: max_run_pages,
     }
   } else {
-    // Read data_pages - 1 remaining pages, then one extra empty page to confirm exhaustion.
     collect_window_pages(
       auth_token: auth_token,
       owner: owner,
@@ -199,9 +194,6 @@ fn collect_window_pages(
   accumulated: List<WorkflowRun>
 ) -> RunCollectionOutcome {
   if next_page > last_expected_page {
-    // We reached the exhaustion confirmatory page without hitting an empty response.
-    // The listing may have grown between page 1 and now; the data we have is correct
-    // but incomplete. Refuse rather than silently truncate.
     PageLimitExceeded {
       collected: accumulated,
       reached_page: next_page,
