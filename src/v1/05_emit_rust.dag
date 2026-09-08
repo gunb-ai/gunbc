@@ -15,7 +15,7 @@ import std.primitive_projection {
 
 import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
 
-import std.algebra { trim }
+import std.algebra { trim, AlgebraFieldTemplate, is_collection_filter_template }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
@@ -38,6 +38,7 @@ import v1.std.core {
   CallSemantics, PlainCallSemantics, ResolvedDirectCallSemantics, ResolvedCallFormal, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
+  is_error_diagnostic, EmissionConstructUnprojectable, FilterInBranchCondition,
   UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
@@ -3151,13 +3152,16 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 // rather than a different answer:
 //
 //   * the crate's module list (lib.rs) and the emitted-population manifest are computed from
-//     `module_paths`, one path per module in `typed.modules` whether or not it was rendered.
-//     Their inputs are `List<String>`, so no rendered byte can reach them -- content
-//     independence is the parameter type rather than a claim about the body.
+//     `module_paths`: one path per module in `typed.modules` that this emit did not withhold.
+//     A module the selection declined to render still appears (scoped emit is a subset, not a
+//     different crate shape). A module this emit rendered and then refused with an error
+//     diagnostic does not -- otherwise the manifest would declare a file `files` does not
+//     carry, which is two answers for one population. Paths are still `List<String>`, so no
+//     rendered byte can reach them.
 //   * the two closure-stub decisions are asked of the RESOLVED GRAPH (see
 //     `closure_references_module_filename`), never of emitted text, so a module the selection
 //     declined to render still counts toward whether the crate needs a stub.
-//   * `import_refusals` are observed only for rendered modules, and that is exact rather than
+//   * `module_refusals` are observed only for rendered modules, and that is exact rather than
 //     partial. `emit_resolved_for_target_selected` in `v1.compiler.compile` carries the
 //     argument: an emit with any error diagnostic returns NO files, so a committed tree is one
 //     whose whole closure emitted clean and the unrendered modules had nothing to say.
@@ -3202,13 +3206,22 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       selection: selection,
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
     |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
-  let module_files = module_emissions |> map(e => e.file)
-  let import_refusals = module_emissions |> flat_map(e => e.import_refusals)
-  let module_paths = typed.modules |> map(tm => rust_module_emit_path(
-    module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
+  let published_module_emissions = module_emissions |> filter(e =>
+    (e.module_refusals |> filter(r => is_error_diagnostic(d: r.diagnostic)) |> count) == 0)
+  let unpublished_module_paths = module_emissions
+    |> filter(e => (e.module_refusals |> filter(r => is_error_diagnostic(d: r.diagnostic)) |> count) > 0)
+    |> map(e => e.file.path)
+  let module_files = published_module_emissions |> map(e => e.file)
+  let module_refusals = module_emissions |> flat_map(e => e.module_refusals)
+  let module_paths = typed.modules
+    |> map(tm => rust_module_emit_path(
+      module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
+    |> filter(path => (unpublished_module_paths |> filter(p => p == path) |> count) == 0)
   let test_module_names = typed.modules
     |> map(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
-    |> filter(name => (test_projections |> filter(p => p.module_name == name)) |> count > 0)
+    |> filter(name =>
+      ((test_projections |> filter(p => p.module_name == name)) |> count > 0)
+      && ((unpublished_module_paths |> filter(p => p == rust_module_emit_path(module_name: name)) |> count) == 0))
   let test_file_paths = test_module_names |> map(name => rust_test_file_path(module_name: name))
   let test_files = test_module_names
     |> filter(name => rust_module_render_selection_renders(selection: selection, module_name: name))
@@ -3263,7 +3276,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let population_manifest = emit_emitted_population_manifest(paths: emitted_paths)
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let files = concat(emitted_files, [population_manifest])
-  EmitResult { files: files, diagnostics: import_refusals }
+  EmitResult { files: files, diagnostics: module_refusals }
 }
 
 // THE ONE PLACE A MODULE'S EMITTED FILENAME IS DECIDED, read by the renderer and by every
@@ -5025,14 +5038,16 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
   plan.lines
 }
 
-// One module's emission and the import decisions that produced it, returned together. The file is
-// what emit_rust writes; the rows are what the census counts. Nothing here changes what the file
+// One module's emission and the refusals that withhold publishing it, returned together. The file
+// is what emit_rust writes; the rows are what the census counts. Nothing here changes what the file
 // contains -- reference_rows is the plan's OTHER projection of a computation the emitter already
 // performed, so a reader can no longer get the bytes without the decisions behind them existing.
+// module_refusals is the publication-refusal channel: import-derived rows and unprojectable
+// constructs both land here; emit_rust_selected withholds the module when any of them is an error.
 type ModuleEmission {
   file: TextFile
   reference_rows: List<ReferenceDerivedCandidateRow>
-  import_refusals: List<ErrorNode>
+  module_refusals: List<ErrorNode>
 }
 
 fn emit_module_full_with_dispositions(typed_module: TypedModule, ctx: EmitRustContext, typed_modules: List<TypedModule>) -> ModuleEmission {
@@ -5188,7 +5203,93 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   ModuleEmission {
     file: TextFile { path: module_emit_path, content: content },
     reference_rows: reference_plan.rows,
-    import_refusals: reference_derived_row_diagnostics(rows: reference_plan.rows, module_span: m.span)
+    module_refusals: concat(
+      reference_derived_row_diagnostics(rows: reference_plan.rows, module_span: m.span),
+      module_projection_refusals(
+        items: typed_module.items,
+        module_name: authored_name(env: scope.type_env, node: m)
+      )
+    )
+  }
+}
+
+// Publication is module-grained: a construct with no total projection feeds this channel, and
+// emit_rust_selected withholds the module file when the channel carries an error. Filter-in-a-
+// branch-condition is the measured specimen; the walk is the general seam for the next shape.
+fn module_projection_refusals(items: List<Node>, module_name: String) -> List<ErrorNode> {
+  items |> flat_map(item => collect_unprojectable_construct_refusals(n: item, module_name: module_name))
+}
+
+// Guard membership is the condition spine only: collect_filter_method_calls does not
+// enter nested ExprIf. Recurse into the condition so nested ifs get their own guard
+// scan, and into then/else so a filter in those bodies is not named FilterInBranchCondition.
+fn collect_unprojectable_construct_refusals(n: Node, module_name: String) -> List<ErrorNode> {
+  let here = match n.expr_data {
+    ExprIf => collect_filter_in_guard_refusals(n: if_condition(texpr: n), module_name: module_name)
+    _ => []
+  }
+  let from_children = match n.expr_data {
+    ExprIf => concat(
+      collect_unprojectable_construct_refusals(n: if_condition(texpr: n), module_name: module_name),
+      collect_unprojectable_construct_refusals(n: if_then_branch(texpr: n), module_name: module_name),
+      match if_else_branch(texpr: n) {
+        Present { value: e } => collect_unprojectable_construct_refusals(n: e, module_name: module_name)
+        Absent => []
+      }
+    )
+    _ => n.children |> flat_map(c => collect_unprojectable_construct_refusals(n: c, module_name: module_name))
+  }
+  let from_body = match n.body {
+    Present { value: b } => collect_unprojectable_construct_refusals(n: b, module_name: module_name)
+    Absent => []
+  }
+  concat(here, from_children, from_body)
+}
+
+fn collect_filter_in_guard_refusals(n: Node, module_name: String) -> List<ErrorNode> {
+  collect_filter_method_calls(n: n) |> map(call =>
+    make_error_node(
+      diagnostic: EmissionConstructUnprojectable {
+        construct: FilterInBranchCondition {},
+        span: call.span
+      },
+      module_name: module_name
+    )
+  )
+}
+
+fn is_algebra_filter_method(method_semantics: MethodSemantics?) -> Bool {
+  if method_semantics != none {
+    match method_semantics.value {
+      AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: t } =>
+        match t {
+          Present { value: tmpl } => is_collection_filter_template(t: tmpl)
+          Absent => false
+        }
+      _ => false
+    }
+  } else { false }
+}
+
+fn collect_filter_method_calls(n: Node) -> List<Node> {
+  match n.expr_data {
+    ExprIf => []
+    ExprMethodCall { method_semantics: method_semantics } =>
+      concat(
+        if is_algebra_filter_method(method_semantics: method_semantics) { [n] } else { [] },
+        n.children |> flat_map(c => collect_filter_method_calls(n: c)),
+        match n.body {
+          Present { value: b } => collect_filter_method_calls(n: b)
+          Absent => []
+        }
+      )
+    _ => concat(
+      n.children |> flat_map(c => collect_filter_method_calls(n: c)),
+      match n.body {
+        Present { value: b } => collect_filter_method_calls(n: b)
+        Absent => []
+      }
+    )
   }
 }
 
