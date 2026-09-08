@@ -1066,19 +1066,19 @@ pub fn algebra_child_or_placeholder(
     child_index: i64,
     placeholder: String,
 ) -> Rc<KernelTypeBuild> {
-    if (base.connective.clone() != Connective::NoConnective) {
-        Rc::new(KernelTypeBuild {
-            ty: type_variable_node(placeholder.clone()),
-            diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(
+    {
+        let evidence_diags = if (base.connective.clone() != Connective::NoConnective) {
+            Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable {
                     receiver_type: base.name.clone(),
                     argument_index: child_index.clone(),
                     span: base.span.clone(),
                 }),
                 "v1.compiler.infer_types".to_string(),
-            )]),
-        })
-    } else {
+            )])
+        } else {
+            Rc::new(vec![])
+        };
         match Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new({
@@ -1113,11 +1113,11 @@ pub fn algebra_child_or_placeholder(
         {
             Some(child) => Rc::new(KernelTypeBuild {
                 ty: child_type_node(child.clone()),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: evidence_diags.clone(),
             }),
             std::option::Option::None => Rc::new(KernelTypeBuild {
                 ty: type_variable_node(placeholder.clone()),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: evidence_diags.clone(),
             }),
         }
     }

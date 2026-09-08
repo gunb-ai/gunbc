@@ -1129,8 +1129,8 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityNonError,

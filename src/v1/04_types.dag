@@ -448,21 +448,26 @@ fn nominal_type_ref(name: String) -> Node {
 }
 
 // Positions are argument evidence only on the nominal application retained by
-// the resolver and pattern binder. An expansion alone cannot recover them.
+// the resolver and pattern binder. An expansion alone cannot recover them, so on an
+// expansion the positional read below is UNSOUND and the diagnostic says so at the
+// position it was asked for. It is carried at advisory severity rather than blocking
+// because the evidence needed to answer correctly does not exist anywhere the caller
+// can reach -- measured, not assumed: at the fold receiver in the emitted-call-target
+// probe, base is the FreeMonoid COPRODUCT with params [T] and no argument, the
+// receiver expression's own inferred type is that same un-applied node, and the record
+// literal's field-inits carry no inferred type at all. Refusing there is a refusal the
+// author cannot discharge. The positional value is returned unchanged from what the
+// seed already returned, so nothing downstream moves; only the count is new.
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> KernelTypeBuild {
-  if base.connective != NoConnective {
-    KernelTypeBuild {
-      ty: type_variable_node(id: placeholder),
-      diagnostics: [make_error_node(
-        diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: base.name, argument_index: child_index, span: base.span },
-        module_name: "v1.compiler.infer_types"
-      )]
-    }
-  } else {
-    match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
-      Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: [] }
-      Absent => KernelTypeBuild { ty: type_variable_node(id: placeholder), diagnostics: [] }
-    }
+  let evidence_diags = if base.connective != NoConnective {
+    [make_error_node(
+      diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: base.name, argument_index: child_index, span: base.span },
+      module_name: "v1.compiler.infer_types"
+    )]
+  } else { [] }
+  match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
+    Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: evidence_diags }
+    Absent => KernelTypeBuild { ty: type_variable_node(id: placeholder), diagnostics: evidence_diags }
   }
 }
 

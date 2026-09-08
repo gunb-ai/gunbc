@@ -1,0 +1,48 @@
+module gunbc.guarantee_stall.algebra_expansion_positional_argument_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// WHY THIS IS A CLIMB AND NOT A DROP. There is no rung here to lower: on main the positional
+// read is silent, so the class sits outside the ladder entirely. Naming it at advisory
+// severity counts a real unsound derivation that nothing counted before, which is strictly
+// above silence. Blocking remains the ceiling and the trigger below is what reaches it.
+//
+// WHAT THE UNSOUNDNESS IS, measured on two corpus specimens that the one read cannot tell
+// apart. Taking children[child_index] off an EXPANSION is right or wrong depending on what
+// was expanded, and the call site has no way to know which:
+//   a sole_constructor PRODUCT -- NormalizedTree { root: Node } -- has field 0 = root, so
+//     the read yields exactly the right Node, silently and only for as long as the
+//     undeclared field order holds
+//   an un-applied COPRODUCT -- FreeMonoid, children Empty and Cons -- yields the VARIANT
+//     `Empty` as the element type, which is plainly wrong
+// One peel, two shapes, one accidentally correct and one incorrect, and no declared fact
+// separates them. That is the silent wrongness DESIGN section 5 forbids, and it is why the
+// diagnostic must exist even while it cannot block.
+//
+// WHY IT CANNOT BLOCK YET. The evidence needed to answer correctly is absent everywhere the
+// caller can reach, measured at the fold receiver of the emitted-call-target probe: the
+// receiver type is the FreeMonoid coproduct carrying params [T] and NO argument, the
+// receiver expression's own inferred type is that same un-applied node, and the record
+// literal's field-init children carry no inferred type at all. A refusal there is one no
+// author can discharge, and it turns a correct emission into a refusal -- the emitted bytes
+// for that probe are byte-identical to the seed's with the wall advisory.
+data algebra_expansion_positional_argument_stall: GuaranteeStall = GuaranteeStall {
+  subject: "algebra type arguments read positionally off a structural expansion, where the position is a variant or a field rather than an argument",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "a coproduct-variant record literal produces a nominal application carrying its inferred type arguments, so the argument is present on the receiver's inferred type instead of having to be recovered from an expansion"
+  },
+  population: BoundedPopulation {
+    members: Cons {
+      head: "un-applied generic coproducts reached as algebra receivers, where children are variants (FreeMonoid at a fold receiver built from match binders)",
+      tail: Cons {
+        head: "sole_constructor products reached as algebra receivers, where children are fields and the read is correct only by undeclared field order (NormalizedTree)",
+        tail: Empty {}
+      }
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "a coproduct-variant record literal produces a nominal application carrying its inferred type arguments, so algebra_child_or_placeholder reads an ARGUMENT rather than a position and AlgebraApplicationEvidenceUnavailable returns to SeverityError and GateBlocking")
+}

@@ -64,6 +64,7 @@ import gunbc.guarantee_stall.fn_index_depth_agreement_floor_enrollment_stall { f
 import gunbc.guarantee_stall.wet_route_model_lags_seed_stall { wet_route_model_lags_seed_stall }
 import gunbc.guarantee_stall.eval_steps_outside_the_reading_coproduct_stall { eval_steps_outside_the_reading_coproduct_stall }
 import gunbc.guarantee_stall.algebra_application_owner_resolution_stall { algebra_application_owner_resolution_stall }
+import gunbc.guarantee_stall.algebra_expansion_positional_argument_stall { algebra_expansion_positional_argument_stall }
 import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { generic_lambda_parameter_receiver_evidence_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
@@ -224,6 +225,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   emit_returns_medium_not_contribution_stall,
   emission_apply_generic_r_uninstantiated_stall,
   algebra_application_owner_resolution_stall,
+  algebra_expansion_positional_argument_stall,
   generic_lambda_parameter_receiver_evidence_stall,
 ]
 
