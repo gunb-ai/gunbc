@@ -26,10 +26,10 @@ import extdeps.vllm.kv_layout {
 // investigation from 2026-09-03 whose cross-route joins were never established; its rows are a
 // record of what was seen once. Making it the live seating authority would promote a historical
 // fixture into current state, and the first stale row would then be authorizing admissions. Current
-// admission consumes a receipt bound to the CURRENTLY ACTIVE incarnation, which is a different
+// admission consumes a receipt bound to the CURRENTLY ACTIVE launch, which is a different
 // subject with a different lifetime, so it gets a different module.
 //
-// WHAT A RECEIPT HAS TO CARRY BEYOND THE NUMBERS. The incarnation, because a reading of one launch
+// WHAT A RECEIPT HAS TO CARRY BEYOND THE NUMBERS. The launch, because a reading of one launch
 // is not evidence about its successor; and the digest of the captured text it was parsed from,
 // because a number authored beside a claim about where it came from is not the same as a number
 // traceable to bytes someone can re-read.
@@ -42,14 +42,14 @@ import extdeps.vllm.kv_layout {
 
 type VllmKvLayoutReceipt
   = KvLayoutObserved {
-      incarnation: VllmServingLaunch,
+      launch: VllmServingLaunch,
       layout: ResolvedKvLayout,
       reported: VllmReportedCapacity,
       blocks_per_max_request: AllocatorBlockCount,
       source_capture_digest: ContentHash,
     }
-  | KvLayoutUnreadable { incarnation: VllmServingLaunch, cause: NonEmptyStr }
-  | KvLayoutInconsistent { incarnation: VllmServingLaunch, cause: NonEmptyStr }
+  | KvLayoutUnreadable { launch: VllmServingLaunch, cause: NonEmptyStr }
+  | KvLayoutInconsistent { launch: VllmServingLaunch, cause: NonEmptyStr }
 
 // THE REPORTED FIGURES ARE CARRIED AS THE UPSTREAM CARRIER, not re-spelled as two fields beside it.
 // An earlier shape of this type listed reported_equivalent_tokens and reported_max_concurrency
@@ -71,16 +71,16 @@ type VllmKvLayoutReceipt
 // route does not exist. That is the honest state and not a bug in this fold: an absent second
 // opinion is not agreement.
 fn admit_kv_layout(
-  incarnation: VllmServingLaunch,
+  launch: VllmServingLaunch,
   layout: ResolvedKvLayout,
   reported: VllmReportedCapacity,
   source_capture_digest: ContentHash,
 ) -> VllmKvLayoutReceipt {
   match printed_lines_agree(layout: layout, reported: reported) {
-    PrintedLinesUncheckable { cause: c } => KvLayoutUnreadable { incarnation: incarnation, cause: c }
+    PrintedLinesUncheckable { cause: c } => KvLayoutUnreadable { launch: launch, cause: c }
     PrintedLinesDisagree { implied: i, reported: r } =>
       KvLayoutInconsistent {
-        incarnation: incarnation,
+        launch: launch,
         cause: join([
           "the captured startup lines disagree with each other: the pool line implies a concurrency of ",
           to_string(percent_count(p: i)), " hundredths while the concurrency line reports ", to_string(percent_count(p: r)),
@@ -90,12 +90,12 @@ fn admit_kv_layout(
       match layout_reproduces_reported(layout: layout, reported: reported) {
         LayoutReproductionUnavailable { cause: c } =>
           KvLayoutInconsistent {
-            incarnation: incarnation,
+            launch: launch,
             cause: join(["the layout cannot be checked against the engine's own arithmetic: ", c as String], "") as NonEmptyStr,
           }
         LayoutContradictsReported { predicted: p, reported: r } =>
           KvLayoutInconsistent {
-            incarnation: incarnation,
+            launch: launch,
             cause: join([
               "the group layout and the printed lines describe different engines: the groups predict a concurrency of ",
               to_string(percent_count(p: p)), " hundredths while the engine printed ", to_string(percent_count(p: r)),
@@ -103,7 +103,7 @@ fn admit_kv_layout(
           }
         LayoutReproducesReported { blocks_per_max_request: b } =>
           KvLayoutObserved {
-            incarnation: incarnation,
+            launch: launch,
             layout: layout,
             reported: reported,
             blocks_per_max_request: b,
@@ -115,7 +115,7 @@ fn admit_kv_layout(
 
 // ── WHAT A RECEIPT AUTHORIZES, AND FOR WHICH LAUNCH ────────────────────────────────────────────
 //
-// A receipt is not a standing fact about a group. It is a fact about ONE incarnation, and the only
+// A receipt is not a standing fact about a group. It is a fact about ONE launch, and the only
 // question a seat lease may ask of it is: does this receipt describe the engine I am about to send
 // a request to? Anything that answers that question by comparing groups or hosts has reintroduced
 // the co-location test gunbc.spark.vllm_serving_launch exists to displace.
@@ -123,7 +123,7 @@ type SeatingAuthority
   = SeatingAuthorized { blocks_available: AllocatorBlockCount, blocks_per_request: AllocatorBlockCount }
   | SeatingRefused { cause: NonEmptyStr }
 
-data seating_authority_harness_lease_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the harness seat-bind (gunbc.harness.harness_seat harness_bind_seat, or the lease fold that replaces it) calls seating_authority_for with the live receipt and the serving launch before granting a seat. SUFFICIENT FOR: a seat cannot be granted against a receipt whose incarnation is not the engine that will serve the request." as NonEmptyStr)
+data seating_authority_harness_lease_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the harness seat-bind (gunbc.harness.harness_seat harness_bind_seat, or the lease fold that replaces it) calls seating_authority_for with the live receipt and the serving launch before granting a seat. SUFFICIENT FOR: a seat cannot be granted against a receipt whose launch is not the engine that will serve the request." as NonEmptyStr)
 
 fn seating_authority_for(
   receipt: VllmKvLayoutReceipt,
@@ -131,11 +131,11 @@ fn seating_authority_for(
   sequence_budget: TokenCount,
 ) -> SeatingAuthority {
   match receipt {
-    KvLayoutUnreadable { incarnation: _, cause: c } =>
+    KvLayoutUnreadable { launch: _, cause: c } =>
       SeatingRefused { cause: join(["the layout capture was unreadable, so no capacity is established: ", c as String], "") as NonEmptyStr }
-    KvLayoutInconsistent { incarnation: _, cause: c } =>
+    KvLayoutInconsistent { launch: _, cause: c } =>
       SeatingRefused { cause: join(["the layout is inconsistent, so no capacity is established: ", c as String], "") as NonEmptyStr }
-    KvLayoutObserved { incarnation: observed, layout: layout, reported: _, blocks_per_max_request: _, source_capture_digest: _ } => {
+    KvLayoutObserved { launch: observed, layout: layout, reported: _, blocks_per_max_request: _, source_capture_digest: _ } => {
       let join_verdict = same_launch(a: observed, b: serving)
       if !join_is_admissible(j: join_verdict) {
         SeatingRefused {
@@ -157,11 +157,11 @@ fn seating_authority_for(
 
 fn receipt_wire(r: VllmKvLayoutReceipt) -> String {
   match r {
-    KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: d } =>
+    KvLayoutObserved { launch: i, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: d } =>
       join(["observed ", launch_wire(i: i), ": ", to_string(allocator_block_count_value(c: b)), " blocks per full-context request, capture ", serialize_content_hash(hash: d) as String], "")
-    KvLayoutUnreadable { incarnation: i, cause: c } =>
+    KvLayoutUnreadable { launch: i, cause: c } =>
       join(["unreadable ", launch_wire(i: i), ": ", c as String], "")
-    KvLayoutInconsistent { incarnation: i, cause: c } =>
+    KvLayoutInconsistent { launch: i, cause: c } =>
       join(["inconsistent ", launch_wire(i: i), ": ", c as String], "")
   }
 }
@@ -180,9 +180,9 @@ data same_capture_live_join_frontier: DissolutionCondition = unbound_dissolution
 
 fn same_capture(a: VllmKvLayoutReceipt, b: VllmKvLayoutReceipt) -> CaptureJoin {
   match a {
-    KvLayoutObserved { incarnation: ia, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: da } =>
+    KvLayoutObserved { launch: ia, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: da } =>
       match b {
-        KvLayoutObserved { incarnation: ib, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: db } =>
+        KvLayoutObserved { launch: ib, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: db } =>
           match same_launch(a: ia, b: ib) {
             SameLaunch =>
               match digests_agree(left: da, right: db) {
