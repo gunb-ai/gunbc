@@ -1,88 +1,23 @@
 module gunbc.test.claim.runner.runner_microvm_execution_authorization_witness_test
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { NonEmptyStr, Bool, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.systemd.unit_file { SystemdExitType, ExitTypeMain, ExitTypeCgroup, SystemdKillMode, KillModeControlGroup, KillModeProcess }
-import extdeps.github.effect { GitHubOrganizationRef }
-import extdeps.github.actions_jit_runner { JitRunnerGroupId, JitRunnerLabel }
-import gunbc.auth.github_apps { GitHubAppControlPlaneState }
-import gunbc.auth.github_credential { GitHubCredentialAuthority }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2 }
-import gunbc.runner_unit { RunnerUnitLifecycleIntent }
-import gunbc.runner_microvm { RealizationReserve, ReserveDeclared, ReserveUnmodeled, gunbc_runner_microvm_realization_reserve, gunbc_runner_microvm_declared_size, RunnerMicroVmNetworking, GuestNetworkAbsent, VmmProcessTopology, VmmIsMainProcess, VmmUnderLifecycleController }
-import gunbc.runner_microvm_attempt {
-  MicroVmCellBinding, VmUnboundCellNotOwned,
-  MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
-  microvm_attempt, bind_owned_attempt,
-}
-// THE CREDENTIAL FIXTURES ARE IMPORTED, NOT REBUILT. test.claim.github_app_registry already owns
-// the one construction of an observed App control plane and its authority; a second copy here would
-// be two answers to "what does this installation hold", and they would drift the first time either
-// moves. Precedent: test.parsecheck imports a witness module for the same reason.
-import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, full_workflow_grant }
-// THE FABRIC GRANT FIXTURES ARE IMPORTED FOR THE SAME REASON THE CREDENTIAL ONES ARE.
-// test.claim.fabric_grant_issuance_witness owns the one construction of an issued grant and the
-// account it fences against; rebuilding either here would be a second answer to "what authorizes
-// this work", and the two would drift the first time issuance moved.
+// THE FABRIC GRANT FIXTURES ARE IMPORTED, NOT REBUILT. test.claim.fabric_grant_issuance_witness
+// owns the one construction of an issued grant and the account it fences against; rebuilding
+// either here would be a second answer to "what authorizes this work", and the two would drift
+// the first time issuance moved.
 import test.claim.fabric_grant_issuance_witness {
   issue, subject_work, other_work, first_attempt, funded_account, exhausted_account, admitted_offer, thread_appropriation,
 }
 import product.fabric.execution { ExecutionGrant }
-import product.fabric.grant_issue { GrantIssue, GrantCommitted, GrantRefused }
+import product.fabric.grant_issue { GrantCommitted, GrantRefused }
 import product.fabric.budget { MoneyAccount }
-import std.measure { byte_size, mebibyte_count }
 import gunbc.runner_microvm_execution_authorization {
   AuthorizationAgreement, AuthorizationAgrees, AuthorizationDisagrees,
   grant_authorizes_reservation,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-data launch_test_slot: RunnerSlotIdentity = RunnerSlotIdentity {
-  host: operator_host_srv2,
-  slot_index: 4,
-}
-
-data launch_org: GitHubOrganizationRef = GitHubOrganizationRef { login: "gunb-ai" }
-
-// A CGROUP-REACHING INTENT CANNOT ORPHAN ITS VMM; a main-exit, process-kill intent can. The pair is
-// what lets the admission arm be exercised in both directions rather than only the failing one.
-data cannot_orphan_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
-  exit_type: ExitTypeCgroup,
-  kill_mode: KillModeControlGroup,
-}
-
-data orphanable_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
-  exit_type: ExitTypeMain,
-  kill_mode: KillModeProcess,
-}
-
-fn launch_net() -> RunnerMicroVmNetworking {
-  GuestNetworkAbsent {
-    cause: "this witness judges plan ordering, not egress; the network arm is exercised by the network witness",
-  }
-}
-
-// THE REFUSED ARM IS NOT AN UNREACHABLE ARM DRESSED AS ONE -- a refused attempt genuinely has no
-// attempt to bind, and its cause deliberately does NOT say "not owned", so a fixture that stopped
-// being an acceptable segment reddens the positive control instead of silently satisfying the
-// negative ones.
-fn launch_binding(owned: Bool) -> MicroVmCellBinding {
-  match microvm_attempt(slot: launch_test_slot, attempt_id: "launch-1") {
-    MicroVmAttemptAccepted { attempt: a } => bind_owned_attempt(attempt: a, owned: owned)
-    MicroVmAttemptRefused { refusal: _ } =>
-      VmUnboundCellNotOwned {
-        cause: "the witness fixture's attempt id was refused, so this binding is not the subject under test",
-      }
-  }
-}
-
-// A DECLARED RESERVE THE WITNESS OWNS. Production's reserve is ReserveUnmodeled and every launch
-// therefore refuses -- see the production-refuses control below, which is the claim about today.
-// These fixtures supply a reserve so the ORDERING can be exercised at all; without one the mint
-// stage is unreachable and every assertion about it would be vacuous.
-data witness_reserve: RealizationReserve = ReserveDeclared { bytes: byte_size(268435456) }
 
 // THE COMMITTED GRANT AND THE ACCOUNT IT FENCES AGAINST, CARRIED AS ONE PAIR because they are one
 // fact. issue_grant returns GrantCommitted { grant, account, ledger }: the returned account is the

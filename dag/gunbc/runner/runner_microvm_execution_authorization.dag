@@ -1,59 +1,29 @@
 module gunbc.runner_microvm_execution_authorization
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, SingleAuthority }
-import extdeps.systemd.systemd_run { SystemdRunProperty }
-import extdeps.virtualization.firecracker { FirecrackerVmConfig }
-import extdeps.github.effect { GitHubOrganizationRef }
-import extdeps.github.actions_jit_runner { JitRunnerConfigRequest, JitRunnerGroupId, JitRunnerLabel }
-import gunbc.auth.github_apps { GitHubAppControlPlaneState }
-import gunbc.auth.github_credential { GitHubCredentialAuthority, CredentialCapability }
 import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
-import gunbc.runner_unit { RunnerUnitLifecycleIntent }
-import gunbc.runner_microvm {
-  RealizationReserve,
-  RunnerMicroVmAdmission, RunnerMicroVmAdmitted, RunnerMicroVmRefusedOrphanableUnit,
-  RunnerMicroVmRefusedSharedCredential, RunnerMicroVmRefusedMalformedVm,
-  RunnerMicroVmRefusedEnvelopeDisagreement, RunnerMicroVmRefusedEnvelopeUnresolved,
-  RunnerMicroVmConfigResolution, MicroVmConfigResolved, MicroVmConfigUnresolved,
-  RunnerMicroVmNetworking, VmmProcessTopology,
-  gunbc_runner_microvm_vm_config, gunbc_runner_jit_transport, runner_microvm_admission,
-  gunbc_runner_microvm_realization_reserve,
-}
+import gunbc.runner_microvm_attempt { MicroVmCellBinding, bind_microvm_to_cell }
 import product.fabric.execution { ExecutionGrant, grant_lease_generation }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, WorkKey, DemandKey, OfferKey }
 import product.fabric.budget { MoneyAccount, fence_admits }
-import gunbc.runner_microvm_attempt {
-  MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
-  bind_microvm_to_cell,
-}
-import gunbc.runner_jit_mint {
-  JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
-  plan_jit_mint,
-}
 
 data runner_microvm_execution_authorization_disposition: Disposition = SingleAuthority
 
-// MINTING IS LAST, AND THE ORDER IS THE WHOLE REASON THIS MODULE EXISTS RATHER THAN ITS CALLERS
-// COMPOSING THE FOUR STAGES THEMSELVES.
+// THIS MODULE ANSWERS ONE QUESTION: DOES A GRANT AUTHORIZE THE RESERVED CELL?
 //
-// A JIT mint is not a local computation: it creates a RUNNER IDENTITY AT GITHUB. Every other stage
-// here is pure and free to fail -- an unowned cell, an unresolved size, a topology that can orphan
-// its VMM -- but if any of them refuses AFTER a mint, the identity is already registered against an
-// organization for a VM that will never start. Nothing on this host then knows to delete it,
-// because the plan that would have named it refused. Orphaned registrations accumulate silently,
-// count against the org, and are reconcilable only by name.
-//
-// So the mint is the LAST stage, and it is not merely "called last": its authorized value is
-// reachable only from inside LaunchAdmitted, so a caller cannot hold a mint authorization for a
-// launch that was refused. Ordering enforced by an author remembering it is exactly the arrangement
-// that produced the ownership-before-credential defect this fleet already paid for.
+// It does NOT compose a launch or order a mint. That composition was deleted rather than moved:
+// it performed FCI-3's job -- what causes the target process -- while skipping FCI-2's grant, and
+// `gunbc.fabric_ci_program` names `process-start` in FCI-2's non-goals. The ordering argument that
+// stood here (mint last, reachable only from an admitted launch) was true of that composition and
+// is NOT re-stated as an invariant of this module, because no mint or launch remains for it to
+// range over. It belongs with the FCI-3 executor when that exists.
 //
 // THE REFUSAL ARMS ARE NOT COLLAPSED INTO ONE `cause` STRING. Each names the authority that owns
-// the remedy -- the cell belongs to gunbc.fabric_required_build_cell, the size to
-// gunbc.runner_slot_allocation, the topology to gunbc.runner_unit, the credential to
-// gunbc.auth.github_credential -- because collapsing them is the state-space conflation DESIGN
+// the remedy -- the money fence belongs to product.fabric.budget, the Work/Demand/Offer agreement
+// to product.fabric.identity -- because collapsing them is the state-space conflation DESIGN
 // names, and it sends an operator to the wrong module.
+
 // THE AUTHORIZATION RULE, FACTORED OUT OF THE SEAL SO IT HAS AN AUTHORABLE RED.
 //
 // RequiredBuildCellSnapshot is sole_constructor precisely so a caller cannot manufacture a
@@ -122,6 +92,18 @@ fn grant_authorizes_reservation(
 // issuance durably committed either. The unforgeable form is a persistent executor that re-reads
 // the committed grant from durable storage after the submitter terminates, which is FCI-3's own
 // exit predicate and the next slice -- not something a pure planner can assert about itself.
+// DECLARED FRONTIER, STATED RATHER THAN LEFT IMPLICIT (DESIGN 3c). NOTHING CONSUMES THIS SEAL
+// TODAY -- not production, and not a witness: its input is a sole_constructor
+// RequiredBuildCellSnapshot, so no fixture outside that module can call it. Its named consumer is
+// the FCI-3 executor, which re-reads a committed grant before starting a VMM; the seal exists so
+// that executor cannot hold a binding whose grant disagrees with the cell.
+//
+// THE TRIGGER IS THAT EXECUTOR EXISTING, AND IT IS NOT NEAR: docs/plans/microvm-launch-displacement-analysis.md
+// establishes that the production actuation it would displace is authored in no repository, so a
+// prerequisite stands before FCI-3 is even priceable. If that trigger is judged too distant to
+// carry an unconsumed declaration, the honest disposition is to delete this seal and let it return
+// with its consumer -- the authorization rule below it stands alone and is consumed by three claims.
+
 type MicroVmExecutionBinding sole_constructor {
   grant: ExecutionGrant<NonEmptyStr>
   binding: MicroVmCellBinding
