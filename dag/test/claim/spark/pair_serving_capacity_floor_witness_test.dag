@@ -53,7 +53,7 @@ fn w_pool_admission(tokens: Int) -> VllmKvPoolAdmission {
   )
 }
 
-fn with_pool(tokens: Int, f: (VllmObservedKvPool) -> Bool) -> Bool {
+fn with_pool(tokens: Int, f: fn (VllmObservedKvPool) -> Bool) -> Bool {
   match w_pool_admission(tokens: tokens) {
     KvPoolAdmitted { pool: p } => f(p)
     KvPoolRefused { cause: _ } => false
