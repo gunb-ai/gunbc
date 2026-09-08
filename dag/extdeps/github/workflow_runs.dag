@@ -72,11 +72,9 @@ type WorkflowRun {
   conclusion: WorkflowRunConclusion?
   workflow_id: Int
   run_number: Int
-  event: String
   html_url: NonEmptyStr
   created_at: Timestamp
   updated_at: Timestamp
-  run_started_at: Timestamp?
   pull_requests: List<WorkflowRunPullRequest>
 }
 
