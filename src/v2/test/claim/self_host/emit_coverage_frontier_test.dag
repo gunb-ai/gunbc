@@ -43,8 +43,8 @@ test fn witness_unlisted_subject_has_no_row() -> Bool {
 }
 
 test fn witness_split_matches_expected() -> Bool {
-  (length(xs: self_emitted_native_rows()) == 8)
-    && (length(xs: interpreter_retained_rows()) == 7)
+  (length(xs: self_emitted_native_rows()) == 9)
+    && (length(xs: interpreter_retained_rows()) == 6)
 }
 
 // Identity-grain census of the native rows (DESIGN section 5: completeness is an identity join,
@@ -53,12 +53,13 @@ test fn witness_split_matches_expected() -> Bool {
 // landed, and the complement family followed on the same arm shape run through the logic family
 // crate. 2026-09-08: the field_access family followed against its own family one-build cache
 // (octet 9 pinned), the three match_loop_fold family rows (match, loop, fold_closure)
-// followed on the same arm shape run through the three-member family crate, and the meet_join
+// followed on the same arm shape run through the three-member family crate, the meet_join
 // family followed on the complement arm's member-parameterized helper against the same logic
-// family crate (octets meet=1 join=1 pinned); the eight decl names are the closed membership.
+// family crate (octets meet=1 join=1 pinned), and the variant_construct family followed against
+// its own family one-build cache (octet 9 pinned); the nine decl names are the closed membership.
 test fn witness_native_rows_closed_membership_holds() -> Bool {
   let natives = self_emitted_native_rows()
-  (length(xs: natives) == 8)
+  (length(xs: natives) == 9)
     && fold(
       natives,
       init: true,
@@ -72,6 +73,7 @@ test fn witness_native_rows_closed_membership_holds() -> Bool {
             || (row.subject.decl_name == "table_fixture_loop_arrow_with_body")
             || (row.subject.decl_name == "table_fixture_match_arrow_with_body")
             || (row.subject.decl_name == "meet_join_eval_subject")
+            || (row.subject.decl_name == "emit_variant_construct_eval_subgraph_node")
         )
       }
     )

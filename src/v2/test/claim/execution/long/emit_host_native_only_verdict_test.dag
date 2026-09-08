@@ -12,6 +12,7 @@ import v2.extdeps.languages.rust_test {
   rust_field_access_target_model_staging,
   rust_logic_family_target_model_staging,
   rust_match_loop_fold_family_target_model_staging,
+  rust_variant_construct_target_model_staging,
 }
 import extdeps.realization.emit_on_demand_host { native_cache_workspace_root }
 import v2.test.long.emit_host_classical_not_ingested_equals_eval {
@@ -59,6 +60,14 @@ import v2.test.execution.emit_on_demand_match_loop_fold_family_witness {
   match_primary_tree,
   mlf_family_members,
   mlf_family_native_key,
+}
+import v2.test.execution.emit_host_variant_construct_equals_eval {
+  emit_variant_construct_eval_tree,
+}
+import v2.test.execution.emit_on_demand_variant_construct_family_witness {
+  variant_construct_family_cache_root_for,
+  variant_construct_family_fixture_inputs,
+  variant_construct_family_native_key_for,
 }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
@@ -404,5 +413,53 @@ test fn emit_host_native_only_fold_closure_holds() -> Bool {
 
 test fn emit_host_native_only_fold_closure_wrong_octet_mismatch_detected_holds() -> Bool {
   mlf_native_only_member_matches_expected(member_id: "fold", expected_octets: fold_alt_expected_octets) == false
+}
+
+// VARIANT-CONSTRUCT-FAMILY ARM: the same native-only verdict shape for the
+// emit_host_variant_construct family — the ninth construct promoted off InterpreterRetained. The
+// family differences are facts of that family, not new machinery: the tree is the family's own
+// equals_eval tree VALUE (emit_variant_construct_eval_tree — no eval leg is reachable from this
+// file despite the home module's equals_eval name), and the run shares the variant_construct
+// family's one-build cache key (variant_construct_family_cache_root_for +
+// variant_construct_family_native_key_for, the same key
+// emit_on_demand_variant_construct_native_one_build_holds colds) — an uncached leg here would
+// duplicate a full cargo build the family witness already performs (DESIGN S2). The expected
+// octet is 9, the byte the family witness's warm leg pins on this same build. Program-side
+// discrimination stays where the family already carries it: the equals_eval pair and the family
+// witness's wrong-value alt leg prove the native run's actual byte participates in a verdict (the
+// wrong-value alt tree flips the octet 9 -> 1). A no-eval verdict has no oracle leg to break, so
+// this arm's broken control breaks the EXPECTATION side: octet 1 is the alt tree's byte and can
+// never match the primary run, and the comparator mocks above pin the comparator itself.
+fn variant_construct_native_only_matches_expected(expected_octet: Int) -> Bool {
+  let tree = emit_variant_construct_eval_tree
+  match emit(tree: tree, target: rust_variant_construct_target_model_staging()) {
+    Accepted { value: emitted, diagnostics: _ } =>
+      match run_emit_host_cached(
+        workspace_dir: native_cache_workspace_root(
+          cache_root: variant_construct_family_cache_root_for(test_id: "native_one_build"),
+          key: variant_construct_family_native_key_for(tree: tree)
+        ),
+        target: rust_variant_construct_target_model_staging(),
+        source: emitted,
+        fixture_inputs: variant_construct_family_fixture_inputs()
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+              native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_native_only_variant_construct_holds() -> Bool {
+  variant_construct_native_only_matches_expected(expected_octet: 9)
+}
+
+test fn emit_host_native_only_variant_construct_wrong_octet_mismatch_detected_holds() -> Bool {
+  variant_construct_native_only_matches_expected(expected_octet: 1) == false
 }
 

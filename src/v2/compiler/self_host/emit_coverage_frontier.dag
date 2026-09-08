@@ -75,7 +75,7 @@ fn retained_via_eval_agreement(
   }
 }
 
-// Eight roster rows were promoted InterpreterRetained -> SelfEmittedNative on 2026-09-07/08, each on
+// Nine roster rows were promoted InterpreterRetained -> SelfEmittedNative on 2026-09-07/08, each on
 // a native-only verdict arm (positive + wrong-octet broken control) landed in the already
 // file-grain-enrolled native-only verdict entry, so each backing citation is enrolled by
 // construction (coverage_row_backing_is_enrolled): the add family row (first element, backing
@@ -86,9 +86,11 @@ fn retained_via_eval_agreement(
 // the three match_loop_fold family rows (match, loop, fold_closure — backing
 // emit_host_native_only_{match,loop,fold_closure}_holds, run through the three-member family crate
 // per the witness_family_build_grain_ruling, octet lists pinned against the family one-build
-// cache), and the meet_join family row (backing emit_host_native_only_meet_join_holds, run through
+// cache), the meet_join family row (backing emit_host_native_only_meet_join_holds, run through
 // the logic family crate it shares with complement, octets meet=1 join=1 pinned against the family
-// one-build cache). Each family's equals_eval agreement pair stays enrolled as its program-side
+// one-build cache), and the variant_construct family row (backing
+// emit_host_native_only_variant_construct_holds, octet 9 pinned against the family one-build
+// cache). Each family's equals_eval agreement pair stays enrolled as its program-side
 // discrimination leg.
 data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
   EmitCoverageFrontierRow {
@@ -219,14 +221,18 @@ data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval_test.dag",
     f: "emit_host_shell_exec_run_equals_eval_holds"
   ),
-  retained_via_eval_agreement(
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.execution.emit_host_variant_construct_equals_eval",
       decl_name: "emit_variant_construct_eval_subgraph_node"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
-    f: "emit_host_variant_construct_equals_eval_holds"
-  ),
+    witness_entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
+    witness_function: "emit_host_variant_construct_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_variant_construct_holds"
+    }
+  },
   retained_via_eval_agreement(
     subject: coverage_subject(
       module_path: "v2.test.execution.rust_emit_host_call_equals_eval",
