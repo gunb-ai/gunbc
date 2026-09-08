@@ -34,12 +34,6 @@ pub mod extdeps_uri_path;
 #[path = "../../stage0/src/std_interface_summary.rs"]
 pub mod std_interface_summary;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_interval.rs"]
-pub mod std_interval;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_pareto.rs"]
-pub mod std_pareto;
-#[rustfmt::skip]
 #[path = "../../stage0/src/std_realization_schedule.rs"]
 pub mod std_realization_schedule;
 #[rustfmt::skip]

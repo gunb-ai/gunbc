@@ -45,6 +45,7 @@ import gunbc.recurring_failure_mode.externalized_degradation { externalized_degr
 import gunbc.recurring_failure_mode.mistyped_body_radiates_nonlocal_diagnostics { mistyped_body_radiates_nonlocal_diagnostics }
 import gunbc.recurring_failure_mode.instrument_output_read_as_subject_content { instrument_output_read_as_subject_content }
 import gunbc.recurring_failure_mode.executed_conjunct_discriminates_nothing { executed_conjunct_discriminates_nothing }
+import gunbc.recurring_failure_mode.constant_verdict_gate_stops_discriminating { constant_verdict_gate_stops_discriminating }
 import gunbc.recurring_failure_mode.unbacked_execution_claim { unbacked_execution_claim }
 import gunbc.recurring_failure_mode.admitted_module_without_judged_standing { admitted_module_without_judged_standing }
 import gunbc.recurring_failure_mode.refusal_deferred_to_emitted_runtime { refusal_deferred_to_emitted_runtime }
@@ -181,9 +182,11 @@ import gunbc.recurring_failure_mode.permissiveness_promoted_into_a_higher_safety
 import gunbc.recurring_failure_mode.evaluation_model_cleanup_undeclared { evaluation_model_cleanup_undeclared }
 import gunbc.recurring_failure_mode.docs_markdown_projections_have_no_completing_actuator { docs_markdown_projections_have_no_completing_actuator }
 import gunbc.recurring_failure_mode.type_name_field_carries_rendered_value { type_name_field_carries_rendered_value }
+import gunbc.recurring_failure_mode.lookup_miss_read_as_positive_classification { lookup_miss_read_as_positive_classification }
 import gunbc.recurring_failure_mode.capability_arrives_outside_the_converged_path { capability_arrives_outside_the_converged_path }
 import gunbc.recurring_failure_mode.declared_refusal_unreachable_from_its_own_constructor { declared_refusal_unreachable_from_its_own_constructor }
 import gunbc.recurring_failure_mode.enforcement_gate_positioned_after_the_effect_it_guards { enforcement_gate_positioned_after_the_effect_it_guards }
+import gunbc.recurring_failure_mode.decision_surface_truncation { decision_surface_truncation }
 
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry,
@@ -354,8 +357,11 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   evaluation_model_cleanup_undeclared,
   docs_markdown_projections_have_no_completing_actuator,
   type_name_field_carries_rendered_value,
+  lookup_miss_read_as_positive_classification,
   capability_arrives_outside_the_converged_path,
   match_bound_element_type_mask,
   declared_refusal_unreachable_from_its_own_constructor,
   enforcement_gate_positioned_after_the_effect_it_guards,
+  constant_verdict_gate_stops_discriminating,
+  decision_surface_truncation,
 ]

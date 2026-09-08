@@ -317,6 +317,149 @@ test fn w_a_phantom_type_argument_with_identical_representation_is_still_separat
   violation_count(source: phantom_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
+// REFINEMENT WIDENING ADMITS -- the positive control for refinement_inhabitance, and the
+// regression control for the arm that used to refuse it. product.placement_supply declares
+// `HostIdentity = NonEmptyStr where brand("HostIdentity")`, so a HostIdentity reaching a
+// NonEmptyStr formal is widening to its own declared base. Before the refinement arm landed this
+// REFUSED at two live corpus sites in dag/test/claim/ci/ci_deploy_target_host_witness_test.dag,
+// as RefusedDistinctProductConstructor, because
+// nominal_product_head_name_if_declared_product read a where-refinement's Conj-with-one-child as
+// a nominal product.
+//
+// BOTH COUNTS ARE ASSERTED AND THE SECOND IS THE DISCRIMINATING HALF. Zero refusals alone would
+// also hold if the arm merely stopped deciding, which is the failure mode this lane exists to
+// refuse; requiring zero UNDECIDED as well pins the site to INHABITS. Measured live before
+// enrolment: undecided=0, refused=0.
+// THE PARTNERS EXIST BECAUSE THE COUNT IS CORPUS-WIDE, NOT FIXTURE-LOCAL. violation_count reports
+// every row of the class in the census, so a per-fixture literal can never be its oracle -- the
+// literal would be a measurement of the current tree copied into the assertion, which DESIGN 5
+// refuses by name. Each control below is therefore a PAIR differing on exactly one axis, so the
+// shared corpus contribution cancels and only the axis is measured.
+//
+// AND THAT INCLUDES THE ZEROES AND THE ONES. An arm reading `== 0` or `== 1` looks fixture-local
+// and is not: the census carries the fixture's whole import closure, so any unrelated change in
+// std.types that adds or removes a row of the class flips it, and the literal records TODAY'S TREE
+// rather than the mutation the arm claims to discriminate. Refusal counts happen to be zero across
+// that closure at this writing, which is exactly the coincidence that makes the absolute form look
+// safe -- and is not a time-stable fact. So EVERY arm below is a difference between two fixtures,
+// with no exception for the ones whose number is small. Review 62112, claude/opus.
+data refinement_baseline_source: String = "module probe_refinement_baseline\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { 0 }\n"
+
+data probe_exact_refinement_source: String = "module probe_exact_refinement\nimport std.types { NonEmptyStr, Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host_x: HostIdentity = \"srv1\" as HostIdentity\nfn takes_host(s: HostIdentity) -> Int { 1 }\nfn probe() -> Int { takes_host(s: probe_host_x) }\n"
+
+data probe_exact_brand_source: String = "module probe_exact_brand\nimport std.types { Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host_y: HostIdentity = \"srv1\" as HostIdentity\nfn takes_host2(x: HostIdentity) -> Int { 1 }\nfn probe() -> Int { takes_host2(x: probe_host_y) }\n"
+
+data refinement_widening_source: String = "module probe_refinement_widening\nimport std.types { NonEmptyStr, Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host: HostIdentity = \"srv1\" as HostIdentity\nfn takes_base(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_base(s: probe_host) }\n"
+
+test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
+  violation_count(source: refinement_widening_source, wanted: "DeclaredTypeNotInhabited")
+    == violation_count(source: probe_exact_refinement_source, wanted: "DeclaredTypeNotInhabited")
+    && violation_count(source: refinement_widening_source, wanted: "DeclaredTypeInhabitanceUndecided")
+      == violation_count(source: probe_exact_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
+}
+
+//
+// BOTH HALVES OF THE DELEGATION ARE ASSERTED HERE, AND THE SECOND IS WHY THIS WITNESS IS NOT
+// GREEN-FOR-THE-WRONG-REASON. The abstain half -- this relation adds an undecided and no refusal --
+// says only that WE did not decide. If the brand wall regressed, stopped reaching the argument
+// path, or lost its consumer, that half would stay green while the horizontal pair was admitted in
+// silence by both relations, and the abstention would be a hole rather than a delegation with the
+// only record of the difference sitting in a PR body. So the refuse half is asserted in the same
+// witness, against the same exact-match partner so the corpus term cancels: the wall's TypeMismatch
+// FIRES on the horizontal pair and does not on the matching one. Review finding, tidy-lynx-804.
+// THE HORIZONTAL CASE IS REFUSED BY THE BRAND AUTHORITY, NOT BY THIS RELATION, AND THAT
+// DIVISION IS THE POINT. HostIdentity and PhysicalAssetIdentity are both
+// `NonEmptyStr where brand(...)`, so their chains meet at NonEmptyStr with neither an ancestor of
+// the other. refinement_inhabitance cannot see brands and therefore DECLINES -- refusing there
+// would be a second authority for a judgment where_refinement_brand_nominal_verdict already makes
+// on brand DECLARATION SITES, and it would drag in the peer-predicate false refusals measured
+// when that was tried: declared NonEmptyStr <- produced FilePath, GcpProjectId, Sha512DigestHex,
+// none of which carries a conflicting brand at all.
+//
+// THE PATH IS THE WHOLE QUESTION AND IT WAS EXECUTED, NOT ASSUMED. That wall is reached through
+// with_expected_where_refinement_diags, and rung honesty is per-path: refused on the cast path
+// would not establish refused at a formal parameter. This fixture puts it at the DIRECT CALL
+// ARGUMENT seam and it refuses there -- `type mismatch: expected 'Product(PhysicalAssetIdentity)',
+// got 'Product(HostIdentity)'`. So this relation's abstention is a delegation and not a hole.
+data brand_horizontal_at_argument_source: String = "module probe_brand_horizontal_at_argument\nimport std.types { Int }\nimport product.placement_supply { HostIdentity, PhysicalAssetIdentity }\ndata probe_host2: HostIdentity = \"srv1\" as HostIdentity\nfn takes_asset(x: PhysicalAssetIdentity) -> Int { 1 }\nfn probe() -> Int { takes_asset(x: probe_host2) }\n"
+
+test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
+  violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeNotInhabited")
+    == violation_count(source: probe_exact_brand_source, wanted: "DeclaredTypeNotInhabited")
+    && violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeInhabitanceUndecided")
+      > violation_count(source: probe_exact_brand_source, wanted: "DeclaredTypeInhabitanceUndecided")
+    && violation_count(source: brand_horizontal_at_argument_source, wanted: "TypeMismatch")
+      > violation_count(source: probe_exact_brand_source, wanted: "TypeMismatch")
+}
+
+// nominal_opaque DOES NOT GROUND TO ITS BASE, and the control exists because the chain walk is
+// exactly the thing that could delete that wall. std.types declares `Secret nominal_opaque =
+// String` in a form DELIBERATELY DISTINCT from `where brand(...)`: brand is a refinement whose
+// value inhabits its base, nominal_opaque is bidirectional separation. where_refinement_chain
+// follows only where-refinements, so Secret's chain is one link and this relation returns absent
+// for it -- structurally, not by a test.
+//
+// IT IS ENROLLED ANYWAY BECAUSE THE RED IS AUTHORABLE (DESIGN 4b). If the chain ever followed a
+// nominal_opaque alias, Secret's chain would become [Secret, String] and would meet NonEmptyStr's
+// [NonEmptyStr, String] at String -- a sibling pair, which this relation declines. So the
+// discriminating mutation produces exactly one UNDECIDED here, and asserting zero reds on it.
+// THE Secret-FREE PARTNER, differing on exactly the nominal_opaque axis: same module shape, same
+// imports, same formal, same call -- the produced value is a NonEmptyStr rather than a Secret. Its
+// refusal count is the closure's contribution, so the difference is this fixture's own refusal.
+data nominal_opaque_partner_source: String = "module probe_nominal_opaque_partner\nimport std.types { NonEmptyStr, Int }\ndata probe_plain: NonEmptyStr = \"shh\" as NonEmptyStr\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: probe_plain) }\n"
+
+data nominal_opaque_not_grounded_source: String = "module probe_nominal_opaque_not_grounded\nimport std.types { NonEmptyStr, Secret, Int }\ndata probe_secret: Secret = \"shh\" as Secret\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: probe_secret) }\n"
+
+test fn w_a_nominal_opaque_alias_does_not_ground_through_the_refinement_chain() -> Bool {
+  violation_count(source: nominal_opaque_not_grounded_source, wanted: "DeclaredTypeNotInhabited")
+    > violation_count(source: nominal_opaque_partner_source, wanted: "DeclaredTypeNotInhabited")
+}
+
+// THE POSITIVE CENSUS ARM IS NOT AUTHORABLE HERE, AND THAT IS THE FINDING RATHER THAN AN OMISSION.
+// It was to assert that a DECLARED generic clause is still classified generic through the census
+// route, over a bare cross-module call (optional_present). Measured on this head: that fixture
+// contributes ZERO rows of this class -- its count equals a fixture with no call at all -- so the
+// seam emits nothing there whether the classification is right or wrong. An arm asserting a count
+// of one is then false, and an arm asserting zero would be green by construction and would be
+// cited later as coverage of a thing it never measured, which DESIGN 4b forbids by name: ask
+// whether the RED is authorable BEFORE writing the check. The negative arm below IS authorable and
+// is enrolled. The residue -- no executing positive control for the census route's generic half --
+// is stated in the PR body rather than papered over with a decoration.
+
+// NEGATIVE: a CONCRETE declared leaf is no longer classified generic. std.content_hash declares
+// fn sha256_digest_wire_form(digest: Sha256Digest) -> NonEmptyStr; Sha256Digest is an ordinary
+// declared type and nothing about it is generic. Before this repair the census declaration
+// environment carried no bindings at all, so the local-only lookup missed it and it was enrolled
+// as one of that declaration's generic parameters and stamped TypeVariable { id: "Sha256Digest" },
+// and the seam declined. DISCRIMINATING MUTATION: restore the deleted local-miss classification in
+// either declaration_unbound_leaf_names or declaration_substitution_basis and this arm goes red on
+// one UndecidableGenericFormal.
+data concrete_via_global_bare_source: String = "module probe_concrete_via_global_bare\nimport std.content_hash { Sha256Digest }\nimport std.types { NonEmptyStr, Int }\nfn probe(d: Sha256Digest) -> NonEmptyStr { sha256_digest_wire_form(digest: d) }\n"
+
+test fn w_a_concrete_declared_leaf_is_not_classified_generic_through_the_census() -> Bool {
+  violation_count(source: concrete_via_global_bare_source, wanted: "DeclaredTypeInhabitanceUndecided")
+    == violation_count(source: refinement_baseline_source, wanted: "DeclaredTypeInhabitanceUndecided")
+}
+
+// THE REFINEMENT DECLINE IS THE INTRODUCTION QUESTION, NOT EVERY REFINEMENT PAIR. A reviewer's
+// natural suspicion is that refinement_inhabitance simply made refinement pairs undecidable; these
+// two arms refuse that reading by pairing a bare literal against a cast one at the SAME formal.
+// The bare literal declines and the cast one does not, so the relation is discriminating on the
+// carried introduction rather than on the refinement relation.
+//
+// AND THE PREDICATE IS ALREADY ENFORCED, which is why the decline is redundant ignorance rather
+// than an exposed hole: takes_non_empty(s: "") is REFUSED by the where-refinement machinery with
+// `type mismatch: expected Product(NonEmptyStr), got Primitive(String)`, while
+// takes_non_empty(s: "x") is admitted by it. Measured live before enrolment. That is what fixes
+// this relation's next-rung trigger at CONSULTING the existing verdict.
+data bare_literal_at_refinement_source: String = "module probe_bare_literal_at_refinement\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: \"x\") }\n"
+
+data cast_literal_at_refinement_source: String = "module probe_cast_literal_at_refinement\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_non_empty(s: \"x\" as NonEmptyStr) }\n"
+
+test fn w_a_bare_literal_at_a_refinement_formal_declines_and_a_cast_one_does_not() -> Bool {
+  violation_count(source: bare_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
+    > violation_count(source: cast_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
+
 // THE TWO FIXTURES CARRY IDENTICAL CLOSURES AND DIFFER ON EXACTLY ONE TOKEN -- the actual passed.
 // Both import std.types AND product.placement_supply, and both DECLARE both values; only the
 // argument differs. An earlier form imported placement_supply on the failing side alone, so the
