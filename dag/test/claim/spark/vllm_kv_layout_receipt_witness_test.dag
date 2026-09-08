@@ -113,7 +113,7 @@ fn w_admit_capture(
     Present { value: reported } =>
       Present {
         value: admit_kv_layout(
-          incarnation: w_launch_id(invocation: invocation),
+          launch: w_launch_id(invocation: invocation),
           layout: layout,
           reported: reported,
           source_capture_digest: digest,
@@ -153,7 +153,7 @@ test fn a_real_capture_with_no_group_metadata_is_inconsistent_not_observed() -> 
         Absent => false
         Present { value: r } =>
           match r {
-            KvLayoutInconsistent { incarnation: _, cause: c } =>
+            KvLayoutInconsistent { launch: _, cause: c } =>
               string_contains(s: c as String, pattern: "cannot be checked")
                 && string_contains(s: c as String, pattern: "unobserved")
             _ => false
@@ -196,7 +196,7 @@ test fn a_layout_whose_groups_reproduce_the_printed_cost_is_observed() -> Bool {
         Absent => false
         Present { value: r } =>
           match r {
-            KvLayoutObserved { incarnation: _, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
+            KvLayoutObserved { launch: _, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
               allocator_block_count_value(c: b) == 65536
                 && string_contains(s: receipt_wire(r: r), pattern: "observed")
                 && string_contains(s: receipt_wire(r: r), pattern: "5555555555555555555555555555555555555555555555555555555555555555")
@@ -246,8 +246,8 @@ test fn garbled_lines_and_a_contradicting_layout_are_different_refusals() -> Boo
               ) {
                 Absent => false
                 Present { value: contradicting } =>
-                  (match garbled { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "disagree with each other")  _ => false })
-                    && (match contradicting { KvLayoutInconsistent { incarnation: _, cause: c } => string_contains(s: c as String, pattern: "different engines")  _ => false })
+                  (match garbled { KvLayoutInconsistent { launch: _, cause: c } => string_contains(s: c as String, pattern: "disagree with each other")  _ => false })
+                    && (match contradicting { KvLayoutInconsistent { launch: _, cause: c } => string_contains(s: c as String, pattern: "different engines")  _ => false })
               }
           }
       }
@@ -267,7 +267,7 @@ test fn a_reading_from_another_revision_refuses_instead_of_being_compared() -> B
         Absent => false
         Present { value: r } =>
           match r {
-            KvLayoutInconsistent { incarnation: _, cause: c } =>
+            KvLayoutInconsistent { launch: _, cause: c } =>
               string_contains(s: c as String, pattern: "not valid across revisions")
             _ => false
           }
@@ -291,7 +291,7 @@ test fn a_layout_from_another_revision_refuses_instead_of_being_compared() -> Bo
         Absent => false
         Present { value: r } =>
           match r {
-            KvLayoutInconsistent { incarnation: _, cause: c } =>
+            KvLayoutInconsistent { launch: _, cause: c } =>
               string_contains(s: c as String, pattern: "not valid across revisions")
             _ => false
           }
