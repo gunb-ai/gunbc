@@ -1,9 +1,7 @@
 module extdeps.cloudflare.client_v4
 
-import std.types { NonEmptyStr, String, Int, Secret }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.types { NonEmptyStr, String, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -34,22 +32,6 @@ data cloudflare_client_v4_base: NonEmptyStr = join(
   ["https://api.cloudflare.com/client/", cloudflare_client_v4_edition as String],
   ""
 ) as NonEmptyStr
-
-data bearer_authorization_scheme: NonEmptyStr = "Bearer"
-
-fn cloudflare_bearer_authorization_header_value(token: Secret) -> String {
-  join([bearer_authorization_scheme as String, " ", token as String], "")
-}
-
-data cloudflare_client_v4_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloudflare.client_v4", decl_name: "cloudflare_bearer_authorization_header_value"),
-    reason: "Bearer header fold has no executing HTTP caller in this change",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration sends Authorization via cloudflare_bearer_authorization_header_value on an executing converge or gunbc-run entry; a witness that the fold exists does not fire this"
-    )
-  )
-]
 
 type CloudflareApiError {
   code: Int

@@ -3,8 +3,7 @@ module test.claim.cloudflare_r2_token
 import std.types { Secret }
 import extdeps.cloudflare.client_v4 {
   cloudflare_client_v4_base,
-  cloudflare_client_v4_edition,
-  cloudflare_bearer_authorization_header_value
+  cloudflare_client_v4_edition
 }
 import extdeps.cloudflare.account_api_tokens {
   classify_cloudflare_credential_format,
@@ -60,10 +59,6 @@ import gunbc.cloudflare.r2_token_mint {
 test fn cloudflare_client_v4_base_is_the_documented_host() -> Bool {
   (cloudflare_client_v4_edition as String) == "v4"
     && (cloudflare_client_v4_base as String) == "https://api.cloudflare.com/client/v4"
-}
-
-test fn cloudflare_bearer_header_uses_bearer_scheme() -> Bool {
-  cloudflare_bearer_authorization_header_value(token: "tok" as Secret) == "Bearer tok"
 }
 
 test fn account_token_formats_are_prefixed() -> Bool {

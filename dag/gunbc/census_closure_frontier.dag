@@ -36,7 +36,6 @@ import gunbc.cloudflare.r2_token_mint {
   vendor_cloudflare_frontier_rows,
 }
 import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_frontier_rows }
-import extdeps.cloudflare.client_v4 { cloudflare_client_v4_frontier_rows }
 import extdeps.cloudflare.r2 { cloudflare_r2_frontier_rows }
 
 data census_closure_count_witness_frontier_rows: List<FrontierRow> = [
@@ -77,7 +76,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_r2_token_mint_frontier_rows,
     vendor_cloudflare_frontier_rows,
     cloudflare_account_api_tokens_frontier_rows,
-    cloudflare_client_v4_frontier_rows,
     cloudflare_r2_frontier_rows,
   ]
 }
