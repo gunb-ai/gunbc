@@ -1,0 +1,1028 @@
+module gunbc.host_reset_return
+
+import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
+import std.algebra { trim }
+import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
+import std.content_hash {
+  ContentHash,
+  ContentHashCrossFamilyIncomparable,
+  ContentHashDifferent,
+  ContentHashEqual,
+  compare_content_hash,
+}
+
+// A HOST DRIVEN BACK TO A KNOWN STATE BY ITS CONTROLLER, AND MEASURED COMING BACK. The canary
+// receipt gunbc.runner.runner_first_job_receipt establishes that a job reaches this machine,
+// executes and reports, and states its own limit in the same breath: "one job on one boot --
+// nothing here shows a second attempt starting cleanly after a first, which is what a runner host
+// actually has to do". This module is the carrier for that missing property.
+//
+// THE WHOLE DESIGN TURNS ON ONE DISTINCTION. "The controller accepted the reset command" and "the
+// host came back" are TWO facts, not one. The first is an acknowledgement from the controller about
+// itself; the second is an observation of the host. A receipt carrying only the first while reading
+// as if it carried the second is the empty-value-read-as-a-positive-answer failure, and it is the
+// most expensive one available here: it reports a host as returned when nobody looked.
+//
+// SO THERE IS NO DURATION FIELD OUTSIDE THE ARM THAT OBSERVED BOTH ENDS. The down and back
+// timestamps exist only inside HostObservedDownThenBack, and every other arm yields
+// MeasuredUnavailable carrying its cause. A zero downtime is therefore not guarded against, it is
+// unwritable -- which matters because zero sorts to the top of any ranking, making it the
+// fabrication nobody finds.
+
+// ── who may observe whom ───────────────────────────────────────────────────────────────────────
+
+// THE OBSERVER MUST NOT BE THE SUBJECT, AND THAT IS A CONSTRUCTION RATHER THAN A CHECK. A job
+// running on the host it is resetting dies at the reset and cannot observe the return; whatever it
+// wrote before dying is exactly the empty value that then reads as a positive answer.
+//
+// The repair is not a comparison performed at dispatch time. It is that the pair CANNOT BE STATED:
+// the observer is the input, the subject is derived from it through this mint, and the mint refuses
+// to produce a pairing whose two halves are equal. Deleting the refusal below does not re-open the
+// hole by editing a declaration -- it leaves nothing able to produce a subject at all.
+type ResetObserverPairing sole_constructor {
+  observer: NonEmptyStr
+  subject: NonEmptyStr
+}
+
+type ResetObserverRefusalCause
+  = ObserverIsSubject { host: NonEmptyStr }
+  | SubjectNotRostered { subject: NonEmptyStr }
+  | ObserverNotRostered { observer: NonEmptyStr }
+  | NoPeerAvailable { subject: NonEmptyStr }
+
+type ResetObserverSelection
+  = ObserverSelected { pairing: ResetObserverPairing }
+  | ObserverSelectionRefused { cause: ResetObserverRefusalCause }
+
+fn host_name_equal(left: NonEmptyStr, right: NonEmptyStr) -> Bool {
+  (left as String) == (right as String)
+}
+
+fn host_roster_contains(roster: List<NonEmptyStr>, host: NonEmptyStr) -> Bool {
+  fold(roster, init: false, f: (seen, h) => seen || host_name_equal(left: h, right: host))
+}
+
+// THE MINT. Both halves must be rostered by their own authority -- a subject by the reset-subject
+// roster, an observer by the peer roster -- and they must differ. Membership is checked BEFORE
+// equality so that an unrostered host naming itself refuses on the roster rather than on the
+// equality: those are different defects with different remedies, and collapsing them would tell a
+// caller to go find a peer when the real answer is that the host was never admitted at all.
+fn select_reset_observer(
+  subject_roster: List<NonEmptyStr>,
+  peer_roster: List<NonEmptyStr>,
+  subject: NonEmptyStr,
+  observer: NonEmptyStr,
+) -> ResetObserverSelection {
+  if host_roster_contains(roster: subject_roster, host: subject) == false {
+    ObserverSelectionRefused { cause: SubjectNotRostered { subject: subject } }
+  } else if host_roster_contains(roster: peer_roster, host: observer) == false {
+    ObserverSelectionRefused { cause: ObserverNotRostered { observer: observer } }
+  } else if host_name_equal(left: observer, right: subject) {
+    ObserverSelectionRefused { cause: ObserverIsSubject { host: observer } }
+  } else {
+    ObserverSelected {
+      pairing: ResetObserverPairing { observer: observer, subject: subject },
+    }
+  }
+}
+
+// THE DISPATCH OPTION LIST IS DERIVED AND REFUSES WHOLE. A fold that silently dropped a refused
+// candidate would be the absorbing fallback DESIGN section 5 forbids: the list would shrink quietly
+// and a subject nobody could observe would simply stop being offered, with no diagnostic. One
+// unmintable pairing refuses the entire assignment, loudly, naming its cause.
+//
+// AND THE ASSIGNMENT MUST BE A FUNCTION FROM OBSERVER TO SUBJECT, which is a second property and the
+// reason this is an assignment rather than a list. The dispatch input carries the OBSERVER label and
+// runs-on consumes it directly, so the subject has to be recoverable from the observer alone. With
+// one reset subject that is automatic. With two subjects sharing a peer it is false, and the job
+// would have to guess which machine it was watching.
+//
+// SO IT REFUSES RATHER THAN PICKING, AND THE REFUSAL IS UNREACHABLE FROM PRODUCTION TODAY. There is
+// one rostered subject, so no observer can be assigned twice; the arm is driven from a fixture and
+// is reported as such rather than claimed as measured. The day a second subject lands, emission
+// stops and someone answers the pair-encoding question with the case in front of them, instead of
+// this module guessing the answer now from one specimen.
+type ResetDispatchAssignment
+  = DispatchAssignment { pairings: List<ResetObserverPairing> }
+  | DispatchAssignmentRefused { cause: ResetDispatchAssignmentRefusalCause }
+
+type ResetDispatchAssignmentRefusalCause
+  = ObserverAssignedToTwoSubjects { observer: NonEmptyStr, first_subject: NonEmptyStr, second_subject: NonEmptyStr }
+  | AssignmentPairingRefused { cause: ResetObserverRefusalCause }
+  | NoResetSubjectRostered
+
+fn assignment_conflict(pairings: List<ResetObserverPairing>, candidate: ResetObserverPairing) -> ResetDispatchAssignmentRefusalCause? {
+  fold(
+    pairings,
+    init: none,
+    f: (acc, p) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if host_name_equal(left: p.observer, right: candidate.observer)
+          && host_name_equal(left: p.subject, right: candidate.subject) == false {
+          Present {
+            value: ObserverAssignedToTwoSubjects {
+              observer: candidate.observer,
+              first_subject: p.subject,
+              second_subject: candidate.subject,
+            },
+          }
+        } else {
+          acc
+        }
+    },
+  )
+}
+
+fn reset_dispatch_assignment_step(acc: ResetDispatchAssignment, selection: ResetObserverSelection) -> ResetDispatchAssignment {
+  match acc {
+    DispatchAssignmentRefused { cause: c } => DispatchAssignmentRefused { cause: c }
+    DispatchAssignment { pairings: seen } =>
+      match selection {
+        ObserverSelectionRefused { cause: c } =>
+          DispatchAssignmentRefused { cause: AssignmentPairingRefused { cause: c } }
+        ObserverSelected { pairing: p } =>
+          match assignment_conflict(pairings: seen, candidate: p) {
+            Present { value: c } => DispatchAssignmentRefused { cause: c }
+            Absent => DispatchAssignment { pairings: concat(seen, [p]) }
+          }
+      }
+  }
+}
+
+fn reset_dispatch_assignment(selections: List<ResetObserverSelection>) -> ResetDispatchAssignment {
+  fold(
+    selections,
+    init: DispatchAssignment { pairings: [] },
+    f: (acc, s) => reset_dispatch_assignment_step(acc: acc, selection: s),
+  )
+}
+
+// A SUBJECT WITH NO ADMISSIBLE PEER MUST PRODUCE A REFUSAL, NOT AN ABSENCE, and the first version of
+// this fold got that exactly backwards while carrying a paragraph forbidding it. It mapped over the
+// peer roster, so a subject with an EMPTY peer roster contributed ZERO selections -- and zero
+// selections is not a refused selection, it is nothing at all. The subject then quietly stopped being
+// offered with no diagnostic anywhere, which is the absorbing fallback the note above describes and
+// the reason NoPeerAvailable was declared. The cause existed and nothing emitted it, which is worse
+// than not having declared it: the type read as coverage.
+//
+// So the empty peer roster CONSTRUCTS the refusal rather than falling through a map that has nothing
+// to iterate.
+fn reset_observer_selections_for(
+  subject: NonEmptyStr,
+  subject_roster: List<NonEmptyStr>,
+  peer_roster: List<NonEmptyStr>,
+) -> List<ResetObserverSelection> {
+  if list_length(peer_roster) == 0 {
+    [ObserverSelectionRefused { cause: NoPeerAvailable { subject: subject } }]
+  } else {
+    map(
+      peer_roster,
+      observer => select_reset_observer(
+        subject_roster: subject_roster,
+        peer_roster: peer_roster,
+        subject: subject,
+        observer: observer,
+      )
+    )
+  }
+}
+
+// EVERY (SUBJECT, PEER) PAIR THE TWO ROSTERS ADMIT. The cross product is taken here rather than by a
+// caller so that the option list and the job's subject lookup fold ONE expression: a caller
+// assembling its own product could pair a subject with a peer this mint rejected.
+//
+// A HOST ON BOTH ROSTERS REFUSES THE WHOLE ASSIGNMENT, and that is the intended reading rather than
+// an edge case. If a rostered subject is also a rostered observer, the two rosters disagree about
+// what that machine is, and the emission should stop until someone says which.
+fn reset_observer_selections(subject_roster: List<NonEmptyStr>, peer_roster: List<NonEmptyStr>) -> List<ResetObserverSelection> {
+  fold(
+    subject_roster,
+    init: [],
+    f: (acc, subject) =>
+      concat(acc, reset_observer_selections_for(subject: subject, subject_roster: subject_roster, peer_roster: peer_roster)),
+  )
+}
+
+// AN EMPTY SUBJECT ROSTER IS ITS OWN REFUSAL, and it is the second way an empty option list could be
+// produced without any selection having been refused. Nothing to iterate is not the same as nothing
+// refused, and both routes to an empty dispatch form have to be loud: a choice input with zero
+// options is a mode nobody can select, which is a silent removal of a capability rather than a
+// diagnostic about one.
+fn reset_dispatch_pairings(subject_roster: List<NonEmptyStr>, peer_roster: List<NonEmptyStr>) -> ResetDispatchAssignment {
+  if list_length(subject_roster) == 0 {
+    DispatchAssignmentRefused { cause: NoResetSubjectRostered }
+  } else {
+    reset_dispatch_assignment(
+      selections: reset_observer_selections(subject_roster: subject_roster, peer_roster: peer_roster)
+    )
+  }
+}
+
+fn reset_dispatch_observer_labels(pairings: List<ResetObserverPairing>) -> List<String> {
+  map(pairings, p => p.observer as String)
+}
+
+// THE JOB'S OWN LOOKUP, and it is the inverse the whole inversion exists to make total. A job knows
+// which runner it landed on; this is how it learns what it is watching. Absent means the observer
+// was not assigned, which a job must treat as a refusal rather than as a subject it may choose.
+fn subject_for_observer(assignment: ResetDispatchAssignment, observer: NonEmptyStr) -> NonEmptyStr? {
+  match assignment {
+    DispatchAssignmentRefused { cause: _ } => none
+    DispatchAssignment { pairings: ps } =>
+      fold(
+        ps,
+        init: none,
+        f: (acc, p) => match acc {
+          Present { value: _ } => acc
+          Absent => if host_name_equal(left: p.observer, right: observer) { Present { value: p.subject } } else { acc }
+        },
+      )
+  }
+}
+
+// ── the observer corroborates its own identity ─────────────────────────────────────────────────
+
+// EVERYTHING ABOVE IS A GUARANTEE AT LABEL GRAIN. runs-on selects by runner label, the mint above
+// compares labels, and the two agree. What no part of this model can see is the label-to-machine
+// binding: a runner registered with a peer's label but living on the subject chassis defeats every
+// word of it, and that binding is registration-time state on the runner host. That is outside the
+// modeled boundary -- DESIGN section 4b's adjacent column -- and it is not a rung.
+//
+// So the observer states its own machine identity and requires it to differ from the subject's,
+// before it probes anything. Two observers with no shared instrument, the same move the canary made
+// when it proved its own containment from inside the job rather than trusting the host receipt: the
+// label says one thing, the machine says another, and they must agree. A loud check on a boundary
+// fact beats a silent structural claim that quietly assumes it.
+// THREE NAMES, NOT TWO, AND THE THIRD IS WHAT MAKES THE COMPARISON MEAN ANYTHING. The naive check
+// reads the observer's own hostname and requires it to differ from the subject's allocated one -- and
+// that check PASSES for an observer whose hostname was never converged at all, because an
+// unconverged machine reporting "ubuntu" differs from the subject just as surely as a correctly
+// converged peer does. A hostname is DESIRED state that convergence applies; until it has been
+// applied, the machine's name is evidence about nothing.
+//
+// So the observer's own ALLOCATED name is the third input, and an observer that does not answer to it
+// has not established its identity rather than having established a difference.
+type ObserverSelfIdentity
+  = ObserverDistinctFromSubject { observer_machine_id: NonEmptyStr, subject_machine_id: NonEmptyStr }
+  | ObserverIsTheSubjectMachine { machine_id: NonEmptyStr }
+  | ObserverHostnameNotConverged { observed: NonEmptyStr, allocated: NonEmptyStr }
+  | ObserverSelfIdentityUnreadable { cause: NonEmptyStr }
+
+// THE ORDER NAMES THE DANGEROUS STATE BEFORE THE MERELY-UNESTABLISHED ONE, and it is not
+// interchangeable. A runner labelled as a peer but living on the subject chassis answers to the
+// SUBJECT's hostname, so it fails both predicates at once: it is not the subject-check and the
+// not-converged check simultaneously. Asking "have I converged?" first would report that machine as
+// an unconverged peer -- a maintenance problem -- when it is the exact substitution this check
+// exists to catch, and the two have opposite remedies. So the subject question is asked first.
+fn observer_self_identity(
+  observer_machine_id: NonEmptyStr,
+  observer_allocated_hostname: NonEmptyStr,
+  subject_machine_id: NonEmptyStr,
+) -> ObserverSelfIdentity {
+  if host_name_equal(left: observer_machine_id, right: subject_machine_id) {
+    ObserverIsTheSubjectMachine { machine_id: observer_machine_id }
+  } else if host_name_equal(left: observer_machine_id, right: observer_allocated_hostname) == false {
+    ObserverHostnameNotConverged {
+      observed: observer_machine_id,
+      allocated: observer_allocated_hostname,
+    }
+  } else {
+    ObserverDistinctFromSubject {
+      observer_machine_id: observer_machine_id,
+      subject_machine_id: subject_machine_id,
+    }
+  }
+}
+
+// WHETHER THIS RUN MAY WRITE TO A CONTROLLER, ANSWERED ONCE. Two claims used to answer it: this
+// module returned a Bool over ObserverSelfIdentity for the gate, and reset_return_verdict
+// independently matched the SAME coproduct to per-arm refusal causes for the receipt. One fact, two
+// authorities -- and the Bool was the lossy one, since it knew an arm was fatal but not why, so the
+// caller had to invent a sentence the verdict already owned. Review 61872 found it. The classifier
+// below is now the only place an identity arm is called fatal, and the verdict and the gate are two
+// readings of it.
+//
+// AN UNESTABLISHED OBSERVER IDENTITY REFUSES BEFORE THE FIRST PROBE AND BEFORE THE FIRST WRITE, and
+// this ordering is the enforcement rather than the classification. The first draft of this func
+// computed the identity, carried it into the receipt, and went on to issue the reset anyway -- so a
+// job running on its own subject would have power-cycled the machine it was standing on and then
+// reported the refusal, which is a refusal that arrives after the damage. Classification and
+// enforcement are different claims and only the second is what a caller driving real hardware
+// depends on; gunbc.machine_intake_mtcollins1_actuate says exactly this about its own denied-admission
+// control, and the reading rule it gives is the one that applies here: a non-zero exit is necessary
+// and not sufficient, and the load-bearing observation is external -- that nothing moved.
+fn observer_identity_issuance_block(identity: ObserverSelfIdentity) -> ResetReturnRefusalCause? {
+  match identity {
+    ObserverDistinctFromSubject { observer_machine_id: _, subject_machine_id: _ } => none
+    ObserverIsTheSubjectMachine { machine_id: m } =>
+      Present { value: ObserverWasTheSubjectMachine { machine_id: m } }
+    ObserverHostnameNotConverged { observed: o, allocated: a } =>
+      Present { value: ObserverHostnameUnconverged { observed: o, allocated: a } }
+    ObserverSelfIdentityUnreadable { cause: c } =>
+      Present { value: ObserverIdentityUnreadable { cause: c } }
+  }
+}
+
+// A REFUSED PAIRING MUST STOP THE WRITE TOO, and that it did not is the other half of review 61872.
+// The gate checked the identity and nothing else, so an ObserverSelectionRefused -- ObserverIsSubject,
+// SubjectNotRostered, ObserverNotRostered, NoPeerAvailable -- fell through to the power cycle, and the
+// receipt then said "pairing-not-minted" ABOUT A RUN THAT HAD ALREADY WRITTEN TO A CONTROLLER. The
+// selection is the arm that carries ObserverIsSubject, so the wall this module advertises against
+// resetting your own machine was sitting behind the write it exists to prevent.
+//
+// IT WAS UNREACHABLE ONLY BECAUSE OF THE CALLER, which is the part that makes it worth fixing rather
+// than documenting: subject_for_observer pre-filters, so host_reset_return_wet never presented a
+// refused selection. Safety coming from the caller is not safety coming from the wall -- the next
+// caller does not inherit it, and this module presents the arm as the wall.
+//
+// THE SELECTION IS ASKED FIRST because a refused pairing means there is no established subject at
+// all, so an identity comparison against it would be comparing to a host nobody admitted.
+fn reset_issuance_block(
+  selection: ResetObserverSelection,
+  identity: ObserverSelfIdentity,
+) -> ResetReturnRefusalCause? {
+  match selection {
+    ObserverSelectionRefused { cause: c } => Present { value: PairingNotMinted { cause: c } }
+    ObserverSelected { pairing: _ } => observer_identity_issuance_block(identity: identity)
+  }
+}
+
+// ── how the reset was issued ───────────────────────────────────────────────────────────────────
+
+// THE OPERATOR'S STANDING RULING, CARRIED AS A FIELD RATHER THAN AS PROSE BESIDE ONE. Convergence
+// runs through fleet converge; BMC credentials, network configuration, virtual-media attachment and
+// boot-order overrides may not be hand-set on the box. A receipt taken over a hand-invoked CLI is
+// evidence that someone was PRESENT, which is the negation of the unattended property this whole
+// carrier exists to establish -- so out-of-band issuance is not a lesser receipt, it is a refusal.
+type ResetIssuanceRoute
+  = IssuedThroughConverge { workflow: NonEmptyStr, mode: NonEmptyStr, run_id: NonEmptyStr }
+  | IssuedByHandOutOfBand { what: NonEmptyStr }
+
+// READING THE ROUTE IS ITS OWN OUTCOME, because run_id is mandatory and there is no honest value for
+// it when the run cannot be identified. A receipt's run_id is how a reader gets from the artifact back
+// to the run that drove the machine, so an optional or sentinel-carrying field would let a power cycle
+// proceed and mint a receipt that cannot support the one claim this carrier exists to make -- that the
+// reset was unattended and went through converge. The unidentified arm therefore refuses BEFORE
+// issuance rather than recording a gap after it, which is the same ordering the observer-identity and
+// pairing walls take, and for the same reason.
+// A REFUSAL BEFORE THE ATTEMPT IS STILL A RECEIPT, and review 62016 found that it was not being
+// written. Five arms refuse before any pairing is minted -- no credential path, no observer label, an
+// unidentified run, an observer the assignment does not place, a subject with no roster row -- and
+// each exited without touching the evidence file. The upload step runs `if: always()` with
+// `if-no-files-found: error` precisely so that "the refused case is the one somebody needs to read",
+// so on every refusal reachable today the run's final red named a MISSING FILE rather than the
+// missing credential. The located diagnostic was displaced by an artifact-plumbing error, which is
+// the annotation-claims-what-the-code-does-not shape this module keeps finding in itself.
+//
+// THESE ARE THEIR OWN VOCABULARY RATHER THAN ResetReturnRefusalCause ARMS, because that type answers
+// for an attempt that was MINTED: every one of its causes presupposes a pairing, a route and an
+// observation to reason about. A preflight refusal has none of those, and widening the verdict type to
+// admit causes it can never receive from reset_return_verdict would make its match arms unreachable
+// while reading as coverage. Two carriers, two subjects, and the receipt line says which it is.
+// THE DISPATCH FORM IS ITS OWN ADMISSION QUESTION, asked before a runner is chosen rather than after.
+// reset_observer is required:false because it is meaningful for exactly one mode, and its value is
+// interpolated into the reset job's runs-on -- so a dispatch of that mode omitting it asks for a
+// runner carrying an empty label and the job queues to its backstop with no receipt. The admission
+// below is what refuses that, and it answers with a CAUSE rather than by declining to run: a gate
+// that silently skips reads as a pass to anyone looking at the job list, which is the absorbing
+// fallback one layer up from the one this module already refuses.
+type ResetDispatchAdmission
+  = ResetDispatchAdmitted { mode: NonEmptyStr }
+  | ResetDispatchNotThisMode { mode: NonEmptyStr }
+  | ResetDispatchObserverUnnamed { mode: NonEmptyStr }
+
+fn admit_reset_dispatch(mode: String, reset_observer: String) -> ResetDispatchAdmission {
+  let wire = host_reset_return_mode_wire as String
+  if trim(s: mode) != wire {
+    ResetDispatchNotThisMode { mode: "not-host-reset-return" as NonEmptyStr }
+  } else {
+    if trim(s: reset_observer) == "" {
+      ResetDispatchObserverUnnamed { mode: host_reset_return_mode_wire }
+    } else {
+      ResetDispatchAdmitted { mode: host_reset_return_mode_wire }
+    }
+  }
+}
+
+// THE MODE NAME LIVES HERE BECAUSE BOTH ENDS NEED IT: the workflow spells it as a dispatch option
+// through its own vocabulary, and this admission compares against it. One spelling, consumed twice.
+data host_reset_return_mode_wire: NonEmptyStr = "host_reset_return"
+
+data reset_dispatch_observer_unnamed_diagnostic: NonEmptyStr = "ResetObserverUnnamed: mode=host_reset_return was dispatched with an empty reset_observer. The reset job's runs-on interpolates that label, so an empty value asks for a runner carrying no label and the job would queue until its backstop with no receipt. The subject is DERIVED from the observer through reset_dispatch_pairings, so an unnamed observer names no subject and there is nothing to reset. Re-dispatch naming one of the rostered observers the form offers." as NonEmptyStr
+
+type ResetPreflightRefusal
+  = BmcCredentialPathUnset { variable: NonEmptyStr }
+  | ObserverLabelUnset { variable: NonEmptyStr }
+  | IssuingRunUnidentified { variable: NonEmptyStr, detail: NonEmptyStr }
+  | ObserverNotAssigned { observer: NonEmptyStr }
+  | SubjectHasNoRosterRow { subject: NonEmptyStr }
+
+fn reset_preflight_refusal_wire(refusal: ResetPreflightRefusal) -> String {
+  match refusal {
+    BmcCredentialPathUnset { variable: v } =>
+      join(["bmc-credential-path-unset variable=", v as String], "")
+    ObserverLabelUnset { variable: v } =>
+      join(["observer-label-unset variable=", v as String], "")
+    IssuingRunUnidentified { variable: v, detail: d } =>
+      join(["issuing-run-unidentified variable=", v as String, " detail=", d as String], "")
+    ObserverNotAssigned { observer: o } =>
+      join(["observer-not-assigned observer=", o as String], "")
+    SubjectHasNoRosterRow { subject: sj } =>
+      join(["subject-has-no-roster-row subject=", sj as String], "")
+  }
+}
+
+type ResetIssuanceRouteRead
+  = RouteEstablished { route: ResetIssuanceRoute }
+  | RouteUnidentified { variable: NonEmptyStr, detail: NonEmptyStr }
+
+// WHAT THE CONTROLLER SAID, AND ONLY THAT. This type is deliberately incapable of saying anything
+// about the host: it carries the controller's response and the instant the command was issued, and
+// a reader wanting to know whether the machine went anywhere must consult the observation instead.
+type ResetCommandAcknowledgement
+  = ResetAccepted { controller_response: NonEmptyStr, issued_at: EpochMs }
+  | ResetRefusedByController { diagnostic: NonEmptyStr }
+  | ResetNotAttempted { cause: NonEmptyStr }
+
+// ── what the observer saw ──────────────────────────────────────────────────────────────────────
+
+// THE FOUR OUTCOMES ARE FOUR DIFFERENT STATES OF THE WORLD AND THEY HAVE DIFFERENT REMEDIES.
+//
+// HostNeverObservedDown is the arm this type exists for. A controller that acknowledged a reset
+// while the host kept running produces exactly this, and it is the reading a receipt carrying only
+// the acknowledgement would have rendered as success. It is not a probe failure: the probe worked
+// and the host stayed up.
+//
+// HostObservedDownAndNotBack is a host that went away and did not return within the window. That is
+// the failure the whole conjunct is about and it must be loud.
+//
+// HostReturnUnobserved is the observer's own failure and establishes NOTHING about the host in
+// either direction -- a measured failure and a failed measurement are different results, and the
+// second is not a weaker form of the first.
+//
+// SubjectNotUpBeforeIssuance IS THE SAME TRAP AS HostNeverObservedDown WEARING THE OPPOSITE SIGN,
+// and it is the one an observer written straight through would miss. A host that was ALREADY down
+// when the reset was issued satisfies the down watch instantly and, if anything later brings it
+// back, satisfies the back watch too -- producing a complete, ordered, entirely fabricated
+// down-then-back reading of a reset that moved nothing. The baseline must therefore be established
+// before issuance, and a subject that was not up is a refusal with its own remedy: find out why it
+// is down, which is a different job from resetting it.
+type HostReturnObservation
+  = HostObservedDownThenBack {
+      probe: NonEmptyStr
+      down_first_seen_at: EpochMs
+      back_first_seen_at: EpochMs
+      down_samples: Int
+      back_samples: Int
+    }
+  | HostNeverObservedDown { probe: NonEmptyStr, samples: Int, watched_until: EpochMs }
+  | HostObservedDownAndNotBack { probe: NonEmptyStr, down_first_seen_at: EpochMs, waited_until: EpochMs }
+  | HostReturnUnobserved { cause: NonEmptyStr }
+  | SubjectNotUpBeforeIssuance { probe: NonEmptyStr, checked_at: EpochMs }
+
+// DOWNTIME IS Measured, INHABITING std.observation RATHER THAN MINTING A SECOND ABSENCE VOCABULARY.
+// That module's own note states the rule this fold keeps: absence of a measurement is a named state
+// carrying its cause, never a fabricated zero and never a silently omitted field.
+//
+// AN OUT-OF-ORDER PAIR IS UNAVAILABLE, NOT NEGATIVE. A back timestamp at or before the down
+// timestamp is not a short outage; it is an incoherent reading, and returning a number for it would
+// be the fabrication in its most defensible-looking form.
+fn reset_downtime(observation: HostReturnObservation) -> Measured<Milliseconds> {
+  match observation {
+    HostObservedDownThenBack {
+      probe: _,
+      down_first_seen_at: down,
+      back_first_seen_at: back,
+      down_samples: _,
+      back_samples: _,
+    } =>
+      if back > down {
+        MeasuredValue { value: back - down }
+      } else {
+        MeasuredUnavailable {
+          cause: "the host was observed back at or before it was observed down; the reading is incoherent and no interval is derivable from it",
+        }
+      }
+    HostNeverObservedDown { probe: _, samples: _, watched_until: _ } =>
+      MeasuredUnavailable {
+        cause: "the host was never observed down, so there is no interval to measure; the controller acknowledging a reset is not the host having taken one",
+      }
+    HostObservedDownAndNotBack { probe: _, down_first_seen_at: _, waited_until: _ } =>
+      MeasuredUnavailable {
+        cause: "the host was observed down and was not observed back within the window; the interval has no end",
+      }
+    HostReturnUnobserved { cause: c } =>
+      MeasuredUnavailable { cause: c }
+    SubjectNotUpBeforeIssuance { probe: _, checked_at: _ } =>
+      MeasuredUnavailable {
+        cause: "the subject was already unreachable when the reset was issued, so a down reading establishes nothing about this reset",
+      }
+  }
+}
+
+// ── one attempt, one receipt ───────────────────────────────────────────────────────────────────
+
+// EACH ATTEMPT GETS ITS OWN IMMUTABLE EVIDENCE ARTIFACT. Appending a second attempt to the first's
+// artifact changes the bytes the first receipt's digest names, which invalidates that receipt while
+// leaving it looking valid -- the worst available outcome, because the damage is invisible from the
+// receipt itself. Two attempts, two artifacts; the relation between them is computed below rather
+// than asserted in prose beside them.
+// WHAT ONE RUN PRODUCES, AND IT DELIBERATELY CARRIES NO DIGEST. A run cannot honestly digest its own
+// evidence: the transcript is not finished until the run is, and a digest the run computes over its
+// own output certifies nothing against that run -- it only protects the bytes from LATER mutation,
+// which is a property of the committed artifact and not of the execution. So the split is between
+// what a machine observed and what a committed artifact says, and it is the same split
+// gunbc.machine_intake_mtcollins1_access_observation already draws: the unit answered, the bytes were
+// committed, and the digest is a row over the committed file.
+//
+// AND IT HAS NO CONSTRUCTOR OUTSIDE THIS MODULE. sole_constructor is enforced at the module boundary
+// -- measured, not assumed: a witness spelling a ResetObserverPairing literal was refused with
+// "sole_constructor type 'ResetObserverPairing' cannot be constructed outside its defining module"
+// before any test ran. So an attempt cannot be assembled around a pairing nobody minted, and the
+// observer-is-not-the-subject property reaches the evidence rather than stopping at the dispatch form.
+type ResetAttemptObservation sole_constructor {
+  attempt: NonEmptyStr
+  route: ResetIssuanceRoute
+  pairing: ResetObserverPairing
+  self_identity: ObserverSelfIdentity
+  acknowledgement: ResetCommandAcknowledgement
+  observation: HostReturnObservation
+}
+
+// THE COMMITTED RECEIPT: one run's observation, plus the artifact that holds its bytes. Two attempts
+// are two of these, and the second-attempt relation below is a fold over the pair -- which is why the
+// digest belongs here and not in the observation: the property it establishes is that the two
+// attempts left two distinct artifacts, and that is a statement about the corpus rather than about
+// either run.
+type ResetAttemptReceipt sole_constructor {
+  attempt_observation: ResetAttemptObservation
+  evidence_path: NonEmptyStr
+  evidence_digest: ContentHash
+}
+
+// THE ONLY ROUTE TO AN ATTEMPT OBSERVATION. The pairing is not a parameter here, the SELECTION is: a
+// caller hands over what the mint produced, refusal included, and a refused selection yields a
+// refused attempt rather than an attempt built around a pairing that was never made.
+type ResetAttemptMint
+  = AttemptReceiptMinted { observed: ResetAttemptObservation }
+  | AttemptReceiptPairingRefused { cause: ResetObserverRefusalCause }
+
+fn mint_reset_attempt_receipt(
+  selection: ResetObserverSelection,
+  attempt: NonEmptyStr,
+  route: ResetIssuanceRoute,
+  self_identity: ObserverSelfIdentity,
+  acknowledgement: ResetCommandAcknowledgement,
+  observation: HostReturnObservation,
+) -> ResetAttemptMint {
+  match selection {
+    ObserverSelectionRefused { cause: c } => AttemptReceiptPairingRefused { cause: c }
+    ObserverSelected { pairing: p } =>
+      AttemptReceiptMinted {
+        observed: ResetAttemptObservation {
+          attempt: attempt,
+          route: route,
+          pairing: p,
+          self_identity: self_identity,
+          acknowledgement: acknowledgement,
+          observation: observation,
+        },
+      }
+  }
+}
+
+// COMMITTING AN OBSERVATION TO AN ARTIFACT is its own step and its own refusal, because an attempt
+// whose pairing was refused has no bytes worth naming.
+type ResetReceiptCommit
+  = ReceiptCommitted { receipt: ResetAttemptReceipt }
+  | ReceiptCommitRefused { cause: ResetObserverRefusalCause }
+
+fn commit_reset_attempt_receipt(
+  mint: ResetAttemptMint,
+  evidence_path: NonEmptyStr,
+  evidence_digest: ContentHash,
+) -> ResetReceiptCommit {
+  match mint {
+    AttemptReceiptPairingRefused { cause: c } => ReceiptCommitRefused { cause: c }
+    AttemptReceiptMinted { observed: o } =>
+      ReceiptCommitted {
+        receipt: ResetAttemptReceipt {
+          attempt_observation: o,
+          evidence_path: evidence_path,
+          evidence_digest: evidence_digest,
+        },
+      }
+  }
+}
+
+type ResetReturnRefusalCause
+  = PairingNotMinted { cause: ResetObserverRefusalCause }
+  | IssuanceWasOutOfBand { what: NonEmptyStr }
+  | ObserverWasTheSubjectMachine { machine_id: NonEmptyStr }
+  | ObserverIdentityUnreadable { cause: NonEmptyStr }
+  | ObserverHostnameUnconverged { observed: NonEmptyStr, allocated: NonEmptyStr }
+  | ControllerDidNotAccept { diagnostic: NonEmptyStr }
+  | ResetWasNotAttempted { cause: NonEmptyStr }
+  | HostReturnNotMeasured { cause: NonEmptyStr }
+  | DownObservedBeforeIssuance { issued_at: EpochMs, down_first_seen_at: EpochMs }
+  | SubjectWasNotUpBeforeIssuance
+
+type ResetReturnVerdict
+  = HostDrivenBackToKnownState { downtime: Milliseconds }
+  | ResetReturnRefused { cause: ResetReturnRefusalCause }
+
+// THE ALREADY-DOWN READING OUTRANKS THE ACKNOWLEDGEMENT, and getting that order wrong is what review
+// 61829 found. The baseline refusing is the ONLY way SubjectNotUpBeforeIssuance is ever constructed,
+// and a refused baseline necessarily means no controller write was attempted -- so the mint pairs
+// that observation with ResetNotAttempted. Matching the acknowledgement first therefore swallowed it:
+// every production already-down subject reported ResetWasNotAttempted, and SubjectWasNotUpBeforeIssuance
+// was reachable only from a fixture pairing ResetAccepted with an observation the acceptance path
+// cannot produce. That is the declared-refusal-the-acceptance-path-cannot-express class this lane has
+// now hit three times (NoPeerAvailable, the observer-identity walls, this) -- a type read as coverage.
+//
+// The two causes are not interchangeable and that is why the arm is worth keeping rather than
+// deleting: ResetWasNotAttempted sends a reader to the OBSERVER (its clock, its credential, its
+// identity), and SubjectWasNotUpBeforeIssuance sends them to the SUBJECT, which was already down
+// before anyone touched it and whose reset would have measured someone else's outage.
+// IT RETURNS THE CAUSE, NOT A Bool, AND THAT IS THE SAME CORRECTION THIS MODULE ALREADY MADE ONE WALL
+// OVER. A Bool over a coproduct re-encodes a variant test the sum already carries and then discards
+// what it learned, so the caller mints SubjectWasNotUpBeforeIssuance a second time -- one fact with
+// two authorities, which is exactly what observer_identity_permits_issuance was dissolved into
+// observer_identity_issuance_block for after review 61872. I applied that lesson to the identity wall
+// and then reintroduced the shape here in the very next commit; review 62169 caught it.
+fn observation_issuance_block(observation: HostReturnObservation) -> ResetReturnRefusalCause? {
+  match observation {
+    SubjectNotUpBeforeIssuance { probe: _, checked_at: _ } =>
+      Present { value: SubjectWasNotUpBeforeIssuance }
+    HostObservedDownThenBack { probe: _, down_first_seen_at: _, back_first_seen_at: _, down_samples: _, back_samples: _ } => none
+    HostNeverObservedDown { probe: _, samples: _, watched_until: _ } => none
+    HostObservedDownAndNotBack { probe: _, down_first_seen_at: _, waited_until: _ } => none
+    HostReturnUnobserved { cause: _ } => none
+  }
+}
+
+// THE ORDER OF THESE ARMS IS THE POINT AND IS NOT INTERCHANGEABLE. Route, then observer identity,
+// then the already-down reading, then acknowledgement, then observation, then the ordering of the
+// observation against the acknowledgement -- and only inside the last of those is any measured field
+// read. (The pre-acknowledgement position of the already-down block is argued above
+// observation_issuance_block, which now yields the CAUSE rather than a Bool the caller re-mints.)
+//
+// THE ISSUANCE INSTANT IS WHAT MAKES A STALE LIVENESS FACT UNUSABLE. A down observation timestamped
+// before the reset was issued is a reading of some earlier outage, or of a cache answering from
+// before the command, and it cannot testify to this reset. Requiring the down observation to follow
+// the issuance is what makes "down then up" two observations separated by the reset IN TIME rather
+// than one query answered twice.
+fn reset_return_verdict(observed: ResetAttemptObservation) -> ResetReturnVerdict {
+  match observed.route {
+    IssuedByHandOutOfBand { what: w } =>
+      ResetReturnRefused { cause: IssuanceWasOutOfBand { what: w } }
+    IssuedThroughConverge { workflow: _, mode: _, run_id: _ } =>
+      match observer_identity_issuance_block(identity: observed.self_identity) {
+        Present { value: blocked } => ResetReturnRefused { cause: blocked }
+        Absent =>
+          match observation_issuance_block(observation: observed.observation) {
+            Present { value: already } => ResetReturnRefused { cause: already }
+            Absent =>
+              match observed.acknowledgement {
+                ResetRefusedByController { diagnostic: d } =>
+                  ResetReturnRefused { cause: ControllerDidNotAccept { diagnostic: d } }
+                ResetNotAttempted { cause: c } =>
+                  ResetReturnRefused { cause: ResetWasNotAttempted { cause: c } }
+                ResetAccepted { controller_response: _, issued_at: issued } =>
+                  reset_return_verdict_after_issuance(observation: observed.observation, issued_at: issued)
+              }
+          }
+      }
+  }
+}
+
+fn reset_return_verdict_after_issuance(
+  observation: HostReturnObservation,
+  issued_at: EpochMs,
+) -> ResetReturnVerdict {
+  match observation {
+    HostObservedDownThenBack {
+      probe: p,
+      down_first_seen_at: down,
+      back_first_seen_at: back,
+      down_samples: ds,
+      back_samples: bs,
+    } =>
+      if down < issued_at {
+        ResetReturnRefused {
+          cause: DownObservedBeforeIssuance { issued_at: issued_at, down_first_seen_at: down },
+        }
+      } else {
+        match reset_downtime(
+          observation: HostObservedDownThenBack {
+            probe: p,
+            down_first_seen_at: down,
+            back_first_seen_at: back,
+            down_samples: ds,
+            back_samples: bs,
+          }
+        ) {
+          MeasuredValue { value: ms } => HostDrivenBackToKnownState { downtime: ms }
+          MeasuredUnavailable { cause: c } => ResetReturnRefused { cause: HostReturnNotMeasured { cause: c } }
+        }
+      }
+    HostNeverObservedDown { probe: _, samples: _, watched_until: _ } =>
+      ResetReturnRefused {
+        cause: HostReturnNotMeasured {
+          cause: "the host was never observed down, so there is no interval to measure; the controller acknowledging a reset is not the host having taken one",
+        },
+      }
+    HostObservedDownAndNotBack { probe: _, down_first_seen_at: _, waited_until: _ } =>
+      ResetReturnRefused {
+        cause: HostReturnNotMeasured {
+          cause: "the host was observed down and was not observed back within the window; the interval has no end",
+        },
+      }
+    HostReturnUnobserved { cause: c } =>
+      ResetReturnRefused { cause: HostReturnNotMeasured { cause: c } }
+    SubjectNotUpBeforeIssuance { probe: _, checked_at: _ } =>
+      ResetReturnRefused {
+        cause: SubjectWasNotUpBeforeIssuance,
+      }
+  }
+}
+
+// THE REFUSAL CAUSE, RENDERED, AND IT LIVES HERE BECAUSE IT IS PART OF THE MODEL RATHER THAN OF THE
+// PRINTING. Review 61786 found the cause computed and then DISCARDED on the only production
+// serialization path: the receipt line bound `cause: _` and wrote "verdict=refused" while the
+// annotation above it, the exit reason, and the upload step that exists to make refusals readable all
+// said the file carried the located cause. Three claims and no code.
+//
+// EVERY ARM CARRIES WHAT THE READER HAS TO ACT ON, because that is what "located" means -- the
+// remedies genuinely differ. A controller that refused wrote nothing; a host that did not return is
+// still down; an observer that could not establish its identity did not look; an override that
+// applied while the cycle was refused left the controller holding an unconsumed next-boot override.
+// A single "refused" collapses all of those into one symbol, which is the state-space conflation that
+// sends a reader to the wrong machine.
+fn reset_observer_refusal_cause_wire(cause: ResetObserverRefusalCause) -> String {
+  match cause {
+    ObserverIsSubject { host: h } => join(["observer-is-subject observer=", h as String], "")
+    SubjectNotRostered { subject: sname } => join(["subject-not-rostered subject=", sname as String], "")
+    ObserverNotRostered { observer: o } => join(["observer-not-rostered observer=", o as String], "")
+    NoPeerAvailable { subject: sname } => join(["no-peer-available subject=", sname as String], "")
+  }
+}
+
+fn reset_return_refusal_cause_wire(cause: ResetReturnRefusalCause) -> String {
+  match cause {
+    PairingNotMinted { cause: c } =>
+      join(["pairing-not-minted ", reset_observer_refusal_cause_wire(cause: c)], "")
+    IssuanceWasOutOfBand { what: w } =>
+      join(["issuance-out-of-band what=", w as String], "")
+    ObserverWasTheSubjectMachine { machine_id: m } =>
+      join(["observer-is-the-subject-machine machine_id=", m as String], "")
+    ObserverIdentityUnreadable { cause: c } =>
+      join(["observer-identity-unreadable cause=", c as String], "")
+    ObserverHostnameUnconverged { observed: o, allocated: a } =>
+      join(["observer-hostname-unconverged observed=", o as String, " allocated=", a as String], "")
+    ControllerDidNotAccept { diagnostic: d } =>
+      join(["controller-did-not-accept diagnostic=", d as String], "")
+    ResetWasNotAttempted { cause: c } =>
+      join(["reset-not-attempted cause=", c as String], "")
+    HostReturnNotMeasured { cause: c } =>
+      join(["host-return-not-measured cause=", c as String], "")
+    DownObservedBeforeIssuance { issued_at: i, down_first_seen_at: d } =>
+      join(["down-observed-before-issuance issued_at=", to_string(i), " down_first_seen_at=", to_string(d)], "")
+    SubjectWasNotUpBeforeIssuance =>
+      "subject-not-up-before-issuance"
+  }
+}
+
+// ── the second-attempt property, computed over two receipts ────────────────────────────────────
+
+// THE PROPERTY THE CANARY COULD NOT SHOW. One boot working is not a runner host; what a runner host
+// does is start a second attempt cleanly on a machine a first attempt already used and released.
+// This is a RELATION between two receipts and it is computed here, never asserted beside them.
+type SecondAttemptRefusalCause
+  = AttemptPairingNotMinted { cause: ResetObserverRefusalCause }
+  | AttemptIdentitiesNotDistinct { attempt: NonEmptyStr }
+  | SubjectsDiffer { first: NonEmptyStr, second: NonEmptyStr }
+  | EvidenceArtifactShared { path: NonEmptyStr }
+  | EvidenceDigestsIdentical { path: NonEmptyStr }
+  | EvidenceDigestsIncomparable
+  | FirstAttemptRefused { cause: ResetReturnRefusalCause }
+  | SecondAttemptRefusedCause { cause: ResetReturnRefusalCause }
+  | SecondIssuedBeforeFirstReturned { first_back_at: EpochMs, second_issued_at: EpochMs }
+  | AttemptTimingUnavailable { cause: NonEmptyStr }
+
+type SecondAttemptProperty
+  = SecondAttemptStartedCleanly { first_downtime: Milliseconds, second_downtime: Milliseconds }
+  | SecondAttemptRefused { cause: SecondAttemptRefusalCause }
+
+fn attempt_back_at(receipt: ResetAttemptReceipt) -> Measured<EpochMs> {
+  match receipt.attempt_observation.observation {
+    HostObservedDownThenBack {
+      probe: _,
+      down_first_seen_at: _,
+      back_first_seen_at: back,
+      down_samples: _,
+      back_samples: _,
+    } => MeasuredValue { value: back }
+    HostNeverObservedDown { probe: _, samples: _, watched_until: _ } =>
+      MeasuredUnavailable { cause: "the first attempt never observed the host down, so it names no instant at which the host returned" }
+    HostObservedDownAndNotBack { probe: _, down_first_seen_at: _, waited_until: _ } =>
+      MeasuredUnavailable { cause: "the first attempt did not observe the host return, so it names no instant at which the host returned" }
+    HostReturnUnobserved { cause: c } => MeasuredUnavailable { cause: c }
+    SubjectNotUpBeforeIssuance { probe: _, checked_at: _ } =>
+      MeasuredUnavailable { cause: "the first attempt's subject was already down when its reset was issued, so it names no instant at which the host returned" }
+  }
+}
+
+fn attempt_issued_at(receipt: ResetAttemptReceipt) -> Measured<EpochMs> {
+  match receipt.attempt_observation.acknowledgement {
+    ResetAccepted { controller_response: _, issued_at: issued } => MeasuredValue { value: issued }
+    ResetRefusedByController { diagnostic: d } =>
+      MeasuredUnavailable { cause: d }
+    ResetNotAttempted { cause: c } => MeasuredUnavailable { cause: c }
+  }
+}
+
+// EVIDENCE DISTINCTNESS IS CHECKED TWICE, BY PATH AND BY DIGEST, BECAUSE THEY CATCH DIFFERENT
+// MISTAKES. A shared path is an author appending a second attempt to the first artifact -- the
+// silent invalidation this receipt discipline exists to prevent. Identical digests at different
+// paths is one artifact copied or one reading recorded twice, which does not become two
+// observations by being written down in two places.
+//
+// A CROSS-FAMILY PAIR IS ITS OWN REFUSAL AND NOT "DIFFERENT". compare_content_hash refuses to read
+// a structural fingerprint against a SHA-256 digest, and taking that as distinctness would let two
+// receipts pass the check by being hashed under different families -- distinctness established by
+// an incomparability, which is no evidence at all.
+fn evidence_distinctness_refusal(
+  first: ResetAttemptReceipt,
+  second: ResetAttemptReceipt,
+) -> SecondAttemptRefusalCause? {
+  if host_name_equal(left: first.evidence_path, right: second.evidence_path) {
+    Present { value: EvidenceArtifactShared { path: first.evidence_path } }
+  } else {
+    match compare_content_hash(left: first.evidence_digest, right: second.evidence_digest) {
+      ContentHashEqual => Present { value: EvidenceDigestsIdentical { path: first.evidence_path } }
+      ContentHashCrossFamilyIncomparable => Present { value: EvidenceDigestsIncomparable }
+      ContentHashDifferent => Absent
+    }
+  }
+}
+
+fn second_attempt_ordering(
+  first: ResetAttemptReceipt,
+  second: ResetAttemptReceipt,
+  first_downtime: Milliseconds,
+  second_downtime: Milliseconds,
+) -> SecondAttemptProperty {
+  match attempt_back_at(receipt: first) {
+    MeasuredUnavailable { cause: c } =>
+      SecondAttemptRefused { cause: AttemptTimingUnavailable { cause: c } }
+    MeasuredValue { value: first_back } =>
+      match attempt_issued_at(receipt: second) {
+        MeasuredUnavailable { cause: c } =>
+          SecondAttemptRefused { cause: AttemptTimingUnavailable { cause: c } }
+        MeasuredValue { value: second_issued } =>
+          if second_issued < first_back {
+            SecondAttemptRefused {
+              cause: SecondIssuedBeforeFirstReturned {
+                first_back_at: first_back,
+                second_issued_at: second_issued,
+              },
+            }
+          } else {
+            SecondAttemptStartedCleanly {
+              first_downtime: first_downtime,
+              second_downtime: second_downtime,
+            }
+          }
+      }
+  }
+}
+
+// THE ORDER HERE IS ALSO LOAD-BEARING. Identity and evidence distinctness are checked BEFORE either
+// verdict, because a pair that is secretly one receipt read twice would otherwise pass both
+// verdicts and report a second attempt that never happened -- the most convincing possible form of
+// the failure this module is about.
+fn second_attempt_property(
+  first: ResetAttemptReceipt,
+  second: ResetAttemptReceipt,
+) -> SecondAttemptProperty {
+  if host_name_equal(left: first.attempt_observation.attempt, right: second.attempt_observation.attempt) {
+    SecondAttemptRefused { cause: AttemptIdentitiesNotDistinct { attempt: first.attempt_observation.attempt } }
+  } else if host_name_equal(left: first.attempt_observation.pairing.subject, right: second.attempt_observation.pairing.subject) == false {
+    SecondAttemptRefused {
+      cause: SubjectsDiffer { first: first.attempt_observation.pairing.subject, second: second.attempt_observation.pairing.subject },
+    }
+  } else {
+    match evidence_distinctness_refusal(first: first, second: second) {
+      Present { value: cause } => SecondAttemptRefused { cause: cause }
+      Absent =>
+        match reset_return_verdict(observed: first.attempt_observation) {
+          ResetReturnRefused { cause: c } => SecondAttemptRefused { cause: FirstAttemptRefused { cause: c } }
+          HostDrivenBackToKnownState { downtime: first_downtime } =>
+            match reset_return_verdict(observed: second.attempt_observation) {
+              ResetReturnRefused { cause: c } =>
+                SecondAttemptRefused { cause: SecondAttemptRefusedCause { cause: c } }
+              HostDrivenBackToKnownState { downtime: second_downtime } =>
+                second_attempt_ordering(
+                  first: first,
+                  second: second,
+                  first_downtime: first_downtime,
+                  second_downtime: second_downtime,
+                )
+            }
+        }
+    }
+  }
+}
+
+// ── how the observer label reaches the process ─────────────────────────────────────────────────
+
+// THE DISPATCH LABEL IS CARRIED, NOT RE-DERIVED, AND THAT IS WHAT KEEPS TWO INSTRUMENTS SEPARATE.
+// Review 61761 found the collapse: the entry keyed itself on `hostname -s`, so the label that decided
+// WHERE the job ran and the name the machine ANSWERS TO were the same reading. A runner labelled srv1
+// but living on the subject chassis, or a host that never converged and reports "ubuntu", then simply
+// failed the assignment lookup as "not an assigned observer" and never reached the identity check at
+// all -- so ObserverIsTheSubjectMachine and ObserverHostnameNotConverged were reachable only from
+// fixtures, while this module claimed them as the wall protecting the hardware. That is
+// specification-without-execution on the production route, and citing the wall while the acceptance
+// path cannot express its red is rung inflation.
+//
+// So the label arrives as its own input and the hostname stays purely corroborating: runs-on placed
+// the job by label, the label names the subject through the assignment, and the machine's own name is
+// the independent second reading that must agree. Neither can produce the other's evidence, which is
+// the whole point and was not true before.
+//
+// IT ARRIVES BY ENV FOR THE SAME REASON THE CREDENTIAL PATH DOES: gunbc_run_command carries no --arg,
+// so a converge step hands a value to an entry through the environment or not at all. One row names
+// the variable, the step sets it from the dispatch input, and the entry reads it.
+data host_reset_observer_label_env: NonEmptyStr = "GUNBC_HOST_RESET_OBSERVER"
+
+// ── where the attempt transcript is written ────────────────────────────────────────────────────
+
+// ONE ROW, READ BY THE WRITER AND BY THE STEP THAT PRINTS IT, and it lives in this module rather than
+// beside either of them because it is the one fact they must agree on. Review 61747 found the fork it
+// replaces: the entry wrote target/host-reset-return-<attempt>.txt while the invoke stamped
+// receipt_rel "target/host-reset-return.txt", and gunbc_invoke_receipt_steps turns that into a
+// post-run cat of that exact path -- so a SUCCESSFUL reset would exit 0 and then fail on a file
+// nobody wrote. A green inverted into a red by a second spelling of one path.
+//
+// AND THE ATTEMPT LABEL IS OUT OF THE FILENAME, which is what made the fork unfixable rather than
+// merely wrong: the attempt is derived at run time from the machine the job landed on, so emit time
+// cannot name the file. Two attempts are two DISPATCHES, each with its own workspace and its own
+// uploaded artifact, so the run is already the thing that distinguishes them -- putting the label in
+// the name bought nothing and cost the agreement. The never-append discipline is unaffected: it
+// governs the COMMITTED artifacts a receipt names by digest, which are authored per attempt.
+data host_reset_return_receipt_path: NonEmptyStr = "target/host-reset-return.txt"
+
+// ── what this module does NOT yet carry ────────────────────────────────────────────────────────
+
+// NO EXECUTED RECEIPT ROW LIVES HERE YET, AND ITS ABSENCE IS THE HONEST STATE RATHER THAN AN
+// OVERSIGHT. Authoring a ResetAttemptReceipt from anything but a real run would be an author
+// writing literals into a carrier whose entire purpose is to distinguish an observation from an
+// assertion -- the fixture-only-carrier failure, where every green reading is the author's own
+// hand. The folds above are exercised by their witness against fixtures, which is what a fold is
+// owed; the RECEIPT is owed a machine.
+//
+// THE NAMED CONSUMER AND ITS TRIGGER (DESIGN section 3c): the executed rows land when the fleet
+// converge reset mode runs against a rostered subject with a credential the workflow materializes,
+// which is the one part of this lane outside its author's authority and is with the operator.
+//
+// AND THAT TRIGGER IS AN ANNOTATION RATHER THAN A ROW, WHICH IS THE CORRECTION REVIEW 61775 MADE. It
+// stood here as a NonEmptyStr whose only content was this paragraph -- prose in a carrier no fold
+// reads, which section 4c calls misplaced or dead data and section 3c calls dangling. The frontier is
+// stated where a reader meets it and costs the corpus nothing; a typed DissolutionCondition would be
+// the right home the day something folds frontiers, and minting one here with no consumer would only
+// move the same dangling declaration into a better-looking type.
+
+// ── the folds every consumer actually calls ────────────────────────────────────────────────────
+
+// THE MINT-SHAPED ENTRY POINTS, and they are the ones a caller should reach for. reset_return_verdict
+// and second_attempt_property take receipts because that is the honest shape of the question they
+// answer; but nothing outside this module can hold a receipt except by minting one, so these two
+// wrappers are what a consumer's code looks like. An unminted pairing becomes a REFUSAL carrying its
+// own cause rather than an absence the caller has to remember to handle.
+fn reset_return_verdict_of_mint(mint: ResetAttemptMint) -> ResetReturnVerdict {
+  match mint {
+    AttemptReceiptPairingRefused { cause: c } => ResetReturnRefused { cause: PairingNotMinted { cause: c } }
+    AttemptReceiptMinted { observed: o } => reset_return_verdict(observed: o)
+  }
+}
+
+fn reset_return_verdict_of_commit(commit: ResetReceiptCommit) -> ResetReturnVerdict {
+  match commit {
+    ReceiptCommitRefused { cause: c } => ResetReturnRefused { cause: PairingNotMinted { cause: c } }
+    ReceiptCommitted { receipt: r } => reset_return_verdict(observed: r.attempt_observation)
+  }
+}
+
+fn second_attempt_property_of_commits(first: ResetReceiptCommit, second: ResetReceiptCommit) -> SecondAttemptProperty {
+  match first {
+    ReceiptCommitRefused { cause: c } => SecondAttemptRefused { cause: AttemptPairingNotMinted { cause: c } }
+    ReceiptCommitted { receipt: a } =>
+      match second {
+        ReceiptCommitRefused { cause: c } => SecondAttemptRefused { cause: AttemptPairingNotMinted { cause: c } }
+        ReceiptCommitted { receipt: b } => second_attempt_property(first: a, second: b)
+      }
+  }
+}
