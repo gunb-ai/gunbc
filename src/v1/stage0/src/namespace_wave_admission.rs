@@ -1598,21 +1598,42 @@ pub struct TransitionAdmission {
 /// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
 /// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
 ///
-/// THIRTY-FIFTH DISSOLUTION (2026-09-08, gunbc#10814), PAID BECAUSE THIS CHANGE TOUCHES THE
-/// ROSTER. Both `gunbc#10688` rows admitting the `call_semantics_target` re-home are deleted, and
-/// `CALL_SEMANTICS_TARGET_REHOME_LABEL` goes with them: a label is text shared by the rows citing
-/// it, so it dissolves with the last row that does. The roster is empty again.
+/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
+/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
+/// touch. Adjudicate that deletion by joining each row against main on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and adding
+/// the row below is it. ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE:
+/// the required run reported both as `already satisfied at the base -- consumed by its own merge`,
+/// which IS that (module, in_declaration, spelling, target) join executed against main rather than
+/// a reading of the trigger paragraph. Their label constant goes with them, since a label is text
+/// shared by the rows citing it and dissolves with the last one.
 ///
-/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED, NOT BY THEIR TRIGGER SENTENCE, which said so
-/// itself. On main `v1.std.core` DECLARES `call_semantics_target` while `v1.compiler.emit_rust`
-/// references it four times and declares it none, so base and head both resolve the spelling to
-/// `v1.std.core`, the `TargetChanged` delta is no longer producible, and the wall reports both rows
-/// CONSUMED. A consumed row left standing is a permission over nothing that reads as coverage.
+/// THE gunbc#10813 CLASS-ADDED ROW DISSOLVED HERE (2026-09-08), NOT BY ITS OWN TRIGGER BUT BECAUSE
+/// THIS CHANGE REMOVES THE DELTA IT ADMITS. Its trigger said it would come due once the class was on
+/// main, when base and head would both resolve the spelling into the class's module. That is not
+/// what retired it, and recording the real reason matters more than the tidy one.
 ///
-/// THE ROSTER-TOUCHING CHANGE THAT PAID IT WAS NOT ABOUT THESE ROWS. This change repairs baseline
-/// reconstruction for a source derived before compile; it touches this file, which is what makes
-/// the deletion due. That is the rule working as designed rather than a coincidence: the rows come
-/// due on the next touch WHOEVER makes it, so no lane can leave them for a later one.
+/// THE ROW EXISTED BECAUSE THE BASELINE WAS WRONG. The failure-mode roster is derived before compile
+/// and gitignored, so it never appears in `git diff`, and the reconstruction therefore CARRIED ITS
+/// HEAD RECORD INTO THE BASE INDEX -- the wall compared the head roster against itself. A class
+/// added by a change then looked like a name resolving from a pool with nobody authoring a
+/// reference, when the reference was authored by that very change. `NewPoolCoincidenceResolution`
+/// does not auto-admit, so the ledger's one-file-per-class growth shape -- the shape DESIGN
+/// prescribes precisely so two lanes appending two classes never rewrite one file -- could not land
+/// without a permission row every time.
+///
+/// SO THE HONEST COST WAS A DEFECT'S, NOT THE ROSTER'S. With the base re-derived from the base
+/// revision's own row files, a class absent at the base is absent from the base roster, the binding
+/// row exists on one side only, and the comparison skips it under the rule this wall already states:
+/// only rows present on both sides, because a newly authored name has no prior denotation to change.
+/// No delta is produced, so this row now matches nothing -- and a row matching no delta is STALE,
+/// which refuses. It is deleted for that reason, and its label goes with it.
+///
+/// ADJUDICATED BY MEASUREMENT RATHER THAN BY THIS PARAGRAPH: the class file is ABSENT at this
+/// change's merge base and present at its head, which is exactly the shape that produced the delta
+/// before and produces none after. The required run on this head is the check.
 
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
