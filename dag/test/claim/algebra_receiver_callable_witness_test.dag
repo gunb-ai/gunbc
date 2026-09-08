@@ -6,10 +6,16 @@ type ApplicationUnary<T> = fn(T) -> T
 
 type ApplicationCallback = CallbackPresent { step: ApplicationUnary<Int> } | CallbackAbsent
 
+type PoolFreeCallback = PoolFreePresent { zq_apply: ApplicationUnary<Int> } | PoolFreeAbsent
+
 fn application_increment(value: Int) -> Int { value + 1 }
 
 fn declared_application_callback() -> ApplicationCallback {
   CallbackPresent { step: application_increment }
+}
+
+fn declared_pool_free_callback() -> PoolFreeCallback {
+  PoolFreePresent { zq_apply: application_increment }
 }
 
 test fn matched_generic_callable_alias_remains_callable() -> Bool {
@@ -17,4 +23,35 @@ test fn matched_generic_callable_alias_remains_callable() -> Bool {
     CallbackPresent { step } => step(41) == 42
     CallbackAbsent => false
   }
+}
+
+test fn explicit_binder_pool_free_name_remains_callable() -> Bool {
+  match declared_application_callback() {
+    CallbackPresent { step: bound_step } => bound_step(41) == 42
+    CallbackAbsent => false
+  }
+}
+
+test fn shorthand_binder_pool_free_name_remains_callable() -> Bool {
+  match declared_pool_free_callback() {
+    PoolFreePresent { zq_apply } => zq_apply(41) == 42
+    PoolFreeAbsent => false
+  }
+}
+
+test fn explicit_binder_pool_colliding_name_remains_callable() -> Bool {
+  match declared_pool_free_callback() {
+    PoolFreePresent { zq_apply: step } => step(41) == 42
+    PoolFreeAbsent => false
+  }
+}
+
+test fn let_bound_pool_free_name_remains_callable() -> Bool {
+  let zq_bound = application_increment
+  zq_bound(41) == 42
+}
+
+test fn let_bound_colliding_name_remains_callable() -> Bool {
+  let step = application_increment
+  step(41) == 42
 }
