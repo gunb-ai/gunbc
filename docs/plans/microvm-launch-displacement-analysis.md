@@ -94,9 +94,30 @@ The measurement this document asked for splits: one half is a reading of what ex
 
 Not chased, since this session has no Mt. Collins access. What would have to be run, and what each would establish:
 
-1. **Where is the host boot script authored, and what builds `runner-canary-N`?** Establishes whether adding a binary and replacing the script's role is in-scope for this repository or is another owner's surface. **This gates everything else** — a cheap answer that may make the rest unnecessary.
+1. ~~Where is the host boot script authored, and what builds `runner-canary-N`?~~ **Answered by search, not by host access — see the section below. It is authored nowhere.** The item was wrongly filed here; only 2 and 3 need Mt. Collins.
 2. **Can a `gunbc` binary be carried in the host image and executed on tmpfs at boot?** Establishes the modeled executor's placeability directly, and is the minimum viable displacement probe.
 3. **What is the credential's admission surface at mint time?** Needed for the axis dispositions below, which cannot be closed by reading this repository.
+
+## Item 1, answered: the boot script is authored in no repository
+
+This was mis-filed as needing host access. It is a search, and it comes back **outcome three: the host boot script has no authoring home anywhere.**
+
+**What was searched, and the controls.** Org-wide GitHub code search for the banner and the marker stream returns **11 hits, all in `gunb-ai/gunbc`, and every one a capture, receipt or BMC artifact** — never producing code. The instrument was positive-controlled first (the same query against a string known to exist returns those 11), and each private repository was controlled separately rather than trusted:
+
+- **`gunb-ai/ctrl` — searchable and clean.** A universal-word control returns 914 hits, so the index reaches it. `firecracker` returns 2 hits, both planning `.md`; `jailer` returns 0; no path names Mt. Collins or `canary`.
+- **`gunb-ai/gunbc-private` — not searchable, so not trusted to search.** A universal-word control returns **0**, meaning the index does not reach it. Cleared instead by reading its tree directly: 178 blobs, strategy documents only.
+
+**What ctrl does carry is a sibling, and its history is the precedent.** `scripts/session-dashboard/host/jit-runner.sh` is the ephemeral-runner wrapper for the **non-micro-VM** hosts (srv1, srv2): it mints a JIT config from the App, runs one job, exits, looped by `systemd Restart=always`. It is not the Mt. Collins boot script and does not start a VM. Its header records why it is in the repository at all:
+
+> *"Load-bearing: this is the canonical, version-controlled copy … It was previously host-only and uncommitted — drift that contributed to the 2026-05-29 GHA stall (the App key rotated, every host's jit-runner.sh 401'd at the JWT exchange, and there was no in-repo source to redeploy from)."*
+
+So **this organisation has already taken an outage from exactly this class**, on the sibling of the very path under discussion, and the remedy applied then was to commit the script and reconcile the host copy from it. The micro-VM path is in the pre-remedy state today.
+
+**And the carrier is a single unreplicated artifact.** `gunbc.runner.runner_host_image_store` records the host images at `/srv/bmc` on srv1, NFS-exported, `known: true`, **`resilient: false`** — no replication, no backup — with the loss consequence stated as receipts outliving the bytes they cite. The boot script lives *inside* those images. So the thing that starts every production micro-VM on Mt. Collins exists as **one copy on one disk, with no source to rebuild it from**, and the same store has already had a reap delete 17 of 20 images.
+
+**Why this belongs to the operator rather than a lane.** Unauthored production actuation on the January critical path is a decision about accepted risk, not a modelling preference — and this is the strongest form of the two-homes class filed on #10674: not *one home modeled and one hand-authored*, but **one home modeled and the other outside the corpus entirely.** That single sentence is the fact a reader should leave this document with.
+
+**What it means for the cut.** Displacement is not a cross-repo negotiation (ctrl does not own this) and not a cheap rename (gunbc does not own it under another name). There is no X to delete in any repository — X is bytes inside an ISO. So the replacement migration has no root to uproot in source control, and the first move is not building Y but **recovering or re-authoring X's content so that what production runs is knowable at all**. That is a different and smaller first step than the FCI-3 executor, and it is a precondition for pricing the executor rather than a part of it.
 
 ## The six admission axes: dispositions, and what reading them found
 
@@ -112,7 +133,7 @@ One structural fact constrains several axes at once: `extdeps.github.actions_jit
 | expiry | **required for cutover** | An expired credential yields a guest that cannot register, i.e. a target process for work that cannot run. FCI-3 names expired grants explicitly alongside absent and corrupt ones, so admitting one is admitting the state the predicate forbids. |
 | replay | **deferred** | Trigger: **an authority stating whether one-shot delivery is enforced upstream or must be enforced host-side.** A JIT registration is served once, so replay may already be structurally impossible at GitHub's end — in which case a host-side check is a second authority for an upstream fact. Cannot be settled from here. |
 | unit-binding | **deferred** | Trigger: **an authority defining the axis and naming which side can check it.** Not host-checkable against an opaque blob; a mint-side obligation if it is one at all. |
-| boot-binding | **deferred** | Same trigger. Additionally suspect as a *distinct* axis: the attempt id already changes every boot, so this may be a second name for attempt-binding — a §3 question to resolve before either is priced. |
+| boot-binding | **deferred — and settle the §3 question first** | Same trigger, plus one that must be answered *before either axis is priced*: **this may be a second name for `attempt-binding`.** A meaning fork inside a six-item roster makes the roster itself the defect, so the count of axes is not trustworthy until this is resolved. The suspicion is concrete: the attempt id already changes every boot, so this may be a second name for attempt-binding — a §3 question to resolve before either is priced. |
 | attempt-binding | **deferred** | Same trigger. The join that made the receipted mis-identification possible was a reused **build** label rather than an attempt id, so whatever discharges this axis is load-bearing for evidence identity as well as admission. |
 
 **What this means for sizing the cut.** Two axes are required and both are properties of the credential *as a whole* — is it authentic and present, is it live — rather than bindings needing a parse. Four are deferred behind one trigger, and at least one may dissolve into another. So on today's reading the cut is **not** a six-way credential-admission programme; it is two whole-credential checks plus a definition question. That is the "small" branch merry-bear-25 named — but it rests on the deferred four actually being deferrable, which the axis-definition authority decides, not this document.
