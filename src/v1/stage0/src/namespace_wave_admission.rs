@@ -1639,6 +1639,55 @@ pub struct TransitionAdmission {
 ///
 /// THE LABEL CONST WENT WITH THEM. With both rows deleted its only remaining use was gone, and the
 /// required build runs `-D warnings`, so a dead const would turn this lane red at the far end.
+/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and adding
+/// the row below is it. ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE:
+/// the required run reported both as `already satisfied at the base -- consumed by its own merge`,
+/// which IS that (module, in_declaration, spelling, target) join executed against main rather than
+/// a reading of the trigger paragraph. Their label constant goes with them, since a label is text
+/// shared by the rows citing it and dissolves with the last one.
+///
+/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
+/// `cumulative_metric_read_as_per_event`, is added as its own file under
+/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
+/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
+/// the head side that name newly resolves into the class's own module, which is
+/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
+/// the membership rule the directory IS, not by anyone rebinding an existing name.
+///
+/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
+/// one file per class precisely so that two lanes appending different classes never rewrite one
+/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
+/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
+/// is the same motion whether it was intended or accidental, and only the author can say which.
+///
+/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
+/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
+/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
+/// trusting this sentence.
+/// THE gunbc#10813 ROW DISSOLVES HERE TOO, AND THIS CHANGE IS WHAT CONSUMED IT. Its subject is a
+/// `NewPoolCoincidenceResolution` binding on `recurring_failure_mode_roster` for the spelling
+/// `cumulative_metric_read_as_per_event` -- which is the delta shape this change removes at its
+/// source. Adjudicated by the predicate rather than by argument: `admission_consumed_at_base` asks
+/// whether the binding ALREADY RESOLVES AT BASE, and with the base roster derived from the base's
+/// own row set it does, because main carries both that class's file and its module. So the row
+/// reports CONSUMED and its deletion is owed on this roster touch, exactly as the gunbc#10688 pair
+/// above.
+///
+/// WHAT MAKES IT CONSUMED IS THIS REPAIR, NOT A MERGE, and that difference is the whole finding.
+/// Before it, base inherited the HEAD-derived roster, so base SPELLED that class while lacking its
+/// module and the binding read `{} -> {module}` -- a real delta needing a real admission, which is
+/// why gunbc#10813 authored one in good faith. Its own paragraph calls the row "the honest cost of
+/// the pool being adjudicated rather than assumed". The cost was not the pool's; it was a corrupted
+/// base, and the row was admitting an artifact.
+///
+/// SO THE LEDGER'S GROWTH SHAPE DOES NOT NEED AN ADMISSION PER CLASS. gunbc#10813 read one row per
+/// new failure-mode class as the standing price of one-file-per-class membership. It is not: with
+/// the base derived correctly, adding a class produces NO binding delta at all, only the membership
+/// edge, which auto-admits as a name the module authors. A future class that DOES produce one is
+/// therefore news rather than routine, which is the property an admission roster has to have to
+/// mean anything.
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an

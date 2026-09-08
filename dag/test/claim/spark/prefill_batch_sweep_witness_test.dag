@@ -1,0 +1,94 @@
+module test.claim.spark.prefill_batch_sweep
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.prefill_batch_sweep {
+  PrefillProbe, ThreeTermFit, FitDerived, FitUnderdetermined,
+  ReadingBasis, DirectMeasurement, DerivedAtCommonWorkload, PredictedOutsideMeasuredArm,
+  reading_is_measured,
+  spark_group_a_prefill_probes, derive_execution_law, population_spans_two_budgets,
+  law_predicted_step_millis,
+}
+
+// ── THE LAW IS DERIVED FROM THE SAMPLES, AND THESE ROWS ARE WHAT MAKES THAT CHECKABLE ─────────
+//
+// The coefficients used to be transcribed from a Python script, with an annotation admitting that
+// editing them here would not be caught by anything. These rows are the "anything".
+
+// THE DERIVATION REPRODUCES AN INDEPENDENT LEAST-SQUARES over the same receipts, which is the only
+// evidence that the integer solve is arithmetically right rather than merely total. 189 ms/step and
+// 966 us/token are what an ordinary floating-point fit produces from the same twenty probes.
+test fn the_derived_law_reproduces_the_independent_fit() -> Bool {
+  match derive_execution_law(ps: spark_group_a_prefill_probes) {
+    FitUnderdetermined { because: _ } => false
+    FitDerived { request_millis: _, per_step_millis: s, micros_per_token: m, sample_count: n, determinant: _ } =>
+      s == 189 && m == 966 && n == 20
+  }
+}
+
+// A SINGLE-BUDGET POPULATION IS THE PLANTED INPUT FOR THE REFUSAL, and it is planted rather than
+// hypothetical: the tensor-parallel repeat launches all held the budget at 2048 and produced a
+// per-step/per-token split that had to be withdrawn.
+//
+// NOTE WHAT THIS ROW WOULD HAVE MISSED. An earlier refusal tested `determinant == 0`, on the belief
+// that one budget makes steps exactly collinear with tokens. Executing it showed ceil is not linear,
+// the determinant came out at 236,236,900 rather than zero, and the fit happily returned
+// S = 305 ms/step and b = 906 us/token from noise. This row fails against that implementation.
+data single_budget_population: List<PrefillProbe> = [
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 511), wall_millis: 855, steps: 1 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 2048), wall_millis: 2223, steps: 1 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 4096), wall_millis: 4433, steps: 2 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 6144), wall_millis: 6600, steps: 3 },
+  PrefillProbe { budget: 2048, computed_tokens: token_count(count: 8192), wall_millis: 8706, steps: 4 },
+]
+
+test fn a_single_budget_population_refuses_rather_than_splitting_the_terms() -> Bool {
+  match derive_execution_law(ps: single_budget_population) {
+    FitDerived { request_millis: _, per_step_millis: _, micros_per_token: _, sample_count: _, determinant: _ } => false
+    FitUnderdetermined { because: _ } => true
+  }
+}
+
+test fn the_real_population_spans_budgets_and_the_planted_one_does_not() -> Bool {
+  population_spans_two_budgets(ps: spark_group_a_prefill_probes)
+    && !population_spans_two_budgets(ps: single_budget_population)
+}
+
+test fn too_few_probes_refuse_before_any_arithmetic() -> Bool {
+  match derive_execution_law(ps: []) {
+    FitDerived { request_millis: _, per_step_millis: _, micros_per_token: _, sample_count: _, determinant: _ } => false
+    FitUnderdetermined { because: _ } => true
+  }
+}
+
+// THE STEP DURATION IS THE LAW'S MOST STRONGLY VALIDATED CONSEQUENCE, and it is checked against a
+// quantity measured by a different instrument entirely: the co-tenant victim's inter-token latency
+// at budget 2048 was 2,171.6 ms under an established attribution boundary. The law predicts the
+// step duration from wall-clock probes that never observed a victim at all, so agreement is a
+// cross-instrument check rather than a restatement.
+test fn the_predicted_step_duration_matches_the_measured_co_tenant_stall() -> Bool {
+  match law_predicted_step_millis(fit: derive_execution_law(ps: spark_group_a_prefill_probes), budget: 2048) {
+    Absent => false
+    Present { value: ms } => ms > 2100 && ms < 2250
+  }
+}
+
+// A DERIVED READING MUST NOT CLAIM TO BE A MEASURED ONE. This is the row that would have caught the
+// original defect, where model-normalised percentages were rendered beside measured wall times with
+// nothing distinguishing them.
+test fn only_direct_measurement_reports_as_measured() -> Bool {
+  reading_is_measured(b: DirectMeasurement { at_tokens: token_count(count: 16510) })
+    && !reading_is_measured(b: DerivedAtCommonWorkload { normalised_tokens: token_count(count: 16400), from_samples: 20 })
+    && !reading_is_measured(b: PredictedOutsideMeasuredArm { requested_budget: 1024, measured_budgets: "2048, 8192, 16384" as NonEmptyStr })
+}
+
+test fn w_all_prefill_batch_sweep_claims_hold() -> Bool {
+  the_derived_law_reproduces_the_independent_fit()
+    && a_single_budget_population_refuses_rather_than_splitting_the_terms()
+    && the_real_population_spans_budgets_and_the_planted_one_does_not()
+    && too_few_probes_refuse_before_any_arithmetic()
+    && the_predicted_step_duration_matches_the_measured_co_tenant_stall()
+    && only_direct_measurement_reports_as_measured()
+}
