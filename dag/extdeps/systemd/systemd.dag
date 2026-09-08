@@ -7,7 +7,7 @@ import std.types { List }
 import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Microsecond, microsecond,
-  milli_per_unit, seconds_per_minute, minutes_per_hour,
+  milli_per_unit, micro_per_unit, seconds_per_minute, minutes_per_hour,
 }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
@@ -146,16 +146,19 @@ type SystemdTimeSpanPart {
 }
 
 fn systemd_time_span_unit_usec(unit: String) -> Nat? {
-  if unit == "usec" || unit == "us" { Present { value: milli_per_unit() / milli_per_unit() } }
+  if unit == "usec" || unit == "us" {
+    let one: Nat = 1
+    Present { value: one }
+  }
   else if unit == "msec" || unit == "ms" { Present { value: milli_per_unit() } }
   else if unit == "seconds" || unit == "second" || unit == "sec" || unit == "s" || unit == "" {
-    Present { value: milli_per_unit() * milli_per_unit() }
+    Present { value: micro_per_unit() }
   }
   else if unit == "minutes" || unit == "minute" || unit == "min" || unit == "m" {
-    Present { value: seconds_per_minute() * milli_per_unit() * milli_per_unit() }
+    Present { value: seconds_per_minute() * micro_per_unit() }
   }
   else if unit == "hours" || unit == "hour" || unit == "hr" || unit == "h" {
-    Present { value: minutes_per_hour() * seconds_per_minute() * milli_per_unit() * milli_per_unit() }
+    Present { value: minutes_per_hour() * seconds_per_minute() * micro_per_unit() }
   }
   else { none }
 }
