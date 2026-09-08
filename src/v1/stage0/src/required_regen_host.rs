@@ -5724,11 +5724,15 @@ pub fn run_regen_round_cost(
         .iter()
         .map(|stage| stage.build_compiled_crates)
         .sum();
+    // The receipt field is named in the model's vocabulary: a "mirror" is the basename the
+    // partition rows and rosters key on. The stages carry projected PATHS, so project through
+    // the single bridge -- feeding paths to the decision model rendered a spurious
+    // MirrorHasNoOwningPackage line on every drifted round's receipt.
     let installed_mirrors = transaction_receipt
         .stages
         .iter()
         .flat_map(|stage| stage.surfaces.iter())
-        .map(|surface| surface.projected_path.clone())
+        .map(|surface| emit_path_basename(&surface.projected_path).to_string())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
