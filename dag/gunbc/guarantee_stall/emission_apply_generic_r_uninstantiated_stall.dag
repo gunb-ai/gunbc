@@ -1,0 +1,22 @@
+module gunbc.guarantee_stall.emission_apply_generic_r_uninstantiated_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data emission_apply_generic_r_uninstantiated_stall: GuaranteeStall = GuaranteeStall {
+  subject: "std.emission_provenance keeps three monomorphic emission_apply_fragments / emission_apply_source_fragments / emission_apply_origin_read helpers whose bodies are identical (operation.apply(state)) because the single generic form fn emission_apply<R>(operation: EmissionAppendOperation<R>, state: R) -> R { operation.apply(state) } refuses at the public materialization boundary. emission_append_operations_compose<R> already calls .apply through unresolved R in the same file; the gap is R left uninstantiated at the public call sites, where join then sees Primitive() or Primitive(R) and the empty list literal is not a collection. This is not the dissolved claim that the operation-only fold is unbuilt language capability.",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "generic emission_apply<R> at emission_contribution_read / emission_contribution_source / emission_contribution_origins typechecks, so join sees a collection and the empty argument is a collection."
+  },
+  population: BoundedPopulation { members: [
+    "std.emission_provenance.emission_apply_fragments",
+    "std.emission_provenance.emission_apply_source_fragments",
+    "std.emission_provenance.emission_apply_origin_read",
+    "std.emission_provenance.emission_contribution_read",
+    "std.emission_provenance.emission_contribution_source",
+    "std.emission_provenance.emission_contribution_origins"
+  ] },
+  next_rung_trigger: climbs_when(capability: "fn emission_apply<R>(operation: EmissionAppendOperation<R>, state: R) -> R used at emission_contribution_read, emission_contribution_source and emission_contribution_origins typechecks and those three controls execute -- SUFFICIENT FOR deleting the three monomorphic helpers. The discriminating refusal is emission_provenance.dag at those public sites: join cannot be resolved on Primitive() / Primitive(R), and the empty list literal's expected type is not a collection. A change that makes .apply well-typed through generic R only inside emission_append_operations_compose, or that specializes some other call site while these three still refuse, does not fire it.")
+}

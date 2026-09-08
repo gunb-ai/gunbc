@@ -8,10 +8,14 @@ import gunbc.compile_diagnostic_census {
   census_rows_of_class,
   census_total_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { String, Bool, Int }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ReadsLiveTree: compile_dag_diagnostic_census walks the live checkout. Same discovered
+// disagreement as the declared-type and match-exhaustiveness probes; leaving the lying
+// stamp would make this the next lane's fourth specimen.
 
 // THE RECORD LITERAL'S EXCESS-FIELD JUDGMENT ON A PAYLOAD-CARRYING COPRODUCT ARM, and the
 // asymmetry that let the hole survive. Measured on origin/main eced9d24c59 before the repair, ONE

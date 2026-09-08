@@ -37,6 +37,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_compile.rs",
     "v2_compiler_program_assembly.rs",
     "v2_compiler_source_authority.rs",
+    "std_logic.rs",
     "usv_pilot_v2_std_algebra.rs",
     "usv_pilot_v2_std_collection.rs",
     "usv_pilot_v2_std_node.rs",

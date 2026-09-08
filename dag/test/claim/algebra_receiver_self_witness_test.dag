@@ -1,0 +1,14 @@
+module test.claim.algebra_receiver_self_witness_test
+
+import std.types { Bool }
+import std.algebra { Empty, Cons }
+import v2.std.algebra { fold_list }
+
+// reverse needs ReceiverSelf, not an element argument. Other profile methods
+// must not contribute their evidence requirements to this lookup.
+test fn folded_structural_collection_can_reverse() -> Bool {
+  let reversed = fold_list(xs: [1, 2, 3], empty: Empty, cons: fn(acc, value) {
+    Cons { head: value, tail: acc }
+  })
+  reversed.reverse() == [1, 2, 3]
+}
