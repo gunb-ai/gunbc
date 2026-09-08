@@ -1,8 +1,0 @@
-module test_diff
-
-import extdeps.tools.diffutils
-
-fn main() -> Bool {
-  let result = shell.Diff.Recursive(left: "/tmp/gunbc_fixture/identical_a", right: "/tmp/gunbc_fixture/identical_b")
-  result.identical
-}
