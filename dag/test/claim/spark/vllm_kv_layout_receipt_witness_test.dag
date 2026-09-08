@@ -7,6 +7,7 @@ import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex
 import std.measure {
   TokenCount, token_count, percent,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+  attention_layer_count,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
@@ -15,7 +16,7 @@ import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_sour
 import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout {
-  KvBlockSize, KvLayerCount, KvGroupLayout, FullAttention, SlidingWindowAttention,
+  KvGroupLayout, FullAttention, SlidingWindowAttention,
   ResolvedKvLayout, resolved_kv_layout,
   VllmReportedCapacity, vllm_reported_capacity,
 }
@@ -90,8 +91,8 @@ fn w_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
   w_layout_with(blocks: 54475, groups: groups, revision: vllm_source_revision_read)
 }
 
-fn w_full(layers: KvLayerCount, block: KvBlockSize) -> KvGroupLayout {
-  KvGroupLayout { kind: FullAttention, layer_count: layers, block_size: block }
+fn w_full(layers: Nat, block: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block) }
 }
 
 // TODAY'S REAL EVIDENCE LANDS INCONSISTENT, WHICH IS THE POINT. The group A head's own two startup
