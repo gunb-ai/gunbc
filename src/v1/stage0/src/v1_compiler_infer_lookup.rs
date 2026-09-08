@@ -1528,7 +1528,7 @@ pub fn lookup_structural_method(
                         );
                         field_type.diagnostics.clone()
                     }
-                    std::option::Option::None => enriched.diagnostics.clone(),
+                    std::option::Option::None => Rc::new(vec![]),
                 };
                 let blocking_method_diagnostics = Rc::new({
                     let mut __result = Vec::new();
