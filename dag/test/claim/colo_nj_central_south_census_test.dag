@@ -1,0 +1,104 @@
+module test.claim.colo_nj_central_south_census
+
+import std.types { Bool, Int }
+import std.measure { Watt, watt_count }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.colo.types {
+  CabinetDensityClaim, cabinet_density_air_established, cabinet_density_air_upper_bound,
+  RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
+}
+import extdeps.colo.njfx { njfx_wall_density, njfx_wall_retail_grain }
+import extdeps.colo.digital_fortress {
+  digital_fortress_piscataway_density, digital_fortress_piscataway_retail_grain,
+}
+import extdeps.colo.databank { databank_ewr2_density, databank_ewr2_retail_grain }
+import extdeps.colo.digital_realty {
+  digital_realty_ewr11_density, digital_realty_ewr12_density,
+  digital_realty_ewr12_retail_grain, digital_realty_ewr11_retail_grain,
+}
+import extdeps.colo.qts { qts_piscataway_density, qts_piscataway_retail_grain }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONSUMER FOR THE CENTRAL AND SOUTHERN NEW JERSEY ROWS. Every declaration this lane added is
+// read here through the carrier's own accessors rather than asserted to exist, because a witness
+// that checks a row is present is not a consumer of it. The controls are chosen so that each one
+// goes red on a different authoring mistake: a fabricated density, a swapped arm, or a grain read
+// off a sibling building.
+
+fn established_watts(d: CabinetDensityClaim) -> Int {
+  match cabinet_density_air_established(d: d) {
+    Present { value } => watt_count(w: value),
+    Absent => 0 - 1,
+  }
+}
+
+fn bound_watts(d: CabinetDensityClaim) -> Int {
+  match cabinet_density_air_upper_bound(d: d) {
+    Present { value } => watt_count(w: value),
+    Absent => 0 - 1,
+  }
+}
+
+fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
+  match g {
+    SingleCabinetOffered { wording, citation } => true,
+    CageOrSuiteMinimum { wording, citation } => false,
+    RetailGrainUnread { obligation } => false,
+  }
+}
+
+// THE THREE FIGURES THIS LANE COULD ACTUALLY READ, EACH A DISTINCT CONSTANT. They are asserted
+// separately rather than summed or counted, so a row that silently acquired a neighbour's figure
+// reds here instead of cancelling out in an aggregate. All three are real power: no page read in
+// this region published apparent power, and if one of these ever becomes a kVA publication the
+// established reading must vanish rather than keep the numeral.
+test fn w_central_nj_read_densities_are_their_published_watts() -> Bool {
+  established_watts(d: njfx_wall_density) == 16000
+    && established_watts(d: digital_fortress_piscataway_density) == 15000
+    && established_watts(d: databank_ewr2_density) == 10000
+}
+
+// THE SAME FIGURES BOUND THEMSELVES. For a real-power publication the established reading and the
+// upper bound coincide; they diverge only for apparent power. This control is what would red if a
+// real-power row were ever re-encoded as apparent power to make a numeral fit.
+test fn w_real_power_rows_bound_themselves() -> Bool {
+  bound_watts(d: njfx_wall_density) == 16000
+    && bound_watts(d: digital_fortress_piscataway_density) == 15000
+    && bound_watts(d: databank_ewr2_density) == 10000
+}
+
+// THE REFUSALS, AND THE MOST IMPORTANT CONTROL IN THIS MODULE. QTS Piscataway markets 65 MW of
+// critical power - the largest capacity in the census - and publishes no per-cabinet figure at
+// all. If a later edit ever derives a density from that building total, this control goes red.
+// The two Digital Realty Piscataway buildings are the same shape: hundreds of thousands of square
+// feet published, not one kilowatt per cabinet.
+test fn w_facility_megawatts_never_become_cabinet_watts() -> Bool {
+  established_watts(d: qts_piscataway_density) == 0 - 1
+    && bound_watts(d: qts_piscataway_density) == 0 - 1
+    && established_watts(d: digital_realty_ewr11_density) == 0 - 1
+    && established_watts(d: digital_realty_ewr12_density) == 0 - 1
+}
+
+// GRAIN IS READ PER BUILDING, NOT PER CAMPUS. EWR12 publishes a single-cabinet offer and its
+// campus sibling EWR11 does not, so the two carry different grain standings at the same operator
+// in the same township. A future edit that propagates one building's grain across a campus - the
+// tempting simplification - reds here.
+test fn w_grain_does_not_propagate_across_a_campus() -> Bool {
+  grain_admits_single_cabinet(g: digital_realty_ewr12_retail_grain)
+    && !grain_admits_single_cabinet(g: digital_realty_ewr11_retail_grain)
+}
+
+// DENSITY READ AND GRAIN READ ARE INDEPENDENT IN BOTH DIRECTIONS, and this region supplies the
+// case the census had not yet seen: NJFX publishes a per-cabinet power band and states no minimum
+// commitment, so its density is established while its grain refuses. Digital Fortress and DataBank
+// EWR2 answer both. QTS answers neither. If the carrier ever let one field imply the other, the
+// first conjunct here would be the one that fails.
+test fn w_density_read_does_not_imply_grain_read() -> Bool {
+  established_watts(d: njfx_wall_density) == 16000
+    && !grain_admits_single_cabinet(g: njfx_wall_retail_grain)
+    && grain_admits_single_cabinet(g: digital_fortress_piscataway_retail_grain)
+    && grain_admits_single_cabinet(g: databank_ewr2_retail_grain)
+    && !grain_admits_single_cabinet(g: qts_piscataway_retail_grain)
+}
