@@ -314,14 +314,15 @@ fn harness_place_cli(actor: String, attempt: String, receipt: String) -> Process
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
     HarnessSeatBound { url, grant, partition, group_wire, launch, layout: _ } => {
+      let capability = harness_release_capability(partition: partition, grant: grant)
       let line = join([
         "url=", url,
         " group=", group_wire,
-        " partition=", partition as String,
+        " partition=", capability.partition as String,
         " endpoint_process=", launch.process_start_field as String,
-        " reference=", grant.reference as String,
-        " grant=", grant.fence.grant as String,
-        " generation=", to_string(grant.fence.generation),
+        " reference=", capability.reference as String,
+        " grant=", capability.grant as String,
+        " generation=", to_string(capability.generation),
         " expires_at=", to_string(grant.expires_at), "\n",
       ], "")
       let w = Filesystem.Write(path: receipt, content: line)

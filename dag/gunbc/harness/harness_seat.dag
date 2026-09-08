@@ -720,13 +720,15 @@ type HarnessReleaseCapability {
   generation: Nat
 }
 
-fn harness_release_capability(binding: HarnessSeatBinding) -> HarnessReleaseCapability? {
-  match binding {
-    HarnessSeatRefused { detail: _ } => none
-    HarnessSeatPending { detail: _ } => none
-    HarnessSeatBound { url: _, grant: g, partition: p, group_wire: _, launch: _, layout: _ } =>
-      Present { value: HarnessReleaseCapability { partition: p, reference: g.reference, grant: g.fence.grant, generation: g.fence.generation } }
-  }
+// THE CONSTRUCTOR IS TOTAL OVER THE GRANT, not optional over the binding. An earlier spelling took
+// the whole HarnessSeatBinding and returned an optional, which put two unreachable arms in front of
+// every caller that had already matched HarnessSeatBound -- and its only would-be consumer, the
+// placement receipt, went around it and re-assembled the four fields by hand instead, so the
+// capability's field set was written in two places while one of them was dead (review 62365). A
+// grant and the partition it was issued in are exactly what the capability is, so that is what the
+// constructor takes and every caller reaches it from inside the arm that already holds both.
+fn harness_release_capability(partition: PartitionId, grant: LeaseGrant) -> HarnessReleaseCapability {
+  HarnessReleaseCapability { partition: partition, reference: grant.reference, grant: grant.fence.grant, generation: grant.fence.generation }
 }
 
 fn harness_release_capability_wire(c: HarnessReleaseCapability) -> String {
