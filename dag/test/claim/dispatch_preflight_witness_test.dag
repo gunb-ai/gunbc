@@ -1,12 +1,17 @@
 module test.claim.dispatch_preflight_witness
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.upsert_decision { Noop, Refuse }
 import gunbc.roadmap_execution_contract {
   GitWorkspaceCapability,
   TmuxSessionCapability,
+  CapabilityRealization,
 }
-import gunbc.roadmap_dispatch_environment { CapabilityEnsureReceipt }
+import gunbc.roadmap_dispatch_environment {
+  CapabilityEnsureReceipt,
+  CapabilityNotGrounded,
+}
+import test.claim.capability_ensure_fixture { grounded_capability_ensure_witness_fixture }
 import gunbc.fleet_desired_observe {
   LocalTreeRevision,
   LocalTreeRevisionObserved,
@@ -49,25 +54,31 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data desired_hex: String = "7c079cd39c6c58ef201d6949189384019f1576d0"
 data local_hex: String = "517fdac4ddf92d0dd636c1f66fdb95b508525067"
 
-fn grounded_receipt() -> CapabilityEnsureReceipt {
-  CapabilityEnsureReceipt {
-    capability: GitWorkspaceCapability,
-    capability_label: "git-workspace",
-    executable: "/usr/bin/git",
-    decision: Noop,
-    grounded: true,
+// The POSITIVE receipt comes through the production classifier, because its arm is sealed: the
+// admission fold trusts grounded receipts to decide whether dispatch runs, so a fixture that wrote
+// one directly would be manufacturing exactly the standing that fold consumes. The NEGATIVE arm stays
+// hand-authored and is meant to be -- nothing is admitted on the strength of a refusal.
+fn grounded_receipt() -> CapabilityEnsureReceipt
+  admit_callers: [
+    decl_ref(module_path: "test.claim.dispatch_preflight_witness", decl_name: "preflight_capability_axis_follows_the_shared_receipt"),
+    decl_ref(module_path: "test.claim.dispatch_preflight_witness", decl_name: "preflight_counts_every_refusal_not_the_first"),
+    decl_ref(module_path: "test.claim.dispatch_preflight_witness", decl_name: "preflight_axes_are_derived_from_the_observations"),
+  ]
+{
+  grounded_capability_ensure_witness_fixture(
+    cap: GitWorkspaceCapability,
+    executable: "/usr/bin/git" as FilePath,
+    identity: "git version" as NonEmptyStr,
     evidence: "exit=0 stdout=git version 2.43.0 stderr=",
-    reason: "",
-  }
+  )
 }
 
 fn ungrounded_receipt() -> CapabilityEnsureReceipt {
-  CapabilityEnsureReceipt {
+  CapabilityNotGrounded {
     capability: TmuxSessionCapability,
     capability_label: "tmux-session",
     executable: "/usr/bin/tmux",
     decision: Refuse { reason: "required executable is absent or not executable: /usr/bin/tmux" as NonEmptyStr },
-    grounded: false,
     evidence: "",
     reason: "required executable is absent or not executable: /usr/bin/tmux",
   }
