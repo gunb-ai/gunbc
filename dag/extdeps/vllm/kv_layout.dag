@@ -68,16 +68,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // `groups` is empty for every incarnation this repository can currently observe, and every function
 // that needs per-group structure refuses. The trigger is one JSON launch line carrying those fields.
 
-// A CACHE GROUP WITH A ZERO BLOCK SIZE IS NOT A DEGENERATE GROUP, IT IS NOT A GROUP. Guarding for
-// it downstream would put a division-by-zero branch in every cost function and force each one to
-// invent an answer for a layout that cannot exist; refining the field removes the state instead
-// (DESIGN section 4b: construction over validation).
-// THE CARRIER IS TokenCount, not a second Int. Group block_size and scheduler_block_size are the
-// same quantity (tokens per block) in a min relation; a bare-Int sibling was a §2/§3 fork.
-// `where range` is the Int/Nat refinement form; it is applied to the token carrier so min:1 still
-// makes ceil_div total without minting a second unit type.
-type KvBlockSize = TokenCount where range(min: 1, max: 1048576)
-type KvLayerCount = AttentionLayerCount where range(min: 1, max: 4096)
+// A CACHE GROUP WITH A ZERO BLOCK SIZE IS NOT A DEGENERATE GROUP, IT IS NOT A GROUP. The seed's
+// `where range` checker only decides an int literal, not a Measure constructed by `token_count`,
+// so a refinement alias is not a wall (DESIGN section 4b(1): a type name establishes nothing). The
+// cost fold therefore refuses a zero block size or a zero layer count rather than dividing by zero
+// or charging nothing and calling the request free.
 
 // THE WINDOW LIVES IN THE VARIANT THAT HAS ONE. It was a separate optional field beside the kind,
 // which made two states writable that the engine cannot produce: a windowed group with no window,
@@ -102,9 +97,6 @@ fn kv_group_kind_wire(k: KvGroupKind) -> String {
 // One resolved cache group. `block_size` is THIS GROUP's, which the global scheduler block_size is
 // only the minimum of; `sliding_window` is present exactly on the windowed kind and is what caps
 // that group's per-request cost.
-// A GROUP WITH NO LAYERS IS NOT A GROUP EITHER, so the count is refined the way the block size is:
-// a zero-layer group contributes zero blocks to every cost, which is a layout that silently makes
-// requests look free.
 //
 // page_size_bytes IS DELIBERATELY ABSENT. It was carried here and read by nothing -- the recorded
 // field that no operation consumes, which reads as coverage of a byte-level accounting that does
@@ -112,8 +104,8 @@ fn kv_group_kind_wire(k: KvGroupKind) -> String {
 // returns with the consumer that reads it.
 type KvGroupLayout {
   kind: KvGroupKind
-  layer_count: KvLayerCount
-  block_size: KvBlockSize
+  layer_count: AttentionLayerCount
+  block_size: TokenCount
 }
 
 // THE RESOLVED LAYOUT OF ONE ENGINE. It carries no incarnation: this is the upstream SHAPE, and
@@ -300,31 +292,60 @@ fn cold_admission_blocks(layout: ResolvedKvLayout, sequence_budget: TokenCount) 
   } else if token_count_value(t: sequence_budget) > token_count_value(t: layout.max_model_len) {
     AdmissionCostUnestablished { cause: "the sequence budget exceeds the engine's context cap, so no admission of it is representable" as NonEmptyStr }
   } else {
-    AdmissionCostBlocks {
-      blocks: allocator_block_count(
-        count: fold(layout.groups, init: 0, f: (acc, g) => acc + group_blocks_for(group: g, sequence: sequence_budget)),
-      ),
+    match fold(layout.groups, init: Present { value: 0 }, f: (acc, g) =>
+      match acc {
+        Absent => none
+        Present { value: n } =>
+          match group_blocks_for(group: g, sequence: sequence_budget) {
+            Absent => none
+            Present { value: c } => Present { value: n + c }
+          }
+      }
+    ) {
+      Absent =>
+        AdmissionCostUnestablished {
+          cause: "a cache group with a zero block size or zero layer count is not a group, so the per-request block cost cannot be computed" as NonEmptyStr,
+        }
+      Present { value: n } =>
+        AdmissionCostBlocks { blocks: allocator_block_count(count: n) }
     }
   }
 }
 
 // PER-GROUP COST. The windowed kind is capped at its window, which is the whole reason a hybrid
 // layout admits more than the full-attention arithmetic predicts; a mamba group is one state per
-// sequence regardless of length.
-fn group_blocks_for(group: KvGroupLayout, sequence: TokenCount) -> Nat {
-  match group.kind {
-    MambaState => attention_layer_count_value(c: group.layer_count)
-    FullAttention =>
-      ceil_div(numerator: token_count_value(t: sequence), denominator: group.block_size) * attention_layer_count_value(c: group.layer_count)
-    SlidingWindowAttention { window: w } =>
-      ceil_div(numerator: nat_min(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) * attention_layer_count_value(c: group.layer_count)
+// sequence regardless of length. Zero block size and zero layer count refuse rather than dividing
+// or reporting a free request; the seed does not make those states unwritable.
+fn group_blocks_for(group: KvGroupLayout, sequence: TokenCount) -> Nat? {
+  let layers = attention_layer_count_value(c: group.layer_count)
+  if token_count_value(t: group.block_size) == 0 || layers == 0 {
+    none
+  } else {
+    match group.kind {
+      MambaState => Present { value: layers }
+      FullAttention =>
+        match ceil_div(numerator: token_count_value(t: sequence), denominator: group.block_size) {
+          Absent => none
+          Present { value: q } => Present { value: q * layers }
+        }
+      SlidingWindowAttention { window: w } =>
+        match ceil_div(numerator: nat_min(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) {
+          Absent => none
+          Present { value: q } => Present { value: q * layers }
+        }
+    }
   }
 }
 
-// The denominator is a KvBlockSize, which cannot be zero, so this is total without a guard.
-fn ceil_div(numerator: Nat, denominator: KvBlockSize) -> Nat {
+// The denominator is a token count that may be zero: the KvBlockSize-where-range alias did not
+// refuse constructed Measures. This arm is the wall that actually runs.
+fn ceil_div(numerator: Nat, denominator: TokenCount) -> Nat? {
   let d = token_count_value(t: denominator)
-  (numerator + d - 1) / d
+  if d == 0 {
+    none
+  } else {
+    Present { value: (numerator + d - 1) / d }
+  }
 }
 
 // ── THE ONE NON-CIRCULAR CHECK: THE GROUPS MUST REPRODUCE THE PRINTED CONCURRENCY ─────────────
