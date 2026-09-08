@@ -4,7 +4,7 @@
 
 This document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it (or an independent peer) — never a restatement of it. The principles apply recursively, including to this document, which is a projection of `gunbc.design_document` and is never hand-edited.
 
-It carries the REASONING only. Recurring failure modes live one class per file under `dag/gunbc/recurring_failure_mode/`; a combined markdown projection is generated on demand and is not a committed merge surface. Declared §4b(3) rung drops are projected into [docs/design-rung-drops.md](docs/design-rung-drops.md). A ledger grows without bound while these sections are fixed by §1, and this file is loaded in full on every turn of every session. Plans and analyses live under `docs/plans/` and are linked from the section that governs them.
+It carries the REASONING only. Recurring failure modes live one class per file under `dag/gunbc/recurring_failure_mode/`; a combined markdown projection is not a committed merge surface. The on-demand combined view is `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/docs_projection_gate.dag --function regen` (`tools.docs_projection_gate` `regen`, also `gunbc.design_ledgers` `expected_design_failure_modes_md`). Declared §4b(3) rung drops are projected into [docs/design-rung-drops.md](docs/design-rung-drops.md). A ledger grows without bound while these sections are fixed by §1, and this file is loaded in full on every turn of every session. Plans and analyses live under `docs/plans/` and are linked from the section that governs them.
 
 ---
 
