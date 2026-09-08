@@ -680,9 +680,9 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
 pub fn unique_inhabitants_for_template_tests(
     inhs: Rc<Vec<Rc<InhabitantDecl>>>,
 ) -> Rc<Vec<Rc<InhabitantDecl>>> {
-    inhs.iter()
-        .cloned()
-        .fold(Rc::new(vec![]), |acc: _, inh: _| {
+    inhs.iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<Rc<InhabitantDecl>>>, inh: Rc<InhabitantDecl>| {
             if {
                 let mut __found = false;
                 for prev in acc.iter().cloned() {
@@ -699,7 +699,8 @@ pub fn unique_inhabitants_for_template_tests(
             } else {
                 v1_rt::concat(acc.clone(), Rc::new(vec![inh.clone()]))
             }
-        })
+        },
+    )
 }
 
 pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {

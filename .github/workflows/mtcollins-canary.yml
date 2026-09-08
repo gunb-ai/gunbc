@@ -1,0 +1,138 @@
+# THE FIRST REAL JOB ON THE MT. COLLINS HOST, AND A SCAFFOLD BY ITS OWN ADMISSION.
+#
+# This file is hand-authored YAML sitting beside gunbc.witness_floor_workflow, which is the modeled
+# carrier every other workflow in this repository is emitted from. That is the parallel-authority
+# tell, and naming it here is not a defence -- it is the disposition. The terminal form is a carrier
+# in .dag whose emission produces this file, exactly as witnesses.yml is produced.
+#
+# DISSOLUTION: delete this file when the host-image build is driven from the model, at which point
+# the canary job is a row in that carrier rather than a file. It must not outlive the qualification
+# work that needs it.
+#
+# THE TRIGGER IS workflow_dispatch, AND A PUSH TRIGGER WAS THE WRONG SHAPE FOR A REASON WORTH
+# KEEPING. This job can only be serviced by a runner that exists for ONE job and is destroyed with
+# its VM -- so a queued job with no live registration is not waiting, it is unservicable. On a push
+# trigger, committing the receipt for a successful run immediately queued a second run against a
+# registration that had already been spent, and that run had to be cancelled by hand.
+#
+# A JOB THAT REQUIRES A HUMAN TO BOOT A MACHINE MUST BE REQUESTED, NOT IMPLIED BY AN EDIT. The
+# dispatch input records which attempt it belongs to, so the run and the host-side receipt can be
+# joined afterwards rather than matched by timestamp.
+name: mtcollins-canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      attempt:
+        description: "The attempt label minted into this attempt's JIT registration -- it is REQUIRED in runs-on, so a mismatch queues forever rather than running on the wrong host"
+        required: true
+        type: string
+
+jobs:
+  canary:
+    # THE ATTEMPT LABEL IS PART OF runs-on, AND THAT IS THE WHOLE BINDING.
+    #
+    # With only [self-hosted, mtcollins] any runner this fleet registers could take this job, so the
+    # attempt input below was an assertion echoed by whoever happened to serve it. A receipt was
+    # published on that basis joining a successful run to a capture of a DIFFERENT boot of the same
+    # image -- the build label was shared by every power cycle, so it could not name the one that ran.
+    #
+    # REQUIRING THE ATTEMPT LABEL MAKES THE JOB UNSERVICABLE BY ANY OTHER REGISTRATION. GitHub's own
+    # record of which runner ran the job then IS the join, rather than a string both sides print.
+    runs-on: [self-hosted, mtcollins, "${{ inputs.attempt }}"]
+    steps:
+      # NO actions/checkout. A JS action would pull node from the runner's externals and drag the
+      # whole action-download path into a proof about whether this host can execute a step at all.
+      # What is being established here is narrow on purpose: a job was dispatched to this machine,
+      # ran, and reported back.
+      - name: Say where this ran
+        run: |
+          echo "=== MT COLLINS CANARY ==="
+          echo "attempt:    ${{ inputs.attempt }}"
+          echo "uname:      $(uname -a)"
+          echo "cpus:       $(nproc)"
+          echo "memory:     $(free -m | awk '/Mem:/{print $2}') MB"
+          echo "runner:     $RUNNER_NAME"
+          echo "os-release: $(. /etc/os-release; echo $PRETTY_NAME)"
+          echo "=== END ==="
+
+      # THE RUNNER VERSION IS REPORTED SO THE MODEL CAN BE CHECKED AGAINST IT. The first canary ran
+      # 2.337.0 while gunbc.runner_microvm's guest image row said 2.336.0, and nothing in this
+      # repository noticed -- the mismatch was found by a human reading a job log. Printing it here
+      # does not close that; gunbc.runner_microvm_boot_probe's boot_probe_verdict is the comparator
+      # that does, and this line is what such a check would read.
+      - name: Report the runner artifact this guest actually carries
+        run: |
+          echo "runner-version: $(/mnt/runner/bin/Runner.Listener --version 2>/dev/null || echo unknown)"
+
+      - name: Prove the sandbox is what the model says it is
+        run: |
+          # THE GUEST SHOULD REACH TLS AND NOTHING ON THE MANAGEMENT LAN. A job that can reach the
+          # BMC that controls its own host is the failure this whole lane exists to prevent, so the
+          # canary asserts it rather than trusting the host receipt.
+          echo "root:  $(findmnt -no SOURCE / 2>/dev/null || echo unknown)"
+          if timeout 6 bash -c 'exec 3<>/dev/tcp/192.168.1.228/443' 2>/dev/null; then
+            echo "FAIL: the job reached the BMC that controls its own host"
+            exit 1
+          fi
+          echo "ok: the BMC is unreachable from inside the job"
+
+      # CHECKOUT IS THE FIRST STEP THAT NEEDS THE NETWORK POLICY TO BE RIGHT RATHER THAN MERELY
+      # PRESENT. It resolves DNS, opens TLS to more than one host, and writes a working tree -- so it
+      # exercises the resolver grant, the 443 grant and the attempt workspace together, which no
+      # previous canary step did.
+      #
+      # IT IS ALSO THE FIRST STEP CARRYING A CREDENTIAL WORTH STEALING. It runs only now that the
+      # envelope path is authenticated in both directions: the control plane signs, and the host
+      # proves possession of a secret delivered over its console.
+      #
+      # fetch-depth: 1 BECAUSE THE HISTORY IS NOT THE SUBJECT. A full clone would measure this
+      # repository's size rather than whether the host can check out at all, and the attempt
+      # workspace is bounded.
+      - name: Check out this repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # THE CHECKOUT IS ASSERTED, NOT ASSUMED. A step that "completed" tells us the action exited
+      # zero; that the working tree exists and contains this repository's own files is a different
+      # fact, and it is the one worth having.
+      - name: Prove the working tree is really here
+        run: |
+          echo "git:        $(git --version)"
+          echo "head:       $(git rev-parse HEAD)"
+          echo "tracked:    $(git ls-files | wc -l) files"
+          test -f DESIGN.md || { echo "FAIL: DESIGN.md absent from the checkout"; exit 1; }
+          test -d dag/gunbc/runner || { echo "FAIL: the runner tree is absent"; exit 1; }
+          # THE COMMIT MUST BE THE ONE THIS RUN WAS DISPATCHED FOR, not merely some commit.
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || { echo "FAIL: checked out $(git rev-parse HEAD), expected $GITHUB_SHA"; exit 1; }
+          echo "ok: the working tree is this repository at the dispatched commit"
+
+      # A JAVASCRIPT ACTION THAT IS NOT checkout, so the action-download path and the runner's
+      # bundled node are exercised by something whose success does not depend on git.
+      - name: Run a JavaScript action
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const os = require('os');
+            core.info(`node:     ${process.version}`);
+            core.info(`arch:     ${process.arch}`);
+            core.info(`platform: ${process.platform}`);
+            core.info(`cpus:     ${os.cpus().length}`);
+            core.info('ok: a JavaScript action executed on this host');
+
+      # THE WORKSPACE IS THE THING THE FIRST CANARY DID NOT HAVE. GitHub warned "only 0 MB of
+      # available disk space left", which is why two echo steps could pass while a checkout could
+      # not. This step fails loudly if the attempt workspace is missing or unwritable, so a future
+      # green run cannot mean "the job was too small to notice".
+      - name: Prove the attempt has a writable workspace
+        run: |
+          echo "workspace:  $GITHUB_WORKSPACE"
+          df -Pm "$RUNNER_TEMP" | awk 'NR==2 {print "temp-free:  " $4 " MB"}'
+          probe="$RUNNER_TEMP/gunbc-write-probe"
+          head -c 16777216 /dev/urandom > "$probe"
+          sz=$(stat -c%s "$probe")
+          rm -f "$probe"
+          test "$sz" -eq 16777216 || { echo "FAIL: short write to the attempt workspace"; exit 1; }
+          test ! -e "$probe" || { echo "FAIL: workspace file survived deletion"; exit 1; }
+          echo "ok: wrote, read back and removed 16 MiB in the attempt workspace"

@@ -402,19 +402,20 @@ fn mandatory_tag_value_findings(d: Node, region: MandatoryTagRegion) -> List<Dia
   match mandatory_tag_decl_value_node(d: d) {
     Absent => []
     Present { value: v } =>
-      match mandatory_tag_vocabulary_hits(
+      let value_hits = mandatory_tag_vocabulary_hits(
         atoms: mandatory_tag_subtree_atoms(n: v),
         vocabulary: region.value_vocabulary
-      ) {
+      )
+      match value_hits {
         Empty =>
           if mandatory_tag_subtree_has_production(n: v, want: ^dag_surface_expr) {
             [mandatory_tag_value_unreadable_diagnostic(d: d)]
           } else {
             []
           }
-        Cons { head: first_hit, tail: rest_hits } =>
+        Cons { head: _, tail: _ } =>
           if fold(
-            Cons { head: first_hit, tail: rest_hits },
+            value_hits,
             init: true,
             f: fn(acc, a) { acc && mandatory_tag_symbols_contain(xs: region.value_accepted, s: a) }
           ) {
