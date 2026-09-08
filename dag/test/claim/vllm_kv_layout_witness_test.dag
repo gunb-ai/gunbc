@@ -42,7 +42,7 @@ fn w_pool_admission() -> VllmKvPoolAdmission {
   )
 }
 
-fn with_admitted_pool(f: (VllmObservedKvPool) -> Bool) -> Bool {
+fn with_admitted_pool(f: fn (VllmObservedKvPool) -> Bool) -> Bool {
   match w_pool_admission() {
     KvPoolAdmitted { pool: p } => f(p)
     KvPoolRefused { cause: _ } => false
