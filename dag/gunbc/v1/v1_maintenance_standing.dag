@@ -133,7 +133,6 @@ data v1_maintenance_parse_sweep_partition_refusal: RefusedV1Proposal = RefusedV1
     admits_when: unbound_dissolution(description: "a consumer exists that MUST BRANCH on instrument-cannot-complete versus subject-refused -- not merely report it differently, but take a different action -- and that consumer serves the v2 self-host program. Naming a surface that would display the distinction does not satisfy this; the distinction must change what something does. Explicitly NOT satisfied by any local pre-push or pre-commit surface, for the reason recorded above." as NonEmptyStr),
   }
 
-
 data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: MaintenanceActive }
 
 // OPERATOR RULING 2026-08-18, and the reason it is a reclassification rather than a loophole. The
