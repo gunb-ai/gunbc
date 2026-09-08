@@ -97,7 +97,7 @@ fn floor_supply_selection(
 // `considered`, which is empty in the second case and populated in the first.
 fn floor_selection_selected_offer_count(selection: SupplySelection<NonEmptyStr>) -> Int {
   match selection {
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _ } => 1
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _ } => 1
     NoAdmissibleOffer { considered: _ } => 0
   }
 }

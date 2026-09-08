@@ -2,6 +2,8 @@ module product.fabric.selection
 
 import product.fabric.provider_route { provider_route_eq }
 import product.fabric.provider_admission {
+  permit_standing, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
+  PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
   ProviderUsePermit, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
   ProviderUseRefusal,
 }
@@ -263,14 +265,32 @@ type CandidateBinding<P>
       permit_names: FabricIdentity<P, OfferKey>,
     }
   | PermitNamesAnotherRoute { offer: FabricIdentity<P, OfferKey> }
+  | PermitNamesAnotherWork {
+      permit_work: FabricIdentity<P, WorkKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | PermitNamesAnotherDemand {
+      permit_demand: FabricIdentity<P, DemandKey>,
+      subject_demand: FabricIdentity<P, DemandKey>,
+    }
 
 // The admission coproduct is matched ONCE and the permit comes out of the admitted arm, so there
 // is no Bool "was it admitted" predicate and nowhere to invent a permit: the only permit this
 // function can put in a candidate is the one the decision actually produced.
+// A CANDIDATE IS SEALED FOR A USE, NOT MERELY FOR A ROUTE, AND THE USE IS A PARAMETER SO IT
+// CANNOT BE READ OFF THE PERMIT BEING CHECKED. product.fabric.grant_issue already states the
+// reason: admission is granted FOR a customer profile and a data-handling profile, and both are
+// properties of the WORK, so "a permit checked only against the offer and the route would
+// authorise work B under the scope that was admitted for work A". That check previously existed
+// ONLY in issue_grant, which the production broker never reaches - it selects and reserves
+// without ever issuing a grant - so the deciding path carried the offer and route halves of the
+// check and none of the use half. Binding here is what puts all four on one path.
 fn bind_candidate<P>(
   offer: SupplierOffer<P>,
   dispatch: DispatchInputs<P>,
   admission: ProviderUseAdmission<P>,
+  demand: FabricIdentity<P, DemandKey>,
+  work: FabricIdentity<P, WorkKey>,
 ) -> CandidateBinding<P> {
   match admission {
     ProviderUseDenied { decision, cause } =>
@@ -278,13 +298,20 @@ fn bind_candidate<P>(
     ProviderUseAdmitted { permit } =>
       if !fabric_identity_eq(left: offer.id, right: dispatch.offer) {
         DispatchInputsNameAnotherOffer { offer: offer.id, inputs_name: dispatch.offer }
-      } else if !fabric_identity_eq(left: offer.id, right: permit.offer) {
-        PermitNamesAnotherOffer { offer: offer.id, permit_names: permit.offer }
-      } else if !provider_route_eq(a: offer.route, b: permit.route) {
-        PermitNamesAnotherRoute { offer: offer.id }
       } else {
-        CandidateBound {
-          candidate: CandidateOffer { offer: offer, dispatch: dispatch, permit: permit },
+        match permit_standing(
+          permit: permit, offer: offer.id, route: offer.route, demand: demand, work: work) {
+          PermitNamesAnotherOfferThan { permit_names: n } =>
+            PermitNamesAnotherOffer { offer: offer.id, permit_names: n }
+          PermitNamesAnotherRouteThan => PermitNamesAnotherRoute { offer: offer.id }
+          PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+            PermitNamesAnotherWork { permit_work: pw, subject_work: sw }
+          PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+            PermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd }
+          PermitAuthorizesUse =>
+            CandidateBound {
+              candidate: CandidateOffer { offer: offer, dispatch: dispatch, permit: permit },
+            }
         }
       }
   }
@@ -1016,7 +1043,7 @@ fn axis_amount(a: PricedAxis) -> MoneyAmountMicro {
 // cheaper and unsuitable. There is none here.
 type SupplySelection<P>
   = OfferSelected {
-      offer: SupplierOffer<P>,
+      candidate: CandidateOffer<P>,
       cost: SelectionCost,
       basis: CostBasis,
       horizon: CommitmentHorizon,
@@ -1149,7 +1176,7 @@ fn select_supply<P>(
     Absent => NoAdmissibleOffer { considered: ranked.considered }
     Present { value: winner } =>
       OfferSelected {
-        offer: winner.candidate.offer,
+        candidate: winner.candidate,
         cost: winner.cost,
         basis: winner.basis,
         horizon: winner.horizon,

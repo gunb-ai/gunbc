@@ -4,7 +4,7 @@ import std.types { Bool, List, String }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.content_hash { ContentHash }
 import std.access { AccessDecision, access_policy_refusal }
-import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey, fabric_identity_eq }
 import product.fabric.provider_route {
   ProviderRoute, provider_route_eq, CompliancePostureRevision, ProviderRouteFacts,
   first_unresolved_obligation, downstream_obligation,
@@ -466,4 +466,60 @@ fn admit_provider_use<P>(
       }
     },
   )
+}
+
+
+// ONE AUTHORITY FOR "DOES THIS PERMIT AUTHORISE THIS USE", AND IT EXISTS BECAUSE THE SECOND COPY
+// ALREADY DIVERGED. The judgement was written out twice - once in product.fabric.selection's
+// bind_candidate and once in product.fabric.grant_issue's issue_grant - and the two copies did not
+// agree: issuance compared all four of offer, route, work and demand, while binding compared only
+// offer and route. That gap was not hypothetical. The production broker in gunbc.fabric
+// .fabric_control_plane selects and reserves without ever issuing a grant, so the only copy on the
+// path that actually places work was the SHORT one, and a permit admitted for work A could seal a
+// candidate that was then ranked and reserved for work B.
+//
+// So this is DESIGN section 3 arriving exactly as it says it will: a fork gets consolidated later,
+// which makes it a correctness concern rather than a style one. Adding the missing two comparisons
+// to the second copy would have restored agreement for exactly as long as nobody edited either
+// one, and would have made the third consumer - the broker - a third place to disagree. The
+// judgement is therefore ONE function here, in the module that declares ProviderUsePermit and
+// therefore owns what a permit means, and every site consumes it and maps the outcome into its own
+// refusal vocabulary.
+//
+// It takes the offer's identity and route rather than a SupplierOffer so that this module keeps
+// its current import surface: the two fields are the only ones the judgement reads, and importing
+// the offer carrier to read two fields would couple the permit's authority to the supply model.
+type PermitStanding<P>
+  = PermitAuthorizesUse
+  | PermitNamesAnotherOfferThan { permit_names: FabricIdentity<P, OfferKey> }
+  | PermitNamesAnotherRouteThan
+  | PermitNamesAnotherWorkThan {
+      permit_work: FabricIdentity<P, WorkKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | PermitNamesAnotherDemandThan {
+      permit_demand: FabricIdentity<P, DemandKey>,
+      subject_demand: FabricIdentity<P, DemandKey>,
+    }
+
+// The order is offer, route, work, demand and it is fixed, so two consumers asking the same
+// question about the same permit cannot report different first causes.
+fn permit_standing<P>(
+  permit: ProviderUsePermit<P>,
+  offer: FabricIdentity<P, OfferKey>,
+  route: ProviderRoute,
+  demand: FabricIdentity<P, DemandKey>,
+  work: FabricIdentity<P, WorkKey>,
+) -> PermitStanding<P> {
+  if !fabric_identity_eq(left: offer, right: permit.offer) {
+    PermitNamesAnotherOfferThan { permit_names: permit.offer }
+  } else if !provider_route_eq(a: route, b: permit.route) {
+    PermitNamesAnotherRouteThan
+  } else if !fabric_identity_eq(left: work, right: permit.work) {
+    PermitNamesAnotherWorkThan { permit_work: permit.work, subject_work: work }
+  } else if !fabric_identity_eq(left: demand, right: permit.demand) {
+    PermitNamesAnotherDemandThan { permit_demand: permit.demand, subject_demand: demand }
+  } else {
+    PermitAuthorizesUse
+  }
 }

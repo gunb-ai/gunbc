@@ -248,6 +248,22 @@ fn fixture_admitted_for_offer(
   )
 }
 
+// THE USE THE ONE-ARGUMENT ADMISSION HELPERS ADMIT FOR, exposed so a caller binding a candidate
+// can name the SAME use rather than guessing it. bind_candidate now checks the permit's work and
+// demand, so a caller that invented its own identities here would refuse for a reason about the
+// fixture rather than about the subject under test.
+fn fixture_demand_for(
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: offer.principal, key: "fixture-demand" as DemandKey }
+}
+
+fn fixture_work_for(
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: offer.principal, key: "fixture-work" as WorkKey }
+}
+
 fn fixture_unadmitted_for_offer(
   route: ProviderRoute,
   offer: FabricIdentity<NonEmptyStr, OfferKey>,

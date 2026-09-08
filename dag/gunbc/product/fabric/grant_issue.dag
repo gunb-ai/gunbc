@@ -1,7 +1,12 @@
 module product.fabric.grant_issue
 
 import product.fabric.provider_route { provider_route_eq }
-import product.fabric.provider_admission { ProviderUsePermit }
+import product.fabric.provider_admission {
+  permit_standing, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
+  PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
+  ProviderUsePermit, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
+  ProviderUseRefusal,
+}
 import std.types { NonEmptyStr, List, Int, Timestamp }
 import std.measure { Measure }
 import std.nat { Nat }
@@ -426,21 +431,18 @@ fn issue_grant<P, Q, S>(
     GrantRefused {
       refusal: AttemptPrincipalIsNotTheWorkPrincipal { attempt: attempt.id, subject_work: work.id },
     }
-  } else if !fabric_identity_eq(left: offer.id, right: permit.offer) {
-    GrantRefused {
-      refusal: PermitNamesAnotherOffer { offer: offer.id, permit_names: permit.offer },
-    }
-  } else if !provider_route_eq(a: offer.route, b: permit.route) {
-    GrantRefused { refusal: PermitNamesAnotherRoute { offer: offer.id } }
-  } else if !fabric_identity_eq(left: work.id, right: permit.work) {
-    GrantRefused {
-      refusal: PermitNamesAnotherWork { permit_work: permit.work, subject_work: work.id },
-    }
-  } else if !fabric_identity_eq(left: demand, right: permit.demand) {
-    GrantRefused {
-      refusal: PermitNamesAnotherDemand { permit_demand: permit.demand, subject_demand: demand },
-    }
   } else {
+    match permit_standing(
+      permit: permit, offer: offer.id, route: offer.route, demand: demand, work: work.id) {
+    PermitNamesAnotherOfferThan { permit_names: n } =>
+      GrantRefused { refusal: PermitNamesAnotherOffer { offer: offer.id, permit_names: n } }
+    PermitNamesAnotherRouteThan =>
+      GrantRefused { refusal: PermitNamesAnotherRoute { offer: offer.id } }
+    PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+      GrantRefused { refusal: PermitNamesAnotherWork { permit_work: pw, subject_work: sw } }
+    PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+      GrantRefused { refusal: PermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd } }
+    PermitAuthorizesUse =>
     let fungibility = offer_fungibility_for(requirements: work.requirements, offer: offer)
     match fungibility {
       TrustDomainMismatch { required: _, offered: _ } =>
@@ -511,6 +513,7 @@ fn issue_grant<P, Q, S>(
             }
           }
         }
+    }
     }
   }
 }

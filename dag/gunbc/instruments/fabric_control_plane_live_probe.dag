@@ -35,6 +35,7 @@ import product.fabric.demand { Demand }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
   OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
+  PermitNamesAnotherWork, PermitNamesAnotherDemand,
   OfferCandidacy, OfferPriced, OfferNotFungible, OfferUnavailableForGrant,
   OfferCannotHoldAnUnboundedGrant, OfferNotPriceable, OfferWrongCurrency,
   OfferUnaffordable, OfferLiabilityOverBuyOrder,
@@ -1722,8 +1723,8 @@ fn cp_probe_admission(executor: NonEmptyStr) -> ProviderUseAdmission<NonEmptyStr
     },
     active: cp_probe_posture(),
     scope: ProviderUseScope {
-      demand: cp_probe_demand_id(key: "demand-probe-admission"),
-      work: FabricIdentity { principal: "gunbc", key: "work-probe-admission" as WorkKey },
+      demand: cp_probe_demand_id(key: "demand-floor-1"),
+      work: FabricIdentity { principal: "gunbc", key: "work-floor-1" as WorkKey },
       customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
       data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
       agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
@@ -1747,6 +1748,8 @@ fn cp_probe_roster(executor: NonEmptyStr) -> List<FabricCellCandidate> {
     match bind_candidate(
       offer: cp_probe_offer_for(executor: executor),
       admission: cp_probe_admission(executor: executor),
+      demand: cp_probe_demand_id(key: "demand-floor-1"),
+      work: FabricIdentity { principal: "gunbc", key: "work-floor-1" as WorkKey },
       dispatch: DispatchInputs {
         offer: cp_probe_offer_id(key: "offer-1"),
         availability: AvailableIndefinitely {
@@ -1771,6 +1774,8 @@ fn cp_probe_roster(executor: NonEmptyStr) -> List<FabricCellCandidate> {
       OfferNotAdmittedForUse { offer: _, cause: _ } => []
       PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
       PermitNamesAnotherRoute { offer: _ } => []
+      PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+      PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
     },
     init: [],
     f: (acc, c) =>
