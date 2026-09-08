@@ -31,8 +31,6 @@ data r2_tokens_doc_as_of: Timestamp = "2026-08-18"
 
 data workers_r2_storage_bucket_item_read_permission_group_id: NonEmptyStr = "6a018a9f2fc74eb6b293b0c548f38b39"
 
-data workers_r2_storage_bucket_item_read_permission_group_name: NonEmptyStr = "Workers R2 Storage Bucket Item Read"
-
 data r2_s3_access_key_is_created_token_id_citation: FactCitation = FactCitation {
   fact: DeclarationRef {
     module_path: "extdeps.cloudflare.r2",
@@ -125,8 +123,6 @@ fn r2_bucket_resource_name(
 fn r2_account_resource_name(account_id: String) -> String {
   join(["com.cloudflare.api.account.", account_id], "")
 }
-
-data r2_s3_region: NonEmptyStr = "auto"
 
 type R2S3SecretDerivation
   = Sha256OfApiTokenValue {}

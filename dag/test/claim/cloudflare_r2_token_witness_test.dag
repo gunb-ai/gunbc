@@ -3,6 +3,7 @@ module test.claim.cloudflare_r2_token
 import std.types { Secret }
 import extdeps.cloudflare.client_v4 {
   cloudflare_client_v4_base,
+  cloudflare_client_v4_edition,
   cloudflare_bearer_authorization_header_value
 }
 import extdeps.cloudflare.account_api_tokens {
@@ -21,7 +22,8 @@ import extdeps.cloudflare.account_api_tokens {
   HumanDashboardAcquired,
   CreatedViaAccountTokensApi,
   AccountTokenApiMintAdmitted,
-  AccountTokenApiMintRefusedHumanDashboardOnly
+  AccountTokenApiMintRefusedHumanDashboardOnly,
+  account_api_tokens_write_permission_name
 }
 import extdeps.cloudflare.r2 {
   R2S3Endpoint,
@@ -50,11 +52,13 @@ import gunbc.cloudflare.r2_token_mint {
   admit_r2_object_read_api_mint,
   admit_bootstrap_token_api_mint,
   cloudflare_r2_token_mint_frontier_rows,
-  vendor_cloudflare_frontier_rows
+  vendor_cloudflare_frontier_rows,
+  cloudflare_account_token_bootstrap_intervention
 }
 
 test fn cloudflare_client_v4_base_is_the_documented_host() -> Bool {
-  (cloudflare_client_v4_base as String) == "https://api.cloudflare.com/client/v4"
+  (cloudflare_client_v4_edition as String) == "v4"
+    && (cloudflare_client_v4_base as String) == "https://api.cloudflare.com/client/v4"
 }
 
 test fn cloudflare_bearer_header_uses_bearer_scheme() -> Bool {
@@ -146,6 +150,14 @@ test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Boo
     && cloudflare_r2_object_read_token_shape().acquisition == CreatedViaAccountTokensApi
 }
 
+test fn bootstrap_intervention_cites_the_account_api_tokens_write_permission_name() -> Bool {
+  let i = cloudflare_account_token_bootstrap_intervention()
+  (i.subject as String) == join(
+    ["Cloudflare account API token with ", account_api_tokens_write_permission_name as String],
+    ""
+  )
+}
+
 test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
   match admit_r2_object_read_api_mint(
     name: "r2-read",
@@ -208,6 +220,11 @@ test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
       frontier_row_names_decl(
         row: row,
         ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "admit_account_token_api_mint"),
+      ))
+    && any(cloudflare_r2_token_mint_frontier_rows, row =>
+      frontier_row_names_decl(
+        row: row,
+        ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "r2_s3_pair_from_mint"),
       ))
     && any(vendor_cloudflare_frontier_rows, row =>
       frontier_row_names_decl(

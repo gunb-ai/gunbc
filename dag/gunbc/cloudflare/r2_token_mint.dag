@@ -1,6 +1,6 @@
 module gunbc.cloudflare.r2_token_mint
 
-import std.types { String, Bool }
+import std.types { String, Bool, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -27,7 +27,8 @@ import extdeps.cloudflare.account_api_tokens {
   CreatedAccountToken,
   CreateAccountTokenRequest,
   admit_account_token_api_mint,
-  AccountTokenApiMintStanding
+  AccountTokenApiMintStanding,
+  account_api_tokens_write_permission_name
 }
 import extdeps.cloudflare.r2 {
   R2Jurisdiction,
@@ -64,6 +65,13 @@ data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "admit_account_token_api_mint"),
+    reason: "no executing AccountTokens.Create; witness is not a consumer",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
+    ),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "r2_s3_pair_from_mint"),
     reason: "no executing AccountTokens.Create; witness is not a consumer",
     dissolution: unbound_dissolution(
       description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
@@ -128,8 +136,18 @@ fn cloudflare_account_token_bootstrap_intervention() -> HumanIntervention {
   HumanIntervention {
     identity: cloudflare_account_token_bootstrap_intervention_identity as HumanInterventionIdentity,
     frequency: FleetOnce,
-    subject: "Cloudflare account API token with Account API Tokens Write",
-    instruction: "As Super Administrator, create one account-owned API token in the Cloudflare dashboard (Manage Account > Account API Tokens) with Account API Tokens Write, then place the value in the existing secret-custody path. The value is shown once. Do not put it in argv, a worktree file, a receipt, or chat. Every later account token is minted by POST /accounts/<account_id>/tokens using this bootstrap token.",
+    subject: join(
+      ["Cloudflare account API token with ", account_api_tokens_write_permission_name as String],
+      ""
+    ) as NonEmptyStr,
+    instruction: join(
+      [
+        "As Super Administrator, create one account-owned API token in the Cloudflare dashboard (Manage Account > Account API Tokens) with ",
+        account_api_tokens_write_permission_name as String,
+        ", then place the value in the existing secret-custody path. The value is shown once. Do not put it in argv, a worktree file, a receipt, or chat. Every later account token is minted by POST /accounts/<account_id>/tokens using this bootstrap token."
+      ],
+      ""
+    ) as NonEmptyStr,
     completion_evidence: NoDischargeSiteModeled
   }
 }

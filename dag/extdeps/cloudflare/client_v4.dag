@@ -26,9 +26,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // THE SUBJECT IS THE CLIENT/V4 HTTP API, not Cloudflare the company and not any one product
 // (R2, Workers, DNS). Those are independently versioned products that speak this envelope.
-data cloudflare_client_v4_base: NonEmptyStr = "https://api.cloudflare.com/client/v4"
-
 data cloudflare_client_v4_edition: NonEmptyStr = "v4"
+
+data cloudflare_client_v4_base: NonEmptyStr = join(
+  ["https://api.cloudflare.com/client/", cloudflare_client_v4_edition as String],
+  ""
+) as NonEmptyStr
 
 data bearer_authorization_scheme: NonEmptyStr = "Bearer"
 
