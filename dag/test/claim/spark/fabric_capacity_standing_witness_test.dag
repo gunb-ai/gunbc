@@ -1,8 +1,82 @@
 module test.claim.spark.fabric_capacity_standing_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
 import gunbc.instruments.fabric_capacity_standing {
   CapacityProbeRead, ProbeFields, ProbeUnreadable, decode_probe,
+  ProbeReadings, ProbeReadingsReady, ProbeReadingsRefused, readings_from_fields,
+}
+
+fn w_lines(running: String, waiting: String) -> String {
+  join([
+    "inv-a",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "deadbeef",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "1788000000",
+    "1500000",
+    "1122",
+    "54475",
+    "16",
+    "1048576",
+    running,
+    waiting,
+  ], "\n")
+}
+
+fn w_fields() -> CapacityProbeRead {
+  decode_probe(stdout: w_lines(running: "0", waiting: "0"))
+}
+
+fn w_foreign_revision() -> VllmSourceRevision {
+  vllm_source_revision(
+    repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+    full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+  )
+}
+
+test fn a_metrics_dash_for_running_or_waiting_refuses_rather_than_reading_as_idle() -> Bool {
+  (match decode_probe(stdout: w_lines(running: "-", waiting: "0")) {
+     ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "num_requests_running")
+     ProbeFields { fields: _ } => false
+   })
+    && (match decode_probe(stdout: w_lines(running: "0", waiting: "-")) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "num_requests_waiting")
+          ProbeFields { fields: _ } => false
+        })
+    && (match decode_probe(stdout: w_lines(running: "0", waiting: "0")) {
+          ProbeFields { fields: f } => f.running == 0 && f.waiting == 0
+          ProbeUnreadable { detail: _ } => false
+        })
+}
+
+// THE LIVE PROBE MUST NOT FILL THE MODELLED REVISION. Stamping vllm_source_revision_read made
+// revision_is_modelled permanently green. An unobserved revision is a refusal, not a default.
+test fn an_unobserved_revision_refuses_rather_than_stamping_the_modelled_constant() -> Bool {
+  match w_fields() {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match readings_from_fields(f: f, observed_revision: none) {
+        ProbeReadingsRefused { cause: c } => string_contains(s: c as String, pattern: "did not observe the engine's vLLM source revision")
+        ProbeReadingsReady { pool: _, reported: _, layout: _ } => false
+      }
+  }
+}
+
+test fn a_supplied_revision_is_the_one_the_readings_carry() -> Bool {
+  match w_fields() {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match readings_from_fields(f: f, observed_revision: Present { value: w_foreign_revision() }) {
+        ProbeReadingsRefused { cause: _ } => false
+        ProbeReadingsReady { pool: pool, reported: reported, layout: layout } =>
+          (pool.observed_at_revision.full_revision as String) == "0000000000000000000000000000000000000000"
+            && (reported.observed_at_revision.full_revision as String) == "0000000000000000000000000000000000000000"
+            && (layout.established_at_revision.full_revision as String) == "0000000000000000000000000000000000000000"
+            && (pool.observed_at_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String)
+      }
+  }
 }
 
 fn w_lines(running: String, waiting: String) -> String {
