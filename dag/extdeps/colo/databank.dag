@@ -5,7 +5,8 @@ import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedMax, CabinetPowerFigure, PublishedRealPower,
+  CabinetDensityClaim, DensityMarketedMax, DensityMarketedAirOnly,
+  CabinetPowerFigure, PublishedRealPower,
   RetailGrainStanding, SingleCabinetOffered,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -72,10 +73,40 @@ data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
   obligation: "No cabinet or power pricing is published on the facility pages read 2026-09-08. A quote is required, and the density claim above is what makes the quote worth requesting.",
 }
 
-// A SECOND SITE THIS OPERATOR RUNS IN NEW JERSEY, NAMED BUT NOT MODELLED. A review relayed into
-// this session cited an 85 kW-per-cabinet deployment at a Piscataway campus for a university HPC
-// tenant. Two fetches of the campus and facility pages under the paths that claim implies both
-// returned 404 on 2026-09-08, so no address, capacity or density is carried for it. A tailored
-// deployment for one named tenant would in any case be a different fact from a marketed cabinet
-// maximum, and would need its own arm rather than being read as retail density.
-data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator contributes exactly one modelled facility despite operating several in this metro, which understates it."
+// THE SECOND SITE, NOW READ. The obligation this module carried - locate DataBank's New Jersey
+// facility pages, whose URLs derived from a secondary citation 404ed - is discharged here. The
+// live path is databank.com/data-centers/new-jersey/piscataway/, and the facility is EWR2. The
+// secondary claim that prompted the search, an 85 kW-per-cabinet university HPC deployment, is
+// NOT what the page says: the page markets 10kW+ per cabinet. A tailored deployment for one named
+// tenant was never the same fact as a marketed cabinet maximum, and the gap between 85 and 10 is
+// the size of the error that reading one as the other would have put into the census.
+data databank_ewr2_piscataway: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank EWR2 Piscataway",
+  address: AddressListed {
+    street: "25 Corporate Place South, Piscataway, NJ 08854",
+    citation: "databank.com New Jersey Piscataway data center page, read 2026-09-08",
+  },
+  municipality: "Piscataway",
+  region_code: "NJ",
+  facility_note: "Operator page (read 2026-09-08): 3 MW critical IT load, 22,590 IT square feet, N+1 power and cooling, nine onsite carriers, 100 percent renewable sourcing claimed. Middlesex County - the same township as QTS PNJ1, Digital Fortress PNJ and the Digital Realty Piscataway campus. Home to the New Jersey Institute of Technology's Wulver HPC environment per the operator's own press material, which is why a dense-cabinet claim for this building circulates; see the density row for what the facility page actually states.",
+}
+
+// TEN KILOWATTS, NOT EIGHTY-FIVE. The plus sign is the operator's, so this is a marketed floor on
+// a maximum in the same wording style as LGA4's 35kW+. Against a 650 W node it is thirteen nodes
+// of air-cooled headroom - four times the densest PRICED product in this census and a third of
+// what LGA4 markets. It is the reading that makes EWR2 a real candidate and the reading that
+// stops it from being ranked as the dense one.
+data databank_ewr2_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 10000) },
+  claim_wording: "10kW+",
+  citation: "databank.com New Jersey Piscataway data center page, read 2026-09-08. The plus sign is the operator's own wording, so the integer is a marketed floor rather than a ceiling. No liquid-cooled figure appears for this facility, unlike LGA4.",
+}
+
+data databank_ewr2_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "cabinets, cages",
+  citation: "databank.com New Jersey Piscataway data center page, read 2026-09-08. The page lists cabinets alongside cages as the space products for this facility, on the same pattern as LGA4; it does not state a minimum commitment, so the quote still owes the answer for a one-cabinet order.",
+}
+
+// THE OPERATOR RUNS AT LEAST ONE MORE SITE IN THIS METRO THAT IS STILL UNMODELLED.
+data databank_newark_obligation: NonEmptyStr = "DataBank's New Jersey index (databank.com/data-centers/new-jersey/, surfaced 2026-09-08) also names a Newark facility at the 165 Halsey Street carrier hotel, which this census already carries as a BUILDING under extdeps.colo.halsey_165 without DataBank named as an operator selling in it. Read databank.com/data-centers/new-jersey/newark-165-halsey-street-suite/ and model the DataBank suite as its own row here - one row per operator selling in a multi-operator building, per the carrier's own rule - with its address, critical IT load, marketed cabinet density and retail grain."
