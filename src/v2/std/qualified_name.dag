@@ -230,6 +230,22 @@ fn qualified_name_last_segment(qn: QualifiedName) -> Optional<Symbol> {
 // SEGMENT-WISE, NOT TEXTUAL: `gunbc.rowing` is not under `gunbc.row`, because containment is a
 // relation on SEGMENTS and a dotted string is a rendering of them.
 //
+// CONSUMPTION (DESIGN §3c), stated here rather than only in a pull request body, because a body is
+// not in the tree a later reader greps. Consumed by execution in this change: this module's claim
+// probes, which exercise the relation rather than assert that it exists. Beyond them this is a
+// DECLARED FRONTIER, not a consumed declaration, and the honest state is named as such.
+//
+//   Named later consumer: the failure-mode roster's membership, which today is a hand-authored tail
+//   listing what containment already knows -- which is why two lanes appending independent rows
+//   collide in one merge region.
+//
+//   TRIGGER, named as the CAPABILITY and not as an artifact that would contribute to one: roster
+//   membership becomes DERIVED from the row-files, so no hand-authored tail must be edited to
+//   register a row. A batch split, a reformat, or any other rewrite of the tail satisfies none of
+//   it and does not retire this frontier. Ordering is deliberately NOT part of the trigger: the
+//   roster's order is load-bearing and must be grounded by the consuming projection, never taken
+//   from a sequence this relation refuses to export.
+//
 // STRICT: a name is a prefix of itself, and a container is not beneath itself. The neighbouring
 // question -- whether a given module is present at all -- is exact-identity membership and is
 // answered elsewhere; this is descent, and the two are disjoint rather than one refining the other.
