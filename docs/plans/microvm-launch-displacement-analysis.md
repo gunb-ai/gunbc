@@ -4,6 +4,8 @@
 
 *Filed against the class `gunbc.recurring_failure_mode.production_actuation_unmodeled_beside_a_modeled_probe`, which this analysis is the natural continuation of.*
 
+> **Citation standing.** That class and the FCI-2 module cited below are **PROPOSED, NOT LANDED** — they are authored on #10674, which is open and unmerged, so neither name resolves in this revision of the tree. They are cited as proposed work rather than as corpus facts, and every such name is marked at its use site. Nothing in this document's own findings depends on either landing: the census, the reading half and the axis dispositions are all derived from probe captures, `fleet-converge.yml`, and modules that do resolve on `main`.
+
 ## The headline, before the verdict
 
 **Half the census is already done, and the displacement mechanism is proven in production.** Steps 1–2 of the live path — host convergence and guest image build — are already displaced: production actuates them by running `gunbc run --entry … --function …` with `LocalExec`, out of `fleet-converge.yml`, on the host itself. So the open question is **not** "can a modeled entry point actuate a host" — that is answered, wet, today. It is "can one actuate at a *different point in the attempt lifecycle*", which is a much smaller unknown.
@@ -56,13 +58,13 @@ Not all ten steps. The honest cut is the **per-attempt** sequence, steps 3–9, 
 
 Within that, the executor must own three things it cannot delegate:
 
-1. **The ordering.** Authorization first, actuation last. `gunbc.runner.runner_microvm_execution_authorization` (#10674) is the FCI-2 half: `grant_authorizes_reservation` refuses on the money fence and on Work/Demand/Offer disagreement, and `seal_execution_binding` makes an unauthorized binding unconstructible outside the module. What does not exist is the thing that **re-reads a committed grant** and refuses to reach step 9 without one.
+1. **The ordering.** Authorization first, actuation last. The FCI-2 half is **proposed on #10674 and not merged** — `gunbc.runner.runner_microvm_execution_authorization`, whose `grant_authorizes_reservation` refuses on the money fence and on Work/Demand/Offer disagreement (`seal_execution_binding` is declared there as a §3c frontier with no consumer yet). Those names do not resolve on `main` today, so they are named as proposed work. What does not exist **anywhere, proposed or landed**, is the thing that **re-reads a committed grant** and refuses to reach step 9 without one.
 2. **The credential as a consequence of the grant, not a precondition.** The mint must happen *after* the grant is re-read, so a credential is never in existence for a launch that will not be authorized. The live path mints first and validates in the guest, which is the receipted fail-open.
 3. **Durable grant state.** Per ruling, this **extends `gunbc.fabric_allocation_store_substrate`** — which today models durable presence, ownership, mode and prestate for the allocation store — rather than forking a second store. If a grant fact genuinely cannot inhabit that shape, that is a finding to raise, not a licence to fork.
 
 ## What the hand-authored tooling would have to lose
 
-The doctrine's test is not "does Y work" but "does X's authority end in one motion". X here is the host tooling baked into the runner guest image build: it emits the `GUNBC-RUNNER-HOST` banner and the marker stream, and it performs steps 3–9 in order. Displacement means that tooling loses **step 9 and the steps that feed it**, in the same motion, and is deleted rather than left as a fallback. Y may not resolve through it.
+The doctrine's test is not "does Y work" but "does X's authority end in one motion". X here is the boot tooling carried in the **host** image — not the guest image. It emits the `GUNBC-RUNNER-HOST` banner and the `=gunbc-runner-host-boot` marker stream during the *host's* own early boot, and it performs steps 3–9 in order, step 9 being where it starts the guest. Displacement means that tooling loses **step 9 and the steps that feed it**, in the same motion, and is deleted rather than left as a fallback. Y may not resolve through it.
 
 ## Is the cutover atomic? The three honest answers
 
@@ -70,7 +72,9 @@ The doctrine's test is not "does Y work" but "does X's authority end in one moti
 
 **What makes it not small.** Three things resist:
 
-- **The boundary is a boot, not a call.** Steps 3–9 run *inside the guest image's own early boot*, before anything this repository controls is running. Displacing them means the modeled executor must run **on the host, before the guest**, which is a different lifecycle from the converge-time `gunbc run` that displaced steps 1–2. That is the load-bearing unknown, and it is not settled by this analysis.
+- **The boundary is a boot, not a call — and it is the HOST's boot.** Steps 3–9 run inside the **host image's** own early boot (the banner is `GUNBC-RUNNER-HOST`, ~17s after the *host* kernel starts, on a tmpfs root from BMC virtual media), before anything this repository controls is running. The guest does not exist yet; step 9 is what creates it. So displacing these steps means the modeled executor must run **on the host, at host-boot time**, which is a different lifecycle from the converge-time `gunbc run` that displaced steps 1–2. That is the load-bearing unknown, and it is not settled by this analysis.
+
+  *Stated explicitly because an earlier revision of this document said "the guest image's own early boot" here. That was wrong and it matters: it would point a cut at the guest image, when the tooling to be displaced is in the host image.*
 - **The credential is one-shot.** A JIT registration is served exactly once. A staged cutover cannot A/B the two paths on the same attempt, and a failed cutover attempt burns the registration. This is a **gap-intolerant boundary** in the doctrine's sense, which argues for the staged carve-out — Y built in shadow, then one transition — rather than plain delete-first.
 - **Six admission axes are unchecked today.** The capture reads `jit-admission-unchecked=signature unit-binding boot-binding attempt-binding expiry replay`. A displacement that reproduces the live behaviour reproduces six absent checks; a displacement that adds them is a larger change than a like-for-like cutover. Which of these the minimum Y must carry is a decision, not a detail — §3 requires the minimum Y to preserve **every required refusal**, so any axis judged required today cannot be dropped to make the cut smaller.
 
