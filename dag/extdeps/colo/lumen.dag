@@ -1,0 +1,101 @@
+module extdeps.colo.lumen
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed,
+  RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.lumen.com/en-us/edge-cloud/data-centers.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.lumen",
+      decl_name: "lumen_newark_165_halsey",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE CARRIER THE CENSUS KEPT MEETING AS A CROSS-CONNECT AND NEVER MODELLED AS AN OPERATOR. Lumen
+// sells colocation as a product - the operator's data-centers page read 2026-09-08 states the space
+// options and a density range in its own words - and it registers three facilities of its own in
+// this corridor, all three at addresses the census already carries under other operators. That is
+// the same building-versus-operator split 165 Halsey and 300 JFK Boulevard East already forced, and
+// it is why these are rows here rather than notes on someone else's module.
+data lumen_operator_note: NonEmptyStr = "Facilities are registered under the historical Level(3) name in PeeringDB, which is the operator's own entry and which Lumen has not renamed; the operator_label below carries the current company name and the facility_label carries the registered one, because a reader searching either spelling must land on the same row."
+
+data lumen_newark_165_halsey: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Lumen Technologies",
+  facility_label: "Lumen (Level(3)) Newark, 165 Halsey Floor 9",
+  address: AddressListed {
+    street: "165 Halsey Street, Floor 9, Newark, NJ 07102",
+    citation: "PeeringDB facility Level(3) Newark, org Lumen Technologies Inc, read 2026-09-08",
+  },
+  municipality: "Newark",
+  region_code: "NJ",
+  facility_note: "A fourth selling authority inside the 165 Halsey carrier hotel, on the ninth floor - the same floor the building registers its meet-me room on, and the floor Hivelocity's JFK1 suite sits on. Nothing beyond name, floor and address has been read for this facility.",
+}
+
+data lumen_jersey_city: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Lumen Technologies",
+  facility_label: "Lumen (Level(3)) Jersey City",
+  address: AddressListed {
+    street: "1 Evertrust Plaza, Jersey City, NJ 07302",
+    citation: "PeeringDB facility Level(3) Jersey City, org Lumen Technologies Inc, read 2026-09-08",
+  },
+  municipality: "Jersey City",
+  region_code: "NJ",
+  facility_note: "The second Jersey City facility in this census after DataVerge at 111 Town Square Place, and a different building. Registry-grade only: no operator page names this site.",
+}
+
+data lumen_weehawken: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Lumen Technologies",
+  facility_label: "Lumen (Level(3)) Weehawken",
+  address: AddressListed {
+    street: "300 JFK Boulevard East, Weehawken, NJ 07086",
+    citation: "PeeringDB facility Level(3) Weehawken, org Lumen Technologies Inc, read 2026-09-08",
+  },
+  municipality: "Weehawken",
+  region_code: "NJ",
+  facility_note: "The 300 JFK Boulevard East building again, which also carries Centersquare EWR2-A,B and the Digital Realty EWR10 entry its own operator now lists as closed. Lumen's registry entry for the building is live as of the read date, so the building outlives one of its operators - which is exactly why this census keys rows on the operator and not on the address.",
+}
+
+data lumen_corridor_facilities: List<ColoFacilityRow> = [
+  lumen_newark_165_halsey,
+  lumen_jersey_city,
+  lumen_weehawken,
+]
+
+// A DENSITY RANGE THAT VARIES BY SITE IS NOT A READING OF ANY SITE. The operator's data-centers
+// page states cabinet power densities of "3kW - 12kW" and names no facility anywhere on the page.
+// Applying the top of that range to a Newark floor, or the bottom of it, would be the same
+// fabrication in two directions, so all three corridor facilities are DensityUnread and the
+// operator's own sentence is preserved as the thing to resolve against.
+data lumen_cabinet_density: CabinetDensityClaim = DensityUnread {
+  obligation: "lumen.com/en-us/edge-cloud/data-centers.html, read 2026-09-08, publishes cabinet power densities of \"3kW - 12kW\" as a portfolio range and names no individual site; a second Lumen surface renders the same range as 3kW-15kW, which is a further reason not to treat either as a site reading. No per-site figure has been read for Newark, Jersey City or Weehawken. Resolve by naming the facility in a quote and asking for its air-cooled per-cabinet maximum.",
+}
+
+data lumen_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets, cages, custom solutions",
+  citation: "lumen.com/en-us/edge-cloud/data-centers.html, read 2026-09-08. Operator-level product wording; it names cabinets as a purchasable unit but states no minimum and is not broken out per facility.",
+}
+
+data lumen_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "lumen.com business sales",
+  obligation: "No colocation pricing is published on any Lumen page read 2026-09-08. A quote must name the facility, because the operator publishes nothing per site - not price, not density, not availability.",
+}
