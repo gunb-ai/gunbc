@@ -1618,34 +1618,12 @@ pub struct TransitionAdmission {
 /// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
 /// touch. Adjudicate that deletion by joining each row against main on its own
 /// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
-const CALL_SEMANTICS_TARGET_REHOME_LABEL: &str =
-    "gunbc#10688 call-target identity re-home: `call_semantics_target` moves from \
-     v1.compiler.emit_rust to v1.std.core beside the `CallSemantics` it reads and the \
-     `CallTargetIdentity` it answers, so inference and the effect pass read one reduction \
-     instead of importing the emitter";
+///
+/// SIXTH DISSOLUTION (2026-09-08). #10688 merged; both rows report consumed. This change touches
+/// the roster (base-side reconstruction of the gitignored failure-mode fold), so the deletion is
+/// owed here. The roster is empty again; empty is not permissive.
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_rust_expr_call",
-            spelling: "call_semantics_target",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "emit_rust_tco_non_self_call",
-            spelling: "call_semantics_target",
-            target: "v1.std.core",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

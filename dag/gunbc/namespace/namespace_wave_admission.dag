@@ -248,11 +248,6 @@ data namespace_wave_admission_seed_growth_justification: SeedGrowthJustification
     },
     DeclarationRef {
       module_path: "v1_compiler.namespace_wave_admission",
-      decl_name: "CALL_SEMANTICS_TARGET_REHOME_LABEL",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.namespace_wave_admission",
       decl_name: "WaveAdmissionPopulation",
       field: WholeDeclaration
     },
