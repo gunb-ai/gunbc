@@ -184,12 +184,16 @@ fn serving_transition_cost() -> TransitionCostObservation {
   NoTransitionRequired
 }
 
-// OPPORTUNITY. An admitted candidate is idle on both readings, so no turn is displaced by placing
-// this one. That is narrower than what the arm's name says -- see the declared divergence beside the
-// operating axis: the gauges and the seat ledger establish that no TURN is running here, and say
-// nothing about other fabric demands that might have used the group.
-fn serving_opportunity_cost(receipt: ObservationReceiptRef) -> OpportunityCostObservation {
-  NoFeasibleAlternativeUse { receipt: receipt }
+// OPPORTUNITY, AND THE RECEIPT NAMES THE DROP RATHER THAN AN OBSERVATION. An admitted candidate is
+// idle on both readings, so no TURN is displaced by placing this one -- but the arm says no feasible
+// alternative USE, which is a wider claim than the gauges and the seat ledger can carry: neither can
+// enumerate the other fabric demands that might have wanted this group. Handing this arm the
+// observation receipt of the offer binding would attribute the wider claim to a reading that does not
+// establish it, so the receipt it carries names the declared rung drop that admits the assertion.
+data serving_asserted_axis_receipt: ObservationReceiptRef = "gunbc.rung_drop.serving_cost_axes_asserted_unmeasured" as ObservationReceiptRef
+
+fn serving_opportunity_cost() -> OpportunityCostObservation {
+  NoFeasibleAlternativeUse { receipt: serving_asserted_axis_receipt }
 }
 
 // ── START AND OPERATING, AND A DIVERGENCE DECLARED RATHER THAN HIDDEN ─────────────────────────
@@ -211,10 +215,12 @@ fn serving_opportunity_cost(receipt: ObservationReceiptRef) -> OpportunityCostOb
 // axis below: NoFeasibleAlternativeUse does not follow from an engine's gauges reading zero, because
 // those gauges cannot enumerate the other fabric demands that might have wanted this group.
 //
-// THE DISSOLUTION, NAMED: a selection-policy instantiation that states what an admission-only
-// placement knows -- fungibility, admission, quality-seat availability and the tie policy -- so this
-// module stops supplying economic facts it did not observe in order to make a priced selector
-// answer. Until it exists, these two axes are a declared departure, not a claim (review 62155).
+// AND THE DEPARTURE IS A DECLARED RUNG DROP, NOT THIS ANNOTATION. Prose cannot discharge a machine
+// claim -- no Accepted program reads it (DESIGN 4c) -- so the two asserting axes are declared at
+// gunbc.rung_drop.serving_cost_axes_asserted_unmeasured, rostered with the others, carrying their
+// population and the capability that retires them: a selection policy instantiation that decides an
+// admission-only placement from what such a placement knows, and refuses to require an economic axis
+// its caller did not observe (reviews 62155, 62228).
 fn serving_start_cost(receipt: ObservationReceiptRef) -> StartCostObservation {
   StartCostMeasured { amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd }, receipt: receipt }
 }
@@ -235,7 +241,7 @@ fn serving_dispatch_inputs<P>(
     start: serving_start_cost(receipt: receipt),
     transition: serving_transition_cost(),
     operating: serving_operating_cost(),
-    opportunity: serving_opportunity_cost(receipt: receipt),
+    opportunity: serving_opportunity_cost(),
   }
 }
 

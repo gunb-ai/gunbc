@@ -167,7 +167,7 @@ test fn no_admissible_group_and_the_reasons_do_not_fuse() -> Bool {
 // conversation whose prefix nobody observed.
 test fn an_admitted_candidate_carries_no_priced_estimate() -> Bool {
   (match serving_transition_cost() { NoTransitionRequired => true  _ => false })
-    && (match serving_opportunity_cost(receipt: probe_receipt) { NoFeasibleAlternativeUse { receipt: _ } => true  _ => false })
+    && (match serving_opportunity_cost() { NoFeasibleAlternativeUse { receipt: r } => (r as String) == "gunbc.rung_drop.serving_cost_axes_asserted_unmeasured"  _ => false })
     && (match serving_availability(receipt: probe_receipt) { AvailableIndefinitely { delay: d, receipt: _ } => d.count == 0  _ => false })
 }
 
