@@ -30,6 +30,11 @@ import product.fabric.work {
 // already make for Fnv1a64Structural, and it puts this class at structurally impossible rather than
 // validated: there is no constructor here that accepts a structural fingerprint as an integrity
 // digest, so the confusion has no representation instead of a check that could be skipped.
+// PATH-SCOPED, PER 4b(1): that reading holds on the source-to-dag acceptance path. The emitted Rust
+// mirror of these carriers is a public struct with public fields (gunbc.model.population), so a
+// consumer writing Rust against the seed is outside the guarantee, and a class's rung is the
+// MINIMUM across its in-scope paths. Fabric-M0 has no Rust consumer today, so the rung holds NOW
+// with that named degradation condition rather than absolutely.
 
 // SUBJECT IDENTITY COMES FROM THE CONTRACT, NOT FROM THIS GATE.
 //
@@ -393,7 +398,9 @@ fn verdicts_meet(verdicts: List<ObligationVerdict>) -> ObligationVerdict {
 }
 
 // PublishObligationsUnreadable IS RE-HOMED, NOT DELETED. That arm used to be reached by a
-// caller-supplied unreadable roster. That state is now unwritable: product.fabric.work makes
+// caller-supplied unreadable roster. That state is now unwritable ON THE SOURCE-TO-DAG PATH, which
+// is the honest scope and not an absolute claim (4b(1); the Rust mirror caveat above applies here
+// too): product.fabric.work makes
 // output_obligations a REQUIRED field of the contract, so "the roster could not be read" has no
 // producer at all. The arm survives because it is still reachable from two states that are real --
 // a typed OutputObligationsUnreadable from resolve_output_obligations, and a resolution bound to a
