@@ -34,10 +34,9 @@ test fn annotated_fn_parameter_fold_resolves() -> Bool {
   annotated_parameter_fold(xs: [1, 2, 3]) == 6
 }
 
-// Independent of this file: the same annotated-let Empty initializer that
-// algebra_receiver_alias_witness_test explicit_initializer_is_an_acceptance_fixture
-// compiles as a string. That census uses total_blocking_count == 0 over the
-// whole compile, which is not an oracle for this fixture. The live program is.
+// Annotated Empty as fold init: the declared FreeMonoid<Int> is the
+// application; Empty's expansion is not. Same binding as the Cons receiver
+// above, different constructor and a different fold argument.
 test fn annotated_freemonoid_empty_initializer_fold_resolves() -> Bool {
   let initial: FreeMonoid<Int> = Empty
   [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) }) == [1, 2]
