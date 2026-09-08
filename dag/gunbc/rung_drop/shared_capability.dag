@@ -38,10 +38,8 @@ import gunbc.rung_drop {
 // roster for enrolment rather than filtering by a hand-authored identity list, so a waiter
 // that is not enrolled is unwritable rather than unreported. Sufficient for deleting
 // waiter_identities as an authority. Until that fires, the list stays the mechanically
-// preventable wall, and a fifth waiter (gunbc.rung_drop transitional_admission_exception on
-// #10828, which self-declares as waiting on this capability and is correctly absent until
-// that row is on the roster) is a sequencing obligation on whichever of the two lands second,
-// not a discharge of this trigger.
+// preventable wall. #10828 landed second-relative-to-this-branch: transitional_admission_exception
+// is now an enrolled waiter, which closes that sequencing hole and does not discharge this trigger.
 
 type SharedCapability {
   identity: NonEmptyStr
@@ -150,9 +148,10 @@ fn typed_waiters_cite_capability(cap: SharedCapability, ds: List<RungDrop>) -> B
 // THE MISSING CADENCE CATEGORY. Measured 2026-09-03: the required run enumerates five phases
 // across two lanes, and `schedule:`/`cron:` appear zero times across the workflow files, so the
 // shared blocker is a missing CATEGORY rather than a missing invocation of an existing one.
-// Waiters are DISJOINT populations over that one capability. floor_cut_falsifier_cadence is the
-// fourth waiter: it names the same scheduled predict-only cold comparison, in prose, without the
-// pasted hazard paragraph the typed three carried.
+// Waiters are DISJOINT populations over that one capability. floor_cut_falsifier_cadence and
+// transitional_admission_exception wait on the same missing category without having copied the
+// hazard paragraph the typed three originally carried; both are enrolled here so the join cannot
+// report AllWaitersStanding while either stands outside the list.
 data missing_cadence_category: SharedCapability = SharedCapability {
   identity: "missing_cadence_category" as NonEmptyStr,
 
@@ -163,6 +162,7 @@ data missing_cadence_category: SharedCapability = SharedCapability {
     "deleted_cadence_reference",
     "witness_deferral_freeze_forward_rule",
     "floor_cut_falsifier_cadence",
+    "transitional_admission_exception",
   ],
 }
 
