@@ -14060,22 +14060,22 @@ Rc::new(FieldInferResult {
                 );
                 let owner_from_locals =
                     local_coproduct_owner_from_locals(scope.clone(), type_name.clone().unwrap());
+                let owner_from_variant_node =
+                    variant_owner_node(scope.clone(), type_name.clone().unwrap());
                 let local_variant_parent =
                     match lookup_variant_parent_enum(scope.clone(), type_name.clone().unwrap()) {
                         Some(p) => Some(p.clone()),
-                        std::option::Option::None => {
-                            match variant_owner_node(scope.clone(), type_name.clone().unwrap()) {
-                                Some(owner) => Some(crate::v1_std_core::authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    owner.clone(),
-                                )),
-                                std::option::Option::None => record_lit_parent_enum_from_expected(
-                                    type_name.clone().unwrap(),
-                                    expected.clone(),
-                                    scope.clone(),
-                                ),
-                            }
-                        }
+                        std::option::Option::None => match owner_from_variant_node.clone() {
+                            Some(owner) => Some(crate::v1_std_core::authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                owner.clone(),
+                            )),
+                            std::option::Option::None => record_lit_parent_enum_from_expected(
+                                type_name.clone().unwrap(),
+                                expected.clone(),
+                                scope.clone(),
+                            ),
+                        },
                     };
                 let effective_lookup = match type_lookup.clone() {
                     Some(_) => type_lookup.clone(),
@@ -14176,18 +14176,13 @@ Rc::new(FieldInferResult {
                         Some(parent_decl) => parent_decl.clone(),
                         std::option::Option::None => match owner_from_locals.clone() {
                             Some(owner) => owner.clone(),
-                            std::option::Option::None => {
-                                match variant_owner_node(scope.clone(), type_name.clone().unwrap())
-                                {
-                                    Some(owner) => owner.clone(),
-                                    std::option::Option::None => match expected_owner.clone() {
-                                        Some(coproduct) => coproduct.clone(),
-                                        std::option::Option::None => {
-                                            variant_lookup_resolved.clone()
-                                        }
-                                    },
-                                }
-                            }
+                            std::option::Option::None => match owner_from_variant_node.clone() {
+                                Some(owner) => owner.clone(),
+                                std::option::Option::None => match expected_owner.clone() {
+                                    Some(coproduct) => coproduct.clone(),
+                                    std::option::Option::None => variant_lookup_resolved.clone(),
+                                },
+                            },
                         },
                     }
                 };

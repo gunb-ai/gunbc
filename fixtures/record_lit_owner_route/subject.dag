@@ -1,0 +1,13 @@
+module fixtures.record_lit_owner_route.subject
+
+// THE SUBJECT. Payload coproduct with an Observed arm, returned from both sides of an if —
+// the same constructor-vs-join shape as gunbc.roadmap_belt_actuate belt_sessions_observe_for_instance.
+// Byte-identical across both closures. Isolated unit-arm analogues are a different channel;
+// this arm carries a field so the record literal is not a unit projection.
+type RouteObserve
+  = Observed { live: List<Int> }
+  | ObserveRefused { reason: String }
+
+fn pick_observe(c: Bool) -> RouteObserve {
+  if c { Observed { live: [] } } else { ObserveRefused { reason: "x" } }
+}

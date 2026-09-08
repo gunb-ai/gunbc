@@ -1,0 +1,81 @@
+module test.claim.record_lit_owner_route_witness
+
+import extdeps.filesystem.filesystem_io
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// EXECUTING CONSUMER for infer_record_lit owner widening (review 62614).
+// Two manifests, same subject bytes: closure_own is the module-as-own-entry route;
+// closure_with_extra adds an unimported extra module to the pool — the same two-route
+// geometry as belt_sessions_observe_for_instance as its own --entry versus resolve of
+// tools.generated_artifact_gate. Both arms expect compile-clean after the repair; a revert
+// of the owner-fill chain reds the larger arm if that channel is this class.
+
+data record_lit_owner_subject_path: String = "fixtures/record_lit_owner_route/subject.dag"
+data record_lit_owner_extra_path: String = "fixtures/record_lit_owner_route/extra_module.dag"
+data record_lit_owner_own_path: String = "fixtures/record_lit_owner_route/closure_own.dag"
+data record_lit_owner_larger_path: String = "fixtures/record_lit_owner_route/closure_with_extra.dag"
+
+fn record_lit_owner_text(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+fn record_lit_owner_source(path: String) -> FixtureSource {
+  fixture_source(path: path, content: record_lit_owner_text(path: path))
+}
+
+fn record_lit_owner_own_outcome() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      record_lit_owner_source(path: record_lit_owner_subject_path),
+      record_lit_owner_source(path: record_lit_owner_own_path)
+    ],
+    entry: record_lit_owner_own_path
+  })
+}
+
+fn record_lit_owner_larger_outcome() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      record_lit_owner_source(path: record_lit_owner_subject_path),
+      record_lit_owner_source(path: record_lit_owner_extra_path),
+      record_lit_owner_source(path: record_lit_owner_larger_path)
+    ],
+    entry: record_lit_owner_larger_path
+  })
+}
+
+fn record_lit_owner_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+test fn the_fixture_modules_are_readable() -> Bool {
+  string_length(s: record_lit_owner_text(path: record_lit_owner_subject_path)) > 0
+    && string_contains(s: record_lit_owner_text(path: record_lit_owner_subject_path), pattern: "type RouteObserve")
+    && string_contains(s: record_lit_owner_text(path: record_lit_owner_subject_path), pattern: "Observed { live:")
+}
+
+test fn the_subject_compiles_clean_as_own_entry() -> Bool {
+  record_lit_owner_completed_clean(o: record_lit_owner_own_outcome())
+}
+
+test fn the_same_subject_compiles_clean_under_the_larger_resolve() -> Bool {
+  record_lit_owner_completed_clean(o: record_lit_owner_larger_outcome())
+}

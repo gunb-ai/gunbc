@@ -609,10 +609,13 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 // and emitted OperandIdentityUnavailableAt for `+` in std.import.
 // Locals fill every other arm: name-lookup miss, parent-enum miss (lookup_type_for
 // on the locals node fails under composed intern while the Disj node is still in
-// locals — #10838 only filled the name-lookup miss, so
-// gunbc.roadmap_belt_actuate belt_sessions_observe_for_instance still refused when
-// resolved as a dependency of tools.generated_artifact_gate rather than as its own
-// --entry), and a HIT that is not that owner (unit-arm projection).
+// locals), expected coproduct that owns the arm, and a HIT that is not that owner
+// (unit-arm projection). The enrolled consumer is
+// test.claim.record_lit_owner_route_witness: two compile_fixture manifests over the
+// same subject bytes, differing only by an unimported extra module in the pool —
+// own-entry vs larger resolve, the same two-route geometry as
+// gunbc.roadmap_belt_actuate belt_sessions_observe_for_instance versus
+// tools.generated_artifact_gate.
 fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
@@ -8638,10 +8641,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
     let owner_from_locals = local_coproduct_owner_from_locals(scope: scope, name: type_name.value)
+    let owner_from_variant_node = variant_owner_node(scope: scope, name: type_name.value)
     let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
       Present { value: p } => Present { value: p }
       Absent =>
-        match variant_owner_node(scope: scope, name: type_name.value) {
+        match owner_from_variant_node {
           Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
           Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
         }
@@ -8704,7 +8708,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           match owner_from_locals {
             Present { value: owner } => owner
             Absent =>
-              match variant_owner_node(scope: scope, name: type_name.value) {
+              match owner_from_variant_node {
                 Present { value: owner } => owner
                 Absent =>
                   match expected_owner {
