@@ -2542,6 +2542,7 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
+
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -2571,6 +2572,38 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         .iter()
         .map(|module| record_from_module(module, &source_indices, rel, &fill.occurrence_transport))
         .collect())
+}
+
+/// The derived roster AS THE BASE TREE WOULD HAVE PRODUCED IT, from the base's own row files.
+///
+/// THIS EXISTS BECAUSE A GENERATED, GITIGNORED ARTIFACT HAS NO BASE BLOB TO READ. `git show
+/// <base>:<path>` cannot answer for a path the base commit does not carry, and the path is in
+/// neither side of the base..head diff, so the reconstruction that serves authored files cannot
+/// reach it at all. Its content is a total function of the row files the base tree carries, so it
+/// is RE-DERIVED rather than read -- the same function the writer applies, over the base listing.
+///
+/// `base_paths` is the authoritative `ls-tree` listing of the base commit. Only direct children of
+/// the roster's own directory count, and the roster basename is not a row.
+pub fn base_derived_roster_body(
+    base_paths: &std::collections::BTreeSet<String>,
+    rel: &str,
+) -> String {
+    let dir = match rel.rfind('/') {
+        Some(i) => &rel[..i],
+        None => "",
+    };
+    let prefix = format!("{dir}/");
+    let roster_stem = crate::cli_run::derived_row_roster::ROSTER_BASENAME.trim_end_matches(".dag");
+    let mut stems: Vec<String> = base_paths
+        .iter()
+        .filter_map(|p| p.strip_prefix(&prefix))
+        .filter(|leaf| !leaf.contains('/'))
+        .filter_map(|leaf| leaf.strip_suffix(".dag"))
+        .filter(|stem| *stem != roster_stem)
+        .map(|s| s.to_string())
+        .collect();
+    stems.sort();
+    crate::cli_run::derived_row_roster::render_roster(&stems)
 }
 
 /// Run the wall for one required CI invocation.
@@ -2617,8 +2650,26 @@ pub fn run_required_wave_admission(
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
+    // THE DERIVED ROSTER'S REL PATH, NAMED BEFORE THE BASE INDEX IS BUILT BECAUSE THE BASE MUST
+    // NOT INHERIT IT. It is resolved from the head index rather than spelled here, so the path
+    // stays a fact of the module tree rather than a second naming authority (DESIGN 3).
+    let derived_roster_rel: Option<String> = index_records(head_index)
+        .into_iter()
+        .find(|r| r.module_path == crate::cli_run::derived_row_roster::ROSTER_MODULE)
+        .map(|r| r.rel_path.clone());
+
     let mut base_index = DeclarationIndex::default();
     for record in index_records(head_index) {
+        if derived_roster_rel.as_deref() == Some(record.rel_path.as_str()) {
+            // A GENERATED, GITIGNORED ARTIFACT IS IN NEITHER COMMIT, so it appears in NEITHER side
+            // of the base..head diff and the reconstruction below can never reach it. Carrying the
+            // head's derivation into the base index makes the base SPELL every row this change
+            // adds while lacking the modules that resolve them -- so a newly added row reads as
+            // `{} -> {module}` with the reference already present at base, which is
+            // NewPoolCoincidenceResolution instead of the AuthoredReferenceResolution it is. It is
+            // skipped here and re-derived from the BASE row set below.
+            continue;
+        }
         if !head_parsed.iter().any(|c| *c == &record.rel_path) {
             crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
         }
@@ -2652,6 +2703,28 @@ pub fn run_required_wave_admission(
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         };
         match base_records(rel, &content) {
+            Ok(records) => {
+                for record in records {
+                    crate::cli_run::declaration_index::index_insert(&mut base_index, record);
+                }
+            }
+            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+        }
+    }
+
+    // THE BASE'S OWN ROSTER, DERIVED FROM THE BASE'S OWN ROW SET. `base_paths` is the authoritative
+    // `ls-tree` listing already read above, so the base row files are in hand and this needs no
+    // further git call. Re-deriving rather than reconstructing is correct BECAUSE the artifact is
+    // generated: there is no base blob to `git show`, and its content is a total function of the
+    // row files the base tree carries.
+    //
+    // THE DISCRIMINATION THIS PRESERVES, stated because widening it would be the failure: a module
+    // that was ALREADY spelling a dangling name still gets `authored_here` false and still refuses
+    // as NewPoolCoincidenceResolution, because the base-derived roster names exactly the base's
+    // rows -- no more. Only a row this change ADDS is absent from it.
+    if let Some(rel) = derived_roster_rel.as_deref() {
+        let body = base_derived_roster_body(&base_paths, rel);
+        match base_records(rel, &body) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
