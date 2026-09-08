@@ -1,6 +1,7 @@
 module extdeps.colo.summit
 
 import std.types { NonEmptyStr }
+import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityMarketedAirOnly, RetailGrainStanding, SingleCabinetOffered }
 
@@ -55,7 +56,7 @@ data summit_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // cabinet is orderable at 1 Enterprise Avenue N specifically is a quote question. And 12 kW is the
 // PRODUCT figure, not a hall maximum; a request for more is a different conversation.
 data summit_high_density_cabinet: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled_kw: 12,
+  air_cooled: PublishedRealPower { power: watt(count: 12000) },
   claim_wording: "High-Density Cabinets: 12 kW of 2x 208V/50A A+B redundant power in a 42U configuration",
   citation: "summithq.com services/data-center-services/colocation page, read 2026-09-08. Operator product page, not the Secaucus facility page - summithq.com's Secaucus page, read the same day, states no per-cabinet figure.",
 }
