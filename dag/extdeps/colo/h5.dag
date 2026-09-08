@@ -5,7 +5,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
+<<<<<<< HEAD
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
+=======
+  RetailGrainStanding, SingleCabinetOffered,
+>>>>>>> 995b3d9154 (Add H5 325 Hudson and DataBank Orangeburg into the same operator modules.)
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -54,7 +58,28 @@ data h5_philadelphia: ColoFacilityRow = ColoFacilityRow {
   facility_note: "H5 floor in the multi-operator 1500 Spring Garden building (the former vXchnge footprint, roughly 72,000 square feet); 365 Data Centers also operates in the same building under its own module.",
 }
 
-data h5_facilities: List<ColoFacilityRow> = [h5_secaucus, h5_philadelphia]
+data h5_nyc_325_hudson: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "H5 Data Centers",
+  facility_label: "H5 New York (325 Hudson)",
+  address: AddressListed {
+    street: "325 Hudson Street, New York, NY 10013",
+    citation: "h5datacenters.com New York colocation page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "Operator page read 2026-09-08: 240,000 square feet a few blocks from 60 Hudson; 40-plus on-net networks; DE-CIX New York and NetIX; 100 percent uptime claimed since 2012. 365 Data Centers lists a 9th-floor-west POP in the same building under its own module. Building square footage is not cabinet density.",
+}
+
+data h5_nyc_325_hudson_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The New York colocation page read 2026-09-08 names A/B UPS, N+1 generators and in-row cooling, not a marketed kilowatts-per-cabinet figure. Do not read 240,000 square feet as density.",
+}
+
+data h5_nyc_325_hudson_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "private suites, secure cages and individual cabinets",
+  citation: "h5datacenters.com New York colocation page, read 2026-09-08",
+}
+
+data h5_facilities: List<ColoFacilityRow> = [h5_secaucus, h5_philadelphia, h5_nyc_325_hudson]
 
 data h5_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "quote request via h5datacenters.com",
