@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_service
 
 use self::CalleeEdge::*;
+use self::CalleeEdgeDedup::*;
 use self::EffectIncompleteness::*;
 use self::ServiceEffectAnalysis::*;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -216,22 +217,43 @@ pub fn callee_edge_of_semantics(cs: Option<Rc<CallSemantics>>, spelling: String)
     }
 }
 
-pub fn callee_edge_dedup_key(edge: Rc<CalleeEdge>) -> String {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CalleeEdgeDedup {
+    Tracked { key: String },
+    NotTracked,
+}
+impl CalleeEdgeDedup {
+    pub fn key(&self) -> String {
+        match self {
+            CalleeEdgeDedup::Tracked { key: __val, .. } => __val.clone(),
+            CalleeEdgeDedup::NotTracked => panic!("no key on unit variant"),
+        }
+    }
+}
+
+pub fn callee_edge_dedup_key(edge: Rc<CalleeEdge>) -> Rc<CalleeEdgeDedup> {
     match (*edge.clone()).clone() {
         CalleeEdge::ResolvedCallee {
             identity: identity, ..
-        } => v1_rt::concat(
-            "d:".to_string(),
-            crate::v1_std_core::callable_identity(identity.clone()),
-        ),
+        } => Rc::new(CalleeEdgeDedup::Tracked {
+            key: v1_rt::concat(
+                "d:".to_string(),
+                crate::v1_std_core::callable_identity(identity.clone()),
+            ),
+        }),
         CalleeEdge::UnresolvedCallee {
             spelling: spelling, ..
-        } => v1_rt::concat("u:".to_string(), spelling.clone()),
-        CalleeEdge::FunctionValueCallee => "v:".to_string(),
-        CalleeEdge::LocalBindingCallee { name: n, .. } => {
-            v1_rt::concat("l:".to_string(), n.clone())
-        }
-        CalleeEdge::PrimitiveCallee => "".to_string(),
+        } => Rc::new(CalleeEdgeDedup::Tracked {
+            key: v1_rt::concat("u:".to_string(), spelling.clone()),
+        }),
+        CalleeEdge::FunctionValueCallee => Rc::new(CalleeEdgeDedup::Tracked {
+            key: "v:".to_string(),
+        }),
+        CalleeEdge::LocalBindingCallee { name: n, .. } => Rc::new(CalleeEdgeDedup::Tracked {
+            key: v1_rt::concat("l:".to_string(), n.clone()),
+        }),
+        CalleeEdge::PrimitiveCallee => Rc::new(CalleeEdgeDedup::NotTracked),
     }
 }
 
@@ -249,17 +271,20 @@ pub fn collect_callee_edges_into(
                     cs.clone(),
                     crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone()),
                 );
-                let key = callee_edge_dedup_key(edge.clone());
-                if (key.clone() == "".to_string()) {
-                    acc.clone()
-                } else {
-                    if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), key.clone()) {
-                        acc.clone()
-                    } else {
-                        Rc::new(CalleeAccum {
-                            seen: v1_rt::rc_map_insert(acc.seen.clone(), key.clone(), true),
-                            result: v1_rt::rc_list_push(acc.result.clone(), edge.clone()),
-                        })
+                match (*callee_edge_dedup_key(edge.clone())).clone() {
+                    CalleeEdgeDedup::NotTracked => acc.clone(),
+                    CalleeEdgeDedup::Tracked { key: key, .. } => {
+                        if crate::v1_compiler_infer_types::emit_map_has(
+                            acc.seen.clone(),
+                            key.clone(),
+                        ) {
+                            acc.clone()
+                        } else {
+                            Rc::new(CalleeAccum {
+                                seen: v1_rt::rc_map_insert(acc.seen.clone(), key.clone(), true),
+                                result: v1_rt::rc_list_push(acc.result.clone(), edge.clone()),
+                            })
+                        }
                     }
                 }
             }

@@ -179,21 +179,36 @@ fn callee_edge_of_semantics(cs: CallSemantics?, spelling: String) -> CalleeEdge 
 // unresolved authored spelling can coincide textually, and folding them together would let an
 // unresolved edge be silently absorbed by a resolved one and disappear from the refusal set.
 //
-// AN EMPTY KEY DROPS THE EDGE AT COLLECTION, so it may be used only where the absence is an
-// ANSWER. A primitive is such a case: it has no `ItemInfo` and carries no declared effects, so
-// contributing nothing is the correct summary. A FUNCTION-VALUE CALL IS NOT such a case -- the
-// callee is a value chosen at runtime and its effects are unknown, not empty. It used to share
-// the primitive's empty key, so every higher-order call site vanished before any reader could
-// see it, and the caller published a summary that silently omitted whatever the value does. It
-// now carries a key, deduplicated per item because ONE unresolvable call site is already enough
-// for the caller to refuse and the identities of the rest add nothing to that decision.
-fn callee_edge_dedup_key(edge: CalleeEdge) -> String {
+// NOT-TRACKED IS AN ARM, NOT AN EMPTY STRING, and it is an arm because this same change spends a
+// coproduct removing exactly this shape elsewhere. The key used to be a bare String where ""
+// meant "drop this edge", so the decision not to track lived in a value the type permits any
+// producer to mint by accident -- and this diff's own `LeafOwner` argues at length that an
+// illegal state encoded as an impossible string, with every reader obliged to remember the test,
+// is what `__DUPLICATE_ITEM_IDENTITY__` was retired for. Leaving one of the two standing while
+// arguing against the other is the inconsistency review 62256 found. A future arm added to
+// `CalleeEdge` that forgets to decide is now a non-exhaustive match rather than an edge silently
+// missing from the effect graph.
+//
+// AND THE DISTINCTION THE ARM CARRIES IS REAL, which is why it is `NotTracked` rather than a
+// missing key. A primitive has no `ItemInfo` and carries no declared effects, so contributing
+// nothing IS its correct summary -- an absence that is an answer. A FUNCTION-VALUE call is the
+// opposite: its callee is chosen at runtime and its effects are unknown, not empty. Those two
+// shared the empty key once, and every higher-order call site in the corpus vanished before any
+// reader could see it while the caller published a summary that silently omitted whatever the
+// value does. Restoring the distinction is what turned that measurement from zero to forty-five.
+// The function value is now `Tracked` and deduplicated per item, because ONE unresolvable call
+// site is already enough for the caller to refuse and the identities of the rest add nothing.
+type CalleeEdgeDedup
+  = Tracked { key: String }
+  | NotTracked
+
+fn callee_edge_dedup_key(edge: CalleeEdge) -> CalleeEdgeDedup {
   match edge {
-    ResolvedCallee { identity: identity } => concat("d:", callable_identity(id: identity))
-    UnresolvedCallee { spelling: spelling } => concat("u:", spelling)
-    FunctionValueCallee => "v:"
-    LocalBindingCallee { name: n } => concat("l:", n)
-    PrimitiveCallee => ""
+    ResolvedCallee { identity: identity } => Tracked { key: concat("d:", callable_identity(id: identity)) }
+    UnresolvedCallee { spelling: spelling } => Tracked { key: concat("u:", spelling) }
+    FunctionValueCallee => Tracked { key: "v:" }
+    LocalBindingCallee { name: n } => Tracked { key: concat("l:", n) }
+    PrimitiveCallee => NotTracked
   }
 }
 
@@ -201,10 +216,12 @@ fn collect_callee_edges_into(texpr: Node, acc: CalleeAccum, source_indices: Map<
   let this_acc = match texpr.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let edge = callee_edge_of_semantics(cs: cs, spelling: expr_call_func_at(texpr: texpr, source_indices: source_indices))
-      let key = callee_edge_dedup_key(edge: edge)
-      if key == "" { acc }
-      else if emit_map_has(m: acc.seen, key: key) { acc }
-      else { CalleeAccum { seen: map_insert(acc.seen, key, true), result: list_push(acc.result, edge) } }
+      match callee_edge_dedup_key(edge: edge) {
+        NotTracked => acc
+        Tracked { key: key } =>
+          if emit_map_has(m: acc.seen, key: key) { acc }
+          else { CalleeAccum { seen: map_insert(acc.seen, key, true), result: list_push(acc.result, edge) } }
+      }
     _ => acc
   }
   let result = texpr.children |> fold(init: this_acc, f: (a, child) =>
