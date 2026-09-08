@@ -9,7 +9,7 @@ import std.measure {
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
   AttentionLayerCount, attention_layer_count,
 }
-import extdeps.vllm.server { vllm_source_revision_read }
+import extdeps.vllm.server { vllm_source_revision, vllm_source_revision_read }
 import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency }
 import extdeps.vllm.kv_cache {
   VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused,
@@ -203,6 +203,31 @@ test fn a_concurrency_figure_bound_to_the_pool_line_is_refused() -> Bool {
         ),
       ) {
         ReportedCapacityRefused { cause: c } => string_contains(s: c as String, pattern: "MaximumConcurrency")
+        ReportedCapacityAdmitted { capacity: _ } => false
+      }
+  }
+}
+
+// A CONCURRENCY READING FROM ANOTHER BUILD IS NOT THE POOL LINE'S REVISION. Stamping the pool's
+// revision onto the capacity discarded the reading's own observation, so layout_reproduces_reported
+// gated on a revision that never described the concurrency line.
+test fn a_concurrency_reading_from_another_revision_is_refused() -> Bool {
+  match w_admitted_pool() {
+    Absent => false
+    Present { value: p } =>
+      match vllm_reported_capacity(
+        pool: p,
+        max_concurrency: concurrent_request_hundredths(count: 1122),
+        reading: vllm_startup_reading(
+          line: MaximumConcurrency,
+          captured_text: "Maximum concurrency for 1,048,576 tokens per request: 11.22x" as NonEmptyStr,
+          observed_at_revision: vllm_source_revision(
+            repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+            full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+          ),
+        ),
+      ) {
+        ReportedCapacityRefused { cause: c } => string_contains(s: c as String, pattern: "do not describe one engine")
         ReportedCapacityAdmitted { capacity: _ } => false
       }
   }
