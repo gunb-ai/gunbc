@@ -26571,12 +26571,11 @@ new file mode 100644
         for (rel, sinks) in &rows {
             eprintln!("  {rel}  ->  {sinks:?}");
         }
-        for rel in ["dag/test/claim/citation_cause_subject_disjointness_witness_test.dag"] {
-            assert!(
-                rows.iter().any(|(p, _)| p == rel),
-                "{rel} dropped out of the detector-hit set"
-            );
-        }
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        assert!(
+            rows.iter().any(|(p, _)| p == rel),
+            "{rel} dropped out of the detector-hit set"
+        );
     }
 
     #[test]
