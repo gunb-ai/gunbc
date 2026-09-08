@@ -141,6 +141,11 @@ pub enum JoinFindingKind {
     RosterDeclarationAbsent,
     /// A declared row of an enrolled type that its roster does not name.
     DeclaredNotRostered,
+    /// A row `.dag` file on disk that the roster does not name. Distinct from
+    /// `DeclaredNotRostered`: that arm joins declarations, this one joins files.
+    RowFileNotRostered,
+    /// A roster member that has no sibling `.dag` file.
+    RosterMemberNotARowFile,
     /// A roster member spelling that resolves to more than one module.
     RosterMemberAmbiguous,
     /// A roster member spelling imported from a module the index does not carry.
@@ -401,6 +406,103 @@ fn unaccounted_sources(accounted: &[(String, String)]) -> Vec<JoinFinding> {
     out
 }
 
+/// File stems under `dag/gunbc/recurring_failure_mode/` versus roster member names.
+/// Independent of `derived_row_roster::row_stems`: a skip in the writer must still refuse here.
+fn join_recurring_failure_mode_files_to_roster(
+    rostered_names: &BTreeSet<String>,
+) -> Vec<JoinFinding> {
+    let dir = crate::cli_run::workspace_root().join("dag/gunbc/recurring_failure_mode");
+    join_row_files_to_roster_members(&dir, rostered_names)
+}
+
+fn join_row_files_to_roster_members(
+    dir: &std::path::Path,
+    rostered_names: &BTreeSet<String>,
+) -> Vec<JoinFinding> {
+    let mut findings = Vec::new();
+    let mut file_stems: BTreeSet<String> = BTreeSet::new();
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            return vec![JoinFinding {
+                kind: JoinFindingKind::RowFileNotRostered,
+                row_type: "RecurringFailureModeRows".to_string(),
+                subject: dir.display().to_string(),
+                detail: format!(
+                    "the row directory could not be read ({e}), so roster membership cannot be \
+                     joined to files and a short roster would stay silent"
+                ),
+            }];
+        }
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                findings.push(JoinFinding {
+                    kind: JoinFindingKind::RowFileNotRostered,
+                    row_type: "RecurringFailureModeRows".to_string(),
+                    subject: dir.display().to_string(),
+                    detail: format!(
+                        "a directory entry could not be read ({e}); refusing rather than \
+                         joining a shortened file set"
+                    ),
+                });
+                continue;
+            }
+        };
+        let os_name = entry.file_name();
+        let Some(name) = os_name.to_str() else {
+            findings.push(JoinFinding {
+                kind: JoinFindingKind::RowFileNotRostered,
+                row_type: "RecurringFailureModeRows".to_string(),
+                subject: dir.join(&os_name).display().to_string(),
+                detail: "a row file name is not valid UTF-8, so it cannot be a roster member \
+                         and dropping it would silently shorten membership"
+                    .to_string(),
+            });
+            continue;
+        };
+        if name == "roster.dag" || !name.ends_with(".dag") {
+            continue;
+        }
+        let stem = name.trim_end_matches(".dag");
+        if stem.is_empty() {
+            findings.push(JoinFinding {
+                kind: JoinFindingKind::RowFileNotRostered,
+                row_type: "RecurringFailureModeRows".to_string(),
+                subject: name.to_string(),
+                detail: "a `.dag` file has an empty stem; refusing rather than omitting it"
+                    .to_string(),
+            });
+            continue;
+        }
+        file_stems.insert(stem.to_string());
+    }
+    for stem in file_stems.difference(rostered_names) {
+        findings.push(JoinFinding {
+            kind: JoinFindingKind::RowFileNotRostered,
+            row_type: "RecurringFailureModeRows".to_string(),
+            subject: format!("dag/gunbc/recurring_failure_mode/{stem}.dag"),
+            detail: "this row file exists on disk and is not named by \
+                     `gunbc.recurring_failure_mode.roster.recurring_failure_mode_roster`"
+                .to_string(),
+        });
+    }
+    for name in rostered_names.difference(&file_stems) {
+        findings.push(JoinFinding {
+            kind: JoinFindingKind::RosterMemberNotARowFile,
+            row_type: "RecurringFailureModeRows".to_string(),
+            subject: name.clone(),
+            detail: format!(
+                "`{name}` is rostered and `dag/gunbc/recurring_failure_mode/{name}.dag` is not \
+                 a file"
+            ),
+        });
+    }
+    findings
+}
+
 /// Run the join. `Err` is reserved for the declared population being unobtainable at all — a
 /// state in which no verdict exists, as distinct from a verdict of "unrostered rows found".
 pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, String> {
@@ -482,6 +584,15 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
                 identities
             }
         };
+
+        if enrolled.variant == "RecurringFailureModeRows" {
+            let names: BTreeSet<String> = rostered
+                .iter()
+                .filter(|(module, name)| module == &format!("gunbc.recurring_failure_mode.{name}"))
+                .map(|(_, name)| name.clone())
+                .collect();
+            findings.extend(join_recurring_failure_mode_files_to_roster(&names));
+        }
 
         let mut checked = 0usize;
         for row in declared.iter() {
@@ -569,4 +680,64 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
         }
     }
     Ok(report)
+}
+
+#[cfg(test)]
+mod file_roster_join_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+    use std::fs;
+
+    fn scratch_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-rfm-file-join-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn short_roster_refuses_the_file_that_exists() {
+        let dir = scratch_dir();
+        fs::write(dir.join("present.dag"), "module x\n").unwrap();
+        let findings = join_row_files_to_roster_members(&dir, &BTreeSet::new());
+        assert!(
+            findings.iter().any(|f| {
+                f.kind == JoinFindingKind::RowFileNotRostered && f.subject.contains("present")
+            }),
+            "{findings:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn roster_member_without_a_file_refuses() {
+        let dir = scratch_dir();
+        let mut names = BTreeSet::new();
+        names.insert("ghost".to_string());
+        let findings = join_row_files_to_roster_members(&dir, &names);
+        assert!(
+            findings.iter().any(|f| {
+                f.kind == JoinFindingKind::RosterMemberNotARowFile && f.subject == "ghost"
+            }),
+            "{findings:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn equal_file_and_roster_sets_are_silent() {
+        let dir = scratch_dir();
+        fs::write(dir.join("present.dag"), "module x\n").unwrap();
+        let mut names = BTreeSet::new();
+        names.insert("present".to_string());
+        let findings = join_row_files_to_roster_members(&dir, &names);
+        assert!(findings.is_empty(), "{findings:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
