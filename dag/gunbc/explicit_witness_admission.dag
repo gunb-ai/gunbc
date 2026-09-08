@@ -787,7 +787,7 @@ fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
 // explicit_witness_admission_cadence_executes. The execution question itself is delegated to
 // std.witness_admission witness_cadence_has_scheduled_route (DESIGN §3 single authority), so all
 // five falsifier-family cadences whose workflow was deleted at #8283 are refused correctly
-// — no hand-edit can drift. Twenty-four ROW IDENTITIES on three cadences
+// — no hand-edit can drift. Twenty-two ROW IDENTITIES on three cadences
 // (QuarantineProbeExpectRed, FalsifierSubstrateLongLane, BinWitnessWet) are rostered in
 // transitional_admission_exceptions below — the exception is bounded by identity, not cadence
 // (DESIGN §4b(3)). Removing an identity requires its row to migrate to a scheduled-route cadence.
@@ -809,12 +809,18 @@ fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) 
 // BOUNDED TRANSITIONAL EXCEPTIONS for admission rows on cadences whose scheduled route was
 // deleted at #8283. Each row identity is named explicitly — a fourth row on those cadences is
 // refused (DESIGN §4b(3): the exception is bounded by identity, not cadence).
-// Rostered in docs/design-rung-drops.md under gunbc.rung_drop.transitional_admission_exception.
+// 22 identities rostered here (reduced from 24: self_host_body_producer and
+// self_host_use_site_verdict are covered by gunbc.rung_drop.deleted_cadence_reference_drop)
+// See docs/design-rung-drops.md gunbc.rung_drop.transitional_admission_exception.
 // TRIGGER: each named identity carries a cadence with a live scheduled route.
 // Remove an identity from this list when its row migrates to a scheduled-route cadence.
+// QuarantineProbeExpectRed — 18 rows from known_red_probe.
+// self_host_body_producer and self_host_use_site_verdict are NOT listed —
+// already rostered in gunbc.rung_drop.deleted_cadence_reference_drop.
+// BinWitnessWet — 3 rows from source_root_ingest_gate_admitted_witness.
+// FalsifierSubstrateLongLane — 1 direct row.
 
 data transitional_admission_exceptions: List<String> = [
-  // QuarantineProbeExpectRed — 20 rows from known_red_probe
   "src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag::green_control_sanctioned_reader_body_not_flagged",
   "dag/test/claim/method_arg_declared_contract_witness_test.dag::w_method_arg_infers_against_declared_contract_not_element_type_test",
   "src/v2/test/claim/manual/english_emit_add_test.dag::english_emit_add_ingest_round_trip_holds",
@@ -826,20 +832,16 @@ data transitional_admission_exceptions: List<String> = [
   "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag::witness_namespace_reference_derived_closure_closing_contract_holds",
   "src/v2/test/claim/long/direct_rust_door_production_group_test.dag::direct_rust_door_production_group_closing_expectation_holds",
   "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag::self_host_parse_engine_hooks_behavioral_receipt_holds",
-  "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag::self_host_use_site_verdict_behavioral_receipt_holds",
   "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag::self_host_discovery_enumeration_behavioral_receipt_holds",
   "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag::self_host_target_carriers_behavioral_receipt_holds",
-  "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds",
   "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag::self_host_03_normalize_behavioral_receipt_holds",
   "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
   "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_live_structural_fixture_mint_site_discovered_reds",
   "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
   "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
-  // BinWitnessWet — 3 rows from source_root_ingest_gate_admitted_witness
   "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds",
   "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_ingest_overflow_refuses_never_empty_holds",
   "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag::compiler_closure_ingest_boundary_exact_cap_transport_holds",
-  // FalsifierSubstrateLongLane — 1 direct row
   "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag::infer_transform_add_vertical_witness_holds",
 ]
 
