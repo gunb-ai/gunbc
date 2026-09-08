@@ -14,7 +14,7 @@ import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_re
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 import gunbc.artifact_acquisition {
   AcquisitionSubject, AcquisitionSource, AcquisitionHandler,
-  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified,
   AcquisitionProbeFailed,
   AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptRejected, AttemptUnreachable,
   AcquisitionOutcome, AcquisitionFetched, AcquisitionRefused, VerifyMechanismFailed,
@@ -202,11 +202,22 @@ fn translate_one_mounted_path(word: String, host_path: NonEmptyStr, container_pa
   if word == from { to } else { word }
 }
 
+// THE WRAPPER PRESERVES THE COMMAND'S OWN EXIT STATUS, AND AN EARLIER SHAPE DESTROYED IT. It read
+// `cmd && echo OK || echo FAILED`, and BOTH branches exit zero because `echo` succeeds -- so the
+// wrapper reported success for a failed command. Any caller reading the outer exit code therefore saw
+// zero no matter what happened, which is how the post-transfer path came to report AcquisitionFetched
+// after a failed verification: A FALSE SUCCESS, categorically worse than the false refusals this
+// module has been correcting, because nothing downstream can detect it.
+//
+// THE SENTINEL AND THE EXIT STATUS NOW AGREE BY CONSTRUCTION. The command runs, its status is
+// captured before anything else can overwrite it, the matching sentinel is emitted, and the wrapper
+// exits with that same status. A reader may use either and cannot get a different answer from them.
 fn sentinel_command_line(argv: List<String>) -> String {
   join([
     shell_command_line(argv: argv),
-    " && echo ", verify_ok_sentinel as String,
-    " || echo ", verify_failed_sentinel as String,
+    "; rc=$?; if [ $rc -eq 0 ]; then echo ", verify_ok_sentinel as String,
+    "; else echo ", verify_failed_sentinel as String,
+    "; fi; exit $rc",
   ], "")
 }
 
@@ -264,6 +275,24 @@ fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, su
 //
 // UNRECOGNISED OUTPUT FALLS THROUGH TO MISMATCH, which is the conservative direction: a real mismatch
 // misreported as an instrument failure would leave bad bytes installed and called present.
+// THIS PATH HAS NO DIGEST ORACLE, SO IT MAKES NO DIGEST CLAIM. `hf cache verify` exits non-zero for a
+// checksum mismatch, for missing files, for an auth failure and for a bad argument alike, and this
+// repository has observed only its SUCCESS output -- never a failure it could classify. An earlier
+// revision answered AcquisitionDigestMismatch here, which asserts the bytes are wrong: a fact nothing
+// established, and one that sent an operator after a tree three separate times tonight while a live
+// engine served it correctly. Each of those three refusals had a different cause and none was the
+// bytes: an unprivileged docker socket, a CLI path taken from the wrong image, and a host path handed
+// across a mount boundary.
+//
+// PROBEFAILED SAYS WHAT IS ACTUALLY KNOWN -- verification did not pass, and why is undetermined. The
+// distinction is load-bearing rather than cautious, because the two answers have OPPOSITE remedies:
+// a digest mismatch means discard and re-fetch, an undetermined failure means fix the instrument and
+// ask again, and re-fetching eighty gigabytes on the strength of a broken verifier is the expensive
+// direction. The contrast is visible one module away: the install-media path DOES compare an actual
+// SHA256 against a declared one, so its Sha256Mismatch genuinely earns AcquisitionDigestMismatch.
+//
+// NEXT-RUNG TRIGGER: a proven, cited mapping from this verifier's exit statuses or output to the
+// distinction, at which point this arm may narrow to the digest claim it currently declines to make.
 fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionObservation {
   match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
     RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
@@ -272,7 +301,8 @@ fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<
         InstrumentDidNotRun =>
           AcquisitionProbeFailed { reason: join(["the verification instrument never executed, so nothing was learned about the snapshot: ", err], "") as NonEmptyStr }
         InstrumentVerified => AcquisitionVerified
-        InstrumentRejectedTheSubject => AcquisitionDigestMismatch
+        InstrumentRejectedTheSubject =>
+          AcquisitionProbeFailed { reason: join(["verification refused the snapshot and the reason is undetermined -- this is NOT established as a digest mismatch: ", err], "") as NonEmptyStr }
       }
   }
 }
@@ -482,20 +512,30 @@ fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<Stri
           " polls and has not been killed; re-run to reattach to it. This is not a failed transfer",
         ], "") as NonEmptyStr,
       } } }
-    SupervisedExitFailed { status: _ } => AttemptUnreachable
+    SupervisedExitFailed { status: st } =>
+      AttemptRejected { detail: join(["the transfer unit exited with status ", st, "; the host and command were reached, so this is not a reachability failure"], "") as NonEmptyStr }
     SupervisedExitClean => {
         match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
           RemoteUnreachable { cause: c } =>
             AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
               identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
             } } }
-          RemoteRan { exit_code: ok, stdout: _, stderr: _ } =>
-            if ok == 0 {
-              AttemptTerminal { outcome: AcquisitionFetched {
-                identity: subject.identity, install_path: subject.install_path, source: origin,
-              } }
-            } else {
-              AttemptFailedKey
+          RemoteRan { exit_code: _, stdout: out, stderr: err } =>
+            match read_instrument(stdout: out) {
+              InstrumentDidNotRun =>
+                AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+                  identity: subject.identity, source: origin.identity,
+                  reason: join(["the verification instrument never executed after the transfer, so the transferred bytes were never checked: ", err], "") as NonEmptyStr,
+                } } }
+              InstrumentVerified =>
+                AttemptTerminal { outcome: AcquisitionFetched {
+                  identity: subject.identity, install_path: subject.install_path, source: origin,
+                } }
+              InstrumentRejectedTheSubject =>
+                AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+                  identity: subject.identity, source: origin.identity,
+                  reason: join(["the transfer completed and verification then refused it; this repository cannot yet distinguish a digest mismatch from an upstream, auth or argument failure in the verifier, so it does NOT claim the bytes are wrong: ", err], "") as NonEmptyStr,
+                } } }
             }
         }
       }
