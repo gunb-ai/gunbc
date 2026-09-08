@@ -135,6 +135,7 @@ fn is_cargo_target_output_dir(parent: &std::path::Path, child: &std::path::Path)
 /// '*.dag'` returns 0 in this worktree today. The hazard is evidenced by the deleted code's own
 /// comment naming its case: a corpus copy under `target/func_env_semantic_baseline_corpus/dag/**`.
 fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+    cli_run::derived_row_roster::ensure_if_row_dir_or_panic(dir);
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
         .map(|e| e.unwrap_or_else(|e| panic!("failed to read dir entry in {:?}: {}", dir, e)))

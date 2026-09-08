@@ -1,0 +1,49 @@
+module extdeps.tools.gnu_time
+
+import std.types { NonEmptyStr, String, List, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.gnu.org/software/time/",
+  }
+}
+
+// GNU time IS NOT THE SHELL KEYWORD `time`, and the distinction is the reason this names an absolute
+// path rather than a program name. Every interactive shell resolves a bare `time` to its own builtin,
+// which reports elapsed/user/sys and has NO maximum-resident-set format at all. The binary that
+// carries %M lives at /usr/bin/time, and naming it by path is what stops a caller from silently
+// measuring nothing.
+data gnu_time_binary_path: NonEmptyStr = "/usr/bin/time"
+
+// %M IS MAXIMUM RESIDENT SET SIZE IN KILOBYTES, and it is the process's own high-water mark rather
+// than a sample: the kernel maintains it, so it cannot be missed by observing at the wrong moment.
+// That property is why this instrument was chosen over sampling /proc/<pid>/status VmHWM, which
+// requires the process to still exist and therefore under-reports a subject that exits on its own.
+//
+// UPSTREAM DOCUMENTS THE UNIT AS KILOBYTES and this module does not convert. A converting reader
+// here would be a second authority for what %M means; the conversion belongs to the consumer that
+// knows what it is measuring.
+data gnu_time_max_rss_format: String = "%M"
+
+// THE MEASUREMENT GOES TO ITS OWN FILE, NEVER TO STDERR, because the subject's stderr is the same
+// channel. Firecracker writes its own diagnostics there, so a reader parsing a shared stream would
+// have to guess which trailing line is the measurement -- and would silently read a subject's error
+// text as a number the first time the subject failed. -o gives the measurement a channel nothing
+// else writes to.
+fn gnu_time_max_rss_command(output_path: String, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: gnu_time_binary_path,
+    arguments: concat(
+      [
+        "-f", gnu_time_max_rss_format,
+        "-o", output_path,
+        command.program as String,
+      ],
+      command.arguments,
+    ),
+  )
+}
