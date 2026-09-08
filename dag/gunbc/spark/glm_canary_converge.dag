@@ -112,8 +112,8 @@ data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
     basis: "operator experimental bound for first boot, 2026-09-08: nothing derives it. The engine's reported 9.71x concurrency at 262,144 tokens is KV capacity for full-window requests, NOT a safe scheduler population, and is deliberately not used as this figure's basis" as NonEmptyStr,
   },
   max_num_batched_tokens: ExplicitBatchedTokenLimit {
-    tokens: token_count(count: 2048),
-    basis: "operator ruling 2026-09-08: spelled explicitly so an ambient engine default becomes an authored choice. Operationally equal to the prior behaviour; the point is attribution, not effect" as NonEmptyStr,
+    tokens: token_count(count: 7168),
+    basis: "the value the running canary was launched with and has served on for sixteen hours, read back from the live engine 2026-09-08: non-default args reports max_num_batched_tokens 7168 and the compiler specialised compile_ranges_endpoints [7168] for it. This row carried 2048 and asserted it was operationally equal to the prior behaviour; the live engine falsified that. The correction is to the MEASURED value rather than to the claim, because a model that disagrees with the running engine turns the next convergence into a twelve-minute restart of a healthy server -- the number was never the point, agreeing with reality is" as NonEmptyStr,
   },
   speculation: SpeculationDisabled {
     basis: "first boot removes a second execution variable: the goal is model/runtime/harness compatibility, not headline throughput. The runtime registers Glm5NextMTPModel, so MTP speculation is available once the base arm is established" as NonEmptyStr,

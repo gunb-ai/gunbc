@@ -1,6 +1,7 @@
 module extdeps.zhipu.glm_5_3_flash
 
 import std.types { NonEmptyStr, String, Bool, List }
+import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -112,11 +113,22 @@ data glm_5_3_flash_chat_reasoning_field: NonEmptyStr = "reasoning_content" as No
 // WHAT THE vLLM RECIPE PRESCRIBES.
 //
 // These are upstream's own serving prescriptions for this model, cited to recipes.vllm.ai, and they
-// are facts about the model's shape rather than tuning this repository chose. The KV dtype is the
-// load-bearing one: `fp8` is the ordinary quantised cache, and it is NOT `fp8_ds_mla`, which is the
-// layout of DeepSeek's Multi-head Latent Attention. GLM-5.3-Flash's attention is a hybrid of sparse
-// and linear layers, not MLA, so carrying the DeepSeek layout across would not be a slower setting
-// but a wrong one.
+// are facts about the model's shape rather than tuning this repository chose.
+//
+// THE KV DTYPE IS A WIRE VALUE AND NOT A STORAGE FORMAT, AND AN EARLIER REVISION HERE CONFUSED THE
+// TWO IN THE MOST INSTRUCTIVE POSSIBLE DIRECTION. It reasoned FROM this flag TO the architecture:
+// `fp8` is not `fp8_ds_mla`, `fp8_ds_mla` is the Multi-head Latent Attention layout, therefore this
+// model is not MLA. The flag was right and the inference was backwards. Measured on the running
+// canary 2026-09-08, the engine is launched with `--kv-cache-dtype fp8` and then reports
+// `Using fp8_ds_mla KV cache format for FLASHINFER_MLA_SPARSE_SM120 backend` -- it DERIVES the MLA
+// storage format from the architecture it found in the checkpoint, and the wire value never named it.
+//
+// SO THE VALUE BELOW IS CORRECT AND ITS OLD JUSTIFICATION WAS NOT, which is the more dangerous
+// failure of the two: a wrong row is caught the first time it is used, while a right row resting on
+// a wrong reason silently licenses every further conclusion drawn from that reason -- as it did one
+// declaration further down, where it was read off as a claim about the attention mechanism itself.
+// The two facts are separated here so no future reader can travel between them again: this is what
+// is PASSED, and what the engine SELECTS is a realization fact recorded where the runtime is.
 data glm_5_3_flash_vllm_kv_cache_dtype_wire: NonEmptyStr = "fp8" as NonEmptyStr
 data glm_5_3_flash_vllm_tool_call_parser: NonEmptyStr = "glm47" as NonEmptyStr
 // THE RECIPE NAMES A REASONING PARSER, AND WHETHER A GIVEN ENGINE BUILD HAS IT IS A DIFFERENT FACT.
@@ -126,7 +138,40 @@ data glm_5_3_flash_vllm_tool_call_parser: NonEmptyStr = "glm47" as NonEmptyStr
 // what a completion looks like therefore asks the SERVING UNIT
 // (gunbc.harness.harness_reasoning_wire harness_unit_server_parses_reasoning), never this row.
 data glm_5_3_flash_vllm_reasoning_parser: NonEmptyStr = "glm45" as NonEmptyStr
-data glm_5_3_flash_attention_is_multi_head_latent: Bool = false
+// THE ATTENTION ARCHITECTURE, CORRECTED AND DECOMPOSED. This stood as
+// `glm_5_3_flash_attention_is_multi_head_latent: Bool = false`, which was false in both senses: the
+// value was wrong, and a Bool could not have carried the truth even set the other way.
+//
+// THE MEASUREMENT THAT SETTLED IT, from the checkpoint's own config.json -- an upstream artifact, so
+// these are upstream's facts and belong in this module rather than beside the deployment that read
+// them. `kv_lora_rank: 512` is the defining latent-compression parameter of Multi-head Latent
+// Attention; there is no reading of that key under which the mechanism is absent. It sits with
+// `qk_nope_head_dim: 256`, `qk_rope_head_dim: 0` and `v_head_dim: 256`, the decoupled-RoPE head
+// layout MLA is built from. The engine independently agrees, selecting FLASHINFER_MLA_SPARSE_SM120
+// and reporting an MLAAttentionSpec.
+//
+// AND IT IS A HYBRID, WHICH IS THE PART THE BOOL COULD NEVER HAVE SAID. The same config declares
+// `linear_attn_config` and a `full_attn_layers` list, and the engine groups the layers as
+// [('MLAAttentionSpec', [0], ...), ('MambaSpec', [2, 3, 4, 5], 'MambaManager', ...)]. MLA is the
+// mechanism on the FULL-ATTENTION layers; the rest are linear-attention layers. A single Bool forces
+// one answer onto a model that has two, so setting the old row to `true` would have replaced a wrong
+// answer with a differently wrong one -- which is why this is decomposed rather than negated.
+//
+// THE SPARSITY IS A SEPARATE AXIS FROM THE LATENCY OF THE MECHANISM, and only the engine's own words
+// establish it: `Sparse MLA impl has no dense-MHA prefill path; using the top-k MQA path only`. That
+// is a property of the realization's kernel, not of the checkpoint, so it is named and not claimed.
+type GlmAttentionMechanism
+  = GlmMultiHeadLatentAttention { kv_lora_rank: Nat, qk_nope_head_dim: Nat, qk_rope_head_dim: Nat, v_head_dim: Nat }
+  | GlmLinearAttention
+
+data glm_5_3_flash_full_attention_mechanism: GlmAttentionMechanism = GlmMultiHeadLatentAttention {
+  kv_lora_rank: 512,
+  qk_nope_head_dim: 256,
+  qk_rope_head_dim: 0,
+  v_head_dim: 256,
+}
+data glm_5_3_flash_non_full_attention_mechanism: GlmAttentionMechanism = GlmLinearAttention
+data glm_5_3_flash_attention_is_hybrid: Bool = true
 
 // THE RECIPE'S OWN OMISSIONS, stated because an absence read as a zero is how a default gets
 // invented. The recipe's serve line carries NO --max-model-len and NO --gpu-memory-utilization; it
