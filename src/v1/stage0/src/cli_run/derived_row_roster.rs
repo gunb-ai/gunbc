@@ -1,13 +1,23 @@
 //! Derived membership for `gunbc.recurring_failure_mode.roster`.
 //!
 //! Row files under `dag/gunbc/recurring_failure_mode/` are the authority. A hand-appended
-//! roster list is a second authoring of the same membership, so two lanes appending conflict
-//! on the list and a forgotten list entry drops a row from every projection that folds it.
-//! This writer folds the directory: every sibling `*.dag` except `roster.dag` is one member,
-//! identity-sorted, so an append is a new file and membership cannot omit a file that exists.
+//! roster list is a second authoring of the same membership.
 //!
-//! Called from every `.dag` directory walk that can reach that folder, before the listing,
-//! so a clone with no committed roster still compiles. The file is gitignored.
+//! THIS IS NOT CALLED FROM EVERY DIRECTORY WALK. It is invoked from the four collect sites
+//! that feed compile and compiler_tests (`collect_dag_files_result`, `collect_dag_files_tolerant`,
+//! `main.rs` `collect_dag_files`, `compiler_tests` `collect_dag_recursive`). A reader that
+//! reaches the folder by any other walk and then IMPORTs `gunbc.recurring_failure_mode.roster`
+//! without this file present does not fold membership to empty: the module is absent from the
+//! index, resolve refuses the import, and `rostered_row_join` reports `RosterModuleAbsent`.
+//! An empty list is a different state — a present `= []` — and only arises if the directory
+//! contains no sibling row files; if rows exist and the list omits them, the join reports
+//! `DeclaredNotRostered`. Neither arm is a silent zero.
+//!
+//! The compiler writes this gitignored file as a realization of a capability the substrate
+//! lacks (directory enumeration sufficient to bind each sibling as a typed value). That
+//! write is a read-path side effect; a failed write refuses the collect rather than proceeding
+//! with a missing module. Dissolution: declaration-value binding over the declared population,
+//! same grounding as `gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall`.
 
 use std::fs;
 use std::io;
@@ -32,8 +42,14 @@ pub fn ensure_derived_recurring_failure_mode_roster(dir: &Path) -> io::Result<()
     let path = dir.join(ROSTER_BASENAME);
     match fs::read(&path) {
         Ok(existing) if existing == body.as_bytes() => Ok(()),
-        _ => fs::write(path, body),
+        _ => write_atomically(&path, body.as_bytes()),
     }
+}
+
+fn write_atomically(path: &Path, body: &[u8]) -> io::Result<()> {
+    let tmp = path.with_extension("dag.deriving");
+    fs::write(&tmp, body)?;
+    fs::rename(&tmp, path)
 }
 
 fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
@@ -84,4 +100,17 @@ fn render_roster(names: &[String]) -> String {
     }
     out.push_str("]\n");
     out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn absent_is_not_an_empty_list_render_of_no_names_is_a_present_empty_literal() {
+        let body = super::render_roster(&[]);
+        assert!(
+            body.contains("module gunbc.recurring_failure_mode.roster"),
+            "absence of members is a present module with an empty list, not a missing module"
+        );
+        assert!(body.contains("= [\n]\n"));
+    }
 }
