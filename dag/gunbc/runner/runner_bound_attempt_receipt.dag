@@ -12,8 +12,7 @@ import gunbc.runner.runner_jit_admission {
 }
 import gunbc.runner.runner_host_image_placeability {
   HostImagePlaceability, host_image_placeability_standing, host_image_placeability_wet_probe_frontier,
-  placeability_question_closed, placeability_answers_the_host_image, PlaceabilityRefused,
-  HostShellAndBootImageAccessRefused,
+  PlaceabilityRefused, HostShellAndBootImageAccessRefused,
 }
 
 // ONE ATTEMPT, OBSERVED FROM BOTH SIDES, JOINED BY ASSIGNMENT RATHER THAN BY A SHARED STRING.
@@ -132,15 +131,7 @@ data harness_refusal_arm_standing: NonEmptyStr = "the ambiguous-reading refusal 
 fn placeability_standing_open_item(outcome: HostImagePlaceability) -> NonEmptyStr {
   match outcome {
     PlaceabilityRefused { cause: HostShellAndBootImageAccessRefused } =>
-      if placeability_question_closed(outcome: outcome) {
-        if placeability_answers_the_host_image(outcome: outcome) {
-          "item 2 standing is the access refusal but closed/answered disagree"
-        } else {
-          "item 2 closed as access-refused; that is not an answer about the host image"
-        }
-      } else {
-        "item 2 standing is the access refusal but closed/answered disagree"
-      }
+      "item 2 closed as access-refused; that is not an answer about the host image"
     _ => "item 2 standing is no longer the typed access refusal"
   }
 }

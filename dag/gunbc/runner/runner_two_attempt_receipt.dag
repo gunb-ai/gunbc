@@ -1,6 +1,11 @@
 module gunbc.runner.runner_two_attempt_receipt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.runner.runner_jit_admission {
+  JitAdmissionAxis, SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis,
+  AttemptBindingAxis, jit_admission_axis_standing, AxisRequired, AxisDeferred, AxisDissolvedInto,
+  AxisDissolvedIntoUpstreamMint, HostEnvelopeNonemptyAndFresh, GitHubMintRequestName,
+}
 
 // TWO GITHUB ACTIONS JOBS RAN IN TWO SEPARATE MICROVMS ON ONE BOOT OF THE PHYSICAL MACHINE.
 //
@@ -126,11 +131,44 @@ data artifact_staging: NonEmptyStr = "guest kernel and rootfs are copied off the
 // THE CREDENTIAL PATH IS UNCHANGED AND IS NOW THE OLDEST OPEN ITEM. Per-attempt delivery is the
 // shape an authenticated envelope needs -- a boot-scoped credential could not be bound to a VM
 // attempt that did not exist when it was minted -- but nothing here signs, binds or authenticates.
-data still_open: List<NonEmptyStr> = [
-  "an authenticated, attempt-bound envelope: signature, unit binding, boot binding, attempt binding, expiry, replay -- all six still unchecked, and the refusal says so in both arms",
-  "actions/checkout and a JavaScript action, deliberately not run while the credential path is unauthenticated",
-  "a toolchain step, whose dependency fetches are a far wider destination set than this canary",
-  "boot_probe_verdict wired to an observed runner version rather than two values compared by a reader",
-  "the harness's ambiguous-reading refusal, written and still unexercised -- this run booted first try",
-  "attempts beyond the second: two proves reuse is possible, not that it is stable",
-]
+// Axis membership is gunbc.runner.runner_jit_admission, not a second roster on this receipt.
+fn still_open_from_axis_standing(axis: JitAdmissionAxis) -> List<NonEmptyStr> {
+  match jit_admission_axis_standing(axis: axis) {
+    AxisRequired { checker: HostEnvelopeNonemptyAndFresh } => match axis {
+      SignatureAxis => ["signature still required on the host envelope"]
+      ExpiryAxis => ["expiry still required on the host envelope"]
+      _ => ["host envelope nonempty-and-fresh still required"]
+    }
+    AxisRequired { checker: GitHubMintRequestName } =>
+      ["attempt binding still required on the mint name"]
+    AxisDeferred { trigger: t } => [t]
+    AxisDissolvedInto { into: _ } => []
+    AxisDissolvedIntoUpstreamMint { conflict_status: _, reason: _ } => []
+  }
+}
+
+data still_open: List<NonEmptyStr> = concat(
+  still_open_from_axis_standing(axis: SignatureAxis),
+  concat(
+    still_open_from_axis_standing(axis: ExpiryAxis),
+    concat(
+      still_open_from_axis_standing(axis: ReplayAxis),
+      concat(
+        still_open_from_axis_standing(axis: UnitBindingAxis),
+        concat(
+          still_open_from_axis_standing(axis: BootBindingAxis),
+          concat(
+            still_open_from_axis_standing(axis: AttemptBindingAxis),
+            [
+              "actions/checkout and a JavaScript action, deliberately not run while the credential path is unauthenticated",
+              "a toolchain step, whose dependency fetches are a far wider destination set than this canary",
+              "boot_probe_verdict wired to an observed runner version rather than two values compared by a reader",
+              "the harness's ambiguous-reading refusal, written and still unexercised -- this run booted first try",
+              "attempts beyond the second: two proves reuse is possible, not that it is stable",
+            ]
+          )
+        )
+      )
+    )
+  )
+)

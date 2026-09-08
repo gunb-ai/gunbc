@@ -48,10 +48,7 @@ type JitRunnerConfigRequest {
 
 // THE BODY IS THIS RECORD. There is no host, boot, signature, expiry, or replay field; a checker
 // that claims to read those axes out of the mint request is inventing an admission surface GitHub
-// does not have. Attempt identity is the name field, projected rather than re-enumerated.
-fn jit_config_request_name(req: JitRunnerConfigRequest) -> JitRunnerName {
-  req.name
-}
+// does not have. Attempt identity is the name field.
 
 // THE CREDENTIAL IS OPAQUE AND CARRIES ITS OWN HANDLING RULE IN ITS TYPE. It is never rendered into
 // an argv, a log line, or a receipt; the only sanctioned destination is bytes on a read-only drive

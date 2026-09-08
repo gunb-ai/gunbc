@@ -14,7 +14,7 @@ import gunbc.runner_microvm_attempt {
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   microvm_attempt, bind_owned_attempt, runner_microvm_attempt_unit_name,
 }
-import extdeps.github.actions_jit_runner { JitRunnerGroupId, JitRunnerLabel, jit_config_request_name }
+import extdeps.github.actions_jit_runner { JitRunnerGroupId, JitRunnerLabel }
 import gunbc.runner.runner_jit_admission {
   jit_admission_axis_standing, AttemptBindingAxis, AxisDeferred,
 }
@@ -995,7 +995,7 @@ test fn witness_jit_mint_authorizes_an_owned_cell_with_the_runner_permission() -
       drive_destination: dest,
     } =>
       path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
-        && (jit_config_request_name(req: req).value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
+        && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
         && string_contains(s: dest, pattern: "/jit.img")
     _ => false
   }
