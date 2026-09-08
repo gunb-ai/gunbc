@@ -39,6 +39,7 @@ mod compiler_tests {
         root: &std::path::Path,
         out: &mut Vec<(String, String)>,
     ) {
+        crate::cli_run::derived_row_roster::ensure_if_row_dir_or_panic(dir);
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
