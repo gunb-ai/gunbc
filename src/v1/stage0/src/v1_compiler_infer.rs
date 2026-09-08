@@ -4641,9 +4641,19 @@ pub fn declared_type_position_label(position: DeclaredTypePosition, subject: Str
     }
 }
 
+pub fn refinement_chain_link_identity(link: Rc<Node>, type_env: Rc<TypeEnv>) -> Option<String> {
+    match crate::v1_compiler_infer_env::lookup_type_for(type_env.clone(), link.clone()) {
+        Some(declaration) => where_refinement_brand_declaration_site(
+            declaration.clone(),
+            type_env.source_indices.clone(),
+        ),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn refinement_chain_link_identities(
     links: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_env: Rc<TypeEnv>,
 ) -> Rc<Vec<String>> {
     {
         let identified = Rc::new({
@@ -4655,9 +4665,9 @@ pub fn refinement_chain_link_identities(
                     for site in Rc::new({
                         let mut __result = Vec::new();
                         for link in links.iter().cloned() {
-                            __result.push(where_refinement_brand_declaration_site(
+                            __result.push(refinement_chain_link_identity(
                                 link.clone(),
-                                source_indices.clone(),
+                                type_env.clone(),
                             ));
                         }
                         __result
@@ -4699,23 +4709,12 @@ pub fn refinement_chain_link_identities(
 }
 
 pub fn refinement_chain_names(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<String>> {
-    {
-        let source_indices = scope.type_env.clone().source_indices.clone();
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        if (name.clone() == "".to_string()) {
-            Rc::new(vec![])
-        } else {
-            match crate::v1_compiler_infer_env::lookup_type_by_name(
-                scope.type_env.clone(),
-                name.clone(),
-            ) {
-                Some(decl) => refinement_chain_link_identities(
-                    where_refinement_chain(decl.clone(), scope.type_env.clone()),
-                    source_indices.clone(),
-                ),
-                std::option::Option::None => Rc::new(vec![]),
-            }
-        }
+    match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), n.clone()) {
+        Some(declaration) => refinement_chain_link_identities(
+            where_refinement_chain(declaration.clone(), scope.type_env.clone()),
+            scope.type_env.clone(),
+        ),
+        std::option::Option::None => Rc::new(vec![]),
     }
 }
 
@@ -5133,16 +5132,12 @@ pub fn nominal_product_head_name_if_declared_product(
                     scope.type_env.clone(),
                     scope.module_name.clone(),
                 );
-                if is_where_refinement_type(peeled.clone()) {
-                    "".to_string()
+                if ((peeled.connective.clone() == Connective::Conj)
+                    && ((peeled.children.clone().len() as i64) > 0))
+                {
+                    name.clone()
                 } else {
-                    if ((peeled.connective.clone() == Connective::Conj)
-                        && ((peeled.children.clone().len() as i64) > 0))
-                    {
-                        name.clone()
-                    } else {
-                        "".to_string()
-                    }
+                    "".to_string()
                 }
             }
             std::option::Option::None => "".to_string(),

@@ -3379,47 +3379,61 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
 // the corpus at the moment that stamp was removed: HostIdentity flowing into a NonEmptyStr formal
 // -- widening to its own declared base, correct code -- refused as a distinct product
 // constructor. This is the arm that state was hiding, not a widening of scope.
-// THE CHAIN IS COMPARED AT DECLARATION SITE, NOT AT SPELLING, AND THAT IS DELIBERATE.
-// An earlier form of this function compared qualified_last_segment -- a module-STRIPPED last
-// segment -- so two branded refinements declared in different modules sharing a last segment would
-// have compared EQUAL, and RefinementWidensToDeclaredBase would have returned Inhabits for a pair
-// that does not inhabit: a fail-open in the relation whose whole purpose is that some pairs must
-// not be admitted. It was latent rather than live (measured: zero duplicated where-refinement type
-// names across dag and src/v2), and it is fixed rather than recorded because n here is the number
-// of homonymous refinement types, which is exactly the kind of number that goes from zero to one
-// when someone adds a module -- DESIGN 6's bare-minimum-cost rule, where "n is small here" is not
-// a time-stable fact. Review finding, tidy-lynx-804, 2026-09-07.
+// THE CHAIN IS COMPARED AT RESOLVED DECLARATION IDENTITY, AND IT IS UNAVAILABLE ON ANY MISS.
+// Three corrections live here, each from a review and each falsifying something an earlier form of
+// this function asserted about itself.
 //
-// It CONSUMES where_refinement_brand_declaration_site rather than minting a second identity: that
-// is the same file-qualified identity the brand wall already uses to refuse distinct DECLARATIONS
-// rather than distinct spellings, so this file now answers "are these the same type?" exactly once.
-// A CHAIN WITH ANY UNIDENTIFIED LINK IS NOT ESTABLISHED AT ALL, AND THE WHOLE CHAIN IS DISCARDED.
-// An earlier form of this function COMPACTED the list, dropping unidentified links, on the claim
-// that a shorter chain can only turn an admission into a decline. THAT CLAIM IS FALSE, and the
-// counterexample is the HEAD: drop the declared side's head and its BASE is promoted to head, so
-// the produced chain contains it, RefinementWidensToDeclaredBase fires, and a value is admitted at
-// a strictly narrower declared refinement it was never shown to inhabit -- a silent admission
-// manufactured out of a missing identity, which is the same move the paragraph below forbids by
-// name. Compaction is not the conservative direction; it is the widening one, one link up.
-// Review 62130, claude/opus, 2026-09-07.
+// FIRST, it compared qualified_last_segment -- a module-STRIPPED last segment -- so two homonymous
+// refinements would have compared EQUAL and widening would have admitted a pair that does not
+// inhabit. This file already suffered that class: a second HostIdentity was minted beside
+// product.placement_supply's and did not surface as a duplicate declaration. Only one survives
+// because the incident was CLEANED UP, not avoided.
 //
-// ONE PRINCIPLE, TWO POSITIONS, AND IT IS WORTH STATING ONCE RATHER THAN PATCHING TWICE:
-// ABSENCE OF IDENTITY IS NOT REPAIRABLE BY DEGRADING WHAT YOU COMPARE. Both arms below reached
-// for a weaker comparison when the precise one was unavailable -- one lowering the GRAIN to a
-// spelling, one shortening the CHAIN past a link it could not identify -- and both were assessed
-// as conservative in general while reversing direction at a particular position. A failure arm
-// refuses; it does not widen, and it does not compare something else instead.
+// SECOND, it keyed on where_refinement_brand_declaration_site applied to the node in hand, and
+// ident_span IS NOT DECLARATION PROVENANCE: default_ident_span sets it from the node's OWN
+// name_span at construction, so on a link that did not resolve the key was a REFERENCE-site key.
+// That is wrong in BOTH directions at once -- two distinct declarations referenced from one file
+// key EQUAL, one declaration referenced from two files keys UNEQUAL -- and a key that can both
+// merge distinct things and split identical ones is not an identity at all. There is no tightening
+// that repairs a non-identity, so the fallback is gone rather than sharpened: every link is
+// resolved through lookup_type_for, the NODE-AWARE authority that matches node.ident first, and the
+// site is taken from the resolved DECLARATION.
 //
-// AND THE LOOKUP-FAILURE ARM RETURNS THE EMPTY CHAIN, WHICH MAKES THE PAIR NOT THIS RELATION'S
-// SUBJECT. It previously manufactured a singleton chain from the name's last segment, so a
-// declaration that was never established still produced something the arms below would compare --
-// DESIGN section 5's absorbing fallback exactly: unable to compute the precise answer, substitute
-// the weaker one that always produces something. Under declaration-site keying it would be worse
-// than weak, because the surrogate would be an identity the subject does not have, at the one
-// grain where unrelated things compare equal. So the arm refuses rather than substituting.
-fn refinement_chain_link_identities(links: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+// THIRD, the entry point took authored_name_at and then looked the type up BY NAME, so a node that
+// already carried identity was rebound by spelling at the head of a relation whose whole subject is
+// spelling collision. It resolves through lookup_type_for too.
+//
+// AND THE COMPLETENESS CHECK NOW MEASURES RESOLUTION RATHER THAN NAMING. The count equality below
+// used to compare ident_span PRESENCE, which every named node has, so it proved the links were
+// NAMED and could not fail for the reason it existed. It now compares RESOLVED links, and any miss
+// discards the whole chain: the pair is simply not this relation's subject.
+//
+// WHY DISCARD RATHER THAN COMPACT, since the earlier form dropped unidentified links and claimed
+// that was conservative. IT IS NOT, and the counterexample is the HEAD: drop the declared side's
+// head and its BASE is promoted to head, so the produced chain contains it, the widening arm fires,
+// and a value is admitted at a strictly narrower declared refinement it was never shown to inhabit.
+// Compaction is not the conservative direction; it is the widening one, one link up.
+//
+// ONE PRINCIPLE, THREE POSITIONS, AND IT IS WORTH STATING ONCE RATHER THAN PATCHING THREE TIMES:
+// ABSENCE OF IDENTITY IS NOT REPAIRABLE BY DEGRADING WHAT YOU COMPARE. Every arm above reached for
+// a weaker comparison when the precise one was unavailable -- lowering the GRAIN to a spelling,
+// shortening the CHAIN past a link it could not identify, substituting a REFERENCE for a
+// declaration -- and each was assessed as conservative in general while reversing direction at some
+// particular position. A failure arm refuses; it does not widen, and it does not compare something
+// else instead. Reviews 62130 and 62172, and GitHub review 5135375330, 2026-09-07.
+
+fn refinement_chain_link_identity(link: Node, type_env: TypeEnv) -> String? {
+  match lookup_type_for(env: type_env, node: link) {
+    Present { value: declaration } =>
+      where_refinement_brand_declaration_site(
+        ty: declaration, source_indices: type_env.source_indices)
+    Absent => Absent
+  }
+}
+
+fn refinement_chain_link_identities(links: List<Node>, type_env: TypeEnv) -> List<String> {
   let identified = links
-    |> map(link => where_refinement_brand_declaration_site(ty: link, source_indices: source_indices))
+    |> map(link => refinement_chain_link_identity(link: link, type_env: type_env))
     |> filter(site => site != none)
     |> map(site => match site { Present { value: id } => id  Absent => "" })
     |> filter(id => id != "")
@@ -3431,18 +3445,12 @@ fn refinement_chain_link_identities(links: List<Node>, source_indices: Map<Strin
 }
 
 fn refinement_chain_names(n: Node, scope: InferScope) -> List<String> {
-  let source_indices = scope.type_env.source_indices
-  let name = authored_name_at(source_indices: source_indices, node: n)
-  if name == "" {
-    []
-  } else {
-    match lookup_type_by_name(env: scope.type_env, name: name) {
-      Present { value: decl } =>
-        refinement_chain_link_identities(
-          links: where_refinement_chain(ty: decl, type_env: scope.type_env),
-          source_indices: source_indices)
-      Absent => []
-    }
+  match lookup_type_for(env: scope.type_env, node: n) {
+    Present { value: declaration } =>
+      refinement_chain_link_identities(
+        links: where_refinement_chain(ty: declaration, type_env: scope.type_env),
+        type_env: scope.type_env)
+    Absent => []
   }
 }
 
@@ -3762,9 +3770,7 @@ fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope
     Present { value: decl } =>
       let peeled = peel_nominal_alias_identity(
         n: decl, env: scope.type_env, module_name: scope.module_name)
-      if is_where_refinement_type(ty: peeled) {
-        ""
-      } else if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
+      if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
     Absent => ""
   }
 }
