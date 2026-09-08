@@ -11,9 +11,12 @@ data sample_run: WorkflowRun = WorkflowRun {
   conclusion: Present { value: extdeps.github.workflow_runs.Success }
   workflow_id: 987
   run_number: 42
+  event: "push"
   html_url: "https://github.com/owner/repo/actions/runs/12345678"
   created_at: "2026-06-23T10:00:00Z"
   updated_at: "2026-06-23T10:15:00Z"
+  run_started_at: Present { value: "2026-06-23T10:00:05Z" }
+  pull_requests: []
 }
 
 data sample_run_list: WorkflowRunList = WorkflowRunList {

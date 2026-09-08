@@ -1,8 +1,35 @@
 module gunbc.superseded_run_starvation_census
 
-import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, String, Timestamp }
 import std.nat { Nat }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second }
+import extdeps.github.workflow_runs {
+  github.WorkflowRuns,
+  WorkflowRun,
+  WorkflowRunList,
+  WorkflowRunPullRequest,
+  WorkflowJobRunList,
+  WorkflowJobRun,
+  WorkflowRunStatus,
+  WorkflowRunConclusion,
+  Queued,
+  InProgress,
+  Completed,
+  Waiting,
+  Requested,
+  Pending,
+  Success,
+  Failure,
+  Cancelled,
+  Neutral,
+  Skipped,
+  TimedOut,
+  ActionRequired,
+  StartupFailure,
+  workflow_run_status_wire_label,
+  workflow_run_conclusion_wire_label,
+}
+import extdeps.clock { Clock }
 
 type SupersededRunPair {
   pull_request: Int
@@ -115,7 +142,6 @@ type CensusResult
       max_pages: Int
     }
 
-// ── PHASE 1: Paginated run discovery ──────────────────────────────────────
 fn collect_runs_in_window(
   auth_token: String,
   owner: String,
@@ -167,7 +193,6 @@ fn collect_runs_in_window(
   }
 }
 
-// ── PHASE 2: Pair extraction ──────────────────────────────────────────────
 fn pr_number_for_run(run: WorkflowRun) -> Int? {
   match run.pull_requests {
     Cons { head: pr, tail: _ } => Present { value: pr.number }
@@ -291,7 +316,6 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
   }
 }
 
-// ── PHASE 3: Per-pair refresh ─────────────────────────────────────────────
 // Compute elapsed seconds between two ISO-8601 timestamps by converting each
 // to Unix epoch seconds, subtracting, and wrapping in Second.
 fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> Second? {
@@ -512,14 +536,46 @@ fn count_jobs_with_conclusion(jobs: List<WorkflowJobRun>, conclusion: WorkflowRu
 
 fn conclusion_eq(c: WorkflowRunConclusion, target: WorkflowRunConclusion) -> Bool {
   match c {
-    Success => match target { Success => true; _ => false }
-    Failure => match target { Failure => true; _ => false }
-    Cancelled => match target { Cancelled => true; _ => false }
-    Neutral => match target { Neutral => true; _ => false }
-    Skipped => match target { Skipped => true; _ => false }
-    TimedOut => match target { TimedOut => true; _ => false }
-    ActionRequired => match target { ActionRequired => true; _ => false }
-    StartupFailure => match target { StartupFailure => true; _ => false }
+    Success =>
+      match target {
+        Success => true
+        _ => false
+      }
+    Failure =>
+      match target {
+        Failure => true
+        _ => false
+      }
+    Cancelled =>
+      match target {
+        Cancelled => true
+        _ => false
+      }
+    Neutral =>
+      match target {
+        Neutral => true
+        _ => false
+      }
+    Skipped =>
+      match target {
+        Skipped => true
+        _ => false
+      }
+    TimedOut =>
+      match target {
+        TimedOut => true
+        _ => false
+      }
+    ActionRequired =>
+      match target {
+        ActionRequired => true
+        _ => false
+      }
+    StartupFailure =>
+      match target {
+        StartupFailure => true
+        _ => false
+      }
   }
 }
 
@@ -534,12 +590,36 @@ fn count_jobs_with_status(jobs: List<WorkflowJobRun>, status: WorkflowRunStatus)
 
 fn status_eq(s: WorkflowRunStatus, target: WorkflowRunStatus) -> Bool {
   match s {
-    Queued => match target { Queued => true; _ => false }
-    InProgress => match target { InProgress => true; _ => false }
-    Completed => match target { Completed => true; _ => false }
-    Waiting => match target { Waiting => true; _ => false }
-    Requested => match target { Requested => true; _ => false }
-    Pending => match target { Pending => true; _ => false }
+    Queued =>
+      match target {
+        Queued => true
+        _ => false
+      }
+    InProgress =>
+      match target {
+        InProgress => true
+        _ => false
+      }
+    Completed =>
+      match target {
+        Completed => true
+        _ => false
+      }
+    Waiting =>
+      match target {
+        Waiting => true
+        _ => false
+      }
+    Requested =>
+      match target {
+        Requested => true
+        _ => false
+      }
+    Pending =>
+      match target {
+        Pending => true
+        _ => false
+      }
   }
 }
 
@@ -550,7 +630,6 @@ fn count_jobs(jobs: List<WorkflowJobRun>) -> Int {
   }
 }
 
-// ── PHASE 4: Per-pair enrichment (convert RefreshedPair → CancelledRunJobStanding) ────
 fn pair_to_cancellation_row(pair: SupersededRunPair, rp: RefreshedPair) -> CancellationRow {
   CancellationRow {
     pr: pair.pull_request,
@@ -570,7 +649,6 @@ fn pair_to_cancellation_row(pair: SupersededRunPair, rp: RefreshedPair) -> Cance
   }
 }
 
-// ── START STANDINGS AGGREGATION ────────────────────────────────────────────
 fn count_start_standing_arm(rows: List<RefreshedPair>, target: DeadHeadStartStanding) -> Int {
   match rows {
     Empty {} => 0
@@ -650,7 +728,6 @@ fn collect_cancellation_rows(pairs: List<SupersededRunPair>, refreshed: List<Ref
   }
 }
 
-// ── MAIN ENTRY POINT ──────────────────────────────────────────────────────
 func superseded_run_starvation_census(
   auth_token: String,
   owner: String,
@@ -699,11 +776,6 @@ func superseded_run_starvation_census(
         reached_page: p,
         max_pages: m,
       }
-  }
-}
-    start_standings: start_standings,
-    cancellation_rows: cancellation_rows,
-    rows: refreshed,
   }
 }
 
