@@ -1,0 +1,194 @@
+module std.emission_provenance
+
+import std.algebra { FreeMonoid, FreeSemigroup, Cons, Empty }
+import std.decl_ref { DeclarationRef }
+import std.types { NonEmptyStr, String }
+
+// Content is assembled FROM this tree, never reconstructed by searching emitted strings.
+// A composition retains its own contributor and all nested contributors. In particular a
+// runtime wrapper forwarding an upstream realization does not replace that realization's origin.
+// Authored target text remains authored when its declaration lives in a .dag file. Derived
+// means the producer observed a fold of modeled structure, never that the producer's path has
+// a particular extension. Neither leaf arm absorbs an unobserved nested contributor.
+type EmissionContribution
+  = EmissionAuthoredFragment { origin: DeclarationRef, source: String }
+  | EmissionSourceComposition {
+      origin: DeclarationRef
+      parts: FreeMonoid<EmissionContribution>
+    }
+  | EmissionUnobservedFragment {
+      producer: DeclarationRef
+      cause: NonEmptyStr
+      source: String
+    }
+
+type EmissionOriginGap {
+  producer: DeclarationRef
+  cause: NonEmptyStr
+}
+
+type EmissionOriginRead
+  = EmissionOriginsObserved { origins: FreeMonoid<DeclarationRef> }
+  | EmissionOriginsIncomplete {
+      observed: FreeMonoid<DeclarationRef>
+      missing: FreeSemigroup<EmissionOriginGap>
+    }
+
+type EmissionContributionRead {
+  source: String
+  origins: EmissionOriginRead
+}
+
+// The fold composes append operations, never materialized child results. A node algebra is
+// asked only for its local contribution; it cannot combine descendant result values supplied
+// by this API. Arbitrary callback internals are not thereby proved to have bounded cost.
+type EmissionAppendOperation<R> {
+  apply: fn(R) -> R
+}
+
+fn emission_append_operations_compose<R>(left: EmissionAppendOperation<R>, right: EmissionAppendOperation<R>) -> EmissionAppendOperation<R> {
+  EmissionAppendOperation { apply: fn(state) { right.apply(left.apply(state)) } }
+}
+
+fn emission_contribution_fold_parts<R>(
+  parts: FreeMonoid<EmissionContribution>,
+  acc: EmissionAppendOperation<R>,
+  read: fn(EmissionContribution) -> EmissionAppendOperation<R>
+) -> EmissionAppendOperation<R> {
+  match parts {
+    Empty => acc
+    Cons { head: part, tail: rest } =>
+      emission_contribution_fold_parts(
+        parts: rest,
+        acc: emission_append_operations_compose(
+          left: acc,
+          right: emission_contribution_fold(contribution: part, read: read)
+        ),
+        read: read
+      )
+  }
+}
+
+fn emission_contribution_fold<R>(
+  contribution: EmissionContribution,
+  read: fn(EmissionContribution) -> EmissionAppendOperation<R>
+) -> EmissionAppendOperation<R> {
+  let local = read(contribution)
+  match contribution {
+    EmissionSourceComposition { origin: _, parts } =>
+      emission_contribution_fold_parts(parts: parts, acc: local, read: read)
+    _ => local
+  }
+}
+
+fn emission_origin_append_observed(observation: EmissionOriginRead, origin: DeclarationRef) -> EmissionOriginRead {
+  match observation {
+    EmissionOriginsObserved { origins } => EmissionOriginsObserved { origins: origins.append(origin) }
+    EmissionOriginsIncomplete { observed, missing } =>
+      EmissionOriginsIncomplete { observed: observed.append(origin), missing: missing }
+  }
+}
+
+fn emission_origin_append_missing(observation: EmissionOriginRead, gap: EmissionOriginGap) -> EmissionOriginRead {
+  match observation {
+    EmissionOriginsObserved { origins } => EmissionOriginsIncomplete {
+      observed: origins, missing: FreeSemigroup { head: gap, tail: [] }
+    }
+    EmissionOriginsIncomplete { observed, missing } => EmissionOriginsIncomplete {
+      observed: observed, missing: FreeSemigroup { head: missing.head, tail: missing.tail.append(gap) }
+    }
+  }
+}
+
+type EmissionContributionFragments {
+  source: FreeMonoid<String>
+  origins: EmissionOriginRead
+}
+
+fn emission_source_identity(fragments: FreeMonoid<String>) -> FreeMonoid<String> { fragments }
+
+fn emission_source_fragment(source: String) -> EmissionAppendOperation<FreeMonoid<String>> {
+  EmissionAppendOperation { apply: fn(fragments) { fragments.append(source) } }
+}
+
+fn emission_source_read_layer(contribution: EmissionContribution) -> EmissionAppendOperation<FreeMonoid<String>> {
+  match contribution {
+    EmissionAuthoredFragment { origin: _, source } => emission_source_fragment(source: source)
+    EmissionSourceComposition { origin: _, parts: _ } => EmissionAppendOperation { apply: emission_source_identity }
+    EmissionUnobservedFragment { producer: _, cause: _, source } => emission_source_fragment(source: source)
+  }
+}
+
+fn emission_origin_observed_operation(origin: DeclarationRef) -> EmissionAppendOperation<EmissionOriginRead> {
+  EmissionAppendOperation { apply: fn(observation) { emission_origin_append_observed(observation: observation, origin: origin) } }
+}
+
+fn emission_origin_missing_operation(producer: DeclarationRef, cause: NonEmptyStr) -> EmissionAppendOperation<EmissionOriginRead> {
+  EmissionAppendOperation { apply: fn(observation) {
+    emission_origin_append_missing(observation: observation, gap: EmissionOriginGap { producer: producer, cause: cause })
+  } }
+}
+
+fn emission_origin_read_layer(contribution: EmissionContribution) -> EmissionAppendOperation<EmissionOriginRead> {
+  match contribution {
+    EmissionAuthoredFragment { origin, source: _ } => emission_origin_observed_operation(origin: origin)
+    EmissionSourceComposition { origin, parts: _ } => emission_origin_observed_operation(origin: origin)
+    EmissionUnobservedFragment { producer, cause, source: _ } => emission_origin_missing_operation(producer: producer, cause: cause)
+  }
+}
+
+fn emission_combined_read_layer(contribution: EmissionContribution) -> EmissionAppendOperation<EmissionContributionFragments> {
+  let source = emission_source_read_layer(contribution: contribution)
+  let origins = emission_origin_read_layer(contribution: contribution)
+  EmissionAppendOperation { apply: fn(state) { EmissionContributionFragments {
+    source: source.apply(state.source), origins: origins.apply(state.origins)
+  } } }
+}
+
+fn emission_apply_fragments(
+  operation: EmissionAppendOperation<EmissionContributionFragments>,
+  state: EmissionContributionFragments
+) -> EmissionContributionFragments {
+  operation.apply(state)
+}
+
+fn emission_apply_source_fragments(
+  operation: EmissionAppendOperation<FreeMonoid<String>>,
+  state: FreeMonoid<String>
+) -> FreeMonoid<String> {
+  operation.apply(state)
+}
+
+fn emission_apply_origin_read(
+  operation: EmissionAppendOperation<EmissionOriginRead>,
+  state: EmissionOriginRead
+) -> EmissionOriginRead {
+  operation.apply(state)
+}
+
+fn emission_contribution_read(contribution: EmissionContribution) -> EmissionContributionRead {
+  let operation = emission_contribution_fold(contribution: contribution, read: emission_combined_read_layer)
+  let fragments = emission_apply_fragments(
+    operation: operation,
+    state: EmissionContributionFragments { source: [], origins: EmissionOriginsObserved { origins: [] } }
+  )
+  EmissionContributionRead { source: fragments.source |> join(separator: ""), origins: fragments.origins }
+}
+
+fn emission_contribution_source(contribution: EmissionContribution) -> String {
+  let operation = emission_contribution_fold(contribution: contribution, read: emission_source_read_layer)
+  emission_apply_source_fragments(operation: operation, state: []) |> join(separator: "")
+}
+
+fn emission_contribution_origins(contribution: EmissionContribution) -> EmissionOriginRead {
+  let operation = emission_contribution_fold(contribution: contribution, read: emission_origin_read_layer)
+  emission_apply_origin_read(operation: operation, state: EmissionOriginsObserved { origins: [] })
+}
+
+fn emission_contribution_unobserved(contribution: EmissionContribution) -> FreeMonoid<DeclarationRef> {
+  match emission_contribution_origins(contribution: contribution) {
+    EmissionOriginsObserved { origins: _ } => []
+    EmissionOriginsIncomplete { observed: _, missing } =>
+      concat([missing.head], missing.tail) |> map(gap => gap.producer)
+  }
+}

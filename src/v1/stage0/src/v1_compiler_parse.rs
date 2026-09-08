@@ -2833,7 +2833,7 @@ pub fn stamp_parsed_node_list(
             ctx: ctx.clone(),
             err: std::option::Option::None,
         }),
-        |acc: _, node: Rc<Node>| {
+        |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| {
             if has_err(acc.err.clone()) {
                 acc.clone()
             } else {
@@ -3165,7 +3165,7 @@ pub fn stamp_parsed_module_items(
     nodes: Rc::new(vec![]),
     ctx: ctx.clone(),
     err: std::option::Option::None,
-}), |acc: _, node: Rc<Node>| if has_err(acc.err.clone()) {
+}), |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| if has_err(acc.err.clone()) {
         acc.clone()
     } else {
         match node.module_item_kind.clone() {
