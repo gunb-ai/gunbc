@@ -1,9 +1,11 @@
 module gunbc.spark.vllm_kv_layout_observe
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.nat { Nat }
 import std.content_hash { ContentHash }
-import std.measure { TokenCount, token_count_value }
+import std.measure {
+  TokenCount, token_count_value, Percent, percent_count,
+  AllocatorBlockCount, allocator_block_count_value,
+}
 import gunbc.spark.vllm_serving_launch {
   VllmServingLaunch, LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction,
   same_launch, join_is_admissible, launch_join_wire, launch_wire,
@@ -41,7 +43,7 @@ type VllmKvLayoutReceipt
       incarnation: VllmServingLaunch,
       layout: ResolvedKvLayout,
       reported: VllmReportedCapacity,
-      blocks_per_max_request: Nat,
+      blocks_per_max_request: AllocatorBlockCount,
       source_capture_digest: ContentHash,
     }
   | KvLayoutUnreadable { incarnation: VllmServingLaunch, cause: NonEmptyStr }
@@ -74,12 +76,12 @@ fn admit_kv_layout(
 ) -> VllmKvLayoutReceipt {
   match printed_lines_agree(layout: layout, reported: reported) {
     PrintedLinesUncheckable { cause: c } => KvLayoutUnreadable { incarnation: incarnation, cause: c }
-    PrintedLinesDisagree { implied_hundredths: i, reported_hundredths: r } =>
+    PrintedLinesDisagree { implied: i, reported: r } =>
       KvLayoutInconsistent {
         incarnation: incarnation,
         cause: join([
           "the captured startup lines disagree with each other: the pool line implies a concurrency of ",
-          to_string(i), " hundredths while the concurrency line reports ", to_string(r),
+          to_string(percent_count(p: i)), " hundredths while the concurrency line reports ", to_string(percent_count(p: r)),
         ], "") as NonEmptyStr,
       }
     PrintedLinesAgree =>
@@ -89,12 +91,12 @@ fn admit_kv_layout(
             incarnation: incarnation,
             cause: join(["the layout cannot be checked against the engine's own arithmetic: ", c as String], "") as NonEmptyStr,
           }
-        LayoutContradictsReported { predicted_hundredths: p, reported_hundredths: r } =>
+        LayoutContradictsReported { predicted: p, reported: r } =>
           KvLayoutInconsistent {
             incarnation: incarnation,
             cause: join([
               "the group layout and the printed lines describe different engines: the groups predict a concurrency of ",
-              to_string(p), " hundredths while the engine printed ", to_string(r),
+              to_string(percent_count(p: p)), " hundredths while the engine printed ", to_string(percent_count(p: r)),
             ], "") as NonEmptyStr,
           }
         LayoutReproducesReported { blocks_per_max_request: b } =>
@@ -116,7 +118,7 @@ fn admit_kv_layout(
 // a request to? Anything that answers that question by comparing groups or hosts has reintroduced
 // the co-location test gunbc.spark.vllm_serving_launch exists to displace.
 type SeatingAuthority
-  = SeatingAuthorized { blocks_available: Nat, blocks_per_request: Nat }
+  = SeatingAuthorized { blocks_available: AllocatorBlockCount, blocks_per_request: AllocatorBlockCount }
   | SeatingRefused { cause: NonEmptyStr }
 
 fn seating_authority_for(
@@ -160,7 +162,7 @@ fn receipt_incarnation(r: VllmKvLayoutReceipt) -> VllmServingLaunch {
 fn receipt_wire(r: VllmKvLayoutReceipt) -> String {
   match r {
     KvLayoutObserved { incarnation: i, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
-      join(["observed ", launch_wire(i: i), ": ", to_string(b), " blocks per full-context request"], "")
+      join(["observed ", launch_wire(i: i), ": ", to_string(allocator_block_count_value(c: b)), " blocks per full-context request"], "")
     KvLayoutUnreadable { incarnation: i, cause: c } =>
       join(["unreadable ", launch_wire(i: i), ": ", c as String], "")
     KvLayoutInconsistent { incarnation: i, cause: c } =>

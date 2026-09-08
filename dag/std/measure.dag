@@ -335,6 +335,10 @@ type CharacterCount = Measure<Count, One, Nat>
 
 type TokenCount = Measure<Count, One, Nat>
 
+// A count of KV allocator blocks (vLLM `num_gpu_blocks`). Same Count axis as TokenCount, different
+// thing counted: a block is not a token, and multiplying them used to typecheck as an inventory.
+type AllocatorBlockCount = Measure<Count, One, Nat>
+
 type CpuCoreCount = Measure<Count, One, Nat>
 
 // A count of entries in a merge queue. It sits with its Count siblings rather than in the module
@@ -1066,6 +1070,14 @@ fn token_count(count: Nat) -> TokenCount {
 
 fn token_count_value(t: TokenCount) -> Nat {
   measure_count(t)
+}
+
+fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
+  Measure { count: count }
+}
+
+fn allocator_block_count_value(c: AllocatorBlockCount) -> Nat {
+  measure_count(c)
 }
 
 // A discrete CPU core count, on the Count axis alongside HardwareThreadCount and CharacterCount.

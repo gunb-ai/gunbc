@@ -2488,6 +2488,71 @@ mod cross_claim_demand_census_tests {
     }
 }
 
+// THE DISCRIMINATING RED FOR THE AUTHORED-PATH MODULE INDEX.
+//
+// `data_initializer_identity::typed_module_for_path` answered "which TypedModule owns this
+// module path?" with a linear scan over `ctx.modules` that re-sliced each module's authored name
+// out of its source span. `decl_facts` asks it once per DataItem row, so one whole-corpus
+// declaration inventory cost declarations x modules source-text slices -- a cost shape, not a
+// large constant, and DESIGN section 6 fixes those regardless of the realized n.
+//
+// A test that merely asserts the lookup ANSWERS is not a red for that: the scan answered too.
+// What separates an index from a scan is that the corpus is walked ONCE however many times it is
+// asked, so this reads the fill counter. Restoring the scan removes the accessor named here -- a
+// compile error in `cargo clippy --all-targets`, which IS a required lane
+// (`gunbc.repo_self_build` `repo_self_clippy_command`) -- and weakening the index to refill per
+// lookup fails the assertion.
+//
+// Rung honesty: the assertion executes under `cargo test`, which no CI step runs as of the
+// 2026-09-04 runner-capacity ruling (declared drop `gunbc.rung_drop`
+// `rust_unit_tests_off_the_merge_path`). The required-path evidence for the repair is the cost
+// gate on `v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test`
+// reaching a verdict inside its budget; this is the authorable red at the fixture boundary, and
+// it is what attributes a future regression to this lookup rather than to whatever change
+// happens to be in flight when a witness goes slow.
+#[cfg(test)]
+mod typed_module_index_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    use super::{ExecutionMode, InterpContext};
+
+    fn ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    #[test]
+    fn module_lookup_walks_the_corpus_once_however_many_times_it_is_asked() {
+        let ctx = ctx();
+        assert_eq!(
+            ctx.typed_module_by_path_fill_count(),
+            0,
+            "the index is filled on first ask, never at construction"
+        );
+
+        for i in 0..64 {
+            let _ = ctx.typed_module_for_authored_path(&format!("v2.lens.absent_{i}"));
+        }
+
+        assert_eq!(
+            ctx.typed_module_by_path_fill_count(),
+            1,
+            "64 lookups walked the corpus more than once -- the per-lookup scan is back, and one \
+             decl_facts marshal is again a product of the declaration and module populations"
+        );
+    }
+}
+
 #[cfg(test)]
 mod cross_claim_memo_tests {
     use crate::v1_rt::RcStr;
@@ -4190,6 +4255,25 @@ pub struct InterpContext {
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
+    // Module lookup BY AUTHORED PATH, built once per ctx. `ctx.modules` is a vector, so the only
+    // way to answer "which TypedModule is `v2.lens.cost`?" was a linear scan that re-sliced every
+    // module's name out of its source span (authored_name_at). One `decl_facts` marshal asks that
+    // question once per DataItem row, so the whole-corpus inventory was a PRODUCT of the two
+    // populations -- a cost-shape defect (DESIGN section 6, bare minimum cost), not a large
+    // constant. Same discipline as param_name_cache above: derived from ctx-owned Rc handles,
+    // filled lazily on first ask, dies with the ctx.
+    typed_module_by_path:
+        std::cell::RefCell<Option<Rc<std::collections::HashMap<String, Rc<TypedModule>>>>>,
+    // How many times the index above was BUILT. The property that matters is not that a lookup
+    // answers -- a per-lookup scan answers too -- but that the corpus is walked ONCE however many
+    // times it is asked. Counting the fills is what makes that property observable to a test, so
+    // reintroducing the scan fails an assertion instead of surfacing as a slow witness nobody
+    // attributes to it.
+    typed_module_by_path_fills: std::cell::Cell<u64>,
+    // The same repair one layer down, for the two type-declaration lookups `decl_facts` reaches
+    // per DataItem row. See `data_initializer_identity::TypeDeclIndex` for what they cost before.
+    type_decl_index:
+        std::cell::RefCell<Option<Rc<crate::data_initializer_identity::TypeDeclIndex>>>,
     // Parameter-name derivation is invariant per fn_node but was re-sliced from source spans
     // per call (authored_name_at). Memoized per fn_node pointer. The pointer alone is unsound:
     // the ctx does not own fn_nodes (borrowed `Rc<Node>`s droppable while the ctx lives), so a
@@ -4254,12 +4338,21 @@ pub struct InterpContext {
     witness_eval_budget_ms: std::cell::Cell<Option<u64>>,
     // Whole-receipt wall budget for Wet self-host receipts (emit+cargo subprocess I/O included).
     witness_wall_budget_ms: std::cell::Cell<Option<u64>>,
-    // Kill-at-deadline arm for the wall budget (Finding 1, 2026-07-25): (start, budget_ms).
+    // Kill-at-deadline arm for the wall budget (Finding 1, 2026-07-25):
+    // (start, budget_ms, shared-artifact fill wall nanos at arm time).
     // Shell waits poll this and SIGKILL the process group at the ceiling; the completion-side
     // `wall_budget_completion_outcome` remains a backstop for non-subprocess spend. Without it
     // the refusal fires only after the overrun is spent (707s on a 600s budget; 21–34min
     // receipts in the original finding).
-    witness_wall_deadline: std::cell::Cell<Option<(Instant, u64)>>,
+    //
+    // THE THIRD ELEMENT IS WHY THE ENFORCED FIGURE EQUALS THE REPORTED ONE. Shared-artifact fill
+    // is not the paying claim's marginal cost (operator ruling, 2026-08-27), and
+    // `required_floor_runner` already nets it out of the wall figure it REPORTS. The CPU deadline
+    // nets it too, through `budgeted_cpu_nanos`. This clock did not, so one question -- has this
+    // claim spent its wall budget -- had two answers, and the repo had already adjudicated which
+    // one is right. The fill nanos standing at arm time are captured here so every poll can
+    // subtract what accrued since, exactly as the CPU side's subtraction cancels its own baseline.
+    witness_wall_deadline: std::cell::Cell<Option<(Instant, u64, u128)>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4305,6 +4398,55 @@ pub fn selected_module_path(
 }
 
 impl InterpContext {
+    /// The authored-path -> `TypedModule` index behind [`InterpContext::typed_module_by_path`].
+    /// First declarer wins, which is the answer the linear `find` this replaced returned.
+    pub fn typed_module_for_authored_path(&self, module_path: &str) -> Option<Rc<TypedModule>> {
+        let index = {
+            let cached = self.typed_module_by_path.borrow().clone();
+            match cached {
+                Some(index) => index,
+                None => {
+                    self.typed_module_by_path_fills
+                        .set(self.typed_module_by_path_fills.get() + 1);
+                    let si = self.source_indices.clone();
+                    let mut built: std::collections::HashMap<String, Rc<TypedModule>> =
+                        std::collections::HashMap::with_capacity(self.modules.len());
+                    for tm in self.modules.iter() {
+                        let name =
+                            crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+                        built.entry(name).or_insert_with(|| tm.clone());
+                    }
+                    let built = Rc::new(built);
+                    *self.typed_module_by_path.borrow_mut() = Some(Rc::clone(&built));
+                    built
+                }
+            }
+        };
+        index.get(module_path).cloned()
+    }
+
+    /// Corpus walks performed by [`InterpContext::typed_module_for_authored_path`] on this ctx.
+    /// Reading it is how a test tells an index apart from a scan.
+    pub fn typed_module_by_path_fill_count(&self) -> u64 {
+        self.typed_module_by_path_fills.get()
+    }
+
+    /// The type-declaration lookup index, built once per ctx on first ask.
+    pub fn type_decl_index(&self) -> Rc<crate::data_initializer_identity::TypeDeclIndex> {
+        let cached = self.type_decl_index.borrow().clone();
+        match cached {
+            Some(index) => index,
+            None => {
+                let built = Rc::new(crate::data_initializer_identity::build_type_decl_index(
+                    &self.modules,
+                    &self.source_indices,
+                ));
+                *self.type_decl_index.borrow_mut() = Some(Rc::clone(&built));
+                built
+            }
+        }
+    }
+
     pub fn sym(&self, s: &str) -> Symbol {
         self.symbols.borrow_mut().intern(s)
     }
@@ -4502,9 +4644,23 @@ impl InterpContext {
             .into_iter()
             .filter_map(|(name, count)| (count > 1).then_some(name))
             .collect();
+        // The graph registry is keyed on declaration identity (owner module path plus declared
+        // name). The interpreter resolves BARE names -- that is what a bare call or data reference
+        // in source is -- so it takes a leaf-keyed projection rather than the identity map. The
+        // projection reproduces exactly the map this field used to receive, since the graph
+        // registry itself was leaf-keyed with last-write-wins; the difference is that the
+        // ambiguity now lives in one derived index instead of in the authority every consumer
+        // shares.
+        let bare_item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = Rc::new(
+            graph
+                .item_registry
+                .iter()
+                .map(|(_identity, info)| (info.name.clone(), info.clone()))
+                .collect(),
+        );
         Rc::new(PreparedScopeIndexes {
             modules: graph.modules.clone(),
-            item_registry: graph.item_registry.clone(),
+            item_registry: bare_item_registry,
             source_indices,
             emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
@@ -4537,6 +4693,9 @@ impl InterpContext {
             execution_mode,
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
+            typed_module_by_path: std::cell::RefCell::new(None),
+            typed_module_by_path_fills: std::cell::Cell::new(0),
+            type_decl_index: std::cell::RefCell::new(None),
             param_name_cache: std::cell::RefCell::new(HashMap::new()),
             param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),
@@ -4639,8 +4798,11 @@ impl InterpContext {
                 Some(remaining) => remaining.min(requested),
                 None => requested,
             };
-            self.witness_wall_deadline
-                .set(Some((Instant::now(), effective)));
+            self.witness_wall_deadline.set(Some((
+                Instant::now(),
+                effective,
+                crate::cli_run::shared_artifact_fill_wall_nanos(),
+            )));
         }
         if cpu_limit_ms.is_some() || wall_limit_ms.is_some() {
             *self.budget_entry.borrow_mut() = Some(entry.to_string());
@@ -4672,25 +4834,45 @@ impl InterpContext {
     }
 
     pub fn arm_wall_deadline(&self, budget_ms: u64) {
-        self.witness_wall_deadline
-            .set(Some((Instant::now(), budget_ms)));
+        self.witness_wall_deadline.set(Some((
+            Instant::now(),
+            budget_ms,
+            crate::cli_run::shared_artifact_fill_wall_nanos(),
+        )));
     }
 
     pub fn clear_wall_deadline(&self) {
         self.witness_wall_deadline.set(None);
     }
 
+    /// Wall nanos this deadline has to answer for: everything since it was armed, less the
+    /// shared-artifact fill that accrued in that interval. Both halves are still counted and both
+    /// are still reported by `required_floor_runner`; what changes is only WHO is charged, and by
+    /// the 2026-08-27 ruling it is not the claim that happened to pay a fill every later claim
+    /// reads warm. MONOTONE, as a deadline requires: the fill counter only rises, and it rises
+    /// inside the same interval, so the subtraction can never make elapsed time run backwards --
+    /// the saturating subtraction covers sampling skew between the two reads.
+    fn wall_deadline_marginal_nanos(&self) -> Option<(u128, u64)> {
+        let (start, budget_ms, fill_at_arm) = self.witness_wall_deadline.get()?;
+        let fill_since =
+            crate::cli_run::shared_artifact_fill_wall_nanos().saturating_sub(fill_at_arm);
+        Some((
+            start.elapsed().as_nanos().saturating_sub(fill_since),
+            budget_ms,
+        ))
+    }
+
     /// Remaining wall-budget milliseconds, or `None` when no deadline is armed.
     /// `Some(0)` means the ceiling is already past — callers must refuse now.
     pub fn wall_deadline_remaining_ms(&self) -> Option<u64> {
-        let (start, budget_ms) = self.witness_wall_deadline.get()?;
-        let elapsed_ms = start.elapsed().as_millis() as u64;
+        let (elapsed_nanos, budget_ms) = self.wall_deadline_marginal_nanos()?;
+        let elapsed_ms = (elapsed_nanos / 1_000_000) as u64;
         Some(budget_ms.saturating_sub(elapsed_ms))
     }
 
     pub fn wall_deadline_exceeded_error(&self) -> Option<InterpError> {
-        let (start, budget_ms) = self.witness_wall_deadline.get()?;
-        let elapsed = start.elapsed();
+        let (elapsed_nanos, budget_ms) = self.wall_deadline_marginal_nanos()?;
+        let elapsed = std::time::Duration::from_nanos(elapsed_nanos as u64);
         if elapsed.as_millis() as u64 > budget_ms {
             Some(InterpError::EvaluationBudgetExceeded {
                 entry: self.budget_entry_or_unnamed(),
@@ -5353,7 +5535,7 @@ impl EvaluationClock {
 pub struct EvaluationBudgetScope<'a> {
     ctx: &'a InterpContext,
     prior_eval: Option<(u128, u64)>,
-    prior_wall: Option<(Instant, u64)>,
+    prior_wall: Option<(Instant, u64, u128)>,
     prior_stride: u32,
     prior_entry: Option<String>,
 }
@@ -5456,10 +5638,14 @@ fn in_flight_cross_claim_fill(raw_cpu_nanos: u128) -> Option<(String, u128)> {
 /// path, so thread CPU rises at least as much as fill over any interval. The saturating
 /// subtraction covers only sampling skew between the two reads.
 ///
-/// WHAT THIS DOES NOT REACH: the WALL deadline (`witness_wall_deadline`) is still armed on a raw
-/// `Instant` and still charges a fill to whichever claim paid it. Every interruption in the
-/// repaired population was on the CPU clock — 44 of 44 `Cpu` on run 33185280160 — so the wall
-/// half is a real, currently unexercised residue, not a fix silently omitted.
+/// THE WALL DEADLINE NETS THE SAME FILL, BY ITS OWN BASELINE RATHER THAN THIS CLOCK.
+/// `arm_wall_deadline` captures `shared_artifact_fill_wall_nanos()` at arm time and
+/// `wall_deadline_marginal_nanos` subtracts the fill accrued since, so both enforced figures
+/// exclude the fill and neither is a function of which claim happened to pay it. Until
+/// gunbc#10748 the wall half was armed on a raw `Instant`, and this comment said so beside a
+/// receipt for why that residue was unexercised; the residue was exercised, repaired, and the
+/// sentence stayed. It is replaced rather than annotated because a reader diagnosing a wall
+/// refusal needs the mechanism that runs, not the one that used to.
 pub fn budgeted_cpu_nanos() -> u128 {
     thread_cpu_nanos().saturating_sub(shared_artifact_fill_cpu_nanos())
 }
@@ -11910,6 +12096,7 @@ fn multi_module_compile_fixture_value(
         crate::cli_run::MultiModuleCompileFixtureOutcome::CompileCompleted {
             module_count,
             emitted_files,
+            resolved_rust_functions,
             diagnostics,
             source_digest,
             compiler_digest,
@@ -11920,6 +12107,30 @@ fn multi_module_compile_fixture_value(
                 (
                     ctx.sym("emitted_files"),
                     list_value(emitted_files.into_iter().map(str_value).collect::<Vec<_>>()),
+                ),
+                (
+                    ctx.sym("resolved_rust_functions"),
+                    list_value(
+                        resolved_rust_functions
+                            .into_iter()
+                            .map(|sig| Value::Record {
+                                type_name: ctx.sym("ResolvedRustFnSignature"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    (ctx.sym("owner_module"), str_value(sig.owner_module)),
+                                    (ctx.sym("declaration_name"), str_value(sig.declaration_name)),
+                                    (
+                                        ctx.sym("ordered_parameter_names"),
+                                        list_value(
+                                            sig.ordered_parameter_names
+                                                .into_iter()
+                                                .map(str_value)
+                                                .collect::<Vec<_>>(),
+                                        ),
+                                    ),
+                                ])),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
                 ),
                 (ctx.sym("diagnostics"), rows(diagnostics)),
                 (ctx.sym("source_digest"), str_value(source_digest)),
@@ -11978,6 +12189,7 @@ fn reference_occurrence_binding_census_value(
             crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
             crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
             crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+            crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
         }),
         fields: Rc::new(vec![]),
     };
@@ -12137,6 +12349,7 @@ fn unlisted_import_binding_source_value(
         crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
         crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
         crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+        crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
     };
     Value::Variant {
         type_name: ctx.sym("UnlistedImportBindingSource"),
@@ -17228,6 +17441,49 @@ macro_rules! v1_builtin_arms {
                 None => Ok(None),
             },
 
+            // THE ONE PLACE A MAC IS ACTUALLY COMPUTED, and it is a host builtin rather than a
+            // shell transport for a specific reason: every shell form of HMAC
+            // (`openssl dgst -hmac <key>`) puts the KEY IN THE ARGV, which is the exposure
+            // gunbc.credential_argv_exposure exists to forbid. A process listing is enough to
+            // learn a signing key, and with a symmetric MAC the signing key is also the
+            // verification key, so leaking it forges approvals rather than merely reading them.
+            //
+            // The comparison is RustCrypto's `verify_slice`, not an equality on bytes we
+            // computed. That is the whole reason extdeps.crypto.mac exposes no accessor for a
+            // computed tag: an ordinary `==` over MAC bytes leaks, through timing, how many
+            // leading bytes of a forged tag were correct, which turns forging a 32-byte tag from
+            // infeasible into a few thousand requests.
+            //
+            // Key and tag arrive as lowercase hex because the corpus already models digests that
+            // way (extdeps.crypto.hash Digest.hex) and hex has one spelling per value -- base64
+            // has several, and a decoder that accepts more spellings than it should is how one
+            // envelope acquires two representations.
+            //
+            // Every malformed input answers FALSE rather than raising: a caller cannot tell a
+            // bad key encoding from a wrong tag, which is correct here, because both mean the
+            // same thing to the only consumer -- this message is not authenticated.
+            arm "free_call.hmac_sha256_verify_hex" { "hmac_sha256_verify_hex" } => {
+                use hmac::{Hmac, Mac};
+                use sha2::Sha256;
+                let key_hex = expect_value_str($positional.first().copied(), "hmac_sha256_verify_hex key")?;
+                let message = expect_value_str($positional.get(1).copied(), "hmac_sha256_verify_hex message")?;
+                let tag_hex = expect_value_str($positional.get(2).copied(), "hmac_sha256_verify_hex tag")?;
+                let key = match hex::decode(key_hex.as_str()) {
+                    Ok(k) => k,
+                    Err(_) => return Ok(Some(Value::Bool(false))),
+                };
+                let tag = match hex::decode(tag_hex.as_str()) {
+                    Ok(t) => t,
+                    Err(_) => return Ok(Some(Value::Bool(false))),
+                };
+                let mut mac = match Hmac::<Sha256>::new_from_slice(&key) {
+                    Ok(m) => m,
+                    Err(_) => return Ok(Some(Value::Bool(false))),
+                };
+                mac.update(message.as_str().as_bytes());
+                Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
+            },
+
             arm "free_call.string_length" { "string_length" } => {
                 let s = expect_value_str($positional.first().copied(), "string_length")?;
                 Ok(Some(Value::Int(s.string_length())))
@@ -17759,6 +18015,39 @@ macro_rules! v1_builtin_arms {
                     $ctx,
                     &pool_roots,
                 )?))
+            },
+
+            arm "free_call.decl_facts_at" { "decl_facts_at" } => {
+                let pool_roots = expect_str_list($positional.first().copied(), "decl_facts_at")?;
+                let qualified_name = expect_value_str($positional.get(1).copied(), "decl_facts_at")?;
+                Ok(Some(crate::coproduct_reflection::eval_decl_facts_at(
+                    $ctx,
+                    &pool_roots,
+                    qualified_name.as_str(),
+                )?))
+            },
+
+            arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "module_declaration_facts_at")?;
+                let module_path =
+                    expect_value_str($positional.get(1).copied(), "module_declaration_facts_at")?;
+                // A list of zero or one, not an Optional: the keyed read stays the same SHAPE as the
+                // population read it narrows, so a `.dag` consumer switching to it changes its
+                // source of rows and not its fold.
+                let mut items: Vec<Value> = Vec::new();
+                if let Some(f) =
+                    crate::cli_run::module_declaration_fact_at(&pool_roots, module_path.as_str())
+                {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDeclarationFact"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("module"), str_value(f.module)),
+                            ($ctx.sym("path"), str_value(f.path)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
             },
 
             arm "free_call.module_declaration_facts" { "module_declaration_facts" } => {
@@ -20802,6 +21091,44 @@ mod wall_deadline_kill_tests {
             "wall deadline leaked past its scope"
         );
         assert_eq!(ctx.budget_entry(), None, "entry identity leaked past scope");
+    }
+
+    /// THE DISCRIMINATING PAIR FOR THE FILL NETTING, both arms over one budget and one elapsed
+    /// interval so the only variable is whether a shared-artifact fill happened inside it.
+    ///
+    /// The RED arm is the first assertion: before the netting, a claim that paid a fill wider than
+    /// its own budget was refused on the enforced clock while `required_floor_runner` reported its
+    /// marginal wall as a small figure well under the line — one question, two answers, and the
+    /// 2026-08-27 ruling already says the reported one is right. It is authorable exactly here,
+    /// because a fill is a process-wide counter a test can move directly.
+    ///
+    /// The second assertion is the positive control that keeps the first from passing by simply
+    /// never refusing: with no fill recorded, the same elapsed interval past the same budget still
+    /// refuses. Without it, deleting the deadline entirely would satisfy the RED.
+    #[test]
+    fn wall_deadline_charges_marginal_wall_and_still_refuses_without_a_fill() {
+        let ctx = wet_ctx();
+        ctx.arm_wall_deadline(5);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+
+        crate::cli_run::record_shared_artifact_fill_wall(50_000_000);
+        assert!(
+            ctx.wall_deadline_exceeded_error().is_none(),
+            "a shared-artifact fill wider than the interval was charged to the claim that paid it"
+        );
+        assert_eq!(
+            ctx.wall_deadline_remaining_ms(),
+            Some(5),
+            "remaining must be read on the same netted clock the refusal is"
+        );
+
+        let bare = wet_ctx();
+        bare.arm_wall_deadline(5);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        assert!(
+            bare.wall_deadline_exceeded_error().is_some(),
+            "the same overrun with no fill must still refuse"
+        );
     }
 
     /// An unset clock is a declared policy state and must not disarm what an outer scope armed.

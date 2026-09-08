@@ -1,7 +1,7 @@
 module v2.test.lens_synthesis.synthesis_gap_information_theoretic
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.lens.complexity { ComplexityBound, ConstantComplexity, SizedComplexity, UnknownComplexity, complexity_lens }
+import v2.lens.complexity { ComplexityBound, Established, Incomplete, complexity_lens }
 import v2.lens.synthesis {
   InformationTheoretic,
   SynthesisGap,
@@ -79,9 +79,9 @@ fn synthesis_gap_it_known_reason_node(realization: ComplexityBound) -> Node {
 fn synthesis_gap_it_first_reason_node() -> Node {
   let realization = complexity_lens(n: synthesis_gap_it_input)
   match realization {
-    UnknownComplexity { diagnostic: _ } => synthesis_gap_it_sentinel
-    ConstantComplexity => synthesis_gap_it_known_reason_node(realization: realization)
-    SizedComplexity { class: _, variables: _ } => synthesis_gap_it_known_reason_node(realization: realization)
+    Incomplete { diagnostic: _ } => synthesis_gap_it_sentinel
+    Established { bound: bound } =>
+      synthesis_gap_it_known_reason_node(realization: bound)
   }
 }
 
