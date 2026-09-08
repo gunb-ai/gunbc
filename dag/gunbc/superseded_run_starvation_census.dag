@@ -650,32 +650,11 @@ fn count_start_standing_arm(rows: List<RefreshedPair>, target: DeadHeadStartStan
   match rows {
     Empty {} => 0
     Cons { head: rp, tail: rest } =>
-      (if start_standing_matches(rp: rp, target: target) { 1 } else { 0 })
+      (if dead_head_start_standing(
+        dead_first_job_started_at: rp.dead_first_job_started_at,
+        live_first_job_created_at: rp.live_first_job_created_at,
+      ) == target { 1 } else { 0 })
       + count_start_standing_arm(rows: rest, target: target)
-  }
-}
-
-fn start_standing_matches(rp: RefreshedPair, target: DeadHeadStartStanding) -> Bool {
-  let standing = dead_head_start_standing(
-    dead_first_job_started_at: rp.dead_first_job_started_at,
-    live_first_job_created_at: rp.live_first_job_created_at,
-  )
-  match standing {
-    DeadHeadReachedInProgressFirst => match target {
-      DeadHeadReachedInProgressFirst => true
-      LiveHeadRegisteredJobFirst => false
-      NeitherRunRegisteredAJob => false
-    }
-    LiveHeadRegisteredJobFirst => match target {
-      DeadHeadReachedInProgressFirst => false
-      LiveHeadRegisteredJobFirst => true
-      NeitherRunRegisteredAJob => false
-    }
-    NeitherRunRegisteredAJob => match target {
-      DeadHeadReachedInProgressFirst => false
-      LiveHeadRegisteredJobFirst => false
-      NeitherRunRegisteredAJob => true
-    }
   }
 }
 
@@ -735,7 +714,7 @@ func superseded_run_starvation_census(
   observed_at: Timestamp,
   max_run_pages: Int,
 ) -> CensusResult {
-  let discovery_lookback = Clock.TimestampOffset(timestamp: from, offset_seconds: seconds_per_day() as Int)
+  let discovery_lookback = Clock.TimestampOffset(timestamp: from, offset: seconds_per_day())
   let discovery_range = concat(trim(discovery_lookback.result), "..", through)
   let outcome = collect_runs_in_window(
     auth_token: auth_token,
