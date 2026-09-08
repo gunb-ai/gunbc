@@ -1674,15 +1674,15 @@ fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
 // the broker carries the market's choice all the way into the store.
 fn cp_probe_located() -> ProviderPathStanding {
   ProviderPathLocated {
-    operator: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_provider"),
-    jurisdiction: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_region"),
-    evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_offer_for"),
+    operator: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_provider"),
+    jurisdiction: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
+    evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_offer_for"),
   }
 }
 
 fn cp_probe_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
-    authority: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_posture"),
+    authority: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_posture"),
     revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-posture-r1")),
   }
 }
@@ -1693,14 +1693,14 @@ fn cp_probe_admission(executor: NonEmptyStr) -> ProviderUseAdmission<NonEmptyStr
       RouteScopeSanction {
         route: probe_route(),
         posture: cp_probe_posture(),
-        customer_profile: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
-        data_handling_profile: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
-        requires_agreement: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
+        customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
+        data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+        requires_agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
       },
     ],
     facts: ProviderRouteFacts {
       route: probe_route(),
-      contract_terms: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_offer_id"),
+      contract_terms: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_offer_id"),
       data_paths: ProviderDataPathClosure {
         execution: cp_probe_located(),
         durable_storage: cp_probe_located(),
@@ -1711,11 +1711,11 @@ fn cp_probe_admission(executor: NonEmptyStr) -> ProviderUseAdmission<NonEmptyStr
         support_access: cp_probe_located(),
         administrative_access: cp_probe_located(),
         spill: ProviderPathAbsent {
-          evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+          evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
         },
       },
       downstream: NoDownstreamProviders {
-        evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
       },
       observed_at: "2026-08-27T00:00:00Z",
       facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-facts-r1")),
@@ -1724,21 +1724,21 @@ fn cp_probe_admission(executor: NonEmptyStr) -> ProviderUseAdmission<NonEmptyStr
     scope: ProviderUseScope {
       demand: cp_probe_demand_id(key: "demand-probe-admission"),
       work: FabricIdentity { principal: "gunbc", key: "work-probe-admission" as WorkKey },
-      customer_profile: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
-      data_handling_profile: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
-      agreement: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
+      customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
+      data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+      agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
       prohibited_use_disposition: DispositionCleared {
-        evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
       },
       sanctions_disposition: DispositionCleared {
-        evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
       },
       export_disposition: DispositionCleared {
-        evidence: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
       },
     },
     offer: cp_probe_offer_id(key: "offer-1"),
-    decision_receipt: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
+    decision_receipt: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
   )
 }
 
