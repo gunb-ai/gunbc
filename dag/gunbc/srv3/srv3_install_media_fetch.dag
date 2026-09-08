@@ -12,11 +12,13 @@ import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_bash_emit_dissolution_trigger,
 }
 import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import gunbc.fleet_intent { srv1_host, ComputeHost }
+import gunbc.os_install_actuator_selection {
+  srv3_os_install_actuator_selection, ActuatorSelected, ActuatorUnsatisfiable,
+}
+import gunbc.fleet_intent { srv1_host }
 import gunbc.srv3_host_effect_apply {
   srv3_install_media_fetch_apply,
-  srv3_reconciliation_to_process_exit,
+  srv3_apply_to_process_exit,
 }
 import std.effects {
   EffectShape,
@@ -118,15 +120,11 @@ fn install_media_fetch_first_mirror_url(artifact: UbuntuInstallMediaArtifactRow)
   ubuntu_install_media_mirror_url(artifact: artifact, mirror: first)
 }
 
-fn srv3_install_media_fetch_actuator_host() -> ComputeHost {
-  srv3_os_install_actuator_host
-}
-
 func srv3_install_media_fetch() -> ProcessExit
   uses net: Network
 {
-  srv3_reconciliation_to_process_exit(
-    r: srv3_install_media_fetch_apply(),
+  srv3_apply_to_process_exit(
+    d: srv3_install_media_fetch_apply(),
     failure_prefix: "install-media-fetch: ",
   )
 }
@@ -139,5 +137,8 @@ fn srv3_install_media_fetch_install_path_is_versioned() -> Bool {
 }
 
 fn srv3_install_media_fetch_actuator_host_is_srv1() -> Bool {
-  srv3_install_media_fetch_actuator_host() == srv1_host
+  match srv3_os_install_actuator_selection {
+    ActuatorSelected { host: h } => h == srv1_host
+    ActuatorUnsatisfiable { reason: _ } => false
+  }
 }

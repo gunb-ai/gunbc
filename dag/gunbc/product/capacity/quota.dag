@@ -1,0 +1,31 @@
+module product.capacity.quota
+
+import std.types { String, NonEmptyStr, EpochSecs }
+import std.nat { Nat }
+import std.measure { Measure, Count, One }
+import extdeps.api_rate_limit { UpstreamRateLimit, rate_limit_period_seconds, upstream_rate_limit_key }
+import extdeps.accounting.appropriation_period { AppropriationPeriod }
+import product.capacity.pool { Pool, LapseAtPeriodEnd, pool_of }
+import product.capacity.event_chain { PartitionId }
+
+// AN UPSTREAM'S REQUEST LIMIT IS A LAPSING POOL, and this is the one place the derivation lives:
+// ceiling = the published request count, law = lapse at the end of the published period. The
+// anchor starts at zero, which aligns windows to epoch multiples of the period; the first
+// reset-observed event on the partition (a reset instant read off the upstream's response) moves
+// the anchor to the phase the upstream actually uses. Until then the pool is honest but coarse:
+// it never admits more than the published count in any aligned window.
+//
+// ONE PARTITION PER UPSTREAM SCOPE, fleet-wide: every host leasing GitHub core calls contends on
+// the same partition, because the upstream meters the credential, not the host.
+
+fn quota_partition(limit: UpstreamRateLimit) -> PartitionId {
+  join(["quota-", upstream_rate_limit_key(l: limit) as String], "") as PartitionId
+}
+
+fn quota_root_pool(limit: UpstreamRateLimit) -> Pool<Count, One> {
+  pool_of(
+    identity: quota_partition(limit: limit) as String as NonEmptyStr,
+    ceiling: Measure { count: limit.requests },
+    replenishment: LapseAtPeriodEnd { period: AppropriationPeriod { period_seconds: rate_limit_period_seconds(p: limit.period), anchor: 0 } },
+  )
+}

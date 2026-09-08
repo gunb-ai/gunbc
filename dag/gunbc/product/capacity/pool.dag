@@ -7,7 +7,8 @@ import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance {
   Encumbrance, EncumbranceState, Held, Expended, Released,
   EncumbranceLedger, EncumbranceOutcome, LedgerAdvanced, EncumbranceRefused,
-  EncumbranceRefusal, DuplicateReference,
+  EncumbranceRefusal, DuplicateReference, ExceedsAppropriation,
+  UnknownEncumbrance, ExpenditureExceedsEncumbrance, AlreadyTerminal,
   reserve_encumbrance, settle_encumbrance, release_encumbrance, encumbrance_charge,
 }
 import extdeps.accounting.appropriation_period {
@@ -192,8 +193,53 @@ type PoolOutcome<Q, S>
 // is checked over the whole ledger, because a reference is a key for the pool's lifetime; the
 // ceiling is checked over the entries charging in this window, because that is the authority the
 // instant has. A term that would outlive its window is refused rather than split: the caller
+// ADMISSION IS A WRITE-TIME DECISION AND THE FOLD DOES NOT RE-RUN IT. An acquire that a carrier
+// already committed WAS admitted, against the ceiling that stood at that instant. Re-deciding it on
+// read makes the fold a function of today's corpus rather than of its log -- so lowering a ceiling
+// retroactively invalidates history that was never wrong, and the partition can never be folded
+// again. That is not hypothetical: gunbc#10691 correctly deleted max_num_seqs as the seat
+// denominator and set a flat 3, and the ten group-B seat acquires admitted under the old ceiling
+// of 32 became unfoldable at the fourth, permanently.
+//
+// SO THE TWO REFUSAL KINDS ARE SPLIT, because they are invariant under different things. The
+// ceiling is POLICY: it is corpus configuration and it moves. Everything else is INTEGRITY of the
+// chain itself -- a duplicate reference, a release of something never held, a spend beyond the
+// hold -- and is a property of the events, so it reads the same forever and must still refuse.
+// Being over the ceiling is already a representable pool state (`PoolRead.over_committed`), and a
+// pool that is over refuses new acquires until it drains, which is the correct consequence of a
+// reduction. Refusing the FOLD was never the way to enforce a ceiling.
+type RefusalTiming
+  = PolicyAtWriteTime
+  | IntegrityOfTheChain
+
+// Exhaustive by construction: a new EncumbranceRefusal arm fails to compile HERE rather than
+// silently inheriting whichever timing a wildcard happened to name.
+fn encumbrance_refusal_timing<Q, S>(r: EncumbranceRefusal<Q, S>) -> RefusalTiming {
+  match r {
+    ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => PolicyAtWriteTime
+    UnknownEncumbrance { reference: _ } => IntegrityOfTheChain
+    DuplicateReference { reference: _ } => IntegrityOfTheChain
+    ExpenditureExceedsEncumbrance { reference: _, actual: _, maximum_liability: _ } => IntegrityOfTheChain
+    AlreadyTerminal { reference: _ } => IntegrityOfTheChain
+  }
+}
+
+type AcquireAdmission
+  = AdjudicateCeiling
+  | CeilingAlreadyAdmitted
+
+// REPLAY: apply an acquire the chain already committed. Integrity still refuses; the ceiling does
+// not, because this event's admission happened when it was written.
+fn pool_replay_acquire<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, amount: Measure<Q, S, Nat>, at: EpochSecs, term_seconds: Nat) -> PoolOutcome<Q, S> {
+  pool_acquire_admitting(pool: pool, reference: reference, amount: amount, at: at, term_seconds: term_seconds, admission: CeilingAlreadyAdmitted)
+}
+
 // leases again after the lapse, in the window that will actually carry the work.
 fn pool_acquire<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, amount: Measure<Q, S, Nat>, at: EpochSecs, term_seconds: Nat) -> PoolOutcome<Q, S> {
+  pool_acquire_admitting(pool: pool, reference: reference, amount: amount, at: at, term_seconds: term_seconds, admission: AdjudicateCeiling)
+}
+
+fn pool_acquire_admitting<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, amount: Measure<Q, S, Nat>, at: EpochSecs, term_seconds: Nat, admission: AcquireAdmission) -> PoolOutcome<Q, S> {
   if term_seconds == 0 {
     PoolRefused { refusal: EmptyTerm { reference: reference } }
   } else if length(filter(pool.ledger.entries, e => (e.reference as String) == (reference as String))) > 0 {
@@ -206,27 +252,41 @@ fn pool_acquire<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, amount: Measure<
         if expires_at > w.end {
           PoolRefused { refusal: LeaseCrossesLapse { reference: reference, expires_at: expires_at, window_end: w.end } }
         } else {
-          acquire_in(pool: pool, reference: reference, amount: amount, at: at, expires_at: expires_at, window: WindowResolved { window: w })
+          acquire_in(pool: pool, reference: reference, amount: amount, at: at, expires_at: expires_at, window: WindowResolved { window: w }, admission: admission)
         }
-      WholeLifetime => acquire_in(pool: pool, reference: reference, amount: amount, at: at, expires_at: expires_at, window: WholeLifetime)
+      WholeLifetime => acquire_in(pool: pool, reference: reference, amount: amount, at: at, expires_at: expires_at, window: WholeLifetime, admission: admission)
     }
   }
 }
 
-fn acquire_in<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, amount: Measure<Q, S, Nat>, at: EpochSecs, expires_at: EpochSecs, window: PoolWindow) -> PoolOutcome<Q, S> {
+fn acquire_in<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, amount: Measure<Q, S, Nat>, at: EpochSecs, expires_at: EpochSecs, window: PoolWindow, admission: AcquireAdmission) -> PoolOutcome<Q, S> {
   let view = EncumbranceLedger { appropriation: pool.ledger.appropriation, entries: entries_charging_at(pool: pool, at: at, window: window) }
   match reserve_encumbrance(ledger: view, reference: reference, maximum_liability: amount) {
-    EncumbranceRefused { refusal: r } => PoolRefused { refusal: LedgerRefusal { refusal: r } }
-    LedgerAdvanced { ledger: _ } =>
-      PoolAdvanced { pool: pool_with(
-        pool: pool,
-        ledger: EncumbranceLedger {
-          appropriation: pool.ledger.appropriation,
-          entries: concat(pool.ledger.entries, [Encumbrance { reference: reference, state: Held { maximum_liability: amount } }]),
-        },
-        terms: concat(pool.terms, [LeaseTerm { reference: reference, acquired_at: at, expires_at: expires_at }]),
-      ) }
+    EncumbranceRefused { refusal: r } =>
+      match admission {
+        AdjudicateCeiling => PoolRefused { refusal: LedgerRefusal { refusal: r } }
+        CeilingAlreadyAdmitted =>
+          match encumbrance_refusal_timing(r: r) {
+            IntegrityOfTheChain => PoolRefused { refusal: LedgerRefusal { refusal: r } }
+            PolicyAtWriteTime => acquire_held(pool: pool, reference: reference, amount: amount, at: at, expires_at: expires_at)
+          }
+      }
+    LedgerAdvanced { ledger: _ } => acquire_held(pool: pool, reference: reference, amount: amount, at: at, expires_at: expires_at)
   }
+}
+
+// The advance itself, shared by the adjudicated and the replayed path so the two cannot drift into
+// recording a held lease differently. It rebuilds from the pool's own entries rather than from the
+// reserve result, which is why a replayed acquire needs no separate ledger.
+fn acquire_held<Q, S>(pool: Pool<Q, S>, reference: NonEmptyStr, amount: Measure<Q, S, Nat>, at: EpochSecs, expires_at: EpochSecs) -> PoolOutcome<Q, S> {
+  PoolAdvanced { pool: pool_with(
+    pool: pool,
+    ledger: EncumbranceLedger {
+      appropriation: pool.ledger.appropriation,
+      entries: concat(pool.ledger.entries, [Encumbrance { reference: reference, state: Held { maximum_liability: amount } }]),
+    },
+    terms: concat(pool.terms, [LeaseTerm { reference: reference, acquired_at: at, expires_at: expires_at }]),
+  ) }
 }
 
 // SETTLE: consumption against a LIVE lease only. Consuming after the term ran out is spending
@@ -301,6 +361,23 @@ fn observe_upstream_remaining<Q, S>(pool: Pool<Q, S>, remaining: Measure<Q, S, N
           at: at,
           term_seconds: term_seconds,
         )
+      }
+  }
+}
+
+// A RESET INSTANT THE UPSTREAM REPORTED RE-ANCHORS THE PERIOD so that a window ends exactly there:
+// the anchor becomes the reset instant reduced modulo the period, which is the earliest boundary in
+// the same phase. A pool with no replenishment has no window to anchor and is unchanged. This is a
+// change to the law the fold applies from here on, never a rewrite of an earlier event.
+fn pool_reanchor<Q, S>(pool: Pool<Q, S>, reset_at: EpochSecs) -> Pool<Q, S> {
+  match pool.replenishment {
+    NoReplenishment => pool
+    LapseAtPeriodEnd { period: p } =>
+      Pool {
+        identity: pool.identity,
+        ledger: pool.ledger,
+        replenishment: LapseAtPeriodEnd { period: AppropriationPeriod { period_seconds: p.period_seconds, anchor: reset_at % p.period_seconds } },
+        terms: pool.terms,
       }
   }
 }

@@ -1,0 +1,14 @@
+module fixtures.free_call_pool_binding.subject_module
+
+// THE ACCEPTING SUBJECT. It imports NOTHING, declares nothing but the call, and calls a free
+// function another module owns. It compiles, and the compiler MANUFACTURES the dependency it was
+// never given: the closure comes back with three sources -- this entry, this module, and
+// `definer_module` -- although no file in the closure names `definer_module` in an import line.
+//
+// That is the value-channel half of `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`.
+// The type channel at least says something (an UnlistedImportUse advisory); the value channel says
+// nothing at all, because the mask check that emits that advisory lives in the TYPE resolver
+// (`v1.compiler.infer_resolve` `resolve_node`) keyed on `type_name` and a call never reaches it.
+fn subject_use() -> Int {
+  pool_specimen_free_call(n: 7)
+}

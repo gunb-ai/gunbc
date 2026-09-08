@@ -1,0 +1,55 @@
+module extdeps.api_rate_limit
+
+import std.types { String, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE SHAPE OF AN UPSTREAM'S PUBLISHED REQUEST LIMIT, agnostic of which upstream: a scope the
+// upstream names, a request count, and the fixed period it lapses on. Each upstream declares its
+// own rows in its own module (DESIGN section 3, external upstream decomposition); this hub carries
+// no product row. The period is a closed set because every published limit in the corpus is one of
+// these three, and a fourth arrives as a variant, not a string.
+//
+// WHAT THIS REPLACES. Every annotated service used to carry `rate_limit: { requests, per, scope }`
+// in its config block, seventeen times across eight GitHub modules, five GCP, two eBay, one
+// Anthropic and one OpenAI. The compiler parsed and deferred that field and nothing read it -- the
+// eight GitHub rows were eight spellings of one fact, the core limit. The typed rows are now the
+// single authority and the annotations are gone; a pool (product.capacity.quota) is derived from a
+// row, never typed beside it.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Rate_limiting"
+  }
+}
+
+type RateLimitPeriod = PerMinute | PerHour | PerDay
+
+fn rate_limit_period_seconds(p: RateLimitPeriod) -> Nat {
+  match p {
+    PerMinute => 60
+    PerHour => 3600
+    PerDay => 86400
+  }
+}
+
+fn rate_limit_period_wire(p: RateLimitPeriod) -> String {
+  match p {
+    PerMinute => "minute"
+    PerHour => "hour"
+    PerDay => "day"
+  }
+}
+
+type UpstreamRateLimit {
+  upstream: NonEmptyStr
+  scope: NonEmptyStr
+  requests: Nat
+  period: RateLimitPeriod
+}
+
+fn upstream_rate_limit_key(l: UpstreamRateLimit) -> NonEmptyStr {
+  join([l.upstream as String, "-", l.scope as String], "") as NonEmptyStr
+}

@@ -150,6 +150,7 @@ import product.cooling_qualification {
 import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac }
 import std.content_hash {
   ContentHash,
+  Fnv1a64Structural,
   content_hash_atom,
   content_hash_combine_structural,
   content_hash_tagged,
@@ -390,7 +391,7 @@ type BmcFanBackupManifest {
 
 fn bmc_firmware_family_content_hash(
   family: BmcFirmwareFamily,
-) -> ContentHash {
+) -> Fnv1a64Structural {
   match family {
     OpenBmc => content_hash_atom(value: "OpenBmc"),
     AmiMegaRac => content_hash_atom(value: "AmiMegaRac"),
@@ -1689,6 +1690,10 @@ func bmc_fan_run(
       exit_failure(reason: access_token_upsert_required_reason(plan: plan))
     SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
       exit_failure(reason: "secret manager access version wire decode refused")
+    SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+      exit_failure(reason: concat(concat(
+        "secret manager answered about a different version than requested: asked ", requested),
+        concat(", answered ", resolved)))
     SecretCredentialFetchRefused { reason: reason } =>
       exit_failure(reason: reason as String)
     SecretCredentialReady { credential: credential, resolved_version: _ } =>

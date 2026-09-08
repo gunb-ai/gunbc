@@ -1,7 +1,7 @@
 
 module tools.generated_artifact_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci_gate { gate_receipt_failure_detail }
 import gunbc.generated_artifact {
@@ -44,10 +44,6 @@ fn generated_artifact_agreement_verdict(findings: GeneratedArtifactPopulationFin
       generated_artifact_population_findings_rendered(f: findings)
     ))
   }
-}
-
-fn exit_ok(e: ProcessExit) -> Bool {
-  match e { ExitSuccess => true  _ => false }
 }
 
 // THE REMEDY IS PER FINDING, NOT PER RUN, AND REMOVING THE GLOBAL SENTENCE IS THE POINT. This body
@@ -99,7 +95,7 @@ func run_generated_artifact_drift_gate() -> ProcessExit {
 }
 
 // The loudness half: the floor witness collapses this gate's ProcessExit to Bool via
-// tools.ci_gates.exit_ok, so a generated-artifact drift red reported only returned Bool(false)
+// std.process.exit_ok, so a generated-artifact drift red reported only returned Bool(false)
 // without the located path. The gate body records the reason from its single
 // observe_generated_artifact_population pass; the failure-receipt companion consumes that retained
 // detail instead of re-observing. THE BODY NOW RECORDS THE CLEAN SIDE TOO, and that is the whole
@@ -244,16 +240,16 @@ func main_wet_one(path: String) -> ProcessExit {
 
 func main_wet() -> ProcessExit {
   fold(committed_generated_artifacts(), init: ExitSuccess, f: fn(acc, a) {
-    if exit_ok(e: acc) {
-      match artifact_generate(a: a) {
-        ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
-        ArtifactGenerated { content } => {
-          let w = Filesystem.Write(path: artifact_path(a: a), content: content)
-          if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
+    match acc {
+      ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+      ExitSuccess =>
+        match artifact_generate(a: a) {
+          ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
+          ArtifactGenerated { content } => {
+            let w = Filesystem.Write(path: artifact_path(a: a), content: content)
+            if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
+          }
         }
-      }
-    } else {
-      acc
     }
   })
 }
@@ -359,9 +355,8 @@ func heal_repair_declaration() -> ProcessExit {
 
 func main_wet_verified() -> ProcessExit {
   let first = main_wet()
-  if exit_ok(e: first) {
-    run_generated_artifact_drift_gate_body()
-  } else {
-    first
+  match first {
+    ExitSuccess => run_generated_artifact_drift_gate_body()
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
   }
 }

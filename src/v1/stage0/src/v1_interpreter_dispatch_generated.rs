@@ -21,6 +21,7 @@ pub enum EvalBuiltinArm {
     FreeCallConcat,
     FreeCallCount,
     FreeCallReverse,
+    FreeCallHmacSha256VerifyHex,
     FreeCallStringLength,
     FreeCallSubstring,
     FreeCallCharAt,
@@ -71,7 +72,9 @@ pub enum EvalBuiltinArm {
     FreeCallDataDeclTypeFacts,
     FreeCallExportSignatureFacts,
     FreeCallDeclFacts,
+    FreeCallDeclFactsAt,
     FreeCallModuleDeclarationFacts,
+    FreeCallModuleDeclarationFactsAt,
     FreeCallFactCardinalityDeclFacts,
     FreeCallLanguagesConsumerCensusDataDeclCount,
     FreeCallLanguagesConsumerCensusPerLanguageRowCount,
@@ -153,6 +156,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "concat" => Some(EvalBuiltinArm::FreeCallConcat),
         "count" => Some(EvalBuiltinArm::FreeCallCount),
         "reverse" => Some(EvalBuiltinArm::FreeCallReverse),
+        "hmac_sha256_verify_hex" => Some(EvalBuiltinArm::FreeCallHmacSha256VerifyHex),
         "string_length" => Some(EvalBuiltinArm::FreeCallStringLength),
         "substring" => Some(EvalBuiltinArm::FreeCallSubstring),
         "char_at" => Some(EvalBuiltinArm::FreeCallCharAt),
@@ -206,7 +210,9 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "data_decl_type_facts" => Some(EvalBuiltinArm::FreeCallDataDeclTypeFacts),
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
         "decl_facts" => Some(EvalBuiltinArm::FreeCallDeclFacts),
+        "decl_facts_at" => Some(EvalBuiltinArm::FreeCallDeclFactsAt),
         "module_declaration_facts" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFacts),
+        "module_declaration_facts_at" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFactsAt),
         "fact_cardinality_decl_facts" => Some(EvalBuiltinArm::FreeCallFactCardinalityDeclFacts),
         "languages_consumer_census_data_decl_count" => Some(EvalBuiltinArm::FreeCallLanguagesConsumerCensusDataDeclCount),
         "languages_consumer_census_per_language_row_count" => Some(EvalBuiltinArm::FreeCallLanguagesConsumerCensusPerLanguageRowCount),
@@ -289,6 +295,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.concat") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConcat };
     ("free_call.count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCount };
     ("free_call.reverse") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallReverse };
+    ("free_call.hmac_sha256_verify_hex") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHmacSha256VerifyHex };
     ("free_call.string_length") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStringLength };
     ("free_call.substring") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallSubstring };
     ("free_call.char_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCharAt };
@@ -339,7 +346,9 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.data_decl_type_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDataDeclTypeFacts };
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
     ("free_call.decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFacts };
+    ("free_call.decl_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFactsAt };
     ("free_call.module_declaration_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFacts };
+    ("free_call.module_declaration_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFactsAt };
     ("free_call.fact_cardinality_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFactCardinalityDeclFacts };
     ("free_call.languages_consumer_census_data_decl_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLanguagesConsumerCensusDataDeclCount };
     ("free_call.languages_consumer_census_per_language_row_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLanguagesConsumerCensusPerLanguageRowCount };

@@ -4,7 +4,6 @@ import std.types { String, Bool, Int, NonEmptyStr, List, FilePath, EpochSecs }
 import std.nat { Nat, nat_range_inclusive }
 import std.algebra { trim }
 import std.measure { Measure, Count, One }
-import extdeps.clock
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
@@ -13,13 +12,14 @@ import gunbc.spark.pair_serving_desired {
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
 }
 import gunbc.spark.serving_engine { ServingEngine, VllmServing, OllamaServing }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
+import v2.std.optional { Present, Absent }
+import gunbc.fabric_event_log_host { HostEventLogLayout, HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host, now_epoch_seconds }
 import product.capacity.pool { Pool, NoReplenishment, pool_of }
 import product.capacity.event_chain { PartitionId, HeadExpectation, HeadAbsent, HeadAt, ChainEvent }
 import product.capacity.pool_events { PoolEvent, PoolReleased, SeatRequest }
 import product.capacity.lease { LeasePolicy, LeaseGrant }
 import gunbc.fabric_event_log {
-  fabric_event_log_placement, event_log_remote_for, EventLogLayout, event_log_layout,
+  EventLogLayout,
   HeadObservation, HeadObserved, HeadObservationRefused, event_log_observe_head,
   EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
@@ -40,42 +40,59 @@ fn harness_seat_partition(group: FabricGroup) -> PartitionId {
   join(["group-", fabric_group_wire(g: group) as String, "-seats"], "") as PartitionId
 }
 
-// THE ROOT POOL IS THE GROUP'S ADMISSION COUNT, read off the desired unit rather than typed again;
-// a group that is refused or served by a runtime without a seat count has no pool.
-fn harness_seat_root_pool(group: FabricGroup) -> Pool<Count, One>? {
+// THE SEAT CEILING IS NOT max_num_seqs, AND IT IS NOT DERIVED AT ALL YET.
+//
+// WHAT WAS HERE AND WHY IT WAS WRONG. This function read `a.max_num_seqs` off the desired engine
+// and made it the pool ceiling. That is the engine's SCHEDULER COUNT LIMIT -- how many sequences it
+// will admit to a batch -- and it is a different quantity from how much KV the fabric can hold.
+// gunbc.spark.pair_serving_desired already states, at spark_pair_serving_seq_capacity, that NO LAW
+// FROM POOL TOKENS TO ADMITTED SEQUENCES IS MODELLED; carrying 32 through to a capacity pool
+// contradicted that in the same corpus, and every consumer of this pool then believed the fabric
+// could seat 32 turns per group. That is fail-open in the exact wall the pool exists to hold.
+//
+// AND THE OBVIOUS REPLACEMENT IS ALSO FORBIDDEN. `num_gpu_blocks * block_size` is refused by
+// construction at extdeps.vllm.kv_cache vllm_pool_reconstruction_is_authoritative
+// (BlockCountTimesBlockSize => false), because under MLA with the DeepSeek fp8 layout it reports a
+// small fraction of the logged pool. It has now been computed wrong three times in this repository,
+// the third time by a reader who had the refusal in front of them. Neither is a seat count.
+//
+// NOR IS THE USAGE GAUGE A SATURATION SIGNAL. kv_cache_usage_perc counts RETAINED PREFIX-CACHE
+// BLOCKS, so it reads high on an engine holding nothing: 96.5% at zero requests running
+// (gunbc.spark.pair_serving_observed), reproduced live at 53% with zero running on the group B head.
+// A seat law read off that gauge would be reading cache retention as occupancy.
+//
+// SO THE HONEST PRODUCTION RESULT IS THAT CAPACITY IS UNESTABLISHED, and the interim arm says
+// OPERATOR POLICY in its own name so that no consumer, witness or receipt can read it as derived.
+// The seats are a number the operator chose against observed concurrency; they are not a projection
+// of any engine fact, and the moment the resolved-layout receipt exists this arm is deleted rather
+// than re-grounded. The declared drop is gunbc.rung_drop harness_seat_ceiling_by_operator_policy.
+type HarnessSeatCapacity
+  = SeatCapacityByOperatorPolicy { pool: Pool<Count, One>, seats: Nat }
+  | AdmissionCapacityUnestablished { group: FabricGroup, cause: NonEmptyStr }
+
+// The operator's chosen interim seat count per serving group (2026-09-06), set against the
+// concurrency actually observed running on the group A head. It is a POLICY CONSTANT: nothing
+// derives it, and it carries no claim about what the KV pool can hold.
+data harness_seat_operator_policy_seats: Nat = 3
+
+fn harness_seat_capacity(group: FabricGroup) -> HarnessSeatCapacity {
   match spark_pair_serving_unit(group: group) {
-    SparkPairServingUnitRefused { group: _, cause: _ } => none
+    SparkPairServingUnitRefused { group: g, cause: _ } =>
+      AdmissionCapacityUnestablished { group: g, cause: "the group's serving unit is refused, so it has no admitted engine to seat against" as NonEmptyStr }
     SparkPairServingUnitReady { group: _, engine: e, head: _, workers: _ } =>
       match e {
-        VllmServing { args: a } => Present { value: pool_of(identity: harness_seat_partition(group: group) as String as NonEmptyStr, ceiling: Measure { count: a.max_num_seqs }, replenishment: NoReplenishment) }
-        OllamaServing { profile: _ } => none
+        VllmServing { args: _ } =>
+          SeatCapacityByOperatorPolicy {
+            pool: pool_of(
+              identity: harness_seat_partition(group: group) as String as NonEmptyStr,
+              ceiling: Measure { count: harness_seat_operator_policy_seats },
+              replenishment: NoReplenishment,
+            ),
+            seats: harness_seat_operator_policy_seats,
+          }
+        OllamaServing { profile: _ } =>
+          AdmissionCapacityUnestablished { group: group, cause: "the group is served by a runtime whose KV admission is not modelled" as NonEmptyStr }
       }
-  }
-}
-
-fn harness_event_log_root(instance: HostDashboardInstance) -> FilePath {
-  join([instance.instance_root as String, "/fabric-event-log"], "") as FilePath
-}
-
-type HarnessEventLogLayout
-  = HarnessLayoutResolved { layout: EventLogLayout, executor: HostIdentity }
-  | HarnessLayoutRefused { detail: String }
-
-fn harness_event_log_layout_for_host(short_hostname: String) -> HarnessEventLogLayout {
-  match dashboard_instance_for_host(host: trim(s: short_hostname)) {
-    DashboardInstanceHostUnknown { host: h } => HarnessLayoutRefused { detail: join(["no dashboard instance is declared for host ", h], "") }
-    DashboardInstanceForHost { instance: i } =>
-      HarnessLayoutResolved {
-        layout: event_log_layout(root: harness_event_log_root(instance: i), remote: event_log_remote_for(placement: fabric_event_log_placement, executor: (i.host_identity as String) as HostIdentity)),
-        executor: (i.host_identity as String) as HostIdentity,
-      }
-  }
-}
-
-fn harness_now_epoch() -> EpochSecs? {
-  match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
-    Present { value: n } => if n < 0 { none } else { Present { value: n } }
-    Absent => none
   }
 }
 
@@ -103,9 +120,9 @@ fn harness_try_group(acc: SeatBindFold, group: FabricGroup, layout: EventLogLayo
           if !harness_standing_is_serving(standing: standing) {
             SeatBindFold { bound: none, details: concat(acc.details, [seat_bind_detail(group: group, text: join([harness_standing_label(standing: standing), " -- ", harness_standing_detail(standing: standing)], ""))]) }
           } else {
-            match harness_seat_root_pool(group: group) {
-              Absent => SeatBindFold { bound: none, details: concat(acc.details, [seat_bind_detail(group: group, text: "no seat pool: the group is refused or not served by vLLM")]) }
-              Present { value: root } => {
+            match harness_seat_capacity(group: group) {
+              AdmissionCapacityUnestablished { group: _, cause: why } => SeatBindFold { bound: none, details: concat(acc.details, [seat_bind_detail(group: group, text: why as String)]) }
+              SeatCapacityByOperatorPolicy { pool: root, seats: _ } => {
                 let partition = harness_seat_partition(group: group)
                 let request = SeatRequest {
                   reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr,
@@ -127,10 +144,10 @@ fn harness_try_group(acc: SeatBindFold, group: FabricGroup, layout: EventLogLayo
 }
 
 fn harness_bind_seat(short_hostname: String, shape: HarnessWireShape, actor: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
-  match harness_event_log_layout_for_host(short_hostname: short_hostname) {
-    HarnessLayoutRefused { detail: d } => HarnessSeatRefused { detail: d }
-    HarnessLayoutResolved { layout: layout, executor: _ } =>
-      match harness_now_epoch() {
+  match event_log_layout_for_host(short_hostname: short_hostname) {
+    HostLayoutRefused { detail: d } => HarnessSeatRefused { detail: d }
+    HostLayoutResolved { layout: layout, executor: _ } =>
+      match now_epoch_seconds() {
         Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } => {
           let folded = fold(spark_pair_serving_groups, init: SeatBindFold { bound: none, details: [] }, f: (acc, g) =>
@@ -179,7 +196,7 @@ fn release_attempt(binding: HarnessSeatBinding, reason: NonEmptyStr, now: EpochS
 }
 
 fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> HarnessSeatRelease {
-  match harness_now_epoch() {
+  match now_epoch_seconds() {
     Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
     Present { value: now } => {
       let st = fold(nat_range_inclusive(lo: 1, hi: 3), init: ReleaseFold { done: none }, f: (acc, _i) =>
@@ -197,4 +214,8 @@ fn harness_seat_release_wire(r: HarnessSeatRelease) -> String {
     HarnessSeatReleased { partition: p } => join(["released on ", p as String], "")
     HarnessSeatReleaseRefused { detail: d } => join(["release refused: ", d], "")
   }
+}
+
+fn harness_now_epoch() -> EpochSecs? {
+  now_epoch_seconds()
 }

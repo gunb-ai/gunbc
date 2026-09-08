@@ -18,12 +18,17 @@ import gunbc.roadmap_publication_helper {
   publication_answer_path_for,
   PublicationHelperOutcome,
   HelperAnswered, HelperRequestNotConsumed, HelperRequestUnreadable,
+  HelperRequestRefused, HelperRequestNotQuarantined,
   HelperAnswerWriteFailed, HelperSpoolRefused, HelperSubjectOutsideCapability,
   PublicationHelperDisposition, OutcomeRecorded, OutcomeStopsTheLine,
   publication_helper_outcome_disposition,
+  publication_helper_outcome_key,
   PublicationHelperRunStanding, HelperRunCompleted, HelperRunStopped,
   publication_helper_run_standing,
   publication_helper_answer_request,
+  publication_request_admission,
+  RequestAdmission, RequestAdmitted, RequestUndecodableDocument,
+  RequestOutsideCapability, RequestMisaddressed,
   publication_helper_credential_env_var,
 }
 import gunbc.roadmap_publish_observe {
@@ -32,6 +37,7 @@ import gunbc.roadmap_publish_observe {
 import gunbc.host_layout {
   publication_request_dir,
   publication_answer_dir,
+  publication_refused_dir,
 }
 import gunbc.live_deploy.emit {
   live_deploy_protocol,
@@ -224,35 +230,29 @@ test fn a_document_that_is_not_json_is_refused_rather_than_read_as_a_request() -
 // consulted, and the check runs ahead of the branch that would consult it.
 
 test fn a_request_whose_subject_addresses_another_entry_is_refused_before_any_observation() -> Bool {
-  match publication_helper_answer_request(
-    instance_root: "/opt/gunbc",
-    credential: CredentialSourceAbsent { reason: "no credential in this witness" },
+  match publication_request_admission(
     entry: "some-other-node.a1.2222222222222222222222222222222222222222.json",
     request_text: publication_request_json(subject: ordinary_subject(), worktree: "/tmp/wt"),
   ) {
-    HelperRequestUnreadable { entry: e, detail: _ } =>
-      e == "some-other-node.a1.2222222222222222222222222222222222222222.json"
-    HelperAnswered { key: _, outcome_key: _ } => false
-    HelperRequestNotConsumed { key: _, detail: _ } => false
-    HelperAnswerWriteFailed { key: _, detail: _ } => false
-    HelperSpoolRefused { detail: _ } => false
-    HelperSubjectOutsideCapability { entry: _, detail: _ } => false
+    RequestMisaddressed { detail } =>
+      string_contains(s: detail, pattern: publication_spool_entry_name(
+        key: publication_spool_key(subject: ordinary_subject()),
+      ))
+    RequestAdmitted { subject: _, worktree: _ } => false
+    RequestUndecodableDocument { reason: _ } => false
+    RequestOutsideCapability { detail: _ } => false
   }
 }
 
 test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped() -> Bool {
-  match publication_helper_answer_request(
-    instance_root: "/opt/gunbc",
-    credential: CredentialSourceAbsent { reason: "no credential in this witness" },
+  match publication_request_admission(
     entry: "n.a1.1111111111111111111111111111111111111111.json",
     request_text: "{}",
   ) {
-    HelperRequestUnreadable { entry: _, detail: _ } => true
-    HelperAnswered { key: _, outcome_key: _ } => false
-    HelperRequestNotConsumed { key: _, detail: _ } => false
-    HelperAnswerWriteFailed { key: _, detail: _ } => false
-    HelperSpoolRefused { detail: _ } => false
-    HelperSubjectOutsideCapability { entry: _, detail: _ } => false
+    RequestUndecodableDocument { reason: _ } => true
+    RequestAdmitted { subject: _, worktree: _ } => false
+    RequestOutsideCapability { detail: _ } => false
+    RequestMisaddressed { detail: _ } => false
   }
 }
 
@@ -267,6 +267,86 @@ test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped()
 // subject is re-observed on every run from then on with nothing recording why -- a cost that grows
 // silently, which is exactly what a recorded classification would hide.
 
+// THE THREE TERMINAL REFUSALS STAY THREE. They share one remedy -- leave the pending set -- and a
+// single `terminally refused` arm would have been the cheaper model. It would also have erased the
+// anti-forgery distinction: a document naming another repository and a document whose name lies
+// about its own subject are different findings for whoever reads the stopped line. This is the
+// control that a later collapse reds.
+test fn the_three_terminal_refusals_are_distinguished_rather_than_collapsed() -> Bool {
+  let base = ordinary_subject()
+  let foreign = RoadmapPublicationSubject {
+    node_id: base.node_id, attempt_key: base.attempt_key,
+    repository: other_repository(), branch: base.branch,
+    expected_base: base.expected_base, expected_head: base.expected_head,
+  }
+  let undecodable = match publication_request_admission(
+    entry: publication_spool_entry_name(key: publication_spool_key(subject: base)),
+    request_text: "{}",
+  ) {
+    RequestUndecodableDocument { reason: _ } => true
+    RequestAdmitted { subject: _, worktree: _ } => false
+    RequestOutsideCapability { detail: _ } => false
+    RequestMisaddressed { detail: _ } => false
+  }
+  let outside = match publication_request_admission(
+    entry: publication_spool_entry_name(key: publication_spool_key(subject: foreign)),
+    request_text: publication_request_json(subject: foreign, worktree: "/tmp/wt"),
+  ) {
+    RequestOutsideCapability { detail: _ } => true
+    RequestAdmitted { subject: _, worktree: _ } => false
+    RequestUndecodableDocument { reason: _ } => false
+    RequestMisaddressed { detail: _ } => false
+  }
+  let admitted = match publication_request_admission(
+    entry: publication_spool_entry_name(key: publication_spool_key(subject: base)),
+    request_text: publication_request_json(subject: base, worktree: "/tmp/wt"),
+  ) {
+    RequestAdmitted { subject: _, worktree: _ } => true
+    RequestUndecodableDocument { reason: _ } => false
+    RequestOutsideCapability { detail: _ } => false
+    RequestMisaddressed { detail: _ } => false
+  }
+  undecodable && outside && admitted
+}
+
+// ── A terminally refused request leaves the pending set; a transiently unreadable one does not ──
+//
+// THIS IS THE CLASS THE EARLIER REVISION HAD NO NAME FOR, and the cost of not having one was
+// measured rather than imagined: two requests written under a superseded schema stopped the srv1
+// helper on every tick for a day, each tick paying a full run, because the refusal was correct and
+// the retention was not. Decoding is a pure function of the request bytes, so no run in that
+// population could have ended differently.
+//
+// The discriminating pair is the whole claim. A failed READ is transient -- the same path may read
+// next run -- so its request stays pending and nothing is moved. A failed DECODE is terminal, so its
+// request is moved out of the pending set. If the two shared one outcome, one of these two arms
+// would have to be wrong, and the one that was wrong is the one that ran in production.
+
+test fn a_terminally_refused_request_is_named_apart_from_a_transiently_unreadable_one() -> Bool {
+  publication_helper_outcome_key(o: HelperRequestRefused { entry: "e", detail: "d" })
+    != publication_helper_outcome_key(o: HelperRequestUnreadable { entry: "e", detail: "d" })
+}
+
+// A QUARANTINE THAT FAILS IS NOT A SILENCE. The helper that could not move the document is back in
+// the loop this repair exists to end, and the only thing that makes that visible is its own name --
+// on the precedent HelperRequestNotConsumed sets for the delete that fails after a written answer.
+test fn a_quarantine_that_fails_is_its_own_outcome_and_stops_the_line() -> Bool {
+  publication_helper_outcome_key(o: HelperRequestNotQuarantined { entry: "e", detail: "d" })
+    != publication_helper_outcome_key(o: HelperRequestRefused { entry: "e", detail: "d" })
+  && disposition_stops(o: HelperRequestNotQuarantined { entry: "e", detail: "d" })
+}
+
+// THE QUARANTINE IS NOT AN ANSWER, and it must not be addressable as one. An undecodable request has
+// no decoded subject, so no answer address exists for it; the bytes go to a third directory the
+// publication principal holds. Asserting the three are pairwise distinct is what keeps a later
+// author from resolving the quarantine into the answer directory, where the belt would read it.
+test fn the_quarantine_is_a_third_directory_and_not_the_answer_directory() -> Bool {
+  let requests = publication_request_dir(instance_root: "/opt/gunbc")
+  let answers = publication_answer_dir(instance_root: "/opt/gunbc")
+  let refused = publication_refused_dir(instance_root: "/opt/gunbc")
+  refused != requests && refused != answers && requests != answers
+}
+
 fn disposition_stops(o: PublicationHelperOutcome) -> Bool {
   match publication_helper_outcome_disposition(o: o) {
     OutcomeStopsTheLine { detail: _ } => true
@@ -278,6 +358,8 @@ test fn only_the_helpers_own_failures_stop_the_line() -> Bool {
   !disposition_stops(o: HelperAnswered { key: "k", outcome_key: "branch-not-published" })
   && disposition_stops(o: HelperRequestNotConsumed { key: "k", detail: "d" })
   && disposition_stops(o: HelperRequestUnreadable { entry: "e", detail: "d" })
+  && disposition_stops(o: HelperRequestRefused { entry: "e", detail: "d" })
+  && disposition_stops(o: HelperRequestNotQuarantined { entry: "e", detail: "d" })
   && disposition_stops(o: HelperAnswerWriteFailed { key: "k", detail: "d" })
   && disposition_stops(o: HelperSpoolRefused { detail: "d" })
 }
