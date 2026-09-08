@@ -1790,7 +1790,7 @@ pub fn declaration_substitution_basis(
         let generic_leaf = ((((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
             && (name.clone() != "".to_string()))
-            && ({
+            && {
                 let mut __found = false;
                 for g in generic_names.iter().cloned() {
                     if (g.clone() == name.clone()) {
@@ -1799,10 +1799,7 @@ pub fn declaration_substitution_basis(
                     }
                 }
                 __found
-            } || ((!v1_rt::contains(name.clone(), ".".to_string())
-                && !crate::std_types::is_kernel_type(name.clone()))
-                && (lookup_binding_by_name_local(env.clone(), name.clone())
-                    == std::option::Option::None))));
+            });
         if generic_leaf.clone() {
             node_with_inferred(
                 with_children.clone(),

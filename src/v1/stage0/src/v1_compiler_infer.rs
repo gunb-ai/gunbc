@@ -9,6 +9,7 @@ use self::InhabitanceRefusalReason::*;
 use self::InhabitanceUndecidableReason::*;
 use self::InhabitanceVerdict::*;
 use self::LiteralBoundary::*;
+use self::RefinementInhabitance::*;
 use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
@@ -4584,6 +4585,8 @@ pub enum InhabitanceUndecidableReason {
     UndecidableOptionalCarrier,
     UndecidableFormalUnresolved,
     UndecidableProducedIdentityErased,
+    UndecidableRefinementIntroduction,
+    UndecidableRefinementPeerChains,
 }
 
 #[derive(
@@ -4634,6 +4637,171 @@ pub fn declared_type_position_label(position: DeclaredTypePosition, subject: Str
                     "'".to_string(),
                 )
             }
+        }
+    }
+}
+
+pub fn refinement_chain_link_identity(link: Rc<Node>, type_env: Rc<TypeEnv>) -> Option<String> {
+    match crate::v1_compiler_infer_env::lookup_type_for(type_env.clone(), link.clone()) {
+        Some(declaration) => where_refinement_brand_declaration_site(
+            declaration.clone(),
+            type_env.source_indices.clone(),
+        ),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn refinement_chain_link_identities(
+    links: Rc<Vec<Rc<Node>>>,
+    type_env: Rc<TypeEnv>,
+) -> Rc<Vec<String>> {
+    {
+        let identified = Rc::new({
+            let mut __result = Vec::new();
+            for id in Rc::new({
+                let mut __result = Vec::new();
+                for site in Rc::new({
+                    let mut __result = Vec::new();
+                    for site in Rc::new({
+                        let mut __result = Vec::new();
+                        for link in links.iter().cloned() {
+                            __result.push(refinement_chain_link_identity(
+                                link.clone(),
+                                type_env.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        if (site.clone() != std::option::Option::None) {
+                            __result.push(site);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(match site.clone() {
+                        Some(id) => id.clone(),
+                        std::option::Option::None => "".to_string(),
+                    });
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if (id.clone() != "".to_string()) {
+                    __result.push(id);
+                }
+            }
+            __result
+        });
+        if ((identified.clone().len() as i64) == (links.clone().len() as i64)) {
+            identified.clone()
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
+pub fn refinement_chain_names(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<String>> {
+    match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), n.clone()) {
+        Some(declaration) => refinement_chain_link_identities(
+            where_refinement_chain(declaration.clone(), scope.type_env.clone()),
+            scope.type_env.clone(),
+        ),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum RefinementInhabitance {
+    RefinementWidensToDeclaredBase,
+    RefinementNarrowsToDeclaredBrand,
+    RefinementPeerChains,
+}
+
+pub fn refinement_inhabitance(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<RefinementInhabitance> {
+    {
+        let declared_chain = refinement_chain_names(declared.clone(), scope.clone());
+        let produced_chain = refinement_chain_names(produced.clone(), scope.clone());
+        match declared_chain.clone().first().cloned() {
+            std::option::Option::None => std::option::Option::None,
+            Some(declared_head) => match produced_chain.clone().first().cloned() {
+                std::option::Option::None => std::option::Option::None,
+                Some(produced_head) => {
+                    if (declared_head.clone() == produced_head.clone()) {
+                        std::option::Option::None
+                    } else {
+                        if (((declared_chain.clone().len() as i64) <= 1)
+                            && ((produced_chain.clone().len() as i64) <= 1))
+                        {
+                            std::option::Option::None
+                        } else {
+                            if {
+                                let mut __found = false;
+                                for link in produced_chain.iter().cloned() {
+                                    if (link.clone() == declared_head.clone()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } {
+                                Some(RefinementInhabitance::RefinementWidensToDeclaredBase)
+                            } else {
+                                if {
+                                    let mut __found = false;
+                                    for link in declared_chain.iter().cloned() {
+                                        if (link.clone() == produced_head.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    Some(RefinementInhabitance::RefinementNarrowsToDeclaredBrand)
+                                } else {
+                                    if {
+                                        let mut __found = false;
+                                        for d in declared_chain.iter().cloned() {
+                                            if {
+                                                let mut __found = false;
+                                                for p in produced_chain.iter().cloned() {
+                                                    if (p.clone() == d.clone()) {
+                                                        __found = true;
+                                                        break;
+                                                    }
+                                                }
+                                                __found
+                                            } {
+                                                __found = true;
+                                                break;
+                                            }
+                                        }
+                                        __found
+                                    } {
+                                        Some(RefinementInhabitance::RefinementPeerChains)
+                                    } else {
+                                        std::option::Option::None
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
         }
     }
 }
@@ -4712,41 +4880,33 @@ pub fn declared_type_inhabitance(
                                                 InhabitanceRefusalReason::RefusedKernelAtStructured,
                                         })
                                     } else {
-                                        if kernel_value_declared_type_mismatch(
-                                            declared.clone(),
-                                            produced.clone(),
-                                            scope.type_env.clone(),
-                                            source_indices.clone(),
-                                        ) {
+                                        match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
+    Some(RefinementInhabitance::RefinementWidensToDeclaredBase) => Rc::new(InhabitanceVerdict::Inhabits),
+    Some(RefinementInhabitance::RefinementNarrowsToDeclaredBrand) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+    reason: InhabitanceUndecidableReason::UndecidableRefinementIntroduction,
+}),
+    Some(RefinementInhabitance::RefinementPeerChains) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+    reason: InhabitanceUndecidableReason::UndecidableRefinementPeerChains,
+}),
+    std::option::Option::None => if kernel_value_declared_type_mismatch(declared.clone(), produced.clone(), scope.type_env.clone(), source_indices.clone()) {
                                             Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
 })
                                         } else {
-                                            if coproduct_payload_where_parent_required(
-                                                declared.clone(),
-                                                produced.clone(),
-                                                scope.clone(),
-                                            ) {
+                                            if coproduct_payload_where_parent_required(declared.clone(), produced.clone(), scope.clone()) {
                                                 Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
 })
                                             } else {
-                                                match nominal_product_inhabitance_refusal(
-                                                    declared.clone(),
-                                                    produced.clone(),
-                                                    scope.clone(),
-                                                ) {
-                                                    Some(r) => Rc::new(
-                                                        InhabitanceVerdict::InhabitanceRefused {
-                                                            reason: r.clone(),
-                                                        },
-                                                    ),
-                                                    std::option::Option::None => {
-                                                        Rc::new(InhabitanceVerdict::Inhabits)
-                                                    }
-                                                }
+                                                match nominal_product_inhabitance_refusal(declared.clone(), produced.clone(), scope.clone()) {
+    Some(r) => Rc::new(InhabitanceVerdict::InhabitanceRefused {
+    reason: r.clone(),
+}),
+    std::option::Option::None => Rc::new(InhabitanceVerdict::Inhabits),
+}
                                             }
-                                        }
+                                        },
+}
                                     }
                                 }
                             }
@@ -5153,6 +5313,8 @@ pub fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason
     InhabitanceUndecidableReason::UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape".to_string(),
     InhabitanceUndecidableReason::UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against".to_string(),
     InhabitanceUndecidableReason::UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam".to_string(),
+    InhabitanceUndecidableReason::UndecidableRefinementPeerChains => "refinement peer chains: the declared and produced refinements MEET on a shared link with neither nesting inside the other -- PEER PREDICATES over one base, measured as FilePath, GcpProjectId and Sha512DigestHex at NonEmptyStr, which are not brands at all -- so this is neither an introduction nor a brand conflict, and neither this seam nor the brand wall decides the pair".to_string(),
+    InhabitanceUndecidableReason::UndecidableRefinementIntroduction => "refinement introduction: the produced value sits at or above the declared refinement on its own chain and carries no cast to it, so whether it was INTRODUCED at that refinement is the literal-elaboration verdict for its destination, which this seam does not consult".to_string(),
 }
 }
 
@@ -26562,6 +26724,10 @@ pub struct UndecidableFormalUnresolved;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UndecidableProducedIdentityErased;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UndecidableRefinementIntroduction;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UndecidableRefinementPeerChains;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedPayloadAtParent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedKernelAtStructured;
@@ -26569,3 +26735,9 @@ pub struct RefusedKernelAtStructured;
 pub struct RefusedDistinctProductConstructor;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedDistinctAppliedTypeArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefinementWidensToDeclaredBase;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefinementNarrowsToDeclaredBrand;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefinementPeerChains;
