@@ -84,7 +84,7 @@ type SparkPairServingSeqCapacity
 // REACHABLE. An accidental guard is not a guard, and removing one is a change in its own right.
 data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityMeasured {
   max_num_seqs: 32,
-  basis: "read from the first pair's own vLLM launch line on 2026-09-03 (gunbc.spark.pair_serving_observed first_pair_vllm_serve), for DeepSeek V4 Flash at the fp8_ds_mla KV layout on this fabric -- the scenario this route still serves. It may not travel to another model, quantisation or KV layout; a GLM arm carries its own" as NonEmptyStr,
+  basis: "read from the first pair's own vLLM launch line on 2026-09-03 (gunbc.spark.pair_serving_observed first_pair_vllm_serve), for DeepSeek V4 Flash at the fp8_ds_mla KV layout on this fabric. It may not travel to another model, quantisation or KV layout; a GLM arm carries its own. THE SCENARIO CLAUSE THAT STOOD HERE -- that this is the scenario the route still serves -- WAS WITHDRAWN 2026-09-08: the route serves nothing. Its five gunbc-spark-pair containers run sleep infinity, and the DeepSeek answering on 192.168.1.225:30000 was launched out of band from a container that has since exited. So this figure is a reading of a launch line from five days ago whose topology nothing has re-verified, and the sentence asserting it still applied was the kind of claim that ages without anyone touching it" as NonEmptyStr,
 }
 
 // A GROUP'S OWN POOL DOES NOT SUPPLY THE COUNT EITHER, and the arm this replaced said so in its own
@@ -129,23 +129,34 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // which is the shape gunbc.spark.pair_serving_apply already uses. A container being Up says nothing
 // at all about whether anything is serving, and the two-minute uptimes are starts rather than crashes.
 //
-// AND A GROUP IS PARTIALLY ALIVE, WHICH IS WHY "DOWN FLEET-WIDE" IS NOT WRITTEN HERE. On 192.168.1.232
-// the GPU holds `ray::RayWorkerProc.run` at 102 GiB, so a DeepSeek tensor-parallel group has weights
-// resident and a worker running; on 192.168.1.236 the GPU holds `VLLM::EngineCore` at 112 GiB, which
-// is the canary. What is NOT established is where that worker's HEAD is: no API endpoint answered on
-// 30000 at any address this sweep could reach, and four of the nine addresses probed did not answer
-// ssh at all, so the head may simply be somewhere unswept.
+// DEEPSEEK IS SERVING, AND FINDING THAT OUT TOOK THREE WRONG ANSWERS FROM THIS ANNOTATION. An
+// exhaustive scan of BOTH subnets, every address, ports 30000 and 30001, returns exactly two endpoints
+// on the entire fleet: 192.168.1.225:30000 serving deepseek-v4-flash at a 1,048,576 window, and
+// 192.168.1.236:30001 serving the GLM canary. Group A is a live control after all.
 //
-// THE CLAIM IS THEREFORE THE NARROW ONE THAT WAS MEASURED. No DeepSeek endpoint answers anywhere this
-// sweep reached; a group has weights loaded with no reachable front door. Whether that is a dead head,
-// an unswept head, or a group mid-restart is UNDETERMINED, and this row does not decide it.
+// THE ADDRESS WAS OUTSIDE THE SWEEP, WHICH IS THE WHOLE ROOT CAUSE. Earlier passes probed .230 through
+// .238 on the management subnet and .225 only on the RAIL -- so the head, which is spark-3bd5 at
+// .225 on MANAGEMENT, could not have appeared however carefully those results were read. Every
+// conclusion drawn from them was reasoning about a hole in the data: first "Group A continues to serve
+// at tp=4" (right, but written from the roster rather than measured), then "pair serving is down
+// fleet-wide", then the narrower "no DeepSeek endpoint answers anywhere this sweep reached" -- true of
+// that sweep, and phrased so a reader would still conclude DeepSeek was down. A correct hedge on an
+// incomplete range is not the same as a correct answer, and this row had already been rewritten twice
+// before the range itself was questioned.
 //
-// AN EARLIER REVISION OF THIS ANNOTATION ASSERTED THE OPPOSITE OF ALL OF IT -- "Group A continues to
-// serve DeepSeek at tp=4 and remains the control" -- written from the roster and from a memory of how
-// the fleet was left, and false when written. A second revision then overcorrected to "pair serving is
-// down fleet-wide", which the Ray worker refutes just as squarely. Both are recorded because the pair
-// is the lesson: the roster says what SHOULD run, the sweep says what ANSWERS, and neither says what
-// is RUNNING. Only the third measurement -- what holds the GPU -- distinguishes them.
+// AND WHAT SERVES IT IS NOT THIS ROUTE, WHICH IS THE FINDING THAT OUTLASTS THE CORRECTION. On the head,
+// the only container is `dsv4` from a locally built `dsv4-ray:local`, and it EXITED 137 three days ago
+// -- so the process answering on 30000 today is not that container, and it is not a `gunbc-spark-pair`
+// either. The five hosts that DO run `gunbc-spark-pair` run it as `sleep infinity` with zero restarts:
+// idle shells an engine is `docker exec`-ed into, so Up says nothing about serving. Weights are
+// resident where the work is -- `ray::RayWorkerProc.run` holding 102 GiB on .232, `VLLM::EngineCore`
+// holding 112 GiB on the canary host.
+//
+// SO THIS ROUTE DESCRIBES SOMETHING THE FLEET IS NOT CURRENTLY DOING, and that is stated rather than
+// resolved here. The withdrawal of group B stands on the operator's authorisation and on B's head
+// serving nothing; it does not depend on any of the above. What the above establishes is that the
+// DeepSeek that IS serving was launched out of band, so this roster is not the authority for it -- and
+// a convergence run against these rows would not converge the thing actually answering on 30000.
 //
 // WHAT THIS ROW THEREFORE CLAIMS IS ONLY THE NARROW THING. Group B's hosts stop being claimed by two
 // authorities at once. It does not restore group A, does not diagnose the restarts, and does not
