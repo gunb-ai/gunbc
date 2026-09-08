@@ -144,15 +144,68 @@ fn collect_runs_in_window(
   workflow_name: String,
   event: String,
   created_range: String,
-  page: Int,
-  max_pages: Int,
+  max_run_pages: Int,
+) -> RunCollectionOutcome {
+  // Phase 1: fetch the first page to learn total_count (GitHub returns it on every page).
+  let first = github.WorkflowRuns.ListWorkflowRuns(
+    auth_token: auth_token,
+    owner: owner,
+    repo: repo,
+    workflow_name: workflow_name,
+    event: event,
+    created_range: created_range,
+    page: 1,
+  )
+  let total = first.result.total_count
+  // The listing is complete in ceil(total / 100) data pages. We allow one extra page
+  // (the first empty page that confirms exhaustion) so the fold terminates naturally.
+  let data_pages = (total + 99) / 100
+  if data_pages == 0 {
+    // No runs in the window. Return the (empty) first page as complete.
+    CollectionComplete { runs: first.result.workflow_runs }
+  } else if data_pages > max_run_pages {
+    PageLimitExceeded {
+      collected: first.result.workflow_runs,
+      reached_page: max_run_pages + 1,
+      max_pages: max_run_pages,
+    }
+  } else {
+    // Read data_pages - 1 remaining pages, then one extra empty page to confirm exhaustion.
+    collect_window_pages(
+      auth_token: auth_token,
+      owner: owner,
+      repo: repo,
+      workflow_name: workflow_name,
+      event: event,
+      created_range: created_range,
+      next_page: 2,
+      last_expected_page: data_pages + 1,
+      max_run_pages: max_run_pages,
+      accumulated: first.result.workflow_runs,
+    )
+  }
+}
+
+fn collect_window_pages(
+  auth_token: String,
+  owner: String,
+  repo: String,
+  workflow_name: String,
+  event: String,
+  created_range: String,
+  next_page: Int,
+  last_expected_page: Int,
+  max_run_pages: Int,
   accumulated: List<WorkflowRun>
 ) -> RunCollectionOutcome {
-  if page > max_pages {
+  if next_page > last_expected_page {
+    // We reached the exhaustion confirmatory page without hitting an empty response.
+    // The listing may have grown between page 1 and now; the data we have is correct
+    // but incomplete. Refuse rather than silently truncate.
     PageLimitExceeded {
       collected: accumulated,
-      reached_page: page,
-      max_pages: max_pages,
+      reached_page: next_page,
+      max_pages: max_run_pages,
     }
   } else {
     let response = github.WorkflowRuns.ListWorkflowRuns(
@@ -162,28 +215,32 @@ fn collect_runs_in_window(
       workflow_name: workflow_name,
       event: event,
       created_range: created_range,
-      page: page,
+      page: next_page,
     )
     match response.result.workflow_runs {
       Empty {} => CollectionComplete { runs: accumulated }
       Cons { head: _, tail: _ } => {
         let all_runs = accumulated |> concat(response.result.workflow_runs)
-        collect_runs_in_window(
+        collect_window_pages(
           auth_token: auth_token,
           owner: owner,
           repo: repo,
           workflow_name: workflow_name,
           event: event,
           created_range: created_range,
-          page: page + 1,
-          max_pages: max_pages,
+          next_page: next_page + 1,
+          last_expected_page: last_expected_page,
+          max_run_pages: max_run_pages,
           accumulated: all_runs,
       )
     }
   }
 }
 
-}
+// Declared frontier: the recursive page-fetch loop in collect_window_pages (and its wrapper
+// collect_runs_in_window) dissolves into std.page_fold.page_fold_live when a production consumer
+// becomes a page_fold_run over a WorkflowRuns page transport — that is, when any other module
+// fetches paginated workflow runs and the common pagination driver has more than zero consumers.
 
 fn pr_number_for_run(run: WorkflowRun) -> Int? {
   match run.pull_requests {
@@ -745,9 +802,7 @@ func superseded_run_starvation_census(
     workflow_name: workflow_name,
     event: "pull_request",
     created_range: discovery_range,
-    page: 1,
-    max_pages: max_run_pages,
-    accumulated: [],
+    max_run_pages: max_run_pages,
   )
   match outcome {
     CollectionComplete { runs: all_runs } => {
