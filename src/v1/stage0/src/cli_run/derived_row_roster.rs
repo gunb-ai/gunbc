@@ -34,6 +34,18 @@ pub const ROSTER_BASENAME: &str = "roster.dag";
 pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
 pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
+/// Module path of the DERIVED roster: `ROW_MODULE` plus the `ROSTER_BASENAME` stem.
+///
+/// ONE SPELLING, BECAUSE THE WAVE FINDS THIS FILE BY MODULE IDENTITY. `run_required_wave_admission`
+/// excludes the derived roster from the carried-forward baseline and re-derives its base side by
+/// locating it under this name. A second spelling anywhere makes that find MISS, the skip never
+/// fires, and the silently HEAD-inherited base that the exclusion exists to remove comes back WITH
+/// NO DIAGNOSTIC -- the repair defeated by a copy of its own name, and no run goes red to say so.
+/// It cannot be `concat!` of the parts because `ROW_MODULE` is a `const` and not a literal token,
+/// so the composition is asserted by `the_roster_module_is_the_row_module_plus_the_roster_stem`
+/// rather than constructed; that test is the wall, and it is why the literal is admissible here.
+pub const ROSTER_MODULE: &str = "gunbc.recurring_failure_mode.roster";
+
 /// Is `rel` the DERIVED roster itself, under any sweep root?
 ///
 /// THE ROSTER HAS NO BASE SIDE IN A DIFF, WHICH IS THE WHOLE REASON THIS PREDICATE EXISTS.
@@ -174,18 +186,20 @@ fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
 }
 
 fn render_roster(names: &[String]) -> String {
-    let mut out = String::from(
-        "module gunbc.recurring_failure_mode.roster\n\
+    let mut out = format!(
+        "module {ROSTER_MODULE}\n\
          \n\
          // DERIVED from sibling RecurringFailureMode row files. Do not hand-edit.\n\
          // Membership is the directory; order is the sorted filename stem, which is the\n\
          // declaration name. An append is a new file in this directory, never an edit here.\n\
          \n\
-         import std.types { List }\n\
-         import gunbc.recurring_failure_mode { RecurringFailureMode }\n",
+         import std.types {{ List }}\n\
+         import {ROW_MODULE} {{ RecurringFailureMode }}\n",
     );
     for name in names {
-        out.push_str("import gunbc.recurring_failure_mode.");
+        out.push_str("import ");
+        out.push_str(ROW_MODULE);
+        out.push('.');
         out.push_str(name);
         out.push_str(" { ");
         out.push_str(name);
@@ -203,6 +217,23 @@ fn render_roster(names: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_roster_module_is_the_row_module_plus_the_roster_stem() {
+        // THE COMPOSITION THE CONST CANNOT EXPRESS. `ROSTER_MODULE` is a literal because
+        // `concat!` takes literal tokens and `ROW_MODULE` is a const; this asserts the
+        // relation the literal stands for, so renaming either part reds here instead of
+        // silently giving the wave a name it will fail to find.
+        assert_eq!(
+            super::ROSTER_MODULE,
+            format!(
+                "{}.{}",
+                super::ROW_MODULE,
+                super::ROSTER_BASENAME.trim_end_matches(".dag")
+            ),
+            "the derived roster's module is its row module plus the roster file's stem"
+        );
+    }
+
     #[test]
     fn absent_is_not_an_empty_list_render_of_no_names_is_a_present_empty_literal() {
         let body = super::render_roster(&[]);
