@@ -64,7 +64,7 @@ fn w_pool_admission(tokens: Int, revision: VllmSourceRevision) -> VllmKvPoolAdmi
   )
 }
 
-fn with_admitted_pool(tokens: Int, revision: VllmSourceRevision, f: (VllmObservedKvPool) -> Bool) -> Bool {
+fn with_admitted_pool(tokens: Int, revision: VllmSourceRevision, f: fn (VllmObservedKvPool) -> Bool) -> Bool {
   match w_pool_admission(tokens: tokens, revision: revision) {
     KvPoolAdmitted { pool: p } => f(p)
     KvPoolRefused { cause: _ } => false
