@@ -446,8 +446,6 @@ fn refresh_pair(
     repo: repo,
     run_id: pair.live_head_run as String,
   )
-  // Refuse if either job list returned fewer items than total_count indicates exist.
-  // A silent truncation would fabricate plausible-looking but incomplete census rows.
   let dead_jobs_returned = count_jobs(jobs: dead_jobs.result.jobs)
   if dead_jobs_returned < dead_jobs.result.total_count {
     JobListTruncated { run_id: pair.superseded_run, total_jobs: dead_jobs.result.total_count, returned_jobs: dead_jobs_returned }
