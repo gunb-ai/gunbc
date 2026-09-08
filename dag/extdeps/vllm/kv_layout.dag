@@ -376,7 +376,8 @@ type LayoutReproduction
   | LayoutReproductionUnavailable { cause: NonEmptyStr }
 
 fn revision_is_modelled(r: VllmSourceRevision) -> Bool {
-  (r.full_revision as String) == (vllm_source_revision_read.full_revision as String)
+  (r.repository as String) == (vllm_source_revision_read.repository as String)
+    && (r.full_revision as String) == (vllm_source_revision_read.full_revision as String)
 }
 
 // THE CHECK RUNS FORWARD, NOT AS AN EQUALITY BETWEEN TWO INVERSIONS.
@@ -393,16 +394,16 @@ fn layout_reproduces_reported(layout: ResolvedKvLayout, reported: VllmReportedCa
   if !revision_is_modelled(r: reported.observed_at_revision) {
     LayoutReproductionUnavailable {
       cause: join([
-        "the reading was taken at vLLM revision ", reported.observed_at_revision.full_revision as String,
-        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.full_revision as String,
+        "the reading was taken at ", reported.observed_at_revision.repository as String, "@", reported.observed_at_revision.full_revision as String,
+        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
         "; the reproduction is not valid across revisions",
       ], "") as NonEmptyStr,
     }
   } else if !revision_is_modelled(r: layout.established_at_revision) {
     LayoutReproductionUnavailable {
       cause: join([
-        "the layout's group arithmetic was established at vLLM revision ", layout.established_at_revision.full_revision as String,
-        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.full_revision as String,
+        "the layout's group arithmetic was established at ", layout.established_at_revision.repository as String, "@", layout.established_at_revision.full_revision as String,
+        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
         "; the reproduction is not valid across revisions",
       ], "") as NonEmptyStr,
     }
