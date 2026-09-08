@@ -52,7 +52,7 @@ fn w_attempt(invocation: String, n: Nat, terminal: LaunchTerminal) -> PairServin
 test fn exit_codes_above_128_classify_as_the_signal_they_encode() -> Bool {
   (match launch_terminal_from_exit(code: 137) { LaunchKilled { signal: s } => s == 9  _ => false })
     && (match launch_terminal_from_exit(code: 143) { LaunchKilled { signal: s } => s == 15  _ => false })
-    && (match launch_terminal_from_exit(code: 0) { LaunchServing => true  _ => false })
+    && (match launch_terminal_from_exit(code: 0) { LaunchExited { code: c } => c == 0  _ => false })
     && (match launch_terminal_from_exit(code: 1) { LaunchExited { code: c } => c == 1  _ => false })
 }
 

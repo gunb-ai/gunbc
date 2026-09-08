@@ -4,6 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.spark.vllm_serving_launch {
   VllmServingLaunch, LaunchJoin, SameLaunch, same_launch, join_is_admissible,
   launch_join_wire, launch_wire,
@@ -44,9 +45,7 @@ type LaunchTerminal
 // So the classification stops at the signal, and OOM is a SEPARATE attribution that requires an
 // observation of its own, joined to the same incarnation.
 fn launch_terminal_from_exit(code: Int) -> LaunchTerminal {
-  if code == 0 {
-    LaunchServing
-  } else if code > 128 && code < 193 {
+  if code > 128 && code < 193 {
     LaunchKilled { signal: code - 128 }
   } else {
     LaunchExited { code: code }
@@ -197,3 +196,7 @@ fn bring_up_was_clean(s: ServingStanding) -> Bool {
     ServingStandingUnobserved { cause: _ } => false
   }
 }
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+data pair_serving_apply_attempt_observation_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: pair_serving_apply records PairServingLaunchAttempt rows from the systemd invocation and journal of the apply it just ran, then folds serving_standing over that list. Until then the apply outcome carries serving_standing over the empty list — ServingStandingUnobserved — rather than reading `echo restarted` as a clean bring-up. SUFFICIENT FOR: SparkPairHostApplied.standing is produced from observed attempts, not from the empty list." as NonEmptyStr)
