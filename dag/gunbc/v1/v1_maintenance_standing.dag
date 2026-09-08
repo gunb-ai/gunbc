@@ -106,7 +106,8 @@ type MaintenanceRefusal =
 // could-not-run-collapsed-into-a-finding as a class, with the operator receipt showing it bit three
 // times in one session and the construction wall built in response.
 //
-// WHAT WOULD MAKE IT ADMIT LATER IS A CONSUMER, NAMED AS A CAPABILITY AND NOT AS A WISH. No local
+// WHAT WOULD MAKE IT ELIGIBLE FOR RE-ADJUDICATION IS A CONSUMER, NAMED AS A CAPABILITY AND NOT
+// AS A WISH -- eligible, never admitted, for the reason the field itself states. No local
 // surface can promise that a parse defect is stopped before a push: every .githooks surface is
 // opt-in per clone through the core.hooksPath seed, bypassable with --no-verify, and absent in
 // container worktrees, and the one non-hook local surface that passes those three tests --
@@ -124,13 +125,13 @@ type MaintenanceRefusal =
 type RefusedV1Proposal {
   proposal: NonEmptyStr
   refused_as: MaintenanceRefusal
-  admits_when: DissolutionCondition
+  reconsider_when: DissolutionCondition
 }
 
 data v1_maintenance_parse_sweep_partition_refusal: RefusedV1Proposal = RefusedV1Proposal {
     proposal: "partition the seed's shared run_dag_parse_sweep return so instrument-cannot-complete is separable from subject-refused, the union today being an empty root roster, a read_dir failure, an empty walk, a per-file read failure and genuine parse refusals in one Vec<String>, with declaration-index findings reaching the same exit on the Ok path" as NonEmptyStr,
     refused_as: SeedFeatureCompletion,
-    admits_when: unbound_dissolution(description: "a consumer exists that MUST BRANCH on instrument-cannot-complete versus subject-refused -- not merely report it differently, but take a different action -- and that consumer serves the v2 self-host program. Naming a surface that would display the distinction does not satisfy this; the distinction must change what something does. Explicitly NOT satisfied by any local pre-push or pre-commit surface, for the reason recorded above." as NonEmptyStr),
+    reconsider_when: unbound_dissolution(description: "a consumer exists that MUST BRANCH on instrument-cannot-complete versus subject-refused -- not merely report it differently, but take a different action -- and that consumer serves the v2 self-host program. Naming a surface that would display the distinction does not satisfy this. Explicitly NOT satisfied by any local pre-push or pre-commit surface, for the reason recorded above. THIS FIELD IS NAMED reconsider_when AND NOT admits_when, AND THE DIFFERENCE IS THE WHOLE POINT: satisfying it makes the proposal ELIGIBLE FOR RE-ADJUDICATION, never admitted. Nothing here produces a classification -- this carrier declares its own rung as review diligence, and the standing states that any refusal DOMINATES every admission as a rule A REVIEWER APPLIES rather than a mechanism that fires. A field promising automatic admission on a stated condition would be a dissolution condition standing where a judgement is required, and it would be retired by nothing. AND THE DOMINATING REFUSAL IS NOT CLEARED BY THE CONSUMER ALONE, which is the part a later reader is most likely to skip: this was refused as SeedFeatureCompletion because the sweep emits nothing untrue, and a consumer that needs the distinction does not make the existing report FALSE -- it makes it INSUFFICIENT FOR THAT CONSUMER, which is still the seed failing to do something it never did. So a re-adjudication must decide that question afresh; it may well refuse again on the same class with the purpose test satisfied." as NonEmptyStr),
   }
 
 data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: MaintenanceActive }
