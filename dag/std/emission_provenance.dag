@@ -107,8 +107,12 @@ type EmissionContributionFragments {
 
 fn emission_source_identity(fragments: FreeMonoid<String>) -> FreeMonoid<String> { fragments }
 
+fn emission_source_appended(fragments: FreeMonoid<String>, source: String) -> FreeMonoid<String> {
+  fragments.append(source)
+}
+
 fn emission_source_fragment(source: String) -> EmissionAppendOperation<FreeMonoid<String>> {
-  EmissionAppendOperation { apply: fn(fragments) { fragments.append(source) } }
+  EmissionAppendOperation { apply: fn(fragments) { emission_source_appended(fragments: fragments, source: source) } }
 }
 
 fn emission_source_read_layer(contribution: EmissionContribution) -> EmissionAppendOperation<FreeMonoid<String>> {
