@@ -4,6 +4,7 @@ import std.types { Bool, Int, String, Timestamp }
 import std.nat { Nat }
 import std.measure { Second, second, seconds_per_day }
 import std.algebra { trim }
+import extdeps.github.github { default_per_page, max_per_page }
 import extdeps.github.workflow_runs {
   github.WorkflowRuns,
   WorkflowRun,
@@ -27,7 +28,6 @@ import extdeps.github.workflow_runs {
   TimedOut,
   ActionRequired,
   StartupFailure,
-  default_workflow_runs_page_size,
 }
 import extdeps.clock { Clock }
 
@@ -105,6 +105,14 @@ type RefreshedPair {
   prior_jobs_completed_at: Timestamp?
 }
 
+type RefreshResult
+  = RefreshComplete { pair: RefreshedPair }
+  | JobListTruncated { run_id: Int, total_jobs: Int, returned_jobs: Int }
+
+type RefreshPairsResult
+  = AllPairsRefreshed { pairs: List<RefreshedPair> }
+  | SomePairsTruncated { pairs: List<RefreshedPair>, truncated: List<JobListTruncated> }
+
 type StartStandingRow {
   standing: DeadHeadStartStanding
   count: Int
@@ -162,11 +170,11 @@ fn collect_runs_in_window(
     workflow_name: workflow_name,
     event: event,
     created_range: created_range,
-    per_page: default_workflow_runs_page_size,
+    per_page: max_per_page,
     page: 1,
   )
   let total = first.result.total_count
-  let data_pages = (total + default_workflow_runs_page_size - 1) / default_workflow_runs_page_size
+  let data_pages = (total + max_per_page - 1) / max_per_page
   if data_pages == 0 {
     CollectionComplete { runs: first.result.workflow_runs }
   } else if data_pages > max_run_pages {
@@ -217,7 +225,7 @@ fn collect_window_pages(
       workflow_name: workflow_name,
       event: event,
       created_range: created_range,
-      per_page: default_workflow_runs_page_size,
+      per_page: max_per_page,
       page: next_page,
     )
     match response.result.workflow_runs {
@@ -419,7 +427,7 @@ fn refresh_pair(
   owner: String,
   repo: String,
   pair: SupersededRunPair,
-) -> RefreshedPair {
+) -> RefreshResult {
   let dead_run_detail = github.WorkflowRuns.GetRun(
     auth_token: auth_token,
     owner: owner,
@@ -438,32 +446,46 @@ fn refresh_pair(
     repo: repo,
     run_id: pair.live_head_run as String,
   )
-  let dead_run = dead_run_detail.run
-  let dead_started = earliest_started_at(jobs: dead_jobs.result.jobs)
-  let live_created = earliest_created_at(jobs: live_jobs.result.jobs)
-  let last_job = last_completed_job(jobs: dead_jobs.result.jobs)
-  let prior_completion = prior_jobs_completed_at(last_job: last_job, all_jobs: dead_jobs.result.jobs)
-  RefreshedPair {
-    pair: pair,
-    dead_status: dead_run.status,
-    dead_conclusion: dead_run.conclusion,
-    dead_updated_at: dead_run.updated_at,
-    dead_job_count: count_jobs(jobs: dead_jobs.result.jobs),
-    live_job_count: count_jobs(jobs: live_jobs.result.jobs),
-    dead_first_job_started_at: dead_started,
-    live_first_job_created_at: live_created,
-    cancelled_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: Cancelled),
-    failed_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: Failure),
-    queued_jobs: count_jobs_with_status(jobs: dead_jobs.result.jobs, status: Queued),
-    terminal_laggard_started_at: match last_job {
-      Present { value: j } => j.started_at
-      Absent => none
-    },
-    terminal_laggard_completed_at: match last_job {
-      Present { value: j } => j.completed_at
-      Absent => none
-    },
-    prior_jobs_completed_at: prior_completion,
+  // Refuse if either job list returned fewer items than total_count indicates exist.
+  // A silent truncation would fabricate plausible-looking but incomplete census rows.
+  let dead_jobs_returned = count_jobs(jobs: dead_jobs.result.jobs)
+  if dead_jobs_returned < dead_jobs.result.total_count {
+    JobListTruncated { run_id: pair.superseded_run, total_jobs: dead_jobs.result.total_count, returned_jobs: dead_jobs_returned }
+  } else {
+    let live_jobs_returned = count_jobs(jobs: live_jobs.result.jobs)
+    if live_jobs_returned < live_jobs.result.total_count {
+      JobListTruncated { run_id: pair.live_head_run, total_jobs: live_jobs.result.total_count, returned_jobs: live_jobs_returned }
+    } else {
+      let dead_run = dead_run_detail.run
+      let dead_started = earliest_started_at(jobs: dead_jobs.result.jobs)
+      let live_created = earliest_created_at(jobs: live_jobs.result.jobs)
+      let last_job = last_completed_job(jobs: dead_jobs.result.jobs)
+      let prior_completion = prior_jobs_completed_at(last_job: last_job, all_jobs: dead_jobs.result.jobs)
+      RefreshComplete {
+        pair: RefreshedPair {
+          pair: pair,
+          dead_status: dead_run.status,
+          dead_conclusion: dead_run.conclusion,
+          dead_updated_at: dead_run.updated_at,
+          dead_job_count: dead_jobs_returned,
+          live_job_count: live_jobs_returned,
+          dead_first_job_started_at: dead_started,
+          live_first_job_created_at: live_created,
+          cancelled_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: Cancelled),
+          failed_jobs: count_jobs_with_conclusion(jobs: dead_jobs.result.jobs, conclusion: Failure),
+          queued_jobs: count_jobs_with_status(jobs: dead_jobs.result.jobs, status: Queued),
+          terminal_laggard_started_at: match last_job {
+            Present { value: j } => j.started_at
+            Absent => none
+          },
+          terminal_laggard_completed_at: match last_job {
+            Present { value: j } => j.completed_at
+            Absent => none
+          },
+          prior_jobs_completed_at: prior_completion,
+        }
+      }
+    }
   }
 }
 
@@ -726,7 +748,11 @@ func superseded_run_starvation_census(
       let groups = group_pr_runs(pr_runs: pr_runs)
       let pairs = extract_pairs_from_groups(groups: groups, from: from, through: through)
       let boundary_obligations = extract_boundary_obligations(groups: groups, from: from)
-      let refreshed = refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs)
+      let refreshed_result = refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs)
+      let refreshed = match refreshed_result {
+        AllPairsRefreshed { pairs: rs } => rs
+        SomePairsTruncated { pairs: rs, truncated: _ } => rs
+      }
       let start_standings = collect_start_standings(rows: refreshed)
       let cancellation_rows = collect_cancellation_rows(pairs: pairs, refreshed: refreshed)
       CensusComplete {
@@ -762,16 +788,37 @@ fn refresh_pairs(
   owner: String,
   repo: String,
   pairs: List<SupersededRunPair>,
-) -> List<RefreshedPair> {
+) -> RefreshPairsResult {
   match pairs {
-    Empty {} => []
+    Empty {} => AllPairsRefreshed { pairs: [] }
     Cons { head: pair, tail: rest } =>
-      [refresh_pair(
+      match refresh_pair(
         auth_token: auth_token,
         owner: owner,
         repo: repo,
         pair: pair,
-      )] |> concat(refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: rest))
+      ) {
+        RefreshComplete { pair: rp } =>
+          match refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: rest) {
+            AllPairsRefreshed { pairs: remaining } =>
+              AllPairsRefreshed { pairs: [rp] |> concat(remaining) }
+            SomePairsTruncated { pairs: remaining, truncated: ts } =>
+              SomePairsTruncated { pairs: [rp] |> concat(remaining), truncated: ts }
+          }
+        JobListTruncated { run_id: id, total_jobs: t, returned_jobs: r } =>
+          match refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: rest) {
+            AllPairsRefreshed { pairs: remaining } =>
+              SomePairsTruncated {
+                pairs: remaining,
+                truncated: [JobListTruncated { run_id: id, total_jobs: t, returned_jobs: r }],
+              }
+            SomePairsTruncated { pairs: remaining, truncated: ts } =>
+              SomePairsTruncated {
+                pairs: remaining,
+                truncated: [JobListTruncated { run_id: id, total_jobs: t, returned_jobs: r }] |> concat(ts),
+              }
+          }
+      }
   }
 }
 

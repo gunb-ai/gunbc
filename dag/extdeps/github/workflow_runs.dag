@@ -1,6 +1,6 @@
 module extdeps.github.workflow_runs
 
-import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
+import extdeps.github.github { GitHubUser, default_api_base, default_per_page, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import std.types { CommitSha, NonEmptyStr, Timestamp }
 import std.credentials { EnvVar }
@@ -161,10 +161,6 @@ data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
   "closure:consolidate_variant_string_mapping|parse_workflow_run_status/workflow_run_status_wire_label and parse_workflow_run_conclusion/workflow_run_conclusion_wire_label hand-roll the SnakeCase mapping already declared in the wire contracts. Dissolve when the codec-from-contract bridge derives decode and encode from CoproductWireContract rows directly."
 ]
 
-// The page size for ListWorkflowRuns — declared once so callers can derive
-// page-count arithmetic from the same authority.
-data default_workflow_runs_page_size: Int = 100
-
 service github.WorkflowRuns {
   config {
     endpoint: default_api_base
@@ -230,7 +226,7 @@ service github.WorkflowRuns {
       workflow_name: String
       event: String
       created_range: String
-      per_page: Int = default_workflow_runs_page_size
+      per_page: Int = max_per_page
       page: Int = 1
     }
     output {
@@ -262,7 +258,7 @@ service github.WorkflowRuns {
       owner: String
       repo: String
       run_id: String
-      per_page: Int = default_workflow_runs_page_size
+      per_page: Int = max_per_page
     }
     output {
       result: WorkflowJobRunList
