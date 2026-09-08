@@ -13,9 +13,9 @@ import product.cable_plant_converge {
   CablePlant, cable_plant, CableLegReading, LegNeverRead, LegReadingTaken,
   CablePlantObserved, CablePlantReceipt, CableLegOutcome,
   PlantLegNeverRead, PlantHoldsNoLegs, PlantCodingCannotBeActuatedHere,
-  WorldConverged, WorldNotConverged,
   converge_cable_plant,
 }
+import gunbc.world_converge { WorldConverged, WorldNotConverged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE INSTALLED PLANT. The order gates answer "should this be bought"; this

@@ -9,8 +9,9 @@ import extdeps.mikrotik.crs812 {
   crs812_passive_dac_requires_forced_mode,
 }
 import product.cable_plant_converge {
-  CablePlantRefusal, CablePlantConvergence, WorldConverged, WorldNotConverged,
+  CablePlantRefusal, CablePlantConvergence,
 }
+import gunbc.world_converge { WorldConverged, WorldNotConverged }
 import gunbc.spark.fabric_switch_observed {
   FabricLaneObserved, fabric_lane_observations, fabric_lane_interface,
   fabric_cable_plant_convergence,
