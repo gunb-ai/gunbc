@@ -16,27 +16,23 @@ import gunbc.guarantee_probe_corpus {
   probe_row_expectation_holds,
 }
 import std.types { Bool, Int, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.optional { Absent, Present }
 
-// THIS MODULE EXISTS BECAUSE ITS ASSERTIONS HAVE TO EXECUTE, AND THE OBVIOUS HOME FOR THEM DOES
-// NOT. The three probes below belong to the guarantee probe corpus and were first authored inside
-// test.claim.guarantee_probe_corpus_witness_test beside their siblings. That module declares
-// ReadsLiveTree -- correctly, because it reads harness source files off disk to compute a
-// measurement revision -- and a live home is DECLINED by the required floor's home policy before
-// the fold sees it. Measured, not assumed: run 32570670086 refused with
-// ExpectedRedIdentityDidNotExecute, and a grep of that run's whole log finds the module named
-// exactly twice, both times in the refusal message. Not one witness in that file executed.
+// THIS MODULE EXISTS BECAUSE ITS ASSERTIONS HAVE TO EXECUTE, AND THE OBVIOUS HOME FOR THEM DID
+// NOT WHILE DeclinedLiveTree stood. The three probes below belong to the guarantee probe corpus
+// and were first authored inside test.claim.guarantee_probe_corpus_witness_test beside their
+// siblings. That module declares ReadsLiveTree -- correctly, because it reads harness source
+// files off disk -- and was declined before the fold. Measured: run 32570670086 refused with
+// ExpectedRedIdentityDidNotExecute.
 //
-// So an assertion authored there is enrolled and inert -- the specification-without-execution
-// state DESIGN 5 names, wearing the costume of a populated probe corpus. Splitting these three out
-// into a substrate-only module is what makes them evidence rather than description, and it is a
-// move available to any of their siblings that does not need the live read.
+// Splitting them out was how they became evidence rather than description. The SubstrateInputsOnly
+// stamp on THIS file was the lie that bought execution: it calls compile_dag_diagnostic_census,
+// which walks the checkout. DeclinedLiveTree is deleted. ReadsLiveTree is the honest stamp.
 //
-// WHAT THIS DOES NOT CLAIM. It does not fix the siblings, and the fact that a whole probe corpus
-// does not execute in the required floor is a finding about the guarantee-recovery evidence base
-// that is larger than this class and is reported separately rather than quietly repaired here.
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// WHAT THIS DOES NOT CLAIM. It does not fix the siblings still living in the live-tree corpus
+// witness file.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn direct_call_arg_type_census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)

@@ -1,0 +1,56 @@
+module gunbc.recurring_failure_mode.reference_query_answered_before_the_fact_is_earned
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data reference_query_answered_before_the_fact_is_earned: RecurringFailureMode = RecurringFailureMode {
+  identity: "reference_query_answered_before_the_fact_is_earned" as NonEmptyStr,
+
+  receipts: [
+    "**a `who references X` query is evaluated against an artifact produced at a stage that has not yet earned reference identity, so references the later stage would resolve are structurally invisible and their absence is returned as a zero** (INVALID STATE: a consumer asks a reverse-consumption question of a parse-stage artifact. ",
+
+    "A bare reference survives parsing as an atom bearing its authored spelling, so it is found. ",
+
+    "A QUALIFIED reference does not: name resolution rewrites the dotted path into a canonical atom carrying the resolved declaration's identity, and before that rewrite the path is a structure whose segments are not atoms at all. ",
+
+    "So the query finds bare callers, misses qualified ones, and reports the difference as `nothing references X`. ",
+
+    "MECHANISM, located: `v2.compiler.resolve` `try_resolve_qualified_name_node` returns `canonical_atom(identity: symbol_index_node_identity(...))` on a symbol-index hit, so the binding IS preserved -- but `v2.std.decl_index` `decl_facts` re-parses every source into a flat index and stops before resolution, so a lens folding `DeclFact.node` never sees it. ",
+
+    "MEASURED (gunbc#10847 lane, fixture pool dag/test/fixture/effect_constructor_census as it then stood): a bare call rendered as one atom bearing the callee spelling; the qualified call to the same declaration rendered as five nodes with ZERO atoms and no named edges. ",
+
+    "The authored source carried three occurrences of that name and the tree carried none, and the declaration was confirmed present in the pool, so file-absence was excluded as the cause. ",
+
+    "THE INVERSION THAT MAKES THIS COSTLY TO SPOT: for this one question the SOURCE TEXT holds information the resolved-earlier artifact has dropped, so the ordinary instinct -- read structure, not text -- selects the weaker instrument and feels rigorous while doing it. ",
+
+    "HARM: the zero is false in the one direction that authorizes destruction. ",
+
+    "A deletion, a dead-code sweep, or a dangling-declaration refusal grounded on it removes a surface whose only callers were qualified, and every such zero is silently correct for bare-called surfaces, so the instrument looks accurate on most of its population. ",
+
+    "THE CHEAP RECOGNITION RULE, and it is one question: name the STAGE that produced the artifact being queried, then ask whether the fact wanted is earned before or after that stage. ",
+
+    "If it is earned after, every negative the artifact returns is uninformative and only its positives carry. ",
+
+    "A SECOND SHAPE OF THE SAME ERROR, recorded because it is what actually drove the cost: the query was UNIVERSAL (`X has no consumer anywhere`) while the decision it served was EXISTENTIAL (`find one effect surface with a live consumer`). ",
+
+    "An existential is discharged by one read call site; a universal requires semantically covering the candidate population. ",
+
+    "Building the universal instrument to answer the existential question is what made a missing capability look like a blocker rather than an irrelevance. ",
+
+    "RUNG FOUND AT: 1, mitigatable. ",
+
+    "Nothing refuses a reverse-consumption query posed to a parse-stage artifact; the reader must know which stage earns the fact, so safety rests entirely on that occurring to someone. ",
+
+    "CEILING: 3, structurally guaranteed. ",
+
+    "Reference identity is earned by semantic resolution, so an artifact carrying reference facts can be typed to carry its own coverage -- which population was semantically processed -- and a query whose answer would exceed that coverage can be refused rather than answered. ",
+
+    "It cannot reach 4: a partial population is a real state the model must represent rather than one it can make unwritable, exactly as a preempted claim's demand set is. ",
+
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **semantic forward-reference facts carrying an explicit coverage carrier, such that a reverse query over them REFUSES when the claimed universe exceeds the population actually resolved** -- sufficient for a consumer to distinguish `no reference exists` from `no reference was looked for`, demonstrated by a discriminating red on a fixture whose only caller lies outside the covered population. ",
+
+    "Widening the parse index does NOT discharge it: no amount of parse-stage detail earns a fact the parse stage does not compute, and a positive-only reader over an already-compiled closure -- which IS sound -- discharges only the existential half.)",
+  ],
+
+  evidence: [],
+}
