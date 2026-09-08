@@ -169,14 +169,14 @@ fn collect_runs_in_window(
         let all_runs = accumulated |> concat(response.result.workflow_runs)
         collect_runs_in_window(
           auth_token: auth_token,
-        owner: owner,
-        repo: repo,
-        workflow_name: workflow_name,
-        event: event,
-        created_range: created_range,
-        page: page + 1,
-        max_pages: max_pages,
-        accumulated: all_runs,
+          owner: owner,
+          repo: repo,
+          workflow_name: workflow_name,
+          event: event,
+          created_range: created_range,
+          page: page + 1,
+          max_pages: max_pages,
+          accumulated: all_runs,
       )
     }
   }
