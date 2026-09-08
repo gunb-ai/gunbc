@@ -5,8 +5,9 @@ import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedMax, CabinetPowerFigure, PublishedRealPower,
-  RetailGrainStanding, SingleCabinetOffered,
+  CabinetDensityClaim, DensityMarketedMax, DensityUnread,
+  CabinetPowerFigure, PublishedRealPower,
+  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -79,3 +80,30 @@ data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // deployment for one named tenant would in any case be a different fact from a marketed cabinet
 // maximum, and would need its own arm rather than being read as retail density.
 data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator contributes exactly one modelled facility despite operating several in this metro, which understates it."
+
+// THE SAME OPERATOR IN PENNSYLVANIA, ADDED BY THE PHILADELPHIA AND LEHIGH VALLEY LANE. DataBank
+// sells from 401 North Broad, the Philadelphia carrier hotel Netrality owns - so this census now
+// carries that one building three times under three sellers (Netrality's own retail, this suite,
+// and LightWave Networks), each citing its own operator. The contrast with LGA4 above is the
+// finding: the same operator markets 35 kW+ air-cooled cabinets in Orangeburg and publishes no
+// density at all for its Philadelphia suite, so an operator-level density claim is not a thing
+// that exists. Density is a per-facility reading or it is unread.
+data databank_phl1_philadelphia: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank PHL1 Downtown Philadelphia",
+  address: AddressListed {
+    street: "401 North Broad Street, Suite 240, Philadelphia, PA 19108",
+    citation: "databank.com Philadelphia data centers page, read 2026-09-08",
+  },
+  municipality: "Philadelphia",
+  region_code: "PA",
+  facility_note: "0.34 MW critical IT load across 7,760 IT square feet with 22 onsite carriers (read 2026-09-08) - by critical load the smallest facility in this census, a suite inside the region's premier carrier hotel rather than a building. Its value is interconnection, not capacity: 0.34 MW is under a tenth of what the same operator's LGA4 carries.",
+}
+
+data databank_phl1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "databank.com Philadelphia page, read 2026-09-08, states critical IT load, IT square footage and carrier count, and NO per-cabinet density. The operator's 35 kW+ claim belongs to the Orangeburg campus and may not be carried to this suite - a 0.34 MW suite and a 10 MW campus are different plant. Request a PHL1 spec sheet or a quote.",
+}
+
+data databank_phl1_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The Philadelphia page read 2026-09-08 describes interconnection and location and does not itemise cabinets, cages or suites for this site. The 'Cabinets & Cages' wording carried above is the LGA4 page's, not this one's. Confirm the smallest sellable unit at PHL1 with sales.",
+}
