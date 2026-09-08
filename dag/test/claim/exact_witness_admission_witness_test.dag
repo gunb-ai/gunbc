@@ -43,6 +43,7 @@ import std.witness_admission {
   OfflineLocalRecipe,
   FalsifierSubstrateLongLane,
   QuarantineProbeExpectRed,
+  LocalRepoWetLane,
   SubstrateLongLaneEvalBudget,
   FastLaneEvalBudget,
   ExpectAssertionFalse,
@@ -209,6 +210,51 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
       }
     ]
   ) == false
+}
+
+// RED CONTROL: a synthetic admission row on an exempted cadence (QuarantineProbeExpectRed)
+// with an identity NOT in transitional_admission_exceptions is REFUSED by the well-formed
+// check — proving the wall is real and not just a rostered exemption list (DESIGN §4b(4)).
+// The entry/function pair is deliberately outside the 21 exempted identities, so this test
+// would RED if someone adds the identity to the exception list (remove it from the probe).
+test fn red_control_synthetic_violation_on_exempted_cadence_reds() -> Bool {
+  explicit_witness_admissions_well_formed_in(
+    rows: [
+      ExplicitWitnessAdmission {
+        witness: ScheduleWitnessEntry {
+          entry: "dag/test/claim/synthetic_non_exempted_witness_test.dag",
+          function: "non_exempted_probe_holds",
+          kind: CorpusWitnessKind
+        },
+        cadence: QuarantineProbeExpectRed,
+        budget: FastLaneEvalBudget,
+        expected: ExpectAssertionFalse,
+        reason: "synthetic: a violating admission row outside the bounded exception list",
+        dissolution: unbound_dissolution(description: "synthetic: control only — this entry does not exist")
+      }
+    ]
+  ) == false
+}
+
+// POSITIVE CONTROL: a synthetic admission row on a cadence with a live scheduled route
+// (LocalRepoWetLane) IS admitted — proving the well-formed check passes for valid rows.
+test fn synthetic_live_cadence_is_admitted() -> Bool {
+  explicit_witness_admissions_well_formed_in(
+    rows: [
+      ExplicitWitnessAdmission {
+        witness: ScheduleWitnessEntry {
+          entry: "dag/test/claim/synthetic_live_cadence_witness_test.dag",
+          function: "synthetic_live_cadence_probe_holds",
+          kind: CorpusWitnessKind
+        },
+        cadence: LocalRepoWetLane,
+        budget: FastLaneEvalBudget,
+        expected: ExpectWitnessHolds,
+        reason: "synthetic: positive control for the well-formed check",
+        dissolution: unbound_dissolution(description: "synthetic: control only — this entry does not exist")
+      }
+    ]
+  ) == true
 }
 
 test fn red_control_file_grain_admission_would_reach_the_sibling() -> Bool {
