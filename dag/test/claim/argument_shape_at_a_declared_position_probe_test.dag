@@ -1,14 +1,12 @@
 module test.claim.argument_shape_at_a_declared_position_probe_test
 
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_total_count
-}
+import gunbc.compile_census_probe { total_blocking_count_for }
 import std.types { String, Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// total_blocking_count_for answers -1 on CensusNotRunnable, so could-not-measure REDS every row
+// below and greens none (DESIGN section 5: bottom-as-answer must never be readable as
+// bottom-as-ignorance). That arm is the canonical helper's, not a convention re-stated here.
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -78,25 +76,13 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // WHAT THIS DOES NOT MEASURE, stated so no receipt reads coverage it does not have: the Rust
 // emission path, record-field positions as distinct from call arguments, and n-ary functions.
 
-fn census_of(source: String) -> CompileDiagnosticCensus {
-  compile_dag_diagnostic_census(source)
-}
-
-// -1 on CensusNotRunnable, so could-not-measure REDS every row below and greens none
-// (DESIGN section 5: bottom-as-answer must never be readable as bottom-as-ignorance).
-fn blocking_count(source: String) -> Int {
-  match census_of(source: source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
-}
 
 // THE POSITIVE CONTROL. A String at a CONCRETE declared position. The compiler refuses this today,
 // located and typed, and this row is green now and must stay green.
 data string_at_concrete_position_source: String = "module probe_string_at_concrete\nimport std.types { Bool, String }\nimport v2.std.collection { Map }\nfn take_map(m: Map<String, Bool>) -> Bool { true }\nfn probe() -> Bool { take_map(m: \"definitely not a map\") }\n"
 
 test fn a_string_at_a_concrete_position_is_refused() -> Bool {
-  blocking_count(source: string_at_concrete_position_source) >= 1
+  total_blocking_count_for(source: string_at_concrete_position_source) >= 1
 }
 
 // THE DISCRIMINATING RED. An unapplied nullary function at that SAME concrete position. No
@@ -105,7 +91,7 @@ test fn a_string_at_a_concrete_position_is_refused() -> Bool {
 data function_at_concrete_position_source: String = "module probe_function_at_concrete\nimport std.types { Bool, String }\nimport v2.std.collection { Map, empty_map }\nfn take_map(m: Map<String, Bool>) -> Bool { true }\nfn probe() -> Bool { take_map(m: empty_map) }\n"
 
 test fn an_unapplied_function_at_a_concrete_position_is_refused() -> Bool {
-  blocking_count(source: function_at_concrete_position_source) >= 1
+  total_blocking_count_for(source: function_at_concrete_position_source) >= 1
 }
 
 // THE GENERIC ARM OF THE SAME PAIR, which is what discharges the sibling row's ceiling sentence:
@@ -114,7 +100,7 @@ test fn an_unapplied_function_at_a_concrete_position_is_refused() -> Bool {
 data string_at_generic_position_source: String = "module probe_string_at_generic\nimport std.types { Bool, String }\nimport v2.std.collection { Map, map_insert }\nfn probe() -> Map<String, Bool> { map_insert(m: \"definitely not a map\", key: \"k\", value: true) }\n"
 
 test fn a_string_at_a_generic_position_is_refused() -> Bool {
-  blocking_count(source: string_at_generic_position_source) >= 1
+  total_blocking_count_for(source: string_at_generic_position_source) >= 1
 }
 
 // THE SECOND POSITIVE CONTROL, and it is the one that keeps the three rows above from passing on a
@@ -123,5 +109,5 @@ test fn a_string_at_a_generic_position_is_refused() -> Bool {
 data well_typed_source: String = "module probe_well_typed\nimport std.types { Bool, String }\nimport v2.std.collection { Map, empty_map, map_insert }\nfn probe() -> Map<String, Bool> { map_insert(m: empty_map(), key: \"k\", value: true) }\n"
 
 test fn the_well_typed_call_is_clean() -> Bool {
-  blocking_count(source: well_typed_source) == 0
+  total_blocking_count_for(source: well_typed_source) == 0
 }
