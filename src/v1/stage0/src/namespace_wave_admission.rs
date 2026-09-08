@@ -1606,29 +1606,18 @@ pub struct TransitionAdmission {
 /// a reading of the trigger paragraph. Their label constant goes with them, since a label is text
 /// shared by the rows citing it and dissolves with the last one.
 ///
-/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
-/// `cumulative_metric_read_as_per_event`, is added as its own file under
-/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
-/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
-/// the head side that name newly resolves into the class's own module, which is
-/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
-/// the membership rule the directory IS, not by anyone rebinding an existing name.
+/// THE gunbc#10813 CLASS-ADDED ROW DISSOLVED HERE (2026-09-08), BY ITS OWN TRIGGER AND ON THE
+/// ROSTER TOUCH IT NAMED. Its entry said it came due on this roster's next touch, and this change
+/// is that touch. ADJUDICATED BY THE JOIN IT DEMANDED RATHER THAN BY ITS OWN SENTENCE: the required
+/// run reported it CONSUMED -- already satisfied at the base -- and
+/// `gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event` is a file on main, so base and
+/// head both resolve the spelling into that module. Its label constant goes with it, since a label
+/// is text shared by the rows citing it and dissolves with the last one.
 ///
-/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
-/// one file per class precisely so that two lanes appending different classes never rewrite one
-/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
-/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
-/// is the same motion whether it was intended or accidental, and only the author can say which.
+/// TWO LANES FILED A CLASS ON ONE DAY AND BOTH ROWS PASSED THROUGH THIS SLOT IN SEQUENCE, which is
+/// the shape to expect rather than a collision: the row is owed for exactly as long as the class is
+/// unlanded, and the next roster touch after it lands collects it.
 ///
-/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
-/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
-/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
-/// trusting this sentence.
-const RECURRING_FAILURE_MODE_CLASS_ADDED_LABEL: &str =
-    "gunbc#10813 recurring-failure-mode class added: `cumulative_metric_read_as_per_event` \
-     joins the roster as its own file, so the roster's existing declaration resolves a name into \
-     the new class module -- the ledger's one-file-per-class growth shape, not a rebind";
-
 /// EIGHTH TRANSITION (2026-09-08, gunbc#10783), and it is the SEVENTH's shape arriving a second
 /// time from another lane, which is the evidence that this is a standing cost rather than an
 /// incident. Two recurring-failure-mode classes are filed as their own files under
@@ -1651,29 +1640,17 @@ const RECURRING_FAILURE_MODE_CLASS_FILING_LABEL: &str =
      `unapplied_function_value_admitted_at_a_value_position` joins the roster as its own file, so \
      the generated roster's existing declaration resolves a name into the new class module";
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: RECURRING_FAILURE_MODE_CLASS_ADDED_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.recurring_failure_mode.roster",
-            in_declaration: "recurring_failure_mode_roster",
-            spelling: "cumulative_metric_read_as_per_event",
-            target: "gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: RECURRING_FAILURE_MODE_CLASS_FILING_LABEL,
+    subject: AdmissionSubject::Binding {
+        module: "gunbc.recurring_failure_mode.roster",
+        in_declaration: "recurring_failure_mode_roster",
+        spelling: "unapplied_function_value_admitted_at_a_value_position",
+        target:
+            "gunbc.recurring_failure_mode.unapplied_function_value_admitted_at_a_value_position",
     },
-    TransitionAdmission {
-        label: RECURRING_FAILURE_MODE_CLASS_FILING_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.recurring_failure_mode.roster",
-            in_declaration: "recurring_failure_mode_roster",
-            spelling: "unapplied_function_value_admitted_at_a_value_position",
-            target:
-                "gunbc.recurring_failure_mode.unapplied_function_value_admitted_at_a_value_position",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-];
+    disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
