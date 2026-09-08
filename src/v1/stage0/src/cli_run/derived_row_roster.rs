@@ -186,4 +186,27 @@ mod tests {
             "directory match is the module path, not a second spelling"
         );
     }
+
+    #[test]
+    fn the_roster_module_is_the_row_module_plus_the_roster_stem() {
+        // THE SAME BINDING THE TEST ABOVE MAKES, FOR THE CONST THE WAVE LOOKS THE ROSTER UP BY.
+        // `ROSTER_MODULE` is not an independent fact: it is `ROW_MODULE` plus the roster file's own
+        // stem, and nothing in the type system says so. The namespace wave FINDS the head roster by
+        // that module identity and skips it from the base index, so a divergence between these
+        // constants would make the find miss, the skip never fire, and the silently HEAD-inherited
+        // base return with NO diagnostic -- the defect the wave repair exists to remove.
+        //
+        // The relation is asserted rather than derived because a `const` cannot call `format!`;
+        // this is the file's existing answer to the same problem, one line above.
+        assert_eq!(
+            super::ROSTER_MODULE,
+            format!(
+                "{}.{}",
+                super::ROW_MODULE,
+                super::ROSTER_BASENAME.trim_end_matches(".dag")
+            ),
+            "the roster's module path is its directory's module plus its own stem, not a third \
+             spelling that can drift from either"
+        );
+    }
 }
