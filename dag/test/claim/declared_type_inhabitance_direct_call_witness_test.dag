@@ -459,6 +459,7 @@ data cast_literal_at_refinement_source: String = "module probe_cast_literal_at_r
 test fn w_a_bare_literal_at_a_refinement_formal_declines_and_a_cast_one_does_not() -> Bool {
   violation_count(source: bare_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
     > violation_count(source: cast_literal_at_refinement_source, wanted: "DeclaredTypeInhabitanceUndecided")
+}
 
 // THE TWO FIXTURES CARRY IDENTICAL CLOSURES AND DIFFER ON EXACTLY ONE TOKEN -- the actual passed.
 // Both import std.types AND product.placement_supply, and both DECLARE both values; only the
