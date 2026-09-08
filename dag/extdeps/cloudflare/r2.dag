@@ -1,0 +1,201 @@
+module extdeps.cloudflare.r2
+
+import std.types { NonEmptyStr, String, List, Timestamp }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.uri { Uri, Https }
+import extdeps.cloudflare.account_api_tokens {
+  CreatedAccountToken,
+  AccountTokenPolicy,
+  PermissionGroupRef,
+  TokenResourceGrant,
+  PolicyAllow,
+  CreateAccountTokenRequest
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/r2/api/tokens"
+  }
+}
+
+data r2_s3_api_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/r2/api/s3/api"
+  }
+}
+
+data r2_tokens_doc_as_of: Timestamp = "2026-08-18"
+
+data workers_r2_storage_bucket_item_read_permission_group_id: NonEmptyStr = "6a018a9f2fc74eb6b293b0c548f38b39"
+
+data workers_r2_storage_bucket_item_read_permission_group_name: NonEmptyStr = "Workers R2 Storage Bucket Item Read"
+
+data r2_s3_access_key_is_created_token_id_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "R2S3AccessPair",
+    field: NamedField { field_name: "access_key_id" }
+  },
+  authority: extdeps_external_authority_anchor
+}
+
+data r2_s3_secret_is_sha256_of_create_value_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "R2S3AccessPair",
+    field: NamedField { field_name: "secret_derivation" }
+  },
+  authority: extdeps_external_authority_anchor
+}
+
+data workers_r2_storage_bucket_item_read_permission_group_id_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.r2",
+    decl_name: "workers_r2_storage_bucket_item_read_permission_group_id",
+    field: WholeDeclaration
+  },
+  authority: extdeps_external_authority_anchor
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloudflare.r2",
+      decl_name: "R2S3Endpoint",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [r2_s3_api_citation]
+}
+type R2Jurisdiction
+  = R2JurisdictionDefault
+  | R2JurisdictionEu
+  | R2JurisdictionFedramp
+  | R2JurisdictionUs
+
+fn r2_jurisdiction_wire(jurisdiction: R2Jurisdiction) -> String {
+  match jurisdiction {
+    R2JurisdictionDefault => "default"
+    R2JurisdictionEu => "eu"
+    R2JurisdictionFedramp => "fedramp"
+    R2JurisdictionUs => "us"
+  }
+}
+
+type R2S3Endpoint {
+  account_id: String
+  jurisdiction: R2Jurisdiction
+}
+
+fn r2_s3_endpoint_host(endpoint: R2S3Endpoint) -> String {
+  match endpoint.jurisdiction {
+    R2JurisdictionDefault => join([endpoint.account_id, ".r2.cloudflarestorage.com"], "")
+    R2JurisdictionEu => join([endpoint.account_id, ".eu.r2.cloudflarestorage.com"], "")
+    R2JurisdictionFedramp => join([endpoint.account_id, ".fedramp.r2.cloudflarestorage.com"], "")
+    R2JurisdictionUs => join([endpoint.account_id, ".us.r2.cloudflarestorage.com"], "")
+  }
+}
+
+fn r2_s3_endpoint_url(endpoint: R2S3Endpoint) -> String {
+  join(["https://", r2_s3_endpoint_host(endpoint: endpoint)], "")
+}
+
+fn r2_bucket_resource_name(
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> String {
+  join(
+    [
+      "com.cloudflare.edge.r2.bucket.",
+      account_id,
+      "_",
+      r2_jurisdiction_wire(jurisdiction: jurisdiction),
+      "_",
+      bucket_name
+    ],
+    ""
+  )
+}
+
+fn r2_account_resource_name(account_id: String) -> String {
+  join(["com.cloudflare.api.account.", account_id], "")
+}
+
+data r2_s3_region: NonEmptyStr = "auto"
+
+type R2S3SecretDerivation
+  = Sha256OfApiTokenValue
+
+type R2S3AccessPair {
+  access_key_id: NonEmptyStr
+  secret_derivation: R2S3SecretDerivation
+}
+
+fn r2_s3_access_pair_from_created_token(token: CreatedAccountToken) -> R2S3AccessPair {
+  R2S3AccessPair {
+    access_key_id: token.id,
+    secret_derivation: Sha256OfApiTokenValue
+  }
+}
+
+fn r2_bucket_item_read_permission_group() -> PermissionGroupRef {
+  PermissionGroupRef { id: workers_r2_storage_bucket_item_read_permission_group_id }
+}
+
+fn r2_bucket_item_read_resources(
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> List<TokenResourceGrant> {
+  [
+    TokenResourceGrant {
+      resource: r2_bucket_resource_name(
+        account_id: account_id,
+        jurisdiction: jurisdiction,
+        bucket_name: bucket_name
+      ),
+      access: "*"
+    }
+  ]
+}
+
+fn r2_object_read_token_policy(
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> AccountTokenPolicy {
+  AccountTokenPolicy {
+    effect: PolicyAllow,
+    permission_groups: [r2_bucket_item_read_permission_group()],
+    resources: r2_bucket_item_read_resources(
+      account_id: account_id,
+      jurisdiction: jurisdiction,
+      bucket_name: bucket_name
+    )
+  }
+}
+
+fn r2_object_read_create_request(
+  name: String,
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> CreateAccountTokenRequest {
+  CreateAccountTokenRequest {
+    name: name,
+    policies: [
+      r2_object_read_token_policy(
+        account_id: account_id,
+        jurisdiction: jurisdiction,
+        bucket_name: bucket_name
+      )
+    ],
+    not_before: none,
+    expires_on: none
+  }
+}

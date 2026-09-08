@@ -1,0 +1,323 @@
+module extdeps.cloudflare.account_api_tokens
+
+import std.types { NonEmptyStr, String, Secret, Timestamp, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.cloudflare.client_v4 {
+  cloudflare_client_v4_base,
+  CloudflareApiError
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens"
+  }
+}
+
+data create_via_api_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/fundamentals/api/how-to/create-via-api"
+  }
+}
+
+data create_account_token_api_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/accounts/subresources/tokens/methods/create"
+  }
+}
+
+data token_formats_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/fundamentals/api/get-started/token-formats"
+  }
+}
+
+data create_account_token_api_as_of: Timestamp = "2026-08-11"
+
+data account_owned_tokens_doc_as_of: Timestamp = "2026-09-02"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloudflare.account_api_tokens",
+      decl_name: "CloudflareAccountTokenShape",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    create_via_api_citation,
+    create_account_token_api_citation,
+    token_formats_citation
+  ]
+}
+
+// ACCOUNT-OWNED TOKENS ARE SERVICE PRINCIPALS. They do not inherit a user's permissions and stay
+// valid after the configuring user leaves. Creating or updating one in the dashboard requires Super
+// Administrator on the account (account-owned-tokens citation). Creating via API requires the
+// Account API Tokens Write permission on the calling token (create-token API citation).
+//
+// SHAPE, NOT A BOOL. The GitHub org-admin pattern (extdeps.github.org_admin_auth OrgAdminCredentialShape)
+// is kind × grants × acquisition × lifetime × revocation. Cloudflare's arms are Cloudflare's; they
+// are not GitHub's HumanWebAcquired / ProgrammaticallyMintedFromGitHubAppKey.
+data account_api_tokens_write_permission_name: NonEmptyStr = "Account API Tokens Write"
+
+data account_token_value_prefix: NonEmptyStr = "cfat_"
+data user_token_value_prefix: NonEmptyStr = "cfut_"
+data global_api_key_value_prefix: NonEmptyStr = "cfk_"
+
+type CloudflareCredentialKind
+  = AccountOwnedApiToken
+  | UserOwnedApiToken
+  | GlobalApiKey
+
+type CloudflareCredentialCapability
+  = CreateAccountOwnedToken
+  | ListAccountTokenPermissionGroups
+  | R2S3ObjectRead
+
+type CloudflarePermissionGrant
+  = AccountApiTokensWrite
+  | AccountApiTokensRead
+  | WorkersR2StorageBucketItemRead
+
+type CloudflareCredentialAcquisition
+  = HumanDashboardAcquired
+  | CreatedViaAccountTokensApi
+
+type CloudflareCredentialLifetime
+  = NoExpiryUntilRevoked
+  | OptionalTokenExpiry { expires_on: Timestamp }
+
+type CloudflareCredentialRevocation
+  = AccountApiTokensSurface
+  | UserApiTokensSurface
+  | GlobalApiKeySurface
+
+type CloudflareAccountTokenShape {
+  kind: CloudflareCredentialKind
+  grants: List<CloudflarePermissionGrant>
+  acquisition: CloudflareCredentialAcquisition
+  lifetime: CloudflareCredentialLifetime
+  revocation: CloudflareCredentialRevocation
+}
+
+fn grant_supports(
+  grant: CloudflarePermissionGrant,
+  capability: CloudflareCredentialCapability
+) -> Bool {
+  match grant {
+    AccountApiTokensWrite => any(
+      [CreateAccountOwnedToken, ListAccountTokenPermissionGroups],
+      c => c == capability
+    )
+    AccountApiTokensRead => capability == ListAccountTokenPermissionGroups
+    WorkersR2StorageBucketItemRead => capability == R2S3ObjectRead
+  }
+}
+
+fn credential_supports(
+  shape: CloudflareAccountTokenShape,
+  capability: CloudflareCredentialCapability
+) -> Bool {
+  any(shape.grants, g => grant_supports(grant: g, capability: capability))
+}
+
+type CloudflareCredentialFormat
+  = ScannableAccountApiToken
+  | ScannableUserApiToken
+  | ScannableGlobalApiKey
+  | Pre2026Unprefixed
+
+fn classify_cloudflare_credential_format(value: String) -> CloudflareCredentialFormat {
+  if starts_with(s: value, prefix: account_token_value_prefix as String) {
+    ScannableAccountApiToken
+  } else {
+    if starts_with(s: value, prefix: user_token_value_prefix as String) {
+      ScannableUserApiToken
+    } else {
+      if starts_with(s: value, prefix: global_api_key_value_prefix as String) {
+        ScannableGlobalApiKey
+      } else {
+        Pre2026Unprefixed
+      }
+    }
+  }
+}
+
+type AccountTokenStatus
+  = TokenActive
+  | TokenDisabled
+  | TokenExpired
+
+fn parse_account_token_status(raw: String) -> AccountTokenStatus? {
+  if raw == "active" {
+    Present { value: TokenActive }
+  } else {
+    if raw == "disabled" {
+      Present { value: TokenDisabled }
+    } else {
+      if raw == "expired" {
+        Present { value: TokenExpired }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+type TokenPolicyEffect
+  = PolicyAllow
+  | PolicyDeny
+
+fn token_policy_effect_wire(effect: TokenPolicyEffect) -> String {
+  match effect {
+    PolicyAllow => "allow"
+    PolicyDeny => "deny"
+  }
+}
+
+type PermissionGroupRef {
+  id: NonEmptyStr
+}
+
+type TokenResourceGrant {
+  resource: String
+  access: String
+}
+
+type AccountTokenPolicy {
+  effect: TokenPolicyEffect
+  permission_groups: List<PermissionGroupRef>
+  resources: List<TokenResourceGrant>
+}
+
+type CreateAccountTokenRequest {
+  name: String
+  policies: List<AccountTokenPolicy>
+  not_before: Timestamp?
+  expires_on: Timestamp?
+}
+
+// THE TOKEN SECRET IS RETURNED ON CREATE AND NEVER AGAIN. A later GET of the same token id has
+// metadata only. Modeling value as optional on one type would let a caller treat a list-response
+// row as a create-response and mint R2 S3 secrets from nothing.
+type CreatedAccountToken {
+  id: NonEmptyStr
+  name: String
+  status: AccountTokenStatus
+  value: Secret
+  expires_on: Timestamp?
+  not_before: Timestamp?
+}
+
+type AccountTokenMetadata {
+  id: NonEmptyStr
+  name: String
+  status: AccountTokenStatus
+  expires_on: Timestamp?
+  not_before: Timestamp?
+}
+
+type AccountTokenMintRoute
+  = HumanDashboardOnly
+  | AccountTokensCreateApi
+
+fn account_token_mint_route(shape: CloudflareAccountTokenShape) -> AccountTokenMintRoute {
+  match shape.acquisition {
+    HumanDashboardAcquired => HumanDashboardOnly
+    CreatedViaAccountTokensApi => AccountTokensCreateApi
+  }
+}
+
+type AccountTokenApiMintStanding
+  = AccountTokenApiMintAdmitted {
+      shape: CloudflareAccountTokenShape
+      request: CreateAccountTokenRequest
+    }
+  | AccountTokenApiMintRefusedHumanDashboardOnly { shape: CloudflareAccountTokenShape }
+
+fn admit_account_token_api_mint(
+  shape: CloudflareAccountTokenShape,
+  request: CreateAccountTokenRequest
+) -> AccountTokenApiMintStanding {
+  match account_token_mint_route(shape: shape) {
+    AccountTokensCreateApi =>
+      AccountTokenApiMintAdmitted { shape: shape, request: request }
+    HumanDashboardOnly =>
+      AccountTokenApiMintRefusedHumanDashboardOnly { shape: shape }
+  }
+}
+
+fn account_tokens_collection_path(account_id: String) -> String {
+  join(["/accounts/", account_id, "/tokens"], "")
+}
+
+fn account_tokens_permission_groups_path(account_id: String) -> String {
+  join(["/accounts/", account_id, "/tokens/permission_groups"], "")
+}
+
+fn account_tokens_collection_url(account_id: String) -> String {
+  join([cloudflare_client_v4_base as String, account_tokens_collection_path(account_id: account_id)], "")
+}
+
+service cloudflare.AccountTokens {
+  config {
+    endpoint: cloudflare_client_v4_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation ListPermissionGroupsRaw {
+    input {
+      auth_token: Secret
+      account_id: String
+    }
+    output {
+      body: String from "body"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/accounts/\{account_id\}/tokens/permission_groups"
+    }
+    response {
+      200 => String
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+
+  operation Create {
+    input {
+      auth_token: Secret
+      account_id: String
+      name: String
+      policies: List<AccountTokenPolicy>
+    }
+    output {
+      id: NonEmptyStr from "result.id"
+      value: Secret from "result.value"
+      name: String from "result.name"
+      status: String from "result.status"
+    }
+    transport rest {
+      method: POST,
+      path: "/accounts/\{account_id\}/tokens",
+      body: { name: name, policies: policies }
+    }
+    response {
+      200 => CreatedAccountToken
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      422 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+}

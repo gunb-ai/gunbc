@@ -1,0 +1,177 @@
+module gunbc.cloudflare.r2_token_mint
+
+import std.types { String, Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  ProvisioningHumanBurden,
+  FleetOnce,
+  NoDischargeSiteModeled,
+  human_intervention_count_at,
+}
+import extdeps.cloudflare.account_api_tokens {
+  CloudflareAccountTokenShape,
+  AccountOwnedApiToken,
+  AccountApiTokensWrite,
+  WorkersR2StorageBucketItemRead,
+  HumanDashboardAcquired,
+  CreatedViaAccountTokensApi,
+  NoExpiryUntilRevoked,
+  AccountApiTokensSurface,
+  CreateAccountOwnedToken,
+  R2S3ObjectRead,
+  credential_supports,
+  CreatedAccountToken,
+  CreateAccountTokenRequest,
+  admit_account_token_api_mint,
+  AccountTokenApiMintStanding
+}
+import extdeps.cloudflare.r2 {
+  R2Jurisdiction,
+  r2_object_read_create_request,
+  r2_s3_access_pair_from_created_token,
+  R2S3AccessPair
+}
+
+// POLICY, NOT UPSTREAM. The GitHub org-admin lane
+// (extdeps.github.org_admin_auth + gunbc.auth.org_admin_credential + docs/plans/org-admin-credential-acquisition.md)
+// is the acquisition pattern: upstream owns the credential SHAPE; this module owns the human
+// FleetOnce ceremony, which artifact is bootstrap vs minted, and that subsequent mint is a
+// workflow over Create — not a second acquisition algebra. std.human_intervention prices the
+// dashboard step as FleetOnce so it is not paid on every R2 token. Bytes stay out of this
+// module (org-admin SecretMaterial / spark SecretRef standing): a held Secret here would be a
+// second custody path.
+
+type CloudflareR2DeclarationConsumption
+  = ConsumedInThisChange { consumer: DeclarationRef, executing_route: String }
+  | DeclaredFrontier { later_consumer: String, trigger: DissolutionCondition }
+
+data cloudflare_account_tokens_create_consumption: CloudflareR2DeclarationConsumption = DeclaredFrontier {
+  later_consumer: "typed actuator that materializes the bootstrap token from existing secret custody, calls admit_r2_object_read_api_mint, invokes cloudflare.AccountTokens.Create, then secret-provisions the derived R2S3AccessPair. admit_r2_object_read_api_mint, admit_bootstrap_token_api_mint, admit_account_token_api_mint, and Create are one frontier: none of them has an executing caller in this change (the witness is not a consumer)",
+  trigger: unbound_dissolution(description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this")
+}
+
+data cloudflare_vendor_module_consumption: CloudflareR2DeclarationConsumption = DeclaredFrontier {
+  later_consumer: "a gunbc Cloudflare-account subject that cites extdeps.vendor.cloudflare",
+  trigger: unbound_dissolution(description: "dissolves when a gunbc declaration names this fleet's Cloudflare account and cites extdeps.vendor.cloudflare as the company; the vendor row is not consumed by token minting")
+}
+
+fn cloudflare_bootstrap_token_shape() -> CloudflareAccountTokenShape {
+  CloudflareAccountTokenShape {
+    kind: AccountOwnedApiToken,
+    grants: [AccountApiTokensWrite],
+    acquisition: HumanDashboardAcquired,
+    lifetime: NoExpiryUntilRevoked,
+    revocation: AccountApiTokensSurface
+  }
+}
+
+fn cloudflare_r2_object_read_token_shape() -> CloudflareAccountTokenShape {
+  CloudflareAccountTokenShape {
+    kind: AccountOwnedApiToken,
+    grants: [WorkersR2StorageBucketItemRead],
+    acquisition: CreatedViaAccountTokensApi,
+    lifetime: NoExpiryUntilRevoked,
+    revocation: AccountApiTokensSurface
+  }
+}
+
+fn bootstrap_can_mint_account_tokens() -> Bool {
+  credential_supports(
+    shape: cloudflare_bootstrap_token_shape(),
+    capability: CreateAccountOwnedToken
+  )
+}
+
+fn minted_r2_token_can_read_objects() -> Bool {
+  credential_supports(
+    shape: cloudflare_r2_object_read_token_shape(),
+    capability: R2S3ObjectRead
+  )
+}
+
+fn bootstrap_is_not_the_r2_object_token() -> Bool {
+  !credential_supports(
+    shape: cloudflare_bootstrap_token_shape(),
+    capability: R2S3ObjectRead
+  )
+}
+
+data cloudflare_account_token_bootstrap_intervention_identity: String = "cloudflare-account-token-bootstrap"
+
+fn cloudflare_account_token_bootstrap_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: cloudflare_account_token_bootstrap_intervention_identity as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "Cloudflare account API token with Account API Tokens Write",
+    instruction: "As Super Administrator, create one account-owned API token in the Cloudflare dashboard (Manage Account > Account API Tokens) with Account API Tokens Write, then place the value in the existing secret-custody path. The value is shown once. Do not put it in argv, a worktree file, a receipt, or chat. Every later account token is minted by POST /accounts/{account_id}/tokens using this bootstrap token.",
+    completion_evidence: NoDischargeSiteModeled
+  }
+}
+
+fn cloudflare_r2_token_human_burden() -> ProvisioningHumanBurden {
+  ProvisioningHumanBurden {
+    interventions: [cloudflare_account_token_bootstrap_intervention()]
+  }
+}
+
+fn subsequent_r2_tokens_are_not_a_human_provision() -> Bool {
+  human_intervention_count_at(
+    burden: cloudflare_r2_token_human_burden(),
+    frequency: FleetOnce
+  ) == 1
+}
+
+fn r2_object_read_mint_request(
+  name: String,
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> CreateAccountTokenRequest {
+  r2_object_read_create_request(
+    name: name,
+    account_id: account_id,
+    jurisdiction: jurisdiction,
+    bucket_name: bucket_name
+  )
+}
+
+fn admit_r2_object_read_api_mint(
+  name: String,
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> AccountTokenApiMintStanding {
+  admit_account_token_api_mint(
+    shape: cloudflare_r2_object_read_token_shape(),
+    request: r2_object_read_mint_request(
+      name: name,
+      account_id: account_id,
+      jurisdiction: jurisdiction,
+      bucket_name: bucket_name
+    )
+  )
+}
+
+fn admit_bootstrap_token_api_mint(
+  name: String,
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> AccountTokenApiMintStanding {
+  admit_account_token_api_mint(
+    shape: cloudflare_bootstrap_token_shape(),
+    request: r2_object_read_mint_request(
+      name: name,
+      account_id: account_id,
+      jurisdiction: jurisdiction,
+      bucket_name: bucket_name
+    )
+  )
+}
+
+fn r2_s3_pair_from_mint(token: CreatedAccountToken) -> R2S3AccessPair {
+  r2_s3_access_pair_from_created_token(token: token)
+}
