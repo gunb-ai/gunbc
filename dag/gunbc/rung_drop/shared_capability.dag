@@ -2,7 +2,7 @@ module gunbc.rung_drop.shared_capability
 
 import std.types { String, NonEmptyStr, List, Bool }
 import gunbc.rung_drop {
-  RungDrop, RungDropStanding, Standing, Retired, TypedDeclaration, AuthoredProse,
+  RungDrop, Standing, Retired, TypedDeclaration, AuthoredProse,
 }
 
 // ONE CAPABILITY, N DROPS, AND THE JOIN THAT MAKES PARTIAL RETIREMENT UNWRITEABLE AS A QUIET STATE.
@@ -15,6 +15,33 @@ import gunbc.rung_drop {
 // Prose cannot refuse a split retirement. This module is the single authority for a shared
 // restoration capability: its waiters are an identity list, standing is joined against
 // gunbc.rung_drop.roster, and a split is a typed verdict rather than a paragraph.
+//
+// RUNG HONESTY (DESIGN 4b(1)), stated rather than implied by the join existing. The class this
+// module actually closes is SPLIT RETIREMENT AMONG ENROLLED WAITERS: waiter_rows filters the
+// roster BY the hand-authored waiter_identities list, and the verdict has no arm for "this drop
+// waits on the capability and nobody listed it". WaiterAbsent is LISTED-BUT-ABSENT, the opposite
+// direction. A drop that waits and is not enrolled is invisible, and the join reports
+// AllWaitersStanding over the identities it knows. That is the same shape as a hand-authored list
+// standing in for a derived population. Measured here rather than predicted: the first census
+// counted drops that copy-pasted a hazard paragraph; this list includes floor_cut_falsifier_cadence
+// because it names the same scheduled predict-only cold comparison without that paragraph. A
+// future waiter can be missed the same way.
+//
+// CURRENT RUNG: 2, mechanically preventable -- and only over the enrolled set. Safety depends on
+// the witness executing and on an author remembering to append waiter_identities. It is not
+// structurally guaranteed: the unenrolled-waiter state remains perfectly writable. Claiming
+// completeness of the waiter population would be the 4b(1) inflation this paragraph exists to
+// refuse.
+//
+// CEILING: 3, structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT A PR:
+// each RungDrop declares the shared capability it waits on as data, and this join FOLDS the
+// roster for enrolment rather than filtering by a hand-authored identity list, so a waiter
+// that is not enrolled is unwritable rather than unreported. Sufficient for deleting
+// waiter_identities as an authority. Until that fires, the list stays the mechanically
+// preventable wall, and a fifth waiter (gunbc.rung_drop transitional_admission_exception on
+// #10828, which self-declares as waiting on this capability and is correctly absent until
+// that row is on the roster) is a sequencing obligation on whichever of the two lands second,
+// not a discharge of this trigger.
 
 type SharedCapability {
   identity: NonEmptyStr
@@ -32,13 +59,6 @@ type SharedCapabilityVerdict
   | WaiterDuplicatedOnRoster { identities: List<String> }
   | WaiterListHasDuplicates { identities: List<String> }
   | EmptyWaiters
-
-fn drop_is_standing(d: RungDrop) -> Bool {
-  match d.standing {
-    Standing => true
-    Retired { trigger_fired: _ } => false
-  }
-}
 
 fn identity_equals(d: RungDrop, want: String) -> Bool {
   (d.identity as String) == want
@@ -73,8 +93,14 @@ fn shared_capability_verdict(cap: SharedCapability, ds: List<RungDrop>) -> Share
           WaiterDuplicatedOnRoster { identities: doubled }
         } else {
           let rows = waiter_rows(cap: cap, ds: ds)
-          let standing_ids = map(filter(rows, d => drop_is_standing(d: d)), d => d.identity as String)
-          let retired_ids = map(filter(rows, d => !drop_is_standing(d: d)), d => d.identity as String)
+          let standing_ids = map(filter(rows, d => match d.standing {
+            Standing => true
+            Retired { trigger_fired: _ } => false
+          }), d => d.identity as String)
+          let retired_ids = map(filter(rows, d => match d.standing {
+            Standing => false
+            Retired { trigger_fired: _ } => true
+          }), d => d.identity as String)
           if length(xs: standing_ids) > 0 && length(xs: retired_ids) > 0 {
             SplitRetirement { standing_identities: standing_ids, retired_identities: retired_ids }
           } else {
