@@ -145,7 +145,7 @@ pub fn collect_typed_service_calls_into(
         };
         let result = texpr.children.clone().iter().cloned().fold(
             this_acc.clone(),
-            |a: _, child: Rc<Node>| {
+            |a: Rc<UniqueAccum>, child: Rc<Node>| {
                 collect_typed_service_calls_into(child.clone(), a, source_indices.clone())
             },
         );
@@ -176,7 +176,7 @@ pub fn collect_called_func_names_into(
         };
         let result = texpr.children.clone().iter().cloned().fold(
             this_acc.clone(),
-            |a: _, child: Rc<Node>| {
+            |a: Rc<UniqueAccum>, child: Rc<Node>| {
                 collect_called_func_names_into(child.clone(), a, source_indices.clone())
             },
         );
@@ -261,7 +261,7 @@ pub fn expand_transitive_services_once(
     module_callees: Rc<Vec<Rc<ModuleCallees>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    module_callees.iter().cloned().fold(registry.clone(), |reg: _, m: _| m.items.clone().iter().cloned().fold(reg, |reg2: _, entry: _| {
+    module_callees.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<ModuleCallees>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, entry: Rc<ItemCallees>| {
         let item_name = entry.item_name.clone();
 match v1_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
@@ -307,7 +307,7 @@ pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
     Rc::new(v1_rt::map_values(&registry))
         .iter()
         .cloned()
-        .fold(0, |acc: i64, info: _| {
+        .fold(0, |acc: i64, info: Rc<ItemInfo>| {
             (acc + (info.service_names.clone().len() as i64))
         })
 }

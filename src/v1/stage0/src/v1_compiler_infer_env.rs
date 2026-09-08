@@ -642,7 +642,10 @@ pub fn guarded_union_str_bindings_into_acc(
             bindings: acc.clone(),
             conflicts: conflicts.clone(),
         }),
-        |state: _, name: String| match v1_rt::map_get(&overlay, name.clone()) {
+        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(
+            &overlay,
+            name.clone(),
+        ) {
             std::option::Option::None => state.clone(),
             Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
                 std::option::Option::None => Rc::new(GuardedStrBindingsUnion {
@@ -709,7 +712,8 @@ pub fn guarded_union_str_bindings_into_overlay(
             bindings: overlay.clone(),
             conflicts: conflicts.clone(),
         }),
-        |state: _, name: String| match v1_rt::map_get(&acc, name.clone()) {
+        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(&acc, name.clone())
+        {
             std::option::Option::None => state.clone(),
             Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
                 std::option::Option::None => Rc::new(GuardedStrBindingsUnion {
@@ -853,44 +857,40 @@ pub fn union_bool_set_into_acc(
     acc: Rc<HashMap<String, bool>>,
     overlay: Rc<HashMap<String, bool>>,
 ) -> Rc<HashMap<String, bool>> {
-    Rc::new(v1_rt::map_keys(&overlay))
-        .iter()
-        .cloned()
-        .fold(acc.clone(), |m: _, name: String| {
-            match v1_rt::map_get(&m, name.clone()) {
-                Some(_) => m.clone(),
-                std::option::Option::None => match v1_rt::map_get(&overlay, name.clone()) {
-                    Some(v) => v1_rt::rc_map_insert(m.clone(), name.clone(), v.clone()),
-                    std::option::Option::None => m.clone(),
-                },
-            }
-        })
+    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
+        acc.clone(),
+        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&m, name.clone()) {
+            Some(_) => m.clone(),
+            std::option::Option::None => match v1_rt::map_get(&overlay, name.clone()) {
+                Some(v) => v1_rt::rc_map_insert(m.clone(), name.clone(), v.clone()),
+                std::option::Option::None => m.clone(),
+            },
+        },
+    )
 }
 
 pub fn union_bool_set_into_overlay(
     acc: Rc<HashMap<String, bool>>,
     overlay: Rc<HashMap<String, bool>>,
 ) -> Rc<HashMap<String, bool>> {
-    Rc::new(v1_rt::map_keys(&acc))
-        .iter()
-        .cloned()
-        .fold(overlay.clone(), |m: _, name: String| {
-            match v1_rt::map_get(&acc, name.clone()) {
-                std::option::Option::None => m.clone(),
-                Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
-                    std::option::Option::None => {
+    Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
+        overlay.clone(),
+        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&acc, name.clone()) {
+            std::option::Option::None => m.clone(),
+            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone())
+                }
+                Some(incoming) => {
+                    if (incoming.clone() == accumulated.clone()) {
+                        m.clone()
+                    } else {
                         v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone())
                     }
-                    Some(incoming) => {
-                        if (incoming.clone() == accumulated.clone()) {
-                            m.clone()
-                        } else {
-                            v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone())
-                        }
-                    }
-                },
-            }
-        })
+                }
+            },
+        },
+    )
 }
 
 pub fn union_bool_set_skip_equal(
@@ -1122,7 +1122,7 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
                 matched: 0,
                 live: true,
             }),
-            |acc: _, seg: String| {
+            |acc: Rc<SegmentLcpScan>, seg: String| {
                 if acc.live.clone() {
                     match acc.remaining.clone().first().cloned() {
                         Some(bh) => {
@@ -1188,7 +1188,7 @@ pub fn global_bare_nearest_ancestor_candidate(
                 best: std::option::Option::None,
                 tie: false,
             }),
-            |acc: _, cand: Rc<GlobalBareCandidate>| {
+            |acc: Rc<GlobalBareNearestCandidateScan>, cand: Rc<GlobalBareCandidate>| {
                 let l = segment_lcp_len(
                     env_segs.clone(),
                     crate::v1_std_core::module_path_segments(cand.module_path.clone()),
@@ -1399,7 +1399,7 @@ pub fn borrowed_generic_param_names(
 ) -> Rc<HashMap<String, bool>> {
     params.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: _, p: Rc<Node>| {
+        |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
             let pt = crate::v1_std_core::param_node_type_expr(p.clone());
             let pname = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
             let tname = crate::v1_std_core::authored_name_at(source_indices.clone(), pt.clone());
