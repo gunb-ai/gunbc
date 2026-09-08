@@ -27,6 +27,8 @@ use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::Instant;
 
+#[path = "bootstrap_seed_retention_frontier_generated.rs"]
+mod bootstrap_seed_retention_frontier_generated;
 #[path = "bootstrap_stage0_crate_layout_generated.rs"]
 mod bootstrap_stage0_crate_layout_generated;
 use super::workspace_root;
@@ -36,10 +38,12 @@ use crate::gunbc_stage0_emitted_population_manifest::{
 };
 use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 use crate::v1_compiler_compile::{
-    compile_sources_selected, stage0_self_compile_refusal_message, SourceFile,
+    compile_sources_selected, compile_to_resolved, emittable_graph,
+    stage0_self_compile_refusal_message, SourceFile,
 };
 use crate::v1_compiler_emit_rust::rust_module_emit_path;
 use crate::v1_rt;
+use bootstrap_seed_retention_frontier_generated::SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES;
 use bootstrap_stage0_crate_layout_generated::{
     EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES, HAND_MAINTAINED_STAGE0_DIRS,
     HAND_MAINTAINED_STAGE0_FILES,
@@ -729,9 +733,12 @@ pub fn run_required_regen_fixed_point(
     }
     let emitted_basenames = generated_basenames_from_emit(&emitted)?;
     let hand_dir_shadows = hand_maintained_dir_shadows(&workspace.join("src/v1/stage0/src"))?;
-    if let Some(reason) =
-        validate_compared_populations(&committed_basenames, &emitted_basenames, &hand_dir_shadows)
-    {
+    if let Some(reason) = validate_compared_populations(
+        &committed_basenames,
+        &emitted_basenames,
+        &hand_dir_shadows,
+        SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+    ) {
         return Err(reason);
     }
     let pass2 = tree_digest_from_map(&formatter, &emitted, &committed_basenames)?;
@@ -939,9 +946,12 @@ fn adjudicate_generated_surface(
     // join that finds a surface the emitter produces and the tree does not carry, and a mirror
     // the tree carries and the emitter no longer produces. It reads no bytes, so there is
     // nothing here for a selection to save and everything for one to hide.
-    if let Some(reason) =
-        validate_compared_populations(&committed, emitted_basenames, &hand_dir_shadows)
-    {
+    if let Some(reason) = validate_compared_populations(
+        &committed,
+        emitted_basenames,
+        &hand_dir_shadows,
+        SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+    ) {
         return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
     }
     // BYTE ADJUDICATION IS SCOPED. This is the expensive half — a read, a normalization and a
@@ -1414,6 +1424,7 @@ fn validate_compared_populations(
     committed: &[String],
     emitted: &[String],
     hand_dir_shadows: &BTreeMap<String, Vec<String>>,
+    seed_retained_top_level_src: &[&str],
 ) -> Option<String> {
     if committed.is_empty() {
         return Some("refusal: committed generated population is empty".to_string());
@@ -1437,9 +1448,20 @@ fn validate_compared_populations(
             None => emitted_not_committed.push(name.clone()),
         }
     }
+    // A committed basename the emitter no longer produces is CommittedMirrorNoLongerEmitted
+    // unless the seed-retention frontier already names it: then it is retained, not lost.
+    //
+    // RUNG, HONESTLY: this skip excludes a presented retained basename. HAND_MAINTAINED_STAGE0_FILES
+    // currently agrees with it for std_logic.rs by coincidence (#10712 listed the file as
+    // hand-maintained), so committed_generated_basenames never presents std_logic.rs to this loop
+    // on main or at 0a811fc -- the class is not reachable on the merge path. Discrimination is
+    // the off-path #[test] pair below (rust_unit_tests_off_the_merge_path). Do not author a
+    // reaching fixture to make the live walk present a retained file; that would manufacture a
+    // subject. The nonempty frontier witness is not evidence for this join.
+    let seed_retained: BTreeSet<&str> = seed_retained_top_level_src.iter().copied().collect();
     let mut committed_not_emitted = Vec::new();
     for name in committed {
-        if !emitted_set.contains(name.as_str()) {
+        if !emitted_set.contains(name.as_str()) && !seed_retained.contains(name.as_str()) {
             committed_not_emitted.push(name.clone());
         }
     }
@@ -2643,7 +2665,7 @@ mod tests {
         );
     }
 
-    /// THE PRECONDITION `import_refusals` EXACTNESS RESTS ON, PUT ON THE EXECUTED PATH.
+    /// THE PRECONDITION `module_refusals` EXACTNESS RESTS ON, PUT ON THE EXECUTED PATH.
     ///
     /// A scoped emission observes refusals only for the modules it rendered. That is exact rather
     /// than partial because an emit carrying an error diagnostic returns NO FILES -- so a
@@ -2705,6 +2727,111 @@ mod tests {
     }
 
     #[test]
+    fn filter_in_branch_condition_refuses_and_does_not_publish_the_module() {
+        let (named, module_published, positive_published, positive_named, free_named, free_published, free_has_fn) =
+            std::thread::Builder::new()
+                .stack_size(16 * 1024 * 1024)
+                .spawn(|| {
+                    let emit_one = |content: &str| {
+                        let module_index =
+                            crate::cli_run::build_module_path_index_from_witness_roots();
+                        let sources = crate::cli_run::resolve_virtual_source_with_imports(
+                            "probe.dag",
+                            content,
+                            &module_index,
+                        );
+                        let resolved = compile_to_resolved(Rc::new(sources.into()));
+                        let typed = emittable_graph(resolved)
+                            .expect("front-end must accept the specimen so emission is the wall")
+                            .graph();
+                        crate::v1_compiler_emit_rust::emit_rust(typed)
+                    };
+                    let negative = emit_one(
+                        "module fx.filter_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (xs |> filter(x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n",
+                    );
+                    let named = negative.diagnostics.iter().any(|d| {
+                        matches!(
+                            &*d.diagnostic,
+                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
+                                construct,
+                                ..
+                            } if matches!(
+                                construct,
+                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
+                            )
+                        ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                    });
+                    let module_published = negative.files.iter().any(|f| {
+                        f.path.contains("fx_filter_guard")
+                    });
+                    let positive = emit_one(
+                        "module fx.any_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if xs |> any(x => x > 0) {\n    1\n  } else {\n    0\n  }\n}\n",
+                    );
+                    let positive_named = positive.diagnostics.iter().any(|d| {
+                        matches!(
+                            &*d.diagnostic,
+                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable { .. }
+                        )
+                    });
+                    let positive_published = positive.files.iter().any(|f| f.path.contains("fx_any_guard"));
+                    let free_call = emit_one(
+                        "module fx.filter_call_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (filter(xs, x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n",
+                    );
+                    let free_named = free_call.diagnostics.iter().any(|d| {
+                        matches!(
+                            &*d.diagnostic,
+                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
+                                construct,
+                                ..
+                            } if matches!(
+                                construct,
+                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
+                            )
+                        ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                    });
+                    let free_published = free_call
+                        .files
+                        .iter()
+                        .any(|f| f.path.contains("fx_filter_call_guard"));
+                    let free_has_fn = free_call.files.iter().any(|f| {
+                        f.path.contains("fx_filter_call_guard") && f.content.contains("fn f")
+                    });
+                    (
+                        named,
+                        module_published,
+                        positive_published,
+                        positive_named,
+                        free_named,
+                        free_published,
+                        free_has_fn,
+                    )
+                })
+                .expect("spawn projection-refusal thread")
+                .join()
+                .expect("projection-refusal thread panicked");
+        assert!(
+            named,
+            "filter in a branch condition must refuse at emission with EmissionConstructUnprojectable naming the construct"
+        );
+        assert!(
+            !module_published,
+            "the refused module must be absent from EmitResult.files — output-plus-diagnostic is not a fix"
+        );
+        assert!(
+            positive_published && !positive_named,
+            "an already-supported guarded any-lambda must still emit its module"
+        );
+        assert!(
+            free_named,
+            "written-as-free-call filter in a guard must refuse via the method arm after infer rewrite"
+        );
+        assert!(
+            !free_published && !free_has_fn,
+            "the rewritten free-call spelling must still withhold the module from EmitResult.files"
+        );
+    }
+
+    #[test]
     fn declared_hand_maintained_row_must_name_an_existing_path() {
         let root = temp_dir("declared-row-wall");
         let src = root.join("src");
@@ -2755,16 +2882,110 @@ mod tests {
 
     #[test]
     fn empty_emit_population_refuses_before_agreement() {
-        let reason = validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new())
-            .expect("expected refusal");
+        let reason =
+            validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new(), &[])
+                .expect("expected refusal");
         assert!(reason.contains("zero generated surfaces"));
     }
 
     #[test]
     fn empty_committed_population_refuses_before_agreement() {
-        let reason = validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new())
-            .expect("expected refusal");
+        let reason =
+            validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new(), &[])
+                .expect("expected refusal");
         assert!(reason.contains("committed generated population is empty"));
+    }
+
+    #[test]
+    fn seed_retained_committed_not_emitted_is_not_that_refusal() {
+        let reason = validate_compared_populations(
+            &["retained.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            &["retained.rs"],
+        );
+        assert!(
+            reason.is_none(),
+            "a frontier-rostered basename that left emit is retained, not CommittedMirrorNoLongerEmitted: {reason:?}"
+        );
+    }
+
+    #[test]
+    fn unrostered_committed_not_emitted_still_refuses() {
+        let reason = validate_compared_populations(
+            &["lost.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            &["retained.rs"],
+        )
+        .expect("expected refusal");
+        assert!(
+            reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
+            "an unrostered drop must still refuse: {reason}"
+        );
+        assert!(
+            !reason.contains("retained.rs"),
+            "the planted retained name must not appear: {reason}"
+        );
+    }
+
+    // OFF-PATH DISCRIMINATION, not merge-path reachability. These plant `std_logic.rs` in the
+    // committed-not-emitted slot of `validate_compared_populations` itself because the live walk
+    // never does: HAND_MAINTAINED_STAGE0_FILES already subtracts it (and layout-only hosts). A
+    // no-drift round never enters the arm anyway (#10795). The tests sit under
+    // rust_unit_tests_off_the_merge_path. The live projected roster is the join surface;
+    // `generated_stage0_filenames` is not consulted (it would also drop required_regen_host.rs).
+    #[test]
+    fn live_frontier_projection_is_not_the_crate_layout_filename_union() {
+        assert!(
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES.contains(&"std_logic.rs"),
+            "the generated join surface must carry the deliberately retained oracle"
+        );
+        assert!(
+            HAND_MAINTAINED_STAGE0_FILES.contains(&"target_invocation_host.rs"),
+            "the cheap list includes layout-only hosts"
+        );
+        assert!(
+            !SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES.contains(&"target_invocation_host.rs"),
+            "joining the cheap list would over-exclude this class; the frontier must not"
+        );
+    }
+
+    #[test]
+    fn std_logic_committed_not_emitted_is_retained_by_live_frontier_join() {
+        let reason = validate_compared_populations(
+            &["std_logic.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+        );
+        assert!(
+            reason.is_none(),
+            "std_logic.rs is SeedRetainedIntrinsic on the frontier; committed-not-emitted must not fire: {reason:?}"
+        );
+    }
+
+    #[test]
+    fn unrostered_drop_still_refuses_beside_std_logic() {
+        let reason = validate_compared_populations(
+            &[
+                "std_logic.rs".to_string(),
+                "lost.rs".to_string(),
+                "still.rs".to_string(),
+            ],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+        )
+        .expect("expected refusal");
+        assert!(
+            reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
+            "the unrostered drop must still reach the refusal: {reason}"
+        );
+        assert!(
+            !reason.contains("std_logic.rs"),
+            "the retained oracle must not be named in the refusal: {reason}"
+        );
     }
 
     #[test]

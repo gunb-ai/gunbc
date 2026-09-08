@@ -1,0 +1,371 @@
+module gunbc.spark.tensor_parallel_comparison
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure { TokenCount, token_count, token_count_value }
+
+// ── THE SUBJECT OF EVERY ROW BELOW IS A RETIRING PROFILE ──────────────────────────────────────
+//
+// Every measurement in this module was taken against ONE model artifact --
+// deepseek-ai/DeepSeek-V4-Flash at snapshot 60d8d70770c6776ff598c94bb586a859a38244f1, served by
+// the vLLM revision extdeps.vllm.server names -- and that artifact is being replaced.
+//
+// SO EVERY COEFFICIENT HERE EXPIRES WITH IT. Not one of them may be read for another checkpoint:
+// not the per-token or per-step terms, not the depth law, not the KV pool sizes, not the decode or
+// stall figures, not the per-step FLOPs divisor. What survives a model change is the MECHANISM the
+// numbers established, which is stated in prose beside each one; the numbers themselves are facts
+// about a profile, not about the fleet.
+//
+// THESE ROWS DO NOT YET CARRY THAT SUBJECT STRUCTURALLY, and that is a known gap rather than an
+// oversight. A measurement should name its model artifact, tokenizer, runtime, KV policy, topology
+// and speculative policy in a type, so a row from one profile cannot be joined to a decision about
+// another -- the same defect gunbc.spark.vllm_serving_launch exists to prevent for process
+// incarnations, one level up. The type belongs with the serving-observation substrate rather than
+// beside these measurements, so it is named here as an obligation and deliberately not coined: a
+// second profile authority is exactly the fork this lane has already made once.
+
+// ── TP=4 AGAINST TP=2 ON ONE HEAD, EVERYTHING ELSE HELD ───────────────────────────────────────
+//
+// WHY THIS EXPERIMENT AND WHY NOW. gunbc.spark.prefill_batch_sweep closed the batch axis: the
+// per-token cost is invariant from 512 to 16,384 tokens per step, so the ~1 millisecond per token
+// is not a batching, scheduling or routed-expert-granularity artifact. That left collective
+// topology as the largest untested factor, and this is the discriminating cut for it.
+//
+// WHAT WAS HELD CONSTANT: the same head, the same runtime image and container, the same model
+// snapshot, the same tokenizer, the same executor (Ray), the same backend selections, the same
+// prefix-cache standing (a fresh 32-character nonce per probe), the same batch budget PINNED
+// EXPLICITLY at 2048 in both arms, the same observability profile (--enable-mfu-metrics in both),
+// and the same context ceiling. Only the tensor-parallel degree and the participant count differ.
+//
+// THE CONTEXT CEILING IS 131,072 IN BOTH ARMS, WHICH IS NOT THE PRODUCTION CEILING OF 1,048,576.
+// Lowering it for both arms is what keeps this a topology comparison rather than a capacity
+// handicap. The production ceiling was then tested SEPARATELY and TP=2 clears it -- see the
+// applicability gate below -- so the reduced ceiling is a design choice here and not a limit.
+//
+// WHAT CHANGING THE DEGREE ALSO CHANGES, so that "topology" is not read as "collectives": the
+// participant count and message geometry, each rank's weight shard, per-rank memory traffic, the
+// expert partition, the quantized kernel shapes, the reduction order, and the compiled graph
+// shapes all move together. The experiment establishes that the topology axis reaches the
+// per-token term. It does NOT identify which of those is the mechanism, and no row below says it
+// does.
+
+// ── UNITS ARE THE FAILURE MODE THIS TYPE IS SHAPED AGAINST ────────────────────────────────────
+//
+// The marginal rate is carried ONCE, as micros per thousand tokens, and throughput is DERIVED from
+// it rather than stored beside it. Two stored representations of one rate is the §3 fork that let
+// a thousandfold spelling error live in a sibling carrier: 966 and 966100 are both plausible small
+// integers beside a field name that does not say which, and a stored tokens-per-second field would
+// have agreed with neither while looking authoritative. With the rate as the single authority, a
+// wrong-by-1000 value announces itself in the derived throughput immediately.
+type TopologyArm sole_constructor {
+  tensor_parallel_size: Nat
+  rank_population: Nat
+  context_ceiling: TokenCount
+  max_num_batched_tokens: Nat
+  marginal_micros_per_thousand_tokens: Nat
+  decode_alone_micros: Nat
+  co_tenant_stall_micros: Nat
+  gpu_kv_cache_tokens: Nat
+  provenance: NonEmptyStr
+}
+
+// 1,066.2 micros per token at ~16k depth. Reciprocal 938 tokens per second, derived, never stored.
+data spark_group_a_tp4_arm: TopologyArm = TopologyArm {
+  tensor_parallel_size: 4,
+  rank_population: 4,
+  context_ceiling: token_count(count: 131072),
+  max_num_batched_tokens: 2048,
+  marginal_micros_per_thousand_tokens: 1066200,
+  decode_alone_micros: 30200,
+  co_tenant_stall_micros: 2146300,
+  gpu_kv_cache_tokens: 6175555,
+  provenance: "TWO launches, three cold 16k probes each, on the group A head 2026-09-07; the rate is total wall over total tokens across those six probes. Step counts read from vllm:estimated_flops_per_gpu_total and consistent with ceil(tokens/2048) throughout" as NonEmptyStr,
+}
+
+data spark_group_a_tp2_arm: TopologyArm = TopologyArm {
+  tensor_parallel_size: 2,
+  rank_population: 2,
+  context_ceiling: token_count(count: 131072),
+  max_num_batched_tokens: 2048,
+  marginal_micros_per_thousand_tokens: 983800,
+  decode_alone_micros: 40500,
+  co_tenant_stall_micros: 1628600,
+  gpu_kv_cache_tokens: 2310685,
+  provenance: "TWO launches under the same harness and the same pinned budget, alternated with the TP=4 launches so drift could not track the degree. Ray placed them on DIFFERENT Spark pairs (192.168.110.13 and .11) and they agreed to 0.8%, so the rate is not a property of one pair. The per-step FLOPs quantum doubled, which is what two ranks carrying the work of four looks like from a per-GPU counter" as NonEmptyStr,
+}
+
+fn prefill_tokens_per_second(a: TopologyArm) -> Nat {
+  if a.marginal_micros_per_thousand_tokens == 0 {
+    0
+  } else {
+    1000000000 / a.marginal_micros_per_thousand_tokens
+  }
+}
+
+fn decode_tokens_per_second(a: TopologyArm) -> Nat {
+  if a.decode_alone_micros == 0 { 0 } else { 1000000 / a.decode_alone_micros }
+}
+
+// ── THE PER-REPLICA RESULT ────────────────────────────────────────────────────────────────────
+//
+// Over TWO launches per degree, alternated, three cold 16k probes each:
+//
+//     quantity                  TP=4        TP=2      TP=2 against TP=4
+//     per token at ~16k      1.0662 ms   0.9838 ms     7.7% cheaper
+//     prefill throughput      938 tok/s  1016 tok/s    8.3% higher
+//     decode alone            30.2 ms     40.5 ms      34% WORSE  (unrepeated)
+//     co-tenant stall        2146 ms     1629 ms       24% shorter (unrepeated)
+//     KV pool at 131,072    6,175,555   2,310,685      63% LESS
+//
+// SO TP=4 OVER-SHARDS THIS PREFILL, and it is the first mechanism found that moves the per-token
+// term at all -- the batch axis could not touch it. BUT THE EFFECT IS ~8%, NOT THE 25% THIS MODULE
+// FIRST REPORTED. Across-launch spread was 4.6% at TP=4 and 0.8% at TP=2, so 8% is outside the
+// envelope but not hugely so.
+//
+// THE DECODE AND STALL ROWS ARE STILL SINGLE MEASUREMENTS. Only the prefill rate was repeated, so
+// those two carry no envelope and should not be read at the same confidence as the rate.
+type TopologyComparison
+  = TopologyMovesPerTokenCost { faster: Nat, percent_cheaper: Nat, by: NonEmptyStr }
+  | TopologyDoesNotMovePerTokenCost { by: NonEmptyStr }
+
+data spark_group_a_topology_comparison: TopologyComparison = TopologyMovesPerTokenCost {
+  faster: 2,
+  percent_cheaper: 8,
+  by: "matched at context ceiling 131,072 and batch budget 2048, over TWO launches per degree: TP=2 costs 0.9838 milliseconds per computed token at ~16k depth against TP=4's 1.0662. THE FIRST, UNREPEATED TP=2 LAUNCH MEASURED 0.786 AND PRODUCED A HEADLINE OF 25.4%, WHICH IS WITHDRAWN -- both repeat launches land at 0.98 on two different Spark pairs and that first reading is an unexplained outlier. TP=4 was stable across every launch, which is why the error was one-sided" as NonEmptyStr,
+}
+
+// ── THE APPLICABILITY GATE: TP=2 AT THE PRODUCTION CEILING ────────────────────────────────────
+//
+// A printed KV pool size is not an admission pool, so the question was put to the allocator
+// directly: one request at the declared maximum, sent as raw token ids.
+//
+// TP=2 at max_model_len 1,048,576 started, reported a 4,823,795-token KV pool at 4.6x concurrency,
+// correctly REFUSED a 1,048,576-token prompt (prompt plus output must fit the ceiling, and one
+// output token was requested), and ADMITTED and completed 1,048,575 tokens in 1598.1 seconds at a
+// mean of 1.5241 ms per token, in exactly 512 steps with zero preemptions.
+//
+// 1,048,575 / 2048 = 512.0. The step count is exact, which is the batch budget confirming itself
+// at the largest scale the model admits.
+type ProductionCeilingGate
+  = CeilingAdmitted { tokens: Nat, wall_seconds: Nat, steps: Nat, preemptions: Nat, kv_pool_tokens: Nat }
+  | CeilingRefused { tokens: Nat, cause: NonEmptyStr }
+  | CeilingUntested { because: NonEmptyStr }
+
+data spark_group_a_tp2_production_ceiling: ProductionCeilingGate = CeilingAdmitted {
+  tokens: 1048575,
+  wall_seconds: 1598,
+  steps: 512,
+  preemptions: 0,
+  kv_pool_tokens: 4823795,
+}
+
+// ── THE PER-REPLICA VIEW IS NOT THE FLEET DECISION, AND THE KV NUMBER FLIPS ───────────────────
+//
+// The table above compares ONE TP=2 replica on two Sparks against ONE TP=4 replica on four. That
+// is the right comparison for a single request and the wrong one for an allocation: at a fixed
+// four-Spark footprint the alternative to one TP=4 replica is TWO TP=2 replicas.
+//
+// Normalised that way the capacity story reverses in magnitude: 63% less KV per replica becomes
+// about 25% less across the same four Sparks, because there are two pools instead of one. Both
+// views are carried because they answer different questions and each is misleading alone.
+//
+// THE AGGREGATE DECODE FIGURE IS THROUGHPUT, NOT LATENCY, and the distinction is load-bearing:
+// two TP=2 replicas serve more decode tokens per second in total while each individual stream is
+// slower. A user waiting on one stream feels the 40.5 ms, not the aggregate.
+type FleetNormalisedComparison sole_constructor {
+  spark_population: Nat
+  replicas: Nat
+  aggregate_prefill_tokens_per_second: Nat
+  aggregate_decode_tokens_per_second: Nat
+  aggregate_kv_cache_tokens: Nat
+}
+
+// AN ARM WITH NO RANKS HAS NO REPLICA COUNT, and answering 0 would be the fabricated-plausible
+// value this whole module argues against -- it would flow into the aggregates as a real zero and
+// read as "this topology delivers nothing" rather than "this arm is malformed".
+fn replicas_in(population: Nat, a: TopologyArm) -> Nat? {
+  if a.rank_population == 0 {
+    none
+  } else {
+    Present { value: population / a.rank_population }
+  }
+}
+
+fn fleet_normalised(population: Nat, a: TopologyArm) -> FleetNormalisedComparison? {
+  match replicas_in(population: population, a: a) {
+    Absent => none
+    Present { value: r } =>
+      Present {
+        value: FleetNormalisedComparison {
+          spark_population: population,
+          replicas: r,
+          aggregate_prefill_tokens_per_second: r * prefill_tokens_per_second(a: a),
+          aggregate_decode_tokens_per_second: r * decode_tokens_per_second(a: a),
+          aggregate_kv_cache_tokens: r * a.gpu_kv_cache_tokens,
+        },
+      }
+  }
+}
+
+// A PRINTED POOL SIZE IS NOT AN ADMISSION POOL. gpu_kv_cache_tokens is the engine's own startup
+// line; whether a request of a given length is admissible depends on the allocator's block
+// population and the concurrency at that length. The aggregate above inherits that caveat and does
+// not become a capacity guarantee by being summed.
+data spark_group_a_kv_aggregate_caveat: NonEmptyStr = "aggregate KV is the sum of two engines' reported pools and is not an admission guarantee: the binding question is the allocator's block population and whether a maximum-context request is admissible, which was not tested at either degree" as NonEmptyStr
+
+// ── THE TWO WORKLOADS DO NOT FORCE A GLOBAL CHOICE ────────────────────────────────────────────
+//
+// TP=2 saves on every computed prompt token and pays on every generated token, so which topology
+// wins a WHOLE REQUEST depends on that request's shape rather than on a fleet-wide preference:
+//
+//     saving   1.053 - 0.786 ms = 267 microseconds per computed prompt token
+//     penalty  40.5  - 30.2  ms = 10,300 microseconds per generated token
+//     crossover at 10300 / 267 = about 38 prompt tokens per generated token
+//
+// A live 60-second window on the group A head measured 73,561 prompt tokens against 263 generated
+// tokens, a ratio of about 280 to 1 -- an order of magnitude above the crossover. For that traffic
+// shape TP=2 is the better whole-request topology despite its worse streaming cadence. Long-form
+// generation with a modest prompt sits the other side of it.
+fn whole_request_crossover_ratio(fast_prefill: TopologyArm, fast_decode: TopologyArm) -> Nat? {
+  if fast_decode.marginal_micros_per_thousand_tokens <= fast_prefill.marginal_micros_per_thousand_tokens {
+    none
+  } else {
+    if fast_prefill.decode_alone_micros <= fast_decode.decode_alone_micros {
+      none
+    } else {
+      Present {
+        value: ((fast_prefill.decode_alone_micros - fast_decode.decode_alone_micros) * 1000)
+                 / (fast_decode.marginal_micros_per_thousand_tokens - fast_prefill.marginal_micros_per_thousand_tokens)
+      }
+    }
+  }
+}
+
+data spark_group_a_observed_prompt_to_generated_ratio: Nat = 280
+
+// ── THE TOPOLOGIES ARE NOT NUMERICALLY INTERCHANGEABLE, AND THE CAUSE IS NOT ESTABLISHED ──────
+//
+// WHY A GREEDY TEXT COMPARISON WOULD HAVE BEEN WORTHLESS. Sampled continuations from the two arms
+// diverge at the first token (" The" against " the") and then follow different wordings. That is
+// NOT evidence of a numerical defect: greedy decoding turns an arbitrarily small logit difference
+// at a near-tie into a different token and the sequences separate from there.
+//
+// SO THE MEASUREMENT IS PROMPT LOGPROBS OVER ONE FIXED 22-TOKEN INPUT: one deterministic forward
+// pass, no sampling, identical bytes in. Same token sequence; per-token logprobs differ by up to
+// 1.517 nats with a mean of 0.330, and the largest single divergence is a factor of 4.56 in the
+// probability the model assigns a token of its own prompt.
+//
+// WHAT THAT DOES AND DOES NOT ESTABLISH, and an earlier version of this module overstated it.
+// It establishes that a CROSS-TOPOLOGY DIFFERENCE WAS OBSERVED. It does NOT establish that the
+// topology caused it, because WITHIN-topology variation was never measured: no arm was repeated
+// within a launch and no arm was relaunched, so there is no envelope to compare the cross-topology
+// distance against. Saying "the sharding changes the computation rather than its rounding" is a
+// causal claim this population cannot carry, however plausible it is.
+type NumericalAgreement
+  = TokenSequenceAndLogprobsAgree { max_delta_millinats: Nat }
+  | CrossTopologyDifferenceAttributed {
+      cross_topology_max_millinats: Nat,
+      within_topology_max_millinats: Nat,
+      launches_per_degree: Nat,
+      basis: NonEmptyStr,
+    }
+  | CrossTopologyDifferenceObservedWithinTopologyUnmeasured {
+      max_delta_millinats: Nat,
+      mean_delta_millinats: Nat,
+      worst_probability_ratio_hundredths: Nat,
+      missing_control: NonEmptyStr,
+    }
+  | TokenSequenceDiffers { at_index: Nat }
+  | NumericalAgreementUnmeasured { because: NonEmptyStr }
+
+// ── THE ATTRIBUTION IS NOW EARNED, AND THE ENVELOPE IS EXACTLY ZERO ───────────────────────────
+//
+// Four launches on 2026-09-07 -- TP4, TP2, TP4, TP2, alternated so drift could not track the
+// degree -- each replaying three FIXED prompts as raw token ids, with the first prompt sent twice
+// so a within-launch pair exists. The prefix-cache hit delta was recorded on every probe and was
+// ZERO throughout, so each reading is a genuine recomputation and not a cached echo.
+//
+//     comparison                              max |delta| selected   top-5
+//     within-launch, all four launches            0.0000 nats      0.0000
+//     across-launch, same topology                0.0000 nats      0.0000
+//     cross-topology, all four pairings           2.2387 nats      2.2387
+//
+// THE WITHIN-TOPOLOGY ENVELOPE IS BIT-IDENTICAL, across a fresh relaunch, and -- the strongest
+// part -- across DIFFERENT HARDWARE: the two TP=2 launches were placed by Ray on different Spark
+// pairs (192.168.110.13 and .11) and still agreed to the last bit. So the divergence is a function
+// of the tensor-parallel degree, not of the boxes, the launch, the autotune state or the run.
+//
+// All four cross-topology pairings give the SAME 2.2387, which is what a deterministic function of
+// the degree looks like and what a noise process does not.
+//
+// WHAT IS STILL NOT SETTLED, because attribution is not correctness: which topology is closer to
+// the intended model semantics. A stable, reproducible difference does not say that TP=2 is wrong,
+// that TP=4 is wrong, or that both are acceptable quantized realizations. That needs a trusted
+// reference or an operation-level comparison, and neither exists here.
+data spark_group_a_topology_numerical_agreement: NumericalAgreement = CrossTopologyDifferenceAttributed {
+    cross_topology_max_millinats: 2238,
+    within_topology_max_millinats: 0,
+    launches_per_degree: 2,
+    basis: "four alternated launches, three fixed prompts replayed as token ids, first prompt sent twice per launch; prefix-cache hit delta zero on every probe; within-launch and across-launch distances bit-identical at both degrees including across different Spark pairs, all four cross-topology pairings identical at 2.2387 nats on both selected-token and top-5 logprobs. Which topology is closer to the intended semantics is NOT established by this and needs a trusted reference" as NonEmptyStr,
+  }
+
+// THE GATE. A consumer may not read "TP=2 is 25% cheaper" as "serve on TP=2": the speed result and
+// the equivalence result are different subjects, and only the second decides FUNGIBILITY.
+// Divergence REFUSES rather than warning, because a performance win may not silently carry a
+// numerical change into production. Note the arm below refuses on the UNMEASURED control too --
+// an unexplained difference and an unmeasured baseline are both reasons not to substitute.
+type TopologySubstitution
+  = TopologySubstitutable { note: NonEmptyStr }
+  | TopologySubstitutionRefused { cause: NonEmptyStr }
+
+fn topology_substitutable(agreement: NumericalAgreement) -> TopologySubstitution {
+  match agreement {
+    TokenSequenceAndLogprobsAgree { max_delta_millinats: _ } =>
+      TopologySubstitutable { note: "the two topologies agree to within rounding on a deterministic forward pass" as NonEmptyStr }
+    CrossTopologyDifferenceAttributed { cross_topology_max_millinats: x, within_topology_max_millinats: w, launches_per_degree: _, basis: _ } =>
+      TopologySubstitutionRefused {
+        cause: join([
+          "the degrees are deterministically different models: cross-topology distance ", to_string(x),
+          " millinats against a within-topology envelope of ", to_string(w),
+          ". Attribution is established, which makes this a HARDER refusal than an unexplained one -- the difference is reproducible and will not average out. Which degree is closer to the intended semantics is a separate, unanswered question",
+        ], "") as NonEmptyStr,
+      }
+    CrossTopologyDifferenceObservedWithinTopologyUnmeasured { max_delta_millinats: m, mean_delta_millinats: _, worst_probability_ratio_hundredths: _, missing_control: c } =>
+      TopologySubstitutionRefused {
+        cause: join([
+          "a cross-topology difference of up to ", to_string(m),
+          " millinats was observed on a deterministic forward pass and no within-topology baseline exists to attribute it. Missing control: ", c as String,
+        ], "") as NonEmptyStr,
+      }
+    TokenSequenceDiffers { at_index: i } =>
+      TopologySubstitutionRefused {
+        cause: join(["the topologies do not agree on the prompt's own token sequence, diverging at index ", to_string(i)], "") as NonEmptyStr,
+      }
+    NumericalAgreementUnmeasured { because: b } =>
+      TopologySubstitutionRefused {
+        cause: join(["numerical agreement was not measured: ", b as String], "") as NonEmptyStr,
+      }
+  }
+}
+
+// ── NOT FUNGIBLE IS NOT UNADOPTABLE, AND CONFLATING THEM DECIDES THE WRONG QUESTION ───────────
+//
+// An earlier version of this module recorded TP=2 as "measured, not adopted", which reads as a
+// verdict on TP=2's fitness. It is not one. What the evidence refuses is SUBSTITUTION: serving one
+// model alias from either topology as though a request could not tell them apart. A separately
+// named profile, with its own context ceiling, its own numerical semantics and its own capacity
+// receipts, is a different proposition and nothing here rules it out.
+//
+// The distinction has a consequence for routing: a conversation must stay bound to one profile,
+// because prefix state is not transferable across a KV layout and a mid-conversation switch would
+// change numerical semantics silently. Prefill-on-TP2 then decode-on-TP4 is therefore not an
+// available optimisation today; it needs an explicit KV-transfer and numerical-boundary design.
+type TopologyStanding
+  = TopologyNotFungibleMayBeSeparateProfile { confirmed: NonEmptyStr, before_a_profile: NonEmptyStr }
+  | TopologyFungible { degree: Nat }
+
+data spark_group_a_topology_standing: TopologyStanding = TopologyNotFungibleMayBeSeparateProfile {
+  confirmed: "TP=4 over-shards prefill for this profile: TP=2 is 25.4% cheaper per computed token and 34% higher in prefill throughput, matched at 131,072 context and a 2048 batch budget. Normalised to four Sparks, two TP=2 replicas are about 2.68x the aggregate prefill and 1.49x the aggregate decode throughput of one TP=4 replica, for about 25% less aggregate KV rather than 63% less" as NonEmptyStr,
+  before_a_profile: "three gates, none of them cleared: repeat the arms to earn an interval on the 25.4% and a within-topology numerical envelope; establish whether TP=2 admits the production 1,048,576 ceiling at all, by allocator block population and an actual maximum-context request rather than a printed pool size; and decide which topology is closer to the intended model semantics, which a stable difference alone does not settle. The mechanism inside the step is also unidentified -- collectives, shard geometry, expert partition, kernel shapes and reduction order all moved together -- so no communicator or executor replacement is earned by this result" as NonEmptyStr,
+}

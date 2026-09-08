@@ -73,6 +73,7 @@ type SystemdUnitProperty
   | NextElapseUSecMonotonic
   | AccuracyUSec
   | TimersMonotonic
+  | NeedDaemonReload
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -104,6 +105,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     NextElapseUSecMonotonic => "NextElapseUSecMonotonic" as NonEmptyStr
     AccuracyUSec => "AccuracyUSec" as NonEmptyStr
     TimersMonotonic => "TimersMonotonic" as NonEmptyStr
+    NeedDaemonReload => "NeedDaemonReload" as NonEmptyStr
   }
 }
 

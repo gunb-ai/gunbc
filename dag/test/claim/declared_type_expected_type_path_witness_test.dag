@@ -9,12 +9,12 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-// SUBSTRATE-ONLY, for the reason the sibling module states in its own voice: a ReadsLiveTree
-// witness is discovered, counted in declined_live, and never folded, so an assertion authored
-// there is enrolled and inert. These arms are evidence about the compiler and must execute.
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// ReadsLiveTree: compile_dag_diagnostic_census walks the live checkout. SubstrateInputsOnly
+// was the DeclinedLiveTree dodge; that arm is deleted and this module matches
+// required_gate_prefixes.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE ADMISSION ORACLE IS THE TOTAL REFUSING COUNT, NOT A DIAGNOSTIC SPELLING.
 //

@@ -843,6 +843,22 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
 
+            // DOCS LEDGER HALF. A dedicated ProcessExit entry whose closure is the two ledger
+            // renderers, not gunbc.generated_artifact_emit. Run even after a mirror refusal, and
+            // before the whole-registry resolve, so a stale docs/design-failure-modes.md cannot
+            // hide behind a SIGKILL or MemoryStall of the whole-registry fold.
+            match v1_compiler::cli_run::run_docs_projection_agreement(&source_roots) {
+                v1_compiler::cli_run::DocsProjectionAgreement::Clean => {
+                    eprintln!("required-ci: generated-artifact population=docs-projections OK");
+                }
+                v1_compiler::cli_run::DocsProjectionAgreement::Refused { cause } => {
+                    eprintln!(
+                        "required-ci: generated-artifact population=docs-projections REFUSED {cause}"
+                    );
+                    phase_failures.push(format!("generated-artifact docs-projections: {cause}"));
+                }
+            }
+
             // REGISTRY HALF. Run even after a mirror refusal so the one outcome names the complete
             // population rather than allowing the first failure to hide the second.
             let registry_failures_before = phase_failures.len();
@@ -2109,8 +2125,15 @@ fn required_floor_measurement_blockers(
     for identity in &outcome.stale_cost_debt {
         add(identity, "stale_cost_debt");
     }
-    for identity in &outcome.changed_witness_blocking {
-        add(identity, "changed_witness_blocking");
+    // THE CAUSE COMES FROM THE ROW, NOT FROM THIS LOOP. What stood here stamped the constant
+    // "changed_witness_blocking" on every member, which is the name of the POPULATION and not of
+    // anything that happened: a declined witness that never executed, a planned witness that ran
+    // and reached no verdict, and an identity with no disposition row at all reached the merge
+    // gate as one bit offering one affordance — rerun — for two states a rerun cannot discharge.
+    // The distinction was computed in `changed_witness_projection_rows` and dropped on the way
+    // out (`gunbc.recurring_failure_mode` `non_verdict_disposition_surfaces_as_refusal`).
+    for blocker in &outcome.changed_witness_blocking {
+        add(&blocker.identity, &blocker.cause);
     }
     blockers
 }

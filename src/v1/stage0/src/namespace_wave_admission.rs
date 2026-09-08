@@ -1560,52 +1560,105 @@ pub struct TransitionAdmission {
 /// the carrier in `product.cable_leg_observation`, base and head bind each spelling identically,
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
-const LEG_OBSERVATION_REHOME_LABEL: &str =
-    "gunbc#10671 transceiver layer split: the cable-leg observation carrier moves from the \
-     SFF-8636 byte-meaning module extdeps.transceiver.sff_8636 to product.cable_leg_observation";
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "delivered_fs_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
+/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
+/// next roster-touching change, which is this one.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
+/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
+/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
+/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
+/// and both consumers, `test.claim.cable_leg_coding_witness` and
+/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
+/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
+/// reading rather than an author error.
+///
+/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
+/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
+/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
+///
+///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
+///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
+///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
+///   as an import from the fixture (and as uses inside `mb_scene` and
+///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
+///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
+///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
+///   the correct reading for all nine.
+///
+/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
+/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
+/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
+/// permissions standing over nothing.
+///
+/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
+/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
+/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
+/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
+///
+/// SIXTH TRANSITION (2026-09-07, gunbc#10688). `call_semantics_target` moved from
+/// `v1.compiler.emit_rust` to `v1.std.core`, so the two emit-side bindings of that spelling report
+/// `TargetChanged`. It is a re-home and not a re-spelling: the function reads a `CallSemantics` and
+/// answers a `CallTargetIdentity`, both declared in `v1.std.core`, and this change gave that
+/// coproduct a `LocallyBoundCall` arm — so the reduction is now consumed by `v1.compiler.infer` and
+/// `v1.compiler.service` as well as by emission. Leaving it in `v1.compiler.emit_rust` would have
+/// made the inference and effect tiers import the EMITTER to ask what a call names, which is the
+/// second-representation pressure DESIGN §3 forbids: the alternative on offer was a second copy
+/// beside the type. It sits beside `CallSemantics` because that is the declaration it destructures.
+///
+/// TWO ROWS, ONE PER BINDING SITE, enumerated rather than matched by module pattern, for the same
+/// reason the fourth transition was: the roster's population is an enumeration, never a predicate.
+/// The membership deltas this change also produces are `ExplicitlyEvaluatedZeroDelta` and
+/// auto-admit, and the `resolved_plain_call_target_for_outcome` delta is an
+/// `AuthoredReferenceResolution`, so all of them are deliberately absent here.
+///
+/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
+/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
+/// touch. Adjudicate that deletion by joining each row against main on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and adding
+/// the row below is it. ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE:
+/// the required run reported both as `already satisfied at the base -- consumed by its own merge`,
+/// which IS that (module, in_declaration, spelling, target) join executed against main rather than
+/// a reading of the trigger paragraph. Their label constant goes with them, since a label is text
+/// shared by the rows citing it and dissolves with the last one.
+///
+/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
+/// `cumulative_metric_read_as_per_event`, is added as its own file under
+/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
+/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
+/// the head side that name newly resolves into the class's own module, which is
+/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
+/// the membership rule the directory IS, not by anyone rebinding an existing name.
+///
+/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
+/// one file per class precisely so that two lanes appending different classes never rewrite one
+/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
+/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
+/// is the same motion whether it was intended or accidental, and only the author can say which.
+///
+/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
+/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
+/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
+/// trusting this sentence.
+const RECURRING_FAILURE_MODE_CLASS_ADDED_LABEL: &str =
+    "gunbc#10813 recurring-failure-mode class added: `cumulative_metric_read_as_per_event` \
+     joins the roster as its own file, so the roster's existing declaration resolves a name into \
+     the new class module -- the ledger's one-file-per-class growth shape, not a rebind";
+
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: RECURRING_FAILURE_MODE_CLASS_ADDED_LABEL,
+    subject: AdmissionSubject::Binding {
+        module: "gunbc.recurring_failure_mode.roster",
+        in_declaration: "recurring_failure_mode_roster",
+        spelling: "cumulative_metric_read_as_per_event",
+        target: "gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event",
     },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_leg_coding_witness",
-            in_declaration: "leg_with_unmodelled_code",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "correctly_coded_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: LEG_OBSERVATION_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.cable_order_admission_witness",
-            in_declaration: "delivered_leg",
-            spelling: "SecondaryNotObserved",
-            target: "product.cable_leg_observation",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+    disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
