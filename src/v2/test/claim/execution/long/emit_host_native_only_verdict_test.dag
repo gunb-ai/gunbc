@@ -2,16 +2,19 @@ module v2.test.long.emit_host_native_only_verdict
 
 import v2.compiler.emit { emit }
 import v2.compiler.emit_host { emit_host_octets_byte_string, run_emit_host_cached, run_emit_host_cached_with_run_args }
-import v2.compiler.emit_module { emit_family }
+import v2.compiler.emit_module { emit_family, emit_module }
 import v2.compiler.eval { inputs_root_only }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.extdeps.languages.rust_test {
+  rust_add_target_model_staging,
+  rust_call_target_model_staging,
   rust_classical_not_ingested_target_model_staging,
   rust_family_member_run_args,
   rust_field_access_target_model_staging,
   rust_logic_family_target_model_staging,
   rust_match_loop_fold_family_target_model_staging,
+  rust_rec_nine_target_model_staging,
   rust_variant_construct_target_model_staging,
 }
 import extdeps.realization.emit_on_demand_host { native_cache_workspace_root }
@@ -68,6 +71,21 @@ import v2.test.execution.emit_on_demand_variant_construct_family_witness {
   variant_construct_family_cache_root_for,
   variant_construct_family_fixture_inputs,
   variant_construct_family_native_key_for,
+}
+import v2.test.execution.emit_host_filesystem_read_equals_eval {
+  filesystem_read_native_run,
+}
+import v2.test.execution.emit_host_shell_exec_run_equals_eval {
+  shell_exec_run_native_run,
+}
+import v2.test.long.emit_host_produced_module_equals_eval {
+  produced_add_module_source,
+}
+import v2.test.execution.rust_emit_host_call_equals_eval {
+  emit_call_eval_producer_tree,
+}
+import v2.test.execution.rust_record_construct_emit_host_equals_eval {
+  rust_rec_nine_eval_inferred_tree,
 }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
@@ -461,5 +479,208 @@ test fn emit_host_native_only_variant_construct_holds() -> Bool {
 
 test fn emit_host_native_only_variant_construct_wrong_octet_mismatch_detected_holds() -> Bool {
   variant_construct_native_only_matches_expected(expected_octet: 1) == false
+}
+
+// FILESYSTEM-READ-FAMILY ARM: the same native-only verdict shape for the emit_host_filesystem_read
+// family — the tenth construct promoted off InterpreterRetained. This family has no translated
+// arrow body at all (the construct under test is the host-effect primitive itself), so the arm
+// reuses the family's own native leg (filesystem_read_native_run) with the expectation pinned as a
+// LITERAL: octet 1 is grounded by the family's own enrolled pin
+// filesystem_read_eval_reads_real_bash_argv, which asserts the controlled fixture
+// dag/extdeps/shell/exec.dag contains "bash" — a versioned repo file, not a measurement copied
+// from the run (DESIGN S5's oracle rule). The fixture content load inside the family's target
+// staging runs the interpreted filesystem_read builtin — harness plumbing of the same standing as
+// every arm's interpreted fixture construction; the VERDICT path is native stdout vs the literal,
+// and no InterpretationAlgebra oracle leg exists for this family to call. The run shares the
+// family's fixed witness workspace (content-safety from the realization-digest nesting in
+// run_host_process_admitted: changed content colds, never serves stale). The broken control breaks
+// the EXPECTATION side: octet 0 is the byte the family's wrong-oracle control already proves the
+// native run never produces, and the comparator mocks above pin the comparator itself.
+test fn emit_host_native_only_filesystem_read_holds() -> Bool {
+  filesystem_read_native_run(expected_octet: 1)
+}
+
+test fn emit_host_native_only_filesystem_read_wrong_octet_mismatch_detected_holds() -> Bool {
+  filesystem_read_native_run(expected_octet: 0) == false
+}
+
+// MODULE-FAMILY ARM: the same native-only verdict shape for the emit_host_module family — the
+// eleventh construct promoted off InterpreterRetained. The family difference is the emit entry:
+// the source comes from emit_module (the module-concatenation path) over the add family's shared
+// fixture tree, not from emit — exactly the source the family's equals_eval pair executes. The
+// expected octet is 5, the byte the add family's primitive-five/primitive-six pair pins on this
+// same subject (5 agrees, 6 diverges). This family has no one-build cache witness, so the arm runs
+// under its own fixed workspace root; content-safety comes from the realization-digest nesting in
+// run_host_process_admitted (changed source colds, never serves stale), the same mechanism the
+// filesystem_read family's fixed workspace relies on. The broken control breaks the EXPECTATION
+// side: octet 6 is the byte the equals_eval pair's wrong-oracle leg proves this run never
+// produces, and the comparator mocks above pin the comparator itself.
+fn module_native_only_matches_expected(expected_octet: Int) -> Bool {
+  match emit_module(decls: [emit_eval_subject_tree()], target: rust_add_target_model_staging()) {
+    Accepted { value: source, diagnostics: _ } =>
+      match run_emit_host_cached(
+        workspace_dir: "/tmp/gunbc_emit_on_demand_module/native_only",
+        target: rust_add_target_model_staging(),
+        source: source,
+        fixture_inputs: kernel_add_fixture_inputs()
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+              native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_native_only_module_holds() -> Bool {
+  module_native_only_matches_expected(expected_octet: 5)
+}
+
+test fn emit_host_native_only_module_wrong_octet_mismatch_detected_holds() -> Bool {
+  module_native_only_matches_expected(expected_octet: 6) == false
+}
+
+// PRODUCED-MODULE-FAMILY ARM: the same native-only verdict shape for the
+// emit_host_produced_module family — the twelfth construct promoted off InterpreterRetained. The
+// family difference is the source's provenance: produced_add_module_source() assembles a two-fn
+// module (add + add2) from INGESTED decl nodes via emit_produced_module — exactly the source the
+// family's equals_eval pair executes — and the family's own golden test
+// (produced_module_two_distinct_fns_assemble) pins those bytes against a literal golden. The
+// expected octet is 5, the byte the add family's primitive-five/primitive-six pair pins on this
+// same subject. Like the module family there is no one-build cache witness, so the arm runs under
+// its own fixed workspace root with the same realization-digest content-safety. The broken
+// control breaks the EXPECTATION side: octet 6 can never match this run, and the comparator mocks
+// above pin the comparator itself.
+fn produced_module_native_only_matches_expected(expected_octet: Int) -> Bool {
+  match produced_add_module_source() {
+    Accepted { value: source, diagnostics: _ } =>
+      match run_emit_host_cached(
+        workspace_dir: "/tmp/gunbc_emit_on_demand_produced_module/native_only",
+        target: rust_target_model_staging(),
+        source: source,
+        fixture_inputs: kernel_add_fixture_inputs()
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+              native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_native_only_produced_module_holds() -> Bool {
+  produced_module_native_only_matches_expected(expected_octet: 5)
+}
+
+test fn emit_host_native_only_produced_module_wrong_octet_mismatch_detected_holds() -> Bool {
+  produced_module_native_only_matches_expected(expected_octet: 6) == false
+}
+
+// SHELL-EXEC-RUN-FAMILY ARM: the same native-only verdict shape for the emit_host_shell_exec_run
+// family — the thirteenth construct promoted off InterpreterRetained. Like filesystem_read this
+// family has no translated arrow body (the construct under test is the host-effect primitive), so
+// the arm reuses the family's own native leg (shell_exec_run_native_run) with the expectation
+// pinned as a LITERAL: octet 1 is grounded by the family's own enrolled pin
+// shell_exec_run_eval_argv_is_bash_dash_s, which asserts the argv materialized from the controlled
+// fixture dag/extdeps/shell/exec.dag's shell.Exec.Run operation is exactly ["bash", "-s"]. The
+// native leg itself carries no interpreted oracle at all — the argv literals are baked into the
+// target model at .dag-construction time from that same materialization, so the two legs cannot
+// silently drift (rust_shell_exec_run_family_note). The run shares the family's fixed witness
+// workspace with realization-digest content-safety. The broken control breaks the EXPECTATION
+// side: octet 0 is the byte the family's wrong-oracle control already proves the native run never
+// produces, and the comparator mocks above pin the comparator itself.
+test fn emit_host_native_only_shell_exec_run_holds() -> Bool {
+  shell_exec_run_native_run(expected_octet: 1)
+}
+
+test fn emit_host_native_only_shell_exec_run_wrong_octet_mismatch_detected_holds() -> Bool {
+  shell_exec_run_native_run(expected_octet: 0) == false
+}
+
+// CALL-FAMILY ARM: the same native-only verdict shape for the rust_emit_host_call family — the
+// fourteenth construct promoted off InterpreterRetained. The tree is the family's own producer
+// (emit_call_eval_producer_tree over the rust_call_helper arrow — no eval leg is reachable from
+// this file despite the constructor module's equals_eval name), emitted against the family's call
+// target model. The expected octet is 7, the byte the family's primitive-seven/primitive-eight
+// equals_eval pair pins on this same build (7 agrees, 8 diverges). This family has no one-build
+// cache witness, so the arm runs under its own fixed workspace root with realization-digest
+// content-safety, as the module families above. The broken control breaks the EXPECTATION side:
+// octet 8 is the byte the equals_eval pair's wrong-oracle leg proves this run never produces, and
+// the comparator mocks above pin the comparator itself.
+fn call_native_only_matches_expected(expected_octet: Int) -> Bool {
+  match emit(tree: emit_call_eval_producer_tree(), target: rust_call_target_model_staging()) {
+    Accepted { value: emitted, diagnostics: _ } =>
+      match run_emit_host_cached(
+        workspace_dir: "/tmp/gunbc_emit_on_demand_call/native_only",
+        target: rust_call_target_model_staging(),
+        source: emitted,
+        fixture_inputs: inputs_root_only(root: emit_call_eval_producer_tree().root)
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+              native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_native_only_call_holds() -> Bool {
+  call_native_only_matches_expected(expected_octet: 7)
+}
+
+test fn emit_host_native_only_call_wrong_octet_mismatch_detected_holds() -> Bool {
+  call_native_only_matches_expected(expected_octet: 8) == false
+}
+
+// RECORD-CONSTRUCT-FAMILY ARM: the same native-only verdict shape for the
+// rust_record_construct_emit_host family — the fifteenth construct promoted off
+// InterpreterRetained. The tree is the family's own constructor (rust_rec_nine_eval_inferred_tree
+// over the rec-nine arrow — no eval leg is reachable from this file despite the constructor
+// module's equals_eval name), emitted against the family's rec-nine target model. The expected
+// octet is 9, the byte the family's equals_eval pair pins on this same build; the family's
+// wrong-field target model leg proves the native run's actual byte participates in a verdict
+// (construct-then-field-access on the wrong field diverges). This family has no one-build cache
+// witness, so the arm runs under its own fixed workspace root with realization-digest
+// content-safety, as the module families above. The broken control breaks the EXPECTATION side:
+// octet 0 can never match this run, and the comparator mocks above pin the comparator itself.
+fn record_construct_native_only_matches_expected(expected_octet: Int) -> Bool {
+  match emit(tree: rust_rec_nine_eval_inferred_tree(), target: rust_rec_nine_target_model_staging()) {
+    Accepted { value: emitted, diagnostics: _ } =>
+      match run_emit_host_cached(
+        workspace_dir: "/tmp/gunbc_emit_on_demand_record_construct/native_only",
+        target: rust_rec_nine_target_model_staging(),
+        source: emitted,
+        fixture_inputs: inputs_root_only(root: rust_rec_nine_eval_inferred_tree().root)
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+              native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_native_only_record_construct_holds() -> Bool {
+  record_construct_native_only_matches_expected(expected_octet: 9)
+}
+
+test fn emit_host_native_only_record_construct_wrong_octet_mismatch_detected_holds() -> Bool {
+  record_construct_native_only_matches_expected(expected_octet: 0) == false
 }
 
