@@ -16,9 +16,9 @@ import gunbc.spark.managed_access_apply { spark_managed_login }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.server { vllm_source_revision_read }
-import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize }
+import extdeps.vllm.log_lines { vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
-import extdeps.vllm.kv_layout { ResolvedKvLayout, resolved_kv_layout, VllmReportedCapacity, vllm_reported_capacity }
+import extdeps.vllm.kv_layout { ResolvedKvLayout, resolved_kv_layout, VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent, admit_kv_layout, receipt_wire,
 }
@@ -215,6 +215,21 @@ fn pool_from_fields(f: CapacityProbeFields) -> VllmObservedKvPool? {
   }
 }
 
+fn reported_from_fields(pool: VllmObservedKvPool, f: CapacityProbeFields) -> VllmReportedCapacity? {
+  match vllm_reported_capacity(
+    pool: pool,
+    max_concurrency: percent(count: f.concurrency_hundredths),
+    reading: vllm_startup_reading(
+      line: MaximumConcurrency,
+      captured_text: join(["Maximum concurrency for tokens per request: ", to_string(f.concurrency_hundredths), " hundredths"], "") as NonEmptyStr,
+      observed_at_revision: vllm_source_revision_read,
+    ),
+  ) {
+    ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+    ReportedCapacityRefused { cause: _ } => none
+  }
+}
+
 // GROUPS ARE EMPTY, AND THAT IS THE OBSERVATION. The engine's metadata does not carry layer count
 // or page size, so there is nothing to put here and the receipt will refuse for exactly that
 // reason. Filling it with a guess is the one move that would make this instrument lie.
@@ -297,11 +312,14 @@ fn group_report(group: FabricGroup) -> GroupStanding {
               LaunchIdentified { launch: launch } =>
                 match pool_from_fields(f: f) {
                   Absent => refused_standing(text: join([name, ": the captured KV-cache-size reading was refused by its own carrier"], ""))
-                  Present { value: pool } => {
+                  Present { value: pool } =>
+                    match reported_from_fields(pool: pool, f: f) {
+                      Absent => refused_standing(text: join([name, ": the captured maximum-concurrency reading was refused by its own carrier"], ""))
+                      Present { value: reported } => {
                     let receipt = admit_kv_layout(
                       incarnation: launch,
                       layout: layout_from_fields(f: f),
-                      reported: vllm_reported_capacity(pool: pool, max_concurrency: percent(count: f.concurrency_hundredths)),
+                      reported: reported,
                       source_capture_digest: Fnv1a64(content_hash_atom(value: result.stdout as NonEmptyStr)),
                     )
                     let floor = capacity_floor_standing(receipt: receipt, floor: spark_pair_serving_minimum_cold_sessions)
@@ -318,7 +336,8 @@ fn group_report(group: FabricGroup) -> GroupStanding {
                       "    posture: ", posture_wire(p: posture),
                     ], ""),
                     }
-                  }
+                      }
+                    }
                 }
             }
         }
