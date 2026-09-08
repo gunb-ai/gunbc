@@ -40,7 +40,7 @@ fn fixture_assess(_: FixtureObserved) -> GoalAssessment<FixtureEvidence, Fixture
 // with, so a root that assessed an unobserved subject could not even return this arm -- and the
 // arm it did return would name FixtureAssessorShouldNotRun, which is the located evidence that the
 // guard was skipped rather than a bare false.
-fn unreadable_subject_refuses_before_the_assessor_runs() -> Bool {
+test fn unreadable_subject_refuses_before_the_assessor_runs() -> Bool {
   match inspect_goal(
     subject: FixtureSubject { key: "fixture" },
     scope: false,
@@ -55,7 +55,7 @@ fn unreadable_subject_refuses_before_the_assessor_runs() -> Bool {
 // The positive control the refusal above is measured against: same root, same operations, a
 // readable subject in agreement. Without it the RED is satisfiable by a root that refuses
 // everything.
-fn readable_subject_in_agreement_is_satisfied() -> Bool {
+test fn readable_subject_in_agreement_is_satisfied() -> Bool {
   match inspect_goal(
     subject: FixtureSubject { key: "fixture" },
     scope: true,
@@ -72,7 +72,7 @@ fn readable_subject_in_agreement_is_satisfied() -> Bool {
 // divergent arm carries FreeSemigroup, which has no empty inhabitant, so the state this test
 // guards against has no constructor to reach. The test is what proves the mint routes rather than
 // that the type exists.
-fn an_empty_deviation_list_is_agreement_not_an_empty_divergence() -> Bool {
+test fn an_empty_deviation_list_is_agreement_not_an_empty_divergence() -> Bool {
   match assess_by_deviations(
     evidence: FixtureEvidence { field: "agreed" },
     deviations: [],
@@ -84,7 +84,7 @@ fn an_empty_deviation_list_is_agreement_not_an_empty_divergence() -> Bool {
 
 // The other direction of the same mint: a nonempty list must arrive as a divergence whose head is
 // the list's head. A mint that dropped the head, or that reordered, would still typecheck.
-fn deviations_reach_the_divergent_arm_head_first() -> Bool {
+test fn deviations_reach_the_divergent_arm_head_first() -> Bool {
   match assess_by_deviations(
     evidence: FixtureEvidence { field: "unused" },
     deviations: [FixtureDeviation { field: "enforcement" }, FixtureDeviation { field: "target" }],
@@ -99,7 +99,7 @@ fn deviations_reach_the_divergent_arm_head_first() -> Bool {
 // remediation is refused -- AND it must still carry both proved deviations, because an
 // unestablished fact suppressing a known one is how a real drift goes unreported behind a
 // transient read failure.
-fn an_unknown_outranks_deviations_and_still_carries_them() -> Bool {
+test fn an_unknown_outranks_deviations_and_still_carries_them() -> Bool {
   match assess_by_deviations_and_unknowns(
     evidence: FixtureEvidence { field: "unused" },
     deviations: [FixtureDeviation { field: "enforcement" }, FixtureDeviation { field: "target" }],

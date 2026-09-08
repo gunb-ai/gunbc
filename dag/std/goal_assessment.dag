@@ -89,6 +89,16 @@ type ObservationAttempt<Observed, ObserveRefusal>
 // this projection cannot express. An assessment that returns a verdict over an ill-formed question
 // set certifies exactness over a denominator nobody checked (std.observation_completeness carries
 // that argument in full for the join case).
+// AND THERE IS DELIBERATELY NO `is_satisfied` PREDICATE OVER THIS CARRIER, which is the design
+// rather than an omission. A `Bool` here is a one-bit summary of four arms whose whole point is
+// that they are not orderable into two: the summary's false side silently merges "proved to
+// differ", "not fully established" and "could not be compared", which have three different owners
+// and three different remedies. That is the conflation the arms above exist to prevent, so
+// offering it as a convenience would hand every consumer the defect back.
+//
+// Every real consumer matches instead, and it must -- the non-satisfied arms carry the payloads it
+// has to report. A consumer that genuinely wants only the fixed-point question is one `match` arm
+// away from it, and writing that arm is where it decides what the other three mean to it.
 type GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>
   = GoalSatisfied { evidence: Evidence }
   | GoalDiverged { deviations: FreeSemigroup<Deviation> }
@@ -180,15 +190,3 @@ fn assess_by_deviations_and_unknowns<Evidence, Deviation, UnknownFact, AssessRef
     }
   }
 }
-
-// THERE IS DELIBERATELY NO `is_satisfied` PREDICATE HERE, and the absence is the design rather than
-// an omission. A `Bool` over this coproduct is a one-bit summary of four arms whose whole point is
-// that they are not orderable into two -- and the summary's false side would silently merge
-// "proved to differ", "not fully established" and "could not be compared", which have three
-// different owners and three different remedies. That merge is exactly the conflation this module
-// exists to prevent, so offering it as a convenience would hand every consumer the defect back.
-//
-// Every real consumer matches instead, and it must: the non-satisfied arms carry payloads it needs
-// to report -- the deviations, the unknowns, the cause. A consumer that genuinely wants only the
-// fixed-point question is one `match` arm away from it, and writing that arm is where it decides
-// what the other three mean to it. Nothing is saved by deciding that for it here.
