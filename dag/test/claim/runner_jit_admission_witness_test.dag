@@ -1,0 +1,93 @@
+module gunbc.test.claim.runner_jit_admission_witness_test
+
+import std.types { String, Bool, Int, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions_jit_runner {
+  JitMintName, JitMintLabels, JitMintRunnerGroupId, JitMintWorkFolder,
+  jit_config_conflict_status,
+}
+import gunbc.auth.github_apps { gunbai_ci_declared }
+import gunbc.runner.runner_jit_admission {
+  SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
+  AxisRequired, AxisDeferred, AxisDissolvedInto, AxisDissolvedIntoUpstreamMint,
+  HostEnvelopeNonemptyAndFresh, GitHubMintRequestField,
+  jit_admission_axis_standing, jit_admission_axis_is_deferred, axis_standing_is_deferred,
+  gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
+  mint_field_can_carry_attempt_binding, mint_surface_live_app_read,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn signature_and_expiry_are_required_host_envelope_checks() -> Bool {
+  match jit_admission_axis_standing(axis: SignatureAxis) {
+    AxisRequired { checker: HostEnvelopeNonemptyAndFresh } =>
+      match jit_admission_axis_standing(axis: ExpiryAxis) {
+        AxisRequired { checker: HostEnvelopeNonemptyAndFresh } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn replay_dissolves_into_the_upstream_one_shot_mint() -> Bool {
+  match jit_admission_axis_standing(axis: ReplayAxis) {
+    AxisDissolvedIntoUpstreamMint { reason: r } =>
+      string_contains(s: r, pattern: "409") && jit_config_conflict_status == 409
+    _ => false
+  }
+}
+
+test fn unit_and_boot_binding_dissolve_into_attempt_binding() -> Bool {
+  match jit_admission_axis_standing(axis: UnitBindingAxis) {
+    AxisDissolvedInto { into: AttemptBindingAxis } =>
+      match jit_admission_axis_standing(axis: BootBindingAxis) {
+        AxisDissolvedInto { into: AttemptBindingAxis } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn attempt_binding_is_required_on_the_mint_name_field() -> Bool {
+  match jit_admission_axis_standing(axis: AttemptBindingAxis) {
+    AxisRequired { checker: GitHubMintRequestField { field: JitMintName } } =>
+      mint_field_can_carry_attempt_binding(field: JitMintName)
+        && mint_field_can_carry_attempt_binding(field: JitMintLabels)
+        && !mint_field_can_carry_attempt_binding(field: JitMintRunnerGroupId)
+        && !mint_field_can_carry_attempt_binding(field: JitMintWorkFolder)
+    _ => false
+  }
+}
+
+test fn a_deferred_standing_is_the_only_deferred_arm() -> Bool {
+  axis_standing_is_deferred(standing: AxisDeferred {
+    trigger: "an authority defining the axis and naming which side can check it" as NonEmptyStr,
+  })
+    && !axis_standing_is_deferred(standing: AxisRequired { checker: HostEnvelopeNonemptyAndFresh })
+}
+
+test fn no_axis_is_deferred() -> Bool {
+  !jit_admission_axis_is_deferred(axis: SignatureAxis)
+    && !jit_admission_axis_is_deferred(axis: ExpiryAxis)
+    && !jit_admission_axis_is_deferred(axis: ReplayAxis)
+    && !jit_admission_axis_is_deferred(axis: UnitBindingAxis)
+    && !jit_admission_axis_is_deferred(axis: BootBindingAxis)
+    && !jit_admission_axis_is_deferred(axis: AttemptBindingAxis)
+}
+
+test fn the_mint_surface_is_the_gunbai_ci_installation_token_then_generate_jitconfig() -> Bool {
+  gunbai_ci_installation_token_url()
+    == "https://api.github.com/app/installations/104134109/access_tokens"
+    && gunbai_org_generate_jitconfig_path()
+       == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+    && (gunbai_ci_declared.slug as String) == "gunbai-ci"
+}
+
+// A 403 FROM GET /apps/gunbai-ci IS A LIVE-GRANT READ REFUSAL, not a schema gap: the published
+// generate-jitconfig body is readable; the installation's current permission grant is not readable
+// with this session's integration token. 200 would mean the live grant was in hand.
+test fn live_app_grant_read_refuses_non_200() -> Bool {
+  !mint_surface_live_app_read(status: 403)
+    && !mint_surface_live_app_read(status: 401)
+    && mint_surface_live_app_read(status: 200)
+}

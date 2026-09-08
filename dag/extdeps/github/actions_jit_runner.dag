@@ -78,7 +78,31 @@ fn jit_runner_label_wire(l: JitRunnerLabel) -> String {
 // blob; every other status means no runner identity was created, and treating a non-201 as "no
 // config yet" would let a guest boot with an empty drive and sit waiting for work it can never be
 // assigned -- a VM burning its whole deadline looking healthy.
+// THESE ARE THE ONLY REQUEST FIELDS THE MINT ADMITS. GitHub's generate-jitconfig body is name,
+// runner_group_id, labels, and optional work_folder. There is no host, boot, signature, expiry, or
+// replay field. A checker that claims to read those axes out of the mint request is inventing an
+// admission surface GitHub does not have. The response schema likewise carries runner identity and
+// encoded_jit_config, and does not carry an expiry.
+type JitMintAdmittedRequestField
+  = JitMintName
+  | JitMintRunnerGroupId
+  | JitMintLabels
+  | JitMintWorkFolder
+
+data jit_mint_admitted_request_fields: List<JitMintAdmittedRequestField> = [
+  JitMintName,
+  JitMintRunnerGroupId,
+  JitMintLabels,
+  JitMintWorkFolder,
+]
+
 data jit_config_created_status: Int = 201
+
+data jit_config_not_found_status: Int = 404
+
+data jit_config_conflict_status: Int = 409
+
+data jit_config_validation_failed_status: Int = 422
 
 fn jit_config_mint_outcome(status: Int, encoded: String, runner_id: Int, error_body: String) -> JitConfigMintOutcome {
   if status == jit_config_created_status {

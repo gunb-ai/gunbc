@@ -1,0 +1,48 @@
+module gunbc.test.claim.runner_host_image_placeability_witness_test
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.runner.runner_host_image_placeability {
+  HostImagePlaceability, ExecutedAtBoot, PlaceabilityRefused,
+  HostShellAndBootImageAccessRefused, BinaryAbsentFromHostImage,
+  ExecutedFromCheckoutOrNetworkMount, ExecFormatErrorIsBuildProvenance,
+  placeability_question_closed, host_image_placeability_standing,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn access_refusal_closes_placeability() -> Bool {
+  placeability_question_closed(outcome: PlaceabilityRefused {
+    cause: HostShellAndBootImageAccessRefused,
+  })
+}
+
+test fn a_missing_binary_in_the_image_also_closes() -> Bool {
+  placeability_question_closed(outcome: PlaceabilityRefused {
+    cause: BinaryAbsentFromHostImage,
+  })
+}
+
+test fn checkout_or_network_mount_does_not_close() -> Bool {
+  !placeability_question_closed(outcome: PlaceabilityRefused {
+    cause: ExecutedFromCheckoutOrNetworkMount,
+  })
+}
+
+test fn exec_format_error_does_not_close() -> Bool {
+  !placeability_question_closed(outcome: PlaceabilityRefused {
+    cause: ExecFormatErrorIsBuildProvenance,
+  })
+}
+
+test fn an_observed_boot_exit_closes() -> Bool {
+  placeability_question_closed(outcome: ExecutedAtBoot { exit_status: 0 })
+}
+
+test fn current_standing_is_the_typed_access_refusal() -> Bool {
+  match host_image_placeability_standing {
+    PlaceabilityRefused { cause: HostShellAndBootImageAccessRefused } =>
+      placeability_question_closed(outcome: host_image_placeability_standing)
+    _ => false
+  }
+}

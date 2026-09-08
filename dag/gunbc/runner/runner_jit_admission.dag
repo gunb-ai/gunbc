@@ -1,0 +1,99 @@
+module gunbc.runner.runner_jit_admission
+
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.github.actions_jit_runner {
+  JitMintAdmittedRequestField, JitMintName, JitMintLabels, JitMintRunnerGroupId, JitMintWorkFolder,
+  org_generate_jitconfig_path,
+}
+import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
+import gunbc.auth.github_apps {
+  gunbai_ci_declared, gunbai_ci_declared_installation_id,
+}
+
+data runner_jit_admission_disposition: Disposition = SingleAuthority
+
+// THIS MODULE IS THE AXIS-DEFINITION AUTHORITY for the six host-printed admission names
+// (signature, expiry, replay, unit-binding, boot-binding, attempt-binding). The names originated as
+// a marker string on a capture; they are not defined in extdeps.github.actions_jit_runner because
+// that module owns GitHub's mint shape, and GitHub does not name these axes. Defining them here is
+// what lets each one close as required, deferred, or dissolved, instead of remaining a quote of a
+// log line.
+//
+// THE MINT SURFACE IS A TWO-STEP GITHUB PATH, not a host HTTP server and not a parsed blob:
+//   1. POST /app/installations/{installation_id}/access_tokens, cited by
+//      extdeps.github.org_admin_auth.github_app_installation_access_token_url, minted from the
+//      gunbai-ci App key (gunbc.auth.github_apps.gunbai_ci_declared).
+//   2. POST /orgs/{org}/actions/runners/generate-jitconfig with that installation token, path from
+//      extdeps.github.actions_jit_runner.org_generate_jitconfig_path.
+// What step 2 accepts as a body is the four JitMintAdmittedRequestField rows and nothing else.
+// encoded_jit_config is opaque; a host cannot check binding axes by decoding it.
+
+type JitAdmissionAxis
+  = SignatureAxis
+  | ExpiryAxis
+  | ReplayAxis
+  | UnitBindingAxis
+  | BootBindingAxis
+  | AttemptBindingAxis
+
+type JitAdmissionChecker
+  = HostEnvelopeNonemptyAndFresh
+  | GitHubMintRequestField { field: JitMintAdmittedRequestField }
+
+type JitAdmissionAxisStanding
+  = AxisRequired { checker: JitAdmissionChecker }
+  | AxisDeferred { trigger: NonEmptyStr }
+  | AxisDissolvedInto { into: JitAdmissionAxis }
+  | AxisDissolvedIntoUpstreamMint { reason: NonEmptyStr }
+
+fn gunbai_ci_installation_token_url() -> String {
+  github_app_installation_access_token_url(
+    installation_id: gunbai_ci_declared_installation_id.value,
+  )
+}
+
+fn gunbai_org_generate_jitconfig_path() -> String {
+  org_generate_jitconfig_path(org_login: gunbai_ci_declared.owner_login)
+}
+
+fn jit_admission_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStanding {
+  match axis {
+    SignatureAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
+    ExpiryAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
+    ReplayAxis => AxisDissolvedIntoUpstreamMint {
+      reason: "generate-jitconfig creates one runner identity; a second mint of the same name is HTTP 409, and the blob is not a reusable secret",
+    }
+    UnitBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
+    BootBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
+    AttemptBindingAxis => AxisRequired {
+      checker: GitHubMintRequestField { field: JitMintName },
+    }
+  }
+}
+
+fn axis_standing_is_deferred(standing: JitAdmissionAxisStanding) -> Bool {
+  match standing {
+    AxisDeferred { trigger: _ } => true
+    AxisRequired { checker: _ } => false
+    AxisDissolvedInto { into: _ } => false
+    AxisDissolvedIntoUpstreamMint { reason: _ } => false
+  }
+}
+
+fn jit_admission_axis_is_deferred(axis: JitAdmissionAxis) -> Bool {
+  axis_standing_is_deferred(standing: jit_admission_axis_standing(axis: axis))
+}
+
+fn mint_field_can_carry_attempt_binding(field: JitMintAdmittedRequestField) -> Bool {
+  match field {
+    JitMintName => true
+    JitMintLabels => true
+    JitMintRunnerGroupId => false
+    JitMintWorkFolder => false
+  }
+}
+
+fn mint_surface_live_app_read(status: Int) -> Bool {
+  status == 200
+}

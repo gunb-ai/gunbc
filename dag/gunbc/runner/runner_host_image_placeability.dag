@@ -1,0 +1,49 @@
+module gunbc.runner.runner_host_image_placeability
+
+import std.types { Bool, Int }
+import std.disposition { Disposition, SingleAuthority }
+
+data runner_host_image_placeability_disposition: Disposition = SingleAuthority
+
+// CAN A GUNBC BINARY BE CARRIED IN THE HOST IMAGE AND EXECUTED ON TMPFS AT BOOT?
+//
+// That is a placeability question, not a "does cargo run work" question. A binary that runs from a
+// checkout, over a network mount, or after a runner has started presupposes the lifecycle the boot
+// path lacks: at jailer exec the host has a tmpfs root and no runner, because bringing a runner
+// into being is the purpose of the boot.
+//
+// AN EXEC FORMAT ERROR IS NOT A PLACEABILITY FINDING. Session containers are arm64; the hosts are
+// linux/amd64. A binary built in the session will not execute there, and that mismatch is
+// build-provenance, not an answer to whether an amd64 binary in the image can run at boot.
+
+type PlaceabilityRefusalCause
+  = HostShellAndBootImageAccessRefused
+  | BinaryAbsentFromHostImage
+  | ExecutedFromCheckoutOrNetworkMount
+  | ExecFormatErrorIsBuildProvenance
+
+type HostImagePlaceability
+  = ExecutedAtBoot { exit_status: Int }
+  | PlaceabilityRefused { cause: PlaceabilityRefusalCause }
+
+fn placeability_question_closed(outcome: HostImagePlaceability) -> Bool {
+  match outcome {
+    ExecutedAtBoot { exit_status: _ } => true
+    PlaceabilityRefused { cause: c } => match c {
+      HostShellAndBootImageAccessRefused => true
+      BinaryAbsentFromHostImage => true
+      ExecutedFromCheckoutOrNetworkMount => false
+      ExecFormatErrorIsBuildProvenance => false
+    }
+  }
+}
+
+// TYPED CAUSE, 2026-09-08. The originating lane's key is refused on srv1–srv4. This session did not
+// spend a first hour re-proving that: access is the same class as BMC/boot of a host image, and the
+// production census is live (those hosts serve CI). Escalation for a dedicated probe key on idle
+// mtcollins, plus mint-surface read, is the access path; until that grant exists the probe cannot
+// place a binary into a host image without hand-set credentials or an undrained runner restart,
+// both of which are standing operator constraints.
+data host_image_placeability_standing: HostImagePlaceability = PlaceabilityRefused {
+  cause: HostShellAndBootImageAccessRefused,
+}
