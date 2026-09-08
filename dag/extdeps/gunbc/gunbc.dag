@@ -115,31 +115,3 @@ service gunbc.WitnessBin {
     }
   }
 }
-
-service shell.Codegen {
-  operation Check {
-    input {}
-    output { needed: Bool from "exit_success" }
-    readonly
-
-    transport shell { argv: ["test", "-f", "target/codegen/.stamp"] }
-    exit {
-      0 => Unit "File exists"
-      1 => Unit "File does not exist"
-    }
-  }
-
-  operation Run {
-    input {}
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["cargo", "run", "--bin", "gunbc-codegen", "--", "codegen"] }
-    exit {
-      0 => Unit
-      nonzero => String "Codegen failed"
-    }
-  }
-}

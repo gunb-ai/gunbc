@@ -26,6 +26,7 @@ use self::StringPart::*;
 use self::TokenShape::*;
 use self::TransportKind::*;
 use self::UnaryOpKind::*;
+use self::UnprojectableConstruct::*;
 use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
@@ -487,6 +488,26 @@ pub struct TextFile {
     pub content: String,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum UnprojectableConstruct {
+    FilterInBranchCondition,
+}
+
+pub fn unprojectable_construct_identity(c: UnprojectableConstruct) -> String {
+    match c.clone() {
+        UnprojectableConstruct::FilterInBranchCondition => "FilterInBranchCondition".to_string(),
+    }
+}
+
+pub fn unprojectable_construct_prose(c: UnprojectableConstruct) -> String {
+    match c.clone() {
+        UnprojectableConstruct::FilterInBranchCondition => "filter in branch condition".to_string(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CompilerDiagnostic {
@@ -554,6 +575,11 @@ pub enum CompilerDiagnostic {
     },
     ReceiverTypeUnestablished {
         method: String,
+        span: Rc<SourceSpan>,
+    },
+    AlgebraApplicationEvidenceUnavailable {
+        receiver_type: String,
+        argument_index: i64,
         span: Rc<SourceSpan>,
     },
     FrontierOccurrenceBudgetExceeded {
@@ -772,6 +798,10 @@ pub enum CompilerDiagnostic {
         missing_realization_fact: String,
         span: Rc<SourceSpan>,
     },
+    EmissionConstructUnprojectable {
+        construct: UnprojectableConstruct,
+        span: Rc<SourceSpan>,
+    },
 }
 
 #[derive(
@@ -877,6 +907,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::MethodExistenceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
+        CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
@@ -926,6 +957,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
         CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
+        CompilerDiagnostic::EmissionConstructUnprojectable { span: s, .. } => s.clone(),
     }
 }
 
@@ -943,6 +975,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MethodNotFound { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' not found on receiver type '".to_string()), t.clone()), "'".to_string()),
     CompilerDiagnostic::MethodExistenceUndecided { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' cannot be resolved: receiver type '".to_string()), t.clone()), "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it".to_string()),
     CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
+    CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("algebra receiver application evidence unavailable for '".to_string(), t.clone()), "' at argument ".to_string()), (i.clone()).to_string()), ": structural members are not type arguments".to_string()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
     CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
@@ -986,6 +1019,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
     CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
     CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
+    CompilerDiagnostic::EmissionConstructUnprojectable { construct: c, .. } => v1_rt::concat(v1_rt::concat("emission refused: unprojectable construct '".to_string(), unprojectable_construct_prose(c.clone())), "' — every source construct contributing to a published file must receive a total projection; this construct has none, so the module must not be published".to_string()),
 }
 }
 
@@ -1091,6 +1125,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityNonError,
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
@@ -1272,6 +1310,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::TransportEmissionNotModeled { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::EmissionConstructUnprojectable { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -5203,6 +5245,8 @@ pub struct ShellTransport;
 pub struct FileTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LocalTransport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FilterInBranchCondition;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SeverityError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

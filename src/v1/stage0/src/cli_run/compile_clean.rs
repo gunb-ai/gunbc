@@ -806,6 +806,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
+        CompilerDiagnostic::EmissionConstructUnprojectable { .. } => {
+            "EmissionConstructUnprojectable"
+        }
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
         }
@@ -815,6 +818,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => {
             "ReferenceDerivedImportExportUnproven"
+        }
+        CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { .. } => {
+            "AlgebraApplicationEvidenceUnavailable"
         }
     };
     let name = match d.diagnostic.as_ref() {
@@ -919,11 +925,20 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
+        CompilerDiagnostic::EmissionConstructUnprojectable { construct, .. } => {
+            crate::v1_std_core::unprojectable_construct_identity(*construct)
+        }
         // The NAME is the config FIELD, not the referenced spelling: the burn-down this
         // histogram feeds is the list of service-config fields still awaiting the reference
         // judgment, and keying on the referenced name would spread one unjudged field across
         // a row per service that happens to use a different word in it.
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field, .. } => field.clone(),
+        // The NAME is the RECEIVER TYPE, not the argument index: the histogram this feeds
+        // groups by the subject whose evidence is missing, and keying on the index would
+        // scatter one unresolvable receiver across a row per argument position it appears in.
+        CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type, .. } => {
+            receiver_type.clone()
+        }
     };
     (class.to_string(), name)
 }
