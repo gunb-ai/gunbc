@@ -127,6 +127,22 @@ test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -
 // identity, parser and KV layout -- all three derived from extdeps.zhipu.glm_5_3_flash rather than
 // from a reading of whatever was running on 2026-09-03. The refusal above would be satisfied by a
 // renderer that refused everything; this is what stops that.
+// THIS WITNESS ASSERTED THE WRONG MODEL FOR THIS ROUTE, and it had been red on the required lane for
+// hours before anyone read the lane rather than a local run. It demanded GLM's identity, GLM's tool
+// parser and a plain `fp8` cache from the PAIR route -- a state an earlier revision of this branch
+// briefly created by pointing that route at GLM, and which was deliberately reverted because the
+// image this route builds from was measured not to register GLM at all. The revert restored the
+// production rows and left the witness asserting the reverted state, so the test was faithfully
+// checking a configuration the branch had decided was wrong.
+//
+// A WITNESS THAT SURVIVES A REVERT IS THE REVERT'S OWN BLIND SPOT. Reverting the rows was the correct
+// call and it was incomplete: the assertion is part of the claim, so restoring one without the other
+// leaves the corpus asserting both directions at once, and the only thing that noticed was CI.
+//
+// IT NOW ASSERTS WHAT THE ROUTE SERVES: DeepSeek's served-model name and tool parser, the fp8_ds_mla
+// layout its Multi-head Latent Attention requires, no GLM identity anywhere in the rendered text, and
+// the batch budget main pinned -- which the previous form explicitly asserted was ABSENT, so it would
+// have gone red against main's change even had the model question been settled.
 test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout() -> Bool {
   match w_fixture_unit() {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
@@ -139,12 +155,12 @@ test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout()
       ) {
         SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
         SparkPairUnitRendered { unit_name: _, text: t } =>
-          string_contains(s: t, pattern: "--served-model-name zai-org/GLM-5.3-Flash")
-            && string_contains(s: t, pattern: "--tool-call-parser glm47")
-            && string_contains(s: t, pattern: "--kv-cache-dtype fp8 ")
-            && !string_contains(s: t, pattern: "fp8_ds_mla")
-            && !string_contains(s: t, pattern: "deepseek")
-            && !string_contains(s: t, pattern: "--max-num-batched-tokens")
+          string_contains(s: t, pattern: "--served-model-name deepseek-v4-flash:iq3s-split")
+            && string_contains(s: t, pattern: "--tool-call-parser deepseek_v4")
+            && string_contains(s: t, pattern: "--kv-cache-dtype fp8_ds_mla")
+            && !string_contains(s: t, pattern: "GLM")
+            && !string_contains(s: t, pattern: "glm47")
+            && string_contains(s: t, pattern: "--max-num-batched-tokens 2048")
       }
   }
 }
