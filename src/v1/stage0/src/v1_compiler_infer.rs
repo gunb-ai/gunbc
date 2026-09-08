@@ -14106,19 +14106,22 @@ Rc::new(FieldInferResult {
                     Some(tn) => tn.clone(),
                     std::option::Option::None => error_type(),
                 };
-                let type_name_declares_own_type =
+                let type_name_declares_own_product =
                     match crate::v1_compiler_infer_env::lookup_binding_on_chain(
                         scope.type_env.clone(),
                         type_name.clone().unwrap(),
                     ) {
-                        Some(name_binding) => crate::v1_compiler_infer_env::binding_declares_name(
-                            name_binding.clone(),
-                            type_name.clone().unwrap(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ),
+                        Some(name_binding) => {
+                            (crate::v1_compiler_infer_env::binding_declares_name(
+                                name_binding.clone(),
+                                type_name.clone().unwrap(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ) && (name_binding.resolved.clone().connective.clone()
+                                == Connective::Conj))
+                        }
                         std::option::Option::None => false,
                     };
-                let skip_owner_widen = (type_name_declares_own_type.clone()
+                let skip_owner_widen = (type_name_declares_own_product.clone()
                     || match local_variant_parent.clone() {
                         Some(parent_name) => (parent_name.clone() == "Optional".to_string()),
                         std::option::Option::None => false,
@@ -14151,6 +14154,21 @@ Rc::new(FieldInferResult {
                     }
                     std::option::Option::None => std::option::Option::None,
                 };
+                let expected_owner =
+                    match record_lit_expected_coproduct(expected.clone(), scope.clone()) {
+                        Some(coproduct) => {
+                            if crate::v1_std_core::has_child_named(
+                                coproduct.clone(),
+                                type_name.clone().unwrap(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ) {
+                                Some(coproduct.clone())
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                        std::option::Option::None => std::option::Option::None,
+                    };
                 let raw_resolved = if skip_owner_widen.clone() {
                     variant_lookup_resolved.clone()
                 } else {
@@ -14158,7 +14176,18 @@ Rc::new(FieldInferResult {
                         Some(parent_decl) => parent_decl.clone(),
                         std::option::Option::None => match owner_from_locals.clone() {
                             Some(owner) => owner.clone(),
-                            std::option::Option::None => variant_lookup_resolved.clone(),
+                            std::option::Option::None => {
+                                match variant_owner_node(scope.clone(), type_name.clone().unwrap())
+                                {
+                                    Some(owner) => owner.clone(),
+                                    std::option::Option::None => match expected_owner.clone() {
+                                        Some(coproduct) => coproduct.clone(),
+                                        std::option::Option::None => {
+                                            variant_lookup_resolved.clone()
+                                        }
+                                    },
+                                }
+                            }
                         },
                     }
                 };

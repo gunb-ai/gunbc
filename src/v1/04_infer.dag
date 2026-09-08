@@ -8664,12 +8664,13 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Present { value: tn } => tn
       Absent => error_type
     }
-    let type_name_declares_own_type = match lookup_binding_on_chain(env: scope.type_env, name: type_name.value) {
+    let type_name_declares_own_product = match lookup_binding_on_chain(env: scope.type_env, name: type_name.value) {
       Present { value: name_binding } =>
         binding_declares_name(binding: name_binding, name: type_name.value, source_indices: scope.type_env.source_indices)
+          && name_binding.resolved.connective == Conj
       Absent => false
     }
-    let skip_owner_widen = type_name_declares_own_type || match local_variant_parent {
+    let skip_owner_widen = type_name_declares_own_product || match local_variant_parent {
       Present { value: parent_name } => parent_name == "Optional"
       Absent => false
     }
@@ -8687,6 +8688,13 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         }
       Absent => none
     }
+    let expected_owner = match record_lit_expected_coproduct(expected: expected, scope: scope) {
+      Present { value: coproduct } =>
+        if has_child_named(n: coproduct, name: type_name.value, source_indices: scope.type_env.source_indices) {
+          Present { value: coproduct }
+        } else { none }
+      Absent => none
+    }
     let raw_resolved = if skip_owner_widen {
       variant_lookup_resolved
     } else {
@@ -8695,7 +8703,15 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         Absent =>
           match owner_from_locals {
             Present { value: owner } => owner
-            Absent => variant_lookup_resolved
+            Absent =>
+              match variant_owner_node(scope: scope, name: type_name.value) {
+                Present { value: owner } => owner
+                Absent =>
+                  match expected_owner {
+                    Present { value: coproduct } => coproduct
+                    Absent => variant_lookup_resolved
+                  }
+              }
           }
       }
     }
