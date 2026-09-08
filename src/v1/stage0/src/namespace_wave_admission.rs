@@ -1598,6 +1598,20 @@ pub struct TransitionAdmission {
 /// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
 /// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
 ///
+/// THE gunbc#10688 ROWS DISSOLVE HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. The two `call_semantics_target` re-home rows reported CONSUMED on required run
+/// 34262728404 (PR #10856), which is the roster-touching change their trigger named.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, on each row's
+/// own (module, in_declaration, spelling, target) tuple against main. On main,
+/// `src/v1/00_core.dag` opens `module v1.std.core` and declares
+/// `fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity`;
+/// `src/v1/05_emit_rust.dag` DECLARES no such function and imports the spelling, and both named
+/// declarations still spell it -- `emit_rust_expr_call` and `emit_rust_tco_non_self_call` each
+/// call `call_semantics_target(cs: cs)`. So base and head bind the spelling to the same declarer,
+/// no run can produce either `TargetChanged` delta, and CONSUMED is the correct reading rather
+/// than an author error.
+///
 /// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
 /// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
 /// touch. Adjudicate that deletion by joining each row against main on its own
@@ -1610,31 +1624,54 @@ pub struct TransitionAdmission {
 /// a reading of the trigger paragraph. Their label constant goes with them, since a label is text
 /// shared by the rows citing it and dissolves with the last one.
 ///
-/// THE gunbc#10813 CLASS-ADDED ROW DISSOLVED HERE (2026-09-08), NOT BY ITS OWN TRIGGER BUT BECAUSE
-/// THIS CHANGE REMOVES THE DELTA IT ADMITS. Its trigger said it would come due once the class was on
-/// main, when base and head would both resolve the spelling into the class's module. That is not
-/// what retired it, and recording the real reason matters more than the tidy one.
+/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
+/// `cumulative_metric_read_as_per_event`, is added as its own file under
+/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
+/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
+/// the head side that name newly resolves into the class's own module, which is
+/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
+/// the membership rule the directory IS, not by anyone rebinding an existing name.
 ///
-/// THE ROW EXISTED BECAUSE THE BASELINE WAS WRONG. The failure-mode roster is derived before compile
-/// and gitignored, so it never appears in `git diff`, and the reconstruction therefore CARRIED ITS
-/// HEAD RECORD INTO THE BASE INDEX -- the wall compared the head roster against itself. A class
-/// added by a change then looked like a name resolving from a pool with nobody authoring a
-/// reference, when the reference was authored by that very change. `NewPoolCoincidenceResolution`
-/// does not auto-admit, so the ledger's one-file-per-class growth shape -- the shape DESIGN
-/// prescribes precisely so two lanes appending two classes never rewrite one file -- could not land
-/// without a permission row every time.
+/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
+/// one file per class precisely so that two lanes appending different classes never rewrite one
+/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
+/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
+/// is the same motion whether it was intended or accidental, and only the author can say which.
 ///
-/// SO THE HONEST COST WAS A DEFECT'S, NOT THE ROSTER'S. With the base re-derived from the base
-/// revision's own row files, a class absent at the base is absent from the base roster, the binding
-/// row exists on one side only, and the comparison skips it under the rule this wall already states:
-/// only rows present on both sides, because a newly authored name has no prior denotation to change.
-/// No delta is produced, so this row now matches nothing -- and a row matching no delta is STALE,
-/// which refuses. It is deleted for that reason, and its label goes with it.
+/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
+/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
+/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
+/// trusting this sentence.
+/// THE gunbc#10813 ROW DISSOLVES HERE (2026-09-08), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
+/// NAMED, AND THE DEFECT IT WAS ADMITTING IS REPAIRED IN THE SAME CHANGE. Two separate facts, and
+/// the row would go on either one alone.
 ///
-/// ADJUDICATED BY MEASUREMENT RATHER THAN BY THIS PARAGRAPH: the class file is ABSENT at this
-/// change's merge base and present at its head, which is exactly the shape that produced the delta
-/// before and produces none after. The required run on this head is the check.
-
+/// FIRST, THE TRIGGER FIRED. gunbc#10813 is on main, so the class file
+/// `dag/gunbc/recurring_failure_mode/cumulative_metric_read_as_per_event.dag` and the roster naming
+/// it are present on BOTH sides. Adjudicated by the join the row demanded rather than by its
+/// sentence: on main that file opens
+/// `module gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event` and the roster names
+/// the spelling, so base and head resolve it into the same module, no run can produce the delta,
+/// and CONSUMED is the correct reading. Its label goes with it, leaving the roster an EMPTY
+/// enumeration.
+///
+/// SECOND, AND THIS IS WHY NO SUCCESSOR ROW REPLACES IT: the delta that row admitted was not the
+/// ledger's growth shape. It was an artifact of the BASELINE, repaired by this same change.
+/// `run_required_wave_admission` rebuilt the base index by carrying forward every head record the
+/// diff did not touch; `dag/gunbc/recurring_failure_mode/roster.dag` is gitignored and written on
+/// the read path, so it can never appear in `git diff --name-status`, and the HEAD's generated
+/// roster was therefore carried in as the BASE's. Both symptoms follow: the binding key existed on
+/// both sides so it read `base {} -> head {row}`, and the authorship discriminator compared the
+/// roster's base and head source, which were THE SAME BYTES, so an ordinary append read as not
+/// locally authored and classified `NewPoolCoincidenceResolution`. With the roster's base side
+/// DERIVED from the base tree's row membership, the roster module's source genuinely differs across
+/// the sides and an append classifies `AuthoredReferenceResolution`, which is auto-admitted.
+///
+/// THE EVIDENCE IS EXECUTED, NOT ARGUED: the required run on this change's own previous head
+/// (34271585163) added a failure-mode class with NO admission row for it and reported
+/// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
+/// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
+/// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
@@ -2171,9 +2208,9 @@ fn admission_consumed_at_base(
 /// symbol: DESIGN's state-space conflation.
 ///
 /// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
-/// consults authorship (`membership_supported`), which admitted the membership edge of the very
-/// change this arm refused. So `authored_here` is passed in, not re-derived: see
-/// `locally_authored_claim_added`.
+/// consults authorship (`membership_declared`, over `membership_bound_through`), which admitted
+/// the membership edge of the very change this arm refused. So `authored_here` is passed in, not
+/// re-derived: see `locally_authored_claim_added`.
 fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
@@ -2607,6 +2644,21 @@ pub fn run_required_wave_admission(
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
+    // A DERIVED ARTIFACT IS NEVER IN THE DIFF, SO IT MUST NOT BE INHERITED FROM THE HEAD.
+    // The baseline is reconstructed by carrying every head record the diff did not touch and
+    // re-reading the rest from the base tree. `roster.dag` is gitignored and written on the read
+    // path, so the diff can never name it — and carrying it made the HEAD's roster stand as the
+    // BASE's. Its base side is not read from git either (the tree does not carry it); it is
+    // DERIVED from the base tree's row membership, below, by the same renderer the writer uses.
+    let mut base_index = DeclarationIndex::default();
+    for record in index_records(head_index) {
+        if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
+            continue;
+        }
+        if !head_parsed.iter().any(|c| *c == &record.rel_path) {
+            crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
+        }
+    }
     // ABSENCE AT THE BASE IS ESTABLISHED FROM AN AUTHORITATIVE LISTING, NEVER INFERRED FROM A
     // FAILURE. An earlier revision treated ANY `git show <base>:<path>` error as proof the path
     // was ADDED — a read fault, corrupt object or permission problem all read as "new file", and
@@ -2615,157 +2667,9 @@ pub fn run_required_wave_admission(
     //
     // `ls-tree` answers what the base tree CONTAINS: a path missing from its output is absent,
     // and a failure to obtain the listing is a refusal, not an empty answer.
-    //
-    // IT IS READ BEFORE THE INHERIT LOOP, NOT AFTER, because that loop now needs it: deciding
-    // whether a head record may be inherited unchanged is a question about the BASE TREE.
     let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
     let base_paths: std::collections::BTreeSet<String> =
         base_paths.lines().map(|l| l.trim().to_string()).collect();
-
-    let mut base_index = DeclarationIndex::default();
-    for record in index_records(head_index) {
-        if head_parsed.iter().any(|c| *c == &record.rel_path) {
-            // Replaced from the base blob below.
-            continue;
-        }
-        if base_paths.contains(&record.rel_path) {
-            // Tracked at the base and untouched by the diff: unchangedness IS the proof that the
-            // head record equals the base record, which is the whole warrant for carrying it.
-            crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
-            continue;
-        }
-        // ABSENT FROM THE BASE TREE AND ABSENT FROM THE DIFF, WHICH IS NOT A CONTRADICTION AND WAS
-        // THE DEFECT. Anything this change ADDED is in the diff and was skipped above, so what
-        // reaches here is a file git never reports: generated before compile and gitignored. The
-        // carry above assumed the diff's silence meant the bytes did not move; for a derived source
-        // the diff is silent no matter how far they moved, so its head record was carried into the
-        // BASE index and the wall compared the head against itself.
-        //
-        // The observable was gunbc#10814: gunbc#10822 made the failure-mode roster derived and
-        // gitignored, and the next change to add a row had its own authored addition reported as
-        // `NewPoolCoincidenceResolution` -- a name resolving from a pool with NOBODY authoring a
-        // reference -- when the reference was authored by that very change. The binding delta was
-        // right; the authorship evidence under it was poisoned. That disposition is not
-        // auto-admitted, so a required lane blocked, and it would have blocked for EVERY later row.
-        //
-        // A REVISION EITHER CARRIES THE DERIVATION OR IT DOES NOT. A base predating gunbc#10822
-        // tracked this path as ordinary source, so it is in `base_paths` and was carried above; a
-        // base carrying the deriver has the same membership fact in its row files; a base with
-        // neither never had the module at all. Only the middle case may be reconstructed, and the
-        // last is NOT the empty roster -- rendering one would invent a module that did not exist.
-        if record.rel_path == crate::cli_run::derived_row_roster::ROSTER_REL_PATH
-            && base_paths.contains(crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH)
-        {
-            // THE SOURCE IS REBUILT AND RE-PARSED, NOT THE RECORD FILTERED. A `ModuleDeclarationRecord`
-            // is defined as the facts derived from one module's source; editing selected collections
-            // of a cloned record would produce facts no source ever produced, and the next field
-            // added to that struct would silently keep its head value on the base side. Rendering
-            // base source through the SAME renderer the writer uses and handing it to `base_records`
-            // keeps one derivation authority and one parser.
-            //
-            // THE DERIVER IS REVISIONED TOO, AND THAT IS CHECKED RATHER THAN PROMISED.
-            //
-            // This renders base inputs with the HEAD renderer, which is sound only while both
-            // revisions carry the SAME renderer. If `render_roster` changed, the wall would render
-            // the base with head logic, compare it against a head rendered the same way, and report
-            // the renderer's own change as zero -- the very class this branch repairs one revision
-            // earlier, re-admitted as a promise an author has to keep. A comment cannot hold that:
-            // DESIGN section 5 asks for the wrong state to be unwritable, not described. Review
-            // 62579 found the promise standing where this check belongs.
-            //
-            // THE SUBJECT IS THE RENDERER, NOT ITS FILE. Comparing whole-file bytes was measured
-            // and refuses too much: it would refuse this very change, and every later one that
-            // adds a doc comment or a helper beside the renderer, for a reason unrelated to the
-            // hazard -- a line stopped where nothing is wrong, which teaches authors to route
-            // around the wall. `render_roster` is the declaration whose text DECIDES the rendered
-            // bytes, so its text is what must agree.
-            //
-            // RESIDUAL, STATED RATHER THAN PAPERED OVER: the membership rule that selects which
-            // files are rows is not covered here, because this change moves it into a declaration
-            // the base does not have, so no text comparison spans both sides. A change to
-            // membership alone could still self-compare. Closing it needs the row-set contract
-            // named as one declaration present on both sides -- which is the shape the next change
-            // to this area should land, and it is why this check names what it covers.
-            let renderer_text = |source: &str| -> Option<String> {
-                let start = source.find("fn render_roster(")?;
-                let rest = &source[start..];
-                let end = rest.find("\n}\n")?;
-                Some(rest[..end].to_string())
-            };
-            let head_carrier = std::fs::read_to_string(
-                workspace.join(crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH),
-            );
-            let base_carrier = git_stdout(
-                &workspace,
-                &[
-                    "show",
-                    &format!(
-                        "{base}:{}",
-                        crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH
-                    ),
-                ],
-            );
-            let (head_carrier, base_carrier) = match (head_carrier, base_carrier) {
-                (Ok(h), Ok(b)) => (h, b),
-                _ => {
-                    return Ok(WaveAdmissionOutcome::NotEvaluated {
-                        reason: format!(
-                            "{} could not be read at this head or at the base revision {base}, so \
-                             whether the two share one derivation is unobservable",
-                            crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH
-                        ),
-                    });
-                }
-            };
-            match (renderer_text(&head_carrier), renderer_text(&base_carrier)) {
-                (Some(h), Some(b)) if h == b => {}
-                (Some(_), Some(_)) => {
-                    return Ok(WaveAdmissionOutcome::NotEvaluated {
-                        reason: format!(
-                            "render_roster differs between the base revision {base} and this head, \
-                             so rendering the base roster with the head renderer would report that \
-                             renderer's own change as zero. A revision-crossing renderer change \
-                             needs the tracked base blob or a versioned base derivation"
-                        ),
-                    });
-                }
-                _ => {
-                    return Ok(WaveAdmissionOutcome::NotEvaluated {
-                        reason: format!(
-                            "render_roster could not be located in {} at this head or at the base \
-                             revision {base}, so the two derivations cannot be compared",
-                            crate::cli_run::derived_row_roster::DERIVATION_CARRIER_REL_PATH
-                        ),
-                    });
-                }
-            }
-            let source =
-                crate::cli_run::derived_row_roster::roster_source_from_repo_paths(&base_paths);
-            match base_records(&record.rel_path, &source) {
-                Ok(records) => {
-                    for record in records {
-                        crate::cli_run::declaration_index::index_insert(&mut base_index, record);
-                    }
-                }
-                Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
-            }
-            continue;
-        }
-        // NEITHER CARRIED NOR RECONSTRUCTED, SO NEITHER INHERITED NOR DROPPED. An untracked path
-        // may be a deterministic projection of tracked files, local runtime state, a scratch
-        // fixture, a network-derived artifact, or a dirty worktree file unrelated to the base. A
-        // path LISTING supplies existence, never content, so treating all of them as functions of
-        // the base tree would fabricate four of those five. Omitting the record silently is the
-        // same fabrication wearing the other face: the module's base side would simply vanish.
-        return Ok(WaveAdmissionOutcome::NotEvaluated {
-            reason: format!(
-                "the head index carries {} , which the base revision {} does not contain and no \
-                 registered base-revision derivation reconstructs, so the baseline for that module \
-                 is unobservable and no verdict is available",
-                record.rel_path, base
-            ),
-        });
-    }
     for rel in &base_parsed {
         if !base_paths.contains(*rel) {
             // Genuinely added by this change: no base side to read, established by the listing.
@@ -2784,6 +2688,32 @@ pub fn run_required_wave_admission(
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         };
         match base_records(rel, &content) {
+            Ok(records) => {
+                for record in records {
+                    crate::cli_run::declaration_index::index_insert(&mut base_index, record);
+                }
+            }
+            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+        }
+    }
+
+    // THE DERIVED ROSTER'S BASE SIDE, from the base tree's row membership. `base_paths` is the
+    // authoritative listing already in hand, so this asks the same question the writer asks of a
+    // directory. A base tree carrying no row files under that root has no roster module at all,
+    // and `roster_from_path_listing` answers `None` rather than fabricating a present empty list.
+    let base_path_refs: Vec<&str> = base_paths.iter().map(|p| p.as_str()).collect();
+    for record in index_records(head_index) {
+        let Some(root) = crate::cli_run::derived_row_roster::roster_root_prefix(&record.rel_path)
+        else {
+            continue;
+        };
+        let Some(content) = crate::cli_run::derived_row_roster::roster_from_path_listing(
+            base_path_refs.iter().copied(),
+            root,
+        ) else {
+            continue;
+        };
+        match base_records(&record.rel_path, &content) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
