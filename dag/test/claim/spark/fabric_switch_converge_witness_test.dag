@@ -2,7 +2,11 @@ module test.claim.spark.fabric_switch_converge_witness
 
 import std.types { Bool, List, NonEmptyStr }
 import extdeps.mikrotik.crs812 {
-  Lane50GCr2, Lane100GCr2, Fec91, FecAuto,
+  Lane50GCr2, Lane100GCr2, Lane100GCr4, Fec91, FecAuto,
+  crs812_lane_speed_for_link_mode, LaneSpeedForMode, NoLaneSpeedForMode,
+}
+import extdeps.ethernet.link_mode {
+  ieee_50gbase_cr2, ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_25gbase_cr,
 }
 import gunbc.spark.fabric_switch_desired {
   Crs812SwitchIntent, SwitchIntent, SwitchIntentUndecided,
@@ -189,5 +193,34 @@ test fn the_fleet_switch_refuses_because_its_cables_do() -> Bool {
         SwitchCannotBeActuatedHere { divergences: ds } => false
       }
     WorldConverged { subject: s, observed: o, receipt: r } => false
+  }
+}
+
+
+// THE LANE SPEED IS SELECTED BY THE REQUIRED MODE, not written down. These three rows are the
+// discriminating input for that claim: a literal in the desired module agrees with exactly one of
+// them, so if the derivation is ever replaced by a constant again, two of the three go red.
+test fn the_wire_value_is_selected_by_the_required_link_mode() -> Bool {
+  match crs812_lane_speed_for_link_mode(m: ieee_100gbase_cr2) {
+    LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane100GCr2)
+    NoLaneSpeedForMode { mode: u } => false
+  }
+    && match crs812_lane_speed_for_link_mode(m: ieee_50gbase_cr2) {
+         LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane50GCr2)
+         NoLaneSpeedForMode { mode: u } => false
+       }
+    && match crs812_lane_speed_for_link_mode(m: ieee_100gbase_cr4) {
+         LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane100GCr4)
+         NoLaneSpeedForMode { mode: u } => false
+       }
+}
+
+// A MODE THIS SWITCH HAS NO WIRE VALUE FOR REFUSES rather than falling back to the nearest speed.
+// Picking a neighbouring value would be the absorbing fallback: the switch would configure itself
+// to something nobody asked for, and the fact that the hardware cannot do the job would disappear.
+test fn a_mode_the_switch_cannot_run_has_no_wire_value() -> Bool {
+  match crs812_lane_speed_for_link_mode(m: ieee_25gbase_cr) {
+    NoLaneSpeedForMode { mode: u } => true
+    LaneSpeedForMode { speed: s } => false
   }
 }

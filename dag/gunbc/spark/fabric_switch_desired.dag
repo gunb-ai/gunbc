@@ -2,14 +2,16 @@ module gunbc.spark.fabric_switch_desired
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import extdeps.ethernet.link_mode { LinkMode }
 import extdeps.mikrotik.crs812 {
-  Crs812LaneSpeed, Lane50GCr2, Lane100GCr2, Lane100GCr4, Lane200GCr4, Lane400GCr8,
+  Crs812LaneSpeed, crs812_lane_speed_for_link_mode,
+  LaneSpeedForMode, NoLaneSpeedForMode,
   Crs812FecMode, FecAuto, FecOff, Fec74, Fec91,
   crs812_board_name, crs812_management_interface, crs812_default_bridge,
   crs812_passive_dac_requires_forced_mode,
 }
 import product.cable_plant_converge {
-  CablePlantRefusal, CablePlantConvergence,
+  CablePlantRefusal, CablePlantConvergence, CablePlant,
 }
 import gunbc.world_converge { WorldConverged, WorldNotConverged }
 import gunbc.spark.fabric_switch_observed {
@@ -35,16 +37,35 @@ import gunbc.spark.fabric_switch_observed {
 // the switch quietly converges onto a configuration nobody chose. An undecidable desired state is
 // refused with the plant's own refusal carried through, so exactly one place in the tree reports
 // the cable fault and every consumer of the switch subject inherits it.
+// TWO WAYS TO BE UNDECIDED, AND THEY ARE DIFFERENT FACTS. The plant may fail to converge (the
+// cables cannot carry the mode), or the plant may converge on a mode this switch has no wire value
+// for. Collapsing them would make "we do not know" mean two different repairs -- recode the cables,
+// versus this hardware cannot do it at all -- so the cause is a closed vocabulary and each arm names
+// the fact that produced it.
+type DesiredSpeedUndecidedCause
+  = PlantDidNotConverge { cause: CablePlantRefusal }
+  | SwitchCannotRunRequiredMode { mode: LinkMode }
+
 type Crs812DesiredLaneSpeed
   = DesiredLaneSpeed { speed: Crs812LaneSpeed }
-  | DesiredLaneSpeedUndecided { cause: CablePlantRefusal }
+  | DesiredLaneSpeedUndecided { cause: DesiredSpeedUndecidedCause }
 
+// THE SPEED IS READ OFF THE CONVERGED SUBJECT, never written here. The subject carries the mode the
+// plant was required to attest, and the vendor module cites which wire value implements that mode,
+// so this function selects rather than decides. A literal here would agree with the mode by
+// coincidence and keep agreeing after the mode changed -- which is the failure the module's own
+// annotation warns about, so the annotation is only true if the code reads the subject.
 fn crs812_desired_lane_speed() -> Crs812DesiredLaneSpeed {
   match fabric_cable_plant_convergence() {
-    WorldConverged { subject: s, observed: o, receipt: r } =>
-      DesiredLaneSpeed { speed: Lane100GCr2 }
     WorldNotConverged { subject: s, refusal: f } =>
-      DesiredLaneSpeedUndecided { cause: f }
+      DesiredLaneSpeedUndecided { cause: PlantDidNotConverge { cause: f } }
+    WorldConverged { subject: s, observed: o, receipt: r } =>
+      match crs812_lane_speed_for_link_mode(m: s.required_mode) {
+        LaneSpeedForMode { speed: sp } => DesiredLaneSpeed { speed: sp }
+        NoLaneSpeedForMode { mode: um } => DesiredLaneSpeedUndecided {
+          cause: SwitchCannotRunRequiredMode { mode: um },
+        }
+      }
   }
 }
 
@@ -71,7 +92,7 @@ type Crs812SwitchIntent
       bridge: NonEmptyStr
       lanes: List<Crs812LaneIntent>
     }
-  | SwitchIntentUndecided { cause: CablePlantRefusal }
+  | SwitchIntentUndecided { cause: DesiredSpeedUndecidedCause }
 
 data fabric_switch_identity: NonEmptyStr = "gunbc-fabric-switch" as NonEmptyStr
 

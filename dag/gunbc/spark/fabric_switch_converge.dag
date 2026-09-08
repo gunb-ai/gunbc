@@ -3,7 +3,6 @@ module gunbc.spark.fabric_switch_converge
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import extdeps.mikrotik.crs812 { Crs812LaneSpeed, Crs812FecMode }
-import product.cable_plant_converge { CablePlantRefusal }
 import gunbc.world_converge {
   WorldObservation, WorldObserved, WorldUnobservable,
   WorldDifference, WorldInAgreement, WorldDiverged,
@@ -13,6 +12,7 @@ import gunbc.world_converge {
   world_converge,
 }
 import gunbc.spark.fabric_switch_desired {
+  DesiredSpeedUndecidedCause,
   Crs812SwitchIntent, SwitchIntent, SwitchIntentUndecided,
   Crs812LaneIntent, LaneCarriesLeg, LaneOwnedByItsPair,
   fabric_switch_intent,
@@ -90,7 +90,7 @@ type Crs812LaneDivergence sole_constructor {
 }
 
 type Crs812SwitchRefusal
-  = SwitchIntentUndecidedHere { cause: CablePlantRefusal }
+  = SwitchIntentUndecidedHere { cause: DesiredSpeedUndecidedCause }
   | SwitchLaneNeverRead { interface: NonEmptyStr }
   | SwitchHoldsNoLanes { switch: NonEmptyStr }
   | SwitchCannotBeActuatedHere { divergences: List<Crs812LaneDivergence> }

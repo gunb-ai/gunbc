@@ -5,6 +5,7 @@ import std.nat { Nat }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.mikrotik.crs812 { crs812_qsfp56_dd_ports, crs812_lane_interface }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2 }
+import std.measure { SymbolRate, symbol_rate }
 import extdeps.transceiver.sff_8636 {
   transceiver_identifier_from_byte, sff8636_encoding_from_byte,
   sff8636_nominal_rate_from_byte140,
@@ -64,11 +65,17 @@ import gunbc.fleet_intent_network {
 // extdeps.transceiver.sff_8636 and carried as an observed field on CableLegObservation, so an
 // escaped byte 140 resolves to a rate THIS REPOSITORY read rather than to a rate a tool reported.
 // Until then an escaped rate is a declared gap, which is what NominalRateEscaped already says.
+//
+// IT IS A SymbolRate, AND THE TOOL'S OWN LABEL IS NOT THE SPECIFICATION'S UNIT. `ethtool -m` renders
+// this field as "BR, nominal" in Mb/s, but SFF-8636 defines byte 140 in units of 100 MBd -- baud,
+// not bits per second, and on a PAM4 lane those differ by the modulation factor. Carrying the unit
+// in the identifier would have encoded the TOOL'S label, which is the conflation std.measure's
+// SymbolRate annotation was written after being caught in review. The scale belongs to the Measure.
 type FabricLegCableObserved {
   vendor: NonEmptyStr
   part_number: NonEmptyStr
   coding: CableLegObservation
-  nominal_rate_reported_mbps: Nat
+  nominal_rate_reported: SymbolRate
   nic_supported_speeds: NonEmptyStr
   linked_speed_gbps: Nat
 }
@@ -82,7 +89,7 @@ data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved 
     secondary_compliance: SecondaryNotObserved,
     encoding: sff8636_encoding_from_byte(code: 8),
     nominal_rate: sff8636_nominal_rate_from_byte140(code: 255)),
-  nominal_rate_reported_mbps: 25500,
+  nominal_rate_reported: symbol_rate(count: 25500),
   nic_supported_speeds: "50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028)" as NonEmptyStr,
   linked_speed_gbps: 50,
 }
