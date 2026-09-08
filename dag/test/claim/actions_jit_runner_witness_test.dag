@@ -5,7 +5,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_jit_runner {
   JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused,
   JitConfigMintNotFound, JitConfigMintConflict, JitConfigMintValidationFailed,
-  jit_config_mint_outcome, org_generate_jitconfig_path,
+  jit_config_mint_outcome, org_generate_jitconfig_path, jit_config_request_name,
+  JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
   jit_config_not_found_status, jit_config_conflict_status, jit_config_validation_failed_status,
 }
 
@@ -90,4 +91,19 @@ test fn the_jitconfig_path_is_derived_per_organization() -> Bool {
     == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
     && org_generate_jitconfig_path(org_login: "other-org" as NonEmptyStr)
        == "/orgs/other-org/actions/runners/generate-jitconfig"
+}
+
+test fn jit_config_request_name_projects_the_record_name() -> Bool {
+  (jit_config_request_name(req: JitRunnerConfigRequest {
+    name: JitRunnerName { value: "attempt-a" as NonEmptyStr },
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [],
+    work_folder: JitWorkFolder { value: "_work" as NonEmptyStr },
+  }).value as String) == "attempt-a"
+    && (jit_config_request_name(req: JitRunnerConfigRequest {
+         name: JitRunnerName { value: "attempt-b" as NonEmptyStr },
+         runner_group_id: JitRunnerGroupId { value: 1 },
+         labels: [],
+         work_folder: JitWorkFolder { value: "_work" as NonEmptyStr },
+       }).value as String) != "attempt-a"
 }

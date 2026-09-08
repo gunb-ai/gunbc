@@ -46,6 +46,13 @@ type JitRunnerConfigRequest {
   work_folder: JitWorkFolder
 }
 
+// THE BODY IS THIS RECORD. There is no host, boot, signature, expiry, or replay field; a checker
+// that claims to read those axes out of the mint request is inventing an admission surface GitHub
+// does not have. Attempt identity is the name field, projected rather than re-enumerated.
+fn jit_config_request_name(req: JitRunnerConfigRequest) -> JitRunnerName {
+  req.name
+}
+
 // THE CREDENTIAL IS OPAQUE AND CARRIES ITS OWN HANDLING RULE IN ITS TYPE. It is never rendered into
 // an argv, a log line, or a receipt; the only sanctioned destination is bytes on a read-only drive
 // the guest mounts. That rule is not a preference: gunbc.credential_argv_exposure already measures
@@ -80,18 +87,8 @@ fn jit_runner_label_wire(l: JitRunnerLabel) -> String {
 // A MINT THAT DID NOT RETURN 201 IS A REFUSAL AND NOT AN EMPTY CONFIG. GitHub answers 201 with the
 // blob; every other status means no runner identity was created, and treating a non-201 as "no
 // config yet" would let a guest boot with an empty drive and sit waiting for work it can never be
-// assigned -- a VM burning its whole deadline looking healthy.
-// THESE ARE THE ONLY REQUEST FIELDS THE MINT ADMITS. GitHub's generate-jitconfig body is name,
-// runner_group_id, labels, and optional work_folder. There is no host, boot, signature, expiry, or
-// replay field. A checker that claims to read those axes out of the mint request is inventing an
-// admission surface GitHub does not have. The response schema likewise carries runner identity and
-// encoded_jit_config, and does not carry an expiry.
-type JitMintAdmittedRequestField
-  = JitMintName
-  | JitMintRunnerGroupId
-  | JitMintLabels
-  | JitMintWorkFolder
-
+// assigned -- a VM burning its whole deadline looking healthy. The response schema carries runner
+// identity and encoded_jit_config, and does not carry an expiry.
 data jit_config_created_status: Int = 201
 
 data jit_config_not_found_status: Int = 404

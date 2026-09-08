@@ -3,14 +3,14 @@ module gunbc.test.claim.runner_jit_admission_witness_test
 import std.types { String, Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_jit_runner {
-  JitMintName, jit_config_conflict_status, jit_config_mint_outcome,
+  jit_config_conflict_status, jit_config_mint_outcome,
 }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.runner.runner_bound_attempt_receipt { host_printed_axis_standing }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,
   AxisRequired, AxisDeferred, AxisDissolvedInto, AxisDissolvedIntoUpstreamMint,
-  HostEnvelopeNonemptyAndFresh, GitHubMintRequestField,
+  HostEnvelopeNonemptyAndFresh, GitHubMintRequestName,
   jit_admission_axis_standing, attempt_binding_admits_mint_name,
   gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
   generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
@@ -55,7 +55,7 @@ test fn unit_and_boot_binding_dissolve_into_attempt_binding() -> Bool {
 
 test fn attempt_binding_admits_only_required_mint_name_standing() -> Bool {
   match jit_admission_axis_standing(axis: AttemptBindingAxis) {
-    AxisRequired { checker: GitHubMintRequestField { field: JitMintName } } =>
+    AxisRequired { checker: GitHubMintRequestName } =>
       attempt_binding_admits_mint_name(
         standing: jit_admission_axis_standing(axis: AttemptBindingAxis)
       )
@@ -104,7 +104,7 @@ test fn bound_attempt_receipt_reads_axis_standing_from_the_authority() -> Bool {
   match host_printed_axis_standing(axis: SignatureAxis) {
     AxisRequired { checker: HostEnvelopeNonemptyAndFresh } =>
       match host_printed_axis_standing(axis: AttemptBindingAxis) {
-        AxisRequired { checker: GitHubMintRequestField { field: JitMintName } } => true
+        AxisRequired { checker: GitHubMintRequestName } => true
         _ => false
       }
     _ => false

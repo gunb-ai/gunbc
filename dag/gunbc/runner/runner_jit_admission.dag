@@ -3,7 +3,7 @@ module gunbc.runner.runner_jit_admission
 import std.types { String, NonEmptyStr, Bool }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.github.actions_jit_runner {
-  JitMintName, JitMintAdmittedRequestField, org_generate_jitconfig_path,
+  org_generate_jitconfig_path,
   JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused,
   JitConfigMintNotFound, JitConfigMintConflict, JitConfigMintValidationFailed,
 }
@@ -27,7 +27,7 @@ data runner_jit_admission_disposition: Disposition = SingleAuthority
 //      gunbai-ci App key (gunbc.auth.github_apps.gunbai_ci_declared).
 //   2. POST /orgs/{org}/actions/runners/generate-jitconfig with that installation token, path from
 //      extdeps.github.actions_jit_runner.org_generate_jitconfig_path.
-// What step 2 accepts as a body is the four JitMintAdmittedRequestField rows and nothing else.
+// What step 2 accepts as a body is JitRunnerConfigRequest and nothing else.
 // encoded_jit_config is opaque; a host cannot check binding axes by decoding it.
 
 type JitAdmissionAxis
@@ -40,7 +40,7 @@ type JitAdmissionAxis
 
 type JitAdmissionChecker
   = HostEnvelopeNonemptyAndFresh
-  | GitHubMintRequestField { field: JitMintAdmittedRequestField }
+  | GitHubMintRequestName
 
 type JitAdmissionAxisStanding
   = AxisRequired { checker: JitAdmissionChecker }
@@ -67,15 +67,13 @@ fn jit_admission_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStandi
     }
     UnitBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
     BootBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
-    AttemptBindingAxis => AxisRequired {
-      checker: GitHubMintRequestField { field: JitMintName },
-    }
+    AttemptBindingAxis => AxisRequired { checker: GitHubMintRequestName }
   }
 }
 
 fn attempt_binding_admits_mint_name(standing: JitAdmissionAxisStanding) -> Bool {
   match standing {
-    AxisRequired { checker: GitHubMintRequestField { field: JitMintName } } => true
+    AxisRequired { checker: GitHubMintRequestName } => true
     AxisRequired { checker: _ } => false
     AxisDeferred { trigger: _ } => false
     AxisDissolvedInto { into: _ } => false
