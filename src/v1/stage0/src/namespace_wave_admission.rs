@@ -1597,8 +1597,55 @@ pub struct TransitionAdmission {
 /// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
 /// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
 /// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
+///
+/// SIXTH TRANSITION (2026-09-07, gunbc#10688). `call_semantics_target` moved from
+/// `v1.compiler.emit_rust` to `v1.std.core`, so the two emit-side bindings of that spelling report
+/// `TargetChanged`. It is a re-home and not a re-spelling: the function reads a `CallSemantics` and
+/// answers a `CallTargetIdentity`, both declared in `v1.std.core`, and this change gave that
+/// coproduct a `LocallyBoundCall` arm — so the reduction is now consumed by `v1.compiler.infer` and
+/// `v1.compiler.service` as well as by emission. Leaving it in `v1.compiler.emit_rust` would have
+/// made the inference and effect tiers import the EMITTER to ask what a call names, which is the
+/// second-representation pressure DESIGN §3 forbids: the alternative on offer was a second copy
+/// beside the type. It sits beside `CallSemantics` because that is the declaration it destructures.
+///
+/// TWO ROWS, ONE PER BINDING SITE, enumerated rather than matched by module pattern, for the same
+/// reason the fourth transition was: the roster's population is an enumeration, never a predicate.
+/// The membership deltas this change also produces are `ExplicitlyEvaluatedZeroDelta` and
+/// auto-admit, and the `resolved_plain_call_target_for_outcome` delta is an
+/// `AuthoredReferenceResolution`, so all of them are deliberately absent here.
+///
+/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
+/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
+/// touch. Adjudicate that deletion by joining each row against main on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+const CALL_SEMANTICS_TARGET_REHOME_LABEL: &str =
+    "gunbc#10688 call-target identity re-home: `call_semantics_target` moves from \
+     v1.compiler.emit_rust to v1.std.core beside the `CallSemantics` it reads and the \
+     `CallTargetIdentity` it answers, so inference and the effect pass read one reduction \
+     instead of importing the emitter";
 
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_rust_expr_call",
+            spelling: "call_semantics_target",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: CALL_SEMANTICS_TARGET_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.emit_rust",
+            in_declaration: "emit_rust_tco_non_self_call",
+            spelling: "call_semantics_target",
+            target: "v1.std.core",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

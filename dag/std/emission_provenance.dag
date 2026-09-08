@@ -107,8 +107,24 @@ type EmissionContributionFragments {
 
 fn emission_source_identity(fragments: FreeMonoid<String>) -> FreeMonoid<String> { fragments }
 
+// WHY THIS IS A DECLARED FUNCTION AND NOT THE LAMBDA BODY IT LOOKS LIKE. The direct spelling,
+// apply: fn(fragments) { fragments.append(source) }, REFUSES: the receiver arrives as
+// Coproduct(FreeMonoid) because the record field's declared type argument does not reach an
+// unannotated lambda parameter, and an expansion cannot carry argument positions
+// (v1.compiler.infer_types algebra_child_or_placeholder). The obvious repair is unavailable --
+// an inline lambda-parameter annotation is UNWRITABLE, fn(x: T) is a parse error and the parser
+// builds lambda parameters as bare name leaves with no type slot. So the ONLY author-side route
+// is to move the body where a parameter can be declared. This shape is therefore load-bearing,
+// not style: inlining it back into the lambda re-breaks the module, and copying it as an idiom
+// carries a workaround rather than a pattern. It dissolves when a record field's declared type
+// argument reaches an unannotated lambda parameter -- the generic-lambda-parameter class tracked
+// at gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall.
+fn emission_source_appended(fragments: FreeMonoid<String>, source: String) -> FreeMonoid<String> {
+  fragments.append(source)
+}
+
 fn emission_source_fragment(source: String) -> EmissionAppendOperation<FreeMonoid<String>> {
-  EmissionAppendOperation { apply: fn(fragments) { fragments.append(source) } }
+  EmissionAppendOperation { apply: fn(fragments) { emission_source_appended(fragments: fragments, source: source) } }
 }
 
 fn emission_source_read_layer(contribution: EmissionContribution) -> EmissionAppendOperation<FreeMonoid<String>> {
