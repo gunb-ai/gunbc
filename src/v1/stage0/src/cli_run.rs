@@ -4946,7 +4946,15 @@ fn definer_lookup_for_name(graph: &ResolvedGraph, name: &str) -> DefinerLookup {
     if let Some(info) = graph.item_registry.get(name) {
         return DefinerLookup::Definer(info.module_name.clone());
     }
-    match graph.emit_graph_info.item_leaf_owner_modules.get(name) {
+    // THE LEAF INDEX IS KEYED ON THE BARE LEAF, so a qualified spelling must be stripped before it
+    // is asked. The registry read above answers a qualified name only when the qualifier is exactly
+    // the owner module path, because its key is `owner.decl` -- so a reference qualified any other
+    // way (an alias, a re-export path, a partial containment prefix) reaches the index, and asking
+    // the index under the full spelling misses every time. Querying only the full spelling widened
+    // the unresolved bucket instead of refusing, and a census that reports a resolvable symbol as
+    // unresolved is the conflation this function's own name exists to keep apart.
+    let leaf = name.rsplit('.').next().unwrap_or(name);
+    match graph.emit_graph_info.item_leaf_owner_modules.get(leaf) {
         None => DefinerLookup::Unresolved,
         Some(owner) => match &**owner {
             LeafOwner::LeafAmbiguous => DefinerLookup::AmbiguousLeaf,

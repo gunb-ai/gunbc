@@ -487,18 +487,23 @@ fn expand_transitive_services_loop(module_callees: List<ModuleCallees>, registry
 // would make a violated invariant silent, which is the state DESIGN section 5 forbids -- and the
 // bound is derived from data the caller supplies, so "cannot fire" is a proof about today's
 // producers, not a property of the type.
+//
+// DISTINCTNESS IS A KEY SET, NOT A LINEAR SCAN. The list-membership form the service fold below
+// replaces cost O(total service mentions x distinct services) with a copying accumulator, over a
+// registry of thousands of rows -- a cost-shape defect DESIGN.md section 6 says is always fixed
+// regardless of the realized n, because "n is small here" is not a time-stable fact (reuse changes
+// n). map_insert is idempotent on the key, so the dedup IS the insert and no membership test is
+// needed.
 fn expansion_pass_bound(registry: Map<String, ItemInfo>) -> Int {
   let item_count = registry |> map_keys |> count
-  let distinct_services = registry |> map_keys |> fold(init: [], f: (acc, key) =>
+  let distinct_service_keys = registry |> map_keys |> fold(init: empty_map(), f: (acc, key) =>
     match map_get(registry, key) {
       Present { value: info } =>
-        info.service_names |> fold(init: acc, f: (inner, svc) =>
-          if inner |> any(s => s == svc) { inner } else { list_push(inner, svc) }
-        )
+        info.service_names |> fold(init: acc, f: (inner, svc) => map_insert(inner, svc, true))
       Absent => acc
     }
   )
-  item_count * (distinct_services |> count) + 1
+  item_count * (distinct_service_keys |> map_keys |> count) + 1
 }
 
 fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> ServiceEffectAnalysis {
