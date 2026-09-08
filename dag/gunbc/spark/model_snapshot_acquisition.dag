@@ -241,6 +241,22 @@ fn model_snapshot_subject(snapshot: ModelSnapshotDesired, cache_root: NonEmptySt
 
 // THE VERIFY COMMAND FOR A PINNED SNAPSHOT, projected so an apply path and a witness read the same
 // argv rather than each spelling it.
+// THE COMPLETION CHECK, AND IT IS NOT A DIRECTORY TEST. `hf download` creates the snapshot directory
+// early and fills it, so a transfer interrupted at 200 of 330 GB leaves that directory PRESENT with
+// shards missing -- and a `[ -d ... ]` probe then reports the weights as installed and lets an engine
+// launch on a partial checkpoint. That is the partial-download-reads-as-success failure this
+// repository names, and the staging discussion in gunbc.artifact_acquisition warns about it in the
+// general case.
+//
+// `hf cache verify` IS THE ANSWER AND IT WAS ALREADY MODELLED. extdeps.huggingface.hub carries it
+// precisely so a revision-keyed acquisition gets a real per-file integrity check rather than a
+// presence test; the first revision of this module modelled it and then failed to use it, checking
+// the directory instead. It compares every cached file for the revision against the Hub's own
+// checksums, so a missing or truncated shard fails rather than passing as a populated folder.
+fn model_snapshot_completion_check_argv(snapshot: ModelSnapshotDesired) -> List<String> {
+  model_snapshot_verify_argv(snapshot: snapshot)
+}
+
 fn model_snapshot_verify_argv(snapshot: ModelSnapshotDesired) -> List<String> {
   match snapshot {
     ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => []

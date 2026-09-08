@@ -1,0 +1,317 @@
+module gunbc.spark.model_snapshot_materialize
+
+import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import std.algebra { trim }
+import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import gunbc.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy, SshTarget, portable_remote_words, shape_fleet_ssh_password_exec_trusting,
+}
+import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
+import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.artifact_acquisition {
+  AcquisitionSubject, AcquisitionSource, AcquisitionHandler,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch,
+  AcquisitionProbeFailed,
+  AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptUnreachable,
+  AcquisitionOutcome, AcquisitionFetched, AcquisitionRefused, VerifyMechanismFailed,
+  acquire_artifact,
+}
+import gunbc.spark.model_snapshot_acquisition {
+  ModelSnapshotDesired, ModelSnapshotRole,
+  model_snapshot_subject_for, model_snapshot_completion_check_argv, spark_hub_cache_root,
+}
+
+// THE SPARK SIDE OF ACQUISITION, RUN AS THE TYPED FOLD RATHER THAN AS RENDERED SHELL.
+//
+// WHAT THIS REPLACES, AND WHY IT IS A REPLACEMENT RATHER THAN AN ADDITION. The first cut of the
+// materialize step rendered its source list into the privileged apply script as
+// `docker exec ... || echo materialize-source-failed`, walked the sources with a shell `if`, and
+// checked completion with `[ -d <snapshot_dir> ]`. Every one of those re-implemented, in shell, a
+// step gunbc.artifact_acquisition already owns -- so the combinator extracted to end a three-way fork
+// gained a fourth spelling of itself in the same change that introduced it. The source list was
+// shared; the FOLD was not, which is the half that matters.
+//
+// THE HOST IS BOUND INTO THE HANDLER, WHICH IS WHY THIS WORKS AT ALL. The Ubuntu binding runs its
+// reconcile in-process against the machine gunbc is running on; a Spark's weights are not on that
+// machine. The combinator never names a transport, so its three handler slots are bound here to
+// remote executions against ONE host, and the fold runs locally while every effect lands there. The
+// algorithm is unchanged and unduplicated.
+
+type SparkMaterializeContext {
+  host: HostIdentity
+  trust: FleetOpenSshTrustPolicy
+  path: SparkReachPath
+  admin_credential: Secret
+  admin_credential_file: NonEmptyStr
+}
+
+type SparkRemoteRun
+  = RemoteRan { exit_code: Int, stdout: String, stderr: String }
+  | RemoteUnreachable { cause: String }
+
+// ONE REMOTE EXECUTION, AND THE TWO FAILURES IT KEEPS APART. "the ssh leg never landed" and "the
+// command ran and exited non-zero" are different facts with different remedies, and collapsing them
+// is what would make an unreachable host read as a corrupt download.
+fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRemoteRun {
+  match portable_remote_words(raws: ["sh", "-s"]) {
+    Absent => RemoteUnreachable { cause: "the remote invocation is not expressible as portable remote words" }
+    Present { value: words } =>
+      match spark_reach_endpoint(host: ctx.host, path: ctx.path) {
+        Absent => RemoteUnreachable { cause: join(["no ", spark_reach_path_wire(p: ctx.path), " endpoint for ", ctx.host as String], "") }
+        Present { value: endpoint } => {
+          let r = password_file_ssh_exec_portable_words_with_stdin(
+            password_file: ctx.admin_credential_file,
+            client_args: shape_fleet_ssh_password_exec_trusting(
+              trust: ctx.trust,
+              target: SshTarget {
+                endpoint: endpoint as NonEmptyStr,
+                principal: spark_operator_bootstrap_login as NonEmptyStr,
+              },
+              words: words,
+            ),
+            stdin_payload: join([join(argv, " "), "\n"], ""),
+          )
+          RemoteRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
+        }
+      }
+  }
+}
+
+fn spark_in_container(argv: List<String>) -> List<String> {
+  concat(["docker", "exec", spark_pair_container_name as String], argv)
+}
+
+// ── THE THREE HANDLER SLOTS ────────────────────────────────────────────────────────────────────
+//
+// THE PROBE IS TWO OPERATIONS, NOT ONE COMPOUND, mirroring the Ubuntu binding's shape
+// (`shell.Test.IsFile` then a digest verify) rather than embedding a shell if/else whose branches
+// this model could not see. Presence answers whether anything is there; verification answers whether
+// what is there is right. Four states out, because "not there", "there and complete", "there and
+// incomplete" and "I could not tell" have four different remedies.
+//
+// COMPLETION IS `hf cache verify`, NEVER A DIRECTORY TEST. `hf download` creates the snapshot
+// directory early and fills it, so a transfer interrupted at 200 of 330 GB leaves that directory
+// present with shards missing -- and a presence test then reports the weights installed and lets an
+// engine launch on a partial checkpoint.
+fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject) -> AcquisitionObservation {
+  match spark_remote_run(ctx: ctx, argv: ["test", "-d", subject.install_path as String]) {
+    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteRan { exit_code: present, stdout: _, stderr: _ } =>
+      if present != 0 {
+        AcquisitionAbsent
+      } else {
+        match spark_remote_run(ctx: ctx, argv: spark_in_container(argv: verify)) {
+          RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+          RemoteRan { exit_code: ok, stdout: _, stderr: _ } =>
+            if ok == 0 { AcquisitionVerified } else { AcquisitionDigestMismatch }
+        }
+      }
+  }
+}
+
+fn spark_snapshot_ensure_parent(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", subject.parent_directory as String]) {
+    RemoteUnreachable { cause: _ } => false
+    RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
+  }
+}
+
+// ── THE TRANSFER IS DETACHED ON THE HOST AND SUPERVISED FROM HERE ──────────────────────────────
+//
+// WHY A SYNCHRONOUS `docker exec` WAS THE WRONG SHAPE. The seed fetch is 330 GB over a wireless link
+// -- hours. Run inside the ssh session, the transfer is a child of that session: the connection drops,
+// the child takes SIGHUP, and hours of transfer die with a watcher that was only ever watching.
+// Nothing about that is a property of the download; it is a property of where it was parented.
+//
+// DETACHED IS NOT ABANDONED, WHICH IS THE WHOLE DESIGN. The transfer runs as a transient systemd unit
+// on the Spark, so it is parented by pid 1 and survives every ssh leg. This module then SUPERVISES
+// it over many short polls. A dropped connection now loses one poll, not the work: the unit keeps
+// running, and the next poll -- or the next apply entirely -- reattaches to it.
+//
+// RE-RUNNING WHILE A TRANSFER IS IN FLIGHT ATTACHES RATHER THAN STARTING A SECOND ONE. An operator
+// re-running apply after a disconnect is the EXPECTED path, not an edge case, so starting a second
+// 330 GB download against the same cache would be the ordinary outcome rather than a rare one. The
+// unit name is derived from the subject, so an in-flight transfer is found and joined.
+data spark_transfer_unit_name: NonEmptyStr = "gunbc-model-materialize" as NonEmptyStr
+
+// THE SUPERVISION BUDGET IS DECLARED, AND EXHAUSTING IT IS NOT A FAILURE OF THE TRANSFER. These two
+// states have opposite remedies: a failed transfer wants investigating, a still-running one wants
+// waiting for. Collapsing them would make a slow link look like a broken one and invite an operator
+// to kill work that was progressing.
+//
+// 900 polls at 20 seconds is five hours, chosen against the Fermi estimate for 330 GB over this
+// fleet's wireless uplink and NOT measured -- the uplink's real throughput is unmeasured, which is
+// exactly why the budget's exhaustion is a typed carry-on rather than a verdict.
+data spark_transfer_poll_budget: Nat = 900
+data spark_transfer_poll_interval_seconds: Nat = 20
+
+type SparkTransferState
+  = TransferAbsent
+  | TransferRunning
+  | TransferExited { exit_code: Int }
+  | TransferStateUnreadable { cause: String }
+
+fn spark_transfer_state(ctx: SparkMaterializeContext) -> SparkTransferState {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_name as String, "--property=ActiveState", "--value"]) {
+    RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
+    RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
+      if state == "active" || state == "activating" || state == "deactivating" {
+        TransferRunning
+      } else if state == "" || state == "inactive" {
+        TransferAbsent
+      } else {
+        match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_name as String, "--property=ExecMainStatus", "--value"]) {
+          RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
+          RemoteRan { exit_code: _, stdout: code, stderr: _ } => TransferExited { exit_code: to_int(s: code) }
+        }
+      }
+  }
+}
+
+// A FINISHED UNIT IS CLEARED BEFORE THE NEXT START, because systemd keeps a failed transient unit
+// around and a stale one would be read as this run's result.
+fn spark_transfer_clear(ctx: SparkMaterializeContext) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_name as String, "||", "true"]) {
+    RemoteUnreachable { cause: _ } => false
+    RemoteRan { exit_code: _, stdout: _, stderr: _ } => true
+  }
+}
+
+fn spark_transfer_start(ctx: SparkMaterializeContext, origin: AcquisitionSource) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: concat(
+    ["systemd-run", "--unit=" , spark_transfer_unit_name as String, "--description=gunbc model snapshot materialize", "--"],
+    [origin.locator as String],
+  )) {
+    RemoteUnreachable { cause: _ } => false
+    RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
+  }
+}
+
+type SparkTransferSupervision
+  = SupervisedExit { exit_code: Int }
+  | SupervisedStillRunning { polls: Nat }
+  | SupervisionLost { cause: String }
+
+// THE POLL LOOP IS BOUNDED AND FORWARD, and its exhausted case is a NAMED terminal rather than a
+// silent stop (DESIGN section 4). The sleep happens on the remote host so a poll is one round trip,
+// and a poll whose ssh leg fails is NOT fatal -- the unit is still running and the next poll will
+// find it -- so only an unreadable state at the very end is reported as lost.
+fn spark_transfer_supervise(ctx: SparkMaterializeContext, remaining: Nat) -> SparkTransferSupervision {
+  if remaining == 0 {
+    SupervisedStillRunning { polls: spark_transfer_poll_budget }
+  } else {
+    match spark_transfer_state(ctx: ctx) {
+      TransferExited { exit_code: c } => SupervisedExit { exit_code: c }
+      TransferAbsent => SupervisedExit { exit_code: 0 }
+      TransferStateUnreadable { cause: _ } => spark_transfer_wait_then_poll(ctx: ctx, remaining: remaining)
+      TransferRunning => spark_transfer_wait_then_poll(ctx: ctx, remaining: remaining)
+    }
+  }
+}
+
+fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, remaining: Nat) -> SparkTransferSupervision {
+  let slept = spark_remote_run(ctx: ctx, argv: ["sleep", to_string(spark_transfer_poll_interval_seconds)])
+  spark_transfer_supervise(ctx: ctx, remaining: remaining - 1)
+}
+
+// ONE SOURCE'S ATTEMPT, AND ITS THREE OUTCOMES ARE DECIDED BY TWO SEPARATE FACTS. The transfer's own
+// exit status says whether the source DELIVERED; the verify afterwards says whether what landed is
+// RIGHT. A source that exits non-zero is unreachable-or-refused and the fold moves on; a source that
+// exits clean and still fails verification has served the wrong bytes, which is a different state the
+// fold counts separately -- the distinction the Ubuntu original lost before it was fixed there.
+//
+// THE VERIFY IS RUN AGAIN RATHER THAN TRUSTED FROM THE TRANSFER, because a transfer exiting zero
+// reports that ITS work finished, not that this repository's expectation of the snapshot is met.
+//
+// A BUDGET-EXHAUSTED TRANSFER IS REFUSED WITHOUT BEING KILLED, and the refusal says so. The unit is
+// left running; re-running apply reattaches to it. Killing it would throw away hours of progress to
+// report a cleaner state.
+fn spark_snapshot_attempt(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_transfer_state(ctx: ctx) {
+    TransferStateUnreadable { cause: _ } => AttemptUnreachable
+    TransferRunning => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+    TransferExited { exit_code: _ } =>
+      if !spark_transfer_clear(ctx: ctx) { AttemptUnreachable } else { spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin) }
+    TransferAbsent => spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
+  }
+}
+
+fn spark_snapshot_start_and_supervise(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  if !spark_transfer_start(ctx: ctx, origin: origin) {
+    AttemptUnreachable
+  } else {
+    spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+  }
+}
+
+fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_transfer_supervise(ctx: ctx, remaining: spark_transfer_poll_budget) {
+    SupervisionLost { cause: _ } => AttemptUnreachable
+    SupervisedStillRunning { polls: n } =>
+      AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+        identity: subject.identity,
+        source: origin.identity,
+        reason: join([
+          "the transfer is STILL RUNNING after ", to_string(n),
+          " polls and has not been killed; re-run to reattach to it. This is not a failed transfer",
+        ], "") as NonEmptyStr,
+      } } }
+    SupervisedExit { exit_code: e } =>
+      if e != 0 {
+        AttemptUnreachable
+      } else {
+        match spark_remote_run(ctx: ctx, argv: spark_in_container(argv: verify)) {
+          RemoteUnreachable { cause: c } =>
+            AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+              identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
+            } } }
+          RemoteRan { exit_code: ok, stdout: _, stderr: _ } =>
+            if ok == 0 {
+              AttemptTerminal { outcome: AcquisitionFetched {
+                identity: subject.identity, install_path: subject.install_path, source: origin,
+              } }
+            } else {
+              AttemptFailedKey
+            }
+        }
+      }
+  }
+}
+
+// THE HANDLER, WITH THE HOST AND THE VERIFY COMMAND CLOSED OVER. This is the whole binding: three
+// slots, each one remote execution, and no step of the walk spelled here.
+fn spark_snapshot_handler(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionHandler {
+  AcquisitionHandler {
+    observe: fn(subject) { spark_snapshot_observe(ctx: ctx, verify: verify, subject: subject) },
+    ensure_parent: fn(subject) { spark_snapshot_ensure_parent(ctx: ctx, subject: subject) },
+    attempt: fn(subject, origin) { spark_snapshot_attempt(ctx: ctx, verify: verify, subject: subject, origin: origin) },
+  }
+}
+
+type SparkMaterializeOutcome
+  = SparkMaterialized { host: HostIdentity, outcome: AcquisitionOutcome }
+  | SparkMaterializeUnpinned { host: HostIdentity }
+
+// MATERIALIZE ONE MEMBER. An unpinned snapshot yields no subject and therefore no attempt, which is
+// a different state from an attempt that failed -- the caller must not read it as either success or
+// transport failure.
+fn spark_materialize_member(
+  ctx: SparkMaterializeContext,
+  role: ModelSnapshotRole,
+  snapshot: ModelSnapshotDesired,
+) -> SparkMaterializeOutcome {
+  match model_snapshot_subject_for(role: role, snapshot: snapshot, cache_root: spark_hub_cache_root) {
+    Absent => SparkMaterializeUnpinned { host: ctx.host }
+    Present { value: subject } =>
+      SparkMaterialized {
+        host: ctx.host,
+        outcome: acquire_artifact(
+          subject: subject,
+          handler: spark_snapshot_handler(ctx: ctx, verify: model_snapshot_completion_check_argv(snapshot: snapshot)),
+        ),
+      }
+  }
+}

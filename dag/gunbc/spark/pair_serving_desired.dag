@@ -56,8 +56,14 @@ fn spark_pair_serving_role_wire(role: SparkPairServingRole) -> NonEmptyStr {
   }
 }
 
+// THREE ARMS, BECAUSE "CHOSEN" AND "MEASURED" ARE DIFFERENT CLAIMS AND COLLAPSING THEM IS WHAT
+// STARTED THIS. `SeqCapacityByOperatorPolicy` says a human picked the number and nothing derives it;
+// `SeqCapacityMeasured` says a launch line for THIS model on THIS group produced it. The old type had
+// only the second, so an operator choice had to be dressed as a measurement to be expressible -- and
+// that is exactly how DeepSeek's 32 came to be carried as evidence for every model thereafter.
 type SparkPairServingSeqCapacity
-  = SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
+  = SeqCapacityByOperatorPolicy { max_num_seqs: Nat, basis: NonEmptyStr }
+  | SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
   | SeqCapacityUnmeasured
 
 // THE INHERITED COUNT IS GONE, AND ITS REMOVAL IS THE POINT OF THIS MIGRATION RATHER THAN A SIDE
@@ -67,27 +73,41 @@ type SparkPairServingSeqCapacity
 // -- and handed it to every group of every model thereafter. Every one of those five qualifiers has
 // now changed. A measurement is a fact about the scenario it was taken in; carried outside that
 // scenario it is not a stale number but a fabricated one, and it reads as evidence because it was
-// once true.
+// once true. The receipt is one day old: group B's ledger partition bricked on 2026-09-06 when a
+// ceiling derived from a measured engine property was replaced by a constant and the fold then
+// judged already-admitted history against the new value.
 //
-// THE RECEIPT THIS RULE WAS WRITTEN FROM is one day old. Group B's ledger partition bricked
-// permanently on 2026-09-06 because a seat ceiling derived from a measured engine property was
-// replaced by an operator constant, and the ledger's fold then judged already-admitted history
-// against the new value: ten legitimately-admitted acquires became unfoldable. A measurement applied
-// generally, then changed, retroactively invalidated history it had never been about.
+// AN EARLIER REVISION OF THIS ROW ANSWERED `SeqCapacityUnmeasured`, AND THAT WAS AN OVER-CORRECTION
+// THAT DEADLOCKED THE FLEET. Refusing to INHERIT is correct and stays. Answering Unmeasured as the
+// LIVE state made the group unlaunchable, and unlaunchable in a circular way: the unit refuses, so
+// the realization refuses, so the apply plan refuses, so no engine ever starts -- and the launch line
+// that would supply the measurement can only come from an engine that started. The materialize step
+// that fetches the weights lives inside that same apply script, so even the acquisition could not
+// run. A model whose only reachable state is refusal has not made anything safer; it has removed the
+// operator's ability to act while looking rigorous.
 //
-// SO THE ANSWER IS UNMEASURED, AND THE UNIT REFUSES. That is not a regression from a working state:
-// what stood here was an answer with no basis, and the refusal names max-num-seqs so the operator
-// knows exactly which launch line must be read back. gunbc.rung_drop
-// spark_serving_fleet_global_configuration_drop cites this exact row as its instance of one
-// measurement reaching every realization; this is that instance closed by construction rather than
-// by remembering not to inherit.
-data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityUnmeasured
+// SO THE COUNT IS AN OPERATOR CHOICE, WHICH IS WHAT IT ALWAYS WAS. `--max-num-seqs` is an INPUT to
+// the engine, not a reading off it: vLLM is TOLD how many sequences to admit. What is read BACK is
+// the KV pool, and this module already states that no law from pool tokens to admitted sequences is
+// modeled -- so the 32 was never derived from the pool either. It was a human picking a number and
+// writing a pool figure beside it. Naming that honestly is the fix; refusing to let a human pick at
+// all was not.
+//
+// 16 RATHER THAN 32, AND THE REASON IS STATED SO IT IS NOT MISTAKEN FOR A DERIVATION. Nothing here
+// computes it. It is half the count the operator ran DeepSeek at, chosen downward because
+// GLM-5.3-Flash's KV layout, attention architecture and per-sequence footprint on this fabric are all
+// unmeasured, and admitting fewer sequences fails toward queueing rather than toward the unified-pool
+// starvation that needs a physical power cycle (gunbc.spark.serving_engine records two such events).
+// It is re-chosen, not confirmed, once a GLM launch line is read back.
+data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityByOperatorPolicy {
+  max_num_seqs: 16,
+  basis: "operator interim choice for the GLM-5.3-Flash cutover, 2026-09-08: nothing derives it. Half the count DeepSeek V4 Flash ran at, chosen downward because this model's KV layout (fp8, not fp8_ds_mla), attention architecture and per-sequence footprint on this fabric are unmeasured. It is NOT the first pair's 32 and carries no pool reading, because no law from pool tokens to admitted sequences is modeled. Re-choose it against this group's own GLM launch line" as NonEmptyStr,
+}
 
-// A GROUP'S OWN POOL DOES NOT SUPPLY THE COUNT EITHER, and the former arm said so in its own basis
-// string while answering anyway -- it read this group's pool and then carried the admission count
-// "from the operator-observed tuple", which is the first pair's. No law from pool tokens to admitted
-// sequences is modeled, so a pool reading grounds the pool and nothing else; the count comes from a
-// launch line for THIS model on THIS group, or it does not come.
+// A GROUP'S OWN POOL DOES NOT SUPPLY THE COUNT EITHER, and the arm this replaced said so in its own
+// basis string while answering anyway -- it read this group's pool and then carried the admission
+// count "from the operator-observed tuple", which is the first pair's. A pool reading grounds the
+// pool and nothing else.
 fn spark_pair_serving_seq_capacity_for(group: FabricGroup) -> SparkPairServingSeqCapacity {
   spark_pair_serving_seq_capacity
 }
@@ -230,9 +250,19 @@ fn spark_pair_serving_unit_with(group: FabricGroup, capacity: SparkPairServingSe
   } else {
     match capacity {
       SeqCapacityUnmeasured =>
-        SparkPairServingUnitRefused { group: group, cause: "max-num-seqs is sized by a measured KV pool and no measurement row exists" as NonEmptyStr }
-      SeqCapacityMeasured { max_num_seqs: n, basis: _ } => {
-        let args = spark_pair_serving_engine_args(tensor_parallel: length(hosts), max_num_seqs: n)
+        SparkPairServingUnitRefused { group: group, cause: "max-num-seqs has neither an operator choice nor a measured launch line for this group" as NonEmptyStr }
+      SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: _ } =>
+        spark_pair_serving_unit_admitted(group: group, hosts: hosts, max_num_seqs: n)
+      SeqCapacityMeasured { max_num_seqs: n, basis: _ } =>
+        spark_pair_serving_unit_admitted(group: group, hosts: hosts, max_num_seqs: n)
+    }
+  }
+}
+
+// THE TWO ADMITTING ARMS BUILD THE SAME UNIT, so choice-versus-measurement stays a PROVENANCE fact
+// rather than becoming two engine tuples free to drift apart.
+fn spark_pair_serving_unit_admitted(group: FabricGroup, hosts: List<HostIdentity>, max_num_seqs: Nat) -> SparkPairServingUnit {
+  let args = spark_pair_serving_engine_args(tensor_parallel: length(hosts), max_num_seqs: max_num_seqs)
         match spark_memory_enforcer_admits(
           memory_kind: UnifiedShared,
           enforcers: spark_pair_serving_declared_enforcers,
@@ -259,9 +289,6 @@ fn spark_pair_serving_unit_with(group: FabricGroup, capacity: SparkPairServingSe
             }
           }
         }
-      }
-    }
-  }
 }
 
 fn spark_pair_serving_unit(group: FabricGroup) -> SparkPairServingUnit {

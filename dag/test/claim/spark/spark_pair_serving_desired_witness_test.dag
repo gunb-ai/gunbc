@@ -15,7 +15,7 @@ import gunbc.spark.pair_serving_desired {
   spark_pair_serving_engine_args,
   spark_pair_serving_unit, spark_pair_serving_unit_with,
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
-  SparkPairServingSeqCapacity, SeqCapacityMeasured, SeqCapacityUnmeasured,
+  SparkPairServingSeqCapacity, SeqCapacityMeasured, SeqCapacityUnmeasured, SeqCapacityByOperatorPolicy,
   spark_pair_serving_seq_capacity, spark_pair_serving_seq_capacity_for, spark_pair_serving_groups, spark_pair_serving_desired_hosts,
   spark_pair_serving_unit_wire,
 }
@@ -46,37 +46,61 @@ fn w_refused_naming(unit: SparkPairServingUnit, fragment: String) -> Bool {
   }
 }
 
-// AN UNMEASURED POOL REFUSES THE UNIT INSTEAD OF INVENTING A SEQUENCE COUNT, and after the
-// GLM-5.3-Flash migration that is the live state rather than a hypothetical one. Both halves matter:
-// the refusal must name max-num-seqs so the operator knows which launch line to read back, and the
-// declared capacity must actually BE unmeasured -- an assertion on the refusal alone would pass
-// against a module that still carried the inherited 32.
+// A CAPACITY WITH NO ANSWER AT ALL STILL REFUSES, and this arm stays reachable and tested even
+// though it is no longer the live state: it is the wall against a group that has neither an operator
+// choice nor a launch line.
 test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
   w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
-    && (match spark_pair_serving_seq_capacity {
-          SeqCapacityUnmeasured => true
+}
+
+// THE COUNT IS DECLARED A CHOICE, NOT A MEASUREMENT, AND THE TYPE MAKES THAT CHECKABLE. Until this
+// migration the only admitting arm was SeqCapacityMeasured, so an operator choice had to be dressed
+// as a measurement to be expressible -- which is exactly how DeepSeek's 32 came to be carried as
+// evidence for every model after it. Asserting the ARM is what stops that dressing-up returning.
+test fn the_live_sequence_count_is_an_operator_choice_and_says_so() -> Bool {
+  match spark_pair_serving_seq_capacity {
+    SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
+    SeqCapacityUnmeasured => false
+    SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: b } =>
+      n == 16
+        && string_contains(s: b as String, pattern: "nothing derives it")
+        && !string_contains(s: b as String, pattern: "pool of")
+  }
+}
+
+// NEITHER GROUP INHERITS THE COUNT MEASURED ON ANOTHER MODEL. The former rows answered
+// SeqCapacityMeasured with 32 -- one DeepSeek launch, one quantisation, one KV layout, at tp=2 -- for
+// every group of every model. Both now answer the operator-choice arm, and the discriminating half is
+// that neither is 32: a group that had silently kept the inherited figure would still pass an
+// arm-only check.
+test fn neither_group_inherits_a_sequence_count_measured_on_another_model() -> Bool {
+  let a = spark_pair_serving_seq_capacity_for(group: FabricGroupA)
+  let b = spark_pair_serving_seq_capacity_for(group: FabricGroupB)
+  (match a {
+     SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: _ } => n != 32
+     SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
+     SeqCapacityUnmeasured => false
+   })
+    && (match b {
+          SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: _ } => n != 32
           SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
+          SeqCapacityUnmeasured => false
         })
 }
 
-// THE COUNT MEASURED ON ONE MODEL DOES NOT REACH ANOTHER, and this is the assertion that keeps it
-// out. Until the migration both groups answered SeqCapacityMeasured with 32 -- a figure read from the
-// stdout of a single DeepSeek V4 Flash launch, at one quantisation, under the fp8_ds_mla KV layout,
-// at tensor-parallel two -- and every group of every model inherited it. Every one of those
-// qualifiers has changed, so neither group may answer measured until its own launch line is read.
-//
-// A GROUP'S OWN POOL DOES NOT RESCUE IT EITHER. The former arm read this group's pool tokens and then
-// carried the admission count from the first pair's tuple anyway; no law from pool tokens to admitted
-// sequences is modeled, so a pool reading grounds the pool and nothing else.
-test fn neither_group_inherits_a_sequence_count_measured_on_another_model() -> Bool {
-  (match spark_pair_serving_seq_capacity_for(group: FabricGroupA) {
-     SeqCapacityUnmeasured => true
-     SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
+// AND THE GROUP IS LAUNCHABLE, which is the property the over-corrected revision destroyed. A model
+// whose only reachable state is refusal removes the operator's ability to act while looking rigorous;
+// worse, the materialize step that fetches the weights lives inside the apply script this refusal
+// prevented from rendering, so the acquisition could not run either.
+test fn the_promoted_groups_are_launchable() -> Bool {
+  (match spark_pair_serving_unit(group: FabricGroupA) {
+     SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true
+     SparkPairServingUnitRefused { group: _, cause: _ } => false
    })
-    && (match spark_pair_serving_seq_capacity_for(group: FabricGroupB) {
-         SeqCapacityUnmeasured => true
-         SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
-       })
+    && (match spark_pair_serving_unit(group: FabricGroupB) {
+          SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true
+          SparkPairServingUnitRefused { group: _, cause: _ } => false
+        })
 }
 
 // GROUP A IS srv6 AT THE HEAD WITH srv5, srv7 AND srv8 AS WORKERS, EVERY RANK AT ITS RAIL ADDRESS,
