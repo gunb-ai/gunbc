@@ -66,7 +66,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         has_params: true,
         has_return_type: true,
         return_required: true,
-        has_uses: false,
+        has_uses: true,
         body_kind: BodyKind::ExprBody,
     }), Rc::new(ItemForm {
         kind: ItemFormKind::FuncForm,

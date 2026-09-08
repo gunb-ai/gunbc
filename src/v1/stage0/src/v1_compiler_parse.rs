@@ -7315,7 +7315,7 @@ pub fn parse_fn_body_from_prefix(
             params: all_params.clone(),
             inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: prefix.uses.clone(),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
             transport: std::option::Option::None,
@@ -7328,6 +7328,14 @@ pub fn parse_fn_body_from_prefix(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
+        if (((type_params.clone().len() as i64) > 0) && ((prefix.uses.clone().len() as i64) > 0)) {
+            return Rc::new(ItemResult {
+    item: named_dummy.clone(),
+    tokens: prefix.tokens.clone(),
+    ctx: prefix.ctx.clone(),
+    err: Some(parse_error(v1_rt::concat("generic effectful declaration is not realized: `".to_string(), v1_rt::concat(name.clone(), "` carries both type parameters and a `uses` row. No emitter plumbs type parameters through the effectful path -- the Rust, Python and Go effectful emitters each construct the resource-aware body directly and none routes through the generic-fn split. Declare it with type parameters and no `uses`, or with a `uses` row and no type parameters.".to_string())), name_span.clone())),
+});
+        }
         let tokens = skip_newlines(prefix.tokens.clone());
         let admit_r = parse_optional_admit_callers(tokens.clone(), ctx.clone());
         if has_err(admit_r.err.clone()) {
@@ -7395,7 +7403,7 @@ pub fn parse_fn_body_from_prefix(
             params: all_params.clone(),
             inferred: inferred.clone(),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: prefix.uses.clone(),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
             transport: std::option::Option::None,
