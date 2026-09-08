@@ -609,8 +609,17 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
                 subject: format!("{}.{} ({})", row.module_path, row.decl_name, row.rel_path),
                 detail: format!(
                     "declared as `{}` and not named by `{}.{}`, so it is absent from every \
-                     projection derived from that roster",
-                    enrolled.type_name, enrolled.roster_module, enrolled.roster_declaration
+                     projection derived from that roster{}",
+                    enrolled.type_name,
+                    enrolled.roster_module,
+                    enrolled.roster_declaration,
+                    if enrolled.variant == "RecurringFailureModeRows" {
+                        " — for this roster that can mean the derived writer skipped the file \
+                         (for example an unlistable name), not a missing hand-edited list \
+                         entry in gitignored roster.dag"
+                    } else {
+                        ""
+                    }
                 ),
             });
         }
