@@ -5,7 +5,7 @@ import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure {
   TokenCount, token_count, token_count_value,
-  Percent, percent, percent_count,
+  ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
   AttentionLayerCount, attention_layer_count,
 }
@@ -56,7 +56,7 @@ fn w_concurrency_reading() -> VllmStartupReading {
 }
 
 fn w_reported(pool: VllmObservedKvPool) -> VllmReportedCapacity? {
-  match vllm_reported_capacity(pool: pool, max_concurrency: percent(count: 1122), reading: w_concurrency_reading()) {
+  match vllm_reported_capacity(pool: pool, max_concurrency: concurrent_request_hundredths(count: 1122), reading: w_concurrency_reading()) {
     ReportedCapacityAdmitted { capacity: c } => Present { value: c }
     ReportedCapacityRefused { cause: _ } => none
   }
@@ -134,13 +134,52 @@ test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Boo
   match w_admitted_pool() {
     Absent => false
     Present { value: p } =>
-      match vllm_reported_capacity(pool: p, max_concurrency: percent(count: 440), reading: w_concurrency_reading()) {
+      match vllm_reported_capacity(pool: p, max_concurrency: concurrent_request_hundredths(count: 440), reading: w_concurrency_reading()) {
         ReportedCapacityRefused { cause: _ } => false
         ReportedCapacityAdmitted { capacity: wrong } =>
           match printed_lines_agree(layout: w_layout(groups: []), reported: wrong) {
-            PrintedLinesDisagree { implied: i, reported: r } => percent_count(p: i) == 1122 && percent_count(p: r) == 440
+            PrintedLinesDisagree { implied: i, reported: r } => concurrent_request_hundredths_count(c: i) == 1122 && concurrent_request_hundredths_count(c: r) == 440
             _ => false
           }
+      }
+  }
+}
+
+// THE ENGINE ROUNDS THE PRINTED Nx; INTEGER TRUNCATION OF pool*100/context IS NOT THE PRINT.
+// 4,429 tokens / 1,000 context truncates to 442 hundredths; the engine would print 4.43x.
+test fn a_printed_concurrency_rounded_up_one_hundredth_still_agrees() -> Bool {
+  match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: 4429),
+    reading: vllm_startup_reading(
+      line: GpuKvCacheSize,
+      captured_text: "[kv_cache_utils.py:1733] GPU KV cache size: 4,429 tokens" as NonEmptyStr,
+    ),
+  ) {
+    KvPoolRefused { cause: _ } => false
+    KvPoolAdmitted { pool: p } =>
+      match vllm_reported_capacity(
+        pool: p,
+        max_concurrency: concurrent_request_hundredths(count: 443),
+        reading: vllm_startup_reading(
+          line: MaximumConcurrency,
+          captured_text: "Maximum concurrency for 1,000 tokens per request: 4.43x" as NonEmptyStr,
+        ),
+      ) {
+        ReportedCapacityRefused { cause: _ } => false
+        ReportedCapacityAdmitted { capacity: reported } => {
+          let layout = resolved_kv_layout(
+            allocator_blocks: allocator_block_count(count: 54475),
+            scheduler_block_size: token_count(count: 16),
+            hash_block_size: token_count(count: 16),
+            max_model_len: token_count(count: 1000),
+            max_num_batched_tokens: token_count(count: 8192),
+            groups: [],
+          )
+          match printed_lines_agree(layout: layout, reported: reported) {
+            PrintedLinesAgree => true
+            _ => false
+          }
+        }
       }
   }
 }
@@ -151,7 +190,7 @@ test fn a_concurrency_figure_bound_to_the_pool_line_is_refused() -> Bool {
     Present { value: p } =>
       match vllm_reported_capacity(
         pool: p,
-        max_concurrency: percent(count: 1122),
+        max_concurrency: concurrent_request_hundredths(count: 1122),
         reading: vllm_startup_reading(
           line: GpuKvCacheSize,
           captured_text: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens" as NonEmptyStr,
