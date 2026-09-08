@@ -38,12 +38,26 @@ fn placeability_question_closed(outcome: HostImagePlaceability) -> Bool {
   }
 }
 
-// TYPED CAUSE, 2026-09-08. The originating lane's key is refused on srv1–srv4. This session did not
-// spend a first hour re-proving that: access is the same class as BMC/boot of a host image, and the
-// production census is live (those hosts serve CI). Escalation for a dedicated probe key on idle
-// mtcollins, plus mint-surface read, is the access path; until that grant exists the probe cannot
-// place a binary into a host image without hand-set credentials or an undrained runner restart,
-// both of which are standing operator constraints.
+// CLOSED IS NOT ANSWERED. HostShellAndBootImageAccessRefused closes the work item because the
+// probe was not permitted. It is not evidence about the host image: it does not say a gunbc
+// binary cannot be carried or cannot execute on tmpfs. BinaryAbsentFromHostImage and
+// ExecutedAtBoot are the arms that answer the image. A reader who treats access-refused as a
+// placeability measurement is reading the wrong field.
+fn placeability_answers_the_host_image(outcome: HostImagePlaceability) -> Bool {
+  match outcome {
+    ExecutedAtBoot { exit_status: _ } => true
+    PlaceabilityRefused { cause: c } => match c {
+      BinaryAbsentFromHostImage => true
+      HostShellAndBootImageAccessRefused => false
+      ExecutedFromCheckoutOrNetworkMount => false
+      ExecFormatErrorIsBuildProvenance => false
+    }
+  }
+}
+
+// TYPED CAUSE, 2026-09-08. Access to shell and to boot a host image was refused. This records
+// that the probe was not permitted. It does not measure the image. A later wet probe through
+// fleet converge would be a different observation, not a correction of this arm.
 data host_image_placeability_standing: HostImagePlaceability = PlaceabilityRefused {
   cause: HostShellAndBootImageAccessRefused,
 }

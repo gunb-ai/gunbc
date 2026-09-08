@@ -6,7 +6,7 @@ import gunbc.runner.runner_host_image_placeability {
   HostImagePlaceability, ExecutedAtBoot, PlaceabilityRefused,
   HostShellAndBootImageAccessRefused, BinaryAbsentFromHostImage,
   ExecutedFromCheckoutOrNetworkMount, ExecFormatErrorIsBuildProvenance,
-  placeability_question_closed, host_image_placeability_standing,
+  placeability_question_closed, placeability_answers_the_host_image, host_image_placeability_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -43,6 +43,17 @@ test fn current_standing_is_the_typed_access_refusal() -> Bool {
   match host_image_placeability_standing {
     PlaceabilityRefused { cause: HostShellAndBootImageAccessRefused } =>
       placeability_question_closed(outcome: host_image_placeability_standing)
+        && !placeability_answers_the_host_image(outcome: host_image_placeability_standing)
     _ => false
   }
+}
+
+test fn access_refusal_does_not_answer_the_host_image() -> Bool {
+  !placeability_answers_the_host_image(outcome: PlaceabilityRefused {
+    cause: HostShellAndBootImageAccessRefused,
+  })
+    && placeability_answers_the_host_image(outcome: PlaceabilityRefused {
+         cause: BinaryAbsentFromHostImage,
+       })
+    && placeability_answers_the_host_image(outcome: ExecutedAtBoot { exit_status: 0 })
 }
