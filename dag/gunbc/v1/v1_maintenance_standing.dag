@@ -517,7 +517,7 @@ data v1_maintenance_typecheck_progress_admission_note: String = "AN ADMISSION UN
 //   THE SURFACE CENSUS is a predicate, not a reading: over the generated mirrors
 //   src/v1/stage0/src/v1_compiler_*.rs -- the files carrying the generated-by-v1 banner -- count
 //   declarations spelled `pub fn` against those spelled bare `fn`, and likewise `pub` types against
-//   bare. Re-derive it; do not quote it. Read on main after 7fb62e6e5e7 the bare counts were zero
+//   bare. Re-derive it; do not quote it. Read on main after 7fb62e6e5e72b480a40bf0c858bb92f23664d5e4 the bare counts were zero
 //   in both categories, and that is a DATED OBSERVATION of what the two legs above predict, not the
 //   proof of them. Its scope limit is load-bearing and survives re-derivation: the same predicate
 //   over src/v1/stage0/src AS A WHOLE is FALSE, because hand-authored files sit beside the mirrors
