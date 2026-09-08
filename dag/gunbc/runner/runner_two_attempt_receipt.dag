@@ -1,0 +1,136 @@
+module gunbc.runner.runner_two_attempt_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// TWO GITHUB ACTIONS JOBS RAN IN TWO SEPARATE MICROVMS ON ONE BOOT OF THE PHYSICAL MACHINE.
+//
+// THAT IS THE PROPERTY A RUNNER HOST ACTUALLY HAS TO HAVE, and every previous receipt in this lane
+// established something weaker: one job, then a power cycle. Cleanup observed on a host that is
+// about to be rebooted anyway says nothing about whether finishing one job leaves the machine able
+// to run the next.
+
+data receipt_subject_build: NonEmptyStr = "twoattempt-1"
+data receipt_subject_kernel_digest: NonEmptyStr = "332fa2e141a77dba526a7827ee6bd31fc53f64a637aa83ad1201eb9b5e3a53f6"
+data receipt_subject_guest_digest: NonEmptyStr = "c8fed37af97cfb9cf2377ff2bb8132ded8b7c492ce1e5a1d2543948aeeaacea1"
+data receipt_subject_iso_digest: NonEmptyStr = "3120ee9875023b06f356f0e30a95c4b47478b9d33efe27e572b197eeed50cb6b"
+
+data host_capture_artifact: NonEmptyStr = "docs/probes/mtcollins_two_attempts_one_boot_2026-09-07.txt"
+data host_capture_full_digest: NonEmptyStr = "a9cdd741a63ae8ceb267a657f3316b2acb178a983b771324f838f1661b812177"
+data host_capture_extract_digest: NonEmptyStr = "2c67b07ffde83d8e229520054032438a8dd64897a7780f15dc2828c9b39df99b"
+
+// ── the two attempts, with distinct identities throughout ──────────────────────────────────────
+
+// NOTHING IS SHARED BETWEEN THEM EXCEPT THE MACHINE AND THE IMAGE. Different attempt ids, slots,
+// taps, addresses, guest MACs, cgroups, jails, workspaces, envelopes, registrations and labels. The
+// slot is the attempt index, so the second attempt also holds an address the first attempt's
+// forward chain would have denied -- the peer-attempt rule is not hypothetical on this boot.
+type AttemptRecord {
+  attempt_id: NonEmptyStr
+  slot: Int
+  label: NonEmptyStr
+  runner: NonEmptyStr
+  run: NonEmptyStr
+  vm_seconds: Int
+  vcpu_seconds: Int
+  held_seconds: Int
+}
+
+data attempt_one: AttemptRecord = AttemptRecord {
+  attempt_id: "twoattempt-1-a1-e0c221b8",
+  slot: 1,
+  label: "mtc-t1-6e8108",
+  runner: "mtcollins-a1",
+  run: "actions run 34109706542, success",
+  vm_seconds: 40,
+  vcpu_seconds: 160,
+  held_seconds: 50,
+}
+
+data attempt_two: AttemptRecord = AttemptRecord {
+  attempt_id: "twoattempt-1-a2-724885e0",
+  slot: 2,
+  label: "mtc-t2-a15ee4",
+  runner: "mtcollins-a2",
+  run: "actions run 34109716069, success",
+  vm_seconds: 38,
+  vcpu_seconds: 152,
+  held_seconds: 44,
+}
+
+// ── absence proven BEFORE reuse, not after ─────────────────────────────────────────────────────
+
+// THE SECOND ATTEMPT REFUSES RATHER THAN INHERITS. Before claiming anything it checks for a tap, a
+// cgroup, an installed ruleset and a populated jail base, and returns without launching if it finds
+// one. attempt-2-prior-resources=0 is therefore not a cleanup report -- it is the second attempt
+// declining to start on a dirty host and finding it clean.
+//
+// THAT ORDERING IS THE WHOLE POINT. Absence checked only after both attempts cannot distinguish a
+// resource the first left behind from one the boot started with, and by then a job would already
+// have run inside whatever was inherited.
+data absence_before_reuse: List<NonEmptyStr> = [
+  "baseline-taps=0, baseline-nft-tables=0, baseline-cgroups=0, baseline-jailbase=0 -- read before either attempt",
+  "attempt-1-prior-resources=0",
+  "attempt-2-prior-resources=0 -- checked before attempt 2 created anything, so attempt 1 left nothing inheritable",
+  "each attempt: post-cgroup-empty=yes then post-cgroup-removed=yes, jail-removed=yes, post-jit-device-present=no, post-workspace-present=no, post-jailbase-entries=0",
+  "after both: final-taps=0, final-nft-tables=0, final-jailbase=0, final-firecracker=0",
+]
+
+// ── one summary line was wrong, and it is reported rather than quietly fixed ────────────────────
+
+// final-cgroups=40 AGAINST baseline-cgroups=0 READS AS FORTY LEAKED CGROUPS AND IS NOT ONE. `ls` on
+// a cgroup2 directory lists its own ~40 interface files; the baseline was 0 only because the parent
+// directory did not exist yet, so the two numbers were never measuring the same thing.
+//
+// THE LIVE HOST WAS ASKED DIRECTLY RATHER THAN REASONED ABOUT. Still sitting at its shell after the
+// loop, it answered 0 for child directories under the parent. The per-attempt post-cgroup-removed
+// lines were the sound readings all along; the summary was the instrument.
+data cgroup_summary_defect: NonEmptyStr = "final-cgroups=40 counted the parent cgroup's interface files, not leaked children; the live host answered 0 for child directories and the counter now counts directories"
+
+// ── metering, as two intervals that are not conflated ──────────────────────────────────────────
+
+// THE VM INTERVAL AND THE HELD INTERVAL ANSWER DIFFERENT QUESTIONS. One is what the guest executed
+// for; the other is how long the attempt held host capacity, including staging the runner tree,
+// formatting a workspace and retiring afterwards. Charging the second as the first would bill a
+// tenant for the host's own work.
+//
+// vCPU-SECONDS, NOT MINUTES, AND NOT ROUNDED. Rounding is a pricing decision and belongs at the
+// pricing boundary; performing it here would destroy the measurement to save an arithmetic step.
+data metering_intervals: List<NonEmptyStr> = [
+  "VM execution: from the launch of the jailer to the reap of the VMM -- 40s and 38s",
+  "capacity held: from resource acquisition to complete retirement -- 50s and 44s",
+  "the difference, 10s and 6s, is host staging and retirement and is visible rather than absorbed",
+  "vCPU-seconds are configured vCPUs times VM seconds: 160 and 152 at 4 vCPUs",
+]
+
+// THE CLOCK IS THE HOST'S OWN UPTIME, which is monotonic and needs no time source this machine does
+// not have. It is also coarse -- whole seconds -- which is honest for a 40-second interval and would
+// not be for a sub-second one.
+data metering_clock: NonEmptyStr = "/proc/uptime, monotonic and second-granular; this host has no RTC or NTP and a wall clock would have been the wrong instrument"
+
+// ── the admission ordering residual is closed ──────────────────────────────────────────────────
+
+// THE PREVIOUS RECEIPT NAMED IT: the refusal preceded every launch but not every spend, because the
+// envelope fetch was sequenced after the jail was built and 189 MB of artifacts copied. The fetch
+// and admission now lead the attempt, so an inadmissible envelope costs a tap that has not been
+// created and a jail that has not been mounted.
+data admission_ordering: NonEmptyStr = "the envelope is fetched and judged as the FIRST action of an attempt; a refusal now precedes the jail, the artifact copy, the workspace, the tap and the launch"
+
+// AND THE GUEST ARTIFACTS ARE STAGED ONCE PER BOOT. The first attempt used to unmount the medium it
+// had just copied from -- correct for a boot that runs one attempt and starving for every attempt
+// after it. Staging removes the dependency: after the preamble no attempt touches removable media,
+// so a second attempt cannot fail for a reason the first one caused.
+data artifact_staging: NonEmptyStr = "guest kernel and rootfs are copied off the medium once, verified at staging and again inside each jail, and the medium is unmounted before any attempt runs"
+
+// ── what remains open ──────────────────────────────────────────────────────────────────────────
+
+// THE CREDENTIAL PATH IS UNCHANGED AND IS NOW THE OLDEST OPEN ITEM. Per-attempt delivery is the
+// shape an authenticated envelope needs -- a boot-scoped credential could not be bound to a VM
+// attempt that did not exist when it was minted -- but nothing here signs, binds or authenticates.
+data still_open: List<NonEmptyStr> = [
+  "an authenticated, attempt-bound envelope: signature, unit binding, boot binding, attempt binding, expiry, replay -- all six still unchecked, and the refusal says so in both arms",
+  "actions/checkout and a JavaScript action, deliberately not run while the credential path is unauthenticated",
+  "a toolchain step, whose dependency fetches are a far wider destination set than this canary",
+  "boot_probe_verdict wired to an observed runner version rather than two values compared by a reader",
+  "the harness's ambiguous-reading refusal, written and still unexercised -- this run booted first try",
+  "attempts beyond the second: two proves reuse is possible, not that it is stable",
+]
