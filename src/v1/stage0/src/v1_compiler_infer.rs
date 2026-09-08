@@ -1116,6 +1116,34 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
     }
 }
 
+pub fn relocated_algebra_evidence_diags(
+    diags: Rc<Vec<Rc<ErrorNode>>>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for d in diags.iter().cloned() {
+            __result.push(match (*d.diagnostic.clone()).clone() {
+                CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable {
+                    receiver_type: rt,
+                    argument_index: ai,
+                    ..
+                } => crate::v1_std_core::make_error_node(
+                    Rc::new(CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable {
+                        receiver_type: rt.clone(),
+                        argument_index: ai.clone(),
+                        span: span.clone(),
+                    }),
+                    module_name.clone(),
+                ),
+                _ => d.clone(),
+            });
+        }
+        __result
+    })
+}
+
 pub fn inference_error(
     message: String,
     span: Rc<SourceSpan>,
@@ -10582,11 +10610,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                     ),
                                                 ),
                                                 diagnostics: v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        arg_diags.clone(),
-                                                        method_resolution.diagnostics.clone(),
+                                                    arg_diags.clone(),
+                                                    relocated_algebra_evidence_diags(
+                                                        v1_rt::concat(
+                                                            method_resolution.diagnostics.clone(),
+                                                            template_subst_diags.clone(),
+                                                        ),
+                                                        span.clone(),
+                                                        scope.module_name.clone(),
                                                     ),
-                                                    template_subst_diags.clone(),
                                                 ),
                                             })
                                         }
@@ -10862,14 +10894,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
 }), scope.module_name.clone())])
                                                     } else {
                                                         {
-                                                            let method_blocking_diags = Rc::new({ let mut __result = Vec::new(); for d in Rc::new({ let mut __result = Vec::new(); for d in method_resolution.diagnostics.clone().iter().cloned() { if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result }).iter().cloned() { __result.push(match (*d.diagnostic.clone()).clone() {
-    CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable {
-    receiver_type: rt.clone(),
-    argument_index: ai.clone(),
-    span: span.clone(),
-}), scope.module_name.clone()),
-    _ => d.clone(),
-}); } __result });
+                                                            let method_blocking_diags = relocated_algebra_evidence_diags(Rc::new({ let mut __result = Vec::new(); for d in method_resolution.diagnostics.clone().iter().cloned() { if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result }), span.clone(), scope.module_name.clone());
 if ((method_blocking_diags.clone().len() as i64) > 0) {
                                                                 method_blocking_diags.clone()
                                                             } else {
@@ -11138,11 +11163,19 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         diagnostics: v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(recv_diags.clone(), mc_arg_diags.clone()),
-                                pipe_fb.kernel_diags.clone(),
+                                relocated_algebra_evidence_diags(
+                                    pipe_fb.kernel_diags.clone(),
+                                    span.clone(),
+                                    scope.module_name.clone(),
+                                ),
                             ),
-                            v1_rt::concat(
-                                method_resolution.diagnostics.clone(),
-                                mc_template_diags.clone(),
+                            relocated_algebra_evidence_diags(
+                                v1_rt::concat(
+                                    method_resolution.diagnostics.clone(),
+                                    mc_template_diags.clone(),
+                                ),
+                                span.clone(),
+                                scope.module_name.clone(),
                             ),
                         ),
                     })
