@@ -24637,40 +24637,6 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
     Ok(declared.unwrap_or(true))
 }
 
-/// Predicate over `builtin_function_registry` keys: nested compile builtins,
-/// live facts producers, filesystem-read builtins. A new live-checkout builtin
-/// whose name fails this predicate is silent here — that residual is this class.
-pub(crate) fn builtin_name_spells_a_live_checkout_sink(name: &str) -> bool {
-    name.starts_with("compile_dag_")
-        || name.ends_with("_facts_live")
-        || name == "filesystem_read"
-        || name == "filesystem_list"
-        || name == "decl_facts"
-        || name == "module_declaration_facts"
-        || name == "layer_import_facts"
-}
-
-/// Named instrument (DESIGN §6): derive sink SPELLINGS from
-/// `v1.compiler.method` `builtin_function_registry` at census time rather than
-/// paste a name list. Method surfaces `Filesystem.Read` / `Filesystem.List` are
-/// not registry keys and are appended as the call-site spellings of the
-/// filesystem builtins. Production skip does not consult this.
-pub(crate) fn direct_live_tree_sink_callees() -> Vec<String> {
-    let mut names: Vec<String> = crate::v1_compiler_infer_method::builtin_function_registry()
-        .iter()
-        .filter(|(k, _)| builtin_name_spells_a_live_checkout_sink(k))
-        .map(|(k, _)| k.clone())
-        .collect();
-    for extra in ["Filesystem.Read", "Filesystem.List"] {
-        if !names.iter().any(|n| n == extra) {
-            names.push(extra.to_string());
-        }
-    }
-    names.sort();
-    names.dedup();
-    names
-}
-
 fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
     let content = std::fs::read_to_string(entry).map_err(|e| {
         format!(
@@ -25981,12 +25947,38 @@ mod floor_skip_frontier_tests {
             .to_path_buf()
     }
 
-    // TEST DETECTOR ONLY. Roster: `super::direct_live_tree_sink_callees` (derived).
+    // TEST DETECTOR ONLY. Roster derived here; production skip does not consult it.
     // Matching is substring on comment-stripped lines because the census must
     // read entries that may not resolve — the same textual model as
     // `parse_entry_live_tree_disposition`. `v2.std.fn_index` `callees_from_node`
-    // needs a Node. Production skip does not consult this. v1 PURPOSE: evidence
-    // for the failure-mode row (`gunbc.v1_maintenance_standing` `v1_seed_standing`).
+    // needs a Node. v1 PURPOSE: evidence for the failure-mode row
+    // (`gunbc.v1_maintenance_standing` `v1_seed_standing`).
+
+    fn builtin_name_spells_a_live_checkout_sink(name: &str) -> bool {
+        name.starts_with("compile_dag_")
+            || name.ends_with("_facts_live")
+            || name == "filesystem_read"
+            || name == "filesystem_list"
+            || name == "decl_facts"
+            || name == "module_declaration_facts"
+            || name == "layer_import_facts"
+    }
+
+    fn direct_live_tree_sink_callees() -> Vec<String> {
+        let mut names: Vec<String> = crate::v1_compiler_infer_method::builtin_function_registry()
+            .iter()
+            .filter(|(k, _)| builtin_name_spells_a_live_checkout_sink(k))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for extra in ["Filesystem.Read", "Filesystem.List"] {
+            if !names.iter().any(|n| n == extra) {
+                names.push(extra.to_string());
+            }
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
 
     fn detector_line_has_unquoted_callee(line: &str, callee: &str) -> bool {
         let stripped = super::strip_line_comment(line);
@@ -25996,7 +25988,7 @@ mod floor_skip_frontier_tests {
     }
 
     fn detector_unquoted_live_callees(content: &str) -> Vec<String> {
-        super::direct_live_tree_sink_callees()
+        direct_live_tree_sink_callees()
             .into_iter()
             .filter(|callee| {
                 content
@@ -26358,12 +26350,12 @@ new file mode 100644
 
     #[test]
     fn direct_live_tree_sink_callees_is_derived_from_the_registry() {
-        let names = super::direct_live_tree_sink_callees();
+        let names = direct_live_tree_sink_callees();
         assert!(
             names.iter().any(|n| n == "compile_dag_diagnostic_census"),
             "census builtin missing from derived roster: {names:?}"
         );
-        assert!(super::builtin_name_spells_a_live_checkout_sink(
+        assert!(builtin_name_spells_a_live_checkout_sink(
             "compile_dag_diagnostic_census"
         ));
         assert!(
