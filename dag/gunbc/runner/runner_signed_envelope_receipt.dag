@@ -1,0 +1,114 @@
+module gunbc.runner.runner_signed_envelope_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THE HOST CAN NOW TELL ITS CONTROL PLANE FROM A PEER ON THE SEGMENT, and that is exactly one of the
+// two directions the credential path was missing. Build signed-2.
+//
+// EVERY PREVIOUS RECEIPT IN THIS LANE SAID THE ENVELOPE WAS UNAUTHENTICATED IN BOTH DIRECTIONS. One
+// of them closes here, with both arms exercised on one boot; the other does not, and shrinking the
+// unchecked list by closing an item is the only honest way to shorten it.
+
+data receipt_subject_build: NonEmptyStr = "signed-2"
+data receipt_subject_kernel_digest: NonEmptyStr = "723969d9ced2799867dcb4281e895427dcd4d5014d9def3ecf3a917100b18f8a"
+data receipt_subject_iso_digest: NonEmptyStr = "f71a83480a2e7a3489c1eeb6977436e8ef55240238dccb9db0906a47e1d177a5"
+data receipt_subject_cp_pubkey_digest: NonEmptyStr = "98087d2c9f8f95ac2226bf9db76680d2d1747d07818f0572b009704653003f03"
+
+data host_capture_artifact: NonEmptyStr = "docs/probes/mtcollins_signed_envelope_2026-09-07.txt"
+data host_capture_full_digest: NonEmptyStr = "f5ef62141aec4106c57ac6018034214c4f69c9270477afef150d6de344aa18f1"
+data host_capture_extract_digest: NonEmptyStr = "b9f9179521491e2eb72919e7e517a705d6af691d10000046386f8135dfdb7181"
+
+// ── both arms, one boot, one code path ─────────────────────────────────────────────────────────
+
+// A VERIFIER THAT HAS ONLY EVER SEEN VALID INPUT IS NOT KNOWN TO REJECT ANYTHING. The impostor key
+// is a real Ed25519 key this image has never heard of -- which is precisely what a peer on the
+// segment would hold -- so the refusal is evidence rather than an assertion about a code path.
+type EnvelopeArm {
+  attempt: Int
+  signed_by: NonEmptyStr
+  host_verdict: NonEmptyStr
+  consequence: NonEmptyStr
+}
+
+data verified_arm: EnvelopeArm = EnvelopeArm {
+  attempt: 1,
+  signed_by: "the control plane whose public key is baked into this image",
+  host_verdict: "envelope-signature=verified, all bindings matched, jit-admission=yes",
+  consequence: "actions run 34111671332 succeeded on runner mtcollins-a1 with labels self-hosted,mtcollins,mtc-t1-d590e1",
+}
+
+data rejected_arm: EnvelopeArm = EnvelopeArm {
+  attempt: 2,
+  signed_by: "an impostor Ed25519 key, deliberately",
+  host_verdict: "envelope-signature=REJECTED",
+  consequence: "firecracker-launches=0 and attempt-2-refused=jit-envelope-inadmissible; no tap, no cgroup, no jail and no workspace were created",
+}
+
+// ── what the envelope binds, and why freshness is a nonce ──────────────────────────────────────
+
+// A VALID SIGNATURE OVER THE WRONG ENVELOPE IS STILL REFUSED. The signature says the control plane
+// wrote these bytes; the bindings say the bytes are about THIS host, THIS boot and THIS attempt.
+// Without them a genuine envelope minted for another attempt would verify perfectly.
+data envelope_bindings: List<NonEmptyStr> = [
+  "unit: the requesting host's NIC identity, echoed back and compared -- observed 28:c1:3c:8a:d6:4a",
+  "boot: an id the host mints at boot; without it an envelope from an earlier boot of this same machine would verify and bind nothing",
+  "attempt: which VM attempt of that boot is asking",
+  "nonce: minted immediately before the request and required back",
+  "payload digest: the sha256 the signature covers, recomputed over the decoded payload",
+  "size floor and ceiling on the payload",
+]
+
+// FRESHNESS IS A NONCE BECAUSE THIS MACHINE HAS NO CLOCK, and that is a property of the host rather
+// than a preference. It has no RTC and no time source; it knows only its own monotonic uptime. An
+// expiry timestamp would be unverifiable here, so shipping one and calling it a control would be a
+// decoration in the exact sense the guarantee ladder forbids. A nonce chosen moments earlier is
+// checkable with the clock the host actually has.
+//
+// AN EXPIRY IS STILL STAMPED BY THE MINTING SERVICE for its own bookkeeping, and the envelope says
+// in its own field that the host does not rely on it.
+data freshness_mechanism: NonEmptyStr = "nonce echo, not expiry: the host has no RTC or time source, so a timestamp it cannot evaluate would be a control in name only"
+
+// ── the verifier rides the ISO, not the kernel ─────────────────────────────────────────────────
+
+// openssl AND ITS LIBRARIES ARE 6.8 MB AND THE FIRMWARE HAS AN UNMEASURED LOAD CEILING. An 84 MiB
+// image booted and a 173 MiB one did not; this image is 88 MiB and the threshold between them has
+// never been found. Spending that margin on a component the firmware never loads would be paying a
+// risk for nothing, so the verifier travels in the filesystem beside the guest artifacts.
+data verifier_placement: NonEmptyStr = "openssl 3.0.13 and its closure are staged off the ISO into tmpfs at boot; the kernel image is unchanged at 88 MiB"
+
+// THE PUBLIC KEY IS PART OF THE IMAGE AND THE PRIVATE HALF NEVER LEAVES THE CONTROL PLANE. Fetching
+// the key over the same unauthenticated channel as the envelope would authenticate the envelope
+// against whoever supplied the key, which is a circle rather than a check.
+data trust_anchor: NonEmptyStr = "the control plane's Ed25519 public key is baked at build time and its digest is printed at boot, so a receipt can name which key that boot trusted"
+
+// ── the build before this one refused everything, and that is part of the record ────────────────
+
+// signed-1 REFUSED BOTH ATTEMPTS ON A WELL-FORMED SIGNED ENVELOPE. The outer JSON wrapper was
+// serialised with a space after the colon while the host's reader expected none, so the bytes were
+// valid and the reader was wrong. Two refusals, zero launches, no resources spent.
+//
+// THE FAIL-CLOSED ARM CAUGHT THE AUTHOR'S OWN BUG, which is the strongest evidence available that
+// it is not a decoration: it fired on a defect nobody had anticipated, in the direction that costs
+// a run rather than the direction that admits one.
+data predecessor_refusal: NonEmptyStr = "signed-1 refused both attempts because the host's JSON reader matched one exact spelling of a format that permits whitespace; the envelope was genuine and the reader was at fault"
+
+data reader_repair: NonEmptyStr = "both ends now serialise compactly AND the reader tolerates the whitespace JSON permits, so neither end is guessing the other's habit"
+
+// ── what is still open, shorter by one and no shorter by rewording ─────────────────────────────
+
+// THE REQUESTER IS STILL UNAUTHENTICATED AND IT IS NOW THE WHOLE OF THE GAP. A peer on the segment
+// that asks before the host does still receives a genuine envelope: the unit id is SELF-ASSERTED and
+// a MAC is trivially spoofable. What the signature closes is forgery -- a peer cannot ANSWER, only
+// ask first -- which turns a silent theft into a denial of service the host reports.
+//
+// CLOSING IT NEEDS A SECRET THE PUBLISHED IMAGE CANNOT CARRY. The image sits on an NFS export the
+// segment can read, so anything baked into it is public by construction. The candidates are a TPM,
+// a BMC-mediated injection, or an out-of-band enrolment the control plane performs against a unit
+// it already knows -- all of them real work, none of them reachable by editing this script.
+data still_unchecked: List<NonEmptyStr> = [
+  "requester authentication -- a peer that asks first still receives a genuine envelope",
+  "unit attestation -- the unit id is self-asserted and a MAC is spoofable",
+  "cross-boot replay at the SERVER -- the host binds its own boot, but the minting service does not track which boots it has already served",
+]
+
+data what_the_signature_actually_closed: NonEmptyStr = "forgery and tampering: a peer cannot produce an envelope this host accepts, and a modified envelope fails the signature before any field is read"

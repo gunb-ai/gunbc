@@ -30,7 +30,8 @@ import gunbc.compile_clean_diagnostic_policy {
   UnlistedImportBindingSource,
   ListedImport,
   PoolCoincidence,
-  DefinerResolvable
+  DefinerResolvable,
+  AmbiguousLeaf
 }
 import gunbc.namespace_step0_binding_provenance_contract {
   Step0ReferenceFamily,
@@ -281,6 +282,7 @@ fn cal_binding_source_label(source: UnlistedImportBindingSource) -> String {
     ListedImport => "listed-import"
     PoolCoincidence => "pool-coincidence"
     DefinerResolvable => "definer-resolvable"
+    AmbiguousLeaf => "ambiguous-leaf"
   }
 }
 

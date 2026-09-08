@@ -2015,7 +2015,7 @@ pub fn resolve_optional_node(
                 )]),
             }),
             InferredNode::Divergent => Rc::new(NodeResolveResult {
-                resolved: divergent_type(),
+                resolved: crate::v1_std_core::divergent_type(),
                 diagnostics: Rc::new(vec![]),
             }),
             InferredNode::TypeVariable { id: tv, .. } => Rc::new(NodeResolveResult {

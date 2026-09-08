@@ -62,11 +62,9 @@
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs
-// src/std_interval.rs
 // src/std_keyed_roster.rs
 // src/std_keyed_row.rs
 // src/std_literal_elaboration.rs
-// src/std_logic.rs
 // src/std_machine_constraints.rs
 // src/std_magnitude.rs
 // src/std_measure.rs
@@ -77,7 +75,6 @@
 // src/std_occurrence_binding_resolve.rs
 // src/std_occurrence_identity.rs
 // src/std_operator_realization.rs
-// src/std_pareto.rs
 // src/std_primitive_projection.rs
 // src/std_process_termination.rs
 // src/std_realization_schedule.rs
