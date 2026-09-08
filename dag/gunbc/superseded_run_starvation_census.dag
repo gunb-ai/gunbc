@@ -363,6 +363,7 @@ type DurationResult
   = DurationComputed { seconds: Second }
   | DurationClockRefused { end_raw: String, start_raw: String }
   | DurationInsufficientData
+  | DurationInconsistentTimestamps { end: Timestamp, start: Timestamp }
 
 fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
   let end_clock = Clock.TimestampToUnixSecs(timestamp: end)
@@ -374,7 +375,7 @@ fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
           if end_s >= start_s {
             let diff_nat: Nat = (end_s - start_s) as Nat
             DurationComputed { seconds: second(count: diff_nat) }
-          } else { DurationInsufficientData }
+          } else { DurationInconsistentTimestamps { end: end, start: start } }
         Absent => DurationClockRefused {
           end_raw: end_clock.unix_secs,
           start_raw: start_clock.unix_secs,
@@ -787,7 +788,7 @@ func superseded_run_starvation_census(
   observed_at: Timestamp,
   max_run_pages: Int,
 ) -> CensusResult {
-  let discovery_lookback = Clock.TimestampOffsetDays(timestamp: from, offset_days: -1)
+  let discovery_lookback = Clock.TimestampOffsetDays(timestamp: from, days: 1)
   let discovery_range = concat(trim(discovery_lookback.result), "..", through)
   let outcome = collect_runs_in_window(
     auth_token: auth_token,
