@@ -698,6 +698,12 @@ mod file_roster_join_tests {
     use std::collections::BTreeSet;
     use std::fs;
 
+    // These tests show the new arms discriminate. They run under `cargo test -p v1-compiler --lib`,
+    // which is the declared drop `gunbc.rung_drop.rust_unit_tests_off_the_merge_path`. Required
+    // CI executes the production join; it does not execute these REDs. The on-path control for
+    // declared-versus-rostered is `test.fixture.rostered_row_join.omitted_control`. There is no
+    // equivalent on-path fixture for `RowFileNotRostered` or `RosterMemberNotARowFile`.
+
     fn scratch_dir() -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "gunbc-rfm-file-join-{}-{}",
