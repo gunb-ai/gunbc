@@ -8,8 +8,8 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // workflow (falsifier.yml) was deleted at #8283 have no scheduled route. std.witness_admission
 // witness_cadence_has_scheduled_route returns false for all five. Admission rows on those cadences
 // must be refused by explicit_witness_admission_cadence_executes (DESIGN §3 single authority, §5
-// coverage-by-illusion). 23 admission rows on three cadences carry live admission data that
-// must transition to a scheduled-route cadence first. 2 of the 23 (self_host_body_producer,
+// coverage-by-illusion). Admission rows on three cadences carry live admission data that
+// must transition to a scheduled-route cadence first. Two of them (self_host_body_producer,
 // self_host_use_site_verdict) are ALSO rostered in gunbc.rung_drop.deleted_cadence_reference_drop.
 // transitional_admission_exception_identities is the single authority for both the gate exception
 // and the RungDrop population — the data below is the ONLY list; the RungDrop consumes it

@@ -217,7 +217,7 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
 // RED CONTROL: a synthetic admission row on an exempted cadence (QuarantineProbeExpectRed)
 // with an identity NOT in transitional_admission_exceptions is REFUSED by the well-formed
 // check — proving the wall is real and not just a rostered exemption list (DESIGN §4b(4)).
-// The entry/function pair is deliberately outside the 21 exempted identities, so this test
+// The entry/function pair is deliberately outside the exempted identities, so this test
 // would RED if someone adds the identity to the exception list (remove it from the probe).
 test fn red_control_synthetic_violation_on_exempted_cadence_reds() -> Bool {
   explicit_witness_admissions_well_formed_in(
@@ -238,7 +238,7 @@ test fn red_control_synthetic_violation_on_exempted_cadence_reds() -> Bool {
   ) == false
 }
 
-// LEGACY EXEMPTED ROW: an identity from the 21-row bounded exception list on an exempted cadence
+// LEGACY EXEMPTED ROW: an identity from the bounded exception list on an exempted cadence
 // (QuarantineProbeExpectRed) must be REFUSED by cadence_executes AND ADMITTED by the full
 // well-formed check — proving the exemption path works specifically through the bounded debt.
 // The cadence_executes check alone would refuse it; only is_transitional_admission_row saves it.
