@@ -43,9 +43,12 @@ import v2.std.text { String }
 // outlive its file), and a row claiming retention for a path required-regen DOES compare REFUSES (a
 // row cannot silence a live comparison). The census is a pure function of the two observed
 // populations, so its discriminating REDs are authorable as ordinary fixture lists and execute in
-// the required floor. The host join against the generated projection
-// (gunbc.seed_retention_frontier_emit) is that live-observation arm: it consumes the
-// paths, it does not stand in as evidence for the three refusals.
+// the required floor; wiring the live observation is a separate arm and is deliberately not what
+// this roster's evidence rests on. The generated projection (gunbc.seed_retention_frontier_emit)
+// is a skip in required_regen_host for a retained basename that committed_generated_basenames
+// presents. Today HAND_MAINTAINED_STAGE0_FILES subtracts every such basename first, so that skip
+// does not fire on the merge path; the off-path #[test] pair is not a live-observation consumer
+// (rust_unit_tests_off_the_merge_path). Do not read the projection as the census's executing arm.
 
 // ReasonNotYetDeclared IS THE POINT, not a hole in it. DESIGN section 4b(2) separates cannot-climb
 // from can-climb-after-one-grounding from can-climb-now-but-unbuilt, and the honest state of most
