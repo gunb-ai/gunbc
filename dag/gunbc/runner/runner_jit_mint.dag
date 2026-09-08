@@ -2,6 +2,7 @@ module gunbc.runner_jit_mint
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.effect { GitHubEffect, GenerateOrganizationJitConfig, GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner {
   JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
@@ -20,6 +21,10 @@ import gunbc.runner_microvm_attempt {
 }
 
 data runner_jit_mint_disposition: Disposition = SingleAuthority
+
+// §3c: plan_jit_mint IS NOT CALLED FROM PRODUCTION YET. Witnesses exercise the refusals; the
+// named later consumer is the mint performer that posts generate-jitconfig from JitMintAuthorized.
+data plan_jit_mint_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: gunbc.runner.runner_jit_perform (or successor) calls plan_jit_mint and posts generate-jitconfig from JitMintAuthorized. TRIGGER: that import and call exist. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing plan_jit_mint." as NonEmptyStr)
 
 // THE MINT IS PLANNED, NOT PERFORMED, AND THE SPLIT IS THE POINT.
 //

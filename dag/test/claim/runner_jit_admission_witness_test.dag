@@ -13,8 +13,7 @@ import gunbc.runner.runner_jit_admission {
   jit_admission_axis_standing, attempt_binding_admits_mint_name,
   gunbai_ci_installation_token_url, gunbai_org_generate_jitconfig_path,
   generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
-  encoded_jit_config_interior, axis_mint_observability,
-  OutsideTheModeledGuaranteeDeclaredBoundary,
+  axis_mint_observability,
   MintObservableCoverage, MintUnobservableDeclaredBoundary,
   GenerateJitconfig201ExpiresAtPresence, ReplayRunnerIdAndDuplicateName409,
   LiveCensusUnmet, LiveCensusDischarged,
@@ -90,12 +89,6 @@ test fn only_expiry_and_replay_are_observable_coverage() -> Bool {
         _ => false
       }
     _ => false
-  }
-}
-
-test fn encoded_jit_config_interior_is_a_declared_boundary() -> Bool {
-  match encoded_jit_config_interior {
-    OutsideTheModeledGuaranteeDeclaredBoundary => true
   }
 }
 

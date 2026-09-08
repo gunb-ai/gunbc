@@ -1,9 +1,14 @@
 module gunbc.runner.runner_host_image_placeability
 
-import std.types { Bool, Int }
+import std.types { Bool, Int, NonEmptyStr }
 import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data runner_host_image_placeability_disposition: Disposition = SingleAuthority
+
+// §3c: host_image_placeability_standing is the typed access-refusal census. A wet fleet-converge
+// image probe is a different observation, not a correction of this arm.
+data host_image_placeability_wet_probe_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a fleet-converge host-image boot probe that writes HostImagePlaceability from an observed tmpfs exec, not from this access-refused standing. TRIGGER: that probe exists and this standing is no longer the only HostImagePlaceability value in the observing layer. SUFFICIENT FOR deleting this row. NOT satisfied by another witness matching the standing." as NonEmptyStr)
 
 // CAN A GUNBC BINARY BE CARRIED IN THE HOST IMAGE AND EXECUTED ON TMPFS AT BOOT?
 //

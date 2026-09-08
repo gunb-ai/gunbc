@@ -1,6 +1,13 @@
 module gunbc.runner.runner_bound_attempt_receipt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.dissolution { dissolution_description }
+import gunbc.runner_jit_mint { plan_jit_mint_consumer_frontier }
+import gunbc.runner.runner_host_image_placeability {
+  HostImagePlaceability, host_image_placeability_standing, host_image_placeability_wet_probe_frontier,
+  placeability_question_closed, placeability_answers_the_host_image, PlaceabilityRefused,
+  HostShellAndBootImageAccessRefused,
+}
 
 // ONE ATTEMPT, OBSERVED FROM BOTH SIDES, JOINED BY ASSIGNMENT RATHER THAN BY A SHARED STRING.
 //
@@ -115,9 +122,28 @@ data retirement_after_real_work: List<NonEmptyStr> = [
 // recorded as unexercised rather than counted as working.
 data harness_refusal_arm_standing: NonEmptyStr = "the ambiguous-reading refusal is written and was NOT exercised by this run, which booted on its first attempt; only the firmware-error retry path has been observed since the change"
 
+fn placeability_standing_open_item(outcome: HostImagePlaceability) -> NonEmptyStr {
+  match outcome {
+    PlaceabilityRefused { cause: HostShellAndBootImageAccessRefused } =>
+      if placeability_question_closed(outcome: outcome) {
+        if placeability_answers_the_host_image(outcome: outcome) {
+          "item 2 standing is the access refusal but closed/answered disagree"
+        } else {
+          "item 2 closed as access-refused; that is not an answer about the host image"
+        }
+      } else {
+        "item 2 standing is the access refusal but closed/answered disagree"
+      }
+    _ => "item 2 standing is no longer the typed access refusal"
+  }
+}
+
 // ── still open ─────────────────────────────────────────────────────────────────────────────────
 
 data still_open: List<NonEmptyStr> = [
+  dissolution_description(condition: plan_jit_mint_consumer_frontier) as NonEmptyStr,
+  dissolution_description(condition: host_image_placeability_wet_probe_frontier) as NonEmptyStr,
+  placeability_standing_open_item(outcome: host_image_placeability_standing),
   "host init still prints these axes as unchecked; standing is gunbc.runner.runner_jit_admission, not this receipt",
   "actions/checkout, a JavaScript action, and a toolchain step over the filtered egress path",
   "two attempts on ONE host boot, with absence of every previous attempt's resources proven BEFORE the second starts",
