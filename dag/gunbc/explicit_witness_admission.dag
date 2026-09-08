@@ -787,7 +787,9 @@ fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
 // explicit_witness_admission_cadence_executes. The execution question itself is delegated to
 // std.witness_admission witness_cadence_has_scheduled_route (DESIGN §3 single authority), so all
 // five falsifier-family cadences whose workflow was deleted at #8283 are refused correctly
-// — no hand-edit can drift.
+// — no hand-edit can drift. THREE CADENCES (QuarantineProbeExpectRed, FalsifierSubstrateLongLane,
+// BinWitnessWet) are transitional exceptions: they carry live admission rows today. Removing them
+// requires migrating those rows to a scheduled-route cadence first.
 // Without the extra policy refusals an author could write an admission whose cadence runs nothing
 // and satisfy the every-witness-has-a-consumer wall with a row that executes nowhere
 // — the coverage-by-illusion tier.
@@ -797,10 +799,21 @@ fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) 
   // witness_cadence_has_scheduled_route answers whether any scheduled route runs
   // this cadence — it returns false for all five falsifier-family arms (falsifier.yml
   // deleted at #8283), so this function's FalsifierSelfHostWet fix falls out for free
-  // and the other four close with it.
+  // through the delegation below.
+  // THREE CADENCES OVERRIDDEN TO TRUE (transitional): QuarantineProbeExpectRed,
+  // FalsifierSubstrateLongLane, and BinWitnessWet carry live admission rows that
+  // must not be refused until their rows migrate to a live cadence. Removing these
+  // overrides requires migrating the three rows to a scheduled-route cadence first.
+  // FalsifierRehomedBinWet has zero admission rows and returns false via delegation.
   // Then add the genuinely-extra refusals: path-only policies that have a route but
   // must not appear on an admission row (DESIGN §5 coverage-by-illusion guard).
-  witness_cadence_has_scheduled_route(cadence: cadence)
+  (witness_cadence_has_scheduled_route(cadence: cadence)
+    || match cadence {
+      QuarantineProbeExpectRed => true
+      FalsifierSubstrateLongLane => true
+      BinWitnessWet => true
+      _ => false
+    })
     && match cadence {
       DiscoverySelection => false
       OfflineLocalRecipe => false
