@@ -10,6 +10,7 @@ import test.claim.fabric_grant_issuance_witness {
   issue, subject_work, other_work, first_attempt, funded_account, exhausted_account, admitted_offer, thread_appropriation,
 }
 import product.fabric.execution { ExecutionGrant }
+import product.fabric.identity { FabricIdentity }
 import product.fabric.grant_issue { GrantCommitted, GrantRefused }
 import product.fabric.budget { MoneyAccount }
 import gunbc.runner_microvm_execution_authorization {
@@ -91,6 +92,53 @@ test fn a_grant_for_another_work_authorizes_nothing() -> Bool {
         offer: auth.grant.object.offer,
       ) {
         AuthorizationDisagrees { cause: c } => string_contains(s: c, pattern: "different Work")
+        AuthorizationAgrees => false
+      }
+    Empty {} => false
+  }
+}
+
+// THE SAME SUBSTITUTION, ON THE OTHER TWO COORDINATES. Work, Demand and Offer are three separate
+// joins and each needs its own RED: with only the Work control enrolled, a rule that dropped the
+// Demand and Offer checks entirely would still green every claim in this file, so the join would be
+// reported at a rung its executed evidence does not establish.
+//
+// WHY THESE REDS ARE AUTHORABLE WHEN THE SEAL'S IS NOT, since the two questions sound identical and
+// get opposite answers. A control is a 4b DECORATION when its forbidden state cannot be written
+// anywhere the check could run -- permanently green, and worse than absent because it gets cited as
+// coverage. The seal's input is a sole_constructor RequiredBuildCellSnapshot, so a DISAGREEING
+// snapshot has no constructor a fixture can reach: a control aimed there would be a decoration.
+// FabricIdentity is an ordinary constructible record, so a disagreeing demand or offer IS writable
+// right here. Same question, different constructor, opposite answer -- and the constructor is what
+// decides it, not how important the check feels.
+test fn a_grant_for_another_demand_authorizes_nothing() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: auth.account,
+        work: auth.grant.context.work,
+        demand: FabricIdentity { principal: "gunbc", key: "demand-2" },
+        offer: auth.grant.object.offer,
+      ) {
+        AuthorizationDisagrees { cause: c } => string_contains(s: c, pattern: "different Demand")
+        AuthorizationAgrees => false
+      }
+    Empty {} => false
+  }
+}
+
+test fn a_grant_for_another_offer_authorizes_nothing() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: auth.account,
+        work: auth.grant.context.work,
+        demand: auth.grant.context.demand,
+        offer: FabricIdentity { principal: "gunbc", key: "offer-2" },
+      ) {
+        AuthorizationDisagrees { cause: c } => string_contains(s: c, pattern: "different Offer")
         AuthorizationAgrees => false
       }
     Empty {} => false
