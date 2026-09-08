@@ -1,72 +1,93 @@
 module test.claim.algebra_receiver_callable_witness_test
 
-import std.types { Bool, Int }
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { total_blocking_count_for }
 
-type ApplicationUnary<T> = fn(T) -> T
+// EVERY CELL IS A SOURCE STRING, NOT A CALL IN THIS MODULE. The subject of these witnesses is a
+// construct the compiler currently REFUSES TO RESOLVE, so writing it directly here would make
+// the module fail to resolve -- and a resolve failure takes the whole module with it, including
+// the cells that pass. The accepted positive controls would become casualties rather than
+// controls, and DESIGN 4b(4) requires the discriminating RED and an accepted positive control to
+// stand together. Compiling the construct as a String keeps this module resolvable, so every
+// assertion RUNS and returns a real verdict.
+//
+// THE ASSERTIONS ARE WRITTEN IN THE ACCEPTANCE DIRECTION -- "this is callable, so nothing
+// blocks" -- and several are FALSE today. That polarity is deliberate: asserting the refusal
+// instead would encode the DEFECT as the expected state, and when the wall lands the witness
+// would have to be rewritten. Written this way, the fix flips each assertion to TRUE and the
+// cell becomes a permanent regression control with no edit.
+//
+// WHAT THE CELLS VARY, and why there are this many: a bare call resolves against something that
+// is NOT the local binder, and four separate hypotheses about what died only when a cell
+// separated them. Binder SPELLING (shorthand vs explicit), NAME (whether a same-named
+// declaration exists elsewhere), BINDER KIND (match binder vs let vs function parameter), and
+// POSITION (top-level body vs inside a match arm) are each varied against a control that holds
+// the others fixed.
 
-type ApplicationCallback = CallbackPresent { step: ApplicationUnary<Int> } | CallbackAbsent
+// A: match binder, shorthand, name that a declaration elsewhere in the corpus also carries.
+data shorthand_colliding_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype ApplicationCallback = CallbackPresent { step: ApplicationUnary<Int> } | CallbackAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_application_callback() -> ApplicationCallback { CallbackPresent { step: application_increment } }\nfn probe() -> Bool { match declared_application_callback() { CallbackPresent { step } => step(41) == 42  CallbackAbsent => false } }\n"
 
-type PoolFreeCallback = PoolFreePresent { zq_apply: ApplicationUnary<Int> } | PoolFreeAbsent
+// B: match binder, explicit, pool-free name. Differs from A in BOTH spelling and name, which is
+// why neither alone can be read off this pair -- C and D are what separate them.
+data explicit_pool_free_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype ApplicationCallback = CallbackPresent { step: ApplicationUnary<Int> } | CallbackAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_application_callback() -> ApplicationCallback { CallbackPresent { step: application_increment } }\nfn probe() -> Bool { match declared_application_callback() { CallbackPresent { step: bound_step } => bound_step(41) == 42  CallbackAbsent => false } }\n"
 
-fn application_increment(value: Int) -> Int { value + 1 }
+// C: match binder, shorthand, pool-free name. Holds spelling fixed against A and varies the
+// name; holds the name fixed against B and varies the spelling.
+data shorthand_pool_free_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype PoolFreeCallback = PoolFreePresent { zq_apply: ApplicationUnary<Int> } | PoolFreeAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_pool_free_callback() -> PoolFreeCallback { PoolFreePresent { zq_apply: application_increment } }\nfn probe() -> Bool { match declared_pool_free_callback() { PoolFreePresent { zq_apply } => zq_apply(41) == 42  PoolFreeAbsent => false } }\n"
 
-fn parameter_call_probe(f: ApplicationUnary<Int>) -> Bool { f(41) == 42 }
+// D: match binder, explicit, bound to a colliding name over a pool-free FIELD. The field and the
+// called name deliberately disagree, so a resolution here cannot be coming from the field label.
+data explicit_colliding_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype PoolFreeCallback = PoolFreePresent { zq_apply: ApplicationUnary<Int> } | PoolFreeAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_pool_free_callback() -> PoolFreeCallback { PoolFreePresent { zq_apply: application_increment } }\nfn probe() -> Bool { match declared_pool_free_callback() { PoolFreePresent { zq_apply: step } => step(41) == 42  PoolFreeAbsent => false } }\n"
 
-fn declared_application_callback() -> ApplicationCallback {
-  CallbackPresent { step: application_increment }
+// E: let binding at the TOP LEVEL of a function body, pool-free name. Accepted control.
+data top_level_let_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\nfn application_increment(value: Int) -> Int { value + 1 }\nfn probe() -> Bool { let zq_bound = application_increment\n  zq_bound(41) == 42 }\n"
+
+// F: the same top-level let under a colliding name. Paired with E so that a difference between
+// them would be attributable to the name and nothing else.
+data top_level_let_colliding_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\nfn application_increment(value: Int) -> Int { value + 1 }\nfn probe() -> Bool { let step = application_increment\n  step(41) == 42 }\n"
+
+// G: THE POSITION CELL, and the only one that separates position from binder kind. It is a let
+// -- the one binder form E and F prove is callable -- moved INSIDE a match arm. If a let is
+// callable at the top level of a body and not callable here, the axis is position, not the kind
+// of binder. Its second job is to show the binder is in scope AS A VALUE: the let initializer
+// reads the match binder, so a refusal that names the let's own name rather than the binder's
+// says the binding happened and only the CALL failed.
+data nested_let_in_match_arm_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype PoolFreeCallback = PoolFreePresent { zq_apply: ApplicationUnary<Int> } | PoolFreeAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_pool_free_callback() -> PoolFreeCallback { PoolFreePresent { zq_apply: application_increment } }\nfn probe() -> Bool { match declared_pool_free_callback() { PoolFreePresent { zq_apply: bound } => let rebound = bound\n    rebound(41) == 42  PoolFreeAbsent => false } }\n"
+
+// H: an ordinary higher-order call -- a function PARAMETER of declared function type, called by
+// name, with no match and no pattern anywhere near it. This cell was not designed. It was
+// scaffolding written to create a non-call position for G, and it refused on its own parameter
+// before the cell it served ever ran.
+data function_parameter_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\nfn application_increment(value: Int) -> Int { value + 1 }\nfn parameter_call_probe(f: ApplicationUnary<Int>) -> Bool { f(41) == 42 }\nfn probe() -> Bool { parameter_call_probe(f: application_increment) }\n"
+
+test fn top_level_let_is_callable() -> Bool {
+  total_blocking_count_for(source: top_level_let_source) == 0
 }
 
-fn declared_pool_free_callback() -> PoolFreeCallback {
-  PoolFreePresent { zq_apply: application_increment }
+test fn top_level_let_colliding_name_is_callable() -> Bool {
+  total_blocking_count_for(source: top_level_let_colliding_source) == 0
 }
 
-test fn matched_generic_callable_alias_remains_callable() -> Bool {
-  match declared_application_callback() {
-    CallbackPresent { step } => step(41) == 42
-    CallbackAbsent => false
-  }
+test fn shorthand_match_binder_is_callable() -> Bool {
+  total_blocking_count_for(source: shorthand_colliding_source) == 0
 }
 
-test fn explicit_binder_pool_free_name_remains_callable() -> Bool {
-  match declared_application_callback() {
-    CallbackPresent { step: bound_step } => bound_step(41) == 42
-    CallbackAbsent => false
-  }
+test fn explicit_match_binder_pool_free_name_is_callable() -> Bool {
+  total_blocking_count_for(source: explicit_pool_free_source) == 0
 }
 
-test fn shorthand_binder_pool_free_name_remains_callable() -> Bool {
-  match declared_pool_free_callback() {
-    PoolFreePresent { zq_apply } => zq_apply(41) == 42
-    PoolFreeAbsent => false
-  }
+test fn shorthand_match_binder_pool_free_name_is_callable() -> Bool {
+  total_blocking_count_for(source: shorthand_pool_free_source) == 0
 }
 
-test fn explicit_binder_pool_colliding_name_remains_callable() -> Bool {
-  match declared_pool_free_callback() {
-    PoolFreePresent { zq_apply: step } => step(41) == 42
-    PoolFreeAbsent => false
-  }
+test fn explicit_match_binder_colliding_name_is_callable() -> Bool {
+  total_blocking_count_for(source: explicit_colliding_source) == 0
 }
 
-test fn let_bound_pool_free_name_remains_callable() -> Bool {
-  let zq_bound = application_increment
-  zq_bound(41) == 42
-}
-
-test fn let_bound_colliding_name_remains_callable() -> Bool {
-  let step = application_increment
-  step(41) == 42
-}
-
-test fn match_binder_is_in_scope_as_a_value() -> Bool {
-  match declared_application_callback() {
-    CallbackPresent { step: bound_step } =>
-      let rebound = bound_step
-      rebound(41) == 42
-    CallbackAbsent => false
-  }
+test fn nested_let_in_match_arm_is_callable() -> Bool {
+  total_blocking_count_for(source: nested_let_in_match_arm_source) == 0
 }
 
 test fn function_parameter_is_callable() -> Bool {
-  parameter_call_probe(f: application_increment)
+  total_blocking_count_for(source: function_parameter_source) == 0
 }
