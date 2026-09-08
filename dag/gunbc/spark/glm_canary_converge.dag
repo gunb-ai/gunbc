@@ -389,12 +389,43 @@ type ServeAgreement
   | ServeNotRunning { detail: String }
   | ServeUnreadable { cause: String }
 
-// THE FORMAT STRING CARRIES NO ESCAPED QUOTES, and that is a syntax constraint rather than a style
-// choice. `{{join .Args " "}}` needs an escaped quote inside a string that also contains braces, and the
-// `range` form expresses the same projection with neither -- each argument, then a space, trimmed at the
-// end. The two produce identical text for this container.
+// A GO TEMPLATE CANNOT BE WRITTEN AS A .dag STRING LITERAL, and the compiler said so twice before this
+// shape was reached. String literals here INTERPOLATE `{name}`, so `{{range .Args}}` is a literal brace
+// followed by an interpolation of `range` -- which refused as `undefined variable range`, and `end`
+// beside it. The first attempt failed harder and less legibly: escaped quotes sat inside that
+// interpolation and broke the string, surfacing as an unterminated function body three hundred lines
+// away at end of file.
+//
+// SO THE BRACES ARE DATA, ASSEMBLED RATHER THAN SPELLED. A brace followed by a non-identifier is left
+// literal -- which is why the JSON in the speculation flag above has always resolved -- but a brace
+// followed by a template keyword is not, and no escape for it exists here. Building the template from
+// declared brace constants is the honest way to emit a foreign syntax whose delimiters collide with the
+// host language's, and it keeps the collision visible instead of hiding it in a literal that only
+// happens to parse.
+data template_open_brace: NonEmptyStr = "{" as NonEmptyStr
+data template_close_brace: NonEmptyStr = "}" as NonEmptyStr
+
+fn go_template_action(body: String) -> String {
+  join([
+    template_open_brace as String, template_open_brace as String,
+    body,
+    template_close_brace as String, template_close_brace as String,
+  ], "")
+}
+
+// EACH ARGUMENT THEN A SPACE, trimmed at the end -- the same text a join with a quoted separator would
+// produce, without needing a quoted separator inside the template.
+fn docker_args_format() -> String {
+  join([
+    go_template_action(body: "range .Args"),
+    go_template_action(body: "."),
+    " ",
+    go_template_action(body: "end"),
+  ], "")
+}
+
 fn glm_canary_inspect_argv(arm: GlmCanaryArm) -> List<String> {
-  ["docker", "inspect", arm.container_name as String, "--format", "{{range .Args}}{{.}} {{end}}"]
+  ["docker", "inspect", arm.container_name as String, "--format", docker_args_format()]
 }
 
 fn glm_canary_observe_serve(ctx: SparkMaterializeContext, arm: GlmCanaryArm) -> ServeAgreement {
