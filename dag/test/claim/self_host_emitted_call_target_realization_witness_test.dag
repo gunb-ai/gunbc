@@ -73,13 +73,15 @@ test fn w_host_map_record_shape_refuses_instead_of_constructing_a_second_carrier
 // on the emitted 00_compile closure's first native run (2026-09-07): twelve such panic sites, hit
 // through dag_language_model().canonical_symbols. The rows are removed; the literal now takes the
 // same structural path the type renderer already took (Rc'd closure field, phantom filled — the
-// bool_boolean_algebra pattern).
+// bool_boolean_algebra pattern). The finite-set exclusion is spelled `BTreeSet<i64` and not the
+// bare carrier name because every emitted file's preamble imports `OrdSet as BTreeSet`; the
+// applied spelling names the realization, the bare spelling names the import.
 test fn w_pointwise_power_record_shape_constructs_its_structural_carrier() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.pointwise_power_record_shape_probe\nimport std.algebra { PointwisePower }\nimport std.types { Int }\nfn probe(only: Int) -> PointwisePower<Int> { PointwisePower { member: fn(n) { n == only } } }\n",
     "src/test_claim_pointwise_power_record_shape_probe.rs",
     ["PointwisePower {", "member:"],
-    ["record-shaped carrier has no realization", "BTreeSet"]
+    ["record-shaped carrier has no realization", "BTreeSet<i64"]
   )
 }
 
