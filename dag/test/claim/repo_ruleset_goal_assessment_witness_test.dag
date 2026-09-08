@@ -26,6 +26,8 @@ import gunbc.repo_ruleset {
   default_branch_ref_alias,
   desired_ruleset_rule_types,
   desired_ruleset_rules,
+  desired_merge_queue_policy,
+  gunbc_merge_queue_proposal,
   gunbc_passing_ci_ruleset_name,
   required_status_check_standing,
   merge_queue_desire_unknowns,
@@ -169,22 +171,33 @@ test fn an_unreadable_ruleset_refuses_at_the_observation_layer_and_mints_no_unkn
 // this witness holds only if the gap became an unknown on that dimension -- and the drift claim
 // above still proves the rest of the comparison survives an unknown.
 test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool {
-  length(merge_queue_desire_unknowns()) == 0
+  length(merge_queue_desire_unknowns(
+    policy: desired_merge_queue_policy(),
+    rules: desired_ruleset_rules(),
+  )) == 0
 }
 
-// THE POSITIVE CONTROL FOR THE ARM THAT MATTERS: with the desire self-consistent, an observation
-// that differs in a dimension the merge queue has nothing to do with must still DIVERGE rather
-// than be swallowed. A short-circuit reinstated anywhere above the comparison fails here.
-test fn a_name_drift_is_still_reported_with_the_desire_self_consistent() -> Bool {
-  match ruleset_assess(
-    observed: fixture_observed(
-      name: "drifted-name",
-      rule_types_extra: false,
-      roster: BypassRosterObserved { actors: [] },
-    ),
-  ) {
-    GoalDiverged { deviations: ds } =>
-      string_contains(s: render_divergences(ds: non_empty_to_list(xs: ds)), pattern: "ruleset name is drifted-name")
-    _ => false
-  }
+// THE DISCRIMINATING RED THE POSITIVE CONTROL ABOVE CANNOT BE, found by review 62379.
+//
+// The arm this reaches is unreachable through the repository's own declarations: the merge queue is
+// unsigned today, so a fold reading the desire row alone answers Absent on every input and the
+// Present arm -- and the RulesetMergeQueueDesireSelfInconsistent renderer it feeds -- would be
+// permanently green by construction. DESIGN section 4b: a check whose RED is unauthorable is a
+// decoration, and the boundary that decides it is whether the forbidden state is authorable AS A
+// FIXTURE, not whether it exists in the accepted corpus. It is, so the seam is a parameter: this
+// claim hands merge_queue_desire_unknowns a SIGNED policy against a projection that carries no
+// merge_queue rule, which is precisely the state that would ship silently if someone signed the
+// policy without wiring the projection.
+//
+// This restores the seam the deleted repo_ruleset_observed_actuation_admission carried for the same
+// reason -- it was unreachability that let an inversion sit in that arm undetected -- so the
+// replacement preserves the required refusal rather than erasing the distinction.
+test fn RED_a_signed_policy_the_projection_does_not_carry_is_an_unknown_on_that_dimension() -> Bool {
+  let us = merge_queue_desire_unknowns(
+    policy: Present { value: gunbc_merge_queue_proposal },
+    rules: desired_ruleset_rules(),
+  )
+  length(us) == 1
+    && string_contains(s: render_unknowns(us: us), pattern: "WHICH ONE IS THE DESIRE is undetermined")
+    && string_contains(s: render_unknowns(us: us), pattern: "no merge_queue rule is projected")
 }

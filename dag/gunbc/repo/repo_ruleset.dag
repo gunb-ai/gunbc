@@ -724,16 +724,12 @@ fn signed_desire_projection_refusal_for(
         none
       } else {
         Present { value: concat(
-          "the merge queue is signed off but the desired projection does not carry the signed policy, so converge would send a ruleset that cannot converge. Refusing rather than actuating. ",
+          "the merge queue is signed off but the desired projection does not carry the signed policy, so the goal states this dimension two ways and which one is the desire is undetermined. ",
           join(map(drift, d => render_signed_projection_refusal(r: d)), "; "),
         ) as NonEmptyStr }
       }
     }
   }
-}
-
-fn signed_desire_projection_refusal() -> NonEmptyStr? {
-  signed_desire_projection_refusal_for(policy: desired_merge_queue_policy(), rules: desired_ruleset_rules())
 }
 
 // THE DELETE HAZARD, KEPT AS THE STANDING IT IS RATHER THAN AS TWO FUNCTIONS NOTHING CALLS.
@@ -1175,9 +1171,9 @@ fn observation_unknowns(observation: RulesetObservation) -> List<RulesetUnknown>
 // because of a merge-queue projection gap that has nothing to do with any of them. That is the
 // exact ordering harm this branch deleted the actuation holds to fix, reproduced one layer down
 // on the arm that was left, and it is the class rostered as
-// gunbc.recurring_failure_mode.read_only_policy_bound_as_an_actuator_that_only_refuses -- the
-// helper's own prose still says "Refusing rather than actuating", which is what it was for.
-// Review 62287 found it.
+// gunbc.recurring_failure_mode.read_only_policy_bound_as_an_actuator_that_only_refuses. The helper
+// it called still carried actuation prose -- "Refusing rather than actuating" -- which is what it
+// was written for; that sentence is gone with the actuation. Review 62287 found it.
 //
 // SO THE PROJECTION GAP IS AN UNKNOWN ON ONE DIMENSION, and it is genuinely unknown rather than
 // merely awkward: the goal states the merge-queue desire TWICE -- once as the signed policy, once
@@ -1202,7 +1198,10 @@ fn ruleset_assess(
     deviations: observation_divergences(observation: observed),
     unknowns: append(
       observation_unknowns(observation: observed),
-      items: merge_queue_desire_unknowns(),
+      items: merge_queue_desire_unknowns(
+        policy: desired_merge_queue_policy(),
+        rules: desired_ruleset_rules(),
+      ),
     ),
   )
 }
@@ -1210,8 +1209,21 @@ fn ruleset_assess(
 // The goal's own self-consistency on the merge-queue dimension, read from the two places the desire
 // states it. This is a fact about the DESIRE and not about the live ruleset, which is why it does
 // not come from the observation.
-fn merge_queue_desire_unknowns() -> List<RulesetUnknown> {
-  match signed_desire_projection_refusal() {
+//
+// IT TAKES THE POLICY AND THE RULES AS OPERANDS RATHER THAN READING THE DECLARED ROWS ITSELF, and
+// that is the difference between a check and a decoration. This repository's merge queue is
+// unsigned today, so a nullary fold answers Absent on every input the corpus can produce: the
+// Present arm, and the renderer it feeds, would be unreachable and permanently green. DESIGN
+// section 4b asks whether the forbidden state is authorable AS A FIXTURE, and it is -- so the seam
+// is a parameter and the RED lives in
+// test.claim.repo_ruleset_goal_assessment_witness. The deleted actuation admission carried this
+// same seam for this same reason, and losing it would have erased a required refusal rather than
+// replaced it. Review 62379 found it.
+fn merge_queue_desire_unknowns(
+  policy: MergeQueuePolicy?,
+  rules: List<RulesetRuleWire>,
+) -> List<RulesetUnknown> {
+  match signed_desire_projection_refusal_for(policy: policy, rules: rules) {
     Absent => []
     Present { value: detail } =>
       [RulesetMergeQueueDesireSelfInconsistent { detail: detail }]
