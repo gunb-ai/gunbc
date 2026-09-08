@@ -15,7 +15,7 @@ import gunbc.artifact_acquisition {
   AcquisitionSubject, AcquisitionSource, AcquisitionHandler,
   AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch,
   AcquisitionProbeFailed,
-  AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptUnreachable,
+  AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptRejected, AttemptUnreachable,
   AcquisitionOutcome, AcquisitionFetched, AcquisitionRefused, VerifyMechanismFailed,
   acquire_artifact,
 }
@@ -180,13 +180,36 @@ fn spark_transfer_clear(ctx: SparkMaterializeContext) -> Bool {
   }
 }
 
-fn spark_transfer_start(ctx: SparkMaterializeContext, origin: AcquisitionSource) -> Bool {
+// THE UNIT FLAG IS ONE WORD, AND AN EXECUTION FOUND THAT IT WAS TWO. This built its argv as
+// `["systemd-run", "--unit=", <name>, ...]` -- the flag and its value as SEPARATE list elements --
+// so systemd-run received an EMPTY unit name and took the name as the command to execute. The live
+// run said exactly that: `Failed to find executable gunbc-model-materialize`. It compiled, it
+// type-checked, and it could only fail on contact with a host.
+//
+// THE START'S OUTCOME IS TYPED FOR THE SAME REASON THE ATTEMPT'S IS. Returning Bool forced every
+// failure into one bucket, and the caller then reported a REACHED host as unreachable.
+type TransferStartOutcome
+  = TransferStarted
+  | TransferStartRejected { detail: NonEmptyStr }
+  | TransferStartUnreachable { cause: NonEmptyStr }
+
+fn spark_transfer_start(ctx: SparkMaterializeContext, origin: AcquisitionSource) -> TransferStartOutcome {
   match spark_remote_run(ctx: ctx, argv: concat(
-    ["systemd-run", "--unit=" , spark_transfer_unit_name as String, "--description=gunbc model snapshot materialize", "--"],
+    [
+      "systemd-run",
+      join(["--unit=", spark_transfer_unit_name as String], ""),
+      "--description=gunbc model snapshot materialize",
+      "--",
+    ],
     [origin.locator as String],
   )) {
-    RemoteUnreachable { cause: _ } => false
-    RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
+    RemoteUnreachable { cause: c } => TransferStartUnreachable { cause: c as NonEmptyStr }
+    RemoteRan { exit_code: e, stdout: _, stderr: err } =>
+      if e == 0 {
+        TransferStarted
+      } else {
+        TransferStartRejected { detail: join(["systemd-run exited ", to_string(e), ": ", err], "") as NonEmptyStr }
+      }
   }
 }
 
@@ -234,16 +257,20 @@ fn spark_snapshot_attempt(ctx: SparkMaterializeContext, verify: List<String>, su
     TransferStateUnreadable { cause: _ } => AttemptUnreachable
     TransferRunning => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
     TransferExited { exit_code: _ } =>
-      if !spark_transfer_clear(ctx: ctx) { AttemptUnreachable } else { spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin) }
+      if !spark_transfer_clear(ctx: ctx) {
+        AttemptUnreachable
+      } else {
+        spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
+      }
     TransferAbsent => spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
   }
 }
 
 fn spark_snapshot_start_and_supervise(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  if !spark_transfer_start(ctx: ctx, origin: origin) {
-    AttemptUnreachable
-  } else {
-    spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+  match spark_transfer_start(ctx: ctx, origin: origin) {
+    TransferStartUnreachable { cause: _ } => AttemptUnreachable
+    TransferStartRejected { detail: d } => AttemptRejected { detail: d }
+    TransferStarted => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
   }
 }
 

@@ -115,6 +115,7 @@ type AcquisitionRefusal
   | NoSourceDeclared { identity: NonEmptyStr }
   | EverySourceUnreachable { identity: NonEmptyStr, attempted: Nat }
   | EverySourceFailedItsKey { identity: NonEmptyStr, attempted: Nat }
+  | EverySourceRejectedTheTransfer { identity: NonEmptyStr, attempted: Nat }
   | PublishFailed { identity: NonEmptyStr, source: NonEmptyStr, install_path: NonEmptyStr }
   | VerifyMechanismFailed { identity: NonEmptyStr, source: NonEmptyStr, reason: NonEmptyStr }
 
@@ -137,6 +138,8 @@ fn acquisition_refusal_text(cause: AcquisitionRefusal) -> String {
       join(["every one of the ", to_string(n), " declared sources for ", i as String, " was unreachable"], "")
     EverySourceFailedItsKey { identity: i, attempted: n } =>
       join([to_string(n), " sources for ", i as String, " were reached and none produced bytes matching its declared identity"], "")
+    EverySourceRejectedTheTransfer { identity: i, attempted: n } =>
+      join([to_string(n), " sources for ", i as String, " were reached and each REJECTED the transfer command itself; the host answered, so this is a defect in the plan rather than a network fault"], "")
     PublishFailed { identity: i, source: s, install_path: p } =>
       join([i as String, " was fetched from ", s as String, " and verified, but could not be published to ", p as String], "")
     VerifyMechanismFailed { identity: i, source: s, reason: r } =>
@@ -151,15 +154,27 @@ fn acquisition_refusal_text(cause: AcquisitionRefusal) -> String {
 // every mirror served corrupt bytes reported "all mirrors unreachable" -- reachability answering for
 // correctness. That was found and fixed there; the split is carried here so the next subject
 // inherits the fix instead of re-deriving it.
+// A THIRD ARM, ADDED AFTER EXECUTION PROVED THE SPLIT INCOMPLETE. The original two arms separated
+// "could not reach it" from "reached it and the bytes were wrong" -- the fix inherited from the
+// Ubuntu original. A live run then produced a THIRD state that neither names: the host answered
+// immediately and REFUSED THE COMMAND, because the transfer invocation was malformed. That was
+// reported as `AttemptUnreachable`, so the receipt read "every one of the 1 declared sources was
+// unreachable" about a host that was reachable in the same second on the same credential.
+//
+// THE REMEDIES ARE OPPOSITE, WHICH IS WHY THIS IS NOT COSMETIC. Unreachable is retry-worthy and
+// often transient; rejected is a defect in the plan that will fail identically forever. Absorbing
+// the second into the first sends an operator to investigate a network that is working.
 type AcquisitionAttempt
   = AttemptTerminal { outcome: AcquisitionOutcome }
   | AttemptFailedKey
+  | AttemptRejected { detail: NonEmptyStr }
   | AttemptUnreachable
 
 type AcquisitionFoldState {
   terminal: AcquisitionOutcome?
   reached_count: Nat
   saw_failed_key: Bool
+  saw_rejected: Bool
 }
 
 fn acquisition_fold_step(acc: AcquisitionFoldState, attempt: AcquisitionAttempt) -> AcquisitionFoldState {
@@ -168,9 +183,11 @@ fn acquisition_fold_step(acc: AcquisitionFoldState, attempt: AcquisitionAttempt)
     Absent =>
       match attempt {
         AttemptTerminal { outcome: o } =>
-          AcquisitionFoldState { terminal: Present { value: o }, reached_count: acc.reached_count + 1, saw_failed_key: acc.saw_failed_key }
+          AcquisitionFoldState { terminal: Present { value: o }, reached_count: acc.reached_count + 1, saw_failed_key: acc.saw_failed_key, saw_rejected: acc.saw_rejected }
         AttemptFailedKey =>
-          AcquisitionFoldState { terminal: none, reached_count: acc.reached_count + 1, saw_failed_key: true }
+          AcquisitionFoldState { terminal: none, reached_count: acc.reached_count + 1, saw_failed_key: true, saw_rejected: acc.saw_rejected }
+        AttemptRejected { detail: _ } =>
+          AcquisitionFoldState { terminal: none, reached_count: acc.reached_count + 1, saw_failed_key: acc.saw_failed_key, saw_rejected: true }
         AttemptUnreachable => acc
       }
   }
@@ -185,6 +202,8 @@ fn acquisition_fold_step(acc: AcquisitionFoldState, attempt: AcquisitionAttempt)
 fn acquisition_exhausted(subject: AcquisitionSubject, state: AcquisitionFoldState) -> AcquisitionOutcome {
   if state.saw_failed_key {
     AcquisitionRefused { cause: EverySourceFailedItsKey { identity: subject.identity, attempted: state.reached_count } }
+  } else if state.saw_rejected {
+    AcquisitionRefused { cause: EverySourceRejectedTheTransfer { identity: subject.identity, attempted: state.reached_count } }
   } else {
     AcquisitionRefused { cause: EverySourceUnreachable { identity: subject.identity, attempted: list_length(items: subject.sources) } }
   }
@@ -205,7 +224,7 @@ fn acquire_from_declared_sources(subject: AcquisitionSubject, handler: Acquisiti
   let attempt_one = handler.attempt
   let folded = fold(
     subject.sources,
-    init: AcquisitionFoldState { terminal: none, reached_count: 0, saw_failed_key: false },
+    init: AcquisitionFoldState { terminal: none, reached_count: 0, saw_failed_key: false, saw_rejected: false },
     f: (acc, origin) => match acc.terminal {
       Present { value: _ } => acc
       Absent => acquisition_fold_step(acc: acc, attempt: attempt_one(subject, origin))
