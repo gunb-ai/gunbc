@@ -1,12 +1,10 @@
 module extdeps.colo.databank
 
 import std.types { NonEmptyStr, List }
-import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread, DensityMarketedAirOnly,
-  PublishedRealPower,
+  CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -92,10 +90,8 @@ data databank_lga1_hudson: ColoFacilityRow = ColoFacilityRow {
   facility_note: "23,940 IT square feet, 0.74 MW critical IT load, 92 on-site carriers, 2N power and N+1 cooling per the operator page read 2026-09-08. Digital Realty JFK12 and Colocation America NYDC1 sell from the same building under their own modules. Five-borough site; density is a separate marketed claim, not the building's 0.74 MW.",
 }
 
-data databank_lga1_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 5000) },
-  claim_wording: "5kW+ Cab Density Air",
-  citation: "databank.com Hudson Street LGA1 page, read 2026-09-08. The plus sign is the operator's own wording, so 5 is the stated numeral on a marketed floor rather than an exact ceiling.",
+data databank_lga1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The LGA1 page read 2026-09-08 states '5kW+ Cab Density Air' - a marketed floor, not a marketed maximum. The same disposition as Equinix NY9's minimum cabinet density: do not place 5000 W in DensityMarketedAirOnly. A quote or a spec that names a ceiling is required.",
 }
 
 data databank_lga1_retail_grain: RetailGrainStanding = SingleCabinetOffered {
@@ -115,10 +111,8 @@ data databank_lga2_eighth: ColoFacilityRow = ColoFacilityRow {
   facility_note: "10,200 IT square feet, 0.68 MW critical IT load, 50 on-site carriers, N+1 power and cooling per the operator page read 2026-09-08. Equinix NY9 and Digital Realty JFK10 occupy the same building under their own modules.",
 }
 
-data databank_lga2_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 5000) },
-  claim_wording: "5kW+ Cab Density Air",
-  citation: "databank.com Eighth Avenue LGA2 page, read 2026-09-08. Same plus-sign reading as LGA1.",
+data databank_lga2_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The LGA2 page read 2026-09-08 states '5kW+ Cab Density Air' - the same marketed floor as LGA1, not a cabinet maximum. Unread until a ceiling is published.",
 }
 
 data databank_lga2_retail_grain: RetailGrainStanding = SingleCabinetOffered {

@@ -5,11 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
-<<<<<<< HEAD
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
-=======
-  RetailGrainStanding, SingleCabinetOffered,
->>>>>>> 995b3d9154 (Add H5 325 Hudson and DataBank Orangeburg into the same operator modules.)
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
