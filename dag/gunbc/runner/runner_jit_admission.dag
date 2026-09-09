@@ -1,0 +1,100 @@
+module gunbc.runner.runner_jit_admission
+
+import std.types { NonEmptyStr, Bool }
+import std.disposition { Disposition, SingleAuthority }
+
+data runner_jit_admission_disposition: Disposition = SingleAuthority
+
+// THIS MODULE IS THE AXIS-DEFINITION AUTHORITY for the six host-printed admission names
+// (signature, expiry, replay, unit-binding, boot-binding, attempt-binding). The names originated as
+// a marker string on a capture; they are not defined in extdeps.github.actions_jit_runner because
+// that module owns GitHub's mint shape, and GitHub does not name these axes. Defining them here is
+// what lets each one close as required, deferred, or dissolved, instead of remaining a quote of a
+// log line.
+//
+// THE MINT SURFACE IS A TWO-STEP GITHUB PATH, not a host HTTP server and not a parsed blob:
+//   1. POST /app/installations/{installation_id}/access_tokens, cited by
+//      extdeps.github.org_admin_auth.github_app_installation_access_token_url, minted from the
+//      gunbai-ci App key (gunbc.auth.github_apps.gunbai_ci_declared).
+//   2. POST /orgs/{org}/actions/runners/generate-jitconfig with that installation token, path from
+//      extdeps.github.actions_jit_runner.org_generate_jitconfig_path.
+// What step 2 accepts as a body is JitRunnerConfigRequest and nothing else.
+// encoded_jit_config is opaque; a host cannot check binding axes by decoding it.
+
+type JitAdmissionAxis
+  = SignatureAxis
+  | ExpiryAxis
+  | ReplayAxis
+  | UnitBindingAxis
+  | BootBindingAxis
+  | AttemptBindingAxis
+
+type JitAdmissionChecker
+  = HostEnvelopeNonemptyAndFresh
+  | GitHubMintRequestName
+
+type JitAdmissionAxisStanding
+  = AxisRequired { checker: JitAdmissionChecker }
+  | AxisDeferred { trigger: NonEmptyStr }
+  | AxisDissolvedInto { into: JitAdmissionAxis }
+
+fn jit_admission_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStanding {
+  match axis {
+    SignatureAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
+    ExpiryAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
+    ReplayAxis => AxisDeferred { trigger: "host cannot detect a second consumer of a minted encoded_jit_config; a generate-jitconfig 409 on a duplicate name is a different question" as NonEmptyStr }
+    UnitBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
+    BootBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
+    AttemptBindingAxis => AxisRequired { checker: GitHubMintRequestName }
+  }
+}
+
+fn attempt_binding_admits_mint_name(standing: JitAdmissionAxisStanding) -> Bool {
+  match standing {
+    AxisRequired { checker: GitHubMintRequestName } => true
+    AxisRequired { checker: _ } => false
+    AxisDeferred { trigger: _ } => false
+    AxisDissolvedInto { into: _ } => false
+  }
+}
+
+// encoded_jit_config CONTENTS ARE OUTSIDE THE MODELED GUARANTEE (DESIGN §4b adjacent column),
+// not an unmet observation. The mint does not expose the blob's interior; no token will. Filing
+// that opacity as coverage is what would talk a later lane into decoding the blob. Signature,
+// unit, boot and attempt already route around it (host envelope; dissolve into attempt; mint name).
+// Replay stays AxisDeferred: the host-printed axis is a second consumer of a minted blob, which
+// a 409 on a second mint of the same name does not answer.
+
+type AxisMintObservability
+  = MintExpiresAtCoverage
+  | MintUnobservableDeclaredBoundary
+
+type MintSurfaceCoverageQuestion
+  = GenerateJitconfig201ExpiresAtPresence
+  | DuplicateJitconfigName409
+
+fn axis_mint_observability(axis: JitAdmissionAxis) -> AxisMintObservability {
+  match axis {
+    ExpiryAxis => MintExpiresAtCoverage
+    ReplayAxis => MintUnobservableDeclaredBoundary
+    SignatureAxis => MintUnobservableDeclaredBoundary
+    UnitBindingAxis => MintUnobservableDeclaredBoundary
+    BootBindingAxis => MintUnobservableDeclaredBoundary
+    AttemptBindingAxis => MintUnobservableDeclaredBoundary
+  }
+}
+
+type MintSurfaceLiveCensus
+  = LiveCensusUnmet { question: MintSurfaceCoverageQuestion }
+  | LiveCensusDischarged {
+      question: MintSurfaceCoverageQuestion
+      receipt: NonEmptyStr
+    }
+
+data generate_jitconfig_201_expires_at_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
+  question: GenerateJitconfig201ExpiresAtPresence,
+}
+
+data duplicate_jitconfig_name_409_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
+  question: DuplicateJitconfigName409,
+}

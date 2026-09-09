@@ -46,7 +46,7 @@ import std.content_hash { content_hash_of_value, serialize_content_hash }
 import gunbc.fabric_executor_class { ExecutorSanction, fleet_cell_sanction, capacity_admission_wire }
 import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
-  CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
+  CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, ReservationLost,
   StoreUnavailable, AttemptRefused, BudgetRefused,
   CellHoldEnd, CellHoldEnded, HoldEndBudgetRefused, HoldEndSlotNotHeld,
   HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused, release_reserved_cell_at,
@@ -246,6 +246,7 @@ fn cp_probe_code(r: CellReservation) -> Int {
     AttemptRefused { slot_key: _, detail: _ } => 4
     NoCellAdmissible { considered: c, refused: f } =>
       if f.length() != 0 { 52 } else { if c.length() == 0 { 50 } else { 51 } }
+    CellSelectionTieUnresolved { digest: _, considered: _ } => 53
   }
 }
 
@@ -494,6 +495,11 @@ fn fci1_cell_reservation_wire(reservation: CellReservation) -> String {
       "reservation-committed|slot=", slot as String,
       "|generation=", to_string(generation),
       "|offer=", offer.key as String,
+    ], "")
+    CellSelectionTieUnresolved { digest: digest, considered: considered } => join([
+      "reservation-tie-unresolved|digest=", digest as String,
+      "|considered=",
+      serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(considered, c => fci1_offer_candidacy_wire(candidacy: c)))) as String,
     ], "")
     NoCellAdmissible { considered: considered, refused: refused } => join([
       "reservation-no-cell-admissible|considered=",
@@ -746,6 +752,7 @@ func fci1_live_reserve_and_observe_available(
       }
     } }
     NoCellAdmissible { considered: _, refused: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
+    CellSelectionTieUnresolved { digest: _, considered: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     BudgetRefused { slot_key: _, refusal: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     ReservationLost { slot_key: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     StoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
@@ -1374,6 +1381,7 @@ fn fci1_cell_receipt_wire(
   memory_swap_max: NonEmptyStr,
   tasks_max: NonEmptyStr,
   cpu_weight: NonEmptyStr,
+  cpu_quota_per_sec: String,
   base_owner: PosixOwnerSpec,
   cell_owner: PosixOwnerSpec,
   attempt_owner: PosixOwnerSpec,
@@ -1385,6 +1393,7 @@ fn fci1_cell_receipt_wire(
     "|memory_swap_max=", memory_swap_max as String,
     "|tasks_max=", tasks_max as String,
     "|cpu_weight=", cpu_weight as String,
+    "|cpu_quota_per_sec=", cpu_quota_per_sec,
     "|base_owner_group=", to_string(base_owner),
     "|cell_owner_group=", to_string(cell_owner),
     "|attempt_owner_group=", to_string(attempt_owner),
@@ -1399,6 +1408,7 @@ type Fci1CellReceiptObservation
       memory_swap_max: NonEmptyStr
       tasks_max: NonEmptyStr
       cpu_weight: NonEmptyStr
+      cpu_quota_per_sec: String
       base_owner_group: PosixOwnerSpec
       cell_owner_group: PosixOwnerSpec
       attempt_owner_group: PosixOwnerSpec
@@ -1427,7 +1437,7 @@ fn fci1_cell_receipt_observation() -> Fci1CellReceiptObservation {
               Present { value: BoundaryReadRefused { cause: why } } => Fci1CellReceiptRefused { detail: why }
               Present { value: BoundaryValuesRead {
                 memory_max: memory_max, memory_high: memory_high, memory_swap_max: memory_swap_max,
-                tasks_max: tasks_max, cpu_weight: cpu_weight,
+                tasks_max: tasks_max, cpu_weight: cpu_weight, cpu_quota_per_sec: cpu_quota_per_sec,
               } } => Fci1CellReceiptAdmitted {
                 wire: fci1_cell_receipt_wire(
                   decision: decision,
@@ -1436,6 +1446,7 @@ fn fci1_cell_receipt_observation() -> Fci1CellReceiptObservation {
                   memory_swap_max: memory_swap_max as NonEmptyStr,
                   tasks_max: tasks_max as NonEmptyStr,
                   cpu_weight: cpu_weight as NonEmptyStr,
+                  cpu_quota_per_sec: cpu_quota_per_sec,
                   base_owner: base_owner,
                   cell_owner: cell_owner,
                   attempt_owner: attempt_owner,
@@ -1445,6 +1456,7 @@ fn fci1_cell_receipt_observation() -> Fci1CellReceiptObservation {
                 memory_swap_max: memory_swap_max as NonEmptyStr,
                 tasks_max: tasks_max as NonEmptyStr,
                 cpu_weight: cpu_weight as NonEmptyStr,
+                cpu_quota_per_sec: cpu_quota_per_sec,
                 base_owner_group: base_owner,
                 cell_owner_group: cell_owner,
                 attempt_owner_group: attempt_owner,
@@ -1461,6 +1473,7 @@ func fci1_live_cell_observation(path: String) -> ProcessExit {
     Fci1CellReceiptRefused { detail: why } => exit_failure(reason: join(["cell observation refused: ", why], ""))
     Fci1CellReceiptAdmitted {
       wire: wire, memory_max: _, memory_high: _, memory_swap_max: _, tasks_max: _, cpu_weight: _,
+      cpu_quota_per_sec: _,
       base_owner_group: _, cell_owner_group: _, attempt_owner_group: _,
     } => fabric_ci_write_wire(path: path, wire: fabric_ci_evidence_wire(value: wire))
   }
@@ -1511,6 +1524,7 @@ func fci1_assert_cell_unchanged(before_wire: String) -> ProcessExit {
     Fci1CellReceiptRefused { detail: why } => exit_failure(reason: join(["persistent cell substrate observation refused: ", why], ""))
     Fci1CellReceiptAdmitted {
       wire: observed, memory_max: _, memory_high: _, memory_swap_max: _, tasks_max: _, cpu_weight: _,
+      cpu_quota_per_sec: _,
       base_owner_group: _, cell_owner_group: _, attempt_owner_group: _,
     } => match decode_fabric_ci_evidence_wire(wire: before_wire) {
     FabricCiEvidenceUndecodable => exit_failure(reason: "persistent cell substrate before-wire undecodable")
@@ -1525,7 +1539,8 @@ func fci1_grade_and_write_cell_receipt(before_wire: String, phase: NonEmptyStr, 
     Fci1CellReceiptRefused { detail: why } => exit_failure(reason: join(["cell receipt observation refused: ", why], ""))
     Fci1CellReceiptAdmitted {
       wire: after, memory_max: memory_max, memory_high: memory_high, memory_swap_max: memory_swap_max,
-      tasks_max: tasks_max, cpu_weight: cpu_weight, base_owner_group: base_owner,
+      tasks_max: tasks_max, cpu_weight: cpu_weight, cpu_quota_per_sec: cpu_quota_per_sec,
+      base_owner_group: base_owner,
       cell_owner_group: cell_owner, attempt_owner_group: attempt_owner,
     } => match decode_fabric_ci_evidence_wire(wire: before_wire) {
     FabricCiEvidenceUndecodable => exit_failure(reason: "persistent cell substrate before-wire undecodable")
@@ -1536,7 +1551,8 @@ func fci1_grade_and_write_cell_receipt(before_wire: String, phase: NonEmptyStr, 
           "phase=", phase as String, "\nbefore=", before as String, "\nafter=", after as String,
           "\nmemory_max=", memory_max as String, "\nmemory_high=", memory_high as String,
           "\nmemory_swap_max=", memory_swap_max as String, "\ntasks_max=", tasks_max as String,
-          "\ncpu_weight=", cpu_weight as String, "\nbase_owner_group=", to_string(base_owner),
+          "\ncpu_weight=", cpu_weight as String, "\ncpu_quota_per_sec=", cpu_quota_per_sec,
+          "\nbase_owner_group=", to_string(base_owner),
           "\ncell_owner_group=", to_string(cell_owner), "\nattempt_owner_group=", to_string(attempt_owner),
         ], ""),
       )

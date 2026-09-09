@@ -29,7 +29,6 @@ import gunbc.guarantee_stall.enforcement_live_closure_gate_stall { enforcement_l
 import gunbc.guarantee_stall.mandatory_tag_live_corpus_stall { mandatory_tag_live_corpus_stall }
 import gunbc.guarantee_stall.parse_ingest_grammar_relation_stall { parse_ingest_grammar_relation_stall }
 import gunbc.guarantee_stall.required_regen_host_derivation_stall { required_regen_host_derivation_stall }
-import gunbc.guarantee_stall.self_host_candidate_generation_add_slice_stall { self_host_candidate_generation_add_slice_stall }
 import gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall { self_host_hand_authorized_cargo_toml_stall }
 import gunbc.guarantee_stall.self_host_hand_authorized_driver_source_stall { self_host_hand_authorized_driver_source_stall }
 import gunbc.guarantee_stall.self_host_spelling_search_stall { self_host_spelling_search_stall }
@@ -66,6 +65,7 @@ import gunbc.guarantee_stall.eval_steps_outside_the_reading_coproduct_stall { ev
 import gunbc.guarantee_stall.algebra_application_owner_resolution_stall { algebra_application_owner_resolution_stall }
 import gunbc.guarantee_stall.algebra_expansion_positional_argument_stall { algebra_expansion_positional_argument_stall }
 import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { generic_lambda_parameter_receiver_evidence_stall }
+import gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall { argument_shape_undecided_at_a_declared_position_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -185,7 +185,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   mandatory_tag_live_corpus_stall,
   parse_ingest_grammar_relation_stall,
   required_regen_host_derivation_stall,
-  self_host_candidate_generation_add_slice_stall,
   self_host_hand_authorized_cargo_toml_stall,
   self_host_hand_authorized_driver_source_stall,
   self_host_spelling_search_stall,
@@ -227,6 +226,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   algebra_application_owner_resolution_stall,
   algebra_expansion_positional_argument_stall,
   generic_lambda_parameter_receiver_evidence_stall,
+  argument_shape_undecided_at_a_declared_position_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

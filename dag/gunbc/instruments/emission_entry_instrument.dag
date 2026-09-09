@@ -531,6 +531,19 @@ fn emission_scope_entry(sc: EmissionScope) -> EmissionScopeEntry {
 // recorded target TRUE BY CONSTRUCTION rather than checked afterwards, which is section 5's order
 // of preference; and where the triple cannot be read the half REFUSES, because an unpinned target
 // is exactly the state this pin exists to exclude. Found by review on gunbc#9857.
+//
+// THE TOOLCHAIN CHANNEL IS PINNED BY THE SAME ARGUMENT, ONE LEVEL UP. The cargo half runs with
+// cwd = out_dir, a fresh mktemp directory: with no rust-toolchain.toml there, rustup resolves the
+// host's DEFAULT toolchain, and a census under cargo 1.83 against one under cargo 1.93 would
+// compare as equal epochs while different compilers did the measuring -- the fabricated
+// comparability the target pin excludes, at the channel layer. Measured 2026-09-07 on this
+// instrument: a host default of 1.83.0 met a crates.io index whose freshly published dependency
+// manifests require edition2024, dependency resolution failed before any diagnostic existed, and
+// the zero-diagnostic refusal fired (correctly) on an unmeasured tree. The pin is propagated by
+// COPYING the repo's rust-toolchain.toml into out_dir: the file remains the sole in-repo channel
+// authority (its header forbids a second pinned literal), and the copy makes the measured channel
+// true by construction on any host. The gate's read_live_toolchain observes the same channel
+// because every documented actuator invokes from the repository root, which the same file governs.
 fn measure_cargo_half(
   subject: EmissionMeasurementSubject,
   root: String,
@@ -582,11 +595,18 @@ fn measure_cargo_half(
         path: concat(out_dir, "/Cargo.toml"),
         content: cssl_v1_compiled_probe_lib_cargo_toml(root: root)
       )
-      if !manifest.success {
+      let channel = Filesystem.Read(path: concat(root, "/rust-toolchain.toml"))
+      let channel_pin = if channel.success {
+        Filesystem.Write(path: concat(out_dir, "/rust-toolchain.toml"), content: channel.content).success
+      } else {
+        false
+      }
+      let scaffold_incomplete = !manifest.success || !channel_pin
+      if scaffold_incomplete {
         EmissionCargoUnreached {
           subject: subject,
           stage: StageManifest,
-          cause: concat("could not write the probe crate manifest under ", out_dir),
+          cause: concat("could not write the probe crate manifest and toolchain channel pin under ", out_dir),
           emit_diagnostics: emit_diagnostics,
           emitted_files: emitted_files
         }

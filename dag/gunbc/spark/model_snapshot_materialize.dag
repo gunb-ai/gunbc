@@ -1,0 +1,735 @@
+module gunbc.spark.model_snapshot_materialize
+
+import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import std.algebra { trim }
+import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import extdeps.exec.command { shell_quote }
+import gunbc.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy, SshTarget, portable_remote_words, shape_fleet_ssh_password_exec_trusting,
+}
+import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
+import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.artifact_acquisition {
+  AcquisitionSubject, AcquisitionSource, AcquisitionHandler,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified,
+  AcquisitionProbeFailed,
+  AcquisitionAttempt, AttemptTerminal, AttemptFailedKey, AttemptRejected, AttemptUnreachable,
+  AcquisitionOutcome, AcquisitionFetched, AcquisitionRefused, VerifyMechanismFailed,
+  acquire_artifact, acquisition_key_wire,
+  SourceLocator, SourceArgv, SourceUrl,
+}
+import gunbc.spark.model_snapshot_acquisition {
+  ModelSnapshotDesired, ModelSnapshotRole, SnapshotSeed, SnapshotReplicaOf,
+  model_snapshot_subject_for, model_snapshot_completion_check_argv, spark_hub_cache_root,
+}
+
+// THE SPARK SIDE OF ACQUISITION, RUN AS THE TYPED FOLD RATHER THAN AS RENDERED SHELL.
+//
+// WHAT THIS REPLACES, AND WHY IT IS A REPLACEMENT RATHER THAN AN ADDITION. The first cut of the
+// materialize step rendered its source list into the privileged apply script as
+// `docker exec ... || echo materialize-source-failed`, walked the sources with a shell `if`, and
+// checked completion with `[ -d <snapshot_dir> ]`. Every one of those re-implemented, in shell, a
+// step gunbc.artifact_acquisition already owns -- so the combinator extracted to end a three-way fork
+// gained a fourth spelling of itself in the same change that introduced it. The source list was
+// shared; the FOLD was not, which is the half that matters.
+//
+// THE HOST IS BOUND INTO THE HANDLER, WHICH IS WHY THIS WORKS AT ALL. The Ubuntu binding runs its
+// reconcile in-process against the machine gunbc is running on; a Spark's weights are not on that
+// machine. The combinator never names a transport, so its three handler slots are bound here to
+// remote executions against ONE host, and the fold runs locally while every effect lands there. The
+// algorithm is unchanged and unduplicated.
+
+type SparkMaterializeContext {
+  host: HostIdentity
+  trust: FleetOpenSshTrustPolicy
+  path: SparkReachPath
+  admin_credential: Secret
+  admin_credential_file: NonEmptyStr
+  executor: SnapshotAcquisitionExecutor
+}
+
+type SparkRemoteRun
+  = RemoteRan { exit_code: Int, stdout: String, stderr: String }
+  | RemoteUnreachable { cause: String }
+
+// EVERY LEG IS PRIVILEGED, BECAUSE THE DAEMON IT MUST REACH IS. Acquisition drives docker on the
+// target, and docker's socket is root-owned on these hosts -- an unprivileged run answers
+// `permission denied while trying to connect to the docker API`, which is what the first real
+// acquisition hit. The privilege comes from the shape gunbc.spark.pair_serving_apply already uses for
+// the same hosts -- `sudo -S` with the credential on stdin ahead of the command -- rather than a
+// second mechanism invented here. `sudo -n` was tried first and is wrong: it requires passwordless
+// sudo, which this fleet does not grant.
+//
+// ONE REMOTE EXECUTION, AND THE TWO FAILURES IT KEEPS APART. "the ssh leg never landed" and "the
+// command ran and exited non-zero" are different facts with different remedies, and collapsing them
+// is what would make an unreachable host read as a corrupt download.
+fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRemoteRun {
+  match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
+    Absent => RemoteUnreachable { cause: "the remote invocation is not expressible as portable remote words" }
+    Present { value: words } =>
+      match spark_reach_endpoint(host: ctx.host, path: ctx.path) {
+        Absent => RemoteUnreachable { cause: join(["no ", spark_reach_path_wire(p: ctx.path), " endpoint for ", ctx.host as String], "") }
+        Present { value: endpoint } => {
+          let r = password_file_ssh_exec_portable_words_with_stdin(
+            password_file: ctx.admin_credential_file,
+            client_args: shape_fleet_ssh_password_exec_trusting(
+              trust: ctx.trust,
+              target: SshTarget {
+                endpoint: endpoint as NonEmptyStr,
+                principal: spark_operator_bootstrap_login as NonEmptyStr,
+              },
+              words: words,
+            ),
+            stdin_payload: join([ctx.admin_credential as String, "\n", shell_command_line(argv: argv), "\n"], ""),
+          )
+          RemoteRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
+        }
+      }
+  }
+}
+
+// SEAM 1: ARGV BOUNDARIES SURVIVE THE WIRE, AND AN EXECUTION PROVED THEY DID NOT. `spark_remote_run`
+// takes a `List<String>` and flattened it with `join(argv, " ")`, UNQUOTED -- so one list member
+// containing spaces became several shell words on the far side. The transfer start carries exactly
+// such a member (`--description=gunbc model snapshot materialize`), so systemd would have seen an
+// option value of `gunbc` followed by three stray arguments. This sat immediately behind the
+// `--unit=` defect, in the same command.
+fn shell_command_line(argv: List<String>) -> String {
+  join(map(argv, w => shell_quote(arg: w)), " ")
+}
+
+// SEAM 2: WHERE THE HUB CLI RUNS IS MODELLED, BECAUSE IT IS NOT ON THE HOST. Measured on every Spark
+// reached 2026-09-08: no `hf` executable on any host; the CLI exists at /opt/env/bin/hf INSIDE a
+// container. Acquisition previously ran the bare source locator under host-level `systemd-run`, which
+// fails for the same reason the empty unit name did -- a command the host cannot resolve.
+//
+// IT MUST NOT DEPEND ON THE SERVING CONTAINER. Verification was hardwired to
+// `docker exec gunbc-spark-pair` -- the OLD PRODUCTION container, which on the canary host is the
+// DeepSeek unit rather than the runtime this arm names, and which may not run at all while weights
+// are being acquired. Acquisition happens BEFORE serving exists, so it carries its own executor.
+// THE CLI PATH BELONGS TO THE IMAGE THAT CONTAINS IT. A previous revision hardcoded
+// `/opt/env/bin/hf` for every containerised executor -- a path MEASURED INSIDE THE DEEPSEEK IMAGE and
+// then applied to the community runtime, where `hf` lives at /usr/local/bin/hf and the hardcoded path
+// does not exist at all. That is a fact from one runtime asserted about another, which is the precise
+// fault gunbc.spark.serving_arm was added to remove, committed here two hours after that module
+// landed. The path is now carried per executor.
+type SnapshotAcquisitionExecutor
+  = HostCli
+  | ContainerizedCli {
+      image: NonEmptyStr
+      cli_path: NonEmptyStr
+      host_path: NonEmptyStr
+      container_path: NonEmptyStr
+    }
+
+// THE EXECUTOR DOES NOT ADD PRIVILEGE OF ITS OWN. Every remote leg already runs under `sudo -S`
+// (see spark_remote_run), so wrapping `sudo` here too would nest it -- and a second privilege
+// mechanism beside the first is the fork this module keeps refusing elsewhere.
+// THE SENTINEL RUNS INSIDE THE CONTAINER, AND AN EXECUTION PROVED THAT MATTERS. A previous revision
+// wrapped the sentinel around the WHOLE invocation -- `sh -c "docker run ... hf ... && echo OK || echo
+// FAILED"` -- so when DOCKER ITSELF failed to start the container, the `||` branch fired and emitted
+// the FAILED sentinel. A container that never started was therefore reported as a checkpoint whose
+// bytes are wrong, about a tree a live engine was serving correctly at that moment.
+//
+// THE SENTINEL PROVED THE WRONG THING. It established that the outer shell ran, which was never in
+// doubt; the question is whether THE INSTRUMENT ran. So the `sh -c` moves inside the container, in the
+// same process space as the CLI: if the container cannot start, no sentinel is emitted at all and the
+// reading is InstrumentDidNotRun. Provenance has to be produced by the thing whose execution is in
+// question -- wrapping it one layer out measures the wrapper.
+fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> List<String> {
+  match executor {
+    HostCli => with_execution_sentinel(argv: argv)
+    ContainerizedCli { image: img, cli_path: cli, host_path: hp, container_path: cp } =>
+      ["docker", "run", "--rm",
+       "-v", join([hp as String, ":", cp as String], ""),
+       "--entrypoint", "sh", img as String,
+       "-c", sentinel_command_line(argv: translate_mounted_paths(
+         host_path: hp, container_path: cp,
+         argv: concat([cli as String], argv.skip(n: 1)),
+       )),
+      ]
+  }
+}
+
+// ── EXECUTION PROVENANCE, REPLACING A STDERR PATTERN ROSTER ────────────────────────────────────
+//
+// THE ROSTER WAS A HEURISTIC AND IT FAILED ON ITS FIRST REAL INPUT. A previous revision decided
+// whether the verification INSTRUMENT had run by matching stderr against a list of known failure
+// strings -- `command not found`, `Unable to find image`, `401`, and so on -- with anything
+// unrecognised falling through to "the bytes are wrong". The first live acquisition produced
+// `permission denied while trying to connect to the docker API`, which was on no list, so a
+// PERMISSION ERROR was reported as a digest mismatch: the exact conflation the roster existed to
+// prevent, reintroduced by the mechanism meant to fix it.
+//
+// A CLOSED SYSTEM DOES NOT NEED THE GUESS. The question is not "does this text look like a tooling
+// failure" but "did the verification command execute at all", and that is answerable structurally:
+// run it behind a shell that prints a sentinel carrying the command's own exit status. The sentinel
+// can only appear if the instrument ran. Its ABSENCE is proof the instrument did not run; its
+// presence carries the verdict. No failure text is interpreted, so no future failure text can be
+// missing from a list.
+// TWO SENTINELS RATHER THAN ONE CARRYING A PARSED NUMBER. A first attempt echoed the exit status and
+// read it back with `to_int`, which the interpreter does not implement -- and parsing a number out of
+// captured output would have been a second decoder to get wrong in any case. Two distinct words carry
+// the same information with no parsing at all: the shell picks which one to emit.
+data verify_ok_sentinel: NonEmptyStr = "GUNBC-VERIFY-OK" as NonEmptyStr
+data verify_failed_sentinel: NonEmptyStr = "GUNBC-VERIFY-FAILED" as NonEmptyStr
+
+// THE EXECUTOR OWES THE PATH TRANSLATION, BECAUSE IT OWNS THE MOUNT. A placement's `host_path` is
+// true ON THE HOST; the command runs INSIDE a container where that tree appears at `container_path`.
+// A previous revision handed `--local-dir /home/briansrls/models/...` to a process that could only
+// see `/out`, so `hf` found no files there, `--fail-on-missing-files` made it exit non-zero, and the
+// fold reported the checkpoint as not matching its declared identity.
+//
+// THE BYTES WERE PERFECT THE WHOLE TIME. Run by hand against the container path, the same verify
+// answers `Verified 24 file(s) ... All checksums match`. Three consecutive receipts said otherwise
+// about a tree a live engine was serving correctly, and each said it for a different reason that had
+// nothing to do with the bytes: an unprivileged docker socket, a CLI path from the wrong image, and
+// now a host path handed across a mount boundary.
+//
+// THE TRANSLATION BELONGS HERE AND NOWHERE ELSE. `executor_wrap` is the thing that DECIDED host_path
+// appears at container_path -- it wrote the `-v` flag -- so it is the only place that knows the
+// mapping. Making a caller pre-translate would put mount knowledge in something that does not own
+// the mount, which is how the fact crossed contexts in the first place.
+fn translate_mounted_paths(host_path: NonEmptyStr, container_path: NonEmptyStr, argv: List<String>) -> List<String> {
+  map(argv, w => translate_one_mounted_path(word: w, host_path: host_path, container_path: container_path))
+}
+
+fn translate_one_mounted_path(word: String, host_path: NonEmptyStr, container_path: NonEmptyStr) -> String {
+  let from = host_path as String
+  let to = container_path as String
+  if word == from { to } else { word }
+}
+
+// THE WRAPPER PRESERVES THE COMMAND'S OWN EXIT STATUS, AND AN EARLIER SHAPE DESTROYED IT. It read
+// `cmd && echo OK || echo FAILED`, and BOTH branches exit zero because `echo` succeeds -- so the
+// wrapper reported success for a failed command. Any caller reading the outer exit code therefore saw
+// zero no matter what happened, which is how the post-transfer path came to report AcquisitionFetched
+// after a failed verification: A FALSE SUCCESS, categorically worse than the false refusals this
+// module has been correcting, because nothing downstream can detect it.
+//
+// THE SENTINEL AND THE EXIT STATUS NOW AGREE BY CONSTRUCTION. The command runs, its status is
+// captured before anything else can overwrite it, the matching sentinel is emitted, and the wrapper
+// exits with that same status. A reader may use either and cannot get a different answer from them.
+fn sentinel_command_line(argv: List<String>) -> String {
+  join([
+    shell_command_line(argv: argv),
+    "; rc=$?; if [ $rc -eq 0 ]; then echo ", verify_ok_sentinel as String,
+    "; else echo ", verify_failed_sentinel as String,
+    "; fi; exit $rc",
+  ], "")
+}
+
+fn with_execution_sentinel(argv: List<String>) -> List<String> {
+  ["sh", "-c", sentinel_command_line(argv: argv)]
+}
+
+
+// NEITHER SENTINEL PRESENT MEANS THE INSTRUMENT NEVER REACHED ITS OWN `echo`, so nothing was learned
+// about the subject. That is a THIRD state, not a bad verdict, and keeping it distinct is the entire
+// point: a permission error, a missing image and a genuinely corrupt checkpoint must not share an arm.
+// THE EXIT STATUS WAS PRESERVED AND THEN DISCARDED TWO FUNCTIONS LATER, WHICH LEFT THE FALSE SUCCESS
+// OPEN. An earlier change rewrote the wrapper so it captures the command's own status and exits with
+// it -- and both callers then bound `exit_code: _` and decoded from stdout alone. So the status that
+// work existed to preserve reached nobody, and a verifier printing the OK marker before exiting
+// nonzero still resolved to InstrumentVerified and then to AcquisitionFetched. The wrapper was fixed;
+// the reader was not, and the fix reported as complete.
+//
+// SO THE READING IS A FUNCTION OF BOTH TERMS. Success requires exit zero AND the OK marker. Neither
+// alone is sufficient, and the two disagreeing is not a tie to be broken by preferring one -- it is a
+// fourth state, because an instrument whose status and output contradict each other has not told us
+// what it found. Collapsing that into either verdict would be the state-space conflation this module
+// has already corrected three times elsewhere.
+type InstrumentReading
+  = InstrumentDidNotRun
+  | InstrumentVerified
+  | InstrumentRejectedTheSubject
+  | InstrumentContradictedItself { detail: String }
+
+fn read_instrument(exit_code: Int, stdout: String) -> InstrumentReading {
+  let said_ok = stdout.contains(verify_ok_sentinel as String)
+  let said_failed = stdout.contains(verify_failed_sentinel as String)
+  if said_ok && said_failed {
+    InstrumentContradictedItself { detail: "the output carries BOTH sentinels, so which verdict it reached is unestablished" }
+  } else if said_ok {
+    read_instrument_ok_claim(exit_code: exit_code)
+  } else if said_failed {
+    read_instrument_failed_claim(exit_code: exit_code)
+  } else {
+    InstrumentDidNotRun
+  }
+}
+
+// AN OK MARKER WITH A NONZERO STATUS IS THE DISCRIMINATING CASE. It is exactly what a partially
+// repaired wrapper produces, and exactly what the previous reader admitted as success.
+fn read_instrument_ok_claim(exit_code: Int) -> InstrumentReading {
+  if exit_code == 0 {
+    InstrumentVerified
+  } else {
+    InstrumentContradictedItself {
+      detail: join(["the output claims verification passed while the process exited ", to_string(exit_code)], ""),
+    }
+  }
+}
+
+// A FAILED MARKER WITH A ZERO STATUS IS THE SAME DEFECT MIRRORED, and it is what the ORIGINAL
+// `cmd && echo OK || echo FAILED` wrapper emitted on every failure: the correct sentinel beside a
+// status that said success. Reading it as a plain rejection would be right by luck here and wrong for
+// any wrapper that means its status.
+fn read_instrument_failed_claim(exit_code: Int) -> InstrumentReading {
+  if exit_code == 0 {
+    InstrumentContradictedItself {
+      detail: "the output claims verification failed while the process exited zero, which is the status-destroying wrapper shape",
+    }
+  } else {
+    InstrumentRejectedTheSubject
+  }
+}
+
+// ── THE THREE HANDLER SLOTS ────────────────────────────────────────────────────────────────────
+//
+// THE PROBE IS TWO OPERATIONS, NOT ONE COMPOUND, mirroring the Ubuntu binding's shape
+// (`shell.Test.IsFile` then a digest verify) rather than embedding a shell if/else whose branches
+// this model could not see. Presence answers whether anything is there; verification answers whether
+// what is there is right. Four states out, because "not there", "there and complete", "there and
+// incomplete" and "I could not tell" have four different remedies.
+//
+// COMPLETION IS `hf cache verify`, NEVER A DIRECTORY TEST. `hf download` creates the snapshot
+// directory early and fills it, so a transfer interrupted at 200 of 330 GB leaves that directory
+// present with shards missing -- and a presence test then reports the weights installed and lets an
+// engine launch on a partial checkpoint.
+fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject) -> AcquisitionObservation {
+  match spark_remote_run(ctx: ctx, argv: ["test", "-d", subject.install_path as String]) {
+    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteRan { exit_code: present, stdout: _, stderr: _ } =>
+      if present != 0 {
+        AcquisitionAbsent
+      } else {
+        spark_snapshot_verify_observation(ctx: ctx, verify: verify)
+      }
+  }
+}
+
+// SEAM 4: A REJECTED VERIFY IS NOT A BYTE MISMATCH, and collapsing them repeats one layer up the
+// defect just fixed one layer down. `hf cache verify` exits non-zero for a missing container, an
+// absent CLI, an unknown option, an auth failure -- and for genuinely missing or wrong bytes. Only the
+// last is a statement about the SNAPSHOT; the rest are statements about the PROBE, and reporting them
+// as a digest mismatch sends an operator to re-fetch bytes nothing ever examined.
+//
+// UNRECOGNISED OUTPUT FALLS THROUGH TO MISMATCH, which is the conservative direction: a real mismatch
+// misreported as an instrument failure would leave bad bytes installed and called present.
+// THIS PATH HAS NO DIGEST ORACLE, SO IT MAKES NO DIGEST CLAIM. `hf cache verify` exits non-zero for a
+// checksum mismatch, for missing files, for an auth failure and for a bad argument alike, and this
+// repository has observed only its SUCCESS output -- never a failure it could classify. An earlier
+// revision answered AcquisitionDigestMismatch here, which asserts the bytes are wrong: a fact nothing
+// established, and one that sent an operator after a tree three separate times tonight while a live
+// engine served it correctly. Each of those three refusals had a different cause and none was the
+// bytes: an unprivileged docker socket, a CLI path taken from the wrong image, and a host path handed
+// across a mount boundary.
+//
+// PROBEFAILED SAYS WHAT IS ACTUALLY KNOWN -- verification did not pass, and why is undetermined. The
+// distinction is load-bearing rather than cautious, because the two answers have OPPOSITE remedies:
+// a digest mismatch means discard and re-fetch, an undetermined failure means fix the instrument and
+// ask again, and re-fetching eighty gigabytes on the strength of a broken verifier is the expensive
+// direction. The contrast is visible one module away: the install-media path DOES compare an actual
+// SHA256 against a declared one, so its Sha256Mismatch genuinely earns AcquisitionDigestMismatch.
+//
+// NEXT-RUNG TRIGGER: a proven, cited mapping from this verifier's exit statuses or output to the
+// distinction, at which point this arm may narrow to the digest claim it currently declines to make.
+fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionObservation {
+  match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
+    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      match read_instrument(exit_code: code, stdout: out) {
+        InstrumentDidNotRun =>
+          AcquisitionProbeFailed { reason: join(["the verification instrument never executed, so nothing was learned about the snapshot: ", err], "") as NonEmptyStr }
+        InstrumentVerified => AcquisitionVerified
+        InstrumentContradictedItself { detail: d } =>
+          AcquisitionProbeFailed { reason: join(["the verification instrument contradicted itself, so its verdict is unestablished: ", d, ": ", err], "") as NonEmptyStr }
+        InstrumentRejectedTheSubject =>
+          AcquisitionProbeFailed { reason: join(["verification refused the snapshot and the reason is undetermined -- this is NOT established as a digest mismatch: ", err], "") as NonEmptyStr }
+      }
+  }
+}
+
+fn spark_snapshot_ensure_parent(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", subject.parent_directory as String]) {
+    RemoteUnreachable { cause: _ } => false
+    RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
+  }
+}
+
+// ── THE TRANSFER IS DETACHED ON THE HOST AND SUPERVISED FROM HERE ──────────────────────────────
+//
+// WHY A SYNCHRONOUS `docker exec` WAS THE WRONG SHAPE. The seed fetch is 330 GB over a wireless link
+// -- hours. Run inside the ssh session, the transfer is a child of that session: the connection drops,
+// the child takes SIGHUP, and hours of transfer die with a watcher that was only ever watching.
+// Nothing about that is a property of the download; it is a property of where it was parented.
+//
+// DETACHED IS NOT ABANDONED, WHICH IS THE WHOLE DESIGN. The transfer runs as a transient systemd unit
+// on the Spark, so it is parented by pid 1 and survives every ssh leg. This module then SUPERVISES
+// it over many short polls. A dropped connection now loses one poll, not the work: the unit keeps
+// running, and the next poll -- or the next apply entirely -- reattaches to it.
+//
+// RE-RUNNING WHILE A TRANSFER IS IN FLIGHT ATTACHES RATHER THAN STARTING A SECOND ONE. An operator
+// re-running apply after a disconnect is the EXPECTED path, not an edge case, so starting a second
+// 330 GB download against the same cache would be the ordinary outcome rather than a rare one. The
+// unit name is derived from the subject, so an in-flight transfer is found and joined.
+// SEAM 3: THE UNIT IS KEYED BY ITS SUBJECT, AND A GLOBAL CONSTANT WAS A SHARED STATE SLOT. One name
+// served every model, revision, placement and source, while the note above claimed the name was
+// derived from the subject. So a second acquisition could attach to, clear, or read the exit status
+// of a FIRST one and call it its own -- and the reattach guarantee that makes re-running safe was
+// valid only while exactly one transfer had ever existed.
+//
+// THE DESTINATION IS CARRIED WHOLE RATHER THAN DIGESTED. A systemd unit name admits alphanumerics,
+// dashes, underscores and dots to 256 characters, and this fleet's paths are well inside that -- so
+// the full destination both discriminates perfectly and stays readable in `systemctl` output, which a
+// digest would not. An earlier attempt here reached for a hash helper that returned the string's
+// LENGTH under a name claiming otherwise; the simple answer is the correct one.
+fn unit_name_segment(s: String) -> String {
+  join(["-", join(split(join(split(s, "/"), "-"), " "), "-")], "")
+}
+
+// THE UNIT NAME CARRIES THE KEY, because a transfer is identified by WHAT IT IS FETCHING and not only
+// by where it lands. Keyed on identity and path alone, two runs pinned to DIFFERENT REVISIONS of the
+// same checkpoint share one unit name: the second run polls the first one's unit, reads its clean exit,
+// and reports the revision it wanted as transferred when the bytes on disk are the other one. That is
+// the false-success shape this module has already been bitten by once, reached from a different
+// direction -- and it survives a correct verifier, because the poll answers before verification runs.
+//
+// WHAT THIS DOES NOT YET CARRY IS THE SOURCE. Two sources for one key would still collide, and the
+// reason is structural rather than an oversight: `spark_transfer_clear` and `spark_transfer_state`
+// receive only the subject, so a source-bearing name would differ between the process that STARTS the
+// unit and the process that POLLS it -- which fails closed as a spurious TransferAbsent, but fails.
+// Threading the source through the supervision surface is the fix and it is not made here.
+fn spark_transfer_unit_for(subject: AcquisitionSubject) -> NonEmptyStr {
+  join([
+    "gunbc-materialize",
+    unit_name_segment(s: subject.identity as String),
+    unit_name_segment(s: acquisition_key_wire(key: subject.key) as String),
+    unit_name_segment(s: subject.install_path as String),
+  ], "") as NonEmptyStr
+}
+
+// THE SUPERVISION BUDGET IS DECLARED, AND EXHAUSTING IT IS NOT A FAILURE OF THE TRANSFER. These two
+// states have opposite remedies: a failed transfer wants investigating, a still-running one wants
+// waiting for. Collapsing them would make a slow link look like a broken one and invite an operator
+// to kill work that was progressing.
+//
+// 900 polls at 20 seconds is five hours, chosen against the Fermi estimate for 330 GB over this
+// fleet's wireless uplink and NOT measured -- the uplink's real throughput is unmeasured, which is
+// exactly why the budget's exhaustion is a typed carry-on rather than a verdict.
+data spark_transfer_poll_budget: Nat = 900
+data spark_transfer_poll_interval_seconds: Nat = 20
+
+type SparkTransferState
+  = TransferAbsent
+  | TransferRunning
+  | TransferExitedClean
+  | TransferExitedFailed { status: String }
+  | TransferStateUnreadable { cause: String }
+
+fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> SparkTransferState {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ActiveState", "--value"]) {
+    RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
+    RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
+      if state == "active" || state == "activating" || state == "deactivating" {
+        TransferRunning
+      } else if state == "" || state == "inactive" {
+        TransferAbsent
+      } else {
+        match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ExecMainStatus", "--value"]) {
+          RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
+          RemoteRan { exit_code: _, stdout: code, stderr: _ } =>
+            if trim(s: code) == "0" { TransferExitedClean } else { TransferExitedFailed { status: trim(s: code) } }
+        }
+      }
+  }
+}
+
+// A FINISHED UNIT IS CLEARED BEFORE THE NEXT START, because systemd keeps a failed transient unit
+// around and a stale one would be read as this run's result.
+// THE TRAILING `|| true` WAS NOT SHELL AND NEVER RAN AS SHELL. These argv words go to exec, not to an
+// interpreter, so systemctl received `||` and `true` as two additional UNIT NAMES to reset -- and the
+// command it was meant to protect therefore failed slightly harder than it would have unaided. It read
+// as a deliberate ignore-the-failure idiom while doing nothing of the kind.
+//
+// THE IGNORE IS REAL AND IT IS THE RETURN TYPE. Clearing a stale unit is best-effort by design: there
+// may be nothing to clear, which is the ordinary case. Discarding the exit code says that in the one
+// place a reader will believe.
+fn spark_transfer_clear(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_for(subject: subject) as String]) {
+    RemoteUnreachable { cause: _ } => false
+    RemoteRan { exit_code: _, stdout: _, stderr: _ } => true
+  }
+}
+
+// THE UNIT FLAG IS ONE WORD, AND AN EXECUTION FOUND THAT IT WAS TWO. This built its argv as
+// `["systemd-run", "--unit=", <name>, ...]` -- the flag and its value as SEPARATE list elements --
+// so systemd-run received an EMPTY unit name and took the name as the command to execute. The live
+// run said exactly that: `Failed to find executable gunbc-model-materialize`. It compiled, it
+// type-checked, and it could only fail on contact with a host.
+//
+// THE START'S OUTCOME IS TYPED FOR THE SAME REASON THE ATTEMPT'S IS. Returning Bool forced every
+// failure into one bucket, and the caller then reported a REACHED host as unreachable.
+type TransferStartOutcome
+  = TransferStarted
+  | TransferStartRejected { detail: NonEmptyStr }
+  | TransferStartUnreachable { cause: NonEmptyStr }
+
+// A URL LOCATOR IS REFUSED HERE, NOT COERCED. This transport EXECUTES a command on the far side; it
+// has no downloader, so a source carrying a URL is one it cannot serve at all. The first version of
+// this change answered an EMPTY argv for that case and claimed in a comment that `systemd-run --` with
+// no command would fail loudly -- an assertion made without running it, and wrong: executor_wrap
+// builds `concat([cli], argv.skip(n: 1))`, so an empty argv becomes RUN THE CLI WITH NO ARGUMENTS.
+// That is a silent widen wearing a refusal's comment, which is the exact shape DESIGN section 5 calls
+// the absorbing fallback.
+//
+// THE TYPED LOCATOR EARNS ITS KEEP AT THIS MATCH. A source built for the install-media transport and
+// handed to this one now stops the line with a located reason naming the URL, instead of being
+// silently reinterpreted as a command line.
+fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> TransferStartOutcome {
+  match origin.locator {
+    SourceUrl { url: u } =>
+      TransferStartRejected { detail: join([
+        "this source carries a URL locator (", u as String,
+        ") and the snapshot transport executes a command on the target; it has no downloader, so there is no argv to run",
+      ], "") as NonEmptyStr }
+    SourceArgv { argv: a } => spark_transfer_start_argv(ctx: ctx, subject: subject, argv: a)
+  }
+}
+
+fn spark_transfer_start_argv(ctx: SparkMaterializeContext, subject: AcquisitionSubject, argv: List<String>) -> TransferStartOutcome {
+  match spark_remote_run(ctx: ctx, argv: concat(
+    [
+      "systemd-run",
+      join(["--unit=", spark_transfer_unit_for(subject: subject) as String], ""),
+      "--description=gunbc model snapshot materialize",
+      "--",
+    ],
+    executor_wrap(executor: ctx.executor, argv: argv),
+  )) {
+    RemoteUnreachable { cause: c } => TransferStartUnreachable { cause: c as NonEmptyStr }
+    RemoteRan { exit_code: e, stdout: _, stderr: err } =>
+      if e == 0 {
+        TransferStarted
+      } else {
+        TransferStartRejected { detail: join(["systemd-run exited ", to_string(e), ": ", err], "") as NonEmptyStr }
+      }
+  }
+}
+
+type SparkTransferSupervision
+  = SupervisedExitClean
+  | SupervisedExitFailed { status: String }
+  | SupervisedStillRunning { polls: Nat }
+  | SupervisedTransferUnitAbsent
+  | SupervisionLost { cause: String }
+
+// THE BUDGET IS CHECKED WHERE THE STATE IS KNOWN, and an earlier shape checked it one level too early.
+// Testing `remaining == 0` BEFORE observing meant exhaustion always answered SupervisedStillRunning,
+// whatever the last poll had actually seen -- so a host that had gone away entirely was reported as a
+// transfer still in progress, and SupervisionLost was declared, matched, and CONSTRUCTED NOWHERE. The
+// annotation that stood here described the lost case as though it were implemented; it was not, which
+// is precisely what DESIGN section 4c means by an annotation never being evidence that a claim holds.
+//
+// NOW EACH TERMINAL IS PRODUCED BY THE STATE THAT CAUSED IT. Exhausted while the unit was RUNNING is
+// still-running; exhausted while its state was UNREADABLE is lost, and carries the cause that made it
+// unreadable. A mid-run poll failure remains non-fatal, because the unit really is still running and
+// the next poll will find it -- only the LAST such failure is terminal. The loop is bounded and forward
+// either way (DESIGN section 4).
+//
+// A UNIT THAT IS ABSENT IS NOT A UNIT THAT SUCCEEDED. Absence is genuinely ambiguous -- a completed
+// oneshot is reaped and leaves nothing behind, and so does a unit that never started -- so it gets its
+// own name rather than being aliased onto the clean exit. Verification is the arbiter for both, but the
+// receipt now says which one it was arbitrating.
+fn spark_transfer_supervise(ctx: SparkMaterializeContext, subject: AcquisitionSubject, remaining: Nat) -> SparkTransferSupervision {
+  match spark_transfer_state(ctx: ctx, subject: subject) {
+    TransferExitedClean => SupervisedExitClean
+    TransferExitedFailed { status: st } => SupervisedExitFailed { status: st }
+    TransferAbsent => SupervisedTransferUnitAbsent
+    TransferStateUnreadable { cause: c } =>
+      if remaining == 0 {
+        SupervisionLost { cause: c }
+      } else {
+        spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
+      }
+    TransferRunning =>
+      if remaining == 0 {
+        SupervisedStillRunning { polls: spark_transfer_poll_budget }
+      } else {
+        spark_transfer_wait_then_poll(ctx: ctx, subject: subject, remaining: remaining)
+      }
+  }
+}
+
+fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, subject: AcquisitionSubject, remaining: Nat) -> SparkTransferSupervision {
+  let slept = spark_remote_run(ctx: ctx, argv: ["sleep", to_string(spark_transfer_poll_interval_seconds)])
+  spark_transfer_supervise(ctx: ctx, subject: subject, remaining: remaining - 1)
+}
+
+// ONE SOURCE'S ATTEMPT, AND ITS THREE OUTCOMES ARE DECIDED BY TWO SEPARATE FACTS. The transfer's own
+// exit status says whether the source DELIVERED; the verify afterwards says whether what landed is
+// RIGHT. A source that exits non-zero is unreachable-or-refused and the fold moves on; a source that
+// exits clean and still fails verification has served the wrong bytes, which is a different state the
+// fold counts separately -- the distinction the Ubuntu original lost before it was fixed there.
+//
+// THE VERIFY IS RUN AGAIN RATHER THAN TRUSTED FROM THE TRANSFER, because a transfer exiting zero
+// reports that ITS work finished, not that this repository's expectation of the snapshot is met.
+//
+// A BUDGET-EXHAUSTED TRANSFER IS REFUSED WITHOUT BEING KILLED, and the refusal says so. The unit is
+// left running; re-running apply reattaches to it. Killing it would throw away hours of progress to
+// report a cleaner state.
+fn spark_snapshot_attempt(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_transfer_state(ctx: ctx, subject: subject) {
+    TransferStateUnreadable { cause: _ } => AttemptUnreachable
+    TransferRunning => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+    TransferExitedClean =>
+      if !spark_transfer_clear(ctx: ctx, subject: subject) {
+        AttemptUnreachable
+      } else {
+        spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
+      }
+    TransferExitedFailed { status: _ } =>
+      if !spark_transfer_clear(ctx: ctx, subject: subject) {
+        AttemptUnreachable
+      } else {
+        spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
+      }
+    TransferAbsent => spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
+  }
+}
+
+fn spark_snapshot_start_and_supervise(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_transfer_start(ctx: ctx, subject: subject, origin: origin) {
+    TransferStartUnreachable { cause: _ } => AttemptUnreachable
+    TransferStartRejected { detail: d } => AttemptRejected { detail: d }
+    TransferStarted => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+  }
+}
+
+fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_transfer_supervise(ctx: ctx, subject: subject, remaining: spark_transfer_poll_budget) {
+    SupervisionLost { cause: _ } => AttemptUnreachable
+    SupervisedStillRunning { polls: n } =>
+      AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+        identity: subject.identity,
+        source: origin.identity,
+        reason: join([
+          "the transfer is STILL RUNNING after ", to_string(n),
+          " polls and has not been killed; re-run to reattach to it. This is not a failed transfer",
+        ], "") as NonEmptyStr,
+      } } }
+    SupervisedExitFailed { status: st } =>
+      AttemptRejected { detail: join(["the transfer unit exited with status ", st, "; the host and command were reached, so this is not a reachability failure"], "") as NonEmptyStr }
+    SupervisedTransferUnitAbsent => spark_verify_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+    SupervisedExitClean => spark_verify_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+  }
+}
+
+fn spark_verify_after_transfer(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
+    RemoteUnreachable { cause: c } =>
+      AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+        identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
+      } } }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      match read_instrument(exit_code: code, stdout: out) {
+        InstrumentContradictedItself { detail: d } =>
+          AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+            identity: subject.identity, source: origin.identity,
+            reason: join(["after the transfer the verification instrument contradicted itself, so nothing is established about the bytes: ", d, ": ", err], "") as NonEmptyStr,
+          } } }
+        InstrumentDidNotRun =>
+          AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+            identity: subject.identity, source: origin.identity,
+            reason: join(["the verification instrument never executed after the transfer, so the transferred bytes were never checked: ", err], "") as NonEmptyStr,
+          } } }
+        InstrumentVerified =>
+          AttemptTerminal { outcome: AcquisitionFetched {
+            identity: subject.identity, install_path: subject.install_path, source: origin,
+          } }
+        InstrumentRejectedTheSubject =>
+          AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+            identity: subject.identity, source: origin.identity,
+            reason: join(["the transfer completed and verification then refused it; this repository cannot yet distinguish a digest mismatch from an upstream, auth or argument failure in the verifier, so it does NOT claim the bytes are wrong: ", err], "") as NonEmptyStr,
+          } } }
+      }
+  }
+}
+
+// THE HANDLER, WITH THE HOST AND THE VERIFY COMMAND CLOSED OVER. This is the whole binding: three
+// slots, each one remote execution, and no step of the walk spelled here.
+fn spark_snapshot_handler(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionHandler {
+  AcquisitionHandler {
+    observe: fn(subject) { spark_snapshot_observe(ctx: ctx, verify: verify, subject: subject) },
+    ensure_parent: fn(subject) { spark_snapshot_ensure_parent(ctx: ctx, subject: subject) },
+    attempt: fn(subject, origin) { spark_snapshot_attempt(ctx: ctx, verify: verify, subject: subject, origin: origin) },
+  }
+}
+
+type SparkMaterializeOutcome
+  = SparkMaterialized { host: HostIdentity, outcome: AcquisitionOutcome }
+  | SparkMaterializeUnpinned { host: HostIdentity }
+  | SparkMaterializeRefused { host: HostIdentity, cause: NonEmptyStr }
+
+// MATERIALIZE ONE MEMBER. An unpinned snapshot yields no subject and therefore no attempt, which is
+// a different state from an attempt that failed -- the caller must not read it as either success or
+// transport failure.
+// RAIL REPLICATION REFUSES RATHER THAN EXECUTING THROUGH THE WRONG EXECUTOR. A replica's source is an
+// `rsync` that must run HOST-NATIVE; the seed's is an `hf` invocation that must run INSIDE the runtime
+// container, because no Spark has the Hub CLI on its host. This module carries ONE executor per
+// context and applies it to every source, so a replica role would have had its rsync rewritten through
+// `docker run --entrypoint sh <image>` and its paths translated across a mount boundary that does not
+// apply to it.
+//
+// NOTHING WOULD HAVE REFUSED. The command would have run, failed for a reason unrelated to the bytes,
+// and the fold would have read it as this source failing -- which is how three separate receipts came
+// to report a perfectly good checkpoint as unverified earlier on this branch, each for a different
+// executor-shaped reason. A fourth is not worth discovering in production.
+//
+// THE SEED PATH IS EXECUTED AND THIS ONE IS NOT. Local-directory seed acquisition has adopted an
+// 85 GB checkpoint against a live host and produced receipts; rail replication has never run. The
+// honest standing is that this transport is unbuilt, and a typed refusal says so at the one place a
+// caller could otherwise assume it worked.
+//
+// DISSOLVE-ON: the source carries its own execution locus -- containerised for Hub, host-native for
+// rail -- so `spark_snapshot_handler` stops applying one executor to every source. That is the source
+// -specific execution split; until it lands, this arm is the wall.
+fn spark_materialize_member(
+  ctx: SparkMaterializeContext,
+  role: ModelSnapshotRole,
+  snapshot: ModelSnapshotDesired,
+) -> SparkMaterializeOutcome {
+  match role {
+    SnapshotReplicaOf { peer_rail_address: peer } =>
+      SparkMaterializeRefused {
+        host: ctx.host,
+        cause: join([
+          "rail replication from ", render_ipv4_address(addr: peer) as String,
+          " is not realised: its rsync must run host-native while this context applies the containerised Hub executor to every source, so the transfer would be rewritten through the runtime image and its paths translated across a mount that does not apply. The seed path is executed; this one is unbuilt",
+        ], "") as NonEmptyStr,
+      }
+    SnapshotSeed => spark_materialize_seed(ctx: ctx, role: role, snapshot: snapshot)
+  }
+}
+
+fn spark_materialize_seed(
+  ctx: SparkMaterializeContext,
+  role: ModelSnapshotRole,
+  snapshot: ModelSnapshotDesired,
+) -> SparkMaterializeOutcome {
+  match model_snapshot_subject_for(role: role, snapshot: snapshot, cache_root: spark_hub_cache_root) {
+    Absent => SparkMaterializeUnpinned { host: ctx.host }
+    Present { value: subject } =>
+      SparkMaterialized {
+        host: ctx.host,
+        outcome: acquire_artifact(
+          subject: subject,
+          handler: spark_snapshot_handler(ctx: ctx, verify: model_snapshot_completion_check_argv(snapshot: snapshot)),
+        ),
+      }
+  }
+}

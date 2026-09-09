@@ -1,0 +1,312 @@
+module test.claim.colo_cabinet_density_witness
+
+import std.types { Bool, Int }
+import std.measure { Watt, watt, watt_count, volt_ampere }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.colo.types {
+  CabinetDensityClaim, DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
+  CabinetPowerFigure, PublishedRealPower, PublishedApparentPower,
+  cabinet_density_air_established, cabinet_density_air_ceiling,
+  CabinetPowerCeiling, CeilingAt, ceiling_refuses,
+  RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
+}
+import extdeps.colo.databank {
+  databank_lga4_density, databank_lga4_retail_grain,
+  databank_phl1_density, databank_phl1_retail_grain,
+}
+import extdeps.colo.iron_mountain {
+  iron_mountain_nje1_density, iron_mountain_wpa1_density, iron_mountain_nje1_retail_grain,
+}
+import extdeps.colo.netrality { netrality_401_n_broad_density, netrality_401_n_broad_retail_grain }
+import extdeps.colo.tierpoint {
+  tierpoint_philadelphia_density, tierpoint_allentown_density, tierpoint_bethlehem_density,
+  tierpoint_lehigh_valley_density, tierpoint_valley_forge_density,
+  tierpoint_philadelphia_retail_grain, tierpoint_allentown_retail_grain,
+  tierpoint_bethlehem_retail_grain, tierpoint_lehigh_valley_retail_grain,
+  tierpoint_valley_forge_retail_grain,
+}
+import extdeps.colo.h5 { h5_philadelphia_density, h5_philadelphia_retail_grain }
+import extdeps.colo.lightwave_networks { lightwave_philadelphia_density, lightwave_philadelphia_retail_grain }
+import extdeps.colo.flexential {
+  flexential_philadelphia_collegeville_density, flexential_philadelphia_collegeville_retail_grain,
+}
+import extdeps.colo.five_9s_digital { five_9s_allentown_density, five_9s_allentown_retail_grain }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_philadelphia_density,
+  three_sixty_five_philadelphia_university_city_density,
+  three_sixty_five_philadelphia_retail_grain,
+}
+import gunbc.colo_census_coverage {
+  RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
+  coverage_facility_count,
+  nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley,
+  pa_philadelphia_and_lehigh_valley, census_regions,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CARRIER'S CONSUMER. Review 62722 found the first cut of this module dangling: a type, two
+// functions and six data rows that nothing read, with the controls living only in a scratch probe
+// the author ran and deleted. A probe that is deleted is not evidence the wall stays standing -
+// DESIGN section 3c is explicit that a declaration nobody consumes is red regardless of how well
+// it is modelled, and section 5 that a run nobody can repeat is not a consumer. These are those
+// controls, enrolled.
+
+fn established_watts(d: CabinetDensityClaim) -> Int {
+  match cabinet_density_air_established(d: d) {
+    Present { value } => watt_count(w: value),
+    Absent => 0 - 1,
+  }
+}
+
+// A CEILING IS ASKED WHETHER IT REFUSES A REQUIREMENT; IT IS NEVER ASKED WHAT THE CABINET SUPPLIES.
+// These two helpers are the whole surface the witnesses use, and neither yields a Watt - which is
+// the point of review 62791's fix: a bound handed to something wanting a reading is now ill-typed
+// rather than defended by a comment.
+fn ceiling_refuses_at(d: CabinetDensityClaim, required: Int) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => ceiling_refuses(c: value, required: watt(count: required)),
+    Absent => false,
+  }
+}
+
+fn has_ceiling(d: CabinetDensityClaim) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => true,
+    Absent => false,
+  }
+}
+
+// A FIXTURE REPRODUCING THE READING THAT FOUND THE DEFECT. Telehouse Chelsea publishes "standard
+// power to rack at 3.5kVA with scalable options to 5kVA", and an earlier carrier had no arm for
+// apparent power, so the numeral landed in a field named for kilowatts. The fixture lives here
+// rather than in an operator module because it is evidence about the CARRIER, not a census row -
+// the real Telehouse rows belong to whichever lane reads that operator.
+data apparent_power_fixture: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedApparentPower { power: volt_ampere(count: 5000) },
+  claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
+  citation: "witness fixture reproducing the Telehouse Chelsea publication shape; the live rows are carried by the operator's own module",
+}
+
+// POSITIVE CONTROL. A published kilowatt figure yields an established watt reading equal to what
+// the operator marketed, and the same figure as its own upper bound.
+test fn w_published_kilowatts_establish_real_power() -> Bool {
+  established_watts(d: databank_lga4_density) == 35000
+    && established_watts(d: iron_mountain_nje1_density) == 30000
+    && ceiling_refuses_at(d: databank_lga4_density, required: 35001)
+    && !ceiling_refuses_at(d: databank_lga4_density, required: 34999)
+}
+
+// THE DISCRIMINATING RED, AND THE REASON THE APPARENT-POWER ARM EXISTS. A kVA publication
+// establishes NO real-power reading: kW = kVA x power factor, no power factor is published, and
+// assuming unity would overstate the cabinet in the flattering direction. If this ever returns
+// 5000 instead of refusing, the carrier has silently equated apparent and real power again.
+test fn w_apparent_power_establishes_no_real_power() -> Bool {
+  established_watts(d: apparent_power_fixture) == 0 - 1
+}
+
+// The same figure DOES bound real power from above, because kW <= kVA - usable to REJECT a cabinet
+// too small even at the bound, useless to admit one. The witness now exercises that asymmetry
+// rather than reading the number out: 5001 W is refused on published evidence alone, and 4999 W is
+// NOT refused, which is not the same as admitted. There is no longer any way to ask this fixture
+// what it supplies, which is what makes the distinction structural instead of documented.
+test fn w_apparent_power_still_bounds_real_power_above() -> Bool {
+  ceiling_refuses_at(d: apparent_power_fixture, required: 5001)
+    && !ceiling_refuses_at(d: apparent_power_fixture, required: 4999)
+}
+
+// AN UNREAD CLAIM YIELDS NOTHING ON EITHER AXIS. The earlier accessor answered 0 here - a
+// fabricated in-band reading on the same axis as real ones - and this is the control that keeps
+// the zero unconstructible. WPA-1 is the live row: a review asserted 20 kW cabinets there, the
+// page states no density at all, and the row records the absence rather than the assertion.
+test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
+  established_watts(d: iron_mountain_wpa1_density) == 0 - 1
+    && !has_ceiling(d: iron_mountain_wpa1_density)
+    && !ceiling_refuses_at(d: iron_mountain_wpa1_density, required: 999999)
+}
+
+// A READ DENSITY AND A SELLABLE GRAIN ARE INDEPENDENT FACTS. A cabinet marketed at 30 kW that the
+// operator will only sell as part of a suite is not a candidate for one cabinet, and a 3 kW
+// cabinet sold singly is. Fusing them would have made one of the two unaskable.
+fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
+  match g {
+    SingleCabinetOffered { wording, citation } => true,
+    CageOrSuiteMinimum { wording, citation } => false,
+    RetailGrainUnread { obligation } => false,
+  }
+}
+
+test fn w_density_and_grain_are_separate_facts() -> Bool {
+  grain_admits_single_cabinet(g: databank_lga4_retail_grain)
+    && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
+    && established_watts(d: databank_lga4_density) == 35000
+}
+
+// AN UNREAD DENSITY REFUSES NOTHING, WHICH IS THE ARM THAT KEEPS THE CEILING FROM BEING A FREE
+// ADMISSION. `ceiling_refuses_at` answers false for an absent ceiling, and false means UNDETERMINED
+// rather than fits - so this asserts the pair that separates the two: a real ceiling refuses an
+// impossible requirement, and an absent one refuses nothing at all. Reading a bare false as "fits"
+// would admit every unread cabinet in the census.
+test fn w_absent_ceiling_refuses_nothing_and_a_real_one_does() -> Bool {
+  !ceiling_refuses_at(d: iron_mountain_wpa1_density, required: 999999)
+    && ceiling_refuses_at(d: apparent_power_fixture, required: 999999)
+}
+
+// THE COVERAGE CARRIER'S CONSUMER, ENROLLED FOR THE SAME REASON AS THE ONES ABOVE. Review 62758
+// found `gunbc.colo_census_coverage` dangling on this branch - a type, two accessors and three
+// rows nothing imported - which is the identical section 3c finding review 62722 made about the
+// density carrier one commit earlier. Landing the same defect twice in one PR is the receipt that
+// the first fix was applied to an instance and not to the habit.
+
+fn facility_count_or_sentinel(c: RegionCoverage) -> Int {
+  match coverage_facility_count(c: c) {
+    Present { value } => value,
+    Absent => 0 - 1,
+  }
+}
+
+// A FIXTURE FOR THE UNSURVEYED ARM, AND THE REASON IT HAD TO BE ONE. Writing this witness is what
+// established that `RegionUnsurveyed` HAS NO INHABITANT in the live roster - all three rows are
+// surveyed - so the distinction the module exists to draw could not be discriminated by any test
+// over the census as it stands. DESIGN section 4b: where the forbidden state is unauthorable on
+// the live corpus, the fixture is where the RED becomes expressible, and declining to write one
+// leaves a wall that is permanently green by construction. The roster's own growth note explains
+// why no live unsurveyed row exists yet - an unsurveyed roster over an undecided geographic scope
+// has a length that is an artefact of where the author stopped typing - so the arm is real, is
+// reachable, and is deliberately uninhabited rather than dead.
+data unsurveyed_fixture: RegionCoverage = RegionCoverage {
+  region_label: "witness fixture: a region nobody has surveyed",
+  region_code: "XX",
+  outcome: RegionUnsurveyed {
+    obligation: "fixture standing for the arm the live roster does not yet inhabit",
+  },
+}
+
+// THE DISCRIMINATING RED, AND THE ONLY REASON THE MODULE EXISTS. A region somebody surveyed and
+// found empty answers ZERO facilities; a region nobody has looked at answers NOTHING. If these two
+// ever agree, the module has collapsed expensive knowledge into an open obligation and a reader
+// cannot tell a measurement from a gap - which is the error this census already made once,
+// reporting the absence of any New York row as a consequence of a refused-operator ruling rather
+// than as nobody having surveyed the state.
+test fn w_surveyed_empty_and_unsurveyed_do_not_agree() -> Bool {
+  facility_count_or_sentinel(c: southern_new_jersey) == 0
+    && facility_count_or_sentinel(c: unsurveyed_fixture) == 0 - 1
+}
+
+// THE SAME DISTINCTION ON A LIVE ROW, WHICH IS WHAT KEEPS THE FIXTURE FROM BEING THE ONLY EVIDENCE.
+// The Hudson Valley yielded no retail colocation and is the row a reader is most tempted to misread
+// as nobody having looked - enterprise and hyperscale sites are present there, they just do not
+// sell retail cabinets. It answers ZERO, so the presence of the count is what says it was surveyed,
+// and no second predicate is consulted to find that out.
+test fn w_a_surveyed_empty_region_is_not_an_unsurveyed_one() -> Bool {
+  facility_count_or_sentinel(c: hudson_valley) == 0
+}
+
+// A SURVEYED REGION WITH FACILITIES ANSWERS ITS COUNT, and this witness is kept together with an
+// honest statement of what it CANNOT see. The relation is asserted rather than the literal, because
+// a witness repeating a hand-authored number it cannot re-derive proves only that the file was not
+// edited. But the relation chosen - read densities never exceed facilities - was too weak to
+// discriminate the error that actually occurred: the corridor row carried 28 when the corpus holds
+// 27, and 1 <= 28 is exactly as true as 1 <= 27, so this stayed green beside the miscount for as
+// long as it existed. Avoiding the literal was right; this relation was not the answer. The answer
+// is derivation, and silent-heron-303 is landing it - both counts folded from the facility and
+// claim rows themselves, which makes a miscount unwritable rather than merely checkable. This
+// witness stays as the transposition control it always was, and stops being cited as evidence the
+// counts are right.
+//
+// AND THE LINE THAT SAID `census_regions.length() == 3` IS GONE, KILLED BY bright-swift-678 WHOSE
+// ROW MADE IT FOUR. A roster-length literal reds on every legitimate addition and catches no defect
+// the relation beside it does not already catch, so the next lane adding a region would have had to
+// edit a test to make its own row legal. The uncomfortable part is that this annotation ALREADY
+// argued for asserting the relation rather than the literal, and the literal was in the body it
+// annotates - the principle was stated correctly one line above the place it was not applied. The
+// fold now runs the relation over EVERY row rather than the one row the author happened to name,
+// which is both stronger and free of the roster's length.
+fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
+  match c.outcome {
+    FacilitiesModelled { facility_count, density_read_count } =>
+      density_read_count <= facility_count && density_read_count >= 0 && facility_count > 0,
+    SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => true,
+    RegionUnsurveyed { obligation } => true,
+  }
+}
+
+test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bool {
+  all(census_regions, c => density_reads_never_exceed_facilities(c: c))
+    && facility_count_or_sentinel(c: nj_hudson_bergen_essex_corridor) > 0
+}
+
+// THE PENNSYLVANIA LANE'S ROWS, EXECUTED RATHER THAN MERELY DECLARED. Review 62794 found the
+// Philadelphia and Lehigh Valley rows dangling under DESIGN section 3c: twelve density claims and
+// their grain standings that no fold read. These are that consumer, written as the region's own
+// findings so that changing a row moves a test rather than only a citation string.
+
+// THE ONE READ DENSITY IN EASTERN PENNSYLVANIA. Netrality publishes 30 kW at 401 North Broad and it
+// is the only per-cabinet figure any operator publishes in this region. It behaves like a reading on
+// both axes: it establishes 30,000 W, and its ceiling refuses one watt more while admitting one
+// watt less.
+test fn w_philadelphia_has_exactly_one_established_density() -> Bool {
+  established_watts(d: netrality_401_n_broad_density) == 30000
+    && ceiling_refuses_at(d: netrality_401_n_broad_density, required: 30001)
+    && !ceiling_refuses_at(d: netrality_401_n_broad_density, required: 29999)
+}
+
+// THE REGION'S CHARACTERISTIC RESULT: PLANT PUBLISHED, CABINET NOT. Every other Pennsylvania row
+// establishes nothing, and this is the sentinel that keeps it visible. Each of these pages states
+// facility megawatts, UPS modules or generator counts; none states a cabinet. If any of them ever
+// answers a number, somebody has divided a building by an assumed cabinet count.
+test fn w_every_other_pennsylvania_density_establishes_nothing() -> Bool {
+  established_watts(d: tierpoint_philadelphia_density) == 0 - 1
+    && established_watts(d: tierpoint_allentown_density) == 0 - 1
+    && established_watts(d: tierpoint_bethlehem_density) == 0 - 1
+    && established_watts(d: tierpoint_lehigh_valley_density) == 0 - 1
+    && established_watts(d: tierpoint_valley_forge_density) == 0 - 1
+    && established_watts(d: h5_philadelphia_density) == 0 - 1
+    && established_watts(d: databank_phl1_density) == 0 - 1
+    && established_watts(d: lightwave_philadelphia_density) == 0 - 1
+    && established_watts(d: flexential_philadelphia_collegeville_density) == 0 - 1
+    && established_watts(d: five_9s_allentown_density) == 0 - 1
+    && established_watts(d: three_sixty_five_philadelphia_density) == 0 - 1
+    && established_watts(d: three_sixty_five_philadelphia_university_city_density) == 0 - 1
+}
+
+// AN UNREAD DENSITY HAS NO CEILING EITHER, which is the half a consumer is likeliest to get wrong:
+// an upper bound sounds like the safe direction to guess in, and there is no bound to be had from a
+// page that published no figure. A ceiling that refused nothing would silently admit every
+// requirement against a facility nobody has read.
+test fn w_unread_pennsylvania_densities_have_no_ceiling() -> Bool {
+  !has_ceiling(d: h5_philadelphia_density)
+    && !has_ceiling(d: five_9s_allentown_density)
+    && !ceiling_refuses_at(d: h5_philadelphia_density, required: 1000000)
+}
+
+// GRAIN AND DENSITY MOVE INDEPENDENTLY ACROSS THIS REGION, which is what makes the region worth
+// quoting at all. TierPoint sells single cabinets at five sites and publishes no density anywhere;
+// DataBank's Philadelphia suite publishes neither; Netrality publishes both. A consumer that reads
+// grain off density, in either direction, breaks here.
+test fn w_pennsylvania_grain_is_independent_of_density() -> Bool {
+  grain_admits_single_cabinet(g: netrality_401_n_broad_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_philadelphia_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_allentown_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_bethlehem_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_lehigh_valley_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_valley_forge_retail_grain)
+    && grain_admits_single_cabinet(g: h5_philadelphia_retail_grain)
+    && established_watts(d: tierpoint_philadelphia_density) == 0 - 1
+    && !grain_admits_single_cabinet(g: databank_phl1_retail_grain)
+    && !grain_admits_single_cabinet(g: lightwave_philadelphia_retail_grain)
+    && !grain_admits_single_cabinet(g: flexential_philadelphia_collegeville_retail_grain)
+    && !grain_admits_single_cabinet(g: five_9s_allentown_retail_grain)
+    && !grain_admits_single_cabinet(g: three_sixty_five_philadelphia_retail_grain)
+}
+
+// THE REGION'S OWN COVERAGE RECEIPT, FOLDED. Review 62827 found the Pennsylvania survey landing in
+// extdeps with no row in the observing layer, which is the case this coverage module exists to
+// prevent: a region somebody surveyed rendering identically to one nobody has opened. This is the
+// count relation, not the count - the literal it carries is a hand-authored number a witness
+// cannot re-derive, and a test repeating it would prove only that the file was not edited.
+test fn w_the_pennsylvania_survey_is_a_recorded_measurement() -> Bool {
+  facility_count_or_sentinel(c: pa_philadelphia_and_lehigh_valley) > 0
+    && density_reads_never_exceed_facilities(c: pa_philadelphia_and_lehigh_valley)
+}

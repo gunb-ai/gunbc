@@ -1784,19 +1784,15 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn digest_label(bytes: &[u8]) -> String {
-    format!("fnv1a64:{}", v1_rt::bytes_identity_hash(bytes))
-}
-
 fn authority_digest_from_sources(sources: &[(String, String)]) -> Result<String, String> {
     let mut payload = String::new();
     for (path, content) in sources {
         payload.push_str(path);
         payload.push('\0');
-        payload.push_str(&digest_label(content.as_bytes()));
+        payload.push_str(&bytes_digest(content.as_bytes()));
         payload.push('\n');
     }
-    Ok(digest_label(payload.as_bytes()))
+    Ok(bytes_digest(payload.as_bytes()))
 }
 
 fn tree_digest_for_basenames(
@@ -1819,10 +1815,10 @@ fn tree_digest_for_basenames(
             .map_err(|e| format!("normalize {label} {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
-        payload.push_str(&digest_label(norm.as_bytes()));
+        payload.push_str(&bytes_digest(norm.as_bytes()));
         payload.push('\n');
     }
-    Ok(digest_label(payload.as_bytes()))
+    Ok(bytes_digest(payload.as_bytes()))
 }
 
 fn tree_digest_from_map(
@@ -1841,10 +1837,10 @@ fn tree_digest_from_map(
             .map_err(|e| format!("normalize candidate {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
-        payload.push_str(&digest_label(norm.as_bytes()));
+        payload.push_str(&bytes_digest(norm.as_bytes()));
         payload.push('\n');
     }
-    Ok(digest_label(payload.as_bytes()))
+    Ok(bytes_digest(payload.as_bytes()))
 }
 
 /// Maximum rustfmt passes taken while seeking the formatter's fixed point. Exceeding it is a
@@ -3967,12 +3963,18 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
 /// that file, Linux reports the running image as `<path> (deleted)`; digesting the path itself
 /// compares "installed there now" against "installed there before the build" -- the refusal's
 /// question.
-fn current_exe_digest() -> Result<String, String> {
+fn current_exe_on_disk() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let shown = exe.to_string_lossy().into_owned();
-    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
+    Ok(PathBuf::from(
+        shown.strip_suffix(" (deleted)").unwrap_or(&shown),
+    ))
+}
+
+fn current_exe_digest() -> Result<String, String> {
+    let on_disk = current_exe_on_disk()?;
     let bytes = fs::read(&on_disk).map_err(|e| format!("read {}: {e}", on_disk.display()))?;
-    Ok(v1_rt::bytes_identity_hash(&bytes))
+    Ok(bytes_digest(&bytes))
 }
 
 fn git_tree_dirty(workspace: &Path) -> Result<bool, String> {
@@ -4194,6 +4196,10 @@ struct PartitionRebuildActuation {
     package_closure: Vec<String>,
     excluded_packages: Vec<String>,
     decision_line: String,
+    /// The model's ReleaseScopeEmpty arm: every changed mirror is excluded from the release
+    /// build by construction (e.g. a `#[cfg(test)]`-gated module), so the correct package
+    /// closure IS the empty set and the build runs purely as verification of that claim.
+    release_scope_empty: bool,
 }
 
 type ModelValue = crate::v1_interpreter::Value;
@@ -4275,11 +4281,21 @@ fn partition_rebuild_actuation(
         ))
         }
     };
+    let release_scope_empty = match call("stage0_partition_rebuild_release_scope_empty_today")? {
+        ModelValue::Bool(value) => value,
+        other => {
+            return Err(format!(
+                "refusal: stage0_partition_rebuild_release_scope_empty_today returned {} instead of Bool",
+                other.type_label_public()
+            ))
+        }
+    };
     Ok(PartitionRebuildActuation {
         actuatable,
         package_closure,
         excluded_packages,
         decision_line,
+        release_scope_empty,
     })
 }
 
@@ -4293,7 +4309,7 @@ fn partitioned_rebuild_from_installed(
             actuation.decision_line
         ));
     }
-    if actuation.package_closure.is_empty() {
+    if actuation.package_closure.is_empty() && !actuation.release_scope_empty {
         return Err(format!(
             "StageSeedBuildRefused: actuation admitted an empty package closure -- {}",
             actuation.decision_line
@@ -4317,7 +4333,7 @@ fn partitioned_rebuild_from_installed(
 fn next_pass_executable_digest(workspace: &Path) -> Result<String, String> {
     let executable = workspace.join("target/release/claim_executor");
     fs::read(&executable)
-        .map(|bytes| v1_rt::bytes_identity_hash(&bytes))
+        .map(|bytes| bytes_digest(&bytes))
         .map_err(|e| {
             format!(
                 "StageOutputExecutableUnbound: read {}: {e}",
@@ -4384,10 +4400,8 @@ fn run_built_seed_regen(
             )
         })?;
     }
-    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    let shown = exe.to_string_lossy().into_owned();
-    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
-    let observed_executable_digest = path_digest(&on_disk)?;
+    let on_disk = current_exe_on_disk()?;
+    let observed_executable_digest = current_exe_digest()?;
     if observed_executable_digest != admitted_executable_digest {
         return Err(format!(
             "CandidateGeneratedByDifferentSeed: stage admitted executable {} but next generation would run {} at {}",
@@ -5924,11 +5938,15 @@ pub fn run_regen_round_cost(
         .iter()
         .map(|stage| stage.build_compiled_crates)
         .sum();
+    // The receipt field is named in the model's vocabulary: a "mirror" is the basename the
+    // partition rows and rosters key on. The stages carry projected PATHS, so project through
+    // the single bridge -- feeding paths to the decision model rendered a spurious
+    // MirrorHasNoOwningPackage line on every drifted round's receipt.
     let installed_mirrors = transaction_receipt
         .stages
         .iter()
         .flat_map(|stage| stage.surfaces.iter())
-        .map(|surface| surface.projected_path.clone())
+        .map(|surface| emit_path_basename(&surface.projected_path).to_string())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -8248,5 +8266,56 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
         .expect("emitter edit answers");
         assert_eq!(emitter.arm, "WholePopulation", "{}", emitter.line);
         assert!(emitter.members.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod seed_executable_digest_spelling_tests {
+    use super::*;
+
+    /// Every producer of a seed-executable digest must render ONE spelling, over one file.
+    ///
+    /// The two sides of `run_built_seed_regen`'s `!=` are a stage's `output_seed_digest`, which
+    /// comes from `next_pass_executable_digest`, and the observed side, which comes from
+    /// `current_exe_digest`. Before this control the first rendered bare via
+    /// `v1_rt::bytes_identity_hash` and the second carried `bytes_digest`'s `fnv1a64:` prefix, so
+    /// the comparison could never hold and generation 2 refused with two spellings of one value
+    /// printed side by side. The convergence tests above cannot see this: they INJECT the
+    /// seed-digest producer as a literal (`|| Ok("seed-2".to_string())`), so no real renderer runs
+    /// in them.
+    ///
+    /// This drives all three producers over ONE set of bytes, which is what makes the comparison
+    /// in `run_built_seed_regen` hold by construction rather than by luck: whatever the file is,
+    /// the admitted side and the observed side render it the same way.
+    #[test]
+    fn every_seed_executable_digest_producer_renders_one_spelling() {
+        // The producer that renders the ADMITTED side, exercised over a workspace whose
+        // `target/release/claim_executor` this test controls the bytes of.
+        let staged =
+            std::env::temp_dir().join(format!("regen-digest-spelling-{}", std::process::id()));
+        let release = staged.join("target/release");
+        fs::create_dir_all(&release).expect("staged workspace");
+        let executable = release.join("claim_executor");
+        let payload = b"not an executable; the digest does not care, and neither does the defect";
+        fs::write(&executable, payload).expect("staged executable");
+
+        let admitted = next_pass_executable_digest(&staged).expect("admitted side renders");
+        let observed = path_digest(&executable).expect("observed side renders");
+
+        // THE COMPARISON THE DEFECT LIVED IN, over one file, with both real renderers.
+        assert_eq!(admitted, observed);
+        assert_eq!(admitted, bytes_digest(payload));
+
+        fs::remove_dir_all(&staged).ok();
+
+        // And the third producer, over the running binary, renders the same way.
+        let on_disk = current_exe_on_disk().expect("current exe resolves");
+        let bytes = fs::read(&on_disk).expect("current exe readable");
+        assert_eq!(current_exe_digest().unwrap(), bytes_digest(&bytes));
+        assert_eq!(path_digest(&on_disk).unwrap(), bytes_digest(&bytes));
+
+        // The rendering is the prefixed one, so a digest read back from a receipt is
+        // self-describing rather than a bare integer whose family must be guessed.
+        assert!(current_exe_digest().unwrap().starts_with("fnv1a64:"));
     }
 }

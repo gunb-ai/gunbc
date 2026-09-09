@@ -2,7 +2,11 @@ module extdeps.colo.h5
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -42,8 +46,8 @@ data h5_philadelphia: ColoFacilityRow = ColoFacilityRow {
   operator_label: "H5 Data Centers",
   facility_label: "H5 Philadelphia (1500 Spring Garden, 5th floor)",
   address: AddressListed {
-    street: "1500 Spring Garden Street, 5th Floor, Philadelphia, PA 19130",
-    citation: "datacenterhawk H5 profile for 1500 Spring Garden, read 2026-08-18",
+    street: "1500 Spring Garden St., Suite 520, Philadelphia, PA 19130",
+    citation: "h5datacenters.com Philadelphia data center page, read 2026-09-08. The 2026-08-18 sweep carried this address from a directory profile as '5th Floor'; the operator's own page states Suite 520, and the operator is the authority for its own address.",
   },
   municipality: "Philadelphia",
   region_code: "PA",
@@ -55,4 +59,16 @@ data h5_facilities: List<ColoFacilityRow> = [h5_secaucus, h5_philadelphia]
 data h5_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "quote request via h5datacenters.com",
   obligation: "No cabinet or power pricing published on the pages read 2026-08-18; a written quote for the reference load is required.",
+}
+
+// THE PHILADELPHIA FLOOR PUBLISHES ITS PLANT AND NOT ITS CABINET. 72,000 square feet and 7.5 MW of
+// generator backup are stated by the operator; a per-cabinet figure is not, and the megawatts are
+// a building fact that says nothing about what one cabinet may draw.
+data h5_philadelphia_density: CabinetDensityClaim = DensityUnread {
+  obligation: "h5datacenters.com Philadelphia page, read 2026-09-08, states 72,000 SF and 7.5 MW generator backup and NO per-cabinet or per-rack density. The absence is raw-byte confirmed under a subject control: re-fetched 2026-09-09 with a full browser user-agent (HTTP 200), the served HTML contains 'Philadelphia' 67 times - so the instrument reached this facility's own surface and not an index - and 'kW' zero times, 'kVA' zero times, case-SENSITIVE because kw is a common substring of minified identifiers. Request the facility spec sheet or a quote naming the cabinet draw.",
+}
+
+data h5_philadelphia_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Customers can license cages and cabinets",
+  citation: "h5datacenters.com Philadelphia data center page, read 2026-09-08; the phrase occurs verbatim in the raw served HTML re-fetched 2026-09-09 (HTTP 200, 68,972 bytes), inside one <p> under the h1 'Philadelphia Data Center Overview' with no promotional banner above it.",
 }

@@ -5,6 +5,8 @@ import std.types { Bool, List }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
 import extdeps.transceiver.sff_8636 {
   TransceiverIdentifier, Sff8636Encoding, Sff8636NominalRate,
+  NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
+  sff8636_nominal_rate_from_byte222, Sff8636ByteDecode, ByteDecoded, ByteOutOfDomain,
   EncodingUnspecified, Encoding64b66b, EncodingPam4, EncodingUnmodelled,
   AttestedMode, FecCondition, FecUnconditional, RequiresClause91Fec,
   ComplianceInterpretation, ComplianceUnderstood, ComplianceUnspecified,
@@ -36,12 +38,22 @@ type SecondaryComplianceObservation
   = SecondaryNotObserved
   | SecondaryObserved { code: Nat }
 
+// WHETHER BYTE 222 WAS READ IS A RECEIPT OF THIS FLEET'S PROBING, exactly as the secondary
+// compliance observation beside it is. It sits here and not in extdeps.transceiver.sff_8636 because
+// SFF-8636 has no opinion about what anyone measured: a missing observation is a coverage obligation
+// downstream, never an `Unobserved` property authored into the upstream module. An earlier head of
+// this change authored it upstream anyway, in a module whose own header states that rule.
+type ExtendedRateObservation
+  = ExtendedRateNotObserved
+  | ExtendedRateObserved { code: Nat }
+
 type CableLegObservation sole_constructor {
   identifier: TransceiverIdentifier
   primary_compliance_code: Nat
   secondary_compliance: SecondaryComplianceObservation
   encoding: Sff8636Encoding
   nominal_rate: Sff8636NominalRate
+  extended_rate: ExtendedRateObservation
 }
 
 fn cable_leg_observation(
@@ -50,6 +62,7 @@ fn cable_leg_observation(
   secondary_compliance: SecondaryComplianceObservation,
   encoding: Sff8636Encoding,
   nominal_rate: Sff8636NominalRate,
+  extended_rate: ExtendedRateObservation,
 ) -> CableLegObservation {
   CableLegObservation {
     identifier: identifier,
@@ -57,6 +70,7 @@ fn cable_leg_observation(
     secondary_compliance: secondary_compliance,
     encoding: encoding,
     nominal_rate: nominal_rate,
+    extended_rate: extended_rate,
   }
 }
 
@@ -76,11 +90,57 @@ type CableLegField
   | PrimaryComplianceField
   | EncodingField
   | NominalRateField
+  | ExtendedRateField
 
+// AN UNREAD BYTE 222 IS A COVERAGE GAP ONLY WHERE THE ESCAPE MAKES IT ONE. A leg whose byte 140
+// carries a direct rate does not need byte 222 at all, so reporting it as unread there would blame
+// a field whose reading would change nothing. The census asks the resolved question: is this
+// observation still standing on an escape it could not follow?
 fn cable_leg_unread_fields(obs: CableLegObservation) -> List<CableLegField> {
-  match obs.secondary_compliance {
-    SecondaryNotObserved => [SecondaryComplianceField]
-    SecondaryObserved { code: sc } => []
+  flat_map([obs], o =>
+    flat_map(
+      [
+        match o.secondary_compliance {
+          SecondaryNotObserved => [SecondaryComplianceField]
+          SecondaryObserved { code: sc } => []
+        },
+        match cable_leg_declared_nominal_rate(obs: o) {
+          NominalRateEscaped => [ExtendedRateField]
+          NominalRateDirect { rate: r } => []
+          NominalRateUnspecified => []
+        },
+      ], f => f))
+}
+
+// THE RATE THIS LEG DECLARES, escape followed where it was read -- named for what it is, because an
+// earlier head called this the rate the leg "actually signals at" and that is a claim about the wire
+// which no EEPROM byte can make. SFF-8636 is a management interface and puts physical-layer
+// behaviour outside its scope, so this is metadata: what the module says about itself, at the
+// specification's 250 MBd quantization. Every consumer asks this rather than obs.nominal_rate, so a
+// leg that resolved its escape and one that never had to answer the same way, and a leg still
+// standing on an unfollowed escape stays visibly escaped.
+// AN OUT-OF-DOMAIN BYTE LEAVES THE ESCAPE STANDING, exactly as an unread one does. A value no EEPROM
+// can hold is not evidence about this leg, so it must not become a rate; and because the escape
+// survives, cable_leg_unread_fields keeps reporting the field, so the defect stays visible rather
+// than resolving to a plausible number.
+//
+// RESOLUTION REFUSES TO INVENT THE BYTE IT DOES NOT HAVE. An unread byte 222 leaves the escape
+// standing rather than falling back to multiplying byte 140 out, which extdeps.transceiver.sff_8636
+// names by name as the fabrication this subject exists to catch. Where the byte WAS read, the
+// upstream decoder says what it means and this function only decides which byte to ask.
+fn cable_leg_declared_nominal_rate(obs: CableLegObservation) -> Sff8636NominalRate {
+  match obs.nominal_rate {
+    NominalRateDirect { rate: r } => NominalRateDirect { rate: r }
+    NominalRateUnspecified => NominalRateUnspecified
+    NominalRateEscaped =>
+      match obs.extended_rate {
+        ExtendedRateNotObserved => NominalRateEscaped
+        ExtendedRateObserved { code: c } =>
+          match sff8636_nominal_rate_from_byte222(code: c) {
+            ByteDecoded { value: v } => v
+            ByteOutOfDomain { code: bad } => NominalRateEscaped
+          }
+      }
   }
 }
 

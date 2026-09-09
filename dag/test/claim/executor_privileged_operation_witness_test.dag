@@ -14,8 +14,20 @@ import gunbc.generated_artifact_emit {
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import product.placement_supply { HostIdentity }
-import gunbc.runner_host_grants { runner_slot_teardown_grant_index_bound, runner_slot_grammar_dirs_to_bound, fabric_allocation_store_privileged_operations }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_host_grants {
+  runner_slot_teardown_grant_index_bound,
+  runner_slot_grammar_dirs_to_bound,
+  fabric_allocation_store_privileged_operations,
+  runner_host_wide_privileged_operations,
+}
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slots_per_host,
+  gunbc_runner_slot_cpu_quota,
+  CpuQuotaResolved,
+  CpuQuotaRefused,
+}
+import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives, SliceDirectivesComplete, SliceDirectivesQuotaSurveyRefused }
+import extdeps.systemd.unit_file { slice_cpu_quota, systemd_slice_directive_line }
 import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -108,12 +120,10 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // authorization; one removed takes it away. RED: hand-listing binaries instead of folding the
 // roster decouples the count from the roster and this goes false.
 //
-// THE PER-SLOT FACTOR IS FOUR, AND IT WAS TWO UNTIL ACTIVATION BECAME A GRANTED OPERATION. A slot
-// now contributes its two DIRECTORY operations -- remove the tree, install it owned -- and its two
-// SERVICE TRANSITIONS, enable and start, which gunbc.runner_service_activation keeps separate so no
-// derived sudoers line matches the fused `enable --now`. The +4 tail is unchanged and is the
-// host-wide remainder: the converge state directory, the runner base directory, the runner cache
-// directory, and daemon-reload.
+// THE PER-SLOT GITHUB FACTOR IS THREE IN THIS SUM, SPLIT FOR DISCRIMINATION. Teardown is the
+// grammar bound, not the desired width. Each desired slot then contributes one install
+// directory and two service transitions (enable, start). `slots * 3` is install+activation;
+// `activation == slots * 2` is the transition half.
 //
 // THE FACTOR IS ASSERTED IN TWO PIECES RATHER THAN AS ONE PRODUCT, because `slots * 4` alone would
 // stay green if the two halves drifted in opposite directions -- four directory operations and no
@@ -125,20 +135,70 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // fabric_execution_slot_identities and fabric_cell_slice_desired_directives -- so a second fabric
 // cell or a sixth directive moves this row without an edit, and a roster that dropped the fabric
 // grants goes red.
+// THE HOST-WIDE TERM IS runner_host_wide_privileged_operations(deploy).length(), NOT A LITERAL.
+// On main the same list has five members (converge dir, runner base, runner cache, kvm
+// supplementary group, daemon-reload) while this witness transcribed `+ 4` and named four of
+// them, omitting kvm -- false from birth in ea22499df2, the commit that added both the list and
+// the witness. test.claim.executor_privileged_operation_witness is not in
+// v2.workflow.required_floor required_gate_prefixes, so the required floor never executes it;
+// it reddened here only because touching this file enrolled it as a changed witness. That is an
+// inert lens on main (DESIGN §6), not a defect this CPU-quota diff introduced. The fabric term
+// already derived from desired_directives length; this term now does the same from the named
+// host-wide list. `allocation_store == 2` remains a transcribed count of
+// fabric_allocation_store_privileged_operations on a fabric host -- deriving that chain is
+// out of scope here.
 test fn witness_population_tracks_the_slot_roster() -> Bool {
-  let slots = desired_runner_slot_members(deploy: srv3_runner_host_deploy).length()
-  let activation = runner_slot_activation_operations(deploy: srv3_runner_host_deploy).length()
-  let fabric_slots = fabric_cell_host_slots(deploy: srv3_runner_host_deploy).length()
-  let directives = fabric_cell_slice_desired_directives().length()
-  let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
-  let allocation_store = fabric_allocation_store_privileged_operations(deploy: srv3_runner_host_deploy).length()
-  runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
-    == runner_slot_teardown_grant_index_bound + (slots * 3) + 4 + fabric_expected + allocation_store
-    && allocation_store == 2
-    && fabric_cell_privileged_operations(deploy: srv3_runner_host_deploy).length() == fabric_expected
-    && activation == slots * 2
-    && slots > 0
-    && fabric_slots > 0
+  match fabric_cell_slice_desired_directives() {
+    SliceDirectivesQuotaSurveyRefused { cause: _ } => false
+    SliceDirectivesComplete { directives: ds } => {
+      let slots = desired_runner_slot_members(deploy: srv3_runner_host_deploy).length()
+      let activation = runner_slot_activation_operations(deploy: srv3_runner_host_deploy).length()
+      let fabric_slots = fabric_cell_host_slots(deploy: srv3_runner_host_deploy).length()
+      let directives = ds.length()
+      let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
+      let allocation_store = fabric_allocation_store_privileged_operations(deploy: srv3_runner_host_deploy).length()
+      let host_wide = runner_host_wide_privileged_operations(deploy: srv3_runner_host_deploy).length()
+      runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
+        == runner_slot_teardown_grant_index_bound + (slots * 3) + host_wide + fabric_expected + allocation_store
+        && allocation_store == 2
+        && fabric_cell_privileged_operations(deploy: srv3_runner_host_deploy).length() == fabric_expected
+        && activation == slots * 2
+        && slots > 0
+        && fabric_slots > 0
+        && host_wide > 0
+    }
+  }
+}
+
+// THE CPUQuota GRANT IS THE SURVEYED DIRECTIVE, NOT A TRANSCRIBED PERCENTAGE. The generated
+// sudoers body is `artifact_generate` of this host's row; the assignment word is
+// `systemd_slice_directive_line(slice_cpu_quota(threads))` for the same
+// `gunbc_runner_slot_cpu_quota` the effect emits. RED: hand-insert `CPUQuota=600%` into the
+// committed file without the survey resolving, or resolve to a different thread count than the
+// committed projection, and either this or the generated-artifact gate goes false. A refused
+// survey must leave no `CPUQuota=` grant, because there is then no argv to authorize.
+test fn witness_fabric_slice_cpu_quota_grant_is_the_surveyed_directive() -> Bool {
+  match gunbc_runner_slot_cpu_quota() {
+    CpuQuotaResolved { threads: t } =>
+      match fabric_cell_slice_desired_directives() {
+        SliceDirectivesQuotaSurveyRefused { cause: _ } => false
+        SliceDirectivesComplete { directives: ds } => {
+          let assignment = systemd_slice_directive_line(directive: slice_cpu_quota(threads: t))
+          let desired_lines = join(
+            map(ds, d => systemd_slice_directive_line(directive: d)),
+            "\n",
+          )
+          string_contains(s: srv3_runner_host_sudoers(), pattern: assignment)
+            && string_contains(s: desired_lines, pattern: assignment)
+        }
+      }
+    CpuQuotaRefused { cause: _ } =>
+      match fabric_cell_slice_desired_directives() {
+        SliceDirectivesComplete { directives: _ } => false
+        SliceDirectivesQuotaSurveyRefused { cause: _ } =>
+          !string_contains(s: srv3_runner_host_sudoers(), pattern: "CPUQuota=")
+      }
+  }
 }
 
 // THE TEARDOWN GRANT COVERS EVERY WIDTH THE FLEET COMMITS TO, with the bound pinned above each

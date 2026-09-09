@@ -42,7 +42,7 @@ import gunbc.fabric_executor_class {
 }
 import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
-  CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
+  CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, ReservationLost,
   StoreUnavailable, AttemptRefused, BudgetRefused, reserve_priced_cell,
   CellSlotState, CellHeld, CellFree, CellSlotDecoded, CellSlotUndecodable,
   cell_slot_payload, decode_cell_slot_payload,
@@ -100,6 +100,7 @@ test fn the_allocation_key_is_the_slots_own_canonical_spelling() -> Bool {
 fn cp_admission_refusals(r: CellReservation) -> List<CapacityClassAdmission> {
   match r {
     NoCellAdmissible { considered: _, refused: f } => f
+    CellSelectionTieUnresolved { digest: _, considered: _ } => []
     CellReserved { offer: _, slot_key: _, generation: _, account: _ } => []
     BudgetRefused { slot_key: _, refusal: _ } => []
     ReservationLost { slot_key: _ } => []
@@ -309,6 +310,7 @@ fn cp_budget_refusal(r: CellReservation) -> List<MoneyRefusal> {
     BudgetRefused { slot_key: _, refusal: f } => [f]
     CellReserved { offer: _, slot_key: _, generation: _, account: _ } => []
     NoCellAdmissible { considered: _, refused: _ } => []
+    CellSelectionTieUnresolved { digest: _, considered: _ } => []
     ReservationLost { slot_key: _ } => []
     StoreUnavailable { slot_key: _, cause: _ } => []
     AttemptRefused { slot_key: _, detail: _ } => []

@@ -97,7 +97,7 @@ fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
           xs: acc,
           item: TokenRule {
             token_class: s.token_class,
-            pattern: LiteralPattern { text: s.fragment }
+            pattern: LiteralPattern { text: chars(s: s.fragment) }
           }
         )
       }
