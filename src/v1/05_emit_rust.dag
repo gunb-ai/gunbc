@@ -8195,6 +8195,9 @@ fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
 // THE ACCESSOR RETURNS T BY VALUE FROM &self, so `__val.clone()` must be T::clone, not the
 // reference's; without `T: Clone` on the impl rustc clones the `&T` (E0308 expected `T`, found
 // `&T`, six generic carriers). The bound is on the impl the accessor lives in, not on the enum.
+// A field whose type rides a recursion cycle is stored Box<T> (rust_field_carrier_final_type, same
+// needs_box_wrapping predicate), so the match binds &Box<T> while the accessor owes the declared T
+// -- the struct-field projection already carries this deref, and the enum arm must carry it too.
 fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
@@ -8232,7 +8235,16 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
       } else if variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices) {
         concat("            ", variant_path, "(_) => panic!(\"no ", fname, " on positional-payload variant\"),")
       } else {
-        concat("            ", variant_path, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => ", apply_type_template1(template: sharing.clone_value, arg0: "__val"), ",")
+        let arm_field_boxed = match child.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
+          Present { value: f } => needs_box_wrapping(n: resolved_type(n: f), recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices)
+          Absent => false
+        }
+        let clone_expr = if arm_field_boxed {
+          apply_type_template1(template: sharing.deref_clone, arg0: "*__val")
+        } else {
+          apply_type_template1(template: sharing.clone_value, arg0: "__val")
+        }
+        concat("            ", variant_path, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => ", clone_expr, ",")
       }
     )
     let arms_str = arms |> join(separator: "\n")
