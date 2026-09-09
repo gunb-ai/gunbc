@@ -1,6 +1,7 @@
 module test.claim.colo_cabinet_density_witness
 
 import std.types { Bool, Int }
+import std.algebra { FreeSemigroup }
 import std.measure { Watt, watt, watt_count, volt_ampere }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -10,7 +11,7 @@ import extdeps.colo.types {
   CabinetPowerFigure, PublishedRealPower, PublishedApparentPower,
   PublishedPowerQuantity, MarketedAtMost, CapabilityAtLeast, PublishedAverage,
   MarketedRealInterval, MarketedApparentInterval,
-  NonEmptyDensityFigures, FigureVerificationStanding, WordingVerbatim,
+  FigureVerificationStanding, WordingVerbatim,
   DensityFigureLookup, FigureFound, FigureAbsent, FigureDuplicated, density_figure_for_medium,
   DensityScreen, ScreenHolds, ScreenUndetermined, ScreenNeedsEvidence,
   density_wording_covers, density_ceiling_refuses, density_claim_contains_figure,
@@ -121,7 +122,7 @@ fn has_ceiling_for(d: CabinetDensityClaim, requested: CoolingMediumStanding) -> 
 // to a fixture that is explicitly air-labelled apparent power below, so it still tests the unit
 // crossing it exists for. A control restored to green by editing its subject is not a control.
 data medium_unspecified_interval_fixture: CabinetDensityClaim = DensityPublished {
-  figures: NonEmptyDensityFigures {
+  figures: FreeSemigroup {
     head: PublishedDensityFigure {
       medium: CoolingMediumUnspecified,
       quantity: MarketedApparentInterval {
@@ -143,7 +144,7 @@ data medium_unspecified_interval_fixture: CabinetDensityClaim = DensityPublished
 // coordinate, and the two concerns stop being tested through one row where either could mask the
 // other. It is a fixture and not a census row for exactly the reason the one above is.
 data apparent_power_fixture: CabinetDensityClaim = DensityPublished {
-  figures: NonEmptyDensityFigures {
+  figures: FreeSemigroup {
     head: PublishedDensityFigure {
       medium: AirCoolingPublished,
       quantity: MarketedApparentInterval {
@@ -167,7 +168,7 @@ data apparent_power_fixture: CabinetDensityClaim = DensityPublished {
 // cap AND naming air. The fixture stands in until one is, and it is marked as a carrier fixture for
 // the same reason the apparent-power one is - it is evidence about the type, not a census row.
 data air_labelled_cap_fixture: CabinetDensityClaim = DensityPublished {
-  figures: NonEmptyDensityFigures {
+  figures: FreeSemigroup {
     head: PublishedDensityFigure {
       medium: AirCoolingPublished,
       quantity: MarketedAtMost { upper: PublishedRealPower { power: watt(count: 30000) } },
@@ -189,7 +190,7 @@ data air_labelled_cap_fixture: CabinetDensityClaim = DensityPublished {
 // `.first()` implementation does not merely pick, it picks the entire MEANING of the row from list
 // order. No live row constructs this; it is the RED that makes the refusal real.
 data duplicated_air_fixture: CabinetDensityClaim = DensityPublished {
-  figures: NonEmptyDensityFigures {
+  figures: FreeSemigroup {
     head: PublishedDensityFigure {
       medium: AirCoolingPublished,
       quantity: MarketedAtMost { upper: PublishedRealPower { power: watt(count: 30000) } },

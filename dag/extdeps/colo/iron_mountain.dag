@@ -3,10 +3,11 @@ module extdeps.colo.iron_mountain
 import std.types { NonEmptyStr }
 import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { FreeSemigroup }
 import extdeps.colo.types {
   ColoFacilityRow, AddressUnread, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityPublished, PublishedDensityFigure, DensityUnread, CabinetPowerFigure, PublishedRealPower,
-  NonEmptyDensityFigures, FigureVerificationStanding, WordingSummarized,
+  FigureVerificationStanding, WordingSummarized,
   CoolingMediumStanding, CoolingMediumUnspecified,
   PublishedPowerQuantity, MarketedAtMost,
   RetailGrainStanding, SingleCabinetOffered,
@@ -55,7 +56,7 @@ data iron_mountain_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // made colocation look physically incapable of holding a 650 W-per-node fleet. It is not: this
 // operator markets an order of magnitude more per rack, at a grain that includes single cabinets.
 data iron_mountain_nje1_density: CabinetDensityClaim = DensityPublished {
-  figures: NonEmptyDensityFigures {
+  figures: FreeSemigroup {
     head: PublishedDensityFigure {
       medium: CoolingMediumUnspecified,
       quantity: MarketedAtMost { upper: PublishedRealPower { power: watt(count: 30000) } },

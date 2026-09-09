@@ -11,6 +11,7 @@ import std.measure {
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { FreeSemigroup, FreeMonoid }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -280,21 +281,29 @@ type PublishedDensityFigure {
 // same meaning reachable through the wrong arm, which is the state that makes a census disagree with
 // itself depending on which question it asks.
 //
-// The shape is std.source_annotation's NonEmptyAnnotationAttachmentRefusals verbatim - head plus
-// tail, with one accessor flattening it - and it is reused rather than re-coined because a second
-// spelling of "non-empty list" is the nicknaming defect this corpus removes on sight.
-type NonEmptyDensityFigures {
-  head: PublishedDensityFigure
-  tail: List<PublishedDensityFigure>
-}
-
-fn density_figures_all(figures: NonEmptyDensityFigures) -> List<PublishedDensityFigure> {
+// THE CARRIER IS std.algebra's FreeSemigroup AND THE FIRST CUT MINTED A THIRD SPELLING INSTEAD.
+// `NonEmptyDensityFigures { head, tail }` was authored here, justified in this annotation by citing
+// std.source_annotation's NonEmptyAnnotationAttachmentRefusals as precedent - and that citation was
+// the defect, because the precedent IS the second spelling rather than an authority for a third.
+// std.algebra owns FreeSemigroup<T> as the monoid's other identity; std.goal_assessment reaches for
+// it for exactly this purpose and its note says why in terms this file should have read first: it is
+// "deliberately NOT a fresh NonEmptyList ... so one name never resolves to two declarations".
+//
+// It was caught re-reading DESIGN against a finished, approved diff, which is where it is cheapest to
+// find and least likely to be looked for. The uncomfortable part is the local one: this PR spends its
+// length arguing that the duplication lookup should reuse std.pareto's ReadingLookup shape rather
+// than re-coin it, and then re-coined the non-empty carrier eleven lines away. Reuse was applied as a
+// rule to the concept under review and not to the one being used to carry it.
+// The flattening accessor, kept because every consumer here wants a list and the carrier is a
+// head-plus-monoid. It is the only place the two shapes meet, which is what keeps FreeSemigroup from
+// leaking into five census lanes' fold sites.
+fn density_figures_all(figures: FreeSemigroup<PublishedDensityFigure>) -> List<PublishedDensityFigure> {
   concat([figures.head], figures.tail)
 }
 
 type CabinetDensityClaim
   = DensityPublished {
-      figures: NonEmptyDensityFigures
+      figures: FreeSemigroup<PublishedDensityFigure>
     }
   | DensityUnread {
       obligation: NonEmptyStr
@@ -568,7 +577,7 @@ fn density_ceiling_refuses(
 //
 // THE BODY IS NOW AN ARM TEST, AND THAT COLLAPSE IS THE RECEIPT FOR A CLIMB RATHER THAN A REGRESSION.
 // It used to be `figures.first()` over a plain list, because an empty DensityPublished was writable
-// and the predicate had to check for it at runtime. NonEmptyDensityFigures made that state
+// and the predicate had to check for it at runtime. A non-empty carrier made that state
 // unconstructible, so the check had nothing left to check - the validation dissolved into the
 // construction that replaced it, which is what DESIGN section 4b's dissolution-on-climb rule looks
 // like when it fires. The discriminating evidence does not dissolve with it: the witness that used

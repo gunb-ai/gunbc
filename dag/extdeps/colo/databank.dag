@@ -3,10 +3,11 @@ module extdeps.colo.databank
 import std.types { NonEmptyStr }
 import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { FreeSemigroup }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityPublished, PublishedDensityFigure, CabinetPowerFigure, PublishedRealPower,
-  NonEmptyDensityFigures, FigureVerificationStanding, WordingVerbatim,
+  FigureVerificationStanding, WordingVerbatim,
   CoolingMediumStanding, AirCoolingPublished, LiquidCoolingPublished,
   PublishedPowerQuantity, CapabilityAtLeast,
   RetailGrainStanding, SingleCabinetOffered,
@@ -59,7 +60,7 @@ data databank_lga4_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // sale is the census's central finding, and it is a reason to obtain quotes rather than a reason
 // to believe a quote will be affordable: nothing here says what 35 kW costs.
 data databank_lga4_density: CabinetDensityClaim = DensityPublished {
-  figures: NonEmptyDensityFigures {
+  figures: FreeSemigroup {
     head: PublishedDensityFigure {
       medium: AirCoolingPublished,
       quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 35000) } },
