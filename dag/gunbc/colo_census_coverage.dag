@@ -221,6 +221,17 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // this same trigger has now been falsified - the closed pull request, the superseded SHA, the deleted
 // accessor - while the capability sentence has needed no revision on the facts, only on the naming.
 //
+// WHAT MOVES ON REBASE IS THE IMPLEMENTATION SITE, NOT THE QUESTION, and review 62972 read the
+// wording below as declaring a scaffold. It is worth separating, because section 6's scaffold test is
+// "will this artifact survive the terminal architecture and be consumed by it" and the honest answer
+// has two halves. The QUESTION - how many claims in this region were published - is permanent; it is
+// the census's headline and the fold that asks it survives unchanged. This PREDICATE is the current
+// implementation of it, and no other route exists in an accepted program today: the carrier route
+// lives only on the carrier lane's unlanded head, so this is not a second path beside an existing
+// modelled one, which is the parallel-authority tell section 6 actually names. When that route lands,
+// the same fold calls it and this declaration goes. A migration whose destination is named and whose
+// origin has no competing authority is not a throwaway artifact; it is one call site moving.
+//
 // ON REBASE this function is DELETED and coverage_density_read_count asks the carrier, in whatever
 // shape the carrier settles on. It is NOT rewritten against the new arms: that would be the same
 // predicate authored a fourth time in the file that already carries the sentence predicting the third.
