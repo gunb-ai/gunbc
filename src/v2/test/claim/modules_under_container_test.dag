@@ -1,0 +1,78 @@
+module v2.test.claim.modules_under_container
+
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_string_segments, qualified_name_to_dotted_string }
+import v2.compiler.source_authority {
+  ModuleStorageBinding,
+  ModuleStorageIndex,
+  ModuleStorageProvenance,
+  ProducedByBehavior,
+  modules_under_container,
+  module_storage_index_contains_module
+}
+import v2.std.cross_tree.import_model { SourceRootRef, DagTree }
+import v2.std.text { String }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The population is authored here rather than parsed because the subject under test is the
+// PREFIX RELATION over an index, not the parse that fills one; a real corpus would vary the
+// input without discriminating the relation any better.
+fn probe_binding(segments: List<String>) -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: qualified_name_from_string_segments(segments: segments),
+    provenance: ProducedByBehavior { producer: ^ModulesUnderContainerProbe },
+    source_root: DagTree,
+  }
+}
+
+fn probe_index() -> ModuleStorageIndex {
+  [
+    probe_binding(segments: ["gunbc", "row"]),
+    probe_binding(segments: ["gunbc", "row", "first"]),
+    probe_binding(segments: ["gunbc", "row", "first", "nested"]),
+    probe_binding(segments: ["gunbc", "other", "first"]),
+    probe_binding(segments: ["gunbc", "rowing"]),
+  ]
+}
+
+fn qn(segments: List<String>) -> QualifiedName {
+  qualified_name_from_string_segments(segments: segments)
+}
+
+fn dotted_members(index: ModuleStorageIndex, container: QualifiedName) -> List<String> {
+  fold_list(
+    xs: modules_under_container(index: index, container: container),
+    empty: [],
+    cons: fn(acc, m) { list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: m)) }
+  )
+}
+
+fn contains_dotted(xs: List<String>, needle: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == needle) })
+}
+
+test fn modules_under_container_admits_a_descendant_and_excludes_a_sibling() -> Bool {
+  let members = dotted_members(index: probe_index(), container: qn(segments: ["gunbc", "row"]))
+  contains_dotted(xs: members, needle: "gunbc.row.first")
+    && !contains_dotted(xs: members, needle: "gunbc.other.first")
+    && !contains_dotted(xs: members, needle: "gunbc.rowing")
+}
+
+test fn modules_under_container_is_strict_descent() -> Bool {
+  let container = qn(segments: ["gunbc", "row"])
+  !contains_dotted(xs: dotted_members(index: probe_index(), container: container), needle: "gunbc.row")
+    && module_storage_index_contains_module(index: probe_index(), module: container)
+}
+
+test fn modules_under_container_admits_a_deeper_descendant() -> Bool {
+  contains_dotted(
+    xs: dotted_members(index: probe_index(), container: qn(segments: ["gunbc", "row"])),
+    needle: "gunbc.row.first.nested"
+  )
+}
