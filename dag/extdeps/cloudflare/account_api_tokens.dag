@@ -1,0 +1,473 @@
+module extdeps.cloudflare.account_api_tokens
+
+import std.types { NonEmptyStr, String, Secret, Timestamp, List, Map }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
+import std.dissolution { unbound_dissolution }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.cloudflare.client_v4 {
+  cloudflare_client_v4_base,
+  CloudflareApiError
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens"
+  }
+}
+
+data create_via_api_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/fundamentals/api/how-to/create-via-api"
+  }
+}
+
+data create_account_token_api_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/accounts/subresources/tokens/methods/create"
+  }
+}
+
+data token_formats_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/fundamentals/api/get-started/token-formats"
+  }
+}
+
+data create_account_token_api_as_of: Timestamp = "2026-08-11"
+
+data account_owned_tokens_doc_as_of: Timestamp = "2026-09-02"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloudflare.account_api_tokens",
+      decl_name: "CloudflareAccountTokenShape",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    create_via_api_citation,
+    create_account_token_api_citation,
+    token_formats_citation
+  ]
+}
+
+// ACCOUNT-OWNED TOKENS ARE SERVICE PRINCIPALS. They do not inherit a user's permissions and stay
+// valid after the configuring user leaves. Creating or updating one in the dashboard requires Super
+// Administrator on the account (account-owned-tokens citation). Creating via API requires the
+// Account API Tokens Write permission on the calling token (create-token API citation).
+//
+// SHAPE, NOT A BOOL. The GitHub org-admin pattern (extdeps.github.org_admin_auth OrgAdminCredentialShape)
+// is kind × grants × acquisition × lifetime × revocation. Cloudflare's arms are Cloudflare's; they
+// are not GitHub's HumanWebAcquired / ProgrammaticallyMintedFromGitHubAppKey.
+data account_api_tokens_write_permission_name: NonEmptyStr = "Account API Tokens Write"
+
+data account_token_value_prefix: NonEmptyStr = "cfat_"
+data user_token_value_prefix: NonEmptyStr = "cfut_"
+data global_api_key_value_prefix: NonEmptyStr = "cfk_"
+
+type PermissionGroupRef {
+  id: NonEmptyStr
+}
+
+type CloudflareCredentialKind
+  = AccountOwnedApiToken
+  | UserOwnedApiToken
+  | GlobalApiKey
+
+type CloudflareCredentialCapability
+  = CreateAccountOwnedToken
+  | ListAccountTokenPermissionGroups
+
+type CloudflarePermissionGrant
+  = AccountApiTokensWrite
+  | AccountApiTokensRead
+  | PermissionGroupGrant { group: PermissionGroupRef }
+
+type CloudflareCredentialAcquisition
+  = HumanDashboardAcquired
+  | CreatedViaAccountTokensApi
+
+type CloudflareCredentialLifetime
+  = NoExpiryUntilRevoked
+  | OptionalTokenExpiry { expires_on: Timestamp }
+
+type CloudflareCredentialRevocation
+  = AccountApiTokensSurface
+  | UserApiTokensSurface
+  | GlobalApiKeySurface
+
+type CloudflareAccountTokenShape {
+  kind: CloudflareCredentialKind
+  grants: List<CloudflarePermissionGrant>
+  acquisition: CloudflareCredentialAcquisition
+  lifetime: CloudflareCredentialLifetime
+  revocation: CloudflareCredentialRevocation
+}
+
+fn grant_supports(
+  grant: CloudflarePermissionGrant,
+  capability: CloudflareCredentialCapability
+) -> Bool {
+  match grant {
+    AccountApiTokensWrite => any(
+      [CreateAccountOwnedToken, ListAccountTokenPermissionGroups],
+      c => c == capability
+    )
+    AccountApiTokensRead => capability == ListAccountTokenPermissionGroups
+    PermissionGroupGrant { group: _ } => false
+  }
+}
+
+fn credential_supports(
+  shape: CloudflareAccountTokenShape,
+  capability: CloudflareCredentialCapability
+) -> Bool {
+  any(shape.grants, g => grant_supports(grant: g, capability: capability))
+}
+
+type CloudflareCredentialFormat
+  = ScannableAccountApiToken
+  | ScannableUserApiToken
+  | ScannableGlobalApiKey
+  | Pre2026Unprefixed
+
+fn classify_cloudflare_credential_format(value: String) -> CloudflareCredentialFormat {
+  if starts_with(s: value, prefix: account_token_value_prefix as String) {
+    ScannableAccountApiToken
+  } else {
+    if starts_with(s: value, prefix: user_token_value_prefix as String) {
+      ScannableUserApiToken
+    } else {
+      if starts_with(s: value, prefix: global_api_key_value_prefix as String) {
+        ScannableGlobalApiKey
+      } else {
+        Pre2026Unprefixed
+      }
+    }
+  }
+}
+
+type AccountTokenStatus
+  = TokenActive
+  | TokenDisabled
+  | TokenExpired
+
+fn parse_account_token_status(raw: String) -> AccountTokenStatus? {
+  if raw == "active" {
+    Present { value: TokenActive }
+  } else {
+    if raw == "disabled" {
+      Present { value: TokenDisabled }
+    } else {
+      if raw == "expired" {
+        Present { value: TokenExpired }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+type TokenPolicyEffect
+  = PolicyAllow
+  | PolicyDeny
+
+fn token_policy_effect_wire(effect: TokenPolicyEffect) -> String {
+  match effect {
+    PolicyAllow => "allow"
+    PolicyDeny => "deny"
+  }
+}
+
+type AccountTokenPolicy {
+  effect: TokenPolicyEffect
+  permission_groups: List<PermissionGroupRef>
+  resources: Map<String, String>
+}
+
+type AccountTokenPolicyCreateWire {
+  effect: String
+  permission_groups: List<PermissionGroupRef>
+  resources: Map<String, String>
+}
+
+fn account_token_policy_create_wire(policy: AccountTokenPolicy) -> AccountTokenPolicyCreateWire {
+  AccountTokenPolicyCreateWire {
+    effect: token_policy_effect_wire(effect: policy.effect),
+    permission_groups: policy.permission_groups,
+    resources: policy.resources
+  }
+}
+
+fn account_token_policies_create_wire(
+  policies: List<AccountTokenPolicy>
+) -> List<AccountTokenPolicyCreateWire> {
+  map(policies, p => account_token_policy_create_wire(policy: p))
+}
+
+type CreateAccountTokenRequest {
+  name: String
+  policies: List<AccountTokenPolicy>
+  not_before: Timestamp?
+  expires_on: Timestamp?
+}
+
+// THE TOKEN SECRET IS RETURNED ON CREATE AND NEVER AGAIN. A later GET of the same token id has
+// metadata only. Modeling value as optional on one type would let a caller treat a list-response
+// row as a create-response and mint R2 S3 secrets from nothing.
+type CreatedAccountToken {
+  id: NonEmptyStr
+  name: String
+  status: AccountTokenStatus
+  value: Secret
+  expires_on: Timestamp?
+  not_before: Timestamp?
+}
+
+type CreatedAccountTokenCreateResponse {
+  id: NonEmptyStr
+  name: String
+  status: String
+  value: Secret
+  expires_on: Timestamp?
+  not_before: Timestamp?
+}
+
+fn created_account_token_from_create_response(
+  response: CreatedAccountTokenCreateResponse
+) -> CreatedAccountToken? {
+  match parse_account_token_status(raw: response.status) {
+    Present { value: status } =>
+      Present {
+        value: CreatedAccountToken {
+          id: response.id,
+          name: response.name,
+          status: status,
+          value: response.value,
+          expires_on: response.expires_on,
+          not_before: response.not_before
+        }
+      }
+    none => none
+  }
+}
+
+type AccountTokenMetadata {
+  id: NonEmptyStr
+  name: String
+  status: AccountTokenStatus
+  expires_on: Timestamp?
+  not_before: Timestamp?
+}
+
+data cloudflare_account_api_tokens_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "AccountTokenMetadata"),
+    reason: "list/get response shape has no executing consumer; Create returns CreatedAccountToken",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration consumes AccountTokenMetadata as the list or get response on an executing converge or gunbc-run entry; a witness that the type exists does not fire this"
+    )
+  ),
+  frontier_row_path(
+    path: "extdeps.cloudflare.account_api_tokens.ListPermissionGroupsRaw",
+    reason: "ListPermissionGroupsRaw has no executing caller in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.ListPermissionGroupsRaw on an executing converge or gunbc-run entry; a witness that the operation exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "classify_cloudflare_credential_format"),
+    reason: "format classifier has no executing custody/scan caller in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration classifies a held Cloudflare credential via classify_cloudflare_credential_format on an executing converge or gunbc-run entry; a witness that the fold exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "created_account_token_from_create_response"),
+    reason: "Create-response fold has no executing Create caller in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration maps cloudflare.AccountTokens.Create output through created_account_token_from_create_response on an executing converge or gunbc-run entry; a witness that the fold exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "create_account_token_api_as_of"),
+    reason: "as-of pin has no reader; ExternalAuthority has no as-of field",
+    dissolution: unbound_dissolution(
+      description: "dissolves when ExternalAuthority or FactCitation carries an as-of date and this pin inhabits that field, or a gunbc executing fold reads create_account_token_api_as_of as the cited document date"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "account_owned_tokens_doc_as_of"),
+    reason: "as-of pin has no reader; ExternalAuthority has no as-of field",
+    dissolution: unbound_dissolution(
+      description: "dissolves when ExternalAuthority or FactCitation carries an as-of date and this pin inhabits that field, or a gunbc executing fold reads account_owned_tokens_doc_as_of as the cited document date"
+    )
+  )
+]
+
+type AccountTokenMintRoute
+  = HumanDashboardOnly
+  | AccountTokensCreateApi
+
+fn account_token_mint_route(shape: CloudflareAccountTokenShape) -> AccountTokenMintRoute {
+  match shape.acquisition {
+    HumanDashboardAcquired => HumanDashboardOnly
+    CreatedViaAccountTokensApi => AccountTokensCreateApi
+  }
+}
+
+fn permission_groups_from_grants(
+  grants: List<CloudflarePermissionGrant>
+) -> List<PermissionGroupRef> {
+  flat_map(grants, g => match g {
+    PermissionGroupGrant { group: grp } => [grp]
+    AccountApiTokensWrite => []
+    AccountApiTokensRead => []
+  })
+}
+
+fn permission_groups_from_policies(
+  policies: List<AccountTokenPolicy>
+) -> List<PermissionGroupRef> {
+  flat_map(policies, p => p.permission_groups)
+}
+
+fn permission_group_ids_agree(
+  left: List<PermissionGroupRef>,
+  right: List<PermissionGroupRef>
+) -> Bool {
+  all(left, l => any(right, r => r.id == l.id))
+    && all(right, r => any(left, l => l.id == r.id))
+}
+
+fn mint_grant_policy_permission_groups_agree(
+  shape: CloudflareAccountTokenShape,
+  request: CreateAccountTokenRequest
+) -> Bool {
+  permission_group_ids_agree(
+    left: permission_groups_from_grants(grants: shape.grants),
+    right: permission_groups_from_policies(policies: request.policies)
+  )
+}
+
+fn mint_lifetime_agrees(
+  shape: CloudflareAccountTokenShape,
+  request: CreateAccountTokenRequest
+) -> Bool {
+  match shape.lifetime {
+    NoExpiryUntilRevoked => request.expires_on == none
+    OptionalTokenExpiry { expires_on: t } =>
+      match request.expires_on {
+        Present { value: e } => e == t
+        none => false
+      }
+  }
+}
+
+type AccountTokenApiMintStanding
+  = AccountTokenApiMintAdmitted {
+      shape: CloudflareAccountTokenShape
+      request: CreateAccountTokenRequest
+    }
+  | AccountTokenApiMintRefusedHumanDashboardOnly { shape: CloudflareAccountTokenShape }
+  | AccountTokenApiMintRefusedGrantPolicyMismatch {
+      shape: CloudflareAccountTokenShape
+      request: CreateAccountTokenRequest
+    }
+  | AccountTokenApiMintRefusedLifetimeMismatch {
+      shape: CloudflareAccountTokenShape
+      request: CreateAccountTokenRequest
+    }
+
+fn admit_account_token_api_mint(
+  shape: CloudflareAccountTokenShape,
+  request: CreateAccountTokenRequest
+) -> AccountTokenApiMintStanding {
+  match account_token_mint_route(shape: shape) {
+    AccountTokensCreateApi =>
+      if !mint_grant_policy_permission_groups_agree(shape: shape, request: request) {
+        AccountTokenApiMintRefusedGrantPolicyMismatch { shape: shape, request: request }
+      } else {
+        if !mint_lifetime_agrees(shape: shape, request: request) {
+          AccountTokenApiMintRefusedLifetimeMismatch { shape: shape, request: request }
+        } else {
+          AccountTokenApiMintAdmitted { shape: shape, request: request }
+        }
+      }
+    HumanDashboardOnly =>
+      AccountTokenApiMintRefusedHumanDashboardOnly { shape: shape }
+  }
+}
+
+service cloudflare.AccountTokens {
+  config {
+    endpoint: cloudflare_client_v4_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation ListPermissionGroupsRaw {
+    input {
+      auth_token: Secret
+      account_id: String
+    }
+    output {
+      body: String from "body"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/accounts/\{account_id\}/tokens/permission_groups"
+    }
+    response {
+      200 => String
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+
+  operation Create {
+    input {
+      auth_token: Secret
+      account_id: String
+      name: String
+      policies: List<AccountTokenPolicy>
+      not_before: Timestamp?
+      expires_on: Timestamp?
+    }
+    output {
+      id: NonEmptyStr from "result.id"
+      value: Secret from "result.value"
+      name: String from "result.name"
+      status: String from "result.status"
+      expires_on: Timestamp? from "result.expires_on"
+      not_before: Timestamp? from "result.not_before"
+    }
+    transport rest {
+      method: POST,
+      path: "/accounts/\{account_id\}/tokens",
+      body: {
+        name: name,
+        policies: account_token_policies_create_wire(policies: policies),
+        not_before: not_before,
+        expires_on: expires_on
+      }
+    }
+    response {
+      200 => CreatedAccountTokenCreateResponse
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      422 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+}
