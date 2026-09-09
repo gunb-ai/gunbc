@@ -51,10 +51,21 @@ fn accepted_member(path: String) -> NativeRouteMemberRow {
   NativeRouteMemberRow { module_path: path, verdict: NativeAccepted }
 }
 
+// A single-reason refusal: head and fatal are the same observation (no pending advisory rode
+// along). Driver-limit refusals have this shape.
 fn refused_member(path: String, reason: Symbol) -> NativeRouteMemberRow {
   NativeRouteMemberRow {
     module_path: path,
     verdict: NativeRefused { head_reason: reason, fatal_reason: reason }
+  }
+}
+
+// The two-grain refusal shape the real census measures: rejected_with_pending prepends the
+// non-fatal overlap advisory, so the HEAD is the advisory and the FATAL is what refused.
+fn refused_member_at(path: String, head: Symbol, fatal: Symbol) -> NativeRouteMemberRow {
+  NativeRouteMemberRow {
+    module_path: path,
+    verdict: NativeRefused { head_reason: head, fatal_reason: fatal }
   }
 }
 
@@ -63,7 +74,11 @@ fn green_receipt() -> NativeRouteReceipt {
     population: [
       accepted_member(path: "v2.test.one"),
       accepted_member(path: "v2.test.two"),
-      refused_member(path: "v2.test.three", reason: ^fact_density_hollow_alias_locus)
+      refused_member_at(
+        path: "v2.test.three",
+        head: ^parse_grammar_choice_overlap_residue,
+        fatal: ^parse_g0_tokens_remain
+      )
     ],
     broken_control: BrokenSpecimenRefused { reason: ^parse_expected_declaration },
     old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" }
@@ -76,7 +91,11 @@ fn green_receipt() -> NativeRouteReceipt {
 fn frontier_receipt() -> NativeRouteReceipt {
   receipt_with(
     population: [
-      refused_member(path: "v2.test.one", reason: ^parse_grammar_choice_overlap_residue),
+      refused_member_at(
+        path: "v2.test.one",
+        head: ^parse_grammar_choice_overlap_residue,
+        fatal: ^parse_g0_tokens_remain
+      ),
       refused_member(path: "v2.test.two", reason: ^resolve_module_not_found)
     ],
     broken_control: BrokenSpecimenRefused { reason: ^parse_expected_declaration },
@@ -113,11 +132,23 @@ test fn universe_derivation_selects_exactly_the_prefix_members() -> Bool {
     }
 }
 
-test fn refusal_classification_delegates_to_the_door_ledger_attribution() -> Bool {
-  match classify_native_refusal(reason: ^fact_density_hollow_alias_locus) {
-    CompilerFrontierAttributed { reason: r } => r == ^fact_density_hollow_alias_locus
+test fn refusal_classification_delegates_to_the_door_ledger_at_fatal_grain() -> Bool {
+  match classify_native_refusal(reason: ^parse_g0_tokens_remain) {
+    CompilerFrontierAttributed { reason: r } => r == ^parse_g0_tokens_remain
     NativeDriverAdmissionLimit { reason: _ } => false
     UnattributedRefusal { reason: _ } => false
+  }
+}
+
+// THE GRAINS ARE DIFFERENT OBSERVATIONS: fact_density_hollow_alias_locus is owned at HEAD grain
+// (the door ledger's own rows) and has no FatalGrain row, so asking the fatal question of it is
+// honestly unattributed — the lookup never confuses ownership at one grain for ownership at the
+// other.
+test fn a_head_owned_cause_is_not_thereby_fatal_owned() -> Bool {
+  match classify_native_refusal(reason: ^fact_density_hollow_alias_locus) {
+    UnattributedRefusal { reason: r } => r == ^fact_density_hollow_alias_locus
+    CompilerFrontierAttributed { reason: _ } => false
+    NativeDriverAdmissionLimit { reason: _ } => false
   }
 }
 
@@ -140,7 +171,11 @@ test fn refusal_classification_never_silently_buckets_an_unowned_cause() -> Bool
 test fn exclusion_census_counts_every_member_exactly_once() -> Bool {
   let rows = [
     accepted_member(path: "v2.test.a"),
-    refused_member(path: "v2.test.b", reason: ^fact_density_hollow_alias_locus),
+    refused_member_at(
+      path: "v2.test.b",
+      head: ^parse_grammar_choice_overlap_residue,
+      fatal: ^parse_g0_tokens_remain
+    ),
     refused_member(path: "v2.test.c", reason: ^resolve_module_not_found),
     refused_member(path: "v2.test.d", reason: ^a_cause_nobody_owns)
   ]
@@ -181,6 +216,35 @@ test fn an_unattributed_exclusion_blocks_admission_until_someone_owns_it() -> Bo
     old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" }
   ))
   native_route_admission_refused_with(admission: admission, cause_name: "unattributed_exclusions_present")
+}
+
+// THE HEAD ADVISORY IS LIVE RECEIPT DATA: a row whose FATAL cause is owned at fatal grain but
+// whose HEAD advisory is owned nowhere refuses by the head clause's own name — and does NOT
+// misreport as an exclusion-cause failure, because the grains are different questions.
+test fn an_unattributed_head_advisory_blocks_admission_by_its_own_name() -> Bool {
+  let admission = native_route_admission(receipt: receipt_with(
+    population: [
+      accepted_member(path: "v2.test.one"),
+      refused_member_at(
+        path: "v2.test.two",
+        head: ^an_advisory_nobody_owns,
+        fatal: ^parse_g0_tokens_remain
+      )
+    ],
+    broken_control: BrokenSpecimenRefused { reason: ^parse_expected_declaration },
+    old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" }
+  ))
+  native_route_admission_refused_with(admission: admission, cause_name: "unattributed_head_advisory_present")
+    && !native_route_admission_refused_with(admission: admission, cause_name: "unattributed_exclusions_present")
+}
+
+// The driver-limit reason is owned by THIS lane at whichever grain it surfaces: a single-
+// diagnostic driver refusal (head == fatal == resolve_module_not_found) passes the head join
+// without a door-ledger row, because the door ledger never sees the driver's synthetic-subject
+// refusal.
+test fn a_driver_limit_head_advisory_is_owned_by_this_lane() -> Bool {
+  let admission = native_route_admission(receipt: frontier_receipt())
+  !native_route_admission_refused_with(admission: admission, cause_name: "unattributed_head_advisory_present")
 }
 
 test fn route_identity_is_observed_never_synthesized_from_the_intended_command() -> Bool {
@@ -253,6 +317,7 @@ test fn one_red_run_names_every_violated_clause() -> Bool {
   native_route_admission_refused_with(admission: admission, cause_name: "positive_population_empty")
     && native_route_admission_refused_with(admission: admission, cause_name: "broken_specimen_accepted_by_route")
     && native_route_admission_refused_with(admission: admission, cause_name: "unattributed_exclusions_present")
+    && native_route_admission_refused_with(admission: admission, cause_name: "unattributed_head_advisory_present")
     && native_route_admission_refused_with(admission: admission, cause_name: "old_route_control_never_installed")
 }
 
