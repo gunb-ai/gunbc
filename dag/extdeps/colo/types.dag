@@ -201,15 +201,40 @@ type PublishedPowerQuantity
   | MarketedInterval { lower: CabinetPowerFigure, upper: CabinetPowerFigure }
   | PublishedAverage { average: CabinetPowerFigure }
 
+// COOLING MEDIUM IS THE THIRD COORDINATE AND IT WAS BEING INFERRED FROM SILENCE. The arms above used
+// to name it - DensityMarketedMax meant air-and-liquid, DensityMarketedAirOnly meant air - so a page
+// that published a figure and named NO medium had no true arm. Six live rows across three lanes hit
+// this: NJFX and Digital Fortress state a figure with no medium, csr_orny1 and hivelocity_ogb1 the
+// same, and the operator named Netrality and Telehouse independently. Every one of them sat in the
+// air arm with a citation CONFESSING the inference in words - the prose-beside-a-type shape, where
+// the sentence is true, adjacent, and unable to stop a consumer reading air out of the arm.
+//
+// ABSENCE OF A LIQUID FIGURE DOES NOT ESTABLISH AIR-COOLED CAPABILITY. That is the whole content of
+// the defect and it fails in the ADMITTING direction, which makes it worse than the quantifier bug
+// this file fixed one axis over: a 20 kW electrical claim with no stated medium would satisfy a hard
+// requirement for a 20 kW AIR-COOLED cabinet on evidence that never mentioned cooling.
+//
+// SO MEDIUM BECOMES A FIELD AND THE ARMS STOP MENTIONING IT. A third arm was the tempting repair and
+// it is wrong in shape: three arms for two coordinates, needing a fourth the moment an operator
+// publishes liquid-only. Medium is orthogonal to direction exactly as direction is orthogonal to
+// unit, so it gets the same treatment - one type applied at the figure, never folded into an arm.
+//
+// AND A CLAIM CARRIES A LIST OF FIGURES RATHER THAN ONE PER MEDIUM. DataBank publishes 35kW+ air and
+// 100kW+ liquid: that is TWO published figures, not one figure with a fused medium, and there is no
+// AirAndLiquidPublished arm for the same reason there is no arm per combination anywhere else here.
+type CoolingMediumStanding
+  = AirCoolingPublished
+  | LiquidCoolingPublished
+  | CoolingMediumUnspecified
+
+type PublishedDensityFigure {
+  medium: CoolingMediumStanding
+  quantity: PublishedPowerQuantity
+}
+
 type CabinetDensityClaim
-  = DensityMarketedMax {
-      air_cooled: PublishedPowerQuantity
-      liquid_cooled: PublishedPowerQuantity
-      claim_wording: NonEmptyStr
-      citation: NonEmptyStr
-    }
-  | DensityMarketedAirOnly {
-      air_cooled: PublishedPowerQuantity
+  = DensityPublished {
+      figures: List<PublishedDensityFigure>
       claim_wording: NonEmptyStr
       citation: NonEmptyStr
     }
@@ -252,10 +277,26 @@ type CabinetDensityClaim
 type CabinetPowerCeiling = CeilingAt { at_most: Watt }
 
 fn cabinet_density_air_ceiling(d: CabinetDensityClaim) -> CabinetPowerCeiling? {
-  match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => quantity_ceiling(q: air_cooled),
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => quantity_ceiling(q: air_cooled),
-    DensityUnread { obligation } => Absent,
+  match cabinet_density_air_quantity(d: d) {
+    Present { value } => quantity_ceiling(q: value),
+    Absent => Absent,
+  }
+}
+
+// AN UNSPECIFIED MEDIUM DOES NOT ANSWER AN AIR QUESTION, and that single line is the repair. This
+// selects only figures the operator actually labelled air; CoolingMediumUnspecified and
+// LiquidCoolingPublished both fall through to Absent, so a claim whose page never mentioned cooling
+// can no longer satisfy an air-cooled requirement by sitting in an arm named for one.
+fn air_figure(figures: List<PublishedDensityFigure>) -> PublishedDensityFigure? {
+  let air = figures |> filter(f => figure_is_air(f: f))
+  air.first()
+}
+
+fn figure_is_air(f: PublishedDensityFigure) -> Bool {
+  match f.medium {
+    AirCoolingPublished => true,
+    LiquidCoolingPublished => false,
+    CoolingMediumUnspecified => false,
   }
 }
 
@@ -301,8 +342,10 @@ fn quantity_ceiling(q: PublishedPowerQuantity) -> CabinetPowerCeiling? {
 // `cabinet_density_air_ceiling` so the two directions are asked the same way.
 fn cabinet_density_air_quantity(d: CabinetDensityClaim) -> PublishedPowerQuantity? {
   match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Present { value: air_cooled },
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Present { value: air_cooled },
+    DensityPublished { figures, claim_wording, citation } => match air_figure(figures: figures) {
+      Present { value } => Present { value: value.quantity },
+      Absent => Absent,
+    },
     DensityUnread { obligation } => Absent,
   }
 }
