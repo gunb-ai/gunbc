@@ -33,22 +33,28 @@ type EmptyRegionCause
   | OperatorsPresentButNotRetailColocation { detail: NonEmptyStr }
   | DirectoryClaimContradictedByOperator { detail: NonEmptyStr }
 
+// The three outcomes a region can have, and the two that must never be confused.
+//
+// SurveyedNoRetailOperator is the case where somebody looked, systematically, and there is nothing
+// to model. Its searched list is what makes it a measurement rather than an assertion: a later
+// reader can see the coverage and judge whether it was thorough, instead of taking "empty" on
+// trust. RegionUnsurveyed is the case where nobody has looked, and it is the only arm carrying an
+// open obligation.
+//
+// The per-arm notes were written between the arms, where section 4c does not model annotations -
+// only module-item grain is captured, so an indented comment inside a declaration body is a parse
+// error rather than a preserved rationale. They are hoisted here intact.
 type RegionSurveyOutcome
   = FacilitiesModelled {
       facility_count: Int
       density_read_count: Int
     }
-  // Somebody looked, systematically, and there is nothing to model. The searched list is what
-  // makes this a measurement rather than an assertion: a later reader can see the coverage and
-  // judge whether it was thorough, instead of taking "empty" on trust.
   | SurveyedNoRetailOperator {
       searched: List<NonEmptyStr>
       causes: List<EmptyRegionCause>
       surveyed_on: NonEmptyStr
       surveyed_by: NonEmptyStr
     }
-  // Nobody has looked. This is the arm that must never be confused with the one above, and the
-  // only one that carries an open obligation.
   | RegionUnsurveyed {
       obligation: NonEmptyStr
     }
@@ -76,6 +82,29 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
     SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Present { value: 0 },
     RegionUnsurveyed { obligation } => Absent,
   }
+}
+
+// THE CORRIDOR ROW, AND THE NUMBER THAT SHOULD WORRY A READER MOST. Twenty-eight facilities
+// modelled in the densest colocation market in the region, and ONE of them publishes a cabinet
+// density anybody has verified against page bytes. That ratio is the census's real finding about
+// the corridor: the facilities are there, the retail density figures are not published, and a
+// planner who wanted a dense cabinet in Hudson-Bergen-Essex would be negotiating rather than
+// shopping.
+//
+// The count is one AFTER an audit, not before it. This region briefly read two: a Summit Secaucus
+// row citing 12 kW in a 42U cabinet, whose wording reproduced in the page bytes exactly and which
+// sat under a block headed "Limited Time: Chicago-Area Facility". Real figure, published price,
+// wrong metro. The withdrawal is recorded in
+// gunbc.recurring_failure_mode.citation_verified_against_a_rendering_that_destroyed_its_scope,
+// because a citation confirmed by string occurrence alone cannot fail on correct text attached to
+// the wrong subject.
+data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
+  region_label: "NJ Hudson-Bergen-Essex corridor",
+  region_code: "NJ",
+  outcome: FacilitiesModelled {
+    facility_count: 28,
+    density_read_count: 1,
+  },
 }
 
 data southern_new_jersey: RegionCoverage = RegionCoverage {
@@ -109,6 +138,6 @@ data hudson_valley: RegionCoverage = RegionCoverage {
   },
 }
 
-data census_regions: List<RegionCoverage> = [southern_new_jersey, hudson_valley]
+data census_regions: List<RegionCoverage> = [nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
 
 data coverage_growth_note: NonEmptyStr = "This roster is INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It carries the regions a lane surveyed and found empty; it does not yet carry a RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding those rows is worth doing only when the census's geographic scope is decided - an unsurveyed roster over an undecided scope is a list whose length is an artefact of where the author stopped typing."
