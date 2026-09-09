@@ -239,6 +239,11 @@ fn managed_principal_leg(
 data spark_managed_login: String = "gunbc-automation"
 data spark_inference_login: String = "gunbc-inference"
 
+// THE IDENTITY FILE IS NOT SPELLED IN CONSUMERS. Instruments authenticate as spark_managed_login
+// using the OpenSSH agent / default identity that provisions that principal (the same key
+// managed_access_apply installs). A second path in a probe disagreed with this login once and
+// read as a broken host.
+
 // The account creation script. `--system` is deliberately NOT used: a system account gets no home
 // directory by default and the authorized_keys population needs one. The shell is a real shell
 // because this account executes convergence commands; the INFERENCE identity below is the one that

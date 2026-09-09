@@ -16,6 +16,9 @@ import extdeps.systemd {
   MemorySwapMax,
   TasksMax,
   CPUWeight,
+  CPUQuotaPerSecUSec,
+  parse_systemd_cpu_quota_per_sec_show,
+  systemd_cpu_quota_per_sec_identity,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fabric_cell_converge {
@@ -197,6 +200,7 @@ type FabricCellBoundaryReading
       memory_swap_max: String
       tasks_max: String
       cpu_weight: String
+      cpu_quota_per_sec: String
     }
   | BoundaryReadRefused { cause: String }
 
@@ -212,18 +216,27 @@ fn fabric_cell_boundary_address_probe(
       memory_swap_max: ms
       tasks_max: tm
       cpu_weight: cw
+      cpu_quota_per_sec: cq
     } =>
-      AddressStateRead {
-        state_digest: fabric_cell_boundary_address_digest_of(
-          slice_name: fabric_cell_slice_name(slot: slot),
-          state: fabric_cell_boundary_state_digest_of(
-            memory_max: mx,
-            memory_high: mh,
-            memory_swap_max: ms,
-            tasks_max: tm,
-            cpu_weight: cw,
-          ),
-        ),
+      match systemd_cpu_quota_per_sec_identity(q: parse_systemd_cpu_quota_per_sec_show(raw: cq)) {
+        Absent =>
+          AddressStateReadRefused {
+            cause: "CPUQuotaPerSecUSec was reported and this module cannot decode it, so the cell ceiling has no identity to compare",
+          }
+        Present { value: quota_identity } =>
+          AddressStateRead {
+            state_digest: fabric_cell_boundary_address_digest_of(
+              slice_name: fabric_cell_slice_name(slot: slot),
+              state: fabric_cell_boundary_state_digest_of(
+                memory_max: mx,
+                memory_high: mh,
+                memory_swap_max: ms,
+                tasks_max: tm,
+                cpu_weight: cw,
+                cpu_quota_per_sec: quota_identity,
+              ),
+            ),
+          }
       }
   }
 }
@@ -395,6 +408,12 @@ type FabricCellPropertyObservation
   = PropertyRead { value: NonEmptyStr }
   | PropertyReadRefused { cause: String }
 
+// CPUQuotaPerSecUSec IS THE READBACK SPELLING, NOT CPUQuota. Empty is a classified observed state
+// (CpuQuotaAbsent) rather than a refused read, so it is a String rather than NonEmptyStr.
+type FabricCellQuotaPropertyObservation
+  = QuotaPropertyRead { value: String }
+  | QuotaPropertyReadRefused { cause: String }
+
 fn fabric_cell_boundary_property_observation(
   success: Bool,
   output: String,
@@ -449,17 +468,34 @@ fn fabric_cell_read_boundary(slot: RunnerSlotIdentity) -> FabricCellBoundaryRead
                   match fabric_cell_read_boundary_property(unit: unit, property: CPUWeight) {
                     PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
                     PropertyRead { value: cw } =>
-                      BoundaryValuesRead {
-                        memory_max: mx as String,
-                        memory_high: mh as String,
-                        memory_swap_max: ms as String,
-                        tasks_max: tm as String,
-                        cpu_weight: cw as String,
+                      match fabric_cell_read_cpu_quota_per_sec(unit: unit) {
+                        QuotaPropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+                        QuotaPropertyRead { value: cq } =>
+                          BoundaryValuesRead {
+                            memory_max: mx as String,
+                            memory_high: mh as String,
+                            memory_swap_max: ms as String,
+                            tasks_max: tm as String,
+                            cpu_weight: cw as String,
+                            cpu_quota_per_sec: cq,
+                          }
                       }
                   }
               }
           }
       }
+  }
+}
+
+func fabric_cell_read_cpu_quota_per_sec(unit: NonEmptyStr) -> FabricCellQuotaPropertyObservation {
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: CPUQuotaPerSecUSec)
+  let word = systemd_unit_property_wire(property: CPUQuotaPerSecUSec) as String
+  if !shown.success {
+    QuotaPropertyReadRefused {
+      cause: join(["systemctl show ", word, " exited unsuccessfully for the cell slice"], ""),
+    }
+  } else {
+    QuotaPropertyRead { value: trim(shown.value) }
   }
 }
 
