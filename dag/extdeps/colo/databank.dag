@@ -105,6 +105,32 @@ data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Operator page read 2026-09-08: 34,360 IT square feet, 1.7 MW critical IT load, 2N power design, 120V and 208V three-phase AC with DC available, 21 on-site carriers. The zColo suite Zayo sold to DataBank in 2020 per the operator's own history. Essex County, on the Newark side of the corridor rather than the Secaucus cluster.",
 }
 
+// THE ARM IS WRONG AND THIS ROW SAYS SO, WHICH IT DID NOT UNTIL review 62935 POINTED AT IT.
+// "10kW+" is a CAPABILITY FLOOR - the operator's own plus sign - and it sits in
+// DensityMarketedAirOnly, which cabinet_density_air_ceiling turns into CeilingAt { at_most: 10kW }.
+// So the carrier will answer that this cabinet REFUSES 10,001 W on evidence that says ten kilowatts
+// OR MORE. That is a fabricated plausible output in the sense DESIGN section 5 forbids outright, and
+// it is the operator's standing integration HOLD on this pull request.
+//
+// THE INCONSISTENCY THE REVIEW FOUND WAS REAL AND IT WAS MINE. Seven Equinix rows in this same
+// change refuse exactly this placement: a floor may not enter a maximum's field, so they stayed
+// DensityUnread with the figure in prose. EWR1 did not, and the only difference was that EWR1 was
+// written before the doctrine and never revisited when the doctrine arrived. A rule applied to the
+// rows discovered after it, and not to the row it was derived from, is not yet a rule.
+//
+// WHY THE REPAIR IS NOT "DEMOTE IT TO DensityUnread", which is what the review proposed. That trades
+// a wrong ceiling for a wrong coverage reading: this claim WAS read, verified at markup grain, and
+// the operator has just ruled that retrieval coverage and decision utility are separate facts.
+// Calling a read claim unread to silence a ceiling would re-fuse the two axes in the opposite
+// direction and drop the corridor census to zero read densities while the reading sits in the file.
+// The correct arm is CapabilityAtLeast, it does not exist yet, and it is gunbc#10885.
+//
+// WHAT IS TRUE TODAY, stated so the risk is sized rather than asserted away: NO CALL SITE READS THIS
+// ROW'S CEILING. The only consumers of cabinet_density_air_ceiling in the tree are two helpers in
+// the census witness, and neither is applied to databank_ewr1_density - re-derive with
+// `grep -rn cabinet_density_air_ceiling dag`. The defect is LATENT, not live, and the operator HOLD
+// is what keeps it from reaching main before its carrier does.
+//
 // A READ DENSITY, AND IT IS THE COOLING SENTENCE RATHER THAN A POWER SENTENCE. The facility page
 // states an N+1 cooling design with 10kW+ cabinet density capability. That is a per-cabinet figure
 // on the operator's own facility page, so it is read rather than unread - but the plus sign and

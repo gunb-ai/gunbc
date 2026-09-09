@@ -132,6 +132,26 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // cooling medium, and no Watt is touched. Requirement-specific usability stays where the operator put
 // it, inside the selection projection, and cabinet_density_air_ceiling remains the sole authority for
 // what a cabinet may draw - this module no longer calls it at all.
+//
+// AND THIS FUNCTION IS THE HABIT REPEATING, WHICH review 62935 CAUGHT AND THIS FILE ALREADY
+// CONDEMNED IN ADVANCE. Nine lines above, coverage_facility_count carries the sentence "writing the
+// predicate again one module later is the receipt that the first deletion was applied to an instance
+// and not to the habit" - written about cabinet_density_is_read, deleted from the carrier for being
+// a Bool arm-matcher over a reusable coproduct. density_claim_is_read is a Bool arm-matcher over the
+// same coproduct, one module later, in the file carrying that sentence. DISPOSITION: YELLOW, not
+// green, and the reviewer is right that the long note above justifies not using the ceiling without
+// disposing of what replaced it.
+//
+// WHY IT IS NOT REPAIRED IN THIS CHANGE. The right home is the carrier - a presence-shaped accessor
+// beside the two direction-committed ones it already exposes, cabinet_density_air_established and
+// cabinet_density_air_ceiling, neither of which can answer "was anything published" without also
+// committing to a direction and a medium. That accessor cannot be written today: gunbc#10885 REPLACES
+// THE ARMS this predicate matches on - DensityMarketedMax and DensityMarketedAirOnly dissolve into
+// one DensityPublished carrying a list of figures - so an accessor authored now would be a match over
+// a coproduct that is being deleted, and would have to be rewritten by the same lane in the same
+// week. TRIGGER: gunbc#10885 landing, at which point the presence accessor lands in the carrier with
+// the new arms and this module calls it instead of matching. Recorded here rather than in a PR
+// thread, because the next reader of this function needs to know it is owed a home.
 fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
   match d {
     DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => true,
