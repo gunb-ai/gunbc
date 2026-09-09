@@ -353,16 +353,33 @@ test fn use_site_type_argument_through_an_imported_alias_still_charges_unlisted_
 
 // THE PROPAGATION CONTROL FOR THE ALIAS PEEL. The peel accumulates the traversal's diagnostics
 // (concat(once.diagnostics, rest.diagnostics)) precisely so that flipping the mask does not also
-// SILENCE the hard refusals the expansion traversal produces. This arm constructs through an
-// imported alias whose expansion names a type that exists nowhere: the definer's own compile
-// never resolves the alias's right-hand side (a paramless alias resolves as a leaf until a
-// construction forces the expansion), so the UnresolvedType row can reach the outcome only
-// through the peel's own diagnostic accumulation. MUTATION THIS ARM REDS: dropping or filtering
-// the accumulated diagnostics on the peel path -- the compile then refuses nothing and reports
-// clean over a construction whose fields cannot be typed.
+// SILENCE the hard refusals the expansion traversal produces. This arm reads a field through an
+// imported alias whose expansion names a type that exists nowhere, and asserts the EXACT row
+// anatomy of the refusal, because the anatomy is where the peel's contribution lives. Measured
+// 2026-09-09 on this exact fixture shape (same sources, same entry, same count reader):
+//   - the definer module ALONE charges UnresolvedType(UbtrGhost) ONCE: the definer's own compile
+//     resolves a paramless alias's right-hand side at definition time, with no user module and
+//     no peel involved. An earlier draft of this arm claimed the opposite ("a paramless alias
+//     resolves as a leaf until a use forces the expansion"); the probe measurement refuted it.
+//   - a user that IMPORTS the alias but never uses it adds no row (total stays 1): no field
+//     access, no construction, no peel.
+//   - the field ACCESS below forces the peel, whose masked:false traversal re-resolves the
+//     expansion and whose accumulation carries the SECOND UnresolvedType(UbtrGhost) row into the
+//     outcome (total 2). UnresolvedType is GateBlocking (v1.std.core diagnostic_disposition), so
+//     the fixture lands in FixtureCompileRefused; a Completed outcome over this manifest would be
+//     a gate failure, never a pass.
+// MUTATION THIS ARM REDS: dropping or filtering the accumulated diagnostics on the peel path
+// takes the total 2 -> 1 (measured by running this fixture's shape against a seed whose peel
+// returned an empty diagnostic list), so the == 2 assertion goes false. The same red fires if
+// the DEFINER's compile ever stops diagnosing a broken alias definition (2 -> 1 for the other
+// reason) -- a distinct regression this arm also catches, named here so the red is read
+// correctly. Two earlier shapes of this arm did not discriminate and are recorded so they are
+// not re-tried: a CONSTRUCTION through the alias (the record literal's own field type-check
+// resolves the expansion beside the peel, so the row survived a peel that dropped every
+// diagnostic), and a > 0 count reading (the definer's own row satisfies it with no peel at all).
 data ubtr_broken_alias_definer_source: String = "module ubtr.bdef\n\ntype UbtrSel {\n  picked: Int\n}\n\ntype UbtrPackNode<K, S> {\n  key: K\n  sel: S\n}\n\ntype UbtrBrokenAlias = UbtrPackNode<UbtrGhost, UbtrSel>\n"
 
-data ubtr_broken_alias_user_source: String = "module ubtr.buser\n\nimport ubtr.bdef { UbtrBrokenAlias }\n\nfn ubtr_rebuild(n: UbtrBrokenAlias) -> UbtrBrokenAlias {\n  UbtrBrokenAlias { key: n.key, sel: n.sel }\n}\n"
+data ubtr_broken_alias_user_source: String = "module ubtr.buser\n\nimport ubtr.bdef { UbtrBrokenAlias }\n\nfn ubtr_probe(n: UbtrBrokenAlias) -> Int {\n  n.sel.picked\n}\n"
 
 fn ubtr_broken_alias_run() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
@@ -376,10 +393,9 @@ fn ubtr_broken_alias_run() -> MultiModuleCompileFixtureOutcome {
 
 test fn diagnostics_from_the_alias_expansion_still_propagate() -> Bool {
   match ubtr_broken_alias_run() {
-    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      ubtr_subject_count(rows: rows, wanted: "UnresolvedType", subject: "UbtrGhost") > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
-      ubtr_subject_count(rows: rows, wanted: "UnresolvedType", subject: "UbtrGhost") > 0,
+      ubtr_subject_count(rows: rows, wanted: "UnresolvedType", subject: "UbtrGhost") == 2,
     FixtureInstrumentRefused { cause: c } => false
   }
 }
