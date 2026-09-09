@@ -284,3 +284,4 @@ data databank_phl1_density: CabinetDensityClaim = DensityUnread {
 data databank_phl1_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "The Philadelphia page read 2026-09-08 describes interconnection and location and does not itemise cabinets, cages or suites for this site. The 'Cabinets & Cages' wording carried above is the LGA4 page's, not this one's. Confirm the smallest sellable unit at PHL1 with sales.",
 }
+data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator's New Jersey footprint remains an unread obligation."
