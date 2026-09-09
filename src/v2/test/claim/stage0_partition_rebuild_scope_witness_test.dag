@@ -237,6 +237,7 @@ test fn witness_infer_resolve_rebuild_owner_is_v1_infer_holds() -> Bool {
         && witness_has(items: closure, item: "v1-compiler")
     WholeCompilerRebuildRequired { cause: _ } => false
     RebuildScopeRefused { cause: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
