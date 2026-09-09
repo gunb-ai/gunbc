@@ -13,14 +13,19 @@ import v2.compiler.name_resolve {
 import v2.compiler.program_assembly {
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
+  program_assembly_read_to_normalized_root_prepared,
   ProgramAssemblyFoldState,
   ProgramAssemblyFoldOk,
   ProgramAssemblyFoldFailed
 }
-import v2.compiler.source_authority { SourceRootIngest, source_root_set_from_ingest }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest,
+  source_root_set_from_ingest
+}
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.compiler.parse { parse }
+import v2.compiler.parse { parse, prepare_grammar, PreparedGrammar }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
 import v2.std.staging { then_outcome, CacheProbe, Miss }
@@ -33,7 +38,11 @@ import v2.std.grammar { ParseTree }
 import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
-import v2.extdeps.languages.dag { dag_language_model, dag_target_model }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  dag_target_model,
+  qualified_name_from_module_node
+}
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
 import v2.lens.determinism { determinism_compile_gate }
 import v2.lens.machine_shape { machine_shape_compile_gate }
@@ -43,13 +52,15 @@ import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { list_append, list_reverse }
+import v2.std.algebra { fold_list, list_append, list_reverse, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Locus,
+  NonEmptyDiagnostics,
   Outcome,
   Some,
   invariant_port_locus,
@@ -67,7 +78,11 @@ import v2.std.node_query { find_arrow_body_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.cross_tree.import_model { SourceRootRef }
-import v2.std.cross_tree.resolution { SourceRootIndex }
+import v2.std.cross_tree.resolution {
+  SourceRootIndex,
+  source_root_index_empty,
+  source_root_index_insert
+}
 import v2.extdeps.runtimes.v2_evaluator {
   v2_eval_runtime_bool_is_false,
   v2_eval_runtime_bool_is_true
@@ -633,11 +648,26 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // interpreter.
 //
 // THREE FUNCTIONS, ONE PER COST GRAIN. native_test_context_from_ingest pays the whole-ingest
-// fold (tokenize/parse/normalize every source) ONCE per lane; its rejection is a lane-level
-// refusal, never a per-test verdict. native_test_prepare_module pays resolve + infer ONCE per
-// module. native_test_eval_one pays entry resolution + evaluation per declaration and NEVER
-// rejects: every failure it can reach is a typed NativeTestRefused verdict carrying the stage
-// and the diagnostic's head reason, so a census over observations has no silent remainder.
+// fold (tokenize/parse/normalize every source) ONCE per lane; it rejects only on a LANE-LEVEL
+// defect (a grammar that fails to prepare), never on corpus data. native_test_prepare_module
+// pays resolve + infer ONCE per module. native_test_eval_one pays entry resolution +
+// evaluation per declaration and NEVER rejects: every failure it can reach is a typed
+// NativeTestRefused verdict carrying the stage and the diagnostic's head reason, so a census
+// over observations has no silent remainder.
+//
+// THE PER-FILE FRONT-END REFUSAL IS CENSUS DATA, NOT A WHOLE-CONTEXT REFUSAL. The program
+// assembly fold (v2.compiler.program_assembly) is wholesale fail-closed — one unparseable
+// source fails the program — which is the right door for COMPILATION and the wrong shape for
+// this census: the v2 front-end has a live corpus frontier (v2.workflow.compile_door_ledger),
+// and a wholesale fold would let one frontier file deny verdict rows for every other member —
+// the absorbing fallback in ingest form (DESIGN 5: the deficit's frequency reads zero because
+// the whole lane is red). So the context fold below collects each source's tokenize/parse/
+// normalize refusal as a NativeTestFileRefusal row and keeps folding. Nothing is thereby
+// WIDENED: a refused file contributes no root, so its module is absent from the index, every
+// test identity living in it surfaces as a Context-stage refusal row minted by the lane host
+// from exactly these rows, and a module that PARSED but imports a refused file fails at
+// Prepare with the resolver's own diagnostic. The lane's admission still refuses over any
+// unattributed row — collection changes the grain of the refusal, never its force.
 //
 // NO LENS GATES ON THIS ROUTE, deliberately. validate_then_compile's required lenses are the
 // COMPILE door's corpus invariants; the floor's seed-interpreter route does not run them per
@@ -662,10 +692,22 @@ type NativeTestObservation {
   verdict: NativeTestVerdict
 }
 
+// ONE SOURCE'S FRONT-END REFUSAL, AT THE TWO GRAINS THE CLASSIFICATION NEEDS. The rejection's
+// diagnostic list prepends non-fatal pending advisories (rejected_with_pending), so the head
+// reason and the fatal (last) reason are different observations of one refusal — the door
+// ledger's cause-ownership table is keyed by exactly this grain distinction, and the lane's
+// classifier asks both questions of every row.
+type NativeTestFileRefusal {
+  path: Symbol
+  head_reason: Symbol
+  fatal_reason: Symbol
+}
+
 type NativeTestContext {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
   active_roots: FreeMonoid<SourceRootRef>
+  file_refusals: FreeMonoid<NativeTestFileRefusal>
 }
 
 type NativeTestPreparedModule {
@@ -673,15 +715,92 @@ type NativeTestPreparedModule {
   inferred: InferredTree
 }
 
+type NativeTestContextFoldState {
+  roots: FreeMonoid<NormalizedTree>
+  index: SourceRootIndex
+  file_refusals: FreeMonoid<NativeTestFileRefusal>
+}
+
+// The LAST diagnostic is the cause that actually refused the file; the head is the advisory
+// that rode along. Both are carried because ownership is keyed by grain.
+fn native_test_fatal_reason(d: NonEmptyDiagnostics) -> Symbol {
+  fold_list(xs: d.tail, empty: d.head.reason, cons: fn(_acc, diag) { diag.reason })
+}
+
+fn native_test_file_refusal(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestFileRefusal {
+  NativeTestFileRefusal {
+    path: path,
+    head_reason: d.head.reason,
+    fatal_reason: native_test_fatal_reason(d: d)
+  }
+}
+
+fn native_test_context_fold_step(
+  state: NativeTestContextFoldState,
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> NativeTestContextFoldState {
+  match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
+    Rejected { diagnostics: d } =>
+      NativeTestContextFoldState {
+        roots: state.roots,
+        index: state.index,
+        file_refusals: list_snoc_item(
+          xs: state.file_refusals,
+          item: native_test_file_refusal(path: read.compilation_unit, d: d)
+        )
+      }
+    Accepted { value: root, diagnostics: _ } =>
+      match qualified_name_from_module_node(root: root.root) {
+        Rejected { diagnostics: d } =>
+          NativeTestContextFoldState {
+            roots: state.roots,
+            index: state.index,
+            file_refusals: list_snoc_item(
+              xs: state.file_refusals,
+              item: native_test_file_refusal(path: read.compilation_unit, d: d)
+            )
+          }
+        Accepted { value: qn, diagnostics: _ } =>
+          NativeTestContextFoldState {
+            roots: list_snoc_item(xs: state.roots, item: root),
+            index: source_root_index_insert(index: state.index, module: qn, root: read.source_root),
+            file_refusals: state.file_refusals
+          }
+      }
+  }
+}
+
 fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
-  match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model()) {
-    ProgramAssemblyFoldFailed { diagnostics: d } => Rejected { diagnostics: d }
-    ProgramAssemblyFoldOk { roots: roots, index: idx } =>
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } => {
+      let folded = fold_list(
+        xs: ingest,
+        empty: NativeTestContextFoldState {
+          roots: Empty,
+          index: source_root_index_empty(),
+          file_refusals: Empty
+        },
+        cons: fn(state, read) {
+          native_test_context_fold_step(
+            state: state,
+            read: read,
+            lm: dag_language_model(),
+            prepared: prepared,
+            residue: residue
+          )
+        }
+      )
       outcome_accepted(value: NativeTestContext {
-        roots: roots,
-        index: idx,
-        active_roots: source_root_set_from_ingest(ingest: ingest)
+        roots: folded.roots,
+        index: folded.index,
+        active_roots: source_root_set_from_ingest(ingest: ingest),
+        file_refusals: folded.file_refusals
       })
+    }
   }
 }
 
@@ -782,7 +901,7 @@ fn native_test_eval_body(
         module: prepared.module,
         declaration: declaration,
         stage: NativeTestStageEval,
-        reason: d.head.reason
+        reason: native_test_fatal_reason(d: d)
       )
     Accepted { value: rv, diagnostics: _ } =>
       if v2_eval_runtime_bool_is_true(value: rv) {
@@ -828,7 +947,7 @@ fn native_test_eval_one(
                 module: prepared.module,
                 declaration: declaration,
                 stage: NativeTestStageEntry,
-                reason: d.head.reason
+                reason: native_test_fatal_reason(d: d)
               )
             Accepted { value: body, diagnostics: _ } =>
               native_test_eval_body(
