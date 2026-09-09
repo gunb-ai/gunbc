@@ -1,6 +1,6 @@
 module test.claim.cloudflare_r2_token
 
-import std.types { Secret }
+import std.types { Secret, NonEmptyStr }
 import extdeps.cloudflare.client_v4 {
   cloudflare_client_v4_base,
   cloudflare_client_v4_edition
@@ -23,6 +23,10 @@ import extdeps.cloudflare.account_api_tokens {
   CreatedViaAccountTokensApi,
   AccountTokenApiMintAdmitted,
   AccountTokenApiMintRefusedHumanDashboardOnly,
+  AccountTokenApiMintRefusedGrantPolicyMismatch,
+  CreateAccountTokenRequest,
+  AccountTokenPolicy,
+  PermissionGroupRef,
   account_api_tokens_write_permission_name,
   admit_account_token_api_mint,
   account_token_policy_create_wire
@@ -199,9 +203,17 @@ test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
     jurisdiction: R2JurisdictionDefault,
     bucket_name: "my-bucket"
   ) {
-    AccountTokenApiMintAdmitted { shape: s, request: _ } =>
+    AccountTokenApiMintAdmitted { shape: s, request: req } =>
       s.acquisition == CreatedViaAccountTokensApi
+        && all(
+          req.policies,
+          p => all(
+            p.permission_groups,
+            g => g.id == workers_r2_storage_bucket_item_read_permission_group_id
+          )
+        )
     AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+    AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
   }
     && match admit_account_token_api_mint(
       shape: cloudflare_bootstrap_token_shape(),
@@ -215,7 +227,56 @@ test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
       AccountTokenApiMintRefusedHumanDashboardOnly { shape: s } =>
         s.acquisition == HumanDashboardAcquired
       AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+      AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
     }
+}
+
+test fn api_mint_refuses_when_create_policies_omit_the_shape_grant() -> Bool {
+  match admit_account_token_api_mint(
+    shape: cloudflare_r2_object_read_token_shape(),
+    request: CreateAccountTokenRequest {
+      name: "r2-read",
+      policies: [],
+      not_before: none,
+      expires_on: none
+    }
+  ) {
+    AccountTokenApiMintRefusedGrantPolicyMismatch { shape: s, request: req } =>
+      s.acquisition == CreatedViaAccountTokensApi && (req.policies |> count) == 0
+    AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+    AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+  }
+}
+
+test fn api_mint_refuses_when_create_policies_cite_a_different_permission_group() -> Bool {
+  let policy = r2_object_read_token_policy(
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "my-bucket"
+  )
+  match admit_account_token_api_mint(
+    shape: cloudflare_r2_object_read_token_shape(),
+    request: CreateAccountTokenRequest {
+      name: "r2-read",
+      policies: [
+        AccountTokenPolicy {
+          effect: policy.effect,
+          permission_groups: [PermissionGroupRef { id: "00000000000000000000000000000000" as NonEmptyStr }],
+          resources: policy.resources
+        }
+      ],
+      not_before: none,
+      expires_on: none
+    }
+  ) {
+    AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: req } =>
+      any(
+        req.policies,
+        p => any(p.permission_groups, g => g.id != workers_r2_storage_bucket_item_read_permission_group_id)
+      )
+    AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+    AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+  }
 }
 
 test fn r2_s3_derivation_and_permission_group_id_cite_the_r2_tokens_doc() -> Bool {

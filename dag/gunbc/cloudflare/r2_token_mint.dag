@@ -16,13 +16,11 @@ import extdeps.cloudflare.account_api_tokens {
   CloudflareAccountTokenShape,
   AccountOwnedApiToken,
   AccountApiTokensWrite,
-  WorkersR2StorageBucketItemRead,
   HumanDashboardAcquired,
   CreatedViaAccountTokensApi,
   NoExpiryUntilRevoked,
   AccountApiTokensSurface,
   CreateAccountOwnedToken,
-  R2S3ObjectRead,
   credential_supports,
   admit_account_token_api_mint,
   AccountTokenApiMintStanding,
@@ -30,7 +28,9 @@ import extdeps.cloudflare.account_api_tokens {
 }
 import extdeps.cloudflare.r2 {
   R2Jurisdiction,
-  r2_object_read_create_request
+  r2_object_read_create_request,
+  r2_object_read_grant,
+  shape_grants_include_r2_object_read
 }
 
 // POLICY, NOT UPSTREAM. The GitHub org-admin lane
@@ -92,7 +92,7 @@ fn cloudflare_bootstrap_token_shape() -> CloudflareAccountTokenShape {
 fn cloudflare_r2_object_read_token_shape() -> CloudflareAccountTokenShape {
   CloudflareAccountTokenShape {
     kind: AccountOwnedApiToken,
-    grants: [WorkersR2StorageBucketItemRead],
+    grants: [r2_object_read_grant()],
     acquisition: CreatedViaAccountTokensApi,
     lifetime: NoExpiryUntilRevoked,
     revocation: AccountApiTokensSurface
@@ -107,17 +107,11 @@ fn bootstrap_can_mint_account_tokens() -> Bool {
 }
 
 fn minted_r2_token_can_read_objects() -> Bool {
-  credential_supports(
-    shape: cloudflare_r2_object_read_token_shape(),
-    capability: R2S3ObjectRead
-  )
+  shape_grants_include_r2_object_read(shape: cloudflare_r2_object_read_token_shape())
 }
 
 fn bootstrap_is_not_the_r2_object_token() -> Bool {
-  !credential_supports(
-    shape: cloudflare_bootstrap_token_shape(),
-    capability: R2S3ObjectRead
-  )
+  !shape_grants_include_r2_object_read(shape: cloudflare_bootstrap_token_shape())
 }
 
 data cloudflare_account_token_bootstrap_intervention_identity: String = "cloudflare-account-token-bootstrap"

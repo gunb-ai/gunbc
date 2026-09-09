@@ -10,8 +10,13 @@ import extdeps.cloudflare.account_api_tokens {
   CreatedAccountToken,
   AccountTokenPolicy,
   PermissionGroupRef,
+  PermissionGroupGrant,
   PolicyAllow,
-  CreateAccountTokenRequest
+  CreateAccountTokenRequest,
+  CloudflarePermissionGrant,
+  CloudflareAccountTokenShape,
+  AccountApiTokensWrite,
+  AccountApiTokensRead
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -144,6 +149,22 @@ fn r2_bucket_item_read_permission_group() -> PermissionGroupRef {
   PermissionGroupRef { id: workers_r2_storage_bucket_item_read_permission_group_id }
 }
 
+fn r2_object_read_grant() -> CloudflarePermissionGrant {
+  PermissionGroupGrant { group: r2_bucket_item_read_permission_group() }
+}
+
+fn permission_groups_of_r2_object_read_grant() -> List<PermissionGroupRef> {
+  match r2_object_read_grant() {
+    PermissionGroupGrant { group: g } => [g]
+    AccountApiTokensWrite => []
+    AccountApiTokensRead => []
+  }
+}
+
+fn shape_grants_include_r2_object_read(shape: CloudflareAccountTokenShape) -> Bool {
+  any(shape.grants, g => g == r2_object_read_grant())
+}
+
 fn r2_bucket_item_read_resources(
   account_id: String,
   jurisdiction: R2Jurisdiction,
@@ -167,7 +188,7 @@ fn r2_object_read_token_policy(
 ) -> AccountTokenPolicy {
   AccountTokenPolicy {
     effect: PolicyAllow,
-    permission_groups: [r2_bucket_item_read_permission_group()],
+    permission_groups: permission_groups_of_r2_object_read_grant(),
     resources: r2_bucket_item_read_resources(
       account_id: account_id,
       jurisdiction: jurisdiction,

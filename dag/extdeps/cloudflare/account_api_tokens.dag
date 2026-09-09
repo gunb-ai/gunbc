@@ -73,6 +73,10 @@ data account_token_value_prefix: NonEmptyStr = "cfat_"
 data user_token_value_prefix: NonEmptyStr = "cfut_"
 data global_api_key_value_prefix: NonEmptyStr = "cfk_"
 
+type PermissionGroupRef {
+  id: NonEmptyStr
+}
+
 type CloudflareCredentialKind
   = AccountOwnedApiToken
   | UserOwnedApiToken
@@ -81,12 +85,11 @@ type CloudflareCredentialKind
 type CloudflareCredentialCapability
   = CreateAccountOwnedToken
   | ListAccountTokenPermissionGroups
-  | R2S3ObjectRead
 
 type CloudflarePermissionGrant
   = AccountApiTokensWrite
   | AccountApiTokensRead
-  | WorkersR2StorageBucketItemRead
+  | PermissionGroupGrant { group: PermissionGroupRef }
 
 type CloudflareCredentialAcquisition
   = HumanDashboardAcquired
@@ -119,7 +122,7 @@ fn grant_supports(
       c => c == capability
     )
     AccountApiTokensRead => capability == ListAccountTokenPermissionGroups
-    WorkersR2StorageBucketItemRead => capability == R2S3ObjectRead
+    PermissionGroupGrant { group: _ } => false
   }
 }
 
@@ -182,10 +185,6 @@ fn token_policy_effect_wire(effect: TokenPolicyEffect) -> String {
     PolicyAllow => "allow"
     PolicyDeny => "deny"
   }
-}
-
-type PermissionGroupRef {
-  id: NonEmptyStr
 }
 
 type AccountTokenPolicy {
@@ -323,12 +322,54 @@ fn account_token_mint_route(shape: CloudflareAccountTokenShape) -> AccountTokenM
   }
 }
 
+fn permission_groups_from_grants(
+  grants: List<CloudflarePermissionGrant>
+) -> List<PermissionGroupRef> {
+  fold(grants, init: [], f: fn(acc, g) {
+    match g {
+      PermissionGroupGrant { group: grp } => concat(acc, [grp])
+      AccountApiTokensWrite => acc
+      AccountApiTokensRead => acc
+    }
+  })
+}
+
+fn permission_groups_from_policies(
+  policies: List<AccountTokenPolicy>
+) -> List<PermissionGroupRef> {
+  fold(policies, init: [], f: fn(acc, p) {
+    concat(acc, p.permission_groups)
+  })
+}
+
+fn permission_group_ids_agree(
+  left: List<PermissionGroupRef>,
+  right: List<PermissionGroupRef>
+) -> Bool {
+  all(left, l => any(right, r => r.id == l.id))
+    && all(right, r => any(left, l => l.id == r.id))
+}
+
+fn mint_grant_policy_permission_groups_agree(
+  shape: CloudflareAccountTokenShape,
+  request: CreateAccountTokenRequest
+) -> Bool {
+  permission_group_ids_agree(
+    left: permission_groups_from_grants(grants: shape.grants),
+    right: permission_groups_from_policies(policies: request.policies)
+  )
+}
+
 type AccountTokenApiMintStanding
   = AccountTokenApiMintAdmitted {
       shape: CloudflareAccountTokenShape
       request: CreateAccountTokenRequest
     }
   | AccountTokenApiMintRefusedHumanDashboardOnly { shape: CloudflareAccountTokenShape }
+  | AccountTokenApiMintRefusedGrantPolicyMismatch {
+      shape: CloudflareAccountTokenShape
+      request: CreateAccountTokenRequest
+    }
 
 fn admit_account_token_api_mint(
   shape: CloudflareAccountTokenShape,
@@ -336,7 +377,11 @@ fn admit_account_token_api_mint(
 ) -> AccountTokenApiMintStanding {
   match account_token_mint_route(shape: shape) {
     AccountTokensCreateApi =>
-      AccountTokenApiMintAdmitted { shape: shape, request: request }
+      if mint_grant_policy_permission_groups_agree(shape: shape, request: request) {
+        AccountTokenApiMintAdmitted { shape: shape, request: request }
+      } else {
+        AccountTokenApiMintRefusedGrantPolicyMismatch { shape: shape, request: request }
+      }
     HumanDashboardOnly =>
       AccountTokenApiMintRefusedHumanDashboardOnly { shape: shape }
   }
