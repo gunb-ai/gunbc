@@ -1,223 +1,440 @@
 module gunbc.witness_v2_native_route
 
-import v2.std.algebra { any, filter, fold_list, is_empty, length }
+import v2.std.algebra { any, filter, fold_list, is_empty, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
-import v2.workflow.compile_door_ledger {
-  CauseOwnership,
-  DiagnosticGrain,
-  FatalGrain,
-  HeadGrain,
-  cause_ownership_lookup
+import v2.compiler.compile {
+  NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
+  NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
+  NativeTestFileRefusal
 }
+import v2.workflow.compile_door_ledger {
+  DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup
+}
+import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import v2.workflow.floor_route_gap { floor_route_gap_roster }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
-// additional required job, modelled beside the workflow authority that will project it — never
-// a hand-edit of the generated YAML). The job's subject is the compiler/test EXECUTION ROUTE
-// itself: the emitted-native compiler binary, invoked by explicit path, over a derived
-// v2.test.* population. The 32 native-only construct arms are explicitly NOT this proof — they
-// show generated Rust programs ran natively while the claim executor stayed seed-backed; this
-// lane's receipt must show which binary answered.
+// additional required job, modelled beside the workflow authority that projects it — never a
+// hand-edit of the generated YAML). The job's subject is the compiler/test EXECUTION ROUTE
+// itself: the emitted-native compiler binary, invoked by explicit path, executing a derived
+// v2.test.* population through its own whole-source-root Eval driver
+// (std.compiler_entry SourceRootEvalDriver — the v2.compiler.compile native_test_* fold), and
+// reaching a TERMINAL TEST VERDICT per identity. The 32 native-only construct arms are
+// explicitly NOT this proof — they show generated Rust programs ran natively while the claim
+// executor stayed seed-backed; this lane's receipt must show which binary answered, and what
+// verdict each named test reached.
 //
-// STANDING AT AUTHORING: the emitted native compiler — the DirectIngestDriver main emitted for
-// the 00_compile closure — refuses every real v2.test.* module today. Its admission is
-// hard-coded to the compile_driver_subject name with an empty import environment, and the v2
-// compile door is at its modelled frontier for the whole corpus (v2.workflow.compile_door_ledger
-// carries the interpreted door's burn-down; the native and interpreted routes agree on the
-// probed modules, so the blocker is the compiler frontier, not a native divergence). The
-// contracted positive population is therefore EMPTY, and native_route_admission refuses an
-// empty positive population by construction — the empty-observation narrow is the one verdict
-// this lane may never issue. The lane is modelled in full here; ENROLMENT into the required
-// workflow is blocked on the door frontier, with the trigger and the exact enrolment edit
-// carried as data at the bottom of this module.
+// THE TERMINAL SUBJECT IS THE TEST IDENTITY, NOT THE MODULE. A module accepted for translation
+// proves the front door opened; it says nothing about whether any declaration inside it was
+// located, evaluated, or returned its expected verdict. Every row of this lane's population is
+// keyed by the qualified `<module>.<declaration>` identity — the same grain the required floor
+// gates on — and the verdict carried is the driver's own NativeTestVerdict, imported from
+// v2.compiler.compile rather than re-declared here (DESIGN 3: one authority for the verdict
+// vocabulary; a second route-local verdict type would be a nickname).
+//
+// THE ROUTE IS EVAL, NOT TRANSLATION. The driver resolves the exact test declaration inside a
+// whole-ingest context, infers it, and evaluates it under eval_default_interpretation — the
+// same hermetic effect policy the floor's execution mode runs (every host-effect boundary
+// disallowed). A test that reaches for a host effect refuses at the Eval stage on this route,
+// exactly as it gaps on the floor; the floor_route_gap roster is the independently established
+// expectation that pairing consumes.
 
-// THE JOB IDENTITY IS ONE ROW. The workflow enrolment edit, the receipt, and the witnesses all
-// cite this declaration; no second spelling of the job name anywhere.
+// THE JOB IDENTITY IS ONE ROW. The workflow job materialization, the receipt, and the witnesses
+// all cite this declaration; no second spelling of the job name anywhere.
 data required_v2_native_job_name: String = "required-v2-native"
 
-// THE UNIVERSE IS A PREFIX, NOT A ROSTER. The population is DERIVED from the module census by
-// prefix membership — a hand-listed roster would silently drift from the tree it claims to
-// cover. The prefix is the same `v2.test.` the required floor gates on (v2.workflow.required_floor
-// required_gate_prefixes): the native lane's universe is the floor's witness universe asked of
-// a different route. The contract's "no silent remainder" binds INSIDE the universe: every
-// universe member carries exactly one verdict row, and every refused verdict carries exactly
-// one classified cause.
+// THE UNIVERSE IS A PREFIX, NOT A ROSTER. The population is DERIVED from the tree's test
+// discovery by prefix membership — a hand-listed roster would silently drift from the tree it
+// claims to cover. The prefix is the same `v2.test.` the required floor gates on
+// (v2.workflow.required_floor required_gate_prefixes): the native lane's universe is the floor's
+// witness universe asked of a different route. The universe is derived by the host harness from
+// the floor's own discovery producer (v2.workflow.floor_discovery_producer) joined against each
+// entry's authored module header, and carried on the receipt; admission checks its shape and
+// joins the observed population against it exactly.
 data native_route_universe_prefix: String = "v2.test."
 
 fn native_route_universe_member(module_qn: String) -> Bool {
   starts_with(s: module_qn, prefix: native_route_universe_prefix)
 }
 
-fn native_route_universe(module_qns: List<String>) -> List<String> {
-  filter(xs: module_qns, predicate: fn(qn) { native_route_universe_member(module_qn: qn) })
+// ONE TEST IDENTITY, STRUCTURED. The module qualified name and the declaration name are separate
+// observations — the emitted binary reports them separately, and the dotted spelling is DERIVED
+// here (never parsed back out of a string), the same derivation the floor's
+// witness_identity_qualified_name makes. Function names carry no dots, so the dotted form's last
+// segment is always the declaration; the split is unambiguous in both directions.
+type NativeRouteTestIdentity {
+  module: String
+  declaration: String
 }
 
-// ONE ROW PER UNIVERSE MEMBER. NativeAccepted is the positive population. NativeRefused carries
-// TWO reason symbols because the compiler's rejection is a list with a grain the row must not
-// hide: rejected_with_pending PREPENDS the non-fatal pending diagnostics, so the head reason is
-// an advisory that rode along while the LAST diagnostic is the fatal cause the member is
-// excluded for. The door ledger records the head; this lane records both and classifies on the
-// fatal — the two instruments join on head_reason while the exclusion cause stays honest about
-// what actually refused.
-type NativeRouteVerdict
-  = NativeAccepted
-  | NativeRefused { head_reason: Symbol, fatal_reason: Symbol }
-
-type NativeRouteMemberRow {
-  module_path: String
-  verdict: NativeRouteVerdict
+fn native_route_identity_qualified(identity: NativeRouteTestIdentity) -> String {
+  concat(concat(identity.module, "."), identity.declaration)
 }
 
-// THE EXCLUSION TAXONOMY. A refused member is excluded for exactly one of three causes: the
-// compiler's own frontier (attributed to its owning lane through the door ledger's
-// known_frontier_causes at FATAL grain — this lane delegates to that table, it does not
-// re-enumerate it); the emitted driver's admission limit (a native-route fact the interpreted
-// door never faces, owned here); or NOTHING — an unattributed refusal, which is never silently
-// bucketed: it blocks admission until someone owns it, the same fail-closed reading the door
-// ledger gives an unowned head reason.
-type NativeRouteExclusionCause
-  = CompilerFrontierAttributed { reason: Symbol }
-  | NativeDriverAdmissionLimit { reason: Symbol }
-  | UnattributedRefusal { reason: Symbol }
-
-// The emitted DirectIngestDriver hard-codes admission to the compile_driver_subject name with
-// an empty import environment, so resolve_module_not_found on this route is the DRIVER's limit,
-// not the module's defect: every real module is named something else, and every import is
-// unresolvable under it. The roster is data so a driver widening deletes a row rather than
-// editing a predicate.
-data native_driver_limit_reasons: List<Symbol> = [ ^resolve_module_not_found ]
-
-fn native_driver_limit_reason(reason: Symbol) -> Bool {
-  any(xs: native_driver_limit_reasons, predicate: fn(r) { r == reason })
+fn native_route_identity_eq(a: NativeRouteTestIdentity, b: NativeRouteTestIdentity) -> Bool {
+  a.module == b.module && a.declaration == b.declaration
 }
 
-// The exclusion question is asked at FATAL grain: the fatal reason is the cause that actually
-// refused the member, so its ownership row is the FatalGrain one. Asking the head-grain
-// question of a fatal reason was the grain crossing the review named — the same symbol can be
-// owned at one grain and unowned at the other, and only the fatal-grain answer classifies an
-// exclusion.
-fn classify_native_refusal(reason: Symbol) -> NativeRouteExclusionCause {
-  if native_driver_limit_reason(reason: reason) {
-    NativeDriverAdmissionLimit { reason: reason }
-  } else {
-    match cause_ownership_lookup(cause: reason, grain: FatalGrain) {
-      Present { value: _ } => CompilerFrontierAttributed { reason: reason }
-      Absent => UnattributedRefusal { reason: reason }
-    }
-  }
+fn native_route_identity_member(target: NativeRouteTestIdentity, xs: List<NativeRouteTestIdentity>) -> Bool {
+  any(xs: xs, predicate: fn(x) { native_route_identity_eq(a: x, b: target) })
 }
 
-// THE HEAD REASON IS NOT DEAD RECEIPT DATA. rejected_with_pending prepends the non-fatal
-// advisory, so the head reason is a real observation of the frontier at a different grain —
-// the same observation the door ledger's own rows carry. Every refused row's head reason must
-// therefore be owned at HEAD grain: an unowned advisory is a new frontier cause surfacing
-// where nobody counted it, and it blocks admission by its own name rather than riding along
-// unclassified.
-fn native_route_head_advisory_attributed(reason: Symbol) -> Bool {
-  native_driver_limit_reason(reason: reason)
-    || match cause_ownership_lookup(cause: reason, grain: HeadGrain) {
-      Present { value: _ } => true
-      Absent => false
-    }
-}
-
-fn native_route_head_advisories_all_attributed(rows: List<NativeRouteMemberRow>) -> Bool {
-  !any(xs: rows, predicate: fn(row) {
-    match row.verdict {
-      NativeAccepted => false
-      NativeRefused { head_reason: h, fatal_reason: _ } =>
-        !native_route_head_advisory_attributed(reason: h)
-    }
+// NO DUPLICATE IDENTITIES, asked the same way of the universe and of the observed population: an
+// identity appearing twice means the derivation double-counted a declaration or the harness
+// recorded one run twice, and both are harness defects, not results. Quadratic by construction —
+// the interpreter measured this shape over the full derived population at tens of seconds, and
+// the standing bare-minimum-cost ruling prices the fold, not the realized n.
+fn native_route_identities_unique(xs: List<NativeRouteTestIdentity>) -> Bool {
+  !any(xs: xs, predicate: fn(x) {
+    length(xs: filter(xs: xs, predicate: fn(y) { native_route_identity_eq(a: x, b: y) })) > 1
   })
 }
 
-// THE COUNTED PARTITION the contract names ("every excluded member typed and counted"). The
-// census is DERIVED from the rows, never accumulated beside them — a counter that disagrees
-// with the population it summarizes has no constructor here.
-type NativeRouteExclusionCensus {
-  accepted: Int
-  excluded_compiler_frontier: Int
-  excluded_driver_limit: Int
-  excluded_unattributed: Int
+// THE REFERENCE EXPECTATION, PER MEMBER, FROM THE FLOOR'S OWN ROSTERS. Pairing a native verdict
+// against nothing proves nothing about agreement; the independently established expectation is
+// the required floor's, joined at the exact qualified identity. Three arms, derived — never
+// transcribed: route-gap membership is asked FIRST because an identity on both rosters is a
+// route-gap fact (the floor executes it and it gaps), and expected-red second; the remainder is
+// the floor's standing expectation for every discovered v2.test.* member — pass — which is the
+// expectation a green floor asserts of every unrostered identity by construction.
+type NativeRouteReference
+  = FloorExpectedPass
+  | FloorExpectedRed
+  | FloorRouteGapRefusal
+
+fn native_route_reference_for(
+  qualified: String,
+  expected_red: List<String>,
+  route_gap: List<String>
+) -> NativeRouteReference {
+  if any(xs: route_gap, predicate: fn(r) { r == qualified }) {
+    FloorRouteGapRefusal
+  } else if any(xs: expected_red, predicate: fn(r) { r == qualified }) {
+    FloorExpectedRed
+  } else {
+    FloorExpectedPass
+  }
 }
 
-fn native_route_exclusion_census(rows: List<NativeRouteMemberRow>) -> NativeRouteExclusionCensus {
+// ONE ROW PER UNIVERSE MEMBER: the identity and the verdict the emitted native binary observed
+// for it. The verdict is the driver's NativeTestVerdict verbatim — Passed, ReturnedFalse,
+// ReturnedOther, or Refused at a named stage with the fatal reason — so the receipt carries what
+// the route observed, not a summary of it.
+type NativeRouteMemberRow {
+  identity: NativeRouteTestIdentity
+  verdict: NativeTestVerdict
+}
+
+// THE EXCLUSION TAXONOMY, CLASSIFIED FROM STAGE AND PROVENANCE — never from the reason symbol
+// alone (the review's standing instruction: the same symbol is a driver limit on one route and a
+// resolver defect on another). A refused member is excluded for exactly one of these causes:
+// the compiler's own frontier (attributed to its owning lane through the door ledger's
+// known_frontier_causes at FATAL grain — this lane delegates to that table, it does not
+// re-enumerate it); the driver's entry resolution (the declaration was not an evaluable arrow —
+// a test data row or an absent name — a driver fact the door never faces, owned here); the
+// hermetic effect boundary (the test reached a host effect the Eval interpretation does not
+// bind); or NOTHING — an unattributed refusal, which is never silently bucketed: it blocks
+// admission until someone owns it, the same fail-closed reading the door ledger gives an
+// unowned head reason.
+type NativeRouteExclusionCause
+  = CompilerFrontierAttributed { reason: Symbol }
+  | NativeEntryResolutionLimit { reason: Symbol }
+  | NativeEvalBoundary { reason: Symbol }
+  | UnattributedRefusal { reason: Symbol }
+
+// The driver's entry stage refuses for exactly these reasons today: the named declaration was
+// not found in the prepared module, or it was found and is not an arrow (a test data row carries
+// no body to evaluate). The roster is data so a driver widening deletes a row rather than
+// editing a predicate; an entry-stage refusal with any other reason is unattributed, not
+// assumed.
+data native_route_entry_limit_reasons: List<Symbol> = [
+  ^native_test_entry_declaration_not_found,
+  ^native_test_entry_declaration_not_arrow
+]
+
+// The hermetic boundary's reason family: eval_default_interpretation binds no host effect, so a
+// test that reaches one refuses with one of these. An Eval-stage refusal with any OTHER reason
+// is not a boundary observation — it is an eval defect or a compiler frontier cause, and it is
+// classified through the door ledger or left unattributed, never waved through as a boundary.
+data native_route_effect_boundary_reasons: List<Symbol> = [
+  ^eval_rejected_effect_io_unbound,
+  ^eval_rejected_effect_io_write_payload_mismatch,
+  ^eval_rejected_effect_io_roundtrip_arity
+]
+
+fn native_route_reason_member(reason: Symbol, roster: List<Symbol>) -> Bool {
+  any(xs: roster, predicate: fn(r) { r == reason })
+}
+
+// THE CLASSIFICATION QUESTION IS ASKED AT FATAL GRAIN for the compiler-frontier arm: the fatal
+// reason is the cause that actually refused, so its ownership row is the FatalGrain one. Asking
+// the head-grain question of a fatal reason was the grain crossing the review named — the same
+// symbol can be owned at one grain and unowned at the other, and only the fatal-grain answer
+// classifies an exclusion.
+fn classify_native_refusal(stage: NativeTestStage, reason: Symbol) -> NativeRouteExclusionCause {
+  match stage {
+    NativeTestStageEntry =>
+      if native_route_reason_member(reason: reason, roster: native_route_entry_limit_reasons) {
+        NativeEntryResolutionLimit { reason: reason }
+      } else {
+        UnattributedRefusal { reason: reason }
+      }
+    NativeTestStageEval =>
+      if native_route_reason_member(reason: reason, roster: native_route_effect_boundary_reasons) {
+        NativeEvalBoundary { reason: reason }
+      } else {
+        match cause_ownership_lookup(cause: reason, grain: FatalGrain) {
+          Present { value: _ } => CompilerFrontierAttributed { reason: reason }
+          Absent => UnattributedRefusal { reason: reason }
+        }
+      }
+    NativeTestStageContext =>
+      match cause_ownership_lookup(cause: reason, grain: FatalGrain) {
+        Present { value: _ } => CompilerFrontierAttributed { reason: reason }
+        Absent => UnattributedRefusal { reason: reason }
+      }
+    NativeTestStagePrepare =>
+      match cause_ownership_lookup(cause: reason, grain: FatalGrain) {
+        Present { value: _ } => CompilerFrontierAttributed { reason: reason }
+        Absent => UnattributedRefusal { reason: reason }
+      }
+  }
+}
+
+// THE DISPOSITION OF ONE MEMBER: the (verdict, reference) pair, decided whole. A VERDICT the
+// native route reached must AGREE with the reference — a pass where the floor expects red, a
+// false where the floor expects pass, a non-Boolean return, or any reached verdict on a
+// route-gap identity (the hermetic native route reaching what the hermetic floor route could not
+// is a discrepancy between two routes that share an effect policy, and it reds) — and every
+// disagreement is a DIVERGENCE, never an exclusion. A REFUSAL is a capability limit, not a
+// verdict: it agrees only where the reference is the route gap and the refusal is the hermetic
+// boundary itself (Eval stage, effect-boundary reason); every other refusal is an EXCLUSION,
+// typed and counted by its classified cause.
+type NativeRouteDivergenceCause
+  = NativePassedExpectedRed
+  | NativeFalseExpectedPass
+  | NativeReturnedOtherVerdict
+  | NativeReachedRouteGap
+
+type NativeRouteDisposition
+  = NativeAgreementPass
+  | NativeAgreementExpectedRed
+  | NativeAgreementRouteGap
+  | NativeExclusion { cause: NativeRouteExclusionCause }
+  | NativeDivergence { cause: NativeRouteDivergenceCause }
+
+fn native_route_disposition(
+  verdict: NativeTestVerdict,
+  reference: NativeRouteReference
+) -> NativeRouteDisposition {
+  match verdict {
+    NativeTestPassed =>
+      match reference {
+        FloorExpectedPass => NativeAgreementPass
+        FloorExpectedRed => NativeDivergence { cause: NativePassedExpectedRed }
+        FloorRouteGapRefusal => NativeDivergence { cause: NativeReachedRouteGap }
+      }
+    NativeTestReturnedFalse =>
+      match reference {
+        FloorExpectedPass => NativeDivergence { cause: NativeFalseExpectedPass }
+        FloorExpectedRed => NativeAgreementExpectedRed
+        FloorRouteGapRefusal => NativeDivergence { cause: NativeReachedRouteGap }
+      }
+    NativeTestReturnedOther => NativeDivergence { cause: NativeReturnedOtherVerdict }
+    NativeTestRefused { stage: stage, reason: reason } =>
+      match reference {
+        FloorRouteGapRefusal =>
+          match stage {
+            NativeTestStageEval =>
+              if native_route_reason_member(reason: reason, roster: native_route_effect_boundary_reasons) {
+                NativeAgreementRouteGap
+              } else {
+                NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+              }
+            NativeTestStageContext => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+            NativeTestStagePrepare => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+            NativeTestStageEntry => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+          }
+        FloorExpectedPass => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+        FloorExpectedRed => NativeExclusion { cause: classify_native_refusal(stage: stage, reason: reason) }
+      }
+  }
+}
+
+// THE COUNTED PARTITION the contract names ("every excluded member typed and counted"), extended
+// with the agreement and divergence counts the pairing requires. The census is DERIVED from the
+// rows, never accumulated beside them — a counter that disagrees with the population it
+// summarizes has no constructor here. The rosters are folded in once (the caller derives them
+// once) so the per-member reference question is a membership ask, not a re-derivation.
+type NativeRouteCensus {
+  agreement_pass: Int
+  agreement_expected_red: Int
+  agreement_route_gap: Int
+  excluded_compiler_frontier: Int
+  excluded_entry_limit: Int
+  excluded_eval_boundary: Int
+  excluded_unattributed: Int
+  divergences: Int
+}
+
+fn native_route_census(
+  rows: List<NativeRouteMemberRow>,
+  expected_red: List<String>,
+  route_gap: List<String>
+) -> NativeRouteCensus {
   fold_list(
     xs: rows,
-    empty: NativeRouteExclusionCensus {
-      accepted: 0,
+    empty: NativeRouteCensus {
+      agreement_pass: 0,
+      agreement_expected_red: 0,
+      agreement_route_gap: 0,
       excluded_compiler_frontier: 0,
-      excluded_driver_limit: 0,
-      excluded_unattributed: 0
+      excluded_entry_limit: 0,
+      excluded_eval_boundary: 0,
+      excluded_unattributed: 0,
+      divergences: 0
     },
     cons: fn(acc, row) {
-      match row.verdict {
-        NativeAccepted => NativeRouteExclusionCensus {
-          accepted: acc.accepted + 1,
+      let reference = native_route_reference_for(
+        qualified: native_route_identity_qualified(identity: row.identity),
+        expected_red: expected_red,
+        route_gap: route_gap
+      )
+      match native_route_disposition(verdict: row.verdict, reference: reference) {
+        NativeAgreementPass => NativeRouteCensus {
+          agreement_pass: acc.agreement_pass + 1,
+          agreement_expected_red: acc.agreement_expected_red,
+          agreement_route_gap: acc.agreement_route_gap,
           excluded_compiler_frontier: acc.excluded_compiler_frontier,
-          excluded_driver_limit: acc.excluded_driver_limit,
-          excluded_unattributed: acc.excluded_unattributed
+          excluded_entry_limit: acc.excluded_entry_limit,
+          excluded_eval_boundary: acc.excluded_eval_boundary,
+          excluded_unattributed: acc.excluded_unattributed,
+          divergences: acc.divergences
         }
-        NativeRefused { head_reason: _, fatal_reason: r } =>
-          match classify_native_refusal(reason: r) {
-            CompilerFrontierAttributed { reason: _ } => NativeRouteExclusionCensus {
-              accepted: acc.accepted,
+        NativeAgreementExpectedRed => NativeRouteCensus {
+          agreement_pass: acc.agreement_pass,
+          agreement_expected_red: acc.agreement_expected_red + 1,
+          agreement_route_gap: acc.agreement_route_gap,
+          excluded_compiler_frontier: acc.excluded_compiler_frontier,
+          excluded_entry_limit: acc.excluded_entry_limit,
+          excluded_eval_boundary: acc.excluded_eval_boundary,
+          excluded_unattributed: acc.excluded_unattributed,
+          divergences: acc.divergences
+        }
+        NativeAgreementRouteGap => NativeRouteCensus {
+          agreement_pass: acc.agreement_pass,
+          agreement_expected_red: acc.agreement_expected_red,
+          agreement_route_gap: acc.agreement_route_gap + 1,
+          excluded_compiler_frontier: acc.excluded_compiler_frontier,
+          excluded_entry_limit: acc.excluded_entry_limit,
+          excluded_eval_boundary: acc.excluded_eval_boundary,
+          excluded_unattributed: acc.excluded_unattributed,
+          divergences: acc.divergences
+        }
+        NativeExclusion { cause: cause } =>
+          match cause {
+            CompilerFrontierAttributed { reason: _ } => NativeRouteCensus {
+              agreement_pass: acc.agreement_pass,
+              agreement_expected_red: acc.agreement_expected_red,
+              agreement_route_gap: acc.agreement_route_gap,
               excluded_compiler_frontier: acc.excluded_compiler_frontier + 1,
-              excluded_driver_limit: acc.excluded_driver_limit,
-              excluded_unattributed: acc.excluded_unattributed
+              excluded_entry_limit: acc.excluded_entry_limit,
+              excluded_eval_boundary: acc.excluded_eval_boundary,
+              excluded_unattributed: acc.excluded_unattributed,
+              divergences: acc.divergences
             }
-            NativeDriverAdmissionLimit { reason: _ } => NativeRouteExclusionCensus {
-              accepted: acc.accepted,
+            NativeEntryResolutionLimit { reason: _ } => NativeRouteCensus {
+              agreement_pass: acc.agreement_pass,
+              agreement_expected_red: acc.agreement_expected_red,
+              agreement_route_gap: acc.agreement_route_gap,
               excluded_compiler_frontier: acc.excluded_compiler_frontier,
-              excluded_driver_limit: acc.excluded_driver_limit + 1,
-              excluded_unattributed: acc.excluded_unattributed
+              excluded_entry_limit: acc.excluded_entry_limit + 1,
+              excluded_eval_boundary: acc.excluded_eval_boundary,
+              excluded_unattributed: acc.excluded_unattributed,
+              divergences: acc.divergences
             }
-            UnattributedRefusal { reason: _ } => NativeRouteExclusionCensus {
-              accepted: acc.accepted,
+            NativeEvalBoundary { reason: _ } => NativeRouteCensus {
+              agreement_pass: acc.agreement_pass,
+              agreement_expected_red: acc.agreement_expected_red,
+              agreement_route_gap: acc.agreement_route_gap,
               excluded_compiler_frontier: acc.excluded_compiler_frontier,
-              excluded_driver_limit: acc.excluded_driver_limit,
-              excluded_unattributed: acc.excluded_unattributed + 1
+              excluded_entry_limit: acc.excluded_entry_limit,
+              excluded_eval_boundary: acc.excluded_eval_boundary + 1,
+              excluded_unattributed: acc.excluded_unattributed,
+              divergences: acc.divergences
+            }
+            UnattributedRefusal { reason: _ } => NativeRouteCensus {
+              agreement_pass: acc.agreement_pass,
+              agreement_expected_red: acc.agreement_expected_red,
+              agreement_route_gap: acc.agreement_route_gap,
+              excluded_compiler_frontier: acc.excluded_compiler_frontier,
+              excluded_entry_limit: acc.excluded_entry_limit,
+              excluded_eval_boundary: acc.excluded_eval_boundary,
+              excluded_unattributed: acc.excluded_unattributed + 1,
+              divergences: acc.divergences
             }
           }
+        NativeDivergence { cause: _ } => NativeRouteCensus {
+          agreement_pass: acc.agreement_pass,
+          agreement_expected_red: acc.agreement_expected_red,
+          agreement_route_gap: acc.agreement_route_gap,
+          excluded_compiler_frontier: acc.excluded_compiler_frontier,
+          excluded_entry_limit: acc.excluded_entry_limit,
+          excluded_eval_boundary: acc.excluded_eval_boundary,
+          excluded_unattributed: acc.excluded_unattributed,
+          divergences: acc.divergences + 1
+        }
       }
     }
   )
 }
 
-// "No silent remainder" as an executing check: the four counters close over the population.
-fn native_route_census_is_total(
-  census: NativeRouteExclusionCensus,
-  rows: List<NativeRouteMemberRow>
-) -> Bool {
-  census.accepted + census.excluded_compiler_frontier
-    + census.excluded_driver_limit + census.excluded_unattributed == length(xs: rows)
-}
+// THE CONTROLS ARE OBSERVATIONS, NOT CONSTRUCTORS. Each control records what the emitted binary
+// was OBSERVED to do; admission pattern-matches the observation, so a harness that cannot
+// produce the observation cannot green the clause.
+//
+// THE FALSE AND TRUE CONTROLS PROVE THE VERDICT PATH IS LIVE. The lane's admission refuses
+// unless the emitted binary observed the false control RETURN FALSE (a route that reports it
+// Passed — or refuses it, or loses it — has a dead or diverted verdict arm, and every pass in
+// the population is then worthless) and the true control RETURN TRUE (a route that falsifies or
+// refuses everything cannot green either). Both controls live in v2.native_lane_fixture.control
+// — outside the universe prefix, plain `fn` so floor discovery enrolls no rows for them — and
+// the host names them to the binary explicitly, beside the derived universe. Absent is
+// representable so a missing observation refuses by name rather than pattern-matching to a
+// default.
+//
+// THE MALFORMED CONTROL PROVES THE FRONT-END REFUSAL ARM IS LIVE. The host runs the same binary
+// with the poison fixture's directory added as a source root; an honest front-end collects a
+// per-file refusal for it (the collecting fold refuses the FILE, never the whole context), and
+// the receipt records the refusal it observed. MalformedSpecimenAccepted — no refusal row for
+// the poison path — means the route "accepted" poisoned source and every refusal verdict in its
+// census is worthless.
+type NativeRouteMalformedControl
+  = MalformedSpecimenRefused { path: String, reason: Symbol }
+  | MalformedSpecimenAccepted
 
 // THE NO-FALLBACK CONTROL IS A RECEIVED FACT, NOT AN ASSUMPTION. After the emitted compiler
-// exists, the old compiler/interpreter route is made unavailable — or an executing falsifier
-// is armed that fails if the old route is touched — and the receipt records WHICH control
-// held. OldRouteControlAbsent is representable so admission can refuse it by name: a receipt
-// that cannot say how fallback was closed has not closed it.
+// exists, the old compiler/interpreter route is made unavailable — or an executing falsifier is
+// armed that fails if the old route is touched — and the receipt records WHICH control held and
+// the identity of what was withdrawn or armed. OldRouteControlAbsent is representable so
+// admission can refuse it by name: a receipt that cannot say how fallback was closed has not
+// closed it. The empty-string arm is refused alongside the absent arm: a control whose identity
+// names nothing is not an observation.
 type NativeRouteOldRouteControl
   = OldRouteWithdrawn { withdrawn_executable: String }
   | OldRouteFalsifierArmed { falsifier_identity: String }
   | OldRouteControlAbsent
 
-// The deliberately broken specimen is the route's RED control: a source the compiler must
-// refuse. If the emitted binary ACCEPTS it, the route's refusal arm is dead and every refusal
-// verdict in the population is worthless — admission refuses.
-type NativeRouteBrokenControl
-  = BrokenSpecimenRefused { reason: Symbol }
-  | BrokenSpecimenAccepted
-
 // THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree; the
 // seed used ONLY to prepare the emitted compiler (recorded honestly — this job does not claim
 // native bootstrap); the emitted closure's identity; the executed binary's path AND content
 // identity (route identity is observed, never synthesized from the intended command); the
-// per-member verdicts; and both controls.
+// DERIVED universe; the OBSERVED population; the per-file front-end refusals the collecting
+// fold gathered; and every control.
 type NativeRouteReceipt {
   job: String
   tested_tree: String
@@ -225,36 +442,59 @@ type NativeRouteReceipt {
   emitted_closure_identity: String
   executable_path: String
   executable_identity: String
+  universe: List<NativeRouteTestIdentity>
   population: List<NativeRouteMemberRow>
-  broken_control: NativeRouteBrokenControl
+  file_refusals: List<NativeTestFileRefusal>
+  false_control: Optional<NativeTestVerdict>
+  true_control: Optional<NativeTestVerdict>
+  malformed_control: NativeRouteMalformedControl
   old_route_control: NativeRouteOldRouteControl
 }
 
 // ADMISSION IS THE CONTRACT, ONE AUTHORITY, ONE CLAUSE PER PREDICATE. The job greens only when
-// all hold: the receipt is well-formed (right job, identities recorded, population actually
-// derived — an empty population is a harness failure, not a result); the positive population
-// is non-empty (NativeAccepted IS the positive population, so the load-bearing clause is
-// non-emptiness: an all-refused census proves the route refused, not that it routed); the
-// broken specimen still refused; every exclusion is classified — the lane does not green over
-// unowned refusals; route identity is recorded; and the old-route control is present. The fold
-// collects EVERY violated clause rather than stopping at the first, so one red run names
-// everything that must change before the next run.
+// all hold: the receipt is well-formed (right job, every identity recorded); the universe is
+// derived and well-formed (non-empty, duplicate-free, prefix-closed); the observed population
+// JOINS the universe exactly (no duplicates, no foreign rows, no omissions — "no silent
+// remainder" as an executing check, not a comment); the positive population is non-empty (an
+// all-refused census proves the route refused, not that it routed); no divergence is observed;
+// every exclusion is classified; every file refusal is owned at both grains; every Context-stage
+// refusal is backed by an observed file refusal; and all four controls hold. The fold collects
+// EVERY violated clause rather than stopping at the first, so one red run names everything that
+// must change before the next run.
 type NativeRouteAdmissionRefusalCause
   = JobNameMismatch
   | TestedTreeUnrecorded
   | PreparationSeedUnrecorded
   | EmittedClosureUnrecorded
-  | PopulationUnderived
-  | PositivePopulationEmpty
-  | BrokenSpecimenAcceptedByRoute
-  | UnattributedExclusionsPresent
-  | UnattributedHeadAdvisoryPresent
   | RouteIdentityUnrecorded
+  | UniverseUnderived
+  | UniverseDuplicatesPresent
+  | UniversePrefixViolationsPresent
+  | PopulationDuplicatesPresent
+  | PopulationForeignRowsPresent
+  | PopulationOmissionsPresent
+  | PositivePopulationEmpty
+  | DivergencesPresent
+  | UnattributedExclusionsPresent
+  | UnattributedFileRefusalsPresent
+  | UnattributedHeadAdvisoriesPresent
+  | ContextRefusalsUnbacked
+  | FalseControlNotObserved
+  | TrueControlNotObserved
+  | MalformedControlAcceptedByRoute
   | OldRouteControlNeverInstalled
 
 type NativeRouteAdmission
   = NativeRouteAdmitted
   | NativeRouteRefused { causes: List<NativeRouteAdmissionRefusalCause> }
+
+// ONE CLAUSE, ONE PREDICATE, ONE ROW. The check record couples a clause's verdict to the cause
+// its failure appends, so the admission fold is one pass and the cause list can never drift from
+// the predicate list.
+type NativeRouteClauseCheck {
+  holds: Bool
+  cause: NativeRouteAdmissionRefusalCause
+}
 
 fn native_route_job_name_matches(receipt: NativeRouteReceipt) -> Bool {
   receipt.job == required_v2_native_job_name
@@ -276,60 +516,201 @@ fn native_route_emitted_closure_recorded(receipt: NativeRouteReceipt) -> Bool {
   receipt.emitted_closure_identity != ""
 }
 
-fn native_route_population_derived(receipt: NativeRouteReceipt) -> Bool {
-  !is_empty(xs: receipt.population)
-}
-
-fn native_route_positive_population_present(receipt: NativeRouteReceipt) -> Bool {
-  length(xs: filter(xs: receipt.population, predicate: fn(row) {
-    match row.verdict {
-      NativeAccepted => true
-      NativeRefused { head_reason: _, fatal_reason: _ } => false
-    }
-  })) > 0
-}
-
-fn native_route_broken_control_holds(receipt: NativeRouteReceipt) -> Bool {
-  match receipt.broken_control {
-    BrokenSpecimenRefused { reason: _ } => true
-    BrokenSpecimenAccepted => false
-  }
-}
-
-fn native_route_exclusions_all_classified(receipt: NativeRouteReceipt) -> Bool {
-  native_route_exclusion_census(rows: receipt.population).excluded_unattributed == 0
-}
-
 fn native_route_identity_recorded(receipt: NativeRouteReceipt) -> Bool {
   receipt.executable_path != "" && receipt.executable_identity != ""
 }
 
+fn native_route_universe_derived(receipt: NativeRouteReceipt) -> Bool {
+  !is_empty(xs: receipt.universe)
+}
+
+fn native_route_universe_unique(receipt: NativeRouteReceipt) -> Bool {
+  native_route_identities_unique(xs: receipt.universe)
+}
+
+fn native_route_universe_prefix_closed(receipt: NativeRouteReceipt) -> Bool {
+  !any(xs: receipt.universe, predicate: fn(i) {
+    !native_route_universe_member(module_qn: i.module)
+  })
+}
+
+// The population's identity projection: the uniqueness and coverage questions range over
+// identities, not rows, so the projection is named once beside the join that asks it.
+fn native_route_row_identities(rows: List<NativeRouteMemberRow>) -> List<NativeRouteTestIdentity> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.identity) })
+}
+
+fn native_route_population_unique(receipt: NativeRouteReceipt) -> Bool {
+  native_route_identities_unique(
+    xs: native_route_row_identities(rows: receipt.population)
+  )
+}
+
+// THE EXACT JOIN, BOTH DIRECTIONS. "No silent remainder" is two questions: every universe member
+// carries exactly one observed row (no omissions), and every observed row names a universe
+// member (no foreign rows — a cherry-picked or padded population refuses here). With uniqueness
+// on both sides, the two directions together are set equality at identity grain.
+fn native_route_population_covers_universe(receipt: NativeRouteReceipt) -> Bool {
+  !any(xs: receipt.universe, predicate: fn(member) {
+    !any(xs: receipt.population, predicate: fn(row) {
+      native_route_identity_eq(a: row.identity, b: member)
+    })
+  })
+}
+
+fn native_route_population_no_foreign(receipt: NativeRouteReceipt) -> Bool {
+  !any(xs: receipt.population, predicate: fn(row) {
+    !native_route_identity_member(target: row.identity, xs: receipt.universe)
+  })
+}
+
+fn native_route_positive_population_present(census: NativeRouteCensus) -> Bool {
+  census.agreement_pass > 0
+}
+
+fn native_route_no_divergences(census: NativeRouteCensus) -> Bool {
+  census.divergences == 0
+}
+
+fn native_route_exclusions_all_classified(census: NativeRouteCensus) -> Bool {
+  census.excluded_unattributed == 0
+}
+
+// EVERY FILE REFUSAL IS OWNED AT FATAL GRAIN: the fatal reason is the cause that refused the
+// file, so its ownership row is the FatalGrain one. An unowned fatal cause is a new front-end
+// frontier fact surfacing where nobody counted it, and it blocks admission by its own name.
+fn native_route_file_refusals_attributed(receipt: NativeRouteReceipt) -> Bool {
+  !any(xs: receipt.file_refusals, predicate: fn(fr) {
+    match cause_ownership_lookup(cause: fr.fatal_reason, grain: FatalGrain) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  })
+}
+
+// THE HEAD REASON IS NOT DEAD RECEIPT DATA. rejected_with_pending prepends the non-fatal
+// advisory, so the head reason is a real observation of the frontier at a different grain — the
+// same observation the door ledger's own rows carry. Every file refusal's head reason must be
+// owned at HEAD grain: an unowned advisory is a new frontier cause surfacing where nobody
+// counted it, and it blocks admission by its own name rather than riding along unclassified.
+fn native_route_head_advisories_attributed(receipt: NativeRouteReceipt) -> Bool {
+  !any(xs: receipt.file_refusals, predicate: fn(fr) {
+    match cause_ownership_lookup(cause: fr.head_reason, grain: HeadGrain) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  })
+}
+
+// A CONTEXT-STAGE REFUSAL IS A DERIVED CLASSIFICATION, AND DERIVED CLASSIFICATIONS ARE FORGEABLE
+// UNTIL BOUND TO THEIR OBSERVATION. The host reclassifies a member whose entry file never loaded
+// as Context-stage with the file's fatal reason; the receipt therefore carries the file-refusal
+// population, and every Context-stage row's reason must appear among the observed file refusals'
+// fatal reasons. A Context-stage row whose reason no file refusal carries was minted without its
+// evidence — admission refuses.
+fn native_route_context_refusals_backed(receipt: NativeRouteReceipt) -> Bool {
+  !any(xs: receipt.population, predicate: fn(row) {
+    match row.verdict {
+      NativeTestRefused { stage: stage, reason: reason } =>
+        match stage {
+          NativeTestStageContext =>
+            !any(xs: receipt.file_refusals, predicate: fn(fr) { fr.fatal_reason == reason })
+          NativeTestStagePrepare => false
+          NativeTestStageEntry => false
+          NativeTestStageEval => false
+        }
+      NativeTestPassed => false
+      NativeTestReturnedFalse => false
+      NativeTestReturnedOther => false
+    }
+  })
+}
+
+fn native_route_false_control_holds(receipt: NativeRouteReceipt) -> Bool {
+  match receipt.false_control {
+    Present { value: v } =>
+      match v {
+        NativeTestReturnedFalse => true
+        NativeTestPassed => false
+        NativeTestReturnedOther => false
+        NativeTestRefused { stage: _, reason: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn native_route_true_control_holds(receipt: NativeRouteReceipt) -> Bool {
+  match receipt.true_control {
+    Present { value: v } =>
+      match v {
+        NativeTestPassed => true
+        NativeTestReturnedFalse => false
+        NativeTestReturnedOther => false
+        NativeTestRefused { stage: _, reason: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn native_route_malformed_control_holds(receipt: NativeRouteReceipt) -> Bool {
+  match receipt.malformed_control {
+    MalformedSpecimenRefused { path: path, reason: _ } => path != ""
+    MalformedSpecimenAccepted => false
+  }
+}
+
 fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
   match receipt.old_route_control {
-    OldRouteWithdrawn { withdrawn_executable: _ } => true
-    OldRouteFalsifierArmed { falsifier_identity: _ } => true
+    OldRouteWithdrawn { withdrawn_executable: p } => p != ""
+    OldRouteFalsifierArmed { falsifier_identity: f } => f != ""
     OldRouteControlAbsent => false
   }
 }
 
 fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
-  let c1 = if native_route_job_name_matches(receipt: receipt) { [] } else { [JobNameMismatch] }
-  let c2 = if native_route_tested_tree_recorded(receipt: receipt) { c1 } else { concat(c1, [TestedTreeUnrecorded]) }
-  let c3 = if native_route_preparation_seed_recorded(receipt: receipt) { c2 } else { concat(c2, [PreparationSeedUnrecorded]) }
-  let c4 = if native_route_emitted_closure_recorded(receipt: receipt) { c3 } else { concat(c3, [EmittedClosureUnrecorded]) }
-  let c5 = if native_route_population_derived(receipt: receipt) { c4 } else { concat(c4, [PopulationUnderived]) }
-  let c6 = if native_route_positive_population_present(receipt: receipt) { c5 } else { concat(c5, [PositivePopulationEmpty]) }
-  let c7 = if native_route_broken_control_holds(receipt: receipt) { c6 } else { concat(c6, [BrokenSpecimenAcceptedByRoute]) }
-  let c8 = if native_route_exclusions_all_classified(receipt: receipt) { c7 } else { concat(c7, [UnattributedExclusionsPresent]) }
-  let c9 = if native_route_head_advisories_all_attributed(rows: receipt.population) { c8 } else { concat(c8, [UnattributedHeadAdvisoryPresent]) }
-  let c10 = if native_route_identity_recorded(receipt: receipt) { c9 } else { concat(c9, [RouteIdentityUnrecorded]) }
-  let causes = if native_route_old_route_closed(receipt: receipt) { c10 } else { concat(c10, [OldRouteControlNeverInstalled]) }
+  let expected_red = floor_expected_red_roster()
+  let route_gap = floor_route_gap_roster()
+  let census = native_route_census(
+    rows: receipt.population,
+    expected_red: expected_red,
+    route_gap: route_gap
+  )
+  let checks: List<NativeRouteClauseCheck> = [
+    NativeRouteClauseCheck { holds: native_route_job_name_matches(receipt: receipt), cause: JobNameMismatch },
+    NativeRouteClauseCheck { holds: native_route_tested_tree_recorded(receipt: receipt), cause: TestedTreeUnrecorded },
+    NativeRouteClauseCheck { holds: native_route_preparation_seed_recorded(receipt: receipt), cause: PreparationSeedUnrecorded },
+    NativeRouteClauseCheck { holds: native_route_emitted_closure_recorded(receipt: receipt), cause: EmittedClosureUnrecorded },
+    NativeRouteClauseCheck { holds: native_route_identity_recorded(receipt: receipt), cause: RouteIdentityUnrecorded },
+    NativeRouteClauseCheck { holds: native_route_universe_derived(receipt: receipt), cause: UniverseUnderived },
+    NativeRouteClauseCheck { holds: native_route_universe_unique(receipt: receipt), cause: UniverseDuplicatesPresent },
+    NativeRouteClauseCheck { holds: native_route_universe_prefix_closed(receipt: receipt), cause: UniversePrefixViolationsPresent },
+    NativeRouteClauseCheck { holds: native_route_population_unique(receipt: receipt), cause: PopulationDuplicatesPresent },
+    NativeRouteClauseCheck { holds: native_route_population_no_foreign(receipt: receipt), cause: PopulationForeignRowsPresent },
+    NativeRouteClauseCheck { holds: native_route_population_covers_universe(receipt: receipt), cause: PopulationOmissionsPresent },
+    NativeRouteClauseCheck { holds: native_route_positive_population_present(census: census), cause: PositivePopulationEmpty },
+    NativeRouteClauseCheck { holds: native_route_no_divergences(census: census), cause: DivergencesPresent },
+    NativeRouteClauseCheck { holds: native_route_exclusions_all_classified(census: census), cause: UnattributedExclusionsPresent },
+    NativeRouteClauseCheck { holds: native_route_file_refusals_attributed(receipt: receipt), cause: UnattributedFileRefusalsPresent },
+    NativeRouteClauseCheck { holds: native_route_head_advisories_attributed(receipt: receipt), cause: UnattributedHeadAdvisoriesPresent },
+    NativeRouteClauseCheck { holds: native_route_context_refusals_backed(receipt: receipt), cause: ContextRefusalsUnbacked },
+    NativeRouteClauseCheck { holds: native_route_false_control_holds(receipt: receipt), cause: FalseControlNotObserved },
+    NativeRouteClauseCheck { holds: native_route_true_control_holds(receipt: receipt), cause: TrueControlNotObserved },
+    NativeRouteClauseCheck { holds: native_route_malformed_control_holds(receipt: receipt), cause: MalformedControlAcceptedByRoute },
+    NativeRouteClauseCheck { holds: native_route_old_route_closed(receipt: receipt), cause: OldRouteControlNeverInstalled }
+  ]
+  let causes = fold_list(
+    xs: checks,
+    empty: [],
+    cons: fn(acc, check) {
+      if check.holds { acc } else { concat(acc, [check.cause]) }
+    }
+  )
   if is_empty(xs: causes) { NativeRouteAdmitted } else { NativeRouteRefused { causes: causes } }
 }
 
 // The job's terminal print renders causes by name; the projection lives beside the coproduct,
 // so a new cause refuses to compile until it is named (exhaustive match). The membership probe
-// is how a witness — and the enrolment gate's report — asks for one clause's verdict without
+// is how a witness — and the job's own report — asks for one clause's verdict without
 // re-matching the whole coproduct.
 fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalCause) -> String {
   match cause {
@@ -337,12 +718,22 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     TestedTreeUnrecorded => "tested_tree_unrecorded"
     PreparationSeedUnrecorded => "preparation_seed_unrecorded"
     EmittedClosureUnrecorded => "emitted_closure_unrecorded"
-    PopulationUnderived => "population_underived"
-    PositivePopulationEmpty => "positive_population_empty"
-    BrokenSpecimenAcceptedByRoute => "broken_specimen_accepted_by_route"
-    UnattributedExclusionsPresent => "unattributed_exclusions_present"
-    UnattributedHeadAdvisoryPresent => "unattributed_head_advisory_present"
     RouteIdentityUnrecorded => "route_identity_unrecorded"
+    UniverseUnderived => "universe_underived"
+    UniverseDuplicatesPresent => "universe_duplicates_present"
+    UniversePrefixViolationsPresent => "universe_prefix_violations_present"
+    PopulationDuplicatesPresent => "population_duplicates_present"
+    PopulationForeignRowsPresent => "population_foreign_rows_present"
+    PopulationOmissionsPresent => "population_omissions_present"
+    PositivePopulationEmpty => "positive_population_empty"
+    DivergencesPresent => "divergences_present"
+    UnattributedExclusionsPresent => "unattributed_exclusions_present"
+    UnattributedFileRefusalsPresent => "unattributed_file_refusals_present"
+    UnattributedHeadAdvisoriesPresent => "unattributed_head_advisories_present"
+    ContextRefusalsUnbacked => "context_refusals_unbacked"
+    FalseControlNotObserved => "false_control_not_observed"
+    TrueControlNotObserved => "true_control_not_observed"
+    MalformedControlAcceptedByRoute => "malformed_control_accepted_by_route"
     OldRouteControlNeverInstalled => "old_route_control_never_installed"
   }
 }
@@ -383,51 +774,5 @@ fn native_route_admission_summary(admission: NativeRouteAdmission) -> String {
         }
       )
     )
-  }
-}
-
-// ENROLMENT IS THE ADMISSION QUESTION ASKED OF THE REAL CENSUS. The gate derives the lane's
-// enrolment state from a census receipt — the same predicate the enrolled job will gate on,
-// asked before enrolment, so the enrolment decision and the standing verdict can never be two
-// facts.
-type NativeRouteEnrolment
-  = EnrolmentOpen
-  | EnrolmentBlocked { causes: List<NativeRouteAdmissionRefusalCause> }
-
-fn native_route_enrolment(census: NativeRouteReceipt) -> NativeRouteEnrolment {
-  match native_route_admission(receipt: census) {
-    NativeRouteAdmitted => EnrolmentOpen
-    NativeRouteRefused { causes: causes } => EnrolmentBlocked { causes: causes }
-  }
-}
-
-// TODAY'S STANDING, AS DATA. The lane is modelled in full and its enrolment is BLOCKED on the
-// compile-door frontier. The trigger names the CAPABILITY that unblocks it (DESIGN 4b(3): a
-// trigger names the capability, never an artifact that would contribute to one), and the edit
-// row names the exact mechanical change that lands it, so the future lane author executes
-// rather than re-derives. This row DELETES at enrolment: once the job stands in the required
-// workflow, the standing it records here is the job's own receipt, not a row beside it.
-type NativeRouteEnrolmentState
-  = EnrolmentOpenToday
-  | EnrolmentAwaitingDoorFrontier
-
-type NativeRouteEnrolmentStanding {
-  state: NativeRouteEnrolmentState
-  trigger: String
-  enrolment_edit: String
-  census_evidence: String
-}
-
-data native_route_enrolment_standing: NativeRouteEnrolmentStanding = NativeRouteEnrolmentStanding {
-  state: EnrolmentAwaitingDoorFrontier,
-  trigger: "the emitted native compiler accepts at least one real v2.test.* module — the compile-door frontier (v2.workflow.compile_door_ledger known_frontier_causes burn-down) has closed far enough that the derived positive population is non-empty; re-derive by running the census recipe named in census_evidence and evaluating native_route_enrolment over its receipt",
-  enrolment_edit: "add V2NativeLane to gunbc.required_ci_phase_roster RequiredCiLane with its phase variant(s) enrolled in required_ci_phases and owned by the new lane in required_ci_phase_lane, mirror the variants in claim_executor (the per-run host join refuses a divergence in either direction), add WitnessFloorV2NativeLane to gunbc.witness_floor_workflow witness_floor_lane_roster with its job materialization (seed builds once, emits the compiler closure, cargo-builds it, withdraws the old route, runs the census and both controls, prints the receipt, gates on native_route_admission), add the lane to required_lanes_roster so the aggregate witnesses job needs it, regenerate .github/workflows/witnesses.yml",
-  census_evidence: "local census harness on the PR-#10692 head (tree f173aaa24860a0efe7b2142cefcedc69675ff66f): emit via `gunbc compile --entry src/v2/compiler/00_compile.dag --source-root dag --source-root src/v2 --target rust`, cargo build with the repo-pinned toolchain, withdraw the seed binary, invoke the emitted binary by explicit path over every derived universe member, classify each verdict with classify_native_refusal. Measured 2026-09-09 over the derived universe of 882 members: zero accepted, 882 refused with every fatal cause attributed (the five causes the door-ledger table lacked were added to it by this lane's measurement), the broken specimen refused, and native_route_admission over the real receipt executed to `refused: positive_population_empty`"
-}
-
-fn native_route_enrolment_blocked_today(standing: NativeRouteEnrolmentStanding) -> Bool {
-  match standing.state {
-    EnrolmentAwaitingDoorFrontier => true
-    EnrolmentOpenToday => false
   }
 }
