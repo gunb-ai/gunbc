@@ -1,4 +1,4 @@
-module v2.test.long.stage0_production_target
+module v2.test.self_host.stage0_production_target
 
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.self_host.candidate_generation {
