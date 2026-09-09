@@ -3,7 +3,7 @@ module extdeps.colo.flexential
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly,
+  ColoFacilityRow, AddressUnread,
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, RetailGrainUnread,
 }
@@ -52,11 +52,14 @@ data flexential_allentown_density: CabinetDensityClaim = DensityUnread {
   obligation: "No page was successfully read (HTTP 403, 2026-09-08). A search summary quoted '150+ watts per square foot' for this site; that is a room-average power intensity, NOT a per-cabinet density, and it is recorded here as the thing not to convert rather than as a reading.",
 }
 
+// NO RETAIL-RATE STANDING IS CARRIED FOR THIS OPERATOR, DELIBERATELY. Every other module in this
+// census declares one, and the shape of that type is RatesPublished or RatesQuoteOnly - both
+// affirmative readings, with no unread arm. Taking RatesQuoteOnly here would have been a positive
+// typed claim about an operator whose every page refused this session (HTTP 403, 2026-09-08 and
+// 2026-09-09), inferred from what the rest of the market does rather than read; DESIGN section 5
+// forbids exactly that substitution, and a reviewer caught it standing in the first cut of this
+// file. Absence of the row is the honest state until either the page opens or the carrier grows an
+// unread arm, and the obligation to resolve it is recorded on the address row above.
 data flexential_allentown_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "No page was successfully read (HTTP 403, 2026-09-08), so nothing is known first-hand about the smallest unit sold at this site.",
-}
-
-data flexential_retail_rates: RetailRateStanding = RatesQuoteOnly {
-  contact_route: "flexential.com sales",
-  obligation: "No pricing was read because no page was read (HTTP 403, 2026-09-08). Quote-only is the standing this operator is recorded under until a page can be opened, and it is an assumption inherited from the market rather than a reading of this operator - resolve it with the fetch.",
 }
