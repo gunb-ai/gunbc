@@ -359,6 +359,32 @@ fn quantity_ceiling(q: PublishedPowerQuantity) -> CabinetPowerCeiling? {
 // NOT AVAILABILITY - the operator has said this much is within what they build, and nothing more.
 // False means UNDETERMINED in exactly the way `ceiling_refuses` returning false does; the two are
 // duals and neither ever answers the other's question.
+// WHETHER A FIGURE WAS PUBLISHED AT ALL, WHICH IS A DIFFERENT QUESTION FROM EVERY OTHER ONE HERE AND
+// IS THE ONE A COVERAGE CENSUS ACTUALLY ASKS. Every accessor above answers "can this claim bound or
+// admit a load", and each correctly returns nothing for a floor, an average, or an unlabelled medium.
+// A census asking "did the operator publish a density" through any of them therefore counts a
+// VERIFIED reading as absent - the operator's ruling on density_claim_is_read names exactly this, and
+// its consequence is that a census keyed on the ceiling accessor reports a collapse toward zero at
+// the moment the data improves.
+//
+// IT LIVES IN THE CARRIER RATHER THAN IN EACH WITNESS BECAUSE FIVE LANES ASK IT. One of them was
+// about to write it as a witness-local predicate and asked first, which is the only reason it is here
+// once instead of five times; a region sentinel asserting "this facility published no figure" is the
+// same question a coverage roster asks, and DESIGN section 3 does not care that one caller is a test.
+//
+// It is deliberately NOT the same function as a coverage count: this says what the CLAIM carries, and
+// what a census does with that - retrieval coverage, per-region rosters, decision utility - is a
+// consumer fact that belongs with the consumer.
+fn density_claim_publishes_a_figure(d: CabinetDensityClaim) -> Bool {
+  match d {
+    DensityPublished { figures, claim_wording, citation } => match figures.first() {
+      Present { value } => true,
+      Absent => false,
+    },
+    DensityUnread { obligation } => false,
+  }
+}
+
 // THE ROUTE FROM A CLAIM TO THE ADMITTING DIRECTION, WHICH THE CEILING SIDE ALREADY HAD. Without
 // it `quantity_admits` is reachable only by a caller that has already destructured the claim, which
 // is the shape DESIGN section 3c calls dangling: a well-formed declaration with no route by which a

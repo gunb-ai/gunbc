@@ -62,6 +62,41 @@ fn has_ceiling(d: CabinetDensityClaim) -> Bool {
 // apparent power, so the numeral landed in a field named for kilowatts. The fixture lives here
 // rather than in an operator module because it is evidence about the CARRIER, not a census row -
 // the real Telehouse rows belong to whichever lane reads that operator.
+// THIS FIXTURE'S MEDIUM IS UNSPECIFIED BECAUSE ITS WORDING SAYS SO, AND THE FIRST CUT OF THE MEDIUM
+// SPLIT GOT IT WRONG. "Standard power to rack at 3.5kVA" names a rack and a unit and NO cooling
+// medium, so the honest coordinate is CoolingMediumUnspecified. It was authored as
+// AirCoolingPublished - by me, in the same commit that added the medium coordinate - because the kVA
+// controls standing on this fixture go red the moment it stops answering air questions, and an air
+// label made them green again.
+//
+// THAT IS THE WALL-DEFEAT THIS SPLIT EXISTS TO PREVENT, PERFORMED ON THE SPLIT'S OWN CONTROL. It is
+// worse than doing it to a census row: a census row is re-derived by whoever reads the operator's
+// page next, and a shared test fixture is the one file everybody edits and nobody re-derives, because
+// it is "just the test module". Caught by silent-heron-303 on review of the rebase surface rather
+// than by any check here, which is itself the measurement - nothing in this file could have caught it.
+//
+// THE REPAIR IS TWO FIXTURES, EACH TRUE, NOT ONE FIXTURE BENT TO KEEP TESTS GREEN. This one keeps its
+// real wording and its real medium and now serves the MEDIUM control. The kVA-versus-kW control moves
+// to a fixture that is explicitly air-labelled apparent power below, so it still tests the unit
+// crossing it exists for. A control restored to green by editing its subject is not a control.
+data medium_unspecified_interval_fixture: CabinetDensityClaim = DensityPublished {
+  figures: [
+    PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: MarketedInterval {
+        lower: PublishedApparentPower { power: volt_ampere(count: 3500) },
+        upper: PublishedApparentPower { power: volt_ampere(count: 5000) },
+      },
+    },
+  ],
+  claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
+  citation: "witness fixture reproducing the Telehouse Chelsea publication shape verbatim, INCLUDING that it names no cooling medium; the live rows are carried by the operator's own module",
+}
+
+// THE UNIT CONTROL, AIR-LABELLED SO IT STILL REACHES THE AIR PATH. Same interval, same apparent-power
+// unit, but a medium the operator stated - so this fixture exercises kW <= kVA rather than the medium
+// coordinate, and the two concerns stop being tested through one row where either could mask the
+// other. It is a fixture and not a census row for exactly the reason the one above is.
 data apparent_power_fixture: CabinetDensityClaim = DensityPublished {
   figures: [
     PublishedDensityFigure {
@@ -72,8 +107,8 @@ data apparent_power_fixture: CabinetDensityClaim = DensityPublished {
       },
     },
   ],
-  claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
-  citation: "witness fixture reproducing the Telehouse Chelsea publication shape; the live rows are carried by the operator's own module",
+  claim_wording: "witness fixture: an apparent-power interval the operator labelled air",
+  citation: "witness fixture isolating the apparent-to-real crossing from the medium coordinate; no live row publishes an air-labelled kVA interval, which is why this is constructed rather than cited",
 }
 
 // AN AIR-LABELLED CAP, WHICH NO LIVE ROW ON MAIN PROVIDES. Iron Mountain was the corpus's only
@@ -307,4 +342,15 @@ fn has_air_quantity(d: CabinetDensityClaim) -> Bool {
     Present { value } => true,
     Absent => false,
   }
+}
+
+// THE MEDIUM CONTROL ON THE FIXTURE THAT MOTIVATED IT. Telehouse's real wording names no medium, so
+// the claim answers nothing on the air axis however good its figures are - and the second conjunct is
+// what stops this being satisfied by breaking apparent power generally, since the air-labelled twin
+// carrying the IDENTICAL interval still bounds. Two fixtures differing in exactly one coordinate is
+// the only way to show the coordinate is what is being read.
+test fn w_an_unlabelled_interval_answers_nothing_while_its_air_twin_bounds() -> Bool {
+  !has_ceiling(d: medium_unspecified_interval_fixture)
+    && !admits_at(d: medium_unspecified_interval_fixture, required: 1)
+    && ceiling_refuses_at(d: apparent_power_fixture, required: 5001)
 }
