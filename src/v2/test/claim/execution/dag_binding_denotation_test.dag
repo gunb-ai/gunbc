@@ -3,22 +3,18 @@ module v2.test.execution.dag_binding_denotation
 import v2.compiler.infer {
   DerivedGrounding,
   GroundingNotDerived,
-  InferredTree,
-  infer
+  InferredTree
 }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_admission,
-  direct_rust_door_ingest
+  direct_rust_door_specimen_inferred
 }
 import v2.extdeps.languages.dag {
   dag_binding_denotation,
   dag_int_inhabitant_node,
-  dag_int_type_binding,
-  dag_language_model
+  dag_int_type_binding
 }
 import v2.std.algebra { fold_list }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -46,17 +42,6 @@ type BindingDenotationCensus {
   int_atoms_derived: Int
   operand_atoms: Int
   operand_atoms_frontier: Int
-}
-
-fn binding_denotation_specimen_inferred() -> Outcome<InferredTree> {
-  match assemble_program_from_ingest(
-    ingest: direct_rust_door_ingest(),
-    admission: direct_rust_door_admission(),
-    lm: dag_language_model()
-  ) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
-  }
 }
 
 fn is_int_binding_atom(n: Node) -> Bool {
@@ -136,7 +121,7 @@ fn binding_denotation_census(inferred: InferredTree) -> BindingDenotationCensus 
 }
 
 test fn dag_binding_denotation_derives_int_binding_atoms_holds() -> Bool {
-  match binding_denotation_specimen_inferred() {
+  match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       let census = binding_denotation_census(inferred: inferred)
