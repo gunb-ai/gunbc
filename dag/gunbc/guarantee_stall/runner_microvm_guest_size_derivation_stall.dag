@@ -21,14 +21,12 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // so the row was re-derived from the module's declarations rather than edited.
 //
 // MEMBERSHIP RULE: a symbol is a member when, IN PRODUCTION, it cannot reach its intended answer
-// because of the missing memory quantity, or because guest topology is still a declared product
-// decision rather than a derivation from the cell's now-real absolute CPU ceiling. That
-// deliberately includes guest_memory_fits, which is correct code that always returns
-// MemoryFitUnresolved on the production path, and deliberately excludes guest_resources_of_machine_
-// config and the topology and credential arms, which decide fully today. fabric_cell_slice_
-// desired_directives is NOT a member: the cell slice now emits CPUQuota when the slot declares one
-// and the boundary digest reconciles CPUQuotaPerSecUSec, so that function reaches its intended
-// answer.
+// because of the missing memory quantity, or because guest topology is still the withdrawn
+// declaration rather than a derivation from the cell's absolute CPU ceiling. gunbc_runner_microvm_
+// cell_cpu_entitlement is NOT a member: it now returns CpuEntitlementAbsolute from the slot quota
+// when the survey resolves. fabric_cell_slice_desired_directives is NOT a member: it emits
+// CPUQuota when the slot declares one. guest_memory_fits remains a member because it still
+// returns MemoryFitUnresolved on the production path.
 //
 // THE TRIGGER CARRIES TWO CLAUSES AND BOTH ARE REQUIRED, because satisfying the first alone would
 // take the admission's accept arm live having never executed. Retargeting the microVM witnesses
@@ -48,7 +46,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // wrong in opposite directions while the pair looked discriminating. A nonconstant predicate with
 // both polarities observed can still be answering a question nobody asked.
 data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall {
-  subject: "gunbc.runner_microvm cannot derive a guest's resource envelope from the bounded cell on EITHER axis: memory needs a subtrahend for the Firecracker VMM's own footprint that is not cited anywhere, and CPU needs an absolute entitlement the cell does not carry",
+  subject: "gunbc.runner_microvm cannot derive a guest's resource envelope from the bounded cell: memory needs a subtrahend for the Firecracker VMM's own footprint that is not cited anywhere, and CPU topology is still the withdrawn declared product size rather than a derivation from the cell's now-real absolute quota",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
@@ -58,7 +56,6 @@ data runner_microvm_guest_size_derivation_stall: GuaranteeStall = GuaranteeStall
     members: [
       "gunbc.runner_microvm guest_memory_fits",
       "gunbc.runner_microvm gunbc_runner_microvm_realization_reserve",
-      "gunbc.runner_microvm gunbc_runner_microvm_cell_cpu_entitlement",
       "gunbc.runner_microvm runner_microvm_sizing",
       "gunbc.runner_microvm runner_microvm_size_from_cell_envelope",
       "gunbc.runner_microvm runner_microvm_admission_after_credential",

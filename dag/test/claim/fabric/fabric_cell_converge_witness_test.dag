@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { list_length, String, NonEmptyStr, Int }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.ownership { Owned }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
