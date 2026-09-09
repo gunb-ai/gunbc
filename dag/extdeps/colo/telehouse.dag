@@ -3,13 +3,7 @@ module extdeps.colo.telehouse
 import std.types { NonEmptyStr, List }
 import std.measure { watt, volt_ampere }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly,
-  PublishedRealPower, PublishedApparentPower,
-  RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum,
-}
-
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityMarketedAirOnly, PublishedRealPower, PublishedApparentPower, RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, CitationVerification, VerifiedInPageBytes }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -24,7 +18,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.telehouse",
-      decl_name: "telehouse_chelsea",
+      decl_name: "telehouse_facilities",
       field: WholeDeclaration
     }
   },
@@ -47,7 +41,12 @@ data telehouse_chelsea: ColoFacilityRow = ColoFacilityRow {
 data telehouse_chelsea_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedApparentPower { power: volt_ampere(count: 5000) },
   claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
-  citation: "telehouse.com New York Chelsea page; raw fetch 2026-09-09 HTTP 200, 159840 bytes. find+slice on '3.5kVA' prints one <li> under <h3>Power:</h3> (under <h2>Data Center Infrastructure</h2> after <h1>Telehouse New York Chelsea</h1>): 'Standard power to rack at 3.5kVA with scalable options to 5kVA' - one element, qualifier 'scalable options to 5kVA' present, not a truncated 5kVA cell and not fused with the following building-feed <li>. No Limited Time / other-metro banner. Positive control find+slice on '10th Avenue' hits the Chelsea address sentence. The modelled figure is the 5 kVA scalable option, not the 3.5 kVA standard. Apparent power is not converted to watts: no power factor is published.",
+  citation: "telehouse.com New York Chelsea page; raw fetch 2026-09-09 HTTP 200, 159840 bytes. The modelled figure is the 5 kVA scalable option, not the 3.5 kVA standard. Apparent power is not converted to watts: no power factor is published.",
+  verification: VerifiedInPageBytes {
+    fetched_on: "2026-09-09",
+    byte_count: 159840,
+    element_note: "one <li> under <h3>Power:</h3> / <h2>Data Center Infrastructure</h2> / <h1>Telehouse New York Chelsea</h1>; qualifier 'scalable options to 5kVA' inside the same <li>",
+  },
 }
 
 data telehouse_chelsea_retail_grain: RetailGrainStanding = SingleCabinetOffered {
@@ -70,7 +69,12 @@ data telehouse_teleport: ColoFacilityRow = ColoFacilityRow {
 data telehouse_teleport_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 20000) },
   claim_wording: "Up to 20kW per cabinet maximum capacity",
-  citation: "telehouse.com New York Teleport page; raw fetch 2026-09-09 HTTP 200, 164583 bytes. find+slice on '20kW' prints one <li> 'Up to 20kW per cabinet maximum capacity' under <h3>Data Center Infrastructure</h3> (that h3 is the slice's preceding heading; <h2>About Telehouse New York Teleport Datacenter</h2> and the 162,000 sq ft Staten Island / Port Authority prose sit above it). Only kW occurrence on the page; the cell is complete (not truncated; 'per cabinet maximum capacity' is inside the same <li>). Page <h1> reads 'Telehouse Data Center in New Jersey and New York' - dual-metro chrome, not a second facility's density block wrapping this <li>. Positive control find+slice on 'Staten Island' hits the Teleport campus sentence.",
+  citation: "telehouse.com New York Teleport page; raw fetch 2026-09-09 HTTP 200, 164583 bytes. Page <h1> reads 'Telehouse Data Center in New Jersey and New York' - dual-metro chrome, not a second facility's density block wrapping this <li>.",
+  verification: VerifiedInPageBytes {
+    fetched_on: "2026-09-09",
+    byte_count: 164583,
+    element_note: "one <li> under <h3>Data Center Infrastructure</h3> after <h2>About Telehouse New York Teleport Datacenter</h2>; only kW on the page; 'per cabinet maximum capacity' inside the same <li>",
+  },
 }
 
 data telehouse_teleport_retail_grain: RetailGrainStanding = CageOrSuiteMinimum {

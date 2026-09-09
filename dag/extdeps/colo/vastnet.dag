@@ -2,11 +2,7 @@ module extdeps.colo.vastnet
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, SingleCabinetOffered,
-}
+import extdeps.colo.types { ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -29,16 +25,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// THE OPERATOR PUBLISHES A CABINET SPEC TABLE AND STILL YIELDS NO DENSITY, which is the clearest
-// specimen in this expansion of why the density arm is separate from the power arm. Its table
-// gives amps per cabinet with no voltage anywhere on the page, and the census already refuses to
-// multiply an amp reading by an assumed voltage (see PowerAllocation.FeedAmpsVoltsUnstated in
-// extdeps.colo.types). An operator can publish more than its neighbours and still publish nothing
-// a kilowatt comparison can consume.
-//
-// FETCH NOTE, because it changes what a later reader should try: vastnet.net serves plain HTTP
-// only. An HTTPS fetch of the site is refused at connect (ECONNREFUSED on port 443); the readings
-// below were taken over HTTP on 2026-09-08.
 data vastnet_melville: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Vastnet",
   facility_label: "Vastnet Melville",

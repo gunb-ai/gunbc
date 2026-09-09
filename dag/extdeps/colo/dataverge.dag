@@ -2,13 +2,7 @@ module extdeps.colo.dataverge
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, SingleCabinetOffered,
-}
 import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
-
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -23,7 +17,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.dataverge",
-      decl_name: "dataverge_facilities",
+      decl_name: "dataverge_jersey_city",
       field: WholeDeclaration
     }
   },
@@ -32,6 +26,23 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data dataverge_provenance_note: NonEmptyStr = "DataVerge operates colocation in Brooklyn (882 3rd Ave, Industry City) and Jersey City. Facts read 2026-08-18 from dataverge.com pages and the Inflect marketplace profile for the Jersey City site (CGNJ1 designation appears on Inflect). Space is sold from single rack units through quarter and half racks to private cabinets and cages, which makes this the retail-granular operator physically closest to Jersey City in this census."
+
+data dataverge_jersey_city: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataVerge",
+  facility_label: "DataVerge Jersey City (CGNJ1)",
+  address: AddressListed {
+    street: "111 Town Square Place, Suite 705, Jersey City, NJ 07310",
+    citation: "dataverge.com backup-disaster-recovery-data-center-jersey-city page, read 2026-08-18",
+  },
+  municipality: "Jersey City",
+  region_code: "NJ",
+  facility_note: "Inflect profile (read 2026-08-18): 0.6 MW total power, 2N power with N+1 UPS, N+1 cooling, PCI DSS / SOC 2 / HIPAA claimed; on-site carriers listed AT&T, Cogent, Crown Castle, Lightpath, Lumen; DataVerge marketing claims 30-plus carriers across its footprint. Located in the Newport office tower district.",
+}
+
+data dataverge_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "quote request or tour scheduling via dataverge.com",
+  obligation: "No cabinet, power, or transit price is published on any page read 2026-08-18. A written quote for the reference load is required before any cost comparison can include this facility.",
+}
 
 data dataverge_brooklyn: ColoFacilityRow = ColoFacilityRow {
   operator_label: "DataVerge",
@@ -54,30 +65,8 @@ data dataverge_brooklyn_retail_grain: RetailGrainStanding = SingleCabinetOffered
   citation: "dataverge.com interconnected-data-center-brooklyn page, read 2026-09-08",
 }
 
-data dataverge_jersey_city: ColoFacilityRow = ColoFacilityRow {
-  operator_label: "DataVerge",
-  facility_label: "DataVerge Jersey City (CGNJ1)",
-  address: AddressListed {
-    street: "111 Town Square Place, Suite 705, Jersey City, NJ 07310",
-    citation: "dataverge.com backup-disaster-recovery-data-center-jersey-city page, read 2026-08-18",
-  },
-  municipality: "Jersey City",
-  region_code: "NJ",
-  facility_note: "Inflect profile (read 2026-08-18): 0.6 MW total power, 2N power with N+1 UPS, N+1 cooling, PCI DSS / SOC 2 / HIPAA claimed; on-site carriers listed AT&T, Cogent, Crown Castle, Lightpath, Lumen; DataVerge marketing claims 30-plus carriers across its footprint. Located in the Newport office tower district.",
-}
-
 data dataverge_facilities: List<ColoFacilityRow> = [dataverge_brooklyn, dataverge_jersey_city]
 
-data dataverge_retail_rates: RetailRateStanding = RatesQuoteOnly {
-  contact_route: "quote request or tour scheduling via dataverge.com",
-  obligation: "No cabinet, power, or transit price is published on any page read 2026-08-18. A written quote for the reference load is required before any cost comparison can include this facility.",
-}
-
-// THE SAME WATT-PER-SQUARE-FOOT TRAP AS CENTERSQUARE, from a different operator, on a page whose
-// whole subject is high density. The operator states "High-density deployments up to 300 watts per
-// square foot" and, separately, that it is preparing deployments from 100 kW to 1 MW. Neither is a
-// per-cabinet figure: the first is a room fact and the second is a total-order size. A reader who
-// wants to know whether one cabinet may draw 15 kW here still cannot know it.
 data dataverge_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "1/2 cabinet, full cabinet, private cages from 100-5,000+ square feet",
   citation: "dataverge.com interconnected-colocation-services page, read 2026-09-08",

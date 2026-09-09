@@ -3,11 +3,7 @@ module extdeps.colo.nyi
 import std.types { NonEmptyStr }
 import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
-  RetailGrainStanding, RetailGrainUnread,
-}
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower, RetailGrainStanding, RetailGrainUnread }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -30,13 +26,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// NYI SELLS AT AN ADDRESS ANOTHER OPERATOR IN THIS CENSUS ALSO SELLS AT. The Long Island page
-// carries 1025 Old Country Road, Westbury - the building Long Island Interconnect operates under
-// extdeps.colo.long_island_interconnect - and repeats the same 3 kW-per-cabinet cooling wording
-// verbatim. Directory writeups describe NYI's Long Island presence as a partnership rather than
-// an owned facility. Which entity the colocation contract is actually with, and whether the
-// products differ between the two surfaces, is a quote question this module cannot answer, and
-// it is exactly the question the Summit / Evocative pair in Secaucus already forced once.
 data nyi_long_island: ColoFacilityRow = ColoFacilityRow {
   operator_label: "NYI",
   facility_label: "NYI Long Island (1025 Old Country Road)",

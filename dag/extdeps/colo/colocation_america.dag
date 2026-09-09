@@ -2,13 +2,7 @@ module extdeps.colo.colocation_america
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, RetailGrainUnread,
-}
 import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
-
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -23,7 +17,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.colocation_america",
-      decl_name: "colocation_america_njdc1",
+      decl_name: "colocation_america_facilities",
       field: WholeDeclaration
     }
   },
@@ -41,6 +35,11 @@ data colocation_america_njdc1: ColoFacilityRow = ColoFacilityRow {
   municipality: "Clifton",
   region_code: "NJ",
   facility_note: "Retail reseller operating inside the Digital Realty EWR20 building (building rows under extdeps.colo.digital_realty). Sells 1U, 2U, 4U, quarter, half and full cabinets per its navigation and directory profiles read 2026-08-18 - the finest published retail granularity in the Clifton building.",
+}
+
+data colocation_america_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "quote form on colocationamerica.com",
+  obligation: "Granularity is published but prices are not on the pages read 2026-08-18; per-U and quarter-cabinet quotes required.",
 }
 
 data colocation_america_nydc1: ColoFacilityRow = ColoFacilityRow {
@@ -88,28 +87,6 @@ data colocation_america_facilities: List<ColoFacilityRow> = [
   colocation_america_nydc1,
   colocation_america_nydc2,
 ]
-
-data colocation_america_retail_rates: RetailRateStanding = RatesQuoteOnly {
-  contact_route: "quote form on colocationamerica.com",
-  obligation: "Granularity is published but prices are not on the pages read 2026-08-18; per-U and quarter-cabinet quotes required.",
-}
-
-// A SECOND NEW JERSEY FACILITY FROM THIS OPERATOR, IN THE CORRIDOR, and the existing NJDC1 row is
-// in Clifton which is not. The operator's own registry entry names NJDC2 at 275 Hartz Way, Secaucus
-// - the same street address the census already carries for Equinix NY2 - so this is another
-// in-building reseller row rather than another building. The operator's own site could not be read:
-// colocationamerica.com refused a direct fetch with HTTP 403 on 2026-09-08.
-data colocation_america_njdc2_secaucus: ColoFacilityRow = ColoFacilityRow {
-  operator_label: "Colocation America",
-  facility_label: "Colocation America NJDC2 (in-building at 275 Hartz Way)",
-  address: AddressListed {
-    street: "275 Hartz Way, Suite 1, Secaucus, NJ 07094",
-    citation: "PeeringDB facility NJDC2 - Colocation America Corporation, read 2026-09-08. The registry entry's title carries a 300 J F Kennedy Blvd label while its address field carries 275 Hartz Way; the address field is what is modelled and the discrepancy is recorded in the note.",
-  },
-  municipality: "Secaucus",
-  region_code: "NJ",
-  facility_note: "275 Hartz Way is the building the census already carries as Equinix NY2, so this row is a reseller inside a facility another operator also sells from. The registry title names a 300 J F Kennedy Blvd address - which is the Weehawken building carrying Centersquare EWR2-A,B and the closed Digital Realty EWR10 - while the address field names Secaucus; one of the two is stale and a quote must establish which suite is actually being sold.",
-}
 
 data colocation_america_cabinet_density: CabinetDensityClaim = DensityUnread {
   obligation: "colocationamerica.com refused a direct fetch of its New Jersey locations page with HTTP 403 on 2026-09-08, so no operator page has been read this pass and no per-cabinet kW figure exists for NJDC1 Clifton or NJDC2 Secaucus. Resolve by a route the operator's edge admits, or by quote.",

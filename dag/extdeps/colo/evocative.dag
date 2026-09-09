@@ -3,7 +3,6 @@ module extdeps.colo.evocative
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
-
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -47,10 +46,6 @@ data evocative_retail_rates: RetailRateStanding = RatesQuoteOnly {
   obligation: "No pricing is published on the EWR1 page read 2026-08-18. The single-server retail grain the page claims makes this a candidate for the small reversible footprint; the quote must price a 2U placement with BMC isolation and confirm the operator-of-record at 1 Enterprise Avenue N.",
 }
 
-// THE FINEST RETAIL GRAIN IN THE CORRIDOR AND NO DENSITY BEHIND IT. The operator's EWR1 page sells
-// from a single server upward, which is finer than a cabinet and makes this facility reachable for
-// a small reversible footprint - but the same page states no kW figure at any grain, so what a
-// single server may draw here is exactly as unknown as what a cabinet may draw.
 data evocative_ewr1_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "Whether you need a single server or an entire suite, we customize our offerings to meet your needs",
   citation: "evocative.com Secaucus NJ (EWR1) facility page, read 2026-09-08",

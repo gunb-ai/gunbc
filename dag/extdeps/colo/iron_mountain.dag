@@ -3,12 +3,7 @@ module extdeps.colo.iron_mountain
 import std.types { NonEmptyStr }
 import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressUnread, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly, DensityUnread, CabinetPowerFigure, PublishedRealPower,
-  RetailGrainStanding, SingleCabinetOffered,
-}
-
+import extdeps.colo.types { ColoFacilityRow, AddressUnread, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityMarketedAirOnly, DensityUnread, CabinetPowerFigure, PublishedRealPower, RetailGrainStanding, SingleCabinetOffered }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -47,15 +42,10 @@ data iron_mountain_retail_rates: RetailRateStanding = RatesQuoteOnly {
   obligation: "No published cabinet pricing on the pages read 2026-08-18.",
 }
 
-// THE FIRST DENSE CABINET CLAIM IN THIS CENSUS, and the reason the CabinetDensityClaim carrier
-// exists. Every priced plan modelled in this metro tops out at 2.5 kW for twenty rack units, which
-// made colocation look physically incapable of holding a 650 W-per-node fleet. It is not: this
-// operator markets an order of magnitude more per rack, at a grain that includes single cabinets.
 data iron_mountain_nje1_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 30000) },
   claim_wording: "high-density up to 30 kW/rack",
   citation: "ironmountain.com NJE-1 solution guide, read 2026-09-08 THROUGH A SUMMARIZING FETCH TOOL, and the wording above is therefore UNVERIFIED AS PAGE TEXT. A raw fetch on 2026-09-09 to confirm it verbatim was BLOCKED - HTTP 429 behind a Vercel Security Checkpoint, 32 KB of interstitial and no facility content - so the block is recorded here as the reading rather than the silence being mistaken for absence. What this means precisely: the FIGURE of 30 kW per rack has one source and it is a tool that is known to paraphrase, and the sentence in claim_wording may be that tool's prose rather than the operator's. It is retained because a summarizing read is still a read and the row would otherwise lose a real observation; it is flagged because claim_wording exists so a later reader can re-derive the number from the operator's own words, and an unverified wording there reads exactly like a verified one. DISCHARGE BY: a raw fetch that clears the checkpoint, an operator spec sheet, or a quote. The same page reported 25.6 MW facility capacity, 830,000 square feet, Tier III and a PUE as low as 1.2, all under the same caveat. No liquid-cooling density was reported, hence the air-only arm.",
-  citation: "ironmountain.com NJE-1 solution guide, read 2026-09-08; the same page states 25.6 MW facility capacity, 830,000 square feet, Tier III and a PUE as low as 1.2. No liquid-cooling density is stated, hence the air-only arm.",
 }
 
 data iron_mountain_nje1_retail_grain: RetailGrainStanding = SingleCabinetOffered {
@@ -63,12 +53,6 @@ data iron_mountain_nje1_retail_grain: RetailGrainStanding = SingleCabinetOffered
   citation: "ironmountain.com NJE-1 solution guide, read 2026-09-08",
 }
 
-// A SECOND FACILITY, CARRIED FOR ITS NEGATIVE READING AS MUCH AS ITS POSITIVE ONE. A review
-// relayed into this session asserted that this operator advertises cabinets up to 20 kW in
-// Pennsylvania. The page was read and states no per-rack or per-cabinet density at all, so the
-// claim is UNCONFIRMED and the row records the absence rather than the assertion. That is the
-// whole point of a typed unread arm: a density nobody published must not enter the census because
-// a secondary source said it existed.
 data iron_mountain_wpa1: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Iron Mountain Data Centers",
   facility_label: "Iron Mountain WPA-1 Boyers",

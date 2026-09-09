@@ -2,16 +2,7 @@ module extdeps.colo.digital_realty
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
-  RetailGrainStanding, SingleCabinetOffered,
-}
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
-  RetailGrainStanding, SingleCabinetOffered,
-}
-
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -26,7 +17,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.digital_realty",
-      decl_name: "digital_realty_ewr10",
+      decl_name: "digital_realty_facilities",
       field: WholeDeclaration
     }
   },
@@ -58,10 +49,19 @@ data digital_realty_ewr20: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Seven-story roughly 183,000 square foot building with about 33 MW marketed per directory profiles read 2026-08-18; legacy Telx NJR2/NJR3 lineage. Multi-operator building: Colocation America resells retail space here under its own module.",
 }
 
-// THE PISCATAWAY CAMPUS, ABSENT FROM THE CENSUS UNTIL NOW. This operator was carried by its two
-// Hudson-waterfront-adjacent buildings only, which read as though Digital Realty's New Jersey
-// footprint stopped at Clifton. It does not: the campus below is in Middlesex County, and one of
-// its two modelled buildings is larger than either northern site.
+data digital_realty_facilities: List<ColoFacilityRow> = [
+  digital_realty_ewr10,
+  digital_realty_ewr20,
+  digital_realty_jfk10,
+  digital_realty_jfk12,
+  digital_realty_jfk13,
+]
+
+data digital_realty_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "digitalrealty.com sales",
+  obligation: "No published cabinet pricing on pages read 2026-08-18. Digital Realty's retail motion in this metro leans to interconnection and multi-cabinet deployments; single-cabinet terms need a quote and may route to a reseller.",
+}
+
 data digital_realty_ewr11: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Digital Realty",
   facility_label: "Digital Realty EWR11 Piscataway",
@@ -98,22 +98,11 @@ data digital_realty_ewr12_density: CabinetDensityClaim = DensityUnread {
   obligation: "The EWR12 page read 2026-09-08 states no per-cabinet or per-rack kilowatt figure, only building square footage. Read the spec sheet or ask the quote. The 323,000 square feet is a fact about the building and must not be read as a density.",
 }
 
-// THE ONLY DIGITAL REALTY BUILDING IN THIS CENSUS THAT STATES ITS RETAIL GRAIN, and it flatly
-// contradicts the operator-level rate note below, which had recorded a lean toward interconnection
-// and multi-cabinet deployments. A single-cabinet offer is published for this building; whether it
-// is published for the others is unread rather than answered by this one.
 data digital_realty_ewr12_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "From single cabinets to full suites, we have space solutions as diverse as your needs.",
   citation: "digitalrealty.com EWR12 page, read 2026-09-08",
 }
 
-
-// A THIRD BUILDING ON THIS CAMPUS THAT CONTRIBUTES NO ROW. Digital Realty campus material names
-// EWR19 alongside the two buildings above. The operator page under the EWR19 path on the same URL
-// pattern that serves EWR11 and EWR12 returned HTTP 404 on 2026-09-08, so no address, size, density
-// or grain is readable and no row is written from the campus material alone. This operator's
-// Piscataway campus is therefore modelled at two buildings of three, and the missing one needs a
-// live page or a spec sheet rather than an inference from its siblings.
 data digital_realty_jfk10: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Digital Realty",
   facility_label: "Digital Realty JFK10",
@@ -176,35 +165,6 @@ data digital_realty_jfk13_retail_grain: RetailGrainStanding = SingleCabinetOffer
   wording: "From single cabinets to private data center suites",
   citation: "digitalrealty.com JFK13 page, read 2026-09-08",
 }
-
-data digital_realty_facilities: List<ColoFacilityRow> = [
-  digital_realty_ewr10,
-  digital_realty_ewr20,
-  digital_realty_ewr11,
-  digital_realty_ewr12,
-  digital_realty_jfk10,
-  digital_realty_jfk12,
-  digital_realty_jfk13,
-]
-
-data digital_realty_retail_rates: RetailRateStanding = RatesQuoteOnly {
-  contact_route: "digitalrealty.com sales",
-  obligation: "No published cabinet pricing on pages read 2026-08-18. Digital Realty's retail motion in this metro leans to interconnection and multi-cabinet deployments; single-cabinet terms need a quote and may route to a reseller.",
-}
-
-// EWR10 IS NO LONGER IN THIS OPERATOR'S FOOTPRINT, and two independent surfaces say so on
-// 2026-09-08. The operator's own New York and New Jersey page enumerates seven facilities - EWR11
-// and EWR12 in Piscataway, EWR20 and EWR21 in Clifton, JFK10, JFK12 and JFK13 in Manhattan - and
-// 300 Boulevard East, Weehawken is not among them. The operator-maintained PeeringDB entry for the
-// same address is titled "Digital Realty New Jersey EWR10 (closed)". The row above is KEPT as the
-// reading it was on 2026-08-18 rather than deleted, per the module doctrine that a withdrawn offer
-// is recorded by a withdrawal note and not by erasing the history; but no quote should be sought
-// for EWR10, and the Weehawken building at 300 JFK Boulevard East is reachable in this census
-// through Centersquare EWR2-A,B, which is still listed by its operator.
-// EWR10 Weehawken is absent from digitalrealty.com's New York/New Jersey facility list read
-// 2026-09-08 and is marked (closed) on its PeeringDB facility entry read the same day. Treat the
-// EWR10 row as history. The Clifton pair EWR20 and EWR21 and the Piscataway pair EWR11 and EWR12
-// are the operator's live New Jersey sites, none of which is in the Hudson-Bergen-Essex corridor.
 
 data digital_realty_cabinet_density: CabinetDensityClaim = DensityUnread {
   obligation: "The operator's New York and New Jersey facility list, read 2026-09-08, publishes no per-cabinet or per-rack kW figure for any facility; it publishes a 133.5k square-foot colocation footprint, which is a portfolio fact and not a density. Resolve per facility from a spec sheet or a quote.",

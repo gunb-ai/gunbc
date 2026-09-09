@@ -2,16 +2,7 @@ module extdeps.colo.equinix
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, RetailGrainUnread,
-  RetailGrainStanding, SingleCabinetOffered,
-}
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
-  RetailGrainStanding, SingleCabinetOffered,
-}
-
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread, SingleCabinetOffered }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -26,7 +17,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.equinix",
-      decl_name: "equinix_facilities",
+      decl_name: "equinix_secaucus_campus",
       field: WholeDeclaration
     }
   },
@@ -72,6 +63,31 @@ data equinix_ny6: ColoFacilityRow = ColoFacilityRow {
 
 data equinix_secaucus_campus: List<ColoFacilityRow> = [equinix_ny2, equinix_ny4, equinix_ny5, equinix_ny6]
 
+data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "equinix.com sales",
+  obligation: "No published cabinet pricing; the operator sells retail cabinets by quote and market surveys consistently place it at the premium end of the metro. Whether to solicit a quote at all is a consumer decision, not a fact about the operator.",
+}
+
+data equinix_ny13: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY13",
+  address: AddressListed {
+    street: "401 Fieldcrest Drive, Elmsford, NY 10523",
+    citation: "equinix.com NY13 IBX page, read 2026-09-08",
+  },
+  municipality: "Elmsford",
+  region_code: "NY",
+  facility_note: "Westchester County. The operator's own page describes NY13 as serving large financial, media and enterprise companies with premium interconnection - the same wording family as the Secaucus rows, and the same absence of any retail-grain or density statement.",
+}
+
+data equinix_ny13_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The NY13 page states no kW-per-cabinet figure (read 2026-09-08). Equinix publishes density elsewhere in its marketing; nothing on this facility's page does, and a corporate figure is not a facility reading. Ask for the per-cabinet ceiling at NY13 specifically.",
+}
+
+data equinix_ny13_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The NY13 page names colocation and interconnection but does not state whether a single cabinet is a sellable unit at this IBX. The module's existing rate note asserts the operator sells retail cabinets by quote across the metro; that is an operator-level belief and this row does not convert it into a NY13 reading.",
+}
+
 data equinix_ny9: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Equinix",
   facility_label: "Equinix NY9",
@@ -101,43 +117,6 @@ data equinix_facilities: List<ColoFacilityRow> = [
   equinix_ny9,
 ]
 
-data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
-  contact_route: "equinix.com sales",
-  obligation: "No published cabinet pricing; the operator sells retail cabinets by quote and market surveys consistently place it at the premium end of the metro. Whether to solicit a quote at all is a consumer decision, not a fact about the operator.",
-}
-
-// THE OPERATOR'S ONE NEW YORK-STATE IBX IN THIS REGION, and the census's Equinix rows were until
-// now entirely Secaucus. NY13 sits in Westchester County, which matters because the module's
-// existing quote-only note reasons about a New Jersey campus and a Westchester cabinet is a
-// different route, a different power market and a different latency to Manhattan.
-//
-// FETCH NOTE: equinix.com refuses the ordinary fetch path with HTTP 403. The reading below was
-// taken directly from the operator's own NY13 page over a plain HTTP client on 2026-09-08 - it is
-// an operator reading, not a directory's, and the 403 is recorded so the next reader does not
-// conclude the page is gone.
-data equinix_ny13: ColoFacilityRow = ColoFacilityRow {
-  operator_label: "Equinix",
-  facility_label: "Equinix NY13",
-  address: AddressListed {
-    street: "401 Fieldcrest Drive, Elmsford, NY 10523",
-    citation: "equinix.com NY13 IBX page, read 2026-09-08",
-  },
-  municipality: "Elmsford",
-  region_code: "NY",
-  facility_note: "Westchester County. The operator's own page describes NY13 as serving large financial, media and enterprise companies with premium interconnection - the same wording family as the Secaucus rows, and the same absence of any retail-grain or density statement.",
-}
-
-data equinix_ny13_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The NY13 page states no kW-per-cabinet figure (read 2026-09-08). Equinix publishes density elsewhere in its marketing; nothing on this facility's page does, and a corporate figure is not a facility reading. Ask for the per-cabinet ceiling at NY13 specifically.",
-}
-
-data equinix_ny13_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "The NY13 page names colocation and interconnection but does not state whether a single cabinet is a sellable unit at this IBX. The module's existing rate note asserts the operator sells retail cabinets by quote across the metro; that is an operator-level belief and this row does not convert it into a NY13 reading.",
-// THREE CORRIDOR IBXs THE 2026-08-18 PASS MISSED, all three read 2026-09-08 from the operator's
-// own PeeringDB facility entries rather than from equinix.com, because two fetches of the operator's
-// New York colocation pages from two different paths were refused with HTTP 403 on 2026-09-08. A
-// PeeringDB facility row is maintained by the operator itself, which is why it carries an address
-// here; it carries no density and no minimum, which is why the two rows below are unread.
 data equinix_ny1: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Equinix",
   facility_label: "Equinix NY1",
@@ -174,15 +153,10 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
   facility_note: "The operator's North Bergen site, in Hudson County between the Secaucus cluster and the Weehawken waterfront. No operator-page reading exists for it; everything beyond name and address is unread.",
 }
 
-// THE REFUSAL IS THE READING. Two fetches on 2026-09-08 - the New York colocation index and the
-// NY4 facility page beneath it - were both refused HTTP 403 by the operator's edge. That is why
-// this census carries no Equinix density figure, and it is recorded here rather than left as an
-// absence, so nobody later reads the silence as "Equinix publishes no density" or, worse, fills it
-// from a directory. It is one claim per operator because the refusal was at the operator's edge.
 data equinix_cabinet_density: CabinetDensityClaim = DensityUnread {
-  obligation: "equinix.com refused two direct fetches with HTTP 403 on 2026-09-08 (the New York colocation index and the NY4 facility page). No per-cabinet kW figure has been read from any Equinix surface for any corridor IBX. Resolve by a route that the operator's edge admits, or by asking the quote for the per-cabinet air-cooled maximum at the named IBX; do not import a figure from a directory or from another operator's campus.",
+  obligation: "CORRECTED 2026-09-09: the 2026-09-08 refusals were my client, not this operator's edge. Re-fetched from raw bytes with an ordinary browser user-agent, equinix.com/data-centers answers HTTP 200 with 225 KB and contains no occurrence of kW or cabinet; the two colocation paths tried on 2026-09-08 answer 404, so they were wrong paths rather than blocked ones. So no per-cabinet kW figure has been read for any corridor IBX, and the reason is that the reachable index does not publish one - not that the operator refuses readers. Resolve by locating the operator's current per-IBX pages, or by asking the quote for the per-cabinet air-cooled maximum at the named IBX; do not import a figure from a directory or from another operator's campus.",
 }
 
 data equinix_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "Same 403 as the density obligation: no minimum-footprint wording has been read from the operator's own surface. Whether a single cabinet is contractable, and at which of the six corridor IBXs, is a quote question.",
+  obligation: "Same correction as the density obligation: the operator's reachable index carries no cabinet, cage or suite wording, so no minimum footprint has been read from its own surface. Whether a single cabinet is contractable, and at which of the seven corridor IBXs, is a quote question.",
 }

@@ -2,13 +2,7 @@ module extdeps.colo.h5
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, SingleCabinetOffered,
-}
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
-
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -23,7 +17,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.h5",
-      decl_name: "h5_secaucus",
+      decl_name: "h5_facilities",
       field: WholeDeclaration
     }
   },
@@ -55,6 +49,13 @@ data h5_philadelphia: ColoFacilityRow = ColoFacilityRow {
   facility_note: "H5 floor in the multi-operator 1500 Spring Garden building (the former vXchnge footprint, roughly 72,000 square feet); 365 Data Centers also operates in the same building under its own module.",
 }
 
+data h5_facilities: List<ColoFacilityRow> = [h5_secaucus, h5_philadelphia, h5_nyc_325_hudson]
+
+data h5_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "quote request via h5datacenters.com",
+  obligation: "No cabinet or power pricing published on the pages read 2026-08-18; a written quote for the reference load is required.",
+}
+
 data h5_nyc_325_hudson: ColoFacilityRow = ColoFacilityRow {
   operator_label: "H5 Data Centers",
   facility_label: "H5 New York (325 Hudson)",
@@ -76,27 +77,6 @@ data h5_nyc_325_hudson_retail_grain: RetailGrainStanding = SingleCabinetOffered 
   citation: "h5datacenters.com New York colocation page, read 2026-09-08",
 }
 
-data h5_facilities: List<ColoFacilityRow> = [h5_secaucus, h5_philadelphia, h5_nyc_325_hudson]
-
-data h5_retail_rates: RetailRateStanding = RatesQuoteOnly {
-  contact_route: "quote request via h5datacenters.com",
-  obligation: "No cabinet or power pricing published on the pages read 2026-08-18; a written quote for the reference load is required.",
-}
-
-// BOTH FIELDS UNREAD FROM BOTH OF THE OPERATOR'S OWN PAGES. The Secaucus facility page and the
-// New Jersey colocation page were fetched separately on 2026-09-08; between them they carry a
-// building size, a redundancy topology and a diesel runtime, and neither a cabinet density nor a
-// minimum footprint. A directory profile asserts individual cabinets are available at this site;
-// that is a secondary claim about an operator's commercial policy and is not promoted to a reading.
-data h5_secaucus_density: CabinetDensityClaim = DensityUnread {
-  obligation: "h5datacenters.com new-jersey-data-center and new-jersey-colocation pages, both read 2026-09-08: no per-cabinet or per-rack kW figure, and no watts-per-square-foot figure either. The 38,000 SF Tier III figure is a building fact. Resolve by quote for 200B Meadowlands Parkway.",
-}
-
-data h5_secaucus_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "Neither H5 page read 2026-09-08 states whether space is sold as individual cabinets, cages or suites. A directory profile claims individual cabinets are offered; confirm with the operator before treating this site as reachable at cabinet grain, because H5's stated motion elsewhere in its portfolio is wholesale.",
-// THE PHILADELPHIA FLOOR PUBLISHES ITS PLANT AND NOT ITS CABINET. 72,000 square feet and 7.5 MW of
-// generator backup are stated by the operator; a per-cabinet figure is not, and the megawatts are
-// a building fact that says nothing about what one cabinet may draw.
 data h5_philadelphia_density: CabinetDensityClaim = DensityUnread {
   obligation: "h5datacenters.com Philadelphia page, read 2026-09-08, states 72,000 SF and 7.5 MW generator backup and NO per-cabinet or per-rack density. The absence is raw-byte confirmed: a curl fetch on 2026-09-09 (HTTP 200, 68,972 bytes) contains ZERO case-insensitive occurrences of 'kw' anywhere in the served HTML. Request the facility spec sheet or a quote naming the cabinet draw.",
 }
@@ -104,4 +84,12 @@ data h5_philadelphia_density: CabinetDensityClaim = DensityUnread {
 data h5_philadelphia_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "Customers can license cages and cabinets",
   citation: "h5datacenters.com Philadelphia data center page, read 2026-09-08; the phrase occurs verbatim in the raw served HTML re-fetched 2026-09-09 (HTTP 200, 68,972 bytes), inside one <p> under the h1 'Philadelphia Data Center Overview' with no promotional banner above it.",
+}
+
+data h5_secaucus_density: CabinetDensityClaim = DensityUnread {
+  obligation: "h5datacenters.com new-jersey-data-center and new-jersey-colocation pages, both read 2026-09-08: no per-cabinet or per-rack kW figure, and no watts-per-square-foot figure either. The 38,000 SF Tier III figure is a building fact. Resolve by quote for 200B Meadowlands Parkway.",
+}
+
+data h5_secaucus_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "Neither H5 page read 2026-09-08 states whether space is sold as individual cabinets, cages or suites. A directory profile claims individual cabinets are offered; confirm with the operator before treating this site as reachable at cabinet grain, because H5's stated motion elsewhere in its portfolio is wholesale.",
 }

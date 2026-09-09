@@ -2,11 +2,7 @@ module extdeps.colo.lightwave_networks
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, RetailGrainUnread,
-}
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -29,14 +25,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// AN OPERATOR INSIDE ANOTHER OPERATOR'S BUILDING, WHICH IS WHY IT GETS ITS OWN MODULE. LightWave
-// sells retail colocation from floor space it occupies at 401 North Broad, the building Netrality
-// owns and also sells from directly. Both rows are real and neither is a duplicate: the operator
-// is the upstream authority a row cites, not the building, so 401 North Broad now appears three
-// times in this census under three independently governed sellers (Netrality, DataBank PHL1,
-// LightWave). This is also the reason the Netrality density reading may NOT be carried across to
-// this row - what the building can cool says nothing about what this seller commits to per
-// cabinet, and copying it would be exactly the inference the density carrier exists to refuse.
 data lightwave_philadelphia: ColoFacilityRow = ColoFacilityRow {
   operator_label: "LightWave Networks",
   facility_label: "LightWave Networks Philadelphia (401 North Broad)",

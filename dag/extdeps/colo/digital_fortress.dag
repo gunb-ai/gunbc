@@ -3,12 +3,7 @@ module extdeps.colo.digital_fortress
 import std.types { NonEmptyStr }
 import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly,
-  CabinetPowerFigure, PublishedRealPower,
-  RetailGrainStanding, SingleCabinetOffered,
-}
+import extdeps.colo.types { ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower, RetailGrainStanding, SingleCabinetOffered }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -31,11 +26,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// THE SMALLEST FACILITY IN THIS CENSUS THAT PUBLISHES BOTH FACTS THE CENSUS EXISTS TO COLLECT.
-// Its UPS plant is 1.8 MW - two orders of magnitude under the campuses that dominate the roster -
-// and it is nonetheless a better-answered candidate than any of them, because it states a
-// per-cabinet density and states that one cabinet is a thing it sells. That is the shape of the
-// finding: marketed megawatts and answerable retail are close to uncorrelated in this market.
 data digital_fortress_piscataway: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Digital Fortress",
   facility_label: "Digital Fortress PNJ Piscataway",
@@ -47,12 +37,6 @@ data digital_fortress_piscataway: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Operator page (read 2026-09-08): 96,500 square feet total, of which 9,700 square feet white space and 14,000 square feet shell; 1.8 MW UPS in N+1; direct connectivity to multiple regional and global service providers, none of them named on the page. Middlesex County, sharing a municipality with QTS PNJ1, DataBank EWR2 and the Digital Realty Piscataway campus - four operators in one township, which makes Piscataway the densest cluster in this census outside the Secaucus corridor.",
 }
 
-// A READ DENSITY WITH A CONDITION ATTACHED, AND THE CONDITION IS PART OF THE CLAIM. The operator
-// does not say cabinets ARE 15 kW; it says 15 kW is available without significant redesign. That
-// is a statement about what the room can be made to do, one step weaker than a marketed maximum
-// and several steps weaker than a price. It is still a reading and not an inference, so it enters
-// the census - with the operator's qualifying words carried verbatim beside the numeral, which is
-// the whole reason claim_wording exists.
 data digital_fortress_piscataway_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 15000) },
   claim_wording: "15kW per cabinet available without any significant redesign",

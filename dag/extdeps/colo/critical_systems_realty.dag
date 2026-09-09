@@ -3,11 +3,7 @@ module extdeps.colo.critical_systems_realty
 import std.types { NonEmptyStr }
 import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
-  RetailGrainStanding, RetailGrainUnread,
-}
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower, RetailGrainStanding, RetailGrainUnread }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -30,11 +26,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// THE SECOND ORANGEBURG CAMPUS, and the census had zero before this week. Rockland County now
-// carries two independent multi-megawatt operators a mile apart - this one and DataBank's LGA3 and
-// LGA4 under extdeps.colo.databank - which changes the shape of the New York question: it is no
-// longer whether dense capacity exists north of the Hudson, but which of two campuses will sell a
-// single dense cabinet.
 data csr_orny1_orangeburg: ColoFacilityRow = ColoFacilityRow {
   operator_label: "fifteenfortyseven Critical Systems Realty",
   facility_label: "1547 ORNY1 Orangeburg",
@@ -47,12 +38,6 @@ data csr_orny1_orangeburg: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Rockland County, 23-acre campus of 232,000 square feet with a stated 24 MW provisioned in an N+2 scheme and 12 MW on site, N+1 and 2N power availability, and a second building in phase-1 expansion adding a stated 230,000 square feet, 30 MW and a 60 MW generator. The operator markets lowest-cost power in the region and a sales-tax abatement. It is also the landlord of record for at least one retail reseller in the building: the Orangeburg site that ColoHouse marketed at 1 Ramland Road is now redirected to Hivelocity (extdeps.colo.hivelocity), so a retail cabinet here may contract with a tenant rather than with 1547.",
 }
 
-// A READ DENSITY, AND A WEAK ONE - read the wording, not the number. Ten kilowatts is a floor with
-// a plus sign attached, and the page does not say whether it is an air figure or includes a liquid
-// path; the arm records what was published and the citation records what was not. Against
-// DataBank's 35 kW air claim four miles away this is the same county and a third of the density,
-// which is the sort of spread that only becomes visible once density is a typed field rather than
-// a sentence in a facility note.
 data csr_orny1_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 10000) },
   claim_wording: "High density 10KW + per cabinets",

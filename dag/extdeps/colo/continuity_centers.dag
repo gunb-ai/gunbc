@@ -2,11 +2,7 @@ module extdeps.colo.continuity_centers
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, RetailGrainUnread,
-}
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -29,15 +25,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// AN OPERATOR WHOSE DIRECTORY LISTINGS AND WHOSE OWN SITE DISAGREE ABOUT WHAT IT SELLS, which is
-// why this row exists rather than being dropped. Colocation directories describe a Long Island
-// facility here selling single server, half and full cabinets, shared and dedicated locking
-// cabinets, caged space and private suites - the finest grain claimed by any operator in this
-// census after Stafford Associates. The operator's OWN site, read 2026-09-09, markets disaster
-// recovery, backup and Veeam-partnered cloud protection and carries NO colocation product page at
-// all. A directory is not the operator, so nothing here inherits the directory's product list; the
-// disagreement itself is the fact worth carrying, so that the next reader does not spend the
-// afternoon rediscovering it.
 data continuity_centers_woodbury: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Continuity Centers",
   facility_label: "Continuity Centers Woodbury",

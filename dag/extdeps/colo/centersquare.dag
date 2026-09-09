@@ -3,7 +3,6 @@ module extdeps.colo.centersquare
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
-
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -45,10 +44,6 @@ data centersquare_retail_rates: RetailRateStanding = RatesQuoteOnly {
   obligation: "No cabinet pricing published on the pages read 2026-08-18; single-cabinet retail is sold but priced by quote.",
 }
 
-// A THIRD CORRIDOR SITE FROM THIS OPERATOR, missed in 2026-08-18 because the census took the
-// Weehawken campus and stopped. The operator's own New York/New Jersey index (read 2026-09-08)
-// names three sites: Weehawken EWR2, Piscataway EWR3, and Secaucus EWR5. EWR5 is in the corridor
-// and is modelled here; EWR3 is Middlesex County and is out of this pass's region.
 data centersquare_ewr5_secaucus: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Centersquare",
   facility_label: "Centersquare EWR5 Secaucus",
@@ -61,11 +56,6 @@ data centersquare_ewr5_secaucus: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Operator index read 2026-09-08: 59,572 sqft of raised floor. One street north of Evocative EWR1 and Summit at 1 Enterprise Avenue N, so the Enterprise Avenue block now carries three selling surfaces in this census.",
 }
 
-// THE TRAP THIS CARRIER EXISTS FOR, caught in the wild. The operator's index states, for Secaucus,
-// "Standard cage density: Up to 300W/sq. ft." A watt-per-square-foot figure is a room fact: turning
-// it into a cabinet figure requires assuming how many square feet a cabinet is allotted, which the
-// operator does not state and this census will not invent. So the density is UNREAD and the
-// operator's actual sentence is preserved in the obligation for whoever resolves it.
 data centersquare_cabinet_density: CabinetDensityClaim = DensityUnread {
   obligation: "csquare.com New York/New Jersey index, read 2026-09-08, publishes for Secaucus \"Standard cage density: Up to 300W/sq. ft.\" and no per-cabinet or per-rack kW figure for any of EWR2, EWR3 or EWR5. Watts per square foot is not cabinet density and may not be converted into one here. Resolve by asking each facility for its air-cooled per-cabinet maximum.",
 }

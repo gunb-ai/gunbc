@@ -2,11 +2,7 @@ module extdeps.colo.five_9s_digital
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, RetailGrainUnread,
-}
+import extdeps.colo.types { ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -29,14 +25,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// THE LARGEST POWER NUMBER IN THE LEHIGH VALLEY AND THE LEAST RETAIL ONE. This operator's own
-// portfolio page (read 2026-09-08) lists Allentown as available at 11.1 MW within one year and a
-// further 51.1 MW eighteen months after phase one - an order of magnitude above every TierPoint
-// site in the same valley. It is carried because a census that silently dropped it would leave the
-// region's biggest available power looking absent, and it is carried WITHOUT a density or a grain
-// because the page sells power-ready capacity and states neither. The same page markets Phoenix as
-// 'High-Density Colocation Cabinets, Cages, Wholesale and Cloud Solutions', which shows the
-// operator does describe cabinet grain where it offers it - and does not, here.
 data five_9s_allentown: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Five 9s Digital",
   facility_label: "Five 9s Digital Allentown",

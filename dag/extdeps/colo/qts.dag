@@ -2,13 +2,7 @@ module extdeps.colo.qts
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, RetailGrainUnread,
-}
 import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
-
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -48,30 +42,13 @@ data qts_retail_rates: RetailRateStanding = RatesQuoteOnly {
   obligation: "No published cabinet pricing on pages read 2026-08-18.",
 }
 
-// SIXTY-FIVE MEGAWATTS AND NOT ONE KILOWATT PER CABINET. This is the census's cleanest instance of
-// the error the density carrier was built to make unwritable: the largest marketed capacity of any
-// facility in the roster sits beside a page that never states what one cabinet can draw. Facility
-// megawatts are a fact about a building. Dividing 65 MW by any cabinet count would fabricate a
-// density, and the row below refuses instead.
 data qts_piscataway_density: CabinetDensityClaim = DensityUnread {
   obligation: "The operator's Piscataway 1 page (q.com/data-centers/piscataway/, read 2026-09-08) states 65 MW+ critical power capacity and no per-cabinet or per-rack kilowatt figure anywhere. Read a spec sheet or ask the quote for the marketed cabinet maximum. Do not derive one from the 65 MW.",
 }
 
 data qts_piscataway_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "The page read 2026-09-08 states no minimum commitment and names no cabinet-grain product. The census's standing read of this operator is a hybrid retail-plus-hyperscale motion, which is precisely the case where the grain question decides whether a one-cabinet order is possible at all; the quote must answer it before this campus is ranked.",
-// A CORRIDOR FACILITY IN THE REGISTRY THAT THE OPERATOR NO LONGER LISTS, recorded as an obligation
-// rather than as a facility row, because a row would assert a live site this operator's own surface
-// does not claim. PeeringDB carries "QTS Jersey City (JCY1)", 95 Christopher Columbus Drive, Floor
-// 16, Jersey City. The operator's own data-centers index, read 2026-09-08, names exactly two New
-// Jersey sites - Piscataway and East Windsor - and no Jersey City. Two fetches of Jersey City
-// facility paths on q.com returned 404 the same day. The honest state is that the registry entry
-// and the operator's index disagree, and the disagreement is what needs reading.
-// Establish whether QTS still operates at 95 Christopher Columbus Drive, Jersey City. Its
-// PeeringDB facility entry QTS Jersey City (JCY1) was read 2026-09-08 and names floor 16; q.com's
-// own facility index read the same day lists only Piscataway and East Windsor in New Jersey, and
-// jersey-city paths under q.com 404. Until an operator surface names it, this census carries no
-// Jersey City row for QTS - and if the site was exited, the registry entry is what a later sweep
-// will trip over, so record the resolution here rather than silently dropping it.
+}
 
 data qts_cabinet_density: CabinetDensityClaim = DensityUnread {
   obligation: "q.com's data-centers index read 2026-09-08 publishes acreage and site megawatts - 38 acres and 65 MW+ at Piscataway - and no per-cabinet or per-rack kW figure at any site. Site megawatts is not cabinet density. Resolve by quote; note that this operator has no facility in the Hudson-Bergen-Essex corridor that it currently claims.",
