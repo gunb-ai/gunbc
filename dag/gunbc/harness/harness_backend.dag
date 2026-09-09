@@ -1,16 +1,27 @@
 module gunbc.harness.harness_backend
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import product.fabric.demand { ObservationReceiptRef }
+import extdeps.vllm.metrics { VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, vllm_metric_name }
+import extdeps.prometheus.client { ProcessStartTimeSeconds, prometheus_process_series_name }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
+import gunbc.spark.vllm_endpoint_process_launch {
+  vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+}
+import gunbc.serving.turn_admission { ServingQueueReading, QueueDepthRead, QueueDepthUnread }
 import extdeps.http.client
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
 import extdeps.languages.json.parse {
-  JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
-  JsonMemberFound, parse_json_document, json_object_unique_member, json_document_gap_text,
+  JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, parse_json_document,
+  json_object_unique_member, json_document_gap_text,
 }
 import gunbc.harness.harness_wire {
-  harness_engine_replica_roster, HarnessReplicaRoster, HarnessReplicasResolved, HarnessReplicasUnresolved,
+  harness_engine_replica_roster, HarnessReplicasResolved, HarnessReplicasUnresolved,
   harness_engine_port, harness_engine_model,
-  HarnessWireShape, harness_backend_url_for_address,
 }
 
 // THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.
@@ -178,28 +189,13 @@ fn harness_roster_unresolved_detail(hosts: List<String>) -> String {
   join(["harness replica roster unresolved: pair head(s) with no LAN endpoint row in gunbc.fleet_intent_network: ", join(hosts, ", ")], "")
 }
 
-// THE URL AN ATTEMPT POSTS TO, bound at process start from the replicas serving at that moment. The
-// seed spreads concurrent attempts across the serving set; a roster with nothing serving is a typed
-// refusal the entry point exits on, never a URL that will fail on the first turn.
-type HarnessBackendUrl
-  = BackendUrlBound { url: String, declined_count: Int }
-  | BackendUrlRefused { detail: String }
-
-// THE PROBE BINDS TO THE FIRST REPLICA OBSERVED SERVING. This is an observation entry, not a turn:
-// a turn takes its endpoint from a granted seat (gunbc.harness.harness_seat), and the seed hash
-// that used to spread turns here is gone with the picker it belonged to.
-fn harness_serving_backend_url(shape: HarnessWireShape) -> HarnessBackendUrl {
-  match harness_observe_roster() {
-    HarnessRosterServing { model: _, serving, declined } =>
-      match first(serving) {
-        Present { value: a } => BackendUrlBound { url: harness_backend_url_for_address(shape: shape, address: a), declined_count: count(declined) }
-        Absent => BackendUrlRefused { detail: "the serving roster is empty" }
-      }
-    HarnessRosterNoneServing { model: m, declined } =>
-      BackendUrlRefused { detail: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], "") }
-    HarnessRosterUnresolved { hosts } => BackendUrlRefused { detail: harness_roster_unresolved_detail(hosts: hosts) }
-  }
-}
+// THE LAST LOCAL PICKER IS GONE. This module used to hand out a URL bound at process start from the
+// first replica observed serving, and every turn that took one was choosing its own host beside the
+// fabric rather than through it. The probe was the final consumer, and it now acquires a seat like
+// every other turn (gunbc.harness.harness_cli harness_probe_cli), so the picker has no caller and is
+// deleted rather than left standing: a picker nothing calls today is a picker the next entry point
+// reaches for, and the roster reading it was built on is still here for the observation entries that
+// legitimately want to know what is serving.
 
 fn harness_backend_report() -> String {
   match harness_engine_replica_roster() {
@@ -217,4 +213,169 @@ fn harness_addresses_report(addresses: List<String>) -> String {
       harness_standing_detail(standing: standing), "\n",
     ], "")
   }), "")
+}
+
+// ── ONE READ OF THE SERVED METRICS ANSWERS BOTH QUESTIONS THE PLACEMENT PATH ASKS ─────────────
+//
+// The placement path needs two facts about a group before it can offer it: which LAUNCH is
+// answering, and whether that launch is busy. Both are lines in one Prometheus exposition, so they
+// are taken in one GET. Reading the endpoint twice would cost two round trips per group per attempt
+// and, worse, would let the two facts come from different launches -- a restart between the reads
+// and the queue depth belongs to a process the launch identity does not name.
+//
+// THE PLACEMENT THIS REPLACES DECIDED ON IGNORANCE. The harness walked its roster and took the first
+// group that granted a seat; nothing in that path could see that a group was already serving a
+// stream. A compare-and-set stood behind it, so the damage was bounded to the seat ceiling, but the
+// decision itself was made blind.
+
+fn harness_metrics_url(address: String) -> String {
+  join(["http://", address, ":", to_string(value: harness_engine_port), "/metrics"], "")
+}
+
+// A PROMETHEUS LINE IS `name{labels} value` FOR THE APPLICATION GAUGES AND `name value` FOR THE
+// PROCESS COLLECTOR'S, so the two shapes are matched separately rather than by one loose pattern.
+// The application gauges are found by their name followed by a brace, which is what stops a series
+// whose name merely has ours as a prefix from answering for it.
+// AN AMBIGUOUS SERIES IS UNREAD, NOT THE FIRST ONE. Taking the first line that matches is a silent
+// pick: a body serving two models exports one gauge per label set, and the first is whichever the
+// exporter happened to render first. The reading here is a fleet-level count for ONE engine, so more
+// than one matching line means the body is not the body this reader models -- and that is an
+// obligation to model the label set, never a licence to choose (review 62155).
+fn harness_metric_line_value(body: String, prefix: String) -> String? {
+  let lines = split(s: body, delimiter: "\n")
+  let matching = filter(lines, l => starts_with(s: trim(s: l), prefix: prefix))
+  if length(matching) != 1 {
+    none
+  } else {
+    match first(matching) {
+      Absent => none
+      Present { value: line } => {
+        let parts = split(s: trim(s: line), delimiter: " ")
+        if length(parts) < 2 { none } else { last(parts) }
+      }
+    }
+  }
+}
+
+fn harness_gauge_value(body: String, metric: VllmServingMetric) -> String? {
+  harness_metric_line_value(body: body, prefix: join([vllm_metric_name(m: metric) as String, "{"], ""))
+}
+
+// ── A POSITIVE FLOAT IS A COUNT, AND COLLAPSING IT TO ONE IS A WRONG ANSWER ───────────────────
+//
+// THE DEFECT THIS FIXES, BECAUSE IT SHIPPED. vLLM renders every gauge as a float, so an integer
+// parse of `4.0` FAILS. The previous reading treated the failure as "some positive amount" and
+// returned 1: waiting=4.0 read as 1, running=3.0 read as 1. Those values were then used as COUNTS.
+// It is not lost precision -- it is a different number, arrived at silently, with the shape of an
+// answer.
+//
+// SO AN INTEGRAL FLOAT IS PARSED EXACTLY AND EVERYTHING ELSE REFUSES. A count with a non-zero
+// fractional part is not a count this reader can name, and an exponent rendering is not one either;
+// both produce no reading rather than a plausible integer. A gauge that could not be read is not a
+// gauge reading nothing.
+fn harness_fraction_is_zero(text: String) -> Bool {
+  match parse_int(s: text) {
+    Absent => false
+    Present { value: n } => n == 0
+  }
+}
+
+fn harness_gauge_nat(n: Int) -> Nat? {
+  if n < 0 {
+    none
+  } else {
+    match checked_int_magnitude(a: n) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: v } => Present { value: v }
+    }
+  }
+}
+
+fn harness_gauge_count(text: String) -> Nat? {
+  let t = trim(s: text)
+  match parse_int(s: t) {
+    Present { value: n } => harness_gauge_nat(n: n)
+    Absent => {
+      let parts = split(s: t, delimiter: ".")
+      if length(parts) != 2 {
+        none
+      } else {
+        match first(parts) {
+          Absent => none
+          Present { value: whole } =>
+            match last(parts) {
+              Absent => none
+              Present { value: frac } =>
+                if !harness_fraction_is_zero(text: frac) {
+                  none
+                } else {
+                  match parse_int(s: whole) {
+                    Absent => none
+                    Present { value: n } => harness_gauge_nat(n: n)
+                  }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+// BOTH GAUGES OR NEITHER. The admission rule needs waiting AND running: running says whether a
+// decode is in flight now, waiting says whether one starts the moment the engine frees. A reading
+// carrying one and defaulting the other is an observation half-invented, and the invented half is
+// always the one that admits.
+fn harness_queue_from_body(body: String) -> ServingQueueReading {
+  match harness_gauge_value(body: body, metric: NumRequestsWaiting) {
+    Absent => QueueDepthUnread { obligation: "the served metrics carried no waiting-requests series" as NonEmptyStr }
+    Present { value: waiting_text } =>
+      match harness_gauge_value(body: body, metric: NumRequestsRunning) {
+        Absent => QueueDepthUnread { obligation: "the served metrics carried no running-requests series" as NonEmptyStr }
+        Present { value: running_text } =>
+          match harness_gauge_count(text: waiting_text) {
+            Absent => QueueDepthUnread { obligation: join(["the waiting-requests gauge value was not an exact count: ", waiting_text], "") as NonEmptyStr }
+            Present { value: w } =>
+              match harness_gauge_count(text: running_text) {
+                Absent => QueueDepthUnread { obligation: join(["the running-requests gauge value was not an exact count: ", running_text], "") as NonEmptyStr }
+                Present { value: r } => QueueDepthRead { waiting: w, running: r }
+              }
+          }
+      }
+  }
+}
+
+// THE LAUNCH DISCRIMINATOR IS CARRIED AS THE EXPORTED FIELD, BYTE FOR BYTE. Nothing here parses it
+// into a time: the only operation on it is equality between two readings of one endpoint, and
+// parsing would lose the discrimination between two launches inside one second while buying nothing.
+fn harness_launch_from_body(group: FabricGroup, address: String, body: String) -> VllmEndpointProcessLaunchObservation {
+  match harness_metric_line_value(body: body, prefix: join([prometheus_process_series_name(s: ProcessStartTimeSeconds) as String, " "], "")) {
+    Absent =>
+      LaunchUnobserved { group: group, obligation: "the served metrics carried no process start-time series, so which launch answered cannot be named and the group cannot be offered" as NonEmptyStr }
+    Present { value: field } =>
+      LaunchObserved {
+        launch: vllm_endpoint_process_launch(group: group, endpoint: address as NonEmptyStr, process_start_field: trim(s: field) as NonEmptyStr),
+        receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
+      }
+  }
+}
+
+type HarnessEngineReading {
+  queue: ServingQueueReading
+  launch: VllmEndpointProcessLaunchObservation
+}
+
+fn harness_observe_engine(group: FabricGroup, address: String) -> HarnessEngineReading {
+  let url = harness_metrics_url(address: address)
+  let read = http.Client.Get(url: url as NonEmptyStr)
+  if !read.success {
+    HarnessEngineReading {
+      queue: QueueDepthUnread { obligation: join(["the metrics endpoint at ", url, " did not answer"], "") as NonEmptyStr },
+      launch: LaunchUnobserved { group: group, obligation: join(["the metrics endpoint at ", url, " did not answer, so which launch is serving is unknown"], "") as NonEmptyStr },
+    }
+  } else {
+    HarnessEngineReading {
+      queue: harness_queue_from_body(body: read.body),
+      launch: harness_launch_from_body(group: group, address: address, body: read.body),
+    }
+  }
 }

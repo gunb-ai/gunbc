@@ -1,0 +1,166 @@
+module gunbc.serving.turn_demand
+
+import std.types { NonEmptyStr, List }
+import product.fabric.work {
+  Work, WorkContract, WorkStep, OpaqueEffects, ProgramRef, SourceManifestRef, ArtifactManifestRef,
+  EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
+  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for,
+}
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.demand { SatisfactionRequirement, ObservationReceiptRef }
+
+// ── A SERVING TURN IS PROVIDER-NEUTRAL WORK ───────────────────────────────────────────────────
+//
+// The fabric's discipline is that Work says WHAT computation is requested and nothing about where it
+// runs: work.dag excludes chosen host, cache presence, queue position, attempts and budget from work
+// identity by construction, because the identity function takes no other argument. Expressing a
+// serving turn here rather than inventing a serving-shaped request is what lets one selection answer
+// "which group" for inference and for CI alike.
+//
+// WHAT THE TURN'S IDENTITY IS, AND WHY IT FALLS OUT RATHER THAN BEING DECIDED. work_identity_material
+// digests every contract and requirement field, so two turns differing in prompt, model, runtime
+// closure or trust domain are different Work automatically. An earlier sketch proposed that
+// model-plus-prompt-prefix WAS the identity; it is not. A prefix is a reusable SUBCOMPUTATION shared
+// by successive turns in one conversation; the turn is the whole request. Collapsing them would make
+// a cache fact into an identity fact, on a carrier shared with the CI binding.
+//
+// AND THIS MODULE STOPS AT THE WORK. It carried a Demand constructor and the buy terms reachable only
+// through it, and nothing submitted one: no production path called it and the witness never reached
+// it (review 62235). A Demand for a serving turn lands with the path that submits one -- the harness
+// asks the fabric for a group through select_supply today, not through the demand queue -- and until
+// that path exists, a constructor for it is a declaration nothing consumes. Its facts are not lost
+// with it: the owned-hardware buy terms were zero against gunbc.spark.serving_offer's zero quote, and
+// that pairing is stated where the quote is.
+
+// ── THE SOURCE MANIFEST IS THE ONE FIELD THAT CANNOT BE FILLED IN TODAY ───────────────────────
+//
+// WHAT WAS DONE BEFORE AND WHY IT WAS WRONG. The served model ALIAS was cast straight into
+// SourceManifestRef. An alias is a route name -- what the OpenAI-shaped endpoint answers to -- and
+// work.dag is explicit that source identity is a canonical MANIFEST covering content digests of what
+// is actually consumed. Two engines answering the same alias can be serving different weights, a
+// different tokenizer, a different quantization or a different runtime, and the cast made all of
+// them one Work. That is not a missing field; it is a wrong answer about identity, and the fabric's
+// whole reuse and receipt story is keyed on it.
+//
+// SO THE MANIFEST IS OBSERVED OR IT IS ABSENT, AND ABSENT IS TYPED. Nothing in this repository yet
+// observes the exact model, tokenizer and runtime closure a launch loaded -- that is a privileged
+// read against a running engine and it belongs to the launch-receipt lane. Until it exists, a serving
+// turn has no exact Work, and this module says so rather than manufacturing one.
+type ServingTurnSource
+  = TurnSourceManifest { manifest: SourceManifestRef, receipt: ObservationReceiptRef }
+  | TurnSourceUnestablished { obligation: NonEmptyStr }
+
+data serving_turn_source_obligation: NonEmptyStr = "no observation in this repository establishes the exact model weights, tokenizer and runtime closure a serving launch loaded, so an inference turn has no canonical source manifest; the named consumer is gunbc.serving.turn_demand serving_turn_work and the trigger is a launch receipt that reads them from the running engine" as NonEmptyStr
+
+fn serving_turn_source_unestablished() -> ServingTurnSource {
+  TurnSourceUnestablished { obligation: serving_turn_source_obligation }
+}
+
+type ServingTurnRequest {
+  source: ServingTurnSource
+  runtime_closure: ArtifactManifestRef
+  inputs: ArtifactManifestRef
+  effect_contract: EffectContractRef
+  output_contract: OutputContractRef
+}
+
+data serving_turn_program: ProgramRef = "gunbc.serving.inference-turn" as ProgramRef
+
+// A TURN IS ONE STEP WITH OPAQUE EFFECTS, and that arm is the honest one rather than the tidy one. A
+// stream that dies partway has already delivered tokens the caller may have consumed and acted on,
+// so the effects are outside what a receipt can describe and a retry is not free. ReceiptSatisfiable
+// would claim a completed receipt settles the step; IdempotentUnderKey would claim a rerun under one
+// key is safe; neither is true of a half-delivered stream.
+fn serving_turn_steps() -> List<WorkStep> {
+  [WorkStep {
+    step_id: "inference-turn" as NonEmptyStr,
+    resumability: OpaqueEffects { reason: "a streamed turn delivers tokens before it completes, so a partial stream has effects no terminal receipt describes and no idempotency key makes replayable" as NonEmptyStr },
+  }]
+}
+
+// WHAT THE TURN OWES: one terminal result. It is a terminal obligation rather than an artifact one
+// because the deliverable is the completed response itself, not a content-addressed file some later
+// step materializes. The roster is typed, so a turn's obligation cannot be discharged by an artifact
+// of the same name.
+fn serving_turn_output_obligations() -> DeclaredOutputObligations {
+  declared_terminal_obligations(ids: ["inference-turn-completion" as NonEmptyStr])
+}
+
+type ServingTurnContract
+  = TurnContractBound { contract: WorkContract }
+  | TurnContractUnestablished { obligation: NonEmptyStr }
+
+fn serving_turn_contract(request: ServingTurnRequest) -> ServingTurnContract {
+  match request.source {
+    TurnSourceUnestablished { obligation: o } => TurnContractUnestablished { obligation: o }
+    TurnSourceManifest { manifest: m, receipt: _ } =>
+      TurnContractBound {
+        contract: WorkContract {
+          program: serving_turn_program,
+          steps: serving_turn_steps(),
+          source: m,
+          inputs: request.inputs,
+          runtime_closure: request.runtime_closure,
+          effect_contract: request.effect_contract,
+          output_contract: request.output_contract,
+          output_obligations: serving_turn_output_obligations(),
+        },
+      }
+  }
+}
+
+// ── THE CAPACITY CLASS IS A PARAMETER RATHER THAN A CONSTANT ──────────────────────────────────
+//
+// It is a security posture and this module has not observed one. An inference turn evaluates prompt
+// content that may not be ours, which argues for customer-executable capacity; the harness's own
+// turns are our content, which argues for control-plane. Those have different isolation
+// consequences, so the caller that knows whose content it is states it.
+fn serving_turn_requirements(
+  capacity_class: CapacityClass,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+  isolation: IsolationProfile,
+  shape: Shape,
+) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: capacity_class,
+    shape: shape,
+    capabilities: capabilities,
+    trust_domain: trust_domain,
+    isolation: isolation,
+  }
+}
+
+// THE KEY IS NOT DERIVED HERE. work_for is the fabric's public constructor and the only place a work
+// key comes from; an earlier spelling called derive_work_key and built the record itself, which is a
+// second construction path for one identity and would survive a change to how keys are made.
+type ServingTurnWork<P>
+  = TurnWorkBound { work: Work<P> }
+  | TurnWorkUnestablished { obligation: NonEmptyStr }
+
+fn serving_turn_work<P>(principal: P, request: ServingTurnRequest, requirements: ExecutionRequirements) -> ServingTurnWork<P> {
+  match serving_turn_contract(request: request) {
+    TurnContractUnestablished { obligation: o } => TurnWorkUnestablished { obligation: o }
+    TurnContractBound { contract: c } =>
+      TurnWorkBound { work: work_for(principal: principal, contract: c, requirements: requirements) }
+  }
+}
+
+// ── STEP REUSE IS NOT THE WARM PREFIX, AND READING IT THAT WAY WAS A CATEGORY ERROR ───────────
+//
+// An earlier spelling set step_reuse_permitted from a "warm prefix is fine" flag. The two are not
+// the same permission and the grains differ by the whole turn. This work declares ONE step, and that
+// step is the entire streamed turn with opaque effects; permitting its reuse would permit answering
+// a request from a previous turn's recorded step. The warm prefix is an INTERNAL subcomputation of
+// that step -- the engine's own prefix cache -- which no fabric permission governs and which the
+// fabric cannot observe.
+//
+// So reuse is refused, and refused for the reason the step already carries: an OpaqueEffects step is
+// not resumable, so nothing may be satisfied from a previous execution of it.
+fn serving_turn_satisfaction() -> SatisfactionRequirement {
+  SatisfactionRequirement {
+    terminal_receipt_may_satisfy: false,
+    new_attempt_required: true,
+    step_reuse_permitted: false,
+  }
+}

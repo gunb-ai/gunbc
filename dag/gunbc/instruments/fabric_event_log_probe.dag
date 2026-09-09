@@ -35,7 +35,7 @@ import gunbc.fabric_event_log {
 fn probe_partition() -> PartitionId { "probe-seats" as PartitionId }
 fn probe_actor() -> NonEmptyStr { "probe" as NonEmptyStr }
 fn probe_policy() -> LeasePolicy { LeasePolicy { maximum_duration_seconds: 300, release_law: FencedResource } }
-fn probe_root_pool() -> Pool<Count, One> { pool_of(identity: "probe-seats" as NonEmptyStr, ceiling: Measure { count: 1 }, replenishment: NoReplenishment) }
+fn probe_root_pool() -> Pool<Count, One> { pool_of(identity: "probe-seats" as NonEmptyStr, ceiling: Measure { count: 1 }, replenishment: NoReplenishment, release_law: FencedResource) }
 
 fn probe_event(parent: HeadExpectation, at: EpochSecs, payload: PoolEvent) -> ChainEvent<PoolEvent> {
   ChainEvent {
