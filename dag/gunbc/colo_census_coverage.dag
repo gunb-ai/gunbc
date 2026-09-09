@@ -276,8 +276,8 @@ fn coverage_density_read_count(c: RegionCoverage) -> Int? {
 }
 
 // THE CORRIDOR ROW, AND THE RATIO THAT SHOULD WORRY A READER MOST. The facility rows below are the
-// densest colocation market in the region, and almost none of them publishes a cabinet density
-// anybody has verified against page bytes. Ask coverage_density_read_count against
+// densest colocation market in the region, and hardly any of them publishes a cabinet density this
+// carrier can hold - a count the fold reports and this paragraph deliberately does not. Ask coverage_density_read_count against
 // coverage_facility_count for the ratio; this paragraph does not carry it, and the sentence that
 // used to sit here transcribed the very numeral it claimed the fold derived - review 62961 caught
 // that, one paragraph above the edit that removed the transcribed counts for the same reason.

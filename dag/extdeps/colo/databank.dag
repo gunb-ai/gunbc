@@ -5,7 +5,7 @@ import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
+  CabinetDensityClaim, DensityMarketedMax, DensityUnread,
   CabinetPowerFigure, PublishedRealPower,
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
@@ -105,45 +105,34 @@ data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Operator page read 2026-09-08: 34,360 IT square feet, 1.7 MW critical IT load, 2N power design, 120V and 208V three-phase AC with DC available, 21 on-site carriers. The zColo suite Zayo sold to DataBank in 2020 per the operator's own history. Essex County, on the Newark side of the corridor rather than the Secaucus cluster.",
 }
 
-// THE ARM IS WRONG AND THIS ROW SAYS SO, WHICH IT DID NOT UNTIL review 62935 POINTED AT IT.
-// "10kW+" is a CAPABILITY FLOOR - the operator's own plus sign - and it sits in
-// DensityMarketedAirOnly, which cabinet_density_air_ceiling turns into CeilingAt { at_most: 10kW }.
-// So the carrier will answer that this cabinet REFUSES 10,001 W on evidence that says ten kilowatts
-// OR MORE. That is a fabricated plausible output in the sense DESIGN section 5 forbids outright, and
-// it is the operator's standing integration HOLD on this pull request.
+// DEMOTED 2026-09-09 BY OPERATOR RULING, AND THE FRAMING I BROUGHT TO IT WAS WRONG. I argued this as
+// a question about the census headline: demoting drops the corridor from one read density to zero,
+// and the page WAS read, so calling it unread looked like trading a wrong ceiling for a wrong
+// coverage reading. Seven reviews said otherwise and the ruling settled it on a different axis
+// entirely. "10kW+" is a capability FLOOR carried in a MAXIMUM arm - the only figure-bearing arms
+// this carrier has are maxima - so the row does not overstate a headline, it answers a bounding
+// question BACKWARDS. DESIGN section 5 puts silent wrongness outside the ladder rather than low on
+// it, and no amount of correct prose beside a typed value changes what a consumer computes from it.
+// Demotion replaces a wrong answer with a refusal naming what must be re-read, which is the
+// fail-closed direction and needs no headline argument to justify it.
 //
-// THE INCONSISTENCY THE REVIEW FOUND WAS REAL AND IT WAS MINE. Seven Equinix rows in this same
-// change refuse exactly this placement: a floor may not enter a maximum's field, so they stayed
-// DensityUnread with the figure in prose. EWR1 did not, and the only difference was that EWR1 was
-// written before the doctrine and never revisited when the doctrine arrived. A rule applied to the
-// rows discovered after it, and not to the row it was derived from, is not yet a rule.
+// THE EVIDENCE DID NOT MOVE, WHICH IS WHY THIS COSTS NOTHING IT LOOKED LIKE IT WOULD COST. The
+// obligation below carries the operator's verbatim wording and the full retrieval citation, so what
+// the demotion gives up is the TYPED AXIS and not the reading. That is the argument that changed my
+// own recommendation, and it was available from the first review: I spent seven of them defending
+// evidence that was never at risk. The reading is recoverable without a re-fetch the moment the
+// carrier can express a quantity's direction.
 //
-// WHY THE REPAIR IS NOT "DEMOTE IT TO DensityUnread", which is what the review proposed. That trades
-// a wrong ceiling for a wrong coverage reading: this claim WAS read, verified at markup grain, and
-// the operator has just ruled that retrieval coverage and decision utility are separate facts.
-// Calling a read claim unread to silence a ceiling would re-fuse the two axes in the opposite
-// direction and drop the corridor census to zero read densities while the reading sits in the file.
-// The correct shape is a figure carrying its DIRECTION - a published floor recorded as a floor - and
-// no arm of this carrier can express one today. That capability is what this row waits on, and it is
-// deliberately not named as a pull request here: an earlier wording of this sentence named gunbc#10885,
-// which is now closed without landing, so the obligation would have had no route to retirement at all.
+// WHY IT DID NOT WAIT FOR THE CARRIER. "The fix is one rebase away" had been true long enough that
+// seven reviewers were correct while nothing moved, and the carrier change is itself under rework.
+// Demote-then-convert is two cheap edits; a wrong-direction figure standing another day is not.
 //
-// WHAT IS TRUE TODAY, stated so the risk is sized rather than asserted away: NO CALL SITE READS THIS
-// ROW'S CEILING. The only consumers of cabinet_density_air_ceiling in the tree are two helpers in
-// the census witness, and neither is applied to databank_ewr1_density - re-derive with
-// `grep -rn cabinet_density_air_ceiling dag`. The defect is LATENT, not live, and the operator HOLD
-// is what keeps it from reaching main before its carrier does.
-//
-// A READ DENSITY, AND IT IS THE COOLING SENTENCE RATHER THAN A POWER SENTENCE. The facility page
-// states an N+1 cooling design with 10kW+ cabinet density capability. That is a per-cabinet figure
-// on the operator's own facility page, so it is read rather than unread - but the plus sign and
-// the cooling framing are both retained in the wording, because a cooling capability is what the
-// room can remove, not a commitment that a cabinet may draw it. The 1.7 MW critical IT load on the
-// same page is a BUILDING fact and is not a second reading of this one.
-data databank_ewr1_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 10000) },
-  claim_wording: "10kW+ Cab Density Air",
-  citation: "databank.com Newark 165 Halsey Street suite page, read 2026-09-08 and verified in raw HTML 2026-09-09 at markup grain: the page emits <li><strong>10kW+</strong> Cab Density Air</li> as ONE list item inside the column whose heading is Cooling, beside a sibling item reading N+1 Cooling Design. So this wording is a single authored cell rather than two cells fused - the distinction matters because an earlier summarized capture of this row DID fuse the two into one invented sentence, and the same fusion has now been found on three DataBank facilities by three readers. SCOPE IS VERIFIED TOO, which is the separate question a string check does not answer: the nearest heading above this cell is the facility's own address line, \"(EWR1) 165 Halsey Street Suite #500 - Newark, NJ 07102\", under an h1 of \"Downtown Newark Data Center\", and EWR1 is the only facility code appearing anywhere in the page bytes. So this figure is not sitting under another metro's banner and not shared with a second site. And the qualifier is intact rather than truncated - the cell says Air, and the operator's own word is what SELECTS the air-only arm rather than it being inferred from an absent liquid cell. The operator's own word is AIR, which is why this is DensityMarketedAirOnly and not a maximum with a liquid arm.",
+// WHAT THE SEVEN EQUINIX ROWS DO AND DO NOT SHOW. They are DensityUnread for a second, independent
+// reason: they publish kVA, this carrier's figures are Watt, and no power factor is published, so
+// they are unrepresentable in any published arm regardless of direction. They were never evidence
+// that the right arm existed for EWR1 - they only show the same destination reached by another road.
+data databank_ewr1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE. DensityUnread here does NOT mean nobody looked - it means the carrier has no arm that points the right way. The operator publishes, verbatim: \"10kW+ Cab Density Air\". The plus sign is the operator's own, so that is a capability FLOOR - at least ten kilowatts - and the only figure-bearing arms this carrier offers are marketed MAXIMA, which would make the census answer that this cabinet refuses 10,001 W on evidence saying ten kilowatts or more. A wrong-direction bound is silent wrongness rather than a weak reading, so the figure is carried here as text a consumer cannot compute with, instead of in a field a consumer would compute with backwards. RESOLVE by re-typing this row as a floor-carrying figure once the carrier expresses a quantity's direction, at which point the numeral and wording above are the reading and no re-fetch is required. RETRIEVAL EVIDENCE, unchanged and still verified: databank.com Newark 165 Halsey Street suite page, read 2026-09-08 and verified in raw HTML 2026-09-09 at markup grain: the page emits <li><strong>10kW+</strong> Cab Density Air</li> as ONE list item inside the column whose heading is Cooling, beside a sibling item reading N+1 Cooling Design. So this wording is a single authored cell rather than two cells fused - the distinction matters because an earlier summarized capture of this row DID fuse the two into one invented sentence, and the same fusion has now been found on three DataBank facilities by three readers. SCOPE IS VERIFIED TOO, which is the separate question a string check does not answer: the nearest heading above this cell is the facility's own address line, \"(EWR1) 165 Halsey Street Suite #500 - Newark, NJ 07102\", under an h1 of \"Downtown Newark Data Center\", and EWR1 is the only facility code appearing anywhere in the page bytes. So this figure is not sitting under another metro's banner and not shared with a second site. And the qualifier is intact rather than truncated - the cell says Air, and the operator's own word is what SELECTS the air-only arm rather than it being inferred from an absent liquid cell. The operator's own word is AIR, which is why this is DensityMarketedAirOnly and not a maximum with a liquid arm.",
 }
 
 data databank_ewr1_retail_grain: RetailGrainStanding = RetailGrainUnread {
