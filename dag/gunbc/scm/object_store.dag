@@ -929,54 +929,68 @@ fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr
 // out -- and the factored body then took a bare list, so for one revision the premise was not merely
 // stale but FALSE. Both halves were found by external review. Removing one path from that set and appending exactly one entry preserves
 // it. Both constructors below are exactly that move, and there is no other way to build this carrier.
+// UNIQUENESS IS STRUCTURAL RATHER THAN MAINTAINED, AND THAT IS BOTH A SAFETY AND A COST REPAIR.
+//
+// The list form kept its invariant by SCANNING: every bind dropped any entry already holding the path
+// and appended. That is correctness by validation where construction was available, and it made the
+// otherwise one-pass grouped merge quadratic. DESIGN section 6 rules a proven quadratic fold is always
+// fixed regardless of the realized n, because "n is small here" is not a time-stable fact and this n
+// is a repository's manifest size. A manifest is semantically a finite function from path to source,
+// so the map is not a new collection concept; it is the carrier that already models that, and it
+// CANNOT HOLD TWO ENTRIES FOR ONE PATH, so the invalid state loses its representation entirely.
+//
+// THE COST CLAIM IS DELIBERATELY NARROW. Each merge path is bound WITHOUT A FULL-MANIFEST RESCAN,
+// which is what eliminates the quadratic fold; canonical ordering is derived once at this boundary.
+// An earlier draft of this note claimed a logarithmic per-bind cost from the runtime's persistent map.
+// That is a property of one realization rather than of this model, and review narrowed the claim to
+// what the cut actually establishes.
+//
+// THE PROJECTION IS DETERMINISTIC BY SORTING, NOT BY TRUSTING ITERATION ORDER. Hash-map iteration
+// order may never influence the manifest locator or the wire bytes, so `path_unique_entry_list` sorts
+// by path -- the same canonical order `canonical_manifest_entries` produces.
+//
+// DIVERGENCE, STATED RATHER THAN QUIETLY TAKEN (DESIGN 3b admits a departure with its reason beside
+// it). The ruling asked for `Map<NonEmptyStr, AuthoredSourceTarget>` -- the value being ONLY the
+// source -- and, in the same ruling, that enumeration and value recovery use ONE TOTAL OWNED ROUTE
+// which never drops a key through an `Absent` fallback after enumerating that same map. With this
+// runtime those two cannot both hold: there is no pair-enumerating builtin (`map_entries`,
+// `map_pairs`, `map_fold` are all absent; the surface is `map_keys`, `sorted_map_keys`, `map_values`,
+// `map_get`), so a source-only value forces `sorted_map_keys` followed by a `map_get` whose `Absent`
+// arm no caller can reach -- exactly the shape the same ruling forbids. Holding the ENTRY as the value
+// makes `map_values` a total route with no such arm. The key stays the path, as ruled, and the path
+// inside the value is not a second authority for it: the sole constructor below derives both from one
+// argument, so they cannot disagree. If a pair-enumerating builtin lands, the value should narrow to
+// the source and this note retires with it.
 type PathUniqueManifestEntries sole_constructor {
-  entries: List<CorpusManifestEntry>
+  bindings: Map<NonEmptyStr, CorpusManifestEntry>
 }
 
-// DROPPING ONE PATH IS THE MOVE BOTH INVARIANT-PRESERVING OPERATIONS ARE BUILT FROM, so it is named
-// once. Removing entries can never introduce a duplicate, so every constructor below preserves the
-// carrier's invariant by construction rather than by re-checking it.
-fn manifest_entries_without_path(
-  entries: List<CorpusManifestEntry>,
-  path: NonEmptyStr,
-) -> List<CorpusManifestEntry> {
-  reverse(
-    fold(entries, init: [], f: fn(acc, entry) {
-      if entry.path == path { acc } else { concat([entry], acc) }
-    })
-  )
+fn path_unique_entry_list(unique: PathUniqueManifestEntries) -> List<CorpusManifestEntry> {
+  sort_by(map_values(unique.bindings), fn(e) { e.path as String })
 }
 
 // THE EMPTY CORPUS IS ITS OWN CONSTRUCTOR RATHER THAN AN EMPTY RECORD, because there is no record to
 // take one from: a repository with no history and no stage has never stored a manifest. No entries is
 // trivially path-unique.
 fn empty_path_unique_entries() -> PathUniqueManifestEntries {
-  PathUniqueManifestEntries { entries: [] }
+  PathUniqueManifestEntries { bindings: empty_map() }
 }
 
-// BINDING A PATH DROPS ANY ENTRY THAT PATH ALREADY HAD, so the result holds exactly one entry for it
-// whether or not the caller knew it was there. This is the operation that lets a PRODUCER build the
-// carrier incrementally -- the merge fold does -- without a raw list ever crossing a boundary and
-// without a second uniqueness type existing beside this one. Ruled by external review.
+// BINDING A PATH IS A SINGLE KEYED WRITE. Whether that path was already present is not a question this
+// operation has to ask, because the map answers it: one key holds one entry. This is what lets a
+// PRODUCER build the carrier incrementally -- the merge fold does -- without a raw list ever crossing
+// a boundary, without a second uniqueness type, and without rescanning what it has already decided.
 fn path_unique_with_path_bound(
   unique: PathUniqueManifestEntries,
   path: NonEmptyStr,
   source: AuthoredSourceTarget,
 ) -> PathUniqueManifestEntries {
   PathUniqueManifestEntries {
-    entries: concat(
-      manifest_entries_without_path(entries: unique.entries, path: path),
-      [CorpusManifestEntry { path: path, source: source }],
+    bindings: map_insert(
+      m: unique.bindings,
+      key: path,
+      value: CorpusManifestEntry { path: path, source: source },
     ),
-  }
-}
-
-fn path_unique_with_path_removed(
-  unique: PathUniqueManifestEntries,
-  path: NonEmptyStr,
-) -> PathUniqueManifestEntries {
-  PathUniqueManifestEntries {
-    entries: manifest_entries_without_path(entries: unique.entries, path: path),
   }
 }
 
@@ -985,7 +999,9 @@ fn path_unique_with_path_removed(
 // without an `AdmittedManifestEntries`. So reading them back into the carrier asserts nothing the
 // record's own provenance did not already establish.
 fn path_unique_of_record(base: CorpusManifestRecord) -> PathUniqueManifestEntries {
-  PathUniqueManifestEntries { entries: base.entries }
+  fold(base.entries, init: empty_path_unique_entries(), f: fn(acc, entry) {
+    path_unique_with_path_bound(unique: acc, path: entry.path, source: entry.source)
+  })
 }
 
 fn manifest_entries_with_path_replaced(
@@ -1054,7 +1070,7 @@ type AdmittedManifestEntries sole_constructor {
 // would be the validation-where-construction-was-available move DESIGN section 5 names, and its
 // answer would be an arm no caller could reach.
 fn admit_path_unique_entries(unique: PathUniqueManifestEntries) -> AdmittedManifestEntries {
-  AdmittedManifestEntries { entries: canonical_manifest_entries(entries: unique.entries) }
+  AdmittedManifestEntries { entries: canonical_manifest_entries(entries: path_unique_entry_list(unique: unique)) }
 }
 
 type ManifestEntriesAdmission

@@ -41,7 +41,7 @@ import gunbc.scm.object_store {
   CorpusManifestEntry,
   CorpusManifestRecord,
   PathUniqueManifestEntries,
-  empty_path_unique_entries, path_unique_with_path_bound, path_unique_with_path_removed,
+  empty_path_unique_entries, path_unique_with_path_bound,
   object_id_eq,
 }
 
@@ -134,13 +134,14 @@ fn merge_path(
 // AN ADMITTED ABSENCE WRITES NO ENTRY, which is how a deletion is represented in a manifest: the path
 // is simply not in it. Writing an entry that means "deleted" would be a second representation of
 // absence beside the one the manifest already has.
+//
+// OMITTING IS SOUND HERE RATHER THAN MERELY CONVENIENT, and the reason is the grouping: the fold sorts
+// the three sides' entries by path and decides each path ONCE, so a path reaching this arm was never
+// bound and there is nothing to remove. A removal call would be a no-op whose only effect is to imply
+// this accumulator can hold a path it has already rejected.
 fn admit_state(acc: MergeAcc, path: NonEmptyStr, state: PathState) -> MergeAcc {
   match state {
-    PathAbsent =>
-      MergeAcc {
-        entries: path_unique_with_path_removed(unique: acc.entries, path: path),
-        conflicts: acc.conflicts,
-      }
+    PathAbsent => acc
     PathPresent { source: s } =>
       MergeAcc {
         entries: path_unique_with_path_bound(unique: acc.entries, path: path, source: s),
