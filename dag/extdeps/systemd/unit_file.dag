@@ -513,6 +513,14 @@ fn slice_cpu_weight(weight: Int) -> SystemdSliceDirective {
   SystemdSliceDirective { property: CPUWeight, value: DirectiveWeight { weight: weight } }
 }
 
+// `CPUQuota=` IS AN ABSOLUTE CEILING AND IS NOT A SECOND SPELLING OF `slice_cpu_weight` ABOVE. The
+// weight decides who yields first under contention and promises no quantity; this promises CPU time
+// per wall second, where 100% is one CPU by definition. A consumer that needs a number a guest can
+// be sized against needs this one; a consumer that only needs fair sharing needs the other.
+fn slice_cpu_quota(threads: HardwareThreadCount) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: CPUQuota, value: DirectiveCpuTime { threads: threads } }
+}
+
 // The directive names are systemd's, spelled once here. A consumer never writes the literal
 // "ExecStart"; it constructs `ExecStart { command }` and this module decides how that renders.
 

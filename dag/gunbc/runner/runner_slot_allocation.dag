@@ -31,6 +31,10 @@ import gunbc.runner_shape_census {
   NoShapesForProviderArchitecture,
 }
 
+type RunnerSlotCpuQuota
+  = CpuQuotaResolved { threads: HardwareThreadCount }
+  | CpuQuotaRefused { cause: String }
+
 type RunnerSlotLabels {
   github_labels: List<String>
 }
@@ -41,6 +45,7 @@ type RunnerSlotDesired {
   memory_high: ByteSize
   tasks_max: Int
   cpu_weight: Int
+  cpu_quota: RunnerSlotCpuQuota
   labels: RunnerSlotLabels
 }
 
@@ -69,13 +74,29 @@ data gunbc_runner_slot_width_ruling_note: String = "SUPERSEDED 2026-08-23 AND RE
 // count exactly as compile_pool owns their memory; (3) host-parent reserve — with the conservation
 // law sum(slots) + pool + reserve <= parent ancestor limit. Dissolve-on: that model landing, at
 // which point this row's tasks_max derives rather than being authored. Do not build it in PR 8045.
+data gunbc_runner_slot_memory_max: ByteSize = byte_size(17179869184)
+
+// THE CPU QUOTA IS THE SURVEYED CORES-PER-SLOT, RESOLVED OR REFUSED. A Resolved arm produces an
+// absolute ceiling the runner unit and the cell slice can each enforce on their own axis; a Refused
+// arm means the survey failed and the fleet has no derived quota to emit -- the cell is left at its
+// current state, and the runner deployment is refused by gunbc.ci_runner_placement's
+// RunnerCoreRatioUnresolved path. This function never widens: it does not map Unresolved onto a
+// policy state.
+fn gunbc_runner_slot_cpu_quota() -> RunnerSlotCpuQuota {
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotResolved { threads: t } => CpuQuotaResolved { threads: t }
+    CoresPerSlotUnresolved { cause: c } => CpuQuotaRefused { cause: c }
+  }
+}
+
 fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
   RunnerSlotDesired {
-    memory_max: byte_size(17179869184),
+    memory_max: gunbc_runner_slot_memory_max,
     memory_swap_max: byte_size(34359738368),
     memory_high: byte_size(16106127360),
     tasks_max: 16384,
     cpu_weight: 100,
+    cpu_quota: gunbc_runner_slot_cpu_quota(),
     labels: RunnerSlotLabels { github_labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"] }
   }
 }
@@ -571,7 +592,7 @@ fn gunbc_runner_cores_per_slot() -> RunnerCoresPerSlotResolution {
   match gunbc_runner_memory_per_core() {
     MemoryPerCoreUnresolved { cause: c } => CoresPerSlotUnresolved { cause: c }
     MemoryPerCoreResolved { bytes: per_core } => {
-      let want = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+      let want = byte_size_count(b: gunbc_runner_slot_memory_max)
       let per = byte_size_count(b: per_core)
       if per == 0 {
         CoresPerSlotUnresolved {

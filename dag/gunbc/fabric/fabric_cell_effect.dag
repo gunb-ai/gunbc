@@ -9,9 +9,15 @@ import extdeps.systemd.unit_file {
   slice_memory_swap_max,
   slice_tasks_max,
   slice_cpu_weight,
+  slice_cpu_quota,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_desired,
+  RunnerSlotCpuQuota,
+  CpuQuotaResolved,
+  CpuQuotaRefused,
+}
 import gunbc.membership_reconcile {
   MemberAction,
   MemberAdded,
@@ -91,7 +97,7 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // cannot occur -- permanently red by staleness, the mirror of the permanently-green decoration
 // DESIGN 4b forbids.
 //
-// FIVE DIRECTIVES, ZERO LITERALS. Every magnitude comes from gunbc_runner_slot_desired -- the same
+// FIVE BASE DIRECTIVES, PLUS AN OPTIONAL SIXTH CPU QUOTA — ZERO LITERALS. Every magnitude comes from gunbc_runner_slot_desired -- the same
 // row fabric_cell_resource_boundary_state_digest renders into the desired member digest -- so the
 // directives this effect applies and the digest reconcile compares are two projections of one
 // authority and cannot disagree by drift.
@@ -101,15 +107,27 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // drop-in itself, so the privileged boundary is crossed by exactly these typed words and by no
 // authored file bytes (see the closed-sum note above). A unit-file carrier here would be a
 // representation of an artifact nothing constructs.
+// THE QUOTA DIRECTIVE IS EMITTED ONLY WHEN THE CELL DECLARES ONE, so a cell with no declared ceiling
+// (CpuQuotaRefused) gets five directives and a cell with a ceiling gets six. Never map a refused
+// quota onto a policy state: when the survey cannot determine the core count, the cell keeps its
+// current CPU-weight-only state and no CPUQuota is emitted.
 fn fabric_cell_slice_desired_directives() -> List<SystemdSliceDirective> {
   let desired = gunbc_runner_slot_desired()
-  [
+  let base = [
     slice_memory_max(bytes: desired.memory_max),
     slice_memory_high(bytes: desired.memory_high),
     slice_memory_swap_max(bytes: desired.memory_swap_max),
     slice_tasks_max(count: desired.tasks_max),
     slice_cpu_weight(weight: desired.cpu_weight),
   ]
+  concat(base, fabric_cell_slice_quota_directives(quota: desired.cpu_quota))
+}
+
+fn fabric_cell_slice_quota_directives(quota: RunnerSlotCpuQuota) -> List<SystemdSliceDirective> {
+  match quota {
+    CpuQuotaResolved { threads: t } => [slice_cpu_quota(threads: t)]
+    CpuQuotaRefused { cause: _ } => [] as List<SystemdSliceDirective>
+  }
 }
 
 fn fabric_cell_slice_ensure(slot: RunnerSlotIdentity) -> FabricCellEffect {

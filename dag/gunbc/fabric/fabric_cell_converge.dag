@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.string_type { string_is_lexicographically_before }
 import v2.std.optional { Optional, Present, Absent }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, HardwareThreadCount, hardware_thread_count_value }
 import product.placement_supply { HostIdentity }
 import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
@@ -14,6 +14,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
   gunbc_runner_slot_desired,
+  RunnerSlotCpuQuota, CpuQuotaResolved, CpuQuotaRefused,
   runner_slot_membership,
   CommittedSlotMember,
   SlotOutsideCommittedPopulation,
@@ -205,7 +206,20 @@ fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
     memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
     tasks_max: to_string(desired.tasks_max),
     cpu_weight: to_string(desired.cpu_weight),
+    cpu_quota_per_sec: fabric_cell_cpu_quota_desired_digest(quota: desired.cpu_quota),
   )
+}
+
+// THE QUOTA DIGEST ARM PRODUCES A STRING REPRESENTATION OF THE DESIRED CPU QUOTA. When resolved,
+// the thread count is rendered through the same conversion the slice directive uses; when refused,
+// a sentinel produces a digest that cannot match any observed state -- ensuring a refused-quota
+// cell is NOT silently converged against a cell with no CPUQuota directive.
+fn fabric_cell_cpu_quota_desired_digest(quota: RunnerSlotCpuQuota) -> String {
+  match quota {
+    CpuQuotaResolved { threads: t } =>
+      join([to_string(hardware_thread_count_value(t: t) * 100), "%"], "")
+    CpuQuotaRefused { cause: _ } => "refused"
+  }
 }
 
 // THE SPELLING IS A FUNCTION, BECAUSE THE OBSERVED SIDE HAS TO PRODUCE THE SAME ONE. The desired
@@ -228,6 +242,7 @@ fn fabric_cell_boundary_state_digest_of(
   memory_swap_max: String,
   tasks_max: String,
   cpu_weight: String,
+  cpu_quota_per_sec: String,
 ) -> NonEmptyStr {
   join([
     "memory_max=", memory_max,
@@ -235,6 +250,7 @@ fn fabric_cell_boundary_state_digest_of(
     ";memory_swap_max=", memory_swap_max,
     ";tasks_max=", tasks_max,
     ";cpu_weight=", cpu_weight,
+    ";cpu_quota_per_sec=", cpu_quota_per_sec,
   ], "") as NonEmptyStr
 }
 
