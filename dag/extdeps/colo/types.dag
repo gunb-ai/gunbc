@@ -143,6 +143,14 @@ type CabinetPowerFigure
   = PublishedRealPower { power: Watt }
   | PublishedApparentPower { power: VoltAmpere }
 
+// DensityUnread fuses two facts in one String: an observation (we read these pages on this date
+// and found no marketed cabinet figure) and a coverage obligation (we still owe a quote or a later
+// spec). Both are OUR state, not the operator's - the same layer error as putting a fetch-grade on
+// CabinetDensityClaim. READ arms (DensityMarketedMax / DensityMarketedAirOnly) stay upstream.
+// Follow-up is a SPLIT, not a rehome of one fused string: gunbc.colo_census_coverage carries the
+// observation and the obligation as two typed fields; a quote arriving discharges the obligation
+// while the observation stays true. Trigger: that split, census-wide, one motion, so this carrier
+// is not left with two shapes.
 type CabinetDensityClaim
   = DensityMarketedMax {
       air_cooled: CabinetPowerFigure
@@ -233,6 +241,10 @@ fn ceiling_refuses(c: CabinetPowerCeiling, required: Watt) -> Bool {
 // Whether the operator sells at a grain this fleet can buy. A campus marketing 25 MW that takes
 // only private-suite commitments is not a candidate for one cabinet, and that is a different
 // refusal from an unread density - so it is a different fact.
+//
+// RetailGrainUnread is the same fused-string defect as DensityUnread: observation of an unpublished
+// grain plus the obligation to confirm it. Split follows with density - observation and obligation
+// as two fields on gunbc.colo_census_coverage; SingleCabinetOffered and CageOrSuiteMinimum stay.
 type RetailGrainStanding
   = SingleCabinetOffered { wording: NonEmptyStr, citation: NonEmptyStr }
   | CageOrSuiteMinimum { wording: NonEmptyStr, citation: NonEmptyStr }
@@ -242,6 +254,10 @@ type RetailGrainStanding
 // market price by quote; that is a fact about the provider worth a typed arm, because a
 // consumer computing over prices must treat quote-only as absent-with-an-obligation and
 // never as zero or as an average of the published ones.
+//
+// RatesQuoteOnly.obligation fuses "no price on the pages we read" with "a quote is required".
+// Same split as DensityUnread: the observation and the outstanding quote are two fields
+// downstream; this arm is not the home of either once that lands.
 type RetailRateStanding
   = RatesPublished { plans_note: NonEmptyStr }
   | RatesQuoteOnly { contact_route: NonEmptyStr, obligation: NonEmptyStr }
