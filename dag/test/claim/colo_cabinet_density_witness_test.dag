@@ -406,8 +406,23 @@ test fn w_an_apparent_power_lower_end_admits_nothing() -> Bool {
 // The second conjunct is what stops the fix being a blanket silencing: DataBank's air figure IS
 // labelled air by the operator's own cell, so it still answers, and a repair that simply made every
 // medium fall through would pass the first conjunct and fail here.
+// THE FIRST CONJUNCT NAMES THE CAUSE, AND IT WAS ADDED BECAUSE THE OTHERS ONLY NAME A CONSEQUENCE.
+// silent-heron-303's rule, generalised from this witness: AN OUTCOME THAT IS THE UNION OF N CAUSES
+// CANNOT SERVE AS THE CONTROL FOR ONE OF THEM. `!has_ceiling_for` is true when the figure is absent,
+// when it is duplicated, AND when it is found but yields no ceiling - three causes, one answer - so
+// asserting it proves only that SOME ONE of them fired. It happens to discriminate here, because Iron
+// Mountain's quantity is a cap and a cap does yield a ceiling, so deleting the medium coordinate would
+// red this row. That is accidental: it is a property of the fixture's quantity arm, not of the
+// coordinate under test, and a subject whose quantity were a floor would have left this permanently
+// green while the coordinate was gone.
+//
+// `has_figure_for` returns FigureFound only, so its negation names absence directly and reds exactly
+// when the coordinate stops working. Same shape as the Undetermined-versus-NeedsEvidence ruling one
+// level down: collapsing distinct causes into one answer is what makes the specific one invisible,
+// whether the collapse is in the type or in the assertion.
 test fn w_an_unspecified_medium_does_not_answer_an_air_question() -> Bool {
-  !has_ceiling_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
+  !has_figure_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
+    && !has_ceiling_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
     && !covers_at(d: iron_mountain_nje1_density, requested: AirCoolingPublished, required: 1)
     && has_figure_for(d: databank_lga4_density, requested: AirCoolingPublished)
 }
