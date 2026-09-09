@@ -9,8 +9,10 @@ import gunbc.roadmap_dispatch_actuator {
   CodexDispatchProvider,
   dispatch_provider_instance_for_kind,
   dispatch_live_sessions_from_entries,
+  dispatch_actuator_vendor_selection,
   fixture_projection_standing_refusal_tmux_entry,
 }
+import gunbc.roadmap_model { Unsized }
 import gunbc.worker_lifecycle {
   WorkerProcessExited,
   worker_observation_without_provider_probe,
@@ -37,6 +39,7 @@ test fn witness_projection_standing_refusal_specimen_omits_wire_row() -> Bool {
   let o = Observed {
     live: dispatch_live_sessions_from_entries(
       entries: [fixture_projection_standing_refusal_tmux_entry()],
+      selection: dispatch_actuator_vendor_selection(node_sizing: Unsized),
     ),
   }
   let j = belt_sessions_observed_json(o: o)

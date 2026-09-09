@@ -2,10 +2,14 @@ module gunbc.runner_jit_mint
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.effect { GitHubEffect, GenerateOrganizationJitConfig, GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner {
   JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
   org_generate_jitconfig_path,
+}
+import gunbc.runner.runner_jit_admission {
+  attempt_binding_admits_mint_name, JitAdmissionAxisStanding,
 }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
@@ -17,6 +21,10 @@ import gunbc.runner_microvm_attempt {
 }
 
 data runner_jit_mint_disposition: Disposition = SingleAuthority
+
+// §3c: plan_jit_mint IS NOT CALLED FROM PRODUCTION YET. Witnesses exercise the refusals; the
+// named later consumer is the mint performer that posts generate-jitconfig from JitMintAuthorized.
+data plan_jit_mint_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: gunbc.runner.runner_jit_perform (or successor) calls plan_jit_mint and posts generate-jitconfig from JitMintAuthorized. TRIGGER: that import and call exist. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing plan_jit_mint." as NonEmptyStr)
 
 // THE MINT IS PLANNED, NOT PERFORMED, AND THE SPLIT IS THE POINT.
 //
@@ -42,6 +50,7 @@ type JitMintPlan
       organization: NonEmptyStr
       unsatisfied: List<CredentialCapability>
     }
+  | JitMintRefusedAttemptUnbound { cause: String }
 
 // THE RUNNER NAME IS THE UNIT NAME, not a fresh identifier minted beside it. A second naming scheme
 // for one attempt is a nickname (DESIGN §3), and it is the expensive kind: an orphaned GitHub runner
@@ -74,7 +83,8 @@ fn plan_jit_mint(
   control_plane: GitHubAppControlPlaneState,
   organization: GitHubOrganizationRef,
   runner_group_id: JitRunnerGroupId,
-  labels: List<JitRunnerLabel>
+  labels: List<JitRunnerLabel>,
+  attempt_binding: JitAdmissionAxisStanding
 ) -> JitMintPlan {
   match binding {
     VmUnboundCellNotOwned { cause: c } => JitMintRefusedCellNotOwned { cause: c }
@@ -91,15 +101,21 @@ fn plan_jit_mint(
            control_plane: control_plane,
            effect: GenerateOrganizationJitConfig { organization: organization }
          ) {
-        JitMintAuthorized {
-          attempt: attempt,
-          endpoint_path: org_generate_jitconfig_path(org_login: organization.login),
-          request: jit_config_request_for(
+        if attempt_binding_admits_mint_name(standing: attempt_binding) {
+          JitMintAuthorized {
             attempt: attempt,
-            runner_group_id: runner_group_id,
-            labels: labels,
-          ),
-          drive_destination: drive,
+            endpoint_path: org_generate_jitconfig_path(org_login: organization.login),
+            request: jit_config_request_for(
+              attempt: attempt,
+              runner_group_id: runner_group_id,
+              labels: labels,
+            ),
+            drive_destination: drive,
+          }
+        } else {
+          JitMintRefusedAttemptUnbound {
+            cause: "attempt-binding is not required on the mint name, so a planned credential would not be the attempt's identity",
+          }
         }
       } else {
         JitMintRefusedCredential {

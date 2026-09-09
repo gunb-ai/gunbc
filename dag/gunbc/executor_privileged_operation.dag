@@ -19,7 +19,7 @@ module gunbc.executor_privileged_operation
 // facts, not one carrier. This module owns exactly the second, and projects from the first.
 
 import std.types { String, NonEmptyStr, List }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -331,6 +331,15 @@ fn operation_precondition_argv(p: OperationPrecondition) -> List<NonEmptyStr> {
 // the path live_deploy's apply already uses -- so the join is emitted from grammar rows and no
 // operator-facing string is assembled by concatenation here. Until then this is the one place the
 // shape is written, so consolidating it later is one deletion rather than a census.
+data executor_privileged_operation_converge_command_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.emit_orchestration",
+    decl_name: "orch_emit_pipeline",
+    field: WholeDeclaration,
+  }
+}
+
 fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperation) -> String {
   let check = operation_precondition_argv(p: executor_privileged_operation_precondition(op: op))
   if list_length(items: check) == 0 {
