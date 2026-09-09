@@ -54,29 +54,38 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // a specimen of the same shape would have been the duplication that roster exists to end
 // (DESIGN section 2). What the door's specimen cannot carry is the READ, which is a different
 // fact and is claimed separately below over a committed file.
-fn stage0_boundary_emitted_source_for(target: TargetModel) -> String {
+// REFUSAL IS AN ARM, NOT A STRING. An earlier revision returned a sentinel for every stage that
+// stopped and let each claim compare against it, which made one claim green on total pipeline
+// failure: the visibility control asked only that the base emission DIFFER from the profile's
+// expectation, and a sentinel differs from everything. A control that passes when nothing was
+// emitted is permanently green on the failure it names, which DESIGN section 4b calls worse than
+// absent because it is cited as coverage. Every claim below now requires a PRODUCED emission
+// before it asks anything about the text, so a route that stopped reds all three.
+type Stage0BoundaryEmission
+  = Stage0EmissionRefused
+  | Stage0EmissionProduced { source: String }
+
+fn stage0_boundary_emitted_source_for(target: TargetModel) -> Stage0BoundaryEmission {
   match direct_rust_door_specimen_resolved() {
-    Rejected { diagnostics: _ } => stage0_boundary_emit_refused
+    Rejected { diagnostics: _ } => Stage0EmissionRefused
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        Rejected { diagnostics: _ } => stage0_boundary_emit_refused
+        Rejected { diagnostics: _ } => Stage0EmissionRefused
         Accepted { value: inferred, diagnostics: _ } =>
           match generate_rust_module_emission_candidate(inferred: inferred, target: target) {
-            Rejected { diagnostics: _ } => stage0_boundary_emit_refused
-            Accepted { value: candidate, diagnostics: _ } => candidate.source.carried
+            Rejected { diagnostics: _ } => Stage0EmissionRefused
+            Accepted { value: candidate, diagnostics: _ } =>
+              Stage0EmissionProduced { source: candidate.source.carried }
           }
       }
   }
 }
 
-// A refusal cannot be confused with a real emission: the sentinel is not Rust and matches no
-// expectation below, so every arm reds on a route that stopped rather than reading a stage's
-// silence as agreement.
-data stage0_boundary_emit_refused: String = "stage0-boundary-emit-refused"
-
 data stage0_boundary_expected_source: String = "pub fn add(x: i64, y: i64) -> i64 { x + y }"
 
 data stage0_boundary_base_target_source: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
+
+data stage0_boundary_visibility_keyword: String = "pub "
 
 // THE TWO EMISSIONS ARE NULLARY PRODUCERS, one per target, and both are warm-enrolled in
 // v2.workflow.floor_pure_producer_share. Three claims read two emissions -- the base target's is
@@ -86,27 +95,64 @@ data stage0_boundary_base_target_source: String = "fn add(x: i32, y: i32) -> i32
 // v2.workflow.floor_pure_producer_share, and are deliberately not restated here: a figure copied
 // beside its argument is unreachable from the run that owns it and rots without either end being
 // touched (DESIGN section 6). Sharing moves each emission to one preparation-time evaluation and
-// leaves
-// every claim a string comparison, which is what the roster exists to do (its produced_add_module
-// row shares exactly this shape of value: a small, closure-free emitted source).
-fn stage0_boundary_profile_emitted_source() -> String {
+// leaves every claim a comparison over a value it did not compute, which is what the roster
+// exists to do (its produced_add_module row shares exactly this shape of value: a small,
+// closure-free emitted source).
+fn stage0_boundary_profile_emitted_source() -> Stage0BoundaryEmission {
   stage0_boundary_emitted_source_for(target: stage0_production_target_model())
 }
 
-fn stage0_boundary_base_emitted_source() -> String {
+fn stage0_boundary_base_emitted_source() -> Stage0BoundaryEmission {
   stage0_boundary_emitted_source_for(target: rust_target_model())
 }
 
-test fn stage0_production_target_emits_boundary_compatible_source_holds() -> Bool {
-  stage0_boundary_profile_emitted_source() == stage0_boundary_expected_source
+fn stage0_emission_source_equals(emission: Stage0BoundaryEmission, expected: String) -> Bool {
+  match emission {
+    Stage0EmissionRefused => false
+    Stage0EmissionProduced { source: text } => text == expected
+  }
 }
 
+fn stage0_emission_source_contains(emission: Stage0BoundaryEmission, marker: String) -> Bool {
+  match emission {
+    Stage0EmissionRefused => false
+    Stage0EmissionProduced { source: text } => (split(s: text, delimiter: marker) |> count) > 1
+  }
+}
+
+fn stage0_emission_produced(emission: Stage0BoundaryEmission) -> Bool {
+  match emission {
+    Stage0EmissionRefused => false
+    Stage0EmissionProduced { source: _ } => true
+  }
+}
+
+test fn stage0_production_target_emits_boundary_compatible_source_holds() -> Bool {
+  stage0_emission_source_equals(
+    emission: stage0_boundary_profile_emitted_source(),
+    expected: stage0_boundary_expected_source
+  )
+}
+
+// THE VISIBILITY CONTROL, ASKING ABOUT VISIBILITY. Its predecessor asked only that the base
+// emission differ from the profile's expected text, which the carrier control's equality already
+// implies and which a refusal satisfies for free. It now requires a produced emission and asks
+// the one thing this capability class is about: the base target, which selects no visibility,
+// emits no visibility keyword. The profile's side of the same fact is the positive claim above,
+// whose expected text leads with that keyword.
 test fn stage0_visibility_selection_is_load_bearing_holds() -> Bool {
-  stage0_boundary_base_emitted_source() != stage0_boundary_expected_source
+  stage0_emission_produced(emission: stage0_boundary_base_emitted_source())
+    && stage0_emission_source_contains(
+      emission: stage0_boundary_base_emitted_source(),
+      marker: stage0_boundary_visibility_keyword
+    ) == false
 }
 
 test fn stage0_base_target_stays_private_and_i32_holds() -> Bool {
-  stage0_boundary_base_emitted_source() == stage0_boundary_base_target_source
+  stage0_emission_source_equals(
+    emission: stage0_boundary_base_emitted_source(),
+    expected: stage0_boundary_base_target_source
+  )
 }
 
 // THE READ, CLAIMED SEPARATELY BECAUSE IT IS A SEPARATE FACT. A module reaching the production
