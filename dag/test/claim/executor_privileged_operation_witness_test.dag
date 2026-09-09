@@ -115,12 +115,13 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // authorization; one removed takes it away. RED: hand-listing binaries instead of folding the
 // roster decouples the count from the roster and this goes false.
 //
-// THE PER-SLOT FACTOR IS FOUR, AND IT WAS TWO UNTIL ACTIVATION BECAME A GRANTED OPERATION. A slot
-// now contributes its two DIRECTORY operations -- remove the tree, install it owned -- and its two
-// SERVICE TRANSITIONS, enable and start, which gunbc.runner_service_activation keeps separate so no
-// derived sudoers line matches the fused `enable --now`. The +4 tail is unchanged and is the
-// host-wide remainder: the converge state directory, the runner base directory, the runner cache
-// directory, and daemon-reload.
+// THE PER-SLOT GITHUB FACTOR IS THREE IN THIS SUM, SPLIT FOR DISCRIMINATION. Teardown is the
+// grammar bound, not the desired width. Each desired slot then contributes one install
+// directory and two service transitions (enable, start). `slots * 3` is install+activation;
+// `activation == slots * 2` is the transition half. The +5 tail is host-wide: converge state
+// directory, runner base, runner cache, kvm supplementary group, and daemon-reload. A +4
+// here stayed green only while this module was off the required changed-witness set; the kvm
+// grant is a real fifth host-wide operation in `runner_host_privileged_operations`.
 //
 // THE FACTOR IS ASSERTED IN TWO PIECES RATHER THAN AS ONE PRODUCT, because `slots * 4` alone would
 // stay green if the two halves drifted in opposite directions -- four directory operations and no
@@ -140,7 +141,7 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
   let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
   let allocation_store = fabric_allocation_store_privileged_operations(deploy: srv3_runner_host_deploy).length()
   runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
-    == runner_slot_teardown_grant_index_bound + (slots * 3) + 4 + fabric_expected + allocation_store
+    == runner_slot_teardown_grant_index_bound + (slots * 3) + 5 + fabric_expected + allocation_store
     && allocation_store == 2
     && fabric_cell_privileged_operations(deploy: srv3_runner_host_deploy).length() == fabric_expected
     && activation == slots * 2
