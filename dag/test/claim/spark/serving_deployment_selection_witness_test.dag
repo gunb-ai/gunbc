@@ -30,6 +30,9 @@ import gunbc.spark.serving_deployment_selection {
   select_serving_deployment,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input,
+  serving_parameter_standings, provenance_kind,
+  ParameterStandingCompleteness, AllParametersHaveStanding, ParametersWithoutStanding,
+  ParametersWithConflictingStandings, parameter_standing_completeness,
   deepseek_quality_requirement,
 }
 
@@ -494,4 +497,28 @@ test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bo
     QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
     _ => false
   }
+}
+
+// ── EVERY FIXED PARAMETER HAS A STANDING, AND FOUR OF THEM ARE STILL OBLIGATIONS ──────────────
+//
+// The join is against field NAMES, so a parameter nobody classified is named rather than merely
+// changing a count. And the complete arm carries the unestablished set, because "every parameter has a
+// standing" and "every parameter is established" are different claims: this roster is complete and
+// still reports two fields whose values are held without being established -- the KV layout, which
+// carries DeepSeek's MLA format against a GLM subject, and the runtime, which is a descriptive string
+// where an exact image digest is needed.
+test fn every_fixed_parameter_has_exactly_one_standing() -> Bool {
+  match parameter_standing_completeness() {
+    AllParametersHaveStanding { unestablished: u } => count(u) == 2
+    ParametersWithoutStanding { fields: _ } => false
+    ParametersWithConflictingStandings { fields: _ } => false
+  }
+}
+
+// A DECIDED VALUE IS NOT A MEASURED ONE, and the vocabulary keeps them apart. The 262,144 window is an
+// operator decision with a stated purpose; the prefix-caching flag was read off a live engine. Under
+// the previous model both were bare fields and indistinguishable.
+test fn a_decided_window_and_an_observed_flag_are_different_kinds_of_fact() -> Bool {
+  (join(map(filter(serving_parameter_standings, r => (r.parameter as String) == "max_model_len"), r => provenance_kind(prov: r.provenance) as String), "") == "decided")
+    && (join(map(filter(serving_parameter_standings, r => (r.parameter as String) == "enable_prefix_caching"), r => provenance_kind(prov: r.provenance) as String), "") == "observed")
 }

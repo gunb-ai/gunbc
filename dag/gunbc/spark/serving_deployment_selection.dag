@@ -253,6 +253,67 @@ fn parameters_defect(p: ServingDecisionParameters) -> NonEmptyStr? {
   }
 }
 
+// ── EVERY PARAMETER SAYS WHAT KIND OF FACT IT IS ──────────────────────────────────────────────
+//
+// "DERIVE EVERY VALUE" CANNOT MEAN "MEASURE EVERY VALUE", because some values are legitimately
+// chosen: an experimental context window is an operator's decision and no instrument will ever
+// produce it. What it must mean is that no bare number sits in the model without saying which kind of
+// fact it is -- so a decision cannot be mistaken for a measurement, which is the specific confusion
+// that let a 300,000-token figure I authored read as a working window for most of a day.
+//
+// A PROVENANCE CARRIES NO VALUE, and the first draft of this got that wrong. It was a parametric
+// ValueStanding<T> holding the value alongside its origin, which fails twice: four of the nine
+// parameters are not numbers at all -- executor, KV layout, speculative policy, runtime -- so one type
+// argument could not cover the record; and restating a value beside the record that already holds it
+// makes the provenance a SECOND AUTHORITY for the same number, free to disagree with it. A provenance
+// therefore CITES its field and says only how the value came to be held.
+//
+// SEQ CAPACITY ALREADY HAD THIS SHAPE FOR ONE VALUE. gunbc.spark.pair_serving_desired declares
+// SeqCapacityByOperatorPolicy | SeqCapacityMeasured | SeqCapacityUnmeasured, which is this coproduct
+// specialised to max_num_seqs. This is the general form, and it stays HERE rather than in std until a
+// second module consumes it: section 6 models just-in-time, and a std declaration with one consumer is
+// inventory.
+type ParameterProvenance
+  = ParameterObserved { instrument: NonEmptyStr }
+  | ParameterDerived { derived_from: NonEmptyStr }
+  | ParameterDecided { decider: NonEmptyStr, purpose: NonEmptyStr }
+  | ParameterSelected { receipt: DeclarationRef }
+  | ParameterUnestablished { obligation: NonEmptyStr }
+
+fn provenance_kind(prov: ParameterProvenance) -> NonEmptyStr {
+  match prov {
+    ParameterObserved { instrument: _ } => "observed" as NonEmptyStr
+    ParameterDerived { derived_from: _ } => "derived" as NonEmptyStr
+    ParameterDecided { decider: _, purpose: _ } => "decided" as NonEmptyStr
+    ParameterSelected { receipt: _ } => "selected" as NonEmptyStr
+    ParameterUnestablished { obligation: _ } => "unestablished" as NonEmptyStr
+  }
+}
+
+fn provenance_obligation(prov: ParameterProvenance) -> NonEmptyStr? {
+  match prov {
+    ParameterUnestablished { obligation: o } => Present { value: o }
+    ParameterObserved { instrument: _ } => none
+    ParameterDerived { derived_from: _ } => none
+    ParameterDecided { decider: _, purpose: _ } => none
+    ParameterSelected { receipt: _ } => none
+  }
+}
+
+// PROVENANCE IS DELIBERATELY ABSENT FROM THE PROFILE DIGEST, and that is a correctness choice rather
+// than an omission. The digest identifies WHAT THE ENGINE RAN, so a quality receipt acquired under a
+// decided 262,144 window still answers for the same engine behaviour once that window is later derived
+// from a workload population. Folding provenance into the digest would invalidate every receipt the
+// moment a value's standing IMPROVED, which is exactly backwards.
+type ParameterStandingRow sole_constructor {
+  parameter: NonEmptyStr
+  provenance: ParameterProvenance
+}
+
+fn parameter_row(parameter: NonEmptyStr, provenance: ParameterProvenance) -> ParameterStandingRow {
+  ParameterStandingRow { parameter: parameter, provenance: provenance }
+}
+
 // ── THE CANDIDATE CARRIES ONLY WHAT VARIES ────────────────────────────────────────────────────
 type TopologyShape sole_constructor {
   tensor_parallel_degree: Nat
@@ -1273,6 +1334,76 @@ data spark_runtime: RuntimeRevision = runtime_revision(
   image: "the serving container image currently deployed on the Sparks" as NonEmptyStr,
   vllm_revision: "the vLLM revision pinned in that image" as NonEmptyStr,
 )
+
+data serving_parameter_standings: List<ParameterStandingRow> = [
+  parameter_row(parameter: "max_model_len" as NonEmptyStr, provenance: ParameterDecided {
+    decider: "operator, 2026-09-08" as NonEmptyStr,
+    purpose: "an experimental serving window, matching what the GLM canary runs. NOT a workload derivation: to become a production window it must be SELECTED from context coverage, memory feasibility, quality and latency evidence. A previous revision carried 300,000, authored with nothing behind it" as NonEmptyStr }),
+  parameter_row(parameter: "gpu_memory_utilisation_percent" as NonEmptyStr, provenance: ParameterDecided {
+    decider: "operator, 2026-09-05" as NonEmptyStr,
+    purpose: "the fraction observed safe for the outgoing DeepSeek profile. Nothing derives it: the derived answer needs per-rank weight residency, static runtime allocation, graph and workspace allocation, the KV plan at the declared window and a host reserve -- artifact bytes over total memory is not that calculation" as NonEmptyStr }),
+  parameter_row(parameter: "max_num_batched_tokens" as NonEmptyStr, provenance: ParameterDecided {
+    decider: "operator, 2026-09-08" as NonEmptyStr,
+    purpose: "pinned so the value is a choice rather than an inheritance from an absorbed NVML refusal. The trade behind it was measured on DeepSeek and GLM must reacquire it rather than inherit the number" as NonEmptyStr }),
+  parameter_row(parameter: "max_num_seqs" as NonEmptyStr, provenance: ParameterDecided {
+    decider: "operator policy carried from the DeepSeek profile" as NonEmptyStr,
+    purpose: "a conservative interactive ceiling. DECIDED rather than observed FOR THIS SUBJECT: the number was measured in one DeepSeek launch scenario and is explicitly barred from travelling to another model, quantisation or KV layout, so for GLM it carries no measurement at all" as NonEmptyStr }),
+  parameter_row(parameter: "enable_prefix_caching" as NonEmptyStr, provenance: ParameterObserved {
+    instrument: "read from the live DeepSeek group's engine argv on spark-3bd5, 2026-09-08: --enable-prefix-caching is present" as NonEmptyStr }),
+  parameter_row(parameter: "executor" as NonEmptyStr, provenance: ParameterObserved {
+    instrument: "read from the same live argv: --distributed-executor-backend ray" as NonEmptyStr }),
+  parameter_row(parameter: "kv_layout" as NonEmptyStr, provenance: ParameterUnestablished {
+    obligation: "this row carries the DeepSeek MLA layout (fp8_ds_mla), correct for the artifact THAT route serves and NOT established for GLM. The GLM canary launches with plain --kv-cache-dtype fp8, and the internal format the backend then selects is a separate fact from the flag. A GLM profile needs its own read-back" as NonEmptyStr }),
+  parameter_row(parameter: "speculative" as NonEmptyStr, provenance: ParameterDecided {
+    decider: "operator, first-boot policy" as NonEmptyStr,
+    purpose: "disabled to isolate the base model path. Its quality standing is separately unobserved, so admitting it needs a receipt rather than a default" as NonEmptyStr }),
+  parameter_row(parameter: "runtime" as NonEmptyStr, provenance: ParameterUnestablished {
+    obligation: "the image and vLLM revision are carried as descriptive strings rather than an exact digest, so two different images satisfy this row identically. An exact image digest read from the host is the missing observation, and it is load-bearing: a native-FP8 GLM arm needs a runtime proven to register that architecture, which the EXL3 image is not known to do" as NonEmptyStr }),
+]
+
+data serving_parameter_field_names: List<NonEmptyStr> = [
+  "max_model_len" as NonEmptyStr,
+  "gpu_memory_utilisation_percent" as NonEmptyStr,
+  "max_num_batched_tokens" as NonEmptyStr,
+  "max_num_seqs" as NonEmptyStr,
+  "enable_prefix_caching" as NonEmptyStr,
+  "executor" as NonEmptyStr,
+  "kv_layout" as NonEmptyStr,
+  "speculative" as NonEmptyStr,
+  "runtime" as NonEmptyStr,
+]
+
+fn rows_for_field(field: NonEmptyStr) -> List<ParameterStandingRow> {
+  filter(serving_parameter_standings, r => (r.parameter as String) == (field as String))
+}
+
+type ParameterStandingCompleteness
+  = AllParametersHaveStanding { unestablished: List<NonEmptyStr> }
+  | ParametersWithoutStanding { fields: List<NonEmptyStr> }
+  | ParametersWithConflictingStandings { fields: List<NonEmptyStr> }
+
+// EVERY FIELD MUST HAVE EXACTLY ONE ROW, joined against the field names rather than counted, because a
+// count agrees with itself while naming no field. AND THE COMPLETE ARM STILL CARRIES THE UNESTABLISHED
+// FIELDS: "every parameter has a standing" and "every parameter is established" are different claims,
+// and conflating them would let a roster of nine obligations report as done.
+fn parameter_standing_completeness() -> ParameterStandingCompleteness {
+  let missing = filter(serving_parameter_field_names, f => count(rows_for_field(field: f)) == 0)
+  let conflicting = filter(serving_parameter_field_names, f => count(rows_for_field(field: f)) > 1)
+  if count(conflicting) > 0 {
+    ParametersWithConflictingStandings { fields: conflicting }
+  } else {
+    if count(missing) > 0 {
+      ParametersWithoutStanding { fields: missing }
+    } else {
+      AllParametersHaveStanding {
+        unestablished: flat_map(serving_parameter_standings, r => match provenance_obligation(prov: r.provenance) {
+          Present { value: _ } => [r.parameter]
+          Absent => []
+        }),
+      }
+    }
+  }
+}
 
 data serving_parameters_current: ServingDecisionParameters = serving_decision_parameters(
   max_model_len: token_count(count: 262144),
