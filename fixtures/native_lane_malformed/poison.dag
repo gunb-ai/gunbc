@@ -1,0 +1,13 @@
+module v2.native_lane_malformed.poison
+
+// THE required-v2-native LANE'S MALFORMED-SOURCE CONTROL (authority:
+// gunbc.witness_v2_native_route). This file is deliberately NOT well-formed: the string below
+// never terminates, so any honest front-end refuses it at tokenize. The lane's host harness
+// runs the emitted native binary with this file's directory added as a source root and REQUIRES
+// a whole-context refusal (exit 1) — a native route that "accepts" a poisoned context has a
+// dead front-end refusal arm, and every refusal verdict in its census is then worthless.
+//
+// It lives outside dag/ and src/v2/ so the broken bytes never enter an honest ingest: the
+// required parse sweep walks only the declared source roots, and this directory joins a source
+// root set only in the lane's own control invocation.
+data broken: String = "this string never terminates
