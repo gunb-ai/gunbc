@@ -339,7 +339,29 @@ fn coverage_density_read_count(c: RegionCoverage) -> Int? {
 // Secaucus in a heading of its own, so the facility is restored and its density with it. The rule
 // the episode established still stands and is worth keeping: a density whose facility this region
 // does not model is an orphan, because a density is a claim ABOUT a facility and joins to nothing
-// without one. It is now enforced by the two lists agreeing on operators rather than by this note.
+// without one.
+//
+// THAT RULE IS DILIGENCE AND NOT A CHECK, WHICH THIS PARAGRAPH CLAIMED THE OPPOSITE OF UNTIL
+// review 62980. It read "it is now enforced by the two lists agreeing on operators". Nothing joins
+// them: operator_label is never read by any witness, and the only relation over these rows,
+// density_reads_never_exceed_facilities, compares two integers - twenty-one against twenty-seven
+// holds no matter WHICH operators those are. Re-adding a density whose facility had been removed,
+// the exact episode narrated above, still counts and still greens.
+//
+// AND THE INSTRUMENT IS NOT MERELY UNWRITTEN, IT IS UNAUTHORABLE HERE, which is the part that makes
+// the sentence worse than absent rather than merely early. No arm of CabinetDensityClaim carries an
+// operator, a facility or any identity - the arms hold figures, wording, citations and obligations -
+// so a claim cannot be joined to a facility at all from this side. Writing the join today would mean
+// inventing an identity for each claim from its declaration name, which is the positional citation
+// DESIGN section 3 refuses.
+//
+// DESIGN section 4b(1) is explicit that a plan or a note establishes nothing and that reporting a
+// rung above the executed evidence is inflation - the failure being that an inflated class never
+// ranks for climbing. This one had stopped ranking: the note read like a discharged obligation, so a
+// reader who trusted it would have looked for the join rather than for its absence. TRIGGER, as a
+// capability: rows carrying a DeclarationRef identity, so membership can be an identity join rather
+// than a count comparison - which is what DESIGN section 5 means by "Completeness is an identity
+// join, not a count equality". Until then this is a rule the author applies and the corpus does not.
 data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
   region_label: "NJ Hudson-Bergen-Essex corridor",
   region_code: "NJ",
