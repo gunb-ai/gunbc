@@ -10,6 +10,7 @@ import extdeps.colo.types {
   cabinet_density_air_established, cabinet_density_air_ceiling,
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
+  retail_grain_offers_single_cabinet,
 }
 import extdeps.colo.databank { databank_lga4_density, databank_lga4_retail_grain }
 import extdeps.colo.iron_mountain {
@@ -106,17 +107,10 @@ test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
 // A READ DENSITY AND A SELLABLE GRAIN ARE INDEPENDENT FACTS. A cabinet marketed at 30 kW that the
 // operator will only sell as part of a suite is not a candidate for one cabinet, and a 3 kW
 // cabinet sold singly is. Fusing them would have made one of the two unaskable.
-fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
-  match g {
-    SingleCabinetOffered { wording, citation } => true,
-    CageOrSuiteMinimum { wording, citation } => false,
-    RetailGrainUnread { obligation } => false,
-  }
-}
 
 test fn w_density_and_grain_are_separate_facts() -> Bool {
-  grain_admits_single_cabinet(g: databank_lga4_retail_grain)
-    && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
+  retail_grain_offers_single_cabinet(g: databank_lga4_retail_grain)
+    && retail_grain_offers_single_cabinet(g: iron_mountain_nje1_retail_grain)
     && established_watts(d: databank_lga4_density) == 35000
 }
 

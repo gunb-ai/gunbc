@@ -238,6 +238,25 @@ type RetailGrainStanding
   | CageOrSuiteMinimum { wording: NonEmptyStr, citation: NonEmptyStr }
   | RetailGrainUnread { obligation: NonEmptyStr }
 
+// THE GRAIN QUESTION A CONSUMER ACTUALLY ASKS, and it lives here because two witness modules had
+// independently folded these three arms into a Bool under two different names - review 62870, and
+// DESIGN section 3's nicknaming failure exactly: one concept, two names, so a later arm added to
+// RetailGrainStanding would have been handled by one fold and silently missed by the other. The
+// absence of this accessor is what produced the fork, so the repair is the accessor rather than a
+// note telling the two folds to agree.
+//
+// FALSE IS NOT A REFUSAL, IT IS TWO DIFFERENT ONES, and a caller that needs to tell them apart must
+// match the arms rather than call this: CageOrSuiteMinimum is the operator declining to sell one
+// cabinet, RetailGrainUnread is nobody having read whether they would. Both are "not a single
+// cabinet on published evidence", which is the only question this predicate answers.
+fn retail_grain_offers_single_cabinet(g: RetailGrainStanding) -> Bool {
+  match g {
+    SingleCabinetOffered { wording, citation } => true,
+    CageOrSuiteMinimum { wording, citation } => false,
+    RetailGrainUnread { obligation } => false,
+  }
+}
+
 // Whether ordinary retail pricing is published at all. Most facility operators in this
 // market price by quote; that is a fact about the provider worth a typed arm, because a
 // consumer computing over prices must treat quote-only as absent-with-an-obligation and

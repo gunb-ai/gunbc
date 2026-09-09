@@ -1,12 +1,11 @@
 module test.claim.ny_colo_census_rows_witness
 
-import std.types { Bool, Int }
-import std.measure { watt_count }
-import v2.std.optional { Present, Absent }
+import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import test.claim.colo_cabinet_density_witness { established_watts }
 import extdeps.colo.types {
-  CabinetDensityClaim, cabinet_density_air_established,
-  RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
+  CabinetDensityClaim,
+  RetailGrainStanding, retail_grain_offers_single_cabinet,
 }
 import extdeps.colo.databank { databank_lga3_density }
 import extdeps.colo.critical_systems_realty { csr_orny1_density, csr_orny1_retail_grain }
@@ -35,26 +34,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // in another lane, so this file is not that fold: it is the execution that proves every row this
 // lane authored flows through the carrier's accessors and lands on the arm its citation claims.
 //
+// TWO FOLDS, BOTH CONSUMED RATHER THAN RE-DECLARED - review 62870 found the first cut of this file
+// carrying a byte-identical copy of established_watts and a second name for the single-cabinet
+// predicate, which is DESIGN section 3's nicknaming failure and would have let a later change to
+// the sentinel or to a RetailGrainStanding arm update one witness and silently miss the other. The
+// grain predicate is now an accessor on the carrier, where its absence was what produced the fork.
+// established_watts is imported from the carrier's own witness rather than lifted beside it: its
+// minus-one is a TEST-HARNESS sentinel for an Optional that the carrier deliberately does not have,
+// and pushing an in-band sentinel into extdeps would undo the very change that replaced the
+// zero-for-unread accessor with Watt?.
+//
 // WHAT MAKES THESE ASSERTIONS SOMETHING OTHER THAN THE ROWS RESTATED. Each integer below is the
 // numeral the operator published, quoted verbatim in that row's claim_wording and confirmed
 // against the page's own bytes - an external authority, which is what section 5 requires of a
 // literal in a merge-blocking test. Editing a row's watt value without the operator having
 // changed its page turns one of these red, which is the discrimination the test exists for.
-
-fn established_watts(d: CabinetDensityClaim) -> Int {
-  match cabinet_density_air_established(d: d) {
-    Present { value } => watt_count(w: value),
-    Absent => 0 - 1,
-  }
-}
-
-fn grain_offers_a_single_cabinet(g: RetailGrainStanding) -> Bool {
-  match g {
-    SingleCabinetOffered { wording, citation } => true,
-    CageOrSuiteMinimum { wording, citation } => false,
-    RetailGrainUnread { obligation } => false,
-  }
-}
 
 // THE SIX READ DENSITIES, each against the numeral its operator published. Rockland spans an order
 // of magnitude across three independently governed operators, and two of those three - 1547 as
@@ -89,10 +83,10 @@ test fn w_ny_unread_densities_establish_nothing() -> Bool {
 // DataBank sell cabinets with a density read for one and absent for the other. A carrier that
 // fused the two facts would have to invent one of them for every row below.
 test fn w_ny_grain_is_published_where_density_is_not() -> Bool {
-  grain_offers_a_single_cabinet(g: stafford_retail_grain)
-    && grain_offers_a_single_cabinet(g: vastnet_retail_grain)
-    && grain_offers_a_single_cabinet(g: long_island_interconnect_retail_grain)
-    && grain_offers_a_single_cabinet(g: tierpoint_hawthorne_retail_grain)
+  retail_grain_offers_single_cabinet(g: stafford_retail_grain)
+    && retail_grain_offers_single_cabinet(g: vastnet_retail_grain)
+    && retail_grain_offers_single_cabinet(g: long_island_interconnect_retail_grain)
+    && retail_grain_offers_single_cabinet(g: tierpoint_hawthorne_retail_grain)
     && established_watts(d: stafford_density) == 0 - 1
     && established_watts(d: vastnet_density) == 0 - 1
 }
@@ -103,9 +97,9 @@ test fn w_ny_grain_is_published_where_density_is_not() -> Bool {
 // colocation page, against directory listings that describe cabinet-grain colocation. Reading a
 // directory's product list onto an operator row is the failure this arm refuses.
 test fn w_ny_unstated_grain_is_not_an_offer() -> Bool {
-  grain_offers_a_single_cabinet(g: equinix_ny13_retail_grain) == false
-    && grain_offers_a_single_cabinet(g: three_sixty_five_commack_retail_grain) == false
-    && grain_offers_a_single_cabinet(g: continuity_centers_retail_grain) == false
-    && grain_offers_a_single_cabinet(g: hivelocity_ogb1_retail_grain) == false
-    && grain_offers_a_single_cabinet(g: csr_orny1_retail_grain) == false
+  retail_grain_offers_single_cabinet(g: equinix_ny13_retail_grain) == false
+    && retail_grain_offers_single_cabinet(g: three_sixty_five_commack_retail_grain) == false
+    && retail_grain_offers_single_cabinet(g: continuity_centers_retail_grain) == false
+    && retail_grain_offers_single_cabinet(g: hivelocity_ogb1_retail_grain) == false
+    && retail_grain_offers_single_cabinet(g: csr_orny1_retail_grain) == false
 }
