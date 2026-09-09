@@ -1,0 +1,107 @@
+module gunbc.information_retrieval
+
+import std.types { String, NonEmptyStr, List, EpochMs, HttpStatus }
+import extdeps.uri { Uri, uri_wire }
+import extdeps.http.client
+import extdeps.external_authority { ExternalAuthority }
+import std.citation {
+  CitationRetrievalRequest,
+  CitationRetrievalObservation,
+  CitationUnreachable,
+  ResponseObservedWithoutRepresentation,
+  TransportUnreachable,
+  CitationTarget,
+  CitationSelector,
+  verify_citation_representation,
+}
+import std.claim_evidence {
+  RecordedFactId,
+  EvidenceProvenance,
+  EvidenceDirection,
+}
+import gunbc.information_query {
+  InformationEvidence,
+  InformationTemporalScope,
+  InformationEvidenceProbeIndependence,
+  information_evidence_from_verification,
+}
+
+// THE RETRIEVAL REALIZATION, WHICH IS WHY IT IS NOT IN gunbc.information_query. That module owns
+// what may become admissible evidence; this one owns the transport that produces an observation for
+// it to judge. DESIGN section 3 keeps interface, realization and policy apart, and binding curl into
+// the evidence join would fuse the transport to the decision -- one of N handlers written as though
+// it were a fact about the concept.
+
+// CURL'S SUCCESS IS NARROWER THAN HTTP'S. http.Client.GetBounded runs curl with -f, which is
+// documented to fail on any HTTP error response, so a successful exit means a 2xx was served. The
+// operation reports only a Bool, so the exact code inside that band is NOT observed; 200 is the
+// band's canonical member and is used to type the observation, not to claim the server said 200.
+data information_retrieval_success_status: HttpStatus = 200
+
+// A SUCCESSFUL FETCH STILL PRODUCES NO REPRESENTATION OBSERVATION, and that is the honest state
+// rather than a defect worked around. Reconciling bytes against a pin requires digesting the body,
+// and the only sha256 realization in the corpus runs over a FILE (extdeps.crypto.hash sha256sum_argv),
+// so nothing here can hash a body held in memory. The result is therefore
+// ResponseObservedWithoutRepresentation -- a response was seen, no representation was observed --
+// which std.citation already refuses through to InformationEvidenceUnavailable. It does NOT
+// fabricate a digest, and it does NOT widen into a weaker evidence class (DESIGN section 5).
+//
+// THE CAPABILITY THIS WAITS ON is a body-digesting realization -- sha256 over retrieved bytes
+// without a filesystem round trip, or a retrieval operation that reports the digest itself. Naming
+// that capability rather than a pull request is DESIGN 4b(3): a trigger that names an artifact is
+// satisfied while the capability stays dead.
+fn information_retrieval_observation(
+  request: CitationRetrievalRequest,
+  observed_at: EpochMs,
+) -> CitationRetrievalObservation {
+  let got = http.Client.GetBounded(url: uri_wire(uri: request.locator))
+  if got.success {
+    ResponseObservedWithoutRepresentation {
+      request: request,
+      observed_at: observed_at,
+      http_status: information_retrieval_success_status,
+    }
+  } else {
+    CitationUnreachable {
+      request: request,
+      observed_at: observed_at,
+      cause: TransportUnreachable,
+    }
+  }
+}
+
+// THE JOIN, so that this module is a consumer of gunbc.information_query and not a second evidence
+// authority beside it. Every arm routes through verify_citation_representation and the module's own
+// fold; nothing here decides admissibility.
+fn information_retrieve_evidence(
+  target: CitationTarget<CitationSelector>,
+  observed_at: EpochMs,
+  fact_id: RecordedFactId,
+  scope: InformationTemporalScope,
+  direction: EvidenceDirection,
+  authority: ExternalAuthority,
+  provenance: EvidenceProvenance,
+  freshness_basis: NonEmptyStr,
+  fidelity_losses: List<NonEmptyStr>,
+  independence: InformationEvidenceProbeIndependence,
+) -> InformationEvidence {
+  information_evidence_from_verification(
+    fact_id: fact_id,
+    outcome: verify_citation_representation(
+      target: target,
+      observation: information_retrieval_observation(
+        request: CitationRetrievalRequest {
+          locator: target.expected_pin.subject.access_route,
+        },
+        observed_at: observed_at,
+      ),
+    ),
+    scope: scope,
+    direction: direction,
+    authority: authority,
+    provenance: provenance,
+    freshness_basis: freshness_basis,
+    fidelity_losses: fidelity_losses,
+    independence: independence,
+  )
+}
