@@ -600,7 +600,7 @@ fn figure_covers(f: CabinetPowerFigure, required: Watt) -> Bool {
 // go re-read rather than seeing a silent nothing.
 type PublishedRequirementStanding
   = CoveredByPublishedFloor { figure: PublishedDensityFigure }
-  | WithinPublishedRange { figure: PublishedDensityFigure }
+  | CoveredByPublishedRangeFloor { figure: PublishedDensityFigure }
   | OutsidePublishedMaximum { figure: PublishedDensityFigure }
   | NonBoundingPublication { figure: PublishedDensityFigure }
   | PublishedQuantityUnreadable { figure: PublishedDensityFigure, reason: NonEmptyStr }
@@ -609,8 +609,12 @@ type PublishedRequirementStanding
   | RequirementFigureContested { contested: CoolingMedium }
 
 // The relation between one published quantity and one requirement, with no arm that decides
-// placement. A floor covers from its value up; a real interval covers up to its LOWER end and is
-// outside above its UPPER; a marketed maximum is only ever "outside above"; an apparent-power
+// placement. A floor covers from its value up; a real interval covers everything up to and including
+// its LOWER end and is outside above its UPPER - so the interval arm is named for the FLOOR it covers
+// from and not for the range, because a requirement of 1 W against a 2 kW-16 kW publication is
+// covered and is not within that range. An arm named `WithinPublishedRange` would have stated a
+// different fact from the one it carries, and three consumer lanes are about to read these arms by
+// name; a marketed maximum is only ever "outside above"; an apparent-power
 // quantity bounds nothing, because reading kVA as W would be one power factor more generous than the
 // operator's sentence; and an average bounds in neither direction.
 fn quantity_requirement_relation(
@@ -633,7 +637,7 @@ fn quantity_requirement_relation(
       },
     MarketedRealInterval { interval } =>
       if watt_count(w: required) <= watt_count(w: interval_low(interval: interval)) {
-        WithinPublishedRange { figure: figure }
+        CoveredByPublishedRangeFloor { figure: figure }
       } else {
         if watt_count(w: required) > watt_count(w: interval_high(interval: interval)) {
           OutsidePublishedMaximum { figure: figure }

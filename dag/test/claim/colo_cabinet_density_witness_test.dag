@@ -17,7 +17,7 @@ import extdeps.colo.types {
   FigureVerificationStanding, WordingVerbatim, WordingSummarized,
   DensityFigureLookup, FigureFound, RequestedMediumAbsent, ClaimUnread, FigureDuplicated,
   density_figure_for_medium,
-  PublishedRequirementStanding, CoveredByPublishedFloor, WithinPublishedRange,
+  PublishedRequirementStanding, CoveredByPublishedFloor, CoveredByPublishedRangeFloor,
   OutsidePublishedMaximum, NonBoundingPublication, PublishedQuantityUnreadable,
   RequirementMediumAbsent, RequirementClaimUnread, RequirementFigureContested,
   published_requirement_standing,
@@ -88,7 +88,7 @@ fn outside_maximum(d: CabinetDensityClaim, requested: CoolingMedium, required: I
   match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
     OutsidePublishedMaximum { figure } => true,
     CoveredByPublishedFloor { figure } => false,
-    WithinPublishedRange { figure } => false,
+    CoveredByPublishedRangeFloor { figure } => false,
     NonBoundingPublication { figure } => false,
     PublishedQuantityUnreadable { figure, reason } => false,
     RequirementMediumAbsent { requested: r } => false,
@@ -100,7 +100,7 @@ fn outside_maximum(d: CabinetDensityClaim, requested: CoolingMedium, required: I
 fn covered_by_floor(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
   match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
     CoveredByPublishedFloor { figure } => true,
-    WithinPublishedRange { figure } => false,
+    CoveredByPublishedRangeFloor { figure } => false,
     OutsidePublishedMaximum { figure } => false,
     NonBoundingPublication { figure } => false,
     PublishedQuantityUnreadable { figure, reason } => false,
@@ -110,9 +110,9 @@ fn covered_by_floor(d: CabinetDensityClaim, requested: CoolingMedium, required: 
   }
 }
 
-fn within_range(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+fn covered_by_range_floor(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
   match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
-    WithinPublishedRange { figure } => true,
+    CoveredByPublishedRangeFloor { figure } => true,
     CoveredByPublishedFloor { figure } => false,
     OutsidePublishedMaximum { figure } => false,
     NonBoundingPublication { figure } => false,
@@ -127,7 +127,7 @@ fn non_bounding(d: CabinetDensityClaim, requested: CoolingMedium, required: Int)
   match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
     NonBoundingPublication { figure } => true,
     CoveredByPublishedFloor { figure } => false,
-    WithinPublishedRange { figure } => false,
+    CoveredByPublishedRangeFloor { figure } => false,
     OutsidePublishedMaximum { figure } => false,
     PublishedQuantityUnreadable { figure, reason } => false,
     RequirementMediumAbsent { requested: r } => false,
@@ -140,7 +140,7 @@ fn medium_absent(d: CabinetDensityClaim, requested: CoolingMedium, required: Int
   match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
     RequirementMediumAbsent { requested: r } => true,
     CoveredByPublishedFloor { figure } => false,
-    WithinPublishedRange { figure } => false,
+    CoveredByPublishedRangeFloor { figure } => false,
     OutsidePublishedMaximum { figure } => false,
     NonBoundingPublication { figure } => false,
     PublishedQuantityUnreadable { figure, reason } => false,
@@ -153,7 +153,7 @@ fn claim_unread(d: CabinetDensityClaim, requested: CoolingMedium, required: Int)
   match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
     RequirementClaimUnread { obligation } => true,
     CoveredByPublishedFloor { figure } => false,
-    WithinPublishedRange { figure } => false,
+    CoveredByPublishedRangeFloor { figure } => false,
     OutsidePublishedMaximum { figure } => false,
     NonBoundingPublication { figure } => false,
     PublishedQuantityUnreadable { figure, reason } => false,
@@ -166,7 +166,7 @@ fn needs_evidence(d: CabinetDensityClaim, requested: CoolingMedium, required: In
   match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
     RequirementFigureContested { contested } => true,
     CoveredByPublishedFloor { figure } => false,
-    WithinPublishedRange { figure } => false,
+    CoveredByPublishedRangeFloor { figure } => false,
     OutsidePublishedMaximum { figure } => false,
     NonBoundingPublication { figure } => false,
     PublishedQuantityUnreadable { figure, reason } => false,
@@ -199,7 +199,7 @@ fn bounds_above(d: CabinetDensityClaim, requested: CoolingMedium) -> Bool {
 // be satisfied by each other.
 fn supports_from_below(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
   covered_by_floor(d: d, requested: requested, required: required)
-    || within_range(d: d, requested: requested, required: required)
+    || covered_by_range_floor(d: d, requested: requested, required: required)
 }
 
 // VERIFICATION READ AT THE SCREEN BOUNDARY, WHICH IS THE ONLY PLACE THE LOSS WAS OBSERVABLE. The
@@ -211,7 +211,7 @@ fn supports_from_below(d: CabinetDensityClaim, requested: CoolingMedium, require
 fn standing_is_verbatim(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
   match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
     CoveredByPublishedFloor { figure } => figure_is_verbatim(f: figure),
-    WithinPublishedRange { figure } => figure_is_verbatim(f: figure),
+    CoveredByPublishedRangeFloor { figure } => figure_is_verbatim(f: figure),
     OutsidePublishedMaximum { figure } => figure_is_verbatim(f: figure),
     NonBoundingPublication { figure } => figure_is_verbatim(f: figure),
     PublishedQuantityUnreadable { figure, reason } => figure_is_verbatim(f: figure),
@@ -225,7 +225,7 @@ fn quantity_is_unreadable(d: CabinetDensityClaim, requested: CoolingMedium, requ
   match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
     PublishedQuantityUnreadable { figure, reason } => true,
     CoveredByPublishedFloor { figure } => false,
-    WithinPublishedRange { figure } => false,
+    CoveredByPublishedRangeFloor { figure } => false,
     OutsidePublishedMaximum { figure } => false,
     NonBoundingPublication { figure } => false,
     RequirementMediumAbsent { requested: r } => false,
@@ -762,11 +762,13 @@ test fn w_occupancy_verification_and_utility_are_three_facts() -> Bool {
 // liquid request returns it and no request for unspecified is answerable either - and it is
 // nonetheless a verbatim-sourced published reading that a coverage roster has to see. The inventory
 // route returns it; the screening route does not; and asserting BOTH in one witness is what stops a
-// later author "fixing" the second by making unspecified requestable.
+// later author "fixing" the second by widening the publication side.
 //
-// THE SECOND CONJUNCT IS THE ONE THAT WOULD CATCH THAT FIX. If `medium_matches` ever answered true for
-// an unspecified request, this goes red - the same defect `w_requesting_an_unspecified_medium_answers_nothing`
-// guards, asserted here from the inventory side so neither route can be changed alone.
+// THE SECOND AND THIRD CONJUNCTS ARE THE ONES THAT WOULD CATCH THAT FIX. If `medium_matches` ever
+// answered true for a figure whose page named no medium, both go red. There is no companion witness
+// on the REQUEST side to point at any more and this annotation must not imply one: an unspecified
+// request has no constructor, so that half of the class is closed by construction rather than by an
+// enrolled control, and the note above this witness records why.
 //
 // The DataBank conjunct is the positive control on the count: two figures in, two figures out, so an
 // inventory route that silently returned only the head would fail here and nowhere else.
@@ -794,8 +796,8 @@ test fn w_an_unscreenable_figure_is_still_inventoried() -> Bool {
 // covers NOTHING, so the pair shows the split is doing work rather than being a rename: identical
 // structure, different dimension, opposite answer on the admitting side.
 test fn w_a_real_interval_covers_from_its_lower_end_only() -> Bool {
-  within_range(d: real_interval_fixture, requested: AirCooling, required: 2000)
-    && within_range(d: real_interval_fixture, requested: AirCooling, required: 1999)
+  covered_by_range_floor(d: real_interval_fixture, requested: AirCooling, required: 2000)
+    && covered_by_range_floor(d: real_interval_fixture, requested: AirCooling, required: 1999)
     && !supports_from_below(d: real_interval_fixture, requested: AirCooling, required: 2001)
     && !supports_from_below(d: apparent_power_fixture, requested: AirCooling, required: 1)
 }
@@ -850,11 +852,12 @@ test fn w_a_published_average_supports_no_bound_in_either_direction() -> Bool {
 // THE MEDIUM CHANGED WITH THE MIGRATION AND THAT COSTS THE SCREEN, NOT THE ROW. The page names no
 // cooling medium, so the row is CoolingMediumUnspecified. An air request does not return it - the
 // pre-migration row DID answer that question, off an inference from the absence of a liquid figure,
-// and losing that answer is the whole point of the coordinate. Nor is "unspecified" itself requestable
-// (`w_requesting_an_unspecified_medium_answers_nothing`), so this figure is screenable at NO medium at
-// all: the first conjunct asserts the air screen refuses for want of a figure and the second asserts
-// the same for the medium the page actually stated, which is the conjunct that would go red if a later
-// author made unspecified requestable to "recover" the ceiling.
+// and losing that answer is the whole point of the coordinate. Nor is "unspecified" requestable at all
+// - it is not a `CoolingMedium` and has no constructor on the request side - so this figure is
+// screenable at NO medium: the conjuncts assert that both requestable media refuse for want of a
+// figure, and that neither bounds it from above. That is a CONSTRUCTION argument rather than a guarded
+// one, which is why no witness is cited here for it; a citation would read as coverage already
+// enrolled, and no Accepted program can read an annotation.
 //
 // THE THIRD CONJUNCT IS WHY THAT IS A SCREEN LOSS AND NOT A DATA LOSS. The figure is still inventoried,
 // verbatim-sourced and countable by a coverage roster; only the medium-keyed question has no answer.
@@ -995,7 +998,7 @@ test fn w_a_reversed_range_is_unreadable_and_bounds_in_neither_direction() -> Bo
   quantity_is_unreadable(d: reversed_interval_fixture, requested: AirCooling, required: 5000)
     && !supports_from_below(d: reversed_interval_fixture, requested: AirCooling, required: 1)
     && !bounds_above(d: reversed_interval_fixture, requested: AirCooling)
-    && within_range(d: real_interval_fixture, requested: AirCooling, required: 2000)
+    && covered_by_range_floor(d: real_interval_fixture, requested: AirCooling, required: 2000)
 }
 
 // AN UNREAD CLAIM AND A PUBLISHED CLAIM SILENT ON THE MEDIUM ARE DIFFERENT ANSWERS. They were one
