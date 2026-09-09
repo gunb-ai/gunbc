@@ -8,9 +8,12 @@ import gunbc.auth.approval_ntfy_converge {
   approval_ntfy_desired_members, ntfy_member_key,
   approval_ntfy_converge_commands,
 }
+import std.disposition { Scaffold, RealizationDispatch, Terminal, SingleAuthority, SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.executor_privileged_operation {
   EnsureSystemAccount, EnsureOwnedDirectory, SystemdDaemonReload,
   executor_privileged_operation_precondition, executor_privileged_operation_converge_command,
+  executor_privileged_operation_converge_command_emit_scaffold,
   OperationPrecondition, NoPrecondition, AccountExistsCheck,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
@@ -111,3 +114,17 @@ test fn witness_intervention_command_is_the_guarded_form() -> Bool {
   string_contains(s: approval_ntfy_account_command(), pattern: ">/dev/null 2>&1 || ")
     && string_contains(s: approval_ntfy_account_command(), pattern: "gunbc-ntfy")
 }
+
+test fn witness_converge_command_scaffold_binds_orch_emit_pipeline() -> Bool {
+  match executor_privileged_operation_converge_command_emit_scaffold {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+    } =>
+      m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
+    Terminal { reason: _ } => false
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+  }
+}
+

@@ -46,16 +46,14 @@ import std.decision {
   CausalModelEstablished,
   FleetObservedCoupling,
 }
-import gunbc.world_converge {
-  WorldConvergenceHandler,
-  WorldObservation,
-  WorldObserved,
-  WorldDifference,
-  WorldInAgreement,
-  WorldActuation,
-  WorldApplied,
-  WorldConverged,
-  world_converge,
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  GoalAssessment,
+  GoalSatisfied,
+  GoalInspected,
+  assess_by_deviations,
+  inspect_goal,
 }
 import product.fleet_operating_point {
   fleet_operating_point_selection,
@@ -470,7 +468,7 @@ test fn different_funded_axes_are_a_different_receipt() -> Bool {
   }
 }
 
-test fn world_converge_refuses_unresolved_selection() -> Bool {
+test fn selection_refuses_before_any_convergence() -> Bool {
   match fleet_operating_point_selection() {
     RealizationSelectionRefused { defects: ds } => (ds |> count) > 0
     SelectedWithin { candidate: _, receipt: _ } => false
@@ -478,32 +476,30 @@ test fn world_converge_refuses_unresolved_selection() -> Bool {
   }
 }
 
-fn selection_observe(subject: ParetoEntry, _: SelectionReceipt) -> WorldObservation<DeclarationRef, NonEmptyStr> {
-  WorldObserved { value: subject.identity }
+// MIGRATED FROM gunbc.world_converge, which #10814 deleted at the root. This binding is what
+// DESIGN section 3 calls the census: the deletion made every real dependent refuse, and this one
+// refused loudly, so it is fixed forward rather than restored.
+//
+// TWO STAGES DISAPPEAR RATHER THAN BEING REWRITTEN, and their absence is the claim. The shape this
+// replaces required an `apply` and an `unchanged_receipt`; this witness supplied `WorldApplied`
+// over a context it threaded through, which asserted nothing about actuation and existed only
+// because the interface demanded the stage. std.goal_assessment has no actuator, so there is
+// nothing to supply and nothing to mistake for a proven write.
+//
+// THE EVIDENCE IS NOW DERIVED FROM THE OBSERVATION rather than from a threaded receipt, because
+// `assess` receives only what was observed. The claim under test is unchanged and is the section
+// 3d one: a SelectedWithin candidate feeds the convergence root as its SUBJECT, and the root
+// reaches a satisfied assessment over it. The receipt was never read by the old handler either --
+// it was returned unchanged -- so nothing that was asserted has been dropped.
+fn selection_observe(subject: ParetoEntry, _: SelectionReceipt) -> ObservationAttempt<DeclarationRef, NonEmptyStr> {
+  ObservationEstablished { observed: subject.identity }
 }
 
-fn selection_differences(_: ParetoEntry, _: SelectionReceipt, _: DeclarationRef) -> WorldDifference<DeclarationRef> {
-  WorldInAgreement
+fn selection_assess(observed: DeclarationRef) -> GoalAssessment<DeclarationRef, DeclarationRef, DeclarationRef, NonEmptyStr> {
+  assess_by_deviations(evidence: observed, deviations: [])
 }
 
-fn selection_apply(_: ParetoEntry, ctx: SelectionReceipt, _: DeclarationRef, _: List<DeclarationRef>) -> WorldActuation<SelectionReceipt, NonEmptyStr> {
-  WorldApplied { value: ctx }
-}
-
-fn selection_unchanged(_: ParetoEntry, ctx: SelectionReceipt, _: DeclarationRef) -> SelectionReceipt {
-  ctx
-}
-
-fn selection_world_handler() -> WorldConvergenceHandler<ParetoEntry, SelectionReceipt, DeclarationRef, DeclarationRef, SelectionReceipt, NonEmptyStr> {
-  WorldConvergenceHandler {
-    observe: selection_observe,
-    differences: selection_differences,
-    apply: selection_apply,
-    unchanged_receipt: selection_unchanged,
-  }
-}
-
-test fn selected_within_feeds_world_converge_readback() -> Bool {
+test fn selected_within_feeds_the_goal_assessment_root() -> Bool {
   let feasible = entry(id: id_b, label: "ok" as NonEmptyStr, tput: 10, power: 50)
   match select_realization(
     assessment: closed_selection_assessment(),
@@ -516,8 +512,13 @@ test fn selected_within_feeds_world_converge_readback() -> Bool {
     evidence_snapshot: id_evidence,
   ) {
     SelectedWithin { candidate: c, receipt: r } =>
-      match world_converge(subject: c, context: r, handler: selection_world_handler()) {
-        WorldConverged { subject: _, observed: _, receipt: _ } => true
+      match inspect_goal(
+        subject: c,
+        scope: r,
+        observe: selection_observe,
+        assess: selection_assess,
+      ) {
+        GoalInspected { subject: _, observed: _, assessment: GoalSatisfied { evidence: _ } } => true
         _ => false
       }
     _ => false
@@ -549,7 +550,7 @@ test fn generated_section_3d_and_reviewer_execute() -> Bool {
     && any(design_propositions, p => p.id == "s3d.selection-precedes-convergence")
     && match review_criterion_by_key(key: "selection-precedes-convergence") {
       Absent => false
-      Present { value: c } => string_contains(s: c.question, pattern: "world_converge")
+      Present { value: c } => string_contains(s: c.question, pattern: "std.goal_assessment")
     }
 }
 
@@ -712,9 +713,9 @@ fn realization_selection_witness_main() -> ProcessExit {
     ExitFailure { code: 1, reason: "7 receipt-identity" as NonEmptyStr }
   } else if !different_funded_axes_are_a_different_receipt() {
     ExitFailure { code: 1, reason: "7b funded-axes-identity" as NonEmptyStr }
-  } else if !world_converge_refuses_unresolved_selection() {
+  } else if !selection_refuses_before_any_convergence() {
     ExitFailure { code: 1, reason: "8 converge-unresolved" as NonEmptyStr }
-  } else if !selected_within_feeds_world_converge_readback() {
+  } else if !selected_within_feeds_the_goal_assessment_root() {
     ExitFailure { code: 1, reason: "9 selected-feeds-converge" as NonEmptyStr }
   } else if !incomplete_subject_cannot_mint_selected_within() {
     ExitFailure { code: 1, reason: "9b incomplete-subject-no-selected-within" as NonEmptyStr }

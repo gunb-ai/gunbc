@@ -53,6 +53,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 //
 // The step question now has a metric that does answer it, and it is a different one.
 
+// THE EXPOSITION IS PROMETHEUS TEXT AND EVERY VALUE IN IT IS A FLOAT, INCLUDING THE COUNTS.
+//
+// This is the fact a reader is most likely to get wrong, so it is stated as a row rather than left
+// to be rediscovered: the Python client renders a gauge holding 4 as `4.0`. An integer parse over
+// that field FAILS. A consumer that treats the failure as "some positive amount" collapses every
+// positive count to one -- 4 waiting and 3 running both read as 1 -- and the collapse is silent,
+// because the shape of the answer is still a count. The reading law lives with the consumer that
+// parses the field; what belongs here is that the rendering is a float.
 type VllmServingMetric
   = KvCacheUsagePerc
   | IterationTokensTotal
