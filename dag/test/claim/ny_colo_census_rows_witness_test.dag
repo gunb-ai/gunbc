@@ -7,7 +7,7 @@ import extdeps.colo.types {
   CabinetDensityClaim,
   RetailGrainStanding, retail_grain_offers_single_cabinet,
 }
-import extdeps.colo.databank { databank_lga3_density }
+import extdeps.colo.databank { databank_lga3_density, databank_lga3_retail_grain }
 import extdeps.colo.critical_systems_realty { csr_orny1_density, csr_orny1_retail_grain }
 import extdeps.colo.hivelocity { hivelocity_ogb1_density, hivelocity_ogb1_retail_grain }
 import extdeps.colo.long_island_interconnect {
@@ -87,6 +87,7 @@ test fn w_ny_grain_is_published_where_density_is_not() -> Bool {
     && retail_grain_offers_single_cabinet(g: vastnet_retail_grain)
     && retail_grain_offers_single_cabinet(g: long_island_interconnect_retail_grain)
     && retail_grain_offers_single_cabinet(g: tierpoint_hawthorne_retail_grain)
+    && retail_grain_offers_single_cabinet(g: databank_lga3_retail_grain)
     && established_watts(d: stafford_density) == 0 - 1
     && established_watts(d: vastnet_density) == 0 - 1
 }
@@ -96,10 +97,19 @@ test fn w_ny_grain_is_published_where_density_is_not() -> Bool {
 // Centers is the sharpest case - its own sitemap enumerates forty pages and none of them is a
 // colocation page, against directory listings that describe cabinet-grain colocation. Reading a
 // directory's product list onto an operator row is the failure this arm refuses.
+//
+// NYI IS THE DISCRIMINATING PAIR IN THIS FILE, and it was the row review 62890 found unenrolled.
+// NYI and Long Island Interconnect publish the same Westbury street address and the same 3kW
+// average; LII's page says cabinets and NYI's says nothing about product grain. So the two
+// assertions that matter sit in DIFFERENT tests over the SAME building: LII's grain is an offer in
+// w_ny_grain_is_published_where_density_is_not, NYI's is not one here. A reading transferred from
+// the co-located operator - the single most tempting inference in the whole census - reds this
+// witness rather than passing silently, which is the only reason the row is worth carrying.
 test fn w_ny_unstated_grain_is_not_an_offer() -> Bool {
   retail_grain_offers_single_cabinet(g: equinix_ny13_retail_grain) == false
     && retail_grain_offers_single_cabinet(g: three_sixty_five_commack_retail_grain) == false
     && retail_grain_offers_single_cabinet(g: continuity_centers_retail_grain) == false
     && retail_grain_offers_single_cabinet(g: hivelocity_ogb1_retail_grain) == false
     && retail_grain_offers_single_cabinet(g: csr_orny1_retail_grain) == false
+    && retail_grain_offers_single_cabinet(g: nyi_long_island_retail_grain) == false
 }
