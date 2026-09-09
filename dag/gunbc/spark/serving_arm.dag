@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest, glm_manifest_gibibytes }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
 }
@@ -114,9 +115,9 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
-  weight_gib: 306,
+  weight_gib: glm_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
   quantization_wire: "fp8" as NonEmptyStr,
-  provenance: "revision resolved from the Hub model API on 2026-09-07; weight figure is the vLLM recipe's published size for this checkpoint and is NOT measured on this fleet -- nothing here has fetched it" as NonEmptyStr,
+  provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence. Still NOT measured on this fleet -- nothing here has fetched it" as NonEmptyStr,
 }
 
 fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
@@ -201,6 +202,22 @@ type ServingArmVerdict
 // minimum for native FP8 exceeds its weight size by a quarter. A checkpoint is admitted only when
 // the aggregate pool exceeds the weights with headroom, and the headroom is stated rather than
 // tuned away.
+// THIS FIT TEST CANNOT ADMIT, AND ITS POSITIVE ARM CURRENTLY DOES -- A KNOWN OVERCLAIM, RECORDED
+// RATHER THAN LEFT SILENT (review finding, 2026-09-09). The arithmetic is sharded weight bytes times a
+// cited 25 percent headroom against the aggregate pool. That is a LOWER BOUND: it can prove a
+// checkpoint impossible, and it cannot establish that an engine loads, admits its requested context by
+// allocator block population, or survives a real request. gunbc.spark.serving_deployment_selection
+// draws exactly this line -- its equivalent arm is named WeightsNotRuledOutByLowerBound and runtime
+// feasibility is a separate, unsatisfied axis -- and this module has not yet been brought to it.
+//
+// WHY IT IS NOT REPAIRED IN THIS CHANGE: ServingArmAdmitted is consumed by
+// gunbc.spark.glm_canary_converge, which drives the engine currently serving traffic. Splitting the
+// verdict there is a change to a live serving path and belongs in its own diff with its own controls,
+// not appended to a size-unification repair. The distinction that makes the repair safe already
+// exists: the EXL3 arm's runtime feasibility IS established by execution -- it is serving now -- while
+// the native FP8 arm has never run, so admission should require that observation rather than infer it
+// from a bound. NEXT-RUNG TRIGGER: a runtime-feasibility observation on the checkpoint x runtime x
+// topology arm, at which point the positive verdict requires it and the bound reverts to refusal only.
 data serving_arm_headroom_numerator: Nat = 5
 data serving_arm_headroom_denominator: Nat = 4
 

@@ -27,6 +27,7 @@ import std.scoped_authorization {
   authorize,
 }
 import extdeps.external_authority { TranscribedUncited }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest }
 import extdeps.uri { Uri, Https }
 
 // ── ONE MODEL IN, A DEPLOYMENT SHAPE OR AN OBLIGATION OUT ─────────────────────────────────────
@@ -99,9 +100,9 @@ data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
   label: "GLM 5.3 Flash, native checkpoint" as NonEmptyStr,
   footprint: FootprintDeclaredByUpstreamAtRevision {
-    bytes: 328337455672,
-    revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
-    instrument: "sum of the safetensors sibling sizes from the Hub model API for zai-org/GLM-5.3-Flash at that exact revision, read 2026-09-08: 62 shards, 328,337,455,672 bytes. The response's own sha and lastModified (2026-09-07T12:13:47Z) match the pin recorded in gunbc.spark.model_snapshot_acquisition glm_5_3_flash_snapshot, so the pin is verified against the authority it cites rather than trusted. NOT a fleet reading -- these bytes are not on any Spark yet" as NonEmptyStr,
+    bytes: glm_5_3_flash_native_manifest.safetensors_bytes,
+    revision: glm_5_3_flash_native_manifest.revision,
+    instrument: glm_5_3_flash_native_manifest.read_by,
   },
   weight_treatment: "the checkpoint as published, no requantisation" as NonEmptyStr,
 }
@@ -1544,8 +1545,24 @@ data serving_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evide
   fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot"),
 )
 
+// ── THE REQUANTISED BUILD IS NOT A CANDIDATE, IT IS OUTSIDE THE SUBJECT ───────────────────────
+//
+// AN EARLIER DOMAIN ADMITTED BOTH ARTIFACTS AT EVERY TOPOLOGY, on the reading that the quality wall
+// would refuse the requantised rows -- and it did. But that reading mistakes the operator policy. The
+// policy is not "prefer native quality", which would make the 2.05-bpw build a candidate that loses;
+// it is DO NOT USE REQUANTISED WEIGHTS, which makes it not a candidate at all. Those differ in what
+// the model then owes: a losing candidate needs a quality assessment to lose ON, so the projector's
+// QualityUnobserved default turned four excluded rows into four standing evidence obligations for
+// measurements nobody will ever take. That is precisely the endless-tuning behaviour
+// AxisExcludedByOperatorPolicy was introduced to remove, arriving one layer down through the
+// candidate field instead of the axis roster.
+//
+// So the artifact is a FIXED PARAMETER of this subject and the domain admits exactly one. The
+// requantised artifact row survives -- it is the incumbent canary, a measurement reference, and the
+// rollback realization during cutover -- and it is reached by the witness rather than by the
+// production field.
 data glm_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
-  artifacts: [artifact_glm_53_flash_native, artifact_glm_53_flash_2bit],
+  artifacts: [artifact_glm_53_flash_native],
   topologies: eight_host_topologies,
   parameters: serving_parameters_current,
 )
@@ -1563,18 +1580,11 @@ data glm_native_tp8_x1: DeploymentCandidate = glm_candidate(name: "glm_native_tp
 data glm_native_tp4_x2: DeploymentCandidate = glm_candidate(name: "glm_native_tp4_x2", label: "GLM native, two four-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
 data glm_native_tp2_x4: DeploymentCandidate = glm_candidate(name: "glm_native_tp2_x4", label: "GLM native, four two-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
 data glm_native_tp1_x8: DeploymentCandidate = glm_candidate(name: "glm_native_tp1_x8", label: "GLM native, eight single-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
-data glm_2bit_tp8_x1: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp8_x1", label: "GLM 2.05-bpw, one eight-rank replica" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
-data glm_2bit_tp4_x2: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp4_x2", label: "GLM 2.05-bpw, two four-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
-data glm_2bit_tp2_x4: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp2_x4", label: "GLM 2.05-bpw, four two-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
-data glm_2bit_tp1_x8: DeploymentCandidate = glm_candidate(name: "glm_2bit_tp1_x8", label: "GLM 2.05-bpw, eight single-rank replicas" as NonEmptyStr, art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
 
 data glm_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_candidate_field"),
   domain: glm_domain,
-  candidates: [
-    glm_native_tp8_x1, glm_native_tp4_x2, glm_native_tp2_x4, glm_native_tp1_x8,
-    glm_2bit_tp8_x1, glm_2bit_tp4_x2, glm_2bit_tp2_x4, glm_2bit_tp1_x8,
-  ],
+  candidates: [glm_native_tp8_x1, glm_native_tp4_x2, glm_native_tp2_x4, glm_native_tp1_x8],
 )
 
 // ── WHAT CONSUMES THIS MODULE TODAY, STATED PLAINLY ───────────────────────────────────────────

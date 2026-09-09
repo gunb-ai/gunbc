@@ -2,6 +2,7 @@ module gunbc.spark.model_snapshot_acquisition
 
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address, ipv4_address_eq }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest }
 import extdeps.huggingface.hub {
   HubRepoId, HubModelRepo, hub_repo_cache_directory_name, hub_cli_program,
   hub_repo_cache_directory, hub_snapshot_directory, hub_download_argv, hub_cache_verify_argv,
@@ -315,7 +316,11 @@ fn first_or(list: List<SeedEligibilityObservation>) -> SeedEligibilityObservatio
   ), f: (acc, o) => seed_better(a: acc, b: o))
 }
 
-data model_snapshot_native_glm_bytes: Nat = 328337455672
+// THE DISK REQUIREMENT IS THE MANIFEST'S OWN FIGURE, imported rather than restated. This row
+// previously carried the literal 328337455672, which agreed with the selector's copy and with a
+// rounded 306 GiB in the serving-arm authority -- three spellings of one upstream fact, agreeing, and
+// therefore unable to catch their own first divergence.
+data model_snapshot_native_glm_bytes: Nat = glm_5_3_flash_native_manifest.safetensors_bytes
 
 data model_snapshot_fleet_seed: SeedSelection = select_snapshot_seed(required_bytes: model_snapshot_native_glm_bytes)
 

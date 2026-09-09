@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Present, Absent }
 
 // THE GLM-5.3-FLASH FAMILY, as its own extdeps authority for the reason extdeps.deepseek.deepseek_v4
 // is one: an independently versioned upstream model, governed by Z.ai, is not a property of whatever
@@ -191,4 +192,54 @@ fn glm_5_3_flash_output_budget_for_input(window: TokenCount, input_tokens: Token
   let w = token_count_value(t: window)
   let i = token_count_value(t: input_tokens)
   if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
+}
+
+// ── THE CHECKPOINT MANIFEST AT AN EXACT REVISION, WHICH IS UPSTREAM'S OWN STATEMENT ───────────
+//
+// THE SAME SIZE WAS SPELLED IN THREE PLACES BEFORE THIS ROW EXISTED: the serving selector carried
+// 328,337,455,672 bytes in an artifact footprint, the acquisition module carried the identical
+// literal as a disk requirement, and the serving-arm authority carried 306 as GiB. They agreed after
+// rounding, which is the most dangerous state for a fork -- nothing was wrong, so nothing would have
+// caught the first divergence. That is the section 3 violation, and it is mine: I added the second
+// and third spellings while repairing other findings.
+//
+// THE MANIFEST BELONGS HERE RATHER THAN IN gunbc BECAUSE IT IS NOT AN OBSERVATION OF THIS FLEET. The
+// byte sizes at a content-addressed revision are what the publishing Hub says about its own files,
+// re-readable by anyone from the cited authority. What a Spark's disk holds after a download IS a
+// fleet observation and stays in the gunbc layer, which is exactly the distinction the selector's
+// FootprintObservedOnFleet and FootprintDeclaredByUpstreamAtRevision arms draw.
+//
+// THE REVISION IS PART OF THE FACT, not a note beside it. A manifest without its revision is a claim
+// about a branch, and this repository is moving: the same API response that gave these sizes reported
+// lastModified 2026-09-07T12:13:47Z, so `main` for this repo demonstrably shifts under a reader.
+type GlmCheckpointManifest sole_constructor {
+  revision: NonEmptyStr
+  safetensors_shard_count: Nat
+  safetensors_bytes: Nat
+  repository_total_bytes: Nat
+  read_by: NonEmptyStr
+}
+
+data glm_5_3_flash_native_manifest: GlmCheckpointManifest = GlmCheckpointManifest {
+  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  safetensors_shard_count: 62,
+  safetensors_bytes: 328337455672,
+  repository_total_bytes: 328366173469,
+  read_by: "the Hub model API for zai-org/GLM-5.3-Flash at that exact revision with blobs enabled, summed over the safetensors siblings, read 2026-09-08. The response's own sha matched the revision and its lastModified was 2026-09-07T12:13:47Z" as NonEmptyStr,
+}
+
+// GiB IS DERIVED FOR PROSE AND IS NOT A SECOND AUTHORITY. The serving-arm row that carried 306 was a
+// rounded restatement of these bytes; a consumer wanting a human-sized number computes it here rather
+// than authoring one, so the rounding can never drift from the figure it rounds.
+fn glm_manifest_gibibytes(m: GlmCheckpointManifest) -> Nat {
+  m.safetensors_bytes / 1073741824
+}
+
+// THE WEIGHTS CANNOT SIT ON ONE GB10 AND THAT NEEDS NO POLICY TO PROVE. Half of 328,337,455,672 is
+// 164,168,727,836, which exceeds a GB10's ENTIRE 130,663,231,488-byte unified pool -- so one and two
+// ranks are impossible at a hundred percent utilisation, before any memory-fraction decision is
+// consulted. Stating the bound at full utilisation keeps the impossibility independent of a policy
+// number that an operator may change.
+fn glm_manifest_per_rank_bytes_at_full_utilisation(m: GlmCheckpointManifest, ranks: Nat) -> Nat? {
+  if ranks == 0 { none } else { Present { value: (m.safetensors_bytes + (ranks - 1)) / ranks } }
 }
