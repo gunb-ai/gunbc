@@ -28,7 +28,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Arrow, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Conj, Edge, Named, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -70,38 +70,48 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
   }
 }
 
-// WHERE PRODUCED DECLARATIONS COME FROM. A produced declaration inside a resolved tree is the
-// decl-shaped node itself: a Conj whose first child is a Named edge into an Arrow — exactly the
-// shape emit_produced_decl_inner_arrow and produced_decl_subject_from_decl consume, so collection
-// never synthesizes a wrapper node. The fold is total and pure: it reports every decl-shaped node
-// and never recurses into one (a declaration owns its subtree). How many declarations a
-// composition expects, and what a zero or surplus population means, is the caller's admission
-// policy — never a silent filter here.
-// The children match lives behind a declared FreeMonoid<Edge> parameter because the v1 seed
-// stamps pattern variables from a declared parameter type, not from a field-access scrutinee:
-// matching node.children directly leaves the Cons head as an unresolved T (no field 'label' on
-// type 'T'), and routing the same lookup through list_at_optional fails its generic instantiation
-// when the callee is typechecked lazily from inside the recursive collector cluster.
-fn produced_decl_children_have_decl_head(children: FreeMonoid<Edge>) -> Bool {
-  match children {
-    Empty => false
-    Cons { head: first, tail: _ } =>
-      match first.label {
-        Named { name: _ } =>
-          match first.target.kind {
-            TypeNode { connective: Arrow } => true
-            _ => false
-          }
-        Positional => false
+// WHERE PRODUCED DECLARATIONS COME FROM. A declaration in a resolved module is the NAMED EDGE
+// INTO AN ARROW, never a node: the module shell is a Conj carrying one such edge per declaration,
+// and no separate per-declaration node exists in the tree to collect. The previous walk looked for
+// a decl-shaped NODE — a Conj whose FIRST child is a Named edge into an Arrow — and that predicate
+// cannot tell an N-declaration shell from a 1-declaration one, because both have the same first
+// child. So the shell itself matched, collection stopped there, and emission (which reads
+// children[0]) published declaration 1 and SILENTLY DROPPED declarations 2..N. A one-declaration
+// module was correct only by coincidence, shell and declaration being the same node at N=1.
+// Measured on the production ingest path 2026-09-09: a two-declaration module emitted exactly its
+// first declaration and reported Accepted.
+// The walk is therefore edge-driven and total: descend an edge that is not a declaration, record
+// one declaration per edge that is, and never descend INTO a declaration (an arrow body's inner
+// named arrows are not module declarations). Order is source order. The single-edge Conj this
+// projects per declaration is the declaration's canonical node form — the same shape
+// v2.compiler.ingested_fixture_arrows ingested_add_decl_node builds — so emit_produced_decl and
+// produced_decl_subject_from_decl keep consuming a Node.
+// STANDING §3 FORK, NOT CLOSED HERE: v2.workflow.realization_attempt collect_arrows answers this
+// same question for itself, and answered it CORRECTLY per-edge while this authority did not, which
+// is why the census lane never saw the drop. Consolidating it onto this collector is a separate
+// change against a separate consumer (it walks a RESOLVED tree and searches for the first arrow
+// BELOW an edge rather than requiring the edge to target one), and merging the two without
+// measuring that difference would trade a silent drop for a silent empty population.
+// How many declarations a composition expects, and what an empty population means, is the
+// caller's admission policy — never a silent filter here.
+// The label/kind match lives behind a declared Edge parameter because the v1 seed stamps pattern
+// variables from a declared parameter type, not from a field-access scrutinee.
+fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: _ } =>
+      match edge.target.kind {
+        TypeNode { connective: Arrow } => true
+        _ => false
       }
+    Positional => false
   }
 }
 
-fn produced_decl_node_is_decl(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } => produced_decl_children_have_decl_head(children: node.children)
-    _ => false
-  }
+fn produced_decl_node_for_edge(edge: Edge) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [edge]
+  )
 }
 
 fn produced_decl_conjs_in_children(
@@ -113,21 +123,17 @@ fn produced_decl_conjs_in_children(
     Cons { head: e, tail: rest } =>
       produced_decl_conjs_in_children(
         children: rest,
-        acc: produced_decl_conjs_in_tree_into(node: e.target, acc: acc)
+        acc: if produced_decl_edge_is_decl(edge: e) {
+          list_snoc_item(xs: acc, item: produced_decl_node_for_edge(edge: e))
+        } else {
+          produced_decl_conjs_in_children(children: e.target.children, acc: acc)
+        }
       )
   }
 }
 
-fn produced_decl_conjs_in_tree_into(node: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
-  if produced_decl_node_is_decl(node: node) {
-    list_snoc_item(xs: acc, item: node)
-  } else {
-    produced_decl_conjs_in_children(children: node.children, acc: acc)
-  }
-}
-
 fn produced_decl_conjs_in_tree(root: Node) -> FreeMonoid<Node> {
-  produced_decl_conjs_in_tree_into(node: root, acc: Empty)
+  produced_decl_conjs_in_children(children: root.children, acc: Empty)
 }
 
 fn emit_produced_decl_with_target(
