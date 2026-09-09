@@ -44,8 +44,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // realization.
 //
 // THE SPECIMEN IS THE DOOR'S, DELIBERATELY, AND THE PER-CLAIM BUDGET IS WHY. Emission needs a
-// resolved module; assembling one costs 878ms measured on this host, which is three times the
-// floor's 500ms per-claim ceiling spent recomputing a pure function of one file's content.
+// resolved module, and assembling one per claim costs multiples of the floor's per-claim ceiling
+// spent recomputing a pure function of one file's content -- the split measured by claim_batch's
+// [witness] receipt over this entry with an ingest-only / assemble-only probe pair, and argued
+// with its figures at the enrolment row rather than copied here.
 // direct_rust_door_specimen_resolved is the already-warm-enrolled nullary producer of exactly
 // that value (v2.workflow.floor_pure_producer_share), forced during strict preparation outside
 // every per-claim budget, so these claims pay infer and emit only. Adding a second producer for
@@ -79,8 +81,12 @@ data stage0_boundary_base_target_source: String = "fn add(x: i32, y: i32) -> i32
 // THE TWO EMISSIONS ARE NULLARY PRODUCERS, one per target, and both are warm-enrolled in
 // v2.workflow.floor_pure_producer_share. Three claims read two emissions -- the base target's is
 // read twice, by the visibility control and the carrier control -- and an emission is infer plus
-// emit over the shared specimen, measured at ~713-805ms per claim against the floor's 500ms
-// per-claim ceiling. Sharing moves each emission to one preparation-time evaluation and leaves
+// emit over the shared specimen, which unshared costs each claim more than the floor's per-claim
+// ceiling. The measurement and the ceiling arithmetic are argued once, at the enrolment row in
+// v2.workflow.floor_pure_producer_share, and are deliberately not restated here: a figure copied
+// beside its argument is unreachable from the run that owns it and rots without either end being
+// touched (DESIGN section 6). Sharing moves each emission to one preparation-time evaluation and
+// leaves
 // every claim a string comparison, which is what the roster exists to do (its produced_add_module
 // row shares exactly this shape of value: a small, closure-free emitted source).
 fn stage0_boundary_profile_emitted_source() -> String {
@@ -108,7 +114,9 @@ test fn stage0_base_target_stays_private_and_i32_holds() -> Bool {
 // source_root_ingest_from_source_refs, which verify content identity against the ref's hash
 // before minting a witness; the door's own specimen carries its module source inline
 // (direct_rust_door_dag_module_source), so no enrolled claim exercised that route over a
-// committed file. It is measured at 0ms, so it costs the floor nothing to keep.
+// committed file. Its cost is what claim_batch's [witness] receipt over this entry reports for
+// the two read claims, and it is the cheapest pair in the file by a wide margin -- which is why
+// the read stays claimed here rather than being folded into the shared producers.
 //
 // The assertion is a CONTAINMENT rather than a whole-text golden on purpose: pinning every byte
 // of a committed file would make an edit to its explanatory prose a test failure, which is a
