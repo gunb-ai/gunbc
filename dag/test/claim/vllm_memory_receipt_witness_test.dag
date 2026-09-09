@@ -48,8 +48,7 @@ fn w_launch(invocation: String) -> VllmServingLaunch {
 // SO THE SUBJECT IS A REAL ONE: the TP=1 GLM candidate and the current parameters row that already
 // exist in the selection authority. Nothing is minted here, which also means the digest this witness
 // compares against is the digest a real launch would carry.
-data w_profile: ServingExecutionProfile =
-  execution_profile_of(c: glm_native_tp1_x8, p: serving_parameters_current)
+data w_profile: ServingExecutionProfile = execution_profile_of(c: glm_native_tp1_x8, p: serving_parameters_current)
 
 fn w_admit(observed: String, claimed: String, text: String) -> VllmMemoryReceiptAdmission {
   admit_memory_receipt(
