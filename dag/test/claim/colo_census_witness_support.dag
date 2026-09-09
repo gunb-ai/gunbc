@@ -1,0 +1,63 @@
+module test.claim.colo_census_witness_support
+
+import std.types { Bool, Int }
+import std.measure { watt, watt_count }
+import v2.std.optional { Present, Absent }
+import extdeps.colo.types {
+  CabinetDensityClaim, cabinet_density_air_established, cabinet_density_air_ceiling,
+  CabinetPowerCeiling, CeilingAt, ceiling_refuses,
+  RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
+}
+
+// THE FOUR HELPERS EVERY COLO CENSUS WITNESS USES, IN ONE PLACE. Two witness modules had grown
+// verbatim copies of all four - same signatures, same bodies, same sentinel convention - which is
+// section 2's duplicated work and section 3's one fact in two places. The drift risk was concrete
+// rather than theoretical: review 62791 had already re-shaped ceiling_refuses_at once, and with two
+// copies the next such fix repairs one wall and silently leaves the other standing on the old
+// semantics.
+//
+// They live in a support module rather than on extdeps.colo.types because they are not carrier
+// operations: they flatten Optionals to a sentinel Int so a witness can compare, which is a
+// convenience for assertions and would be a defect in the carrier. The carrier deliberately returns
+// Watt? and CabinetPowerCeiling? so that absence is unconstructible as a number; this module is
+// where that shape is traded for comparability, once, under one name.
+
+// An established reading in watts, or the sentinel for no reading at all. The sentinel is negative
+// because no cabinet draws negative power, so it can never collide with a real reading - and it is
+// the only place in the census where absence wears a number.
+fn established_watts(d: CabinetDensityClaim) -> Int {
+  match cabinet_density_air_established(d: d) {
+    Present { value } => watt_count(w: value),
+    Absent => 0 - 1,
+  }
+}
+
+// A CEILING IS ASKED WHETHER IT REFUSES A REQUIREMENT; IT IS NEVER ASKED WHAT THE CABINET SUPPLIES.
+// These two are the whole ceiling surface the witnesses get, and neither yields a Watt - which is
+// review 62791's fix: a bound handed to something wanting a reading is ill-typed rather than
+// defended by a comment. FALSE MEANS UNDETERMINED, NEVER ADMITTED - a requirement under the ceiling
+// has not been shown to fit, because the ceiling is an inequality and not a measurement.
+fn ceiling_refuses_at(d: CabinetDensityClaim, required: Int) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => ceiling_refuses(c: value, required: watt(count: required)),
+    Absent => false,
+  }
+}
+
+fn has_ceiling(d: CabinetDensityClaim) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => true,
+    Absent => false,
+  }
+}
+
+// A READ DENSITY AND A SELLABLE GRAIN ARE INDEPENDENT FACTS. A cabinet marketed at 30 kW that the
+// operator will only sell as part of a suite is not a candidate for one cabinet, and a 3 kW cabinet
+// sold singly is. Unread is false for the same reason not-refused is: unknown is not a yes.
+fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
+  match g {
+    SingleCabinetOffered { wording, citation } => true,
+    CageOrSuiteMinimum { wording, citation } => false,
+    RetailGrainUnread { obligation } => false,
+  }
+}

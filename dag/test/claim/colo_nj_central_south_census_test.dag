@@ -1,13 +1,10 @@
 module test.claim.colo_nj_central_south_census
 
 import std.types { Bool, Int }
-import std.measure { Watt, watt, watt_count }
-import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.colo.types {
-  CabinetDensityClaim, cabinet_density_air_established, cabinet_density_air_ceiling,
-  CabinetPowerCeiling, CeilingAt, ceiling_refuses,
-  RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
+import extdeps.colo.types { CabinetDensityClaim, RetailGrainStanding }
+import test.claim.colo_census_witness_support {
+  established_watts, ceiling_refuses_at, has_ceiling, grain_admits_single_cabinet,
 }
 import extdeps.colo.njfx { njfx_wall_density, njfx_wall_retail_grain }
 import extdeps.colo.digital_fortress {
@@ -31,40 +28,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // goes red on a different authoring mistake: a fabricated density, a swapped arm, or a grain read
 // off a sibling building.
 
-fn established_watts(d: CabinetDensityClaim) -> Int {
-  match cabinet_density_air_established(d: d) {
-    Present { value } => watt_count(w: value),
-    Absent => 0 - 1,
-  }
-}
-
 // A CEILING ANSWERS ONE QUESTION AND THIS IS IT. `bound_watts` used to sit here returning the
 // ceiling as a plain Int on the same axis as an established reading, which is the confusion the
 // carrier's own rewrite removed at the source (review 62791): a ceiling is what a cabinet certainly
 // cannot exceed, never what it can deliver, so the only sound query is whether a requirement is
 // refused by it. Asking "does the published evidence refuse this many watts" is a question that
 // cannot accidentally admit a candidate.
-fn ceiling_refuses_at(d: CabinetDensityClaim, required: Int) -> Bool {
-  match cabinet_density_air_ceiling(d: d) {
-    Present { value } => ceiling_refuses(c: value, required: watt(count: required)),
-    Absent => false,
-  }
-}
-
-fn has_ceiling(d: CabinetDensityClaim) -> Bool {
-  match cabinet_density_air_ceiling(d: d) {
-    Present { value } => true,
-    Absent => false,
-  }
-}
-
-fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
-  match g {
-    SingleCabinetOffered { wording, citation } => true,
-    CageOrSuiteMinimum { wording, citation } => false,
-    RetailGrainUnread { obligation } => false,
-  }
-}
 
 // THE THREE FIGURES THIS LANE COULD ACTUALLY READ, EACH A DISTINCT CONSTANT. They are asserted
 // separately rather than summed or counted, so a row that silently acquired a neighbour's figure

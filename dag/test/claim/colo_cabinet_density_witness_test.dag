@@ -4,6 +4,9 @@ import std.types { Bool, Int }
 import std.measure { Watt, watt, watt_count, volt_ampere }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import test.claim.colo_census_witness_support {
+  established_watts, ceiling_refuses_at, has_ceiling, grain_admits_single_cabinet,
+}
 import extdeps.colo.types {
   CabinetDensityClaim, DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
   CabinetPowerFigure, PublishedRealPower, PublishedApparentPower,
@@ -30,30 +33,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // it is modelled, and section 5 that a run nobody can repeat is not a consumer. These are those
 // controls, enrolled.
 
-fn established_watts(d: CabinetDensityClaim) -> Int {
-  match cabinet_density_air_established(d: d) {
-    Present { value } => watt_count(w: value),
-    Absent => 0 - 1,
-  }
-}
-
 // A CEILING IS ASKED WHETHER IT REFUSES A REQUIREMENT; IT IS NEVER ASKED WHAT THE CABINET SUPPLIES.
 // These two helpers are the whole surface the witnesses use, and neither yields a Watt - which is
 // the point of review 62791's fix: a bound handed to something wanting a reading is now ill-typed
 // rather than defended by a comment.
-fn ceiling_refuses_at(d: CabinetDensityClaim, required: Int) -> Bool {
-  match cabinet_density_air_ceiling(d: d) {
-    Present { value } => ceiling_refuses(c: value, required: watt(count: required)),
-    Absent => false,
-  }
-}
-
-fn has_ceiling(d: CabinetDensityClaim) -> Bool {
-  match cabinet_density_air_ceiling(d: d) {
-    Present { value } => true,
-    Absent => false,
-  }
-}
 
 // A FIXTURE REPRODUCING THE READING THAT FOUND THE DEFECT. Telehouse Chelsea publishes "standard
 // power to rack at 3.5kVA with scalable options to 5kVA", and an earlier carrier had no arm for
@@ -106,13 +89,6 @@ test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
 // A READ DENSITY AND A SELLABLE GRAIN ARE INDEPENDENT FACTS. A cabinet marketed at 30 kW that the
 // operator will only sell as part of a suite is not a candidate for one cabinet, and a 3 kW
 // cabinet sold singly is. Fusing them would have made one of the two unaskable.
-fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
-  match g {
-    SingleCabinetOffered { wording, citation } => true,
-    CageOrSuiteMinimum { wording, citation } => false,
-    RetailGrainUnread { obligation } => false,
-  }
-}
 
 test fn w_density_and_grain_are_separate_facts() -> Bool {
   grain_admits_single_cabinet(g: databank_lga4_retail_grain)
