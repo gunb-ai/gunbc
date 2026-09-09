@@ -1,7 +1,7 @@
 module gunbc.superseded_run_starvation_census
 
-import std.types { Bool, Int, String, Timestamp }
-import std.measure { seconds_per_day }
+import std.types { Bool, Int, String, Timestamp, NonEmptyStr }
+import std.measure { Second, second, seconds_per_day }
 import std.algebra { trim }
 import extdeps.github.github { default_per_page, max_per_page }
 import extdeps.github.workflow_runs {
@@ -49,6 +49,7 @@ import std.page_fold {
   PageFoldOutcome,
   PagesClosed,
   PagesRefused,
+  PageBudgetExhausted,
 }
 
 type SupersededRunPair {
@@ -242,16 +243,14 @@ fn collect_runs_in_window(
     match page_fold_pump(state: observed, fetch: fetch) {
       PagesClosed { items: runs } =>
         CollectionComplete { runs: runs }
-      PagesRefused { refusal: r } =>
-        if page_fold_refusal_key(r) == "page_budget_exhausted" {
-          PageLimitExceeded {
-            collected: first.result.workflow_runs,
-            reached_page: max_run_pages + 2,
-            max_pages: max_run_pages,
-          }
-        } else {
-          FoldProtocolRefused { cause: page_fold_refusal_key(r) }
+      PagesRefused { refusal: PageBudgetExhausted { subject: _, max_pages: _, pages_read: _, stopped_at: _ } } =>
+        PageLimitExceeded {
+          collected: first.result.workflow_runs,
+          reached_page: max_run_pages + 2,
+          max_pages: max_run_pages,
         }
+      PagesRefused { refusal: other } =>
+        FoldProtocolRefused { cause: page_fold_refusal_key(other) }
     }
   }
 }
@@ -371,7 +370,7 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
 }
 
 type DurationResult
-  = DurationComputed { duration_seconds: Int }
+  = DurationComputed { duration_seconds: Second }
   | DurationInsufficientData
   | DurationInconsistentTimestamps
 
@@ -387,7 +386,7 @@ fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
           if end_secs < start_secs {
             DurationInconsistentTimestamps
           } else {
-            DurationComputed { duration_seconds: end_secs - start_secs }
+            DurationComputed { duration_seconds: second(end_secs - start_secs) }
           }
       }
   }
