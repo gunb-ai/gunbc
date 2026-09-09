@@ -332,12 +332,15 @@ test fn w_an_unread_grain_never_admits_a_single_cabinet() -> Bool {
   all(corridor_unread_grain_rows, g => !grain_admits_single_cabinet(g: g))
 }
 
-// THE ORPHAN DENSITY, CONSUMED WHERE IT LIVES RATHER THAN LEFT DANGLING. Colocation America's one
-// New Jersey site is in Clifton, outside this corridor, so its density was removed from the region
-// roster one commit ago - correctly, since a density whose facility a region does not model joins
-// to nothing. That removal left the row read by nobody, which review 62843 caught. It is read here,
-// as what it is: an operator whose pages were successfully read and publish no per-cabinet figure,
-// which must establish nothing and bound nothing.
+// A PAGE THAT WAS READ PROPERLY AND PUBLISHES NOTHING, WHICH IS A DIFFERENT FACT FROM EVERY
+// NEIGHBOUR IT WAS CONFUSED WITH. This row has now been wrong twice in the same direction and both
+// errors were the reader's: first it recorded the operator as refusing a fetch, when the refusal was
+// a missing user-agent, and then the facility it describes was DELETED on a "zero occurrences of
+// Secaucus" that came from a tag-stripper which destroyed the page - the raw bytes carry the
+// operator's own heading, NEW JERSEY DC 2, 275 HARTZ WAY. Read correctly, the page publishes no
+// per-cabinet figure and the word "cabinet" does not occur in it. So the claim must establish
+// nothing and bound nothing, and this is the control that keeps a genuinely-read silence from ever
+// answering like a reading.
 test fn w_a_read_page_that_publishes_no_density_establishes_nothing() -> Bool {
   established_watts(d: colocation_america_cabinet_density) == 0 - 1
     && !has_ceiling(d: colocation_america_cabinet_density)

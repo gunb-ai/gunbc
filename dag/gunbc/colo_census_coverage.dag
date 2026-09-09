@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, Int, List, Bool }
 import extdeps.colo.types { ColoFacilityRow, CabinetDensityClaim, cabinet_density_air_ceiling }
 import extdeps.colo.equinix { equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7, equinix_cabinet_density }
 import extdeps.colo.coresite { coresite_ny2, coresite_ny3, coresite_secaucus_density }
+import extdeps.colo.colocation_america { colocation_america_njdc2_secaucus, colocation_america_cabinet_density }
 import extdeps.colo.centersquare { centersquare_weehawken, centersquare_ewr5_secaucus, centersquare_cabinet_density }
 import extdeps.colo.digital_realty { digital_realty_ewr10, digital_realty_cabinet_density }
 import extdeps.colo.three_sixty_five { three_sixty_five_carlstadt, three_sixty_five_weehawken, three_sixty_five_cabinet_density }
@@ -178,13 +179,14 @@ fn coverage_density_read_count(c: RegionCoverage) -> Int? {
 // colocation_america_njdc1, databank_lga4_orangeburg - are deliberately absent: this row is a
 // region, not an operator inventory.
 //
-// AND THE SAME RULE NOW BINDS THE DENSITY ROSTER, WHICH IT DID NOT. colocation_america's density
-// claim sat in the densities list while that operator had NO facility in the list beside it - and
-// deliberately so, since its one New Jersey site is in Clifton, outside this corridor. A density is
-// a claim ABOUT a facility, so a density whose facility this region does not model is an orphan: it
-// cannot be joined to anything here, and it made the two lists disagree about which operators the
-// region contains. Removed. The row itself stands in extdeps.colo.colocation_america, where the
-// out-of-corridor site it describes lives, exactly as colocation_america_njdc1 does.
+// THE DENSITY ROSTER OBEYS THE SAME RULE, AND THE ROW THAT TAUGHT IT IS BACK. An earlier revision
+// removed colocation_america's density because that operator had no facility beside it - correct
+// reasoning on a false premise, since the facility had itself been deleted on a measurement taken
+// through a stripper that destroyed the page it read. The operator names NJDC2 at 275 Hartz Way,
+// Secaucus in a heading of its own, so the facility is restored and its density with it. The rule
+// the episode established still stands and is worth keeping: a density whose facility this region
+// does not model is an orphan, because a density is a claim ABOUT a facility and joins to nothing
+// without one. It is now enforced by the two lists agreeing on operators rather than by this note.
 data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
   region_label: "NJ Hudson-Bergen-Essex corridor",
   region_code: "NJ",
@@ -193,6 +195,7 @@ data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
       equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7,
       coresite_ny2, coresite_ny3,
       centersquare_weehawken, centersquare_ewr5_secaucus,
+      colocation_america_njdc2_secaucus,
       digital_realty_ewr10,
       three_sixty_five_carlstadt, three_sixty_five_weehawken,
       dataverge_jersey_city,
@@ -219,6 +222,7 @@ data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
       interserver_cabinet_density,
       halsey_165_cabinet_density,
       databank_ewr1_density,
+      colocation_america_cabinet_density,
       lumen_cabinet_density,
     ],
   },

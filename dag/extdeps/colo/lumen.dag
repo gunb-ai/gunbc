@@ -1,6 +1,5 @@
 module extdeps.colo.lumen
 
-import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed,
