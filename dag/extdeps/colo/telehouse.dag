@@ -47,7 +47,7 @@ data telehouse_chelsea: ColoFacilityRow = ColoFacilityRow {
 data telehouse_chelsea_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedApparentPower { power: volt_ampere(count: 5000) },
   claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
-  citation: "telehouse.com New York Chelsea page, read 2026-09-08. The figure is the stated 5 kVA scalable option, not the 3.5 kVA standard. Apparent power is not converted to watts: no power factor is published.",
+  citation: "telehouse.com New York Chelsea page; raw fetch 2026-09-09 HTTP 200, 159840 bytes, claim_wording occurs verbatim. The figure is the stated 5 kVA scalable option, not the 3.5 kVA standard. Apparent power is not converted to watts: no power factor is published.",
 }
 
 data telehouse_chelsea_retail_grain: RetailGrainStanding = SingleCabinetOffered {
