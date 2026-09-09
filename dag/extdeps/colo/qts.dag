@@ -53,7 +53,7 @@ data qts_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // megawatts are a fact about a building. Dividing 65 MW by any cabinet count would fabricate a
 // density, and the row below refuses instead.
 data qts_piscataway_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's Piscataway 1 page (q.com/data-centers/piscataway/, read 2026-09-08) states 65 MW+ critical power capacity and no per-cabinet or per-rack kilowatt figure anywhere. Read a spec sheet or ask the quote for the marketed cabinet maximum. Do not derive one from the 65 MW.",
+  obligation: "The operator's Piscataway 1 page (q.com/data-centers/piscataway/, read 2026-09-08) states 65 MW+ critical power capacity and no per-cabinet or per-rack kilowatt figure anywhere. Counted in RAW BYTES 2026-09-09 rather than through a tag-stripper, because a stripper was found elsewhere in this census to swallow 21 of 22 occurrences of a token and turn a miss into a finding: 308,417 bytes, identical under no user-agent and under a full browser one; positive controls chosen to be SUBJECT tokens rather than site tokens - Piscataway=19 and '65 MW'=1, the facility's own municipality and its own headline capacity, beside the site token QTS=57 which on its own would prove only that the fetch reached q.com - so the instrument reached this FACILITY's surface and not an index of facilities and the megawatt figure is present exactly where the kilowatt one is not; kW=0, kVA=0, kilowatt=0, 'per cabinet'=0, 'per rack'=0. Read a spec sheet or ask the quote for the marketed cabinet maximum. Do not derive one from the 65 MW.",
 }
 
 data qts_piscataway_retail_grain: RetailGrainStanding = RetailGrainUnread {

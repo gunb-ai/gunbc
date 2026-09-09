@@ -71,7 +71,7 @@ data digital_realty_ewr11: ColoFacilityRow = ColoFacilityRow {
 }
 
 data digital_realty_ewr11_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The EWR11 page read 2026-09-08 states no per-cabinet or per-rack kilowatt figure. Read the building's spec sheet or ask the quote for the marketed cabinet maximum. Do not read the campus square footage as a density.",
+  obligation: "The EWR11 page read 2026-09-08 states no per-cabinet or per-rack kilowatt figure. Counted in RAW BYTES 2026-09-09 rather than through a tag-stripper: 210,668 bytes, identical under no user-agent and under a full browser one, positive controls chosen to be SUBJECT tokens - EWR11=38, the building's own code, with Piscataway=10 and Corporate=16 from its street. The token kW occurs EXACTLY ONCE and it is not a density and not even this facility's: it is field_sum_utility_power_capacity, value '392.8k+ kW', in embedded JSON carrying the operator's GLOBAL portfolio totals beside a global 3782.9k square feet - the identical value appears on the campus sibling's page. A summarizing read of this page reported no kW at all, which was the right conclusion about density reached by an instrument that had not seen the token; the count is what distinguishes the two. kVA=0, kilowatt=0, 'per cabinet'=0, 'per rack'=0. Read the building's spec sheet or ask the quote for the marketed cabinet maximum. Do not read the campus square footage as a density.",
 }
 
 data digital_realty_ewr11_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -91,7 +91,7 @@ data digital_realty_ewr12: ColoFacilityRow = ColoFacilityRow {
 }
 
 data digital_realty_ewr12_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The EWR12 page read 2026-09-08 states no per-cabinet or per-rack kilowatt figure, only building square footage. Read the spec sheet or ask the quote. The 323,000 square feet is a fact about the building and must not be read as a density.",
+  obligation: "The EWR12 page read 2026-09-08 states no per-cabinet or per-rack kilowatt figure, only building square footage. Counted in RAW BYTES 2026-09-09 rather than through a tag-stripper: 211,730 bytes, identical under no user-agent and under a full browser one, positive controls chosen to be SUBJECT tokens - EWR12=37, the building's own code, with Piscataway=18 and Randolphville=6 from its street. The token kW occurs EXACTLY ONCE and it is not a density and not even this facility's: it is field_sum_utility_power_capacity, value '392.8k+ kW', in embedded JSON carrying the operator's GLOBAL portfolio totals beside a global 3782.9k square feet - the identical value appears on the campus sibling's page. A summarizing read of this page reported no kW at all, which was the right conclusion about density reached by an instrument that had not seen the token; the count is what distinguishes the two. kVA=0, kilowatt=0, 'per cabinet'=0, 'per rack'=0. Read the spec sheet or ask the quote. The 323,000 square feet is a fact about the building and must not be read as a density.",
 }
 
 // THE ONLY DIGITAL REALTY BUILDING IN THIS CENSUS THAT STATES ITS RETAIL GRAIN, and it flatly
