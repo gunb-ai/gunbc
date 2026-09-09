@@ -350,6 +350,18 @@ type CauseOwnership {
   flip_trigger: String
 }
 
+// ROW GROUPS, BY GRAIN. The first four rows are this ledger's own head-grain observations. The
+// tokenize_lex_e1_unrecognized_char HEAD row is the native route's head-grain observation
+// (gunbc.witness_v2_native_route joins this table at head grain): the lexer-coverage cause
+// surfaces at HEAD on the native route when it is the first diagnostic, even where a later fatal
+// follows — owned here so the native head join has no unowned advisory; the fatal-grain row of
+// the same cause is the position that refuses. The six FATAL-grain rows were measured 2026-09-09
+// by the gunbc.witness_v2_native_route census as the LAST diagnostic — the cause that actually
+// refused — on real v2.test.* modules through the emitted native binary. rejected_with_pending
+// prepends the non-fatal overlap residue, so those six never surface at the head grain the door
+// ledger's own rows count; their ownership lives here at the grain they are observed at, and the
+// native-route census classifies against exactly those rows.
+
 data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^fact_density_hollow_alias_locus,
@@ -375,21 +387,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     lane: MigrationOwned,
     flip_trigger: "no per-cause trigger — dissolves by construction at phase-3 import-grammar deletion / grammar-surgery (nimble-boar-198)"
   },
-  // The native route's head-grain observations (gunbc.witness_v2_native_route joins this table at
-  // head grain): the lexer-coverage cause surfaces at HEAD on the native route when it is the
-  // first diagnostic, even where a later fatal follows. Owned here so the native head join has no
-  // unowned advisory; the fatal-grain row below is the same cause at the position that refuses.
   CauseOwnership {
     cause: ^tokenize_lex_e1_unrecognized_char,
     grain: HeadGrain,
     lane: MigrationOwned,
     flip_trigger: "no per-cause trigger — lexer coverage is the same grammar-surgery class (nimble-boar-198). Measured 2026-09-09 at HEAD grain by the gunbc.witness_v2_native_route census (6 modules, the annotation-channel and comment-wall syntax among them)"
   },
-  // FATAL-GRAIN ROWS: measured 2026-09-09 by the gunbc.witness_v2_native_route census as the LAST
-  // diagnostic — the cause that actually refused — on real v2.test.* modules through the emitted
-  // native binary. rejected_with_pending prepends the non-fatal overlap residue, so these never
-  // surface at the head grain the door ledger's own rows count; their ownership lives here at the
-  // grain they are observed at, and the native-route census classifies against exactly these rows.
   CauseOwnership {
     cause: ^parse_g0_tokens_remain,
     grain: FatalGrain,
