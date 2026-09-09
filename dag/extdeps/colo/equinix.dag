@@ -8,6 +8,7 @@ import extdeps.colo.types {
   RetailGrainStanding, RetailGrainUnread,
   RetailGrainStanding, SingleCabinetOffered,
 }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -130,4 +131,56 @@ data equinix_ny13_density: CabinetDensityClaim = DensityUnread {
 
 data equinix_ny13_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "The NY13 page names colocation and interconnection but does not state whether a single cabinet is a sellable unit at this IBX. The module's existing rate note asserts the operator sells retail cabinets by quote across the metro; that is an operator-level belief and this row does not convert it into a NY13 reading.",
+// THREE CORRIDOR IBXs THE 2026-08-18 PASS MISSED, all three read 2026-09-08 from the operator's
+// own PeeringDB facility entries rather than from equinix.com, because two fetches of the operator's
+// New York colocation pages from two different paths were refused with HTTP 403 on 2026-09-08. A
+// PeeringDB facility row is maintained by the operator itself, which is why it carries an address
+// here; it carries no density and no minimum, which is why the two rows below are unread.
+data equinix_ny1: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY1",
+  address: AddressListed {
+    street: "165 Halsey St, Floor 8, Newark, NJ 07102",
+    citation: "PeeringDB facility Equinix NY1 - New York, Newark, read 2026-09-08",
+  },
+  municipality: "Newark",
+  region_code: "NJ",
+  facility_note: "An Equinix IBX inside the 165 Halsey carrier hotel, on the eighth floor. The census already carries this building three other ways - the building operator (extdeps.colo.halsey_165), a Hivelocity suite, and DataBank EWR1 on floor 5 - so 165 Halsey now stands as the corridor's clearest instance of one building with four separate upstream authorities selling inside it.",
+}
+
+data equinix_ny3: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY3",
+  address: AddressListed {
+    street: "600 Jefferson Avenue, Secaucus, NJ 07094",
+    citation: "PeeringDB facility Equinix NY3 - New York, Secaucus, read 2026-09-08",
+  },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "A fifth Secaucus IBX, separate from the four-building 800 Secaucus Road campus that equinix_secaucus_campus enumerates - a different street, and a different PeeringDB facility. The 2026-08-18 pass carried the campus and missed this one, which is the failure shape a registry sweep catches and a campus page does not.",
+}
+
+data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY7",
+  address: AddressListed {
+    street: "5851 Westside Ave, North Bergen, NJ 07047",
+    citation: "PeeringDB facility Equinix NY7 - New York, North Bergen, read 2026-09-08",
+  },
+  municipality: "North Bergen",
+  region_code: "NJ",
+  facility_note: "The operator's North Bergen site, in Hudson County between the Secaucus cluster and the Weehawken waterfront. No operator-page reading exists for it; everything beyond name and address is unread.",
+}
+
+// THE REFUSAL IS THE READING. Two fetches on 2026-09-08 - the New York colocation index and the
+// NY4 facility page beneath it - were both refused HTTP 403 by the operator's edge. That is why
+// this census carries no Equinix density figure, and it is recorded here rather than left as an
+// absence, so nobody later reads the silence as "Equinix publishes no density" or, worse, fills it
+// from a directory. It is one claim per operator because the refusal was at the operator's edge.
+data equinix_cabinet_density: CabinetDensityClaim = DensityUnread {
+  obligation: "equinix.com refused two direct fetches with HTTP 403 on 2026-09-08 (the New York colocation index and the NY4 facility page). No per-cabinet kW figure has been read from any Equinix surface for any corridor IBX. Resolve by a route that the operator's edge admits, or by asking the quote for the per-cabinet air-cooled maximum at the named IBX; do not import a figure from a directory or from another operator's campus.",
+}
+
+data equinix_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "Same 403 as the density obligation: no minimum-footprint wording has been read from the operator's own surface. Whether a single cabinet is contractable, and at which of the six corridor IBXs, is a quote question.",
 }

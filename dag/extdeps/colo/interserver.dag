@@ -10,6 +10,7 @@ import extdeps.colo.types {
   RetailPlanRow, PowerAllocation, AllocatedWatts, FeedAmps,
   TransitAllocation, UnmeteredPort, Ipv4Allocation, Ipv4Usable,
   SetupCharge, SetupWaived, RetailRateStanding, RatesPublished,
+  CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -96,4 +97,34 @@ data interserver_full_cabinet_withdrawal_note: NonEmptyStr = "The tracked full-c
 
 data interserver_retail_rates: RetailRateStanding = RatesPublished {
   plans_note: "Quarter and half shared-rack tiers published with prices, power allocations, transit and IP counts; full cabinet withdrawn from publication 2026-05-17 and presumed quote-only.",
+}
+
+// A SECOND SECAUCUS FACILITY FROM THIS OPERATOR, from its own registry entry rather than its site,
+// which still refuses direct fetches. TEB4 is a separate building from TEB2 - a different street
+// number on the same parkway - and the published plan rows above are for TEB2 only, so nothing
+// about TEB4's power, transit or price may be read off them.
+data interserver_teb4_secaucus: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "InterServer",
+  facility_label: "InterServer TEB4 Secaucus",
+  address: AddressListed {
+    street: "200 Meadowlands Pkwy, Secaucus, NJ 07094",
+    citation: "PeeringDB facility InterServer Teb4, read 2026-09-08",
+  },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "Registered by the operator as a distinct facility from TEB2 at 110B Meadowlands Parkway. 200 Meadowlands Parkway is the same street number PeeringDB gives for H5's Secaucus site at 200B, so the two operators appear to sell from one address block; which suites belong to whom is a quote question, on the 1 Enterprise Avenue N pattern this census has already hit twice. Nothing beyond name and address has been read for TEB4.",
+}
+
+// THE OPERATOR WITH THE MOST PUBLISHED PRICING IN THE CENSUS PUBLISHES NO DENSITY. That is not a
+// contradiction: a plan row states what one tier allocates, and a density claim states what a
+// cabinet may draw at maximum. The half-rack tier's 2,500 W across 20U is an ALLOCATION on a
+// product, and reading it as this operator's cabinet density would both understate the building and
+// fabricate a figure the operator never published.
+data interserver_cabinet_density: CabinetDensityClaim = DensityUnread {
+  obligation: "interserver.net refused a direct fetch with HTTP 403 again on 2026-09-08, from a third client route and thirteen months after the same refusal was recorded for the 2026-08-18 pass, so no operator page has ever been read for this census. No per-cabinet kW maximum appears in the tracked plan rows either. The published allocations - 250 W over 1U, 1,500 W over 10U, 2,500 W over 20U - are tier allocations and are NOT a cabinet density. Resolve by quote, which is in any case required since the full-cabinet plan was withdrawn 2026-05-17.",
+}
+
+data interserver_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "single server (1U), 1/4 shared rack (10U) and 1/2 shared rack (20U) sold as published month-to-month plans",
+  citation: "whtop.com tracked plan rows for interserver.net, read 2026-08-18, carried forward here; the grain is established by the existence of the priced 1U and fractional-rack tiers rather than by a minimum-footprint sentence. Secondary source, and finer than cabinet grain.",
 }

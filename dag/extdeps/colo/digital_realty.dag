@@ -8,6 +8,7 @@ import extdeps.colo.types {
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
   RetailGrainStanding, SingleCabinetOffered,
 }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -186,4 +187,26 @@ data digital_realty_facilities: List<ColoFacilityRow> = [
 data digital_realty_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "digitalrealty.com sales",
   obligation: "No published cabinet pricing on pages read 2026-08-18. Digital Realty's retail motion in this metro leans to interconnection and multi-cabinet deployments; single-cabinet terms need a quote and may route to a reseller.",
+}
+
+// EWR10 IS NO LONGER IN THIS OPERATOR'S FOOTPRINT, and two independent surfaces say so on
+// 2026-09-08. The operator's own New York and New Jersey page enumerates seven facilities - EWR11
+// and EWR12 in Piscataway, EWR20 and EWR21 in Clifton, JFK10, JFK12 and JFK13 in Manhattan - and
+// 300 Boulevard East, Weehawken is not among them. The operator-maintained PeeringDB entry for the
+// same address is titled "Digital Realty New Jersey EWR10 (closed)". The row above is KEPT as the
+// reading it was on 2026-08-18 rather than deleted, per the module doctrine that a withdrawn offer
+// is recorded by a withdrawal note and not by erasing the history; but no quote should be sought
+// for EWR10, and the Weehawken building at 300 JFK Boulevard East is reachable in this census
+// through Centersquare EWR2-A,B, which is still listed by its operator.
+// EWR10 Weehawken is absent from digitalrealty.com's New York/New Jersey facility list read
+// 2026-09-08 and is marked (closed) on its PeeringDB facility entry read the same day. Treat the
+// EWR10 row as history. The Clifton pair EWR20 and EWR21 and the Piscataway pair EWR11 and EWR12
+// are the operator's live New Jersey sites, none of which is in the Hudson-Bergen-Essex corridor.
+
+data digital_realty_cabinet_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's New York and New Jersey facility list, read 2026-09-08, publishes no per-cabinet or per-rack kW figure for any facility; it publishes a 133.5k square-foot colocation footprint, which is a portfolio fact and not a density. Resolve per facility from a spec sheet or a quote.",
+}
+
+data digital_realty_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "No cabinet-versus-cage minimum is stated on the operator's New York and New Jersey pages read 2026-09-08. Ask the quote whether a single cabinet is contractable at EWR20 Clifton, the nearest live site to this corridor.",
 }

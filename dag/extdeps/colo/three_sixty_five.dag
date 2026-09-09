@@ -8,6 +8,7 @@ import extdeps.colo.types {
   RetailGrainStanding, RetailGrainUnread,
   RetailGrainStanding, SingleCabinetOffered,
 }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -271,4 +272,13 @@ data three_sixty_five_commack_density: CabinetDensityClaim = DensityUnread {
 
 data three_sixty_five_commack_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "The Commack page names colocation but no product grain (read 2026-09-08). The operator's company overview - cited in three_sixty_five_note and read 2026-08-18 - lists rack-unit, quarter and half cabinet products across the company; whether the Commack hall sells at that grain is a per-site question and is not inferred here from the corporate product list.",
+// GRAIN READ FROM THE OPERATOR'S COLOCATION PAGE, DENSITY UNREAD - and the density is unread even
+// though a per-facility cutsheet exists, because the cutsheet did not yield readable text.
+data three_sixty_five_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Compact and Standard Cabinets, Two and Four-Post Racks, Custom Cages, Custom Suites",
+  citation: "365datacenters.com colocation-services page, read 2026-09-08. Operator-level wording; it names no minimum footprint and is not stated per facility.",
+}
+
+data three_sixty_five_cabinet_density: CabinetDensityClaim = DensityUnread {
+  obligation: "No per-cabinet or per-rack kW figure appears on the operator's colocation-services page or its Carlstadt facility page (both read 2026-09-08). The operator publishes a Carlstadt cutsheet PDF at 365datacenters.com/wp-content/uploads/2023/05/365_CUTSHEET_FINAL_CARLSTADT410_V3.pdf which was fetched 2026-09-08 and did not yield extractable text; that PDF is the specific artifact to read to resolve NJ3 Carlstadt, and the 235,500 sqft building figure is not a substitute for it.",
 }

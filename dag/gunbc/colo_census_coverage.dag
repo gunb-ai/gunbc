@@ -1,6 +1,22 @@
 module gunbc.colo_census_coverage
 
-import std.types { NonEmptyStr, Int, List }
+import std.types { NonEmptyStr, Int, List, Bool }
+import extdeps.colo.types { ColoFacilityRow, CabinetDensityClaim, cabinet_density_air_upper_bound }
+import extdeps.colo.equinix { equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7, equinix_cabinet_density }
+import extdeps.colo.coresite { coresite_ny2, coresite_ny3, coresite_secaucus_density }
+import extdeps.colo.centersquare { centersquare_weehawken, centersquare_ewr5_secaucus, centersquare_cabinet_density }
+import extdeps.colo.digital_realty { digital_realty_ewr10, digital_realty_cabinet_density }
+import extdeps.colo.three_sixty_five { three_sixty_five_carlstadt, three_sixty_five_weehawken, three_sixty_five_cabinet_density }
+import extdeps.colo.dataverge { dataverge_jersey_city, dataverge_cabinet_density }
+import extdeps.colo.evocative { evocative_ewr1, evocative_ewr1_density }
+import extdeps.colo.summit { summit_secaucus, summit_secaucus_density }
+import extdeps.colo.h5 { h5_secaucus, h5_secaucus_density }
+import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_density }
+import extdeps.colo.interserver { interserver_secaucus, interserver_teb4_secaucus, interserver_cabinet_density }
+import extdeps.colo.halsey_165 { halsey_165_newark, halsey_165_cabinet_density }
+import extdeps.colo.databank { databank_ewr1_newark, databank_ewr1_density }
+import extdeps.colo.colocation_america { colocation_america_njdc2_secaucus, colocation_america_cabinet_density }
+import extdeps.colo.lumen { lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken, lumen_cabinet_density }
 import v2.std.optional { Optional, Present, Absent }
 
 // WHERE WE LOOKED AND FOUND NOTHING, WHICH IS A MEASUREMENT AND NOT AN ABSENCE.
@@ -23,7 +39,7 @@ import v2.std.optional { Optional, Present, Absent }
 // produces are receipts in the observing layer, never properties of the observed. So it lives
 // under gunbc rather than extdeps, and it cites the facility modules rather than being cited by
 // them.
-
+//
 // What a search actually resolved to, kept because a region is empty for reasons that differ in
 // what they oblige next. A region full of aggregators needs a different follow-up from one where
 // operators exist but sell no retail colocation.
@@ -46,8 +62,8 @@ type EmptyRegionCause
 // error rather than a preserved rationale. They are hoisted here intact.
 type RegionSurveyOutcome
   = FacilitiesModelled {
-      facility_count: Int
-      density_read_count: Int
+      facilities: List<ColoFacilityRow>
+      densities: List<CabinetDensityClaim>
     }
   | SurveyedNoRetailOperator {
       searched: List<NonEmptyStr>
@@ -78,7 +94,7 @@ type RegionCoverage {
 // deletion was applied to an instance and not to the habit.
 fn coverage_facility_count(c: RegionCoverage) -> Int? {
   match c.outcome {
-    FacilitiesModelled { facility_count, density_read_count } => Present { value: facility_count },
+    FacilitiesModelled { facilities, densities } => Present { value: facilities.length() },
     SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Present { value: 0 },
     RegionUnsurveyed { obligation } => Absent,
   }
@@ -98,23 +114,101 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // gunbc.recurring_failure_mode.citation_verified_against_a_rendering_that_destroyed_its_scope,
 // because a citation confirmed by string occurrence alone cannot fail on correct text attached to
 // the wrong subject.
+// A DENSITY IS READ EXACTLY WHEN THE CARRIER CAN PRODUCE A BOUND FOR IT, and that question is
+// already answered by extdeps.colo.types. Asking it through cabinet_density_air_upper_bound rather
+// than re-matching the arms here keeps one authority for what "read" means: the upper bound is
+// Present for both published arms - real power and apparent power - and Absent exactly for
+// DensityUnread. A local predicate over the same coproduct would be a second spelling of a
+// question the carrier owns, which is the fork the deleted cabinet_density_is_read was removed to
+// avoid reintroducing.
+fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
+  match cabinet_density_air_upper_bound(d: d) {
+    Present { value } => true,
+    Absent => false,
+  }
+}
+
+// COUNTS DENSITY CLAIMS, NOT FACILITIES, and the two differ on purpose. Several corridor operators
+// publish one density statement covering every site they run, so a claim is the grain at which the
+// reading actually exists; attributing an operator-level claim to each of its facilities would
+// invent a per-facility reading nobody published - the Summit withdrawal's error arriving by
+// division instead of by proximity. Today the distinction changes nothing, because the single read
+// claim is DataBank's and is facility-level over one site.
 //
-// AND THESE TWO INTEGERS ARE THE WRONG SHAPE, WHICH IS RECORDED HERE BECAUSE THE REPLACEMENT IS
-// ALREADY IN FLIGHT RATHER THAN MERELY WISHED FOR. They are hand-transcribed measurements of our
-// own corpus, and DESIGN section 6 says a measurement is cited by naming the producer that
-// re-derives it. The first one carried 28 and was WRONG - the corridor holds 27 rows, and 17
-// pre-existing ones were added as 18. The witness over this row asserts that read densities never
-// exceed facilities, and 1 <= 28 is exactly as true as 1 <= 27, so a green relation sat beside the
-// error for as long as the error existed. Choosing a relation over a literal was right and the
-// relation chosen was too weak to discriminate; the answer is neither, it is derivation.
-// silent-heron-303 is replacing both fields with the facility and claim ROWS they count, folded on
-// read, which makes a miscount unwritable rather than merely checkable.
+// THE DECISION THE NEXT LANE INHERITS, stated so it is met as a decision rather than as a latent
+// fork. When a multi-site operator does publish a figure, a reader of densities cannot ask how many
+// FACILITIES that claim covers, and the honest answer is that nobody knows unless the operator
+// scoped it. The resolution is one level down, in the claim: were a CabinetDensityClaim to carry
+// the facilities it was published FOR, facility-grain coverage would become derivable exactly where
+// an operator stated the scope and would REFUSE where they did not - which is this module's own
+// distinction, applied to the claim instead of to the region. Until then this count is claims, and
+// a facility-grain number must not be manufactured from it.
+fn coverage_density_read_count(c: RegionCoverage) -> Int? {
+  match c.outcome {
+    FacilitiesModelled { facilities, densities } => Present { value: densities.filter(d => density_claim_is_read(d: d)).length() },
+    SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Absent,
+    RegionUnsurveyed { obligation } => Absent,
+  }
+}
+
+// THE COUNTS ARE GONE AND THE ROWS ARE HERE INSTEAD, which is review 62780's finding fixed at the
+// root: 28 and 1 were hand-transcribed measurements of the repo's own live corpus, and DESIGN
+// section 6 says a measurement is cited by naming the producer that re-derives it. Deriving them
+// immediately proved the point - the corridor holds TWENTY-SEVEN facility rows, and 17 pre-existing
+// ones had been added as 18.
+//
+// THE WITNESS WAS GREEN BESIDE THAT ERROR FOR AS LONG AS IT EXISTED. It asserted that read
+// densities never exceed facilities, and 1 <= 28 is exactly as true as 1 <= 27. Choosing a relation
+// over a literal was right - a witness repeating a hand-authored number it cannot re-derive proves
+// only that the file was not edited - and the relation chosen was too weak to discriminate. The
+// answer is neither a literal nor a weak relation but derivation, which is what these rows are.
+//
+// TWO MEMBERSHIP DECISIONS A READER SHOULD NOT HAVE TO INFER. digital_realty_ewr10 IS listed even
+// though its operator no longer does: the field says facilities MODELLED, and a roster that
+// silently disagreed with the corpus would be a second authority on what the census contains. Its
+// withdrawal is recorded where it belongs, on the row itself, and a consumer choosing quote targets
+// must read that rather than this length. And the out-of-corridor rows in these same modules -
+// digital_realty_ewr20 in Clifton, three_sixty_five_bridgewater, h5_philadelphia,
+// colocation_america_njdc1, databank_lga4_orangeburg - are deliberately absent: this row is a
+// region, not an operator inventory.
 data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
   region_label: "NJ Hudson-Bergen-Essex corridor",
   region_code: "NJ",
   outcome: FacilitiesModelled {
-    facility_count: 27,
-    density_read_count: 1,
+    facilities: [
+      equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7,
+      coresite_ny2, coresite_ny3,
+      centersquare_weehawken, centersquare_ewr5_secaucus,
+      digital_realty_ewr10,
+      three_sixty_five_carlstadt, three_sixty_five_weehawken,
+      dataverge_jersey_city,
+      evocative_ewr1,
+      summit_secaucus,
+      h5_secaucus,
+      hivelocity_jfk1,
+      interserver_secaucus, interserver_teb4_secaucus,
+      halsey_165_newark,
+      databank_ewr1_newark,
+      colocation_america_njdc2_secaucus,
+      lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken,
+    ],
+    densities: [
+      equinix_cabinet_density,
+      coresite_secaucus_density,
+      centersquare_cabinet_density,
+      digital_realty_cabinet_density,
+      three_sixty_five_cabinet_density,
+      dataverge_cabinet_density,
+      evocative_ewr1_density,
+      summit_secaucus_density,
+      h5_secaucus_density,
+      hivelocity_jfk1_density,
+      interserver_cabinet_density,
+      halsey_165_cabinet_density,
+      databank_ewr1_density,
+      colocation_america_cabinet_density,
+      lumen_cabinet_density,
+    ],
   },
 }
 

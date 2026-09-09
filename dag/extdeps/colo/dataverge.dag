@@ -7,6 +7,7 @@ import extdeps.colo.types {
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, SingleCabinetOffered,
 }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -70,4 +71,18 @@ data dataverge_facilities: List<ColoFacilityRow> = [dataverge_brooklyn, dataverg
 data dataverge_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "quote request or tour scheduling via dataverge.com",
   obligation: "No cabinet, power, or transit price is published on any page read 2026-08-18. A written quote for the reference load is required before any cost comparison can include this facility.",
+}
+
+// THE SAME WATT-PER-SQUARE-FOOT TRAP AS CENTERSQUARE, from a different operator, on a page whose
+// whole subject is high density. The operator states "High-density deployments up to 300 watts per
+// square foot" and, separately, that it is preparing deployments from 100 kW to 1 MW. Neither is a
+// per-cabinet figure: the first is a room fact and the second is a total-order size. A reader who
+// wants to know whether one cabinet may draw 15 kW here still cannot know it.
+data dataverge_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "1/2 cabinet, full cabinet, private cages from 100-5,000+ square feet",
+  citation: "dataverge.com interconnected-colocation-services page, read 2026-09-08",
+}
+
+data dataverge_cabinet_density: CabinetDensityClaim = DensityUnread {
+  obligation: "dataverge.com pages read 2026-09-08 (interconnected-colocation-services and ai-colocation) publish \"High-density deployments up to 300 watts per square foot\", a 10 MW facility figure, and a 100 kW to 1 MW deployment range - and no per-cabinet or per-rack kW figure for either the Jersey City or the Brooklyn site. The operator does not break any figure out by site. Resolve by asking specifically for the air-cooled per-cabinet maximum at 111 Town Square Place.",
 }

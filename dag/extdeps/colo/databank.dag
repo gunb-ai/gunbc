@@ -10,6 +10,7 @@ import extdeps.colo.types {
   CabinetDensityClaim, DensityMarketedMax, DensityUnread,
   PublishedRealPower,
   RetailGrainStanding, SingleCabinetOffered,
+  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -214,3 +215,45 @@ data databank_ewr2_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   citation: "databank.com New Jersey Piscataway data center page, read 2026-09-08. The page lists cabinets alongside cages as the space products for this facility, on the same pattern as LGA4; it does not state a minimum commitment, so the quote still owes the answer for a one-cabinet order.",
 }
 data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator's New Jersey footprint remains an unread obligation."
+// PARTIALLY DISCHARGED 2026-09-08. The operator's New Jersey index at databank.com/data-
+// centers/new-jersey/ resolves and names exactly two sites: EWR1 Downtown Newark, now modelled
+// above, and EWR2 Piscataway at 25 Corporate Place South, Piscataway, NJ 08854 with no density
+// figure on the index. The Piscataway facility page beneath it still 404s, and Piscataway is
+// Middlesex County, outside the Hudson-Bergen-Essex corridor this pass surveyed, so EWR2 remains
+// unmodelled: read its facility page and carry its address, critical IT load, cabinet density and
+// retail grain. The 85 kW-per-cabinet claim a secondary review attached to a Piscataway HPC tenant
+// is still unconfirmed by any operator page and is still not a marketed retail density.
+//
+// THE OPERATOR'S NEW JERSEY SITE IN THE HUDSON-BERGEN-ESSEX CORRIDOR, read 2026-09-08 from the
+// operator's own New Jersey index and the EWR1 facility page beneath it. DataBank sells from a
+// suite inside the 165 Halsey carrier hotel, which the census already carries as a building under
+// extdeps.colo.halsey_165 and as a Hivelocity suite under extdeps.colo.hivelocity: one building,
+// three upstream authorities, three rows, exactly as the building-versus-operator rule requires.
+data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank EWR1 Downtown Newark",
+  address: AddressListed {
+    street: "165 Halsey Street Suite #500, Newark, NJ 07102",
+    citation: "databank.com New Jersey index and the Newark 165 Halsey Street suite page, read 2026-09-08; the same address and suite are carried by the operator's own PeeringDB facility entry for DataBank Newark (EWR1), read 2026-09-08",
+  },
+  municipality: "Newark",
+  region_code: "NJ",
+  facility_note: "Operator page read 2026-09-08: 34,360 IT square feet, 1.7 MW critical IT load, 2N power design, 120V and 208V three-phase AC with DC available, 21 on-site carriers. The zColo suite Zayo sold to DataBank in 2020 per the operator's own history. Essex County, on the Newark side of the corridor rather than the Secaucus cluster.",
+}
+
+// A READ DENSITY, AND IT IS THE COOLING SENTENCE RATHER THAN A POWER SENTENCE. The facility page
+// states an N+1 cooling design with 10kW+ cabinet density capability. That is a per-cabinet figure
+// on the operator's own facility page, so it is read rather than unread - but the plus sign and
+// the cooling framing are both retained in the wording, because a cooling capability is what the
+// room can remove, not a commitment that a cabinet may draw it. The 1.7 MW critical IT load on the
+// same page is a BUILDING fact and is not a second reading of this one.
+data databank_ewr1_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 10000) },
+  claim_wording: "10kW+ Cab Density Air",
+  citation: "databank.com Newark 165 Halsey Street suite page, read 2026-09-08 and verified in raw HTML 2026-09-09 at markup grain: the page emits <li><strong>10kW+</strong> Cab Density Air</li> as ONE list item inside the column whose heading is Cooling, beside a sibling item reading N+1 Cooling Design. So this wording is a single authored cell rather than two cells fused - the distinction matters because an earlier summarized capture of this row DID fuse the two into one invented sentence, and the same fusion has now been found on three DataBank facilities by three readers. SCOPE IS VERIFIED TOO, which is the separate question a string check does not answer: the nearest heading above this cell is the facility's own address line, \"(EWR1) 165 Halsey Street Suite #500 - Newark, NJ 07102\", under an h1 of \"Downtown Newark Data Center\", and EWR1 is the only facility code appearing anywhere in the page bytes. So this figure is not sitting under another metro's banner and not shared with a second site. And the qualifier is intact rather than truncated - the cell says Air, and the operator's own word is what SELECTS the air-only arm rather than it being inferred from an absent liquid cell. The operator's own word is AIR, which is why this is DensityMarketedAirOnly and not a maximum with a liquid arm.",
+}
+
+data databank_ewr1_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The EWR1 page names Cabinets among its colocation platforms but states no minimum, so whether one cabinet is sellable on its own at this site is unread. Ask the quote whether a single cabinet is contractable at 165 Halsey Suite 500, and whether the 10 kW cooling figure is available to a one-cabinet order or only inside a larger footprint.",
+}
+
