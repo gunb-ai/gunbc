@@ -131,8 +131,8 @@ data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
     basis: "operator experimental bound for first boot, 2026-09-08: nothing derives it. The engine's reported 9.71x concurrency at 262,144 tokens is KV capacity for full-window requests, NOT a safe scheduler population, and is deliberately not used as this figure's basis" as NonEmptyStr,
   },
   max_num_batched_tokens: ExplicitBatchedTokenLimit {
-    tokens: token_count(count: 7168),
-    basis: "the value the running canary was launched with and has served on for sixteen hours, read back from the live engine 2026-09-08: non-default args reports max_num_batched_tokens 7168 and the compiler specialised compile_ranges_endpoints [7168] for it. This row carried 2048 and asserted it was operationally equal to the prior behaviour; the live engine falsified that. The correction is to the MEASURED value rather than to the claim, because a model that disagrees with the running engine turns the next convergence into a twelve-minute restart of a healthy server -- the number was never the point, agreeing with reality is" as NonEmptyStr,
+    tokens: token_count(count: 2048),
+    basis: "operator ruling 2026-09-08, and it is the DESIRED value rather than the running one. A revision of this row changed it to the observed 7168 so the rendered line would agree with the live container, and said so in its own basis -- which is observed state replacing desired state, and it manufactures no-drift by editing the thing drift is measured against. The engine is running 7168; this row says 2048; the difference is a DRIFT to be reported, and a replacement is the only thing that resolves it. Superseding 2048 needs an explicit ruling that deletes this authority, not a convergence run that wants a quiet receipt" as NonEmptyStr,
   },
   speculation: SpeculationDisabled {
     basis: "first boot removes a second execution variable: the goal is model/runtime/harness compatibility, not headline throughput. The runtime registers Glm5NextMTPModel, so MTP speculation is available once the base arm is established" as NonEmptyStr,
@@ -383,6 +383,13 @@ fn glm_canary_speculation_argv(p: SpeculationPolicy) -> List<String> {
 // SEQUENCE COMPARISON, NOT SET COMPARISON, and the renderer emits the running order for exactly this
 // reason: a set comparison cannot distinguish a flag that MOVED from a flag whose VALUE changed, and
 // those have different remedies.
+//
+// THIS ARM IS EXPECTED TO REPORT DRIFT TODAY, AND THAT IS THE HONEST STATE. The desired batch budget
+// is the operator's 2048; the running engine carries 7168. An earlier revision made these agree by
+// changing the DESIRED value to the observed one -- which produces a green receipt by editing the
+// thing drift is measured against, and leaves no record that the fleet is running something nobody
+// selected. A convergence that reports ServeDiffers here is working; a convergence that reports
+// agreement would mean the model had been bent to match reality again.
 type ServeAgreement
   = ServeAgreed
   | ServeDiffers { running: String }
