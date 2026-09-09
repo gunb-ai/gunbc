@@ -228,8 +228,16 @@ fn native_route_tested_tree_recorded(receipt: NativeRouteReceipt) -> Bool {
   receipt.tested_tree != ""
 }
 
-fn native_route_preparation_recorded(receipt: NativeRouteReceipt) -> Bool {
-  receipt.preparation_seed_identity != "" && receipt.emitted_closure_identity != ""
+// The seed and the closure are DIFFERENT observations and refuse by DIFFERENT names: folding
+// them into one predicate made EmittedClosureUnrecorded unreachable (a receipt with a recorded
+// seed and an unrecorded closure reported preparation_seed_unrecorded), which is the
+// grain-mismatch class DESIGN 4b(3) names. One predicate per observation.
+fn native_route_preparation_seed_recorded(receipt: NativeRouteReceipt) -> Bool {
+  receipt.preparation_seed_identity != ""
+}
+
+fn native_route_emitted_closure_recorded(receipt: NativeRouteReceipt) -> Bool {
+  receipt.emitted_closure_identity != ""
 }
 
 fn native_route_population_derived(receipt: NativeRouteReceipt) -> Bool {
@@ -271,13 +279,14 @@ fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
 fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
   let c1 = if native_route_job_name_matches(receipt: receipt) { [] } else { [JobNameMismatch] }
   let c2 = if native_route_tested_tree_recorded(receipt: receipt) { c1 } else { concat(c1, [TestedTreeUnrecorded]) }
-  let c3 = if native_route_preparation_recorded(receipt: receipt) { c2 } else { concat(c2, [PreparationSeedUnrecorded]) }
-  let c4 = if native_route_population_derived(receipt: receipt) { c3 } else { concat(c3, [PopulationUnderived]) }
-  let c5 = if native_route_positive_population_present(receipt: receipt) { c4 } else { concat(c4, [PositivePopulationEmpty]) }
-  let c6 = if native_route_broken_control_holds(receipt: receipt) { c5 } else { concat(c5, [BrokenSpecimenAcceptedByRoute]) }
-  let c7 = if native_route_exclusions_all_classified(receipt: receipt) { c6 } else { concat(c6, [UnattributedExclusionsPresent]) }
-  let c8 = if native_route_identity_recorded(receipt: receipt) { c7 } else { concat(c7, [RouteIdentityUnrecorded]) }
-  let causes = if native_route_old_route_closed(receipt: receipt) { c8 } else { concat(c8, [OldRouteControlNeverInstalled]) }
+  let c3 = if native_route_preparation_seed_recorded(receipt: receipt) { c2 } else { concat(c2, [PreparationSeedUnrecorded]) }
+  let c4 = if native_route_emitted_closure_recorded(receipt: receipt) { c3 } else { concat(c3, [EmittedClosureUnrecorded]) }
+  let c5 = if native_route_population_derived(receipt: receipt) { c4 } else { concat(c4, [PopulationUnderived]) }
+  let c6 = if native_route_positive_population_present(receipt: receipt) { c5 } else { concat(c5, [PositivePopulationEmpty]) }
+  let c7 = if native_route_broken_control_holds(receipt: receipt) { c6 } else { concat(c6, [BrokenSpecimenAcceptedByRoute]) }
+  let c8 = if native_route_exclusions_all_classified(receipt: receipt) { c7 } else { concat(c7, [UnattributedExclusionsPresent]) }
+  let c9 = if native_route_identity_recorded(receipt: receipt) { c8 } else { concat(c8, [RouteIdentityUnrecorded]) }
+  let causes = if native_route_old_route_closed(receipt: receipt) { c9 } else { concat(c9, [OldRouteControlNeverInstalled]) }
   if is_empty(xs: causes) { NativeRouteAdmitted } else { NativeRouteRefused { causes: causes } }
 }
 

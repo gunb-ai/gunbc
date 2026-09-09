@@ -207,6 +207,43 @@ test fn an_uninstalled_old_route_control_refuses_by_name() -> Bool {
   native_route_admission_refused_with(admission: admission, cause_name: "old_route_control_never_installed")
 }
 
+// The seed and the closure are separate observations with separate refusal names: a receipt
+// recording the seed but not the closure must name emitted_closure_unrecorded, and one recording
+// the closure but not the seed must name preparation_seed_unrecorded. Before the predicates were
+// split, the first shape misreported as preparation_seed_unrecorded and the second cause had no
+// reachable construction.
+test fn an_unrecorded_closure_refuses_by_its_own_name() -> Bool {
+  let admission = native_route_admission(receipt: NativeRouteReceipt {
+    job: required_v2_native_job_name,
+    tested_tree: "tree-sha",
+    preparation_seed_identity: "seed-sha",
+    emitted_closure_identity: "",
+    executable_path: "/emitted/compiler",
+    executable_identity: "binary-sha",
+    population: [accepted_member(path: "v2.test.one")],
+    broken_control: BrokenSpecimenRefused { reason: ^parse_expected_declaration },
+    old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" }
+  })
+  native_route_admission_refused_with(admission: admission, cause_name: "emitted_closure_unrecorded")
+    && !native_route_admission_refused_with(admission: admission, cause_name: "preparation_seed_unrecorded")
+}
+
+test fn an_unrecorded_seed_refuses_by_its_own_name() -> Bool {
+  let admission = native_route_admission(receipt: NativeRouteReceipt {
+    job: required_v2_native_job_name,
+    tested_tree: "tree-sha",
+    preparation_seed_identity: "",
+    emitted_closure_identity: "closure-sha",
+    executable_path: "/emitted/compiler",
+    executable_identity: "binary-sha",
+    population: [accepted_member(path: "v2.test.one")],
+    broken_control: BrokenSpecimenRefused { reason: ^parse_expected_declaration },
+    old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" }
+  })
+  native_route_admission_refused_with(admission: admission, cause_name: "preparation_seed_unrecorded")
+    && !native_route_admission_refused_with(admission: admission, cause_name: "emitted_closure_unrecorded")
+}
+
 test fn one_red_run_names_every_violated_clause() -> Bool {
   let admission = native_route_admission(receipt: receipt_with(
     population: [refused_member(path: "v2.test.one", reason: ^a_cause_nobody_owns)],
