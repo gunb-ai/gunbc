@@ -69,7 +69,8 @@ import gunbc.ci_spec {
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { witnesses_lane_run_command, witnesses_lane_measurement_command, build_lane_run_command }
+import gunbc.fabric_witness_run { witnesses_lane_run_command, witnesses_lane_measurement_command, build_lane_run_command, v2_native_lane_run_command }
+import gunbc.witness_v2_native_route { required_v2_native_job_name }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
@@ -1675,6 +1676,102 @@ fn witness_floor_job() -> Job {
   }
 }
 
+// THE NATIVE LANE JOB (operator authorization 2026-09-09: ONE additional required job, wired —
+// not an enrolment promise). The three questions a new job must answer before it claims a paid
+// runner on every push:
+//
+// THE MEASURED WALL. The lane pays: the shared prepared steps (toolchain + two-bin seed build),
+// the v2 closure emission, one cargo build of the emitted compiler crate, the universe
+// derivation fold (the floor's own discovery producer over the full module inventory), and the
+// native run itself — one process over the derived v2.test.* universe plus the three controls.
+// The interpreter measured the admission fold's quadratic shape over the full derived population
+// at tens of seconds; the cargo build of the emitted crate is the dominant term. The envelope is
+// 90 minutes against the floor lane's 180.
+//
+// WHAT RED DISCRIMINATES. The admission authority is gunbc.witness_v2_native_route: the observed
+// population must join the derived universe exactly (no duplicates, no foreign rows, no
+// omissions), the positive population must be non-empty, every refusal must be classified from
+// stage and provenance, every native verdict must agree with the floor-derived reference at the
+// same identity, and all four controls must hold — the false control observed false, the true
+// control observed passed, the malformed specimen refused, the old route withdrawn. A step
+// folded into an existing lane could not carry this: its red would land on that lane's receipt,
+// conflating two routes' subjects.
+//
+// WHY A JOB AND NOT A STEP. The no-fallback control withdraws the old compiler/interpreter route
+// after the emitted compiler exists; the floor lane's own execution IS the old route, so the
+// control and the floor cannot share a job. The lane also builds a second crate (the emitted
+// compiler), a capability envelope the existing lanes do not declare. A job is the smallest
+// boundary that keeps both facts honest.
+data v2_native_lane_timeout: Minute = minute(count: 90)
+
+fn v2_native_lane_build_script() -> String {
+  repo_self_build_command(bins: witness_floor_required_bins)
+}
+
+fn v2_native_lane_run_script() -> String {
+  required_lane_run_script(command: v2_native_lane_run_command())
+}
+
+fn v2_native_lane_run_step() -> Step {
+  RunStep {
+    name: Present { value: "Required CI: v2-native lane (emitted-native compiler executes the derived v2.test.* universe)" },
+    id: none,
+    run: v2_native_lane_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_floor_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn v2_native_lane_bound_steps() -> List<WitnessFloorBoundStep> {
+  append(
+    prepared_bound_steps(build_script: v2_native_lane_build_script()),
+    items: [
+      WitnessFloorBoundStep {
+        step: witness_toolchain_homes_isolated_guard_step(),
+        role: capability_neutral,
+        step_name: "Require isolated toolchain homes",
+      },
+      WitnessFloorBoundStep {
+        step: v2_native_lane_run_step(),
+        role: consumes_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability]),
+        step_name: "Required CI: v2-native lane (emitted-native compiler executes the derived v2.test.* universe)",
+      },
+      WitnessFloorBoundStep {
+        step: witness_toolchain_filesystem_end_probe_step(),
+        role: capability_neutral,
+        step_name: "Record runner filesystem at job end",
+      },
+    ],
+  )
+}
+
+fn v2_native_lane_steps() -> List<Step> {
+  list_map(xs: v2_native_lane_bound_steps(), f: fn(b) { b.step })
+}
+
+fn v2_native_lane_needs() -> List<String> { [] }
+
+fn v2_native_lane_job() -> Job {
+  Job {
+    id: required_v2_native_job_name,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: v2_native_lane_steps(),
+    needs: v2_native_lane_needs(),
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: minute_count(v2_native_lane_timeout),
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 // THE LANE'S EXECUTION ENVELOPE, NAMED BECAUSE A SECOND CONSUMER NOW READS IT. The value did not
 // change; it stopped being a literal. gunbc.repo_ruleset derives the merge queue's
 // check_response_timeout from this row, because a queue whose response timeout is BELOW the
@@ -2279,6 +2376,7 @@ fn required_lanes_run_id_expression() -> String {
 // all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+data required_lanes_gate_v2_native_var: String = "V2_NATIVE"
 
 // THE REQUIRED LANE ROSTER, AND IT IS ONE ROSTER READ TWICE RATHER THAN TWO LISTS THAT AGREE.
 //
@@ -2303,6 +2401,11 @@ fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
         job_id: floor_lane_job_id,
         label: "floor",
         var_name: required_lanes_gate_floor_var
+      },
+      RequiredLane {
+        job_id: required_v2_native_job_name,
+        label: "v2-native",
+        var_name: required_lanes_gate_v2_native_var
       }
     ]
   }
@@ -2536,12 +2639,12 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
 // THE AGGREGATE IS DELIBERATELY NOT A MEMBER. It checks out nothing and runs no witness: it reads
 // the other lanes' results. Every consumer of this list is asking about lanes that carry a subject,
 // and the aggregate joined that population only as something to filter back out.
-type WitnessFloorLane = WitnessFloorBuildLane | WitnessFloorFloorLane | WitnessFloorHealLane
+type WitnessFloorLane = WitnessFloorBuildLane | WitnessFloorFloorLane | WitnessFloorHealLane | WitnessFloorV2NativeLane
 
 fn witness_floor_lane_roster() -> FreeSemigroup<WitnessFloorLane> {
   FreeSemigroup {
     head: WitnessFloorBuildLane,
-    tail: [WitnessFloorFloorLane, WitnessFloorHealLane]
+    tail: [WitnessFloorFloorLane, WitnessFloorHealLane, WitnessFloorV2NativeLane]
   }
 }
 
@@ -2550,6 +2653,7 @@ fn witness_floor_lane_job(lane: WitnessFloorLane) -> Job {
     WitnessFloorBuildLane => build_lane_job()
     WitnessFloorFloorLane => witness_floor_job()
     WitnessFloorHealLane => heal_generated_artifacts_job()
+    WitnessFloorV2NativeLane => v2_native_lane_job()
   }
 }
 
@@ -2568,6 +2672,7 @@ fn witness_floor_lane_job_id(lane: WitnessFloorLane) -> String {
     WitnessFloorBuildLane => build_lane_job_id
     WitnessFloorFloorLane => floor_lane_job_id
     WitnessFloorHealLane => heal_generated_artifacts_job_id
+    WitnessFloorV2NativeLane => required_v2_native_job_name
   }
 }
 

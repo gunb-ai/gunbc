@@ -28,11 +28,13 @@ import std.types { String, Bool, List }
 type RequiredCiLane
   = BuildLane
   | WitnessesLane
+  | V2NativeLane
 
 fn required_ci_lane_name(l: RequiredCiLane) -> String {
   match l {
     BuildLane => "build"
     WitnessesLane => "witnesses"
+    V2NativeLane => "v2-native"
   }
 }
 
@@ -61,6 +63,7 @@ type RequiredCiPhase
   | GeneratedArtifactPhase
   | RegenFixedPointPhase
   | FloorPhase
+  | V2NativePhase
 
 // TWO NAMED ARMS, NEVER A WIDENED PATH PREDICATE. A path that neither authority owns is in
 // neither arm; inability to produce either arm refuses GeneratedArtifactPhase. The registry arm
@@ -106,6 +109,7 @@ fn required_ci_phase_name(p: RequiredCiPhase) -> String {
     GeneratedArtifactPhase => "generated-artifact"
     RegenFixedPointPhase => "regen-fixed-point"
     FloorPhase => "floor"
+    V2NativePhase => "v2-native"
   }
 }
 
@@ -118,6 +122,7 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
     GeneratedArtifactPhase => BuildLane
     RegenFixedPointPhase => BuildLane
     FloorPhase => WitnessesLane
+    V2NativePhase => V2NativeLane
   }
 }
 
@@ -131,6 +136,7 @@ data required_ci_phases: List<RequiredCiPhase> = [
   GeneratedArtifactPhase,
   RegenFixedPointPhase,
   FloorPhase,
+  V2NativePhase,
 ]
 
 fn required_ci_phase_is(a: RequiredCiPhase, b: RequiredCiPhase) -> Bool {
