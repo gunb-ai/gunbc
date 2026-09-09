@@ -117,11 +117,6 @@ data tierpoint_hawthorne_hw2: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Westchester County, the second building of the same campus. Operator page (read 2026-09-08): 172,000+ total square feet with 28,000+ square feet of raised floor - the same raised-floor figure as HWT inside four times the building, the balance being office and disaster-recovery space rather than data hall.",
 }
 
-data tierpoint_new_york_facilities: List<ColoFacilityRow> = [
-  tierpoint_hawthorne_hwt,
-  tierpoint_hawthorne_hw2,
-]
-
 // A SPEC SHEET EXISTS AND STILL DID NOT YIELD A DENSITY. The operator publishes a per-facility
 // PDF spec sheet for Hawthorne; the fetch on 2026-09-08 returned a 312 KB PDF whose extractable
 // content was branding metadata rather than the specification table, so no figure was read from

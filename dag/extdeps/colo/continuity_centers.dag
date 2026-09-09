@@ -1,6 +1,5 @@
 module extdeps.colo.continuity_centers
 
-import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
@@ -38,6 +37,19 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // all. A directory is not the operator, so nothing here inherits the directory's product list; the
 // disagreement itself is the fact worth carrying, so that the next reader does not spend the
 // afternoon rediscovering it.
+// A SECOND SITE IN THIS REGION IS DIRECTORY-ONLY AND IS DELIBERATELY NOT A ROW. Directory listings
+// place a Continuity Centers facility in Westchester County under two different names, Chappaqua
+// and Hawthorne, and the operator's own site names neither. One operator with two directory names
+// for one unconfirmed site is exactly the shape that produces a phantom facility, so nothing is
+// modelled: confirm from the operator whether a Westchester hall exists, what its address is, and
+// whether the two directory names are one building or two.
+//
+// Carried as an annotation rather than a NonEmptyStr row (review 62897). It was a data binding no
+// fold read, which is DESIGN section 3c red and section 4c's "ordinary String declaration whose
+// sole purpose is commentary" both at once - and section 4c names // as the explicit quarantine
+// boundary for exactly this. The obligation is real and belongs to a READER rather than to a
+// program: no arm of any carrier type can hold "a facility we decided not to model", because the
+// census's typed vocabulary is about facilities that exist as rows.
 data continuity_centers_woodbury: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Continuity Centers",
   facility_label: "Continuity Centers Woodbury",
@@ -58,7 +70,6 @@ data continuity_centers_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "THE PRIOR QUESTION IS WHETHER COLOCATION IS SOLD AT ALL, and TWO independent readings of the operator's own surface say no. First, the word colocation does not occur in the home page bytes, counted in RAW BYTES WITH A POSITIVE CONTROL IN THE SAME RUN (175,839 bytes, HTTP 200, full browser user-agent, 2026-09-09): controls Continuity 246, recovery 24, Veeam 10, Woodbury 2 - so the instrument reached the page - against colocation 0, cabinet 0, data center 0. THE SITE-VERSUS-SUBJECT DISTINCTION MATTERS HERE AND IS WHY THE SITEMAP READING BESIDE THIS ONE IS THE LOAD-BEARING HALF: Continuity, recovery and Veeam are SITE tokens that prove only that continuitycenters.com answered, and a home page could honestly omit a product that lives on another page. The sitemap enumerating all forty of the operator own pages is the reading that closes that gap, and it is a different question answered by a different surface rather than the same zero counted twice. ONE TRAP RECORDED BECAUSE IT NEARLY BECAME THE CONTROL: a substring search for colo returns 159 hits, of which 156 are the CSS keyword color and one is colophon, so a carelessly chosen token manufactures a reassuring hit for a word that never appears. Second and stronger, because it removes the possibility that the product simply lives on another path: the operator's OWN page sitemap (continuitycenters.com/page-sitemap.xml, HTTP 200, read 2026-09-09) enumerates 40 pages and NOT ONE of them names colocation, cabinet, data-center, rack or facility. An earlier 404 on a guessed /colocation/ path is not what this rests on - a guessed path that 404s says nothing about the operator, which is silent-heron-303's finding that a wrong path can be mistaken for a decision by the far end. The operator markets disaster recovery, backup and Veeam-partnered cloud protection; directories describe single-server through full-cabinet, cage and private-suite colocation. Ask whether the colocation product still exists, and if it does, ask for the grain and the price - a live single-server product on Long Island would be the second-finest grain in this census and would matter out of proportion to this operator's size.",
 }
 
-data continuity_centers_westchester_obligation: NonEmptyStr = "A SECOND SITE IN THIS REGION IS DIRECTORY-ONLY AND IS DELIBERATELY NOT A ROW. Directory listings place a Continuity Centers facility in Westchester County under two different names, Chappaqua and Hawthorne, and the operator's own site names neither. One operator with two directory names for one unconfirmed site is exactly the shape that produces a phantom facility, so nothing is modelled: confirm from the operator whether a Westchester hall exists, what its address is, and whether the two directory names are one building or two."
 
 data continuity_centers_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "continuitycenters.com contact form or the published Woodbury phone number",
