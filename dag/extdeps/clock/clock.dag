@@ -3,7 +3,7 @@ module extdeps.clock
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { EpochMs, Timestamp }
+import std.types { EpochMs, EpochSecs, Timestamp }
 import std.nat { Nat }
 import v2.std.optional { Present }
 
@@ -106,12 +106,11 @@ fn clock_unix_millis_read() -> ClockUnixMillisRead {
 }
 // SAME OUTPUT-SHAPE DISCIPLINE AS clock_unix_millis_read: the operation's
 // output stays String, and this typed wrapper parses it with proper refusal.
-// The caller receives Int (seconds since epoch, which can legitimately be 0
-// or any positive value) — no EpochMs, because UnixSecs is seconds not ms
-// and minting a Seconds carrier here would be a new type only a few lines
-// above an existing surface that uses bare Int.
+// Uses EpochSecs (std.types), the same pattern clock_unix_millis_read uses
+// with EpochMs — including the negative check, because parse_int admits a
+// leading minus while date +%s returns a non-negative integer.
 type ClockTimestampRead
-  = ClockTimestampObserved { epoch_secs: Int }
+  = ClockTimestampObserved { epoch_secs: EpochSecs }
   | ClockTimestampRefused { detail: String }
 
 fn clock_timestamp_to_unix_secs(timestamp: Timestamp) -> ClockTimestampRead {
@@ -122,6 +121,12 @@ fn clock_timestamp_to_unix_secs(timestamp: Timestamp) -> ClockTimestampRead {
         detail: concat("clock timestamp conversion is not an integer: ", result.unix_secs)
       }
     Present { value: n } =>
-      ClockTimestampObserved { epoch_secs: n }
+      if n < 0 {
+        ClockTimestampRefused {
+          detail: concat("clock timestamp conversion is negative: ", result.unix_secs)
+        }
+      } else {
+        ClockTimestampObserved { epoch_secs: n }
+      }
   }
 }

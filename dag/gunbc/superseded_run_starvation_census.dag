@@ -373,15 +373,16 @@ type DurationResult
   = DurationComputed { duration_seconds: Second }
   | DurationInsufficientData
   | DurationInconsistentTimestamps
+  | DurationClockRefused { detail: String }
 
 fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
   let end_read = clock_timestamp_to_unix_secs(timestamp: end)
   let start_read = clock_timestamp_to_unix_secs(timestamp: start)
   match end_read {
-    ClockTimestampRefused { detail: _ } => DurationInsufficientData
+    ClockTimestampRefused { detail: d } => DurationClockRefused { detail: d }
     ClockTimestampObserved { epoch_secs: end_secs } =>
       match start_read {
-        ClockTimestampRefused { detail: _ } => DurationInsufficientData
+        ClockTimestampRefused { detail: d } => DurationClockRefused { detail: d }
         ClockTimestampObserved { epoch_secs: start_secs } =>
           if end_secs < start_secs {
             DurationInconsistentTimestamps
