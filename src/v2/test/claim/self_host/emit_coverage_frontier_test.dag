@@ -43,17 +43,49 @@ test fn witness_unlisted_subject_has_no_row() -> Bool {
 }
 
 test fn witness_split_matches_expected() -> Bool {
-  (length(xs: self_emitted_native_rows()) == 1)
-    && (length(xs: interpreter_retained_rows()) == 14)
+  (length(xs: self_emitted_native_rows()) == 15)
+    && (length(xs: interpreter_retained_rows()) == 0)
 }
 
-test fn witness_only_classical_not_ingested_is_native() -> Bool {
+// Identity-grain census of the native rows (DESIGN section 5: completeness is an identity join,
+// not a count equality — the count leg above is the budget cross-check, this leg names the
+// members). 2026-09-07: the add family joined classical_not when its native-only verdict arm
+// landed, and the complement family followed on the same arm shape run through the logic family
+// crate. 2026-09-08: the field_access family followed against its own family one-build cache
+// (octet 9 pinned), the three match_loop_fold family rows (match, loop, fold_closure)
+// followed on the same arm shape run through the three-member family crate, the meet_join
+// family followed on the complement arm's member-parameterized helper against the same logic
+// family crate (octets meet=1 join=1 pinned), the variant_construct family followed against
+// its own family one-build cache (octet 9 pinned), and the final six rows closed the frontier:
+// filesystem_read and shell_exec_run on literal octets grounded by their enrolled fixture pins,
+// and module, produced_module, call, record_construct on per-family fixed workspace roots
+// (octets 5/5/7/9 pinned against the equals_eval pairs' oracle legs). The fifteen decl names
+// are the closed membership; the InterpreterRetained population is zero.
+test fn witness_native_rows_closed_membership_holds() -> Bool {
   let natives = self_emitted_native_rows()
-  (length(xs: natives) == 1)
+  (length(xs: natives) == 15)
     && fold(
       natives,
       init: true,
-      f: fn(acc, row) { acc && (row.subject.decl_name == "ingested_classical_not_source") }
+      f: fn(acc, row) {
+        acc && (
+          (row.subject.decl_name == "ingested_classical_not_source")
+            || (row.subject.decl_name == "rust_add_inferred_tree")
+            || (row.subject.decl_name == "emit_complement_eval_subject")
+            || (row.subject.decl_name == "emit_field_eval_subgraph_node")
+            || (row.subject.decl_name == "fold_fixture_param_call_body")
+            || (row.subject.decl_name == "table_fixture_loop_arrow_with_body")
+            || (row.subject.decl_name == "table_fixture_match_arrow_with_body")
+            || (row.subject.decl_name == "meet_join_eval_subject")
+            || (row.subject.decl_name == "emit_variant_construct_eval_subgraph_node")
+            || (row.subject.decl_name == "rust_filesystem_read_family_target_model_staging")
+            || (row.subject.decl_name == "emit_host_module_add_equals_eval_holds")
+            || (row.subject.decl_name == "emit_host_produced_module_add_equals_eval_holds")
+            || (row.subject.decl_name == "rust_shell_exec_run_family_target_model_staging")
+            || (row.subject.decl_name == "rust_emit_host_call_equals_eval_holds")
+            || (row.subject.decl_name == "rust_record_construct_emit_host_equals_eval_holds")
+        )
+      }
     )
 }
 

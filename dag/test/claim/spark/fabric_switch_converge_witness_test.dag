@@ -175,14 +175,22 @@ test fn a_switch_with_no_lanes_does_not_converge() -> Bool {
 }
 
 // THE FLEET'S OWN SWITCH, TODAY. The cable plant does not converge, so the switch's intent is
-// undecided, so the switch subject refuses at the observe stage -- carrying the CABLE refusal
+// undecided, so the switch subject refuses at the observe stage -- carrying the PLANT's refusal
 // rather than a switch-shaped restatement of it. This is the whole point of deriving the intent:
 // one fault, one report, and no second matcher that could disagree with the first.
 //
-// This witness holds a RED state of the real fleet. It goes green by the cables being recoded, and
-// when that happens it becomes the regression control that the switch subject still refuses when
-// its intent is undecided -- it does not retire.
-test fn the_fleet_switch_refuses_because_its_cables_do() -> Bool {
+// THE PLANT'S CURRENT REFUSAL IS AN UNREAD LEG, NOT A CODING DIVERGENCE, and the witness asserts the
+// propagation rather than the cause for exactly that reason. Six of the eight legs have never been
+// dumped, so the plant refuses at PlantLegNeverRead before it ever assesses coding. An earlier name
+// for this witness said the switch refuses "because its cables do", which was true of the coding
+// story and is not true of the fleet's actual state -- the cables it has READ are not the reason it
+// cannot answer. What this holds is that ONE refusal reaches the switch subject intact, whichever
+// refusal the plant is producing.
+//
+// This witness holds a RED state of the real fleet. It goes green when the plant can converge --
+// which needs both the remaining six legs read AND their coding fixed -- and then becomes the
+// regression control that the switch subject still refuses when its intent is undecided.
+test fn the_fleet_switch_refuses_while_its_plant_cannot_answer() -> Bool {
   match fabric_switch_convergence() {
     GoalObservationRefused { subject: s, cause: f } =>
       match f {

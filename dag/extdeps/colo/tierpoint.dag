@@ -3,7 +3,7 @@ module extdeps.colo.tierpoint
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly,
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, SingleCabinetOffered,
 }
@@ -57,8 +57,9 @@ data tierpoint_allentown: ColoFacilityRow = ColoFacilityRow {
 data tierpoint_bethlehem: ColoFacilityRow = ColoFacilityRow {
   operator_label: "TierPoint",
   facility_label: "TierPoint Bethlehem",
-  address: AddressUnread {
-    obligation: "Listed on the operator's Pennsylvania index (read 2026-08-18); street address not captured in this sweep.",
+  address: AddressListed {
+    street: "3864 Courtney Street, Suite 130, Bethlehem, PA 18017",
+    citation: "tierpoint.com Bethlehem data center page, read 2026-09-08",
   },
   municipality: "Bethlehem",
   region_code: "PA",
@@ -68,24 +69,99 @@ data tierpoint_bethlehem: ColoFacilityRow = ColoFacilityRow {
 data tierpoint_valley_forge: ColoFacilityRow = ColoFacilityRow {
   operator_label: "TierPoint",
   facility_label: "TierPoint Valley Forge",
-  address: AddressUnread {
-    obligation: "Listed on the operator's Pennsylvania index (read 2026-08-18); street address not captured in this sweep.",
+  address: AddressListed {
+    street: "1000 Adams Avenue, Norriton, PA 19403",
+    citation: "tierpoint.com Valley Forge data center page, read 2026-09-08",
   },
-  municipality: "Valley Forge",
+  municipality: "Norriton",
   region_code: "PA",
   facility_note: "Philadelphia-suburb site on the operator's Pennsylvania index.",
+}
+
+// THE FIFTH PENNSYLVANIA SITE, MISSING FROM THE 2026-08-18 SWEEP. The operator's Pennsylvania
+// index lists Bethlehem and Lehigh Valley as two separate data centers at two different Bethlehem
+// streets, and the earlier sweep carried only one of them. They are distinct buildings with
+// distinct plant: Courtney Street runs two 600 kW generators plus a 1 MW unit over 12,000+ square
+// feet of raised floor, Schelden Circle runs three 1.5 MW generators over 8,700+.
+data tierpoint_lehigh_valley: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "TierPoint",
+  facility_label: "TierPoint Lehigh Valley (Schelden Circle)",
+  address: AddressListed {
+    street: "3949 Schelden Circle, Bethlehem, PA 18017",
+    citation: "tierpoint.com Lehigh Valley data center page, read 2026-09-08",
+  },
+  municipality: "Bethlehem",
+  region_code: "PA",
+  facility_note: "27,000+ total square feet with 8,700+ square feet of raised floor and three 1.5 MW redundant generators (read 2026-09-08). Second Bethlehem building beside the Courtney Street site, which the earlier sweep of this census collapsed into one row.",
 }
 
 data tierpoint_pennsylvania_facilities: List<ColoFacilityRow> = [
   tierpoint_philadelphia,
   tierpoint_allentown,
   tierpoint_bethlehem,
+  tierpoint_lehigh_valley,
   tierpoint_valley_forge,
 ]
 
+// FIVE FACILITY PAGES READ ON 2026-09-08 AND FIVE TIMES NO DENSITY. This operator publishes a
+// consistent spec vocabulary - total square feet, raised floor, generator count and size, A-side
+// and B-side distribution, runtime hours - and a per-cabinet or per-rack figure appears in none of
+// it. That is a fact about the operator, not five independent absences, so each row below names
+// the same next read: the per-facility spec-sheet PDF the pages link. One of those PDFs was
+// fetched on 2026-09-08 (the Lehigh Valley sheet) and came back as unparsed binary, so the PDFs
+// remain unread rather than read-and-empty. Nothing here is derived from the generator megawatts,
+// which are building capacity and not a cabinet commitment.
+data tierpoint_philadelphia_density: CabinetDensityClaim = DensityUnread {
+  obligation: "tierpoint.com Philadelphia page read 2026-09-08 states 25,000+ total square feet, 11,000+ raised floor and three 1.5 MW generators, and NO per-cabinet density. BYTE-CONFIRMED 2026-09-09 under a subject control (HTTP 200, 421,123 bytes): 'Philadelphia' occurs 58 times, so the instrument reached this facility's own page rather than the state index, and 'kW' occurs zero times case-sensitively. Read the linked Philadelphia spec-sheet PDF or obtain a quote.",
+}
+
+data tierpoint_allentown_density: CabinetDensityClaim = DensityUnread {
+  obligation: "tierpoint.com Allentown TekPark page read 2026-09-08 states 122,000+ total square feet, 96,000+ raised floor and fifteen 2.5 MW plus eight 2 MW generators, and NO per-cabinet density, byte-confirmed 2026-09-09 under a subject control (HTTP 200, 421,605 bytes; 'allentown' occurs 49 times, 'kW' zero times case-sensitively). The largest TierPoint site in the state by generation and still no cabinet figure. Read the linked TekPark spec-sheet PDF or obtain a quote.",
+}
+
+data tierpoint_bethlehem_density: CabinetDensityClaim = DensityUnread {
+  obligation: "tierpoint.com Bethlehem page read 2026-09-08 states 25,000+ total square feet, 12,000+ raised floor and two 600 kW plus one 1 MW generator, and NO per-cabinet density. BYTE-CONFIRMED 2026-09-09 under a subject control (HTTP 200, 421,957 bytes): 'Bethlehem' occurs 56 times, and 'kW' occurs EXACTLY ONCE - in 'Two 600 kW redundant generators and one 1 MW generator', which is generator capacity and not a cabinet figure. That single hit is why a rule of the form 'kW occurs, therefore a density is published' would be wrong here. Read the linked Bethlehem spec-sheet PDF or obtain a quote.",
+}
+
+data tierpoint_lehigh_valley_density: CabinetDensityClaim = DensityUnread {
+  obligation: "tierpoint.com Lehigh Valley page read 2026-09-08 states 27,000+ total square feet, 8,700+ raised floor and three 1.5 MW generators, and NO per-cabinet density, byte-confirmed 2026-09-09 under a subject control (HTTP 200, 421,303 bytes; 'lehigh' occurs 51 times, and 'kW' occurs zero times case-sensitively - the case-insensitive matches an earlier revision counted were all CSS node names, which is why this count is case-sensitive). The linked spec sheet web.tierpoint.com/hubfs/data-center/pa-lehigh-valley-data-center-spec-sheet.pdf was fetched the same day and returned as unparsed binary, so it is still unread. Read it with a PDF text extractor.",
+}
+
+data tierpoint_valley_forge_density: CabinetDensityClaim = DensityUnread {
+  obligation: "tierpoint.com Valley Forge page read 2026-09-08 states 137,000+ total square feet, 61,000+ raised floor and nine 2.5 MW generators, and NO per-cabinet density. BYTE-CONFIRMED 2026-09-09 under a subject control (HTTP 200, 421,112 bytes): 'valley' occurs 54 times and 'kW' zero times case-sensitively. Read the linked Valley Forge spec-sheet PDF or obtain a quote.",
+}
+
+// ONE GRAIN READING PER SITE BECAUSE EACH PAGE STATES IT ITSELF, in identical wording. The grain
+// is what makes these five sites candidates at all despite the unread density: a seller who
+// itemises cabinets will quote one, where a cage-minimum seller will not.
+data tierpoint_philadelphia_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets and cages available",
+  citation: "tierpoint.com Philadelphia data center page, read 2026-09-08 and VERIFIED IN THE PAGE BYTES 2026-09-09 (HTTP 200, 421,123 bytes): the phrase occurs verbatim as ONE <li> in the Facility Specifications list, under the Space heading, beside the square-footage cell. An earlier revision of this row recorded HTTP 403 here; that refusal was OUR INSTRUMENT and not the operator - this host answers 403 with a 4,544-byte interstitial to a SHORT user-agent and 200 to no user-agent at all or to a full browser one.",
+}
+
+data tierpoint_allentown_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets and cages available",
+  citation: "tierpoint.com Allentown TekPark data center page, read 2026-09-08 and VERIFIED IN THE PAGE BYTES 2026-09-09 (HTTP 200, 421,605 bytes): the phrase occurs verbatim as ONE <li> in the Facility Specifications list, under the Space heading. The 403 an earlier revision recorded was our own short user-agent, not the operator.",
+}
+
+data tierpoint_bethlehem_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "cabinets and cages available",
+  citation: "tierpoint.com Bethlehem data center page, read 2026-09-08 and VERIFIED IN THE PAGE BYTES 2026-09-09 (HTTP 200, 421,957 bytes): the phrase occurs verbatim as ONE <li> in the Facility Specifications list, under the Space heading. The 403 an earlier revision recorded was our own short user-agent, not the operator.",
+}
+
+data tierpoint_lehigh_valley_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets and cages available",
+  citation: "tierpoint.com Lehigh Valley data center page, read 2026-09-08 and VERIFIED IN THE PAGE BYTES 2026-09-09 (HTTP 200, 421,303 bytes): the phrase occurs verbatim as ONE <li> in the Facility Specifications list, under the Space heading. The 403 an earlier revision recorded was our own short user-agent, not the operator.",
+}
+
+data tierpoint_valley_forge_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets and cages available",
+  citation: "tierpoint.com Valley Forge data center page, read 2026-09-08 and VERIFIED IN THE PAGE BYTES 2026-09-09 (HTTP 200, 421,112 bytes): the phrase occurs verbatim as ONE <li> in the Facility Specifications list, under the Space heading. The 403 an earlier revision recorded was our own short user-agent, not the operator.",
+}
+
 data tierpoint_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "tierpoint.com sales",
-  obligation: "Spec sheets are published; cabinet pricing is not (read 2026-08-18).",
+  obligation: "Spec sheets are published; cabinet pricing is not, and neither is per-cabinet density, on any of the five Pennsylvania facility pages re-read 2026-09-08.",
 }
 
 // WESTCHESTER COUNTY: THE OPERATOR ALREADY IN THIS CENSUS WAS ALREADY IN NEW YORK. The module

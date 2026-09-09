@@ -10,10 +10,11 @@ import extdeps.transceiver.sff_8636 {
   sff8636_nominal_rate_from_byte140,
 }
 import product.cable_leg_observation {
-  CableLegObservation, SecondaryNotObserved, cable_leg_observation,
+  CableLegObservation, SecondaryObserved, cable_leg_observation,
+  ExtendedRateObserved,
 }
 import product.cable_plant_converge {
-  CablePlant, cable_plant, CableLegReading, LegReadingTaken, CablePlantInspection,
+  CablePlant, cable_plant, CableLegReading, LegReadingTaken, LegNeverRead, CablePlantInspection,
   inspect_cable_plant,
 }
 import gunbc.fleet_intent_network {
@@ -35,11 +36,31 @@ import gunbc.fleet_intent_network {
 //   - BOTH second-function netdevs come up from the one leg, with distinct MACs the switch sees on
 //     the same lane. Only one of them may carry the rail address.
 //
-// THE LEG LINKS AT 50G, NOT 100G, AND THE CAUSE IS THE LEG'S EEPROM. The legs are QSFP28-coded:
-// extended specification compliance 0x0B ("100GBASE-CR4 or 25GBASE-CR CA-L") with a nominal rate of
-// 25.5 Gb/s per lane, so the ConnectX-7 firmware derives "Supported Cable Speed 50G_2X" and refuses
-// 100G_2X with "Cable speed not enabled" (mstlink status opcode 16). Two 25G lanes is 50G. The same
-// copper with legs coded 100GBASE-CR2 would link at 100G; that is a cable exchange, not a model change.
+// THE LEG LINKS AT 50G, NOT 100G, AND THE COMPLIANCE CODING IS A DEMONSTRATED BLOCKER. The legs are
+// QSFP28-coded: extended specification compliance 0x0B ("100GBASE-CR4 or 25GBASE-CR CA-L") at byte
+// 192, with byte 116 read as 00h -- so nothing attests 100GBASE-CR2. The ConnectX-7 firmware
+// therefore derives "Supported Cable Speed 50G_2X" and refuses 100G_2X with "Cable speed not
+// enabled" (mstlink status opcode 16). That the coding blocks the mode is observed. Whether it is
+// the ONLY blocker is NOT, and this file must not say otherwise.
+//
+// WHAT BYTE 222 DOES AND DOES NOT ESTABLISH. It says 6Ah = 106, which at the specification's
+// 250 MBd unit is a declared nominal 26,500 MBd. That is EEPROM METADATA: it is what the module
+// declares about itself, and SFF-8636 places physical-layer behaviour outside its own scope, so no
+// byte in it qualifies the copper electrically. Two earlier heads of this block got this wrong in
+// two different directions -- first resting the conclusion on the byte, then resting it on the
+// stability of the running 50G link. extdeps.ethernet.link_mode rules out the second in terms:
+// operating in 50GBASE-CR2 does not certify 100GBASE-CR2, the modes differ in modulation, baud and
+// insertion-loss budget, and the higher-rate path has never been demonstrated on this assembly.
+//
+// AND 26.5 GBd IS NOT THE MODE'S RATE. ieee_100gbase_cr2 carries 26.5625 GBd; byte 222 has 250 MBd
+// resolution, so 106 is a quantized nominal consistent with the 50G PAM4 family and is not equal to
+// the mode's figure. Reading it as an exact match would be a comparison the field cannot support
+// without a modeled quantization relation, which does not exist yet.
+//
+// SO THE HONEST STANDING CLAIM: the coding does not attest the required mode and the NIC refuses it
+// today. Recoding is the indicated next step and its outcome is an EXPERIMENT, not a foregone
+// result -- write the coding, read it back off the same leg, observe 100G_2X actually enabled, and
+// only then is anything established about the copper.
 
 // THE EEPROM SIDE OF THIS ROW IS NOT SPELLED OUT HERE. It was: three fields carried the identifier,
 // the compliance byte and the nominal rate as prose strings and a bare count, which is a second
@@ -65,15 +86,24 @@ import gunbc.fleet_intent_network {
 // 25781250000). The number carries no information the model does not already hold -- it is byte 140
 // being 255, which NominalRateEscaped says exactly and honestly -- so there is nothing to keep.
 //
-// NEXT-RUNG TRIGGER, and it is a capability rather than an artifact: byte 222 modeled in
-// extdeps.transceiver.sff_8636 and carried as an observed field on CableLegObservation, so an
-// escaped byte 140 resolves to a rate THIS REPOSITORY read. Until someone runs
-// `ethtool -m <dev> raw on` against these legs, an escaped rate is a declared gap.
+// THAT TRIGGER IS DISCHARGED, and the row below is what discharges it. It named a capability --
+// byte 222 modeled in extdeps.transceiver.sff_8636 and carried as an observed field on
+// CableLegObservation, so an escaped byte 140 resolves to a rate THIS REPOSITORY read -- and both
+// halves now exist: the decoder is sff8636_nominal_rate_from_byte222 and the receipt is the
+// extended_rate field. `ethtool -m <dev> raw on` was run against spark-a3ee and spark-ac79 on
+// 2026-09-08 and both legs returned byte 222 = 6Ah, so this fleet's escaped rate resolves to
+// 26.5 GBd and is no longer a declared gap. A leg whose byte 222 is still unread stays escaped, and
+// cable_leg_unread_fields reports it -- the gap moved from this fleet to the general case, which is
+// where it belongs.
 
+// WHAT THE LINK REPORTS, which is a different subject from what the EEPROM says. The negotiated
+// speed and the NIC's advertised set are read from the HOST, per fleet and not per module, so they
+// stay here. The per-module EEPROM bytes are receipts and live in fabric_leg_eeprom_observations,
+// one row per acquisition -- an earlier head carried a `coding` field here as well, which made the
+// same bytes answerable from two places.
 type FabricLegCableObserved {
   vendor: NonEmptyStr
   part_number: NonEmptyStr
-  coding: CableLegObservation
   nic_supported_speeds: NonEmptyStr
   linked_speed_gbps: Nat
 }
@@ -81,12 +111,6 @@ type FabricLegCableObserved {
 data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved {
   vendor: "FS" as NonEmptyStr,
   part_number: "QDD-400G-4QPC015" as NonEmptyStr,
-  coding: cable_leg_observation(
-    identifier: transceiver_identifier_from_byte(code: 17),
-    primary_compliance_code: 11,
-    secondary_compliance: SecondaryNotObserved,
-    encoding: sff8636_encoding_from_byte(code: 8),
-    nominal_rate: sff8636_nominal_rate_from_byte140(code: 255)),
   nic_supported_speeds: "50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028)" as NonEmptyStr,
   linked_speed_gbps: 50,
 }
@@ -153,22 +177,86 @@ fn fabric_group_of_host(host: HostIdentity) -> FabricGroup? {
 // it the RMA candidate was wrong about the NIC. Whatever failed in its setup, it is not the fabric.
 data srv10_fabric_link_observed: Bool = true
 
-// ================= THE PLANT AS A CONVERGENCE SUBJECT =================
+// ================= THE PLANT AS AN INSPECTION SUBJECT =================
 //
-// Every lane above carries one leg of the same breakout, and every leg was read to the same bytes,
-// so the plant is the lane roster joined to the one coding observation. It is DERIVED from the lane
-// list rather than re-listed: a lane added above enters the plant with no second edit, which is the
-// property a hand-copied roster loses on its first divergence.
+// Every lane above carries one leg of the same breakout, and the plant is the lane roster joined to
+// what was READ of each -- which is not the same for every lane, and the next block is why. It is
+// DERIVED from the lane list rather than re-listed: a lane added above enters the plant with no
+// second edit, which is the property a hand-copied roster loses on its first divergence, and a lane
+// enters as unread until someone dumps it.
 //
 // The required mode is the rail's, not the cable's: 100GBASE-CR2 is what a two-lane leg must attest
 // for this fabric to run at the speed it was bought for.
+// TWO LEGS WERE READ, NOT EIGHT, AND EACH READ IS ITS OWN RECEIPT. The raw dump on 2026-09-08
+// covered spark-a3ee and spark-ac79 -- two of eight endpoints, both in cage 1, at lanes 1 and 3.
+//
+// An earlier head mapped ALL EIGHT lanes to one measured coding, which is the absorbing fallback
+// DESIGN section 5 forbids wearing the costume of a receipt: six unknown legs became LegReadingTaken
+// and bypassed the refusal the plant exists to produce. The first repair fixed the count but kept
+// ONE shared observation for BOTH measured legs, which is the same defect one order smaller. These
+// are FIELD PROGRAMMABLE parts -- the entire reason this model exists -- so the representation must
+// be able to say that spark-a3ee carries new coding while spark-ac79 still carries old. A shared row
+// cannot say it: editing it moves both legs at once.
+//
+// So one row per acquisition, carrying the identity that makes it a receipt rather than a value: the
+// host it was taken from, the module's own vendor serial, and the date code. The two legs agree
+// today; that agreement is DERIVED by comparing rows, never assumed by storing one.
+type FabricLegEepromObservation {
+  host: NonEmptyStr
+  vendor_serial: NonEmptyStr
+  date_code: NonEmptyStr
+  coding: CableLegObservation
+}
+
+// Each row states what ITS dump returned, written out rather than pointing at a shared value. The
+// two agree byte for byte today; that agreement is a DERIVABLE fact about two receipts, and storing
+// it as one row would make the agreement unfalsifiable and the divergence unrepresentable.
+data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
+  FabricLegEepromObservation {
+    host: "spark-a3ee" as NonEmptyStr,
+    vendor_serial: "S2630771509-2" as NonEmptyStr,
+    date_code: "260728" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 11,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
+  FabricLegEepromObservation {
+    host: "spark-ac79" as NonEmptyStr,
+    vendor_serial: "S2630771509-3" as NonEmptyStr,
+    date_code: "260728" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 11,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
+]
+
+fn fabric_leg_observation_for(o: FabricLaneObserved) -> List<FabricLegEepromObservation> {
+  filter(fabric_leg_eeprom_observations, r => r.host == o.spark_hostname)
+}
+
+// MEMBERSHIP IS DERIVED FROM THE RECEIPTS, never from a parallel roster of which hosts were dumped.
+// A second list would be a second answer to "was this leg read", and the two would disagree the
+// first time a receipt was added without updating it.
+fn fabric_leg_reading(o: FabricLaneObserved) -> CableLegReading {
+  match fabric_leg_observation_for(o: o).first() {
+    Present { value: r } =>
+      LegReadingTaken { endpoint: fabric_lane_interface(o: o), observation: r.coding }
+    Absent => LegNeverRead { endpoint: fabric_lane_interface(o: o) }
+  }
+}
+
 data fabric_cable_plant: CablePlant = cable_plant(
   plant: "spark fabric, CRS812 QSFP-DD breakout legs" as NonEmptyStr,
   required_mode: ieee_100gbase_cr2,
-  readings: map(fabric_lane_observations, o => LegReadingTaken {
-    endpoint: fabric_lane_interface(o: o),
-    observation: fabric_leg_cable_observed.coding,
-  }))
+  readings: map(fabric_lane_observations, o => fabric_leg_reading(o: o)))
 
 fn fabric_cable_plant_convergence() -> CablePlantInspection {
   inspect_cable_plant(subject: fabric_cable_plant)

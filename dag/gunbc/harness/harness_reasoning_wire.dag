@@ -1,0 +1,312 @@
+module gunbc.harness.harness_reasoning_wire
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.measure { TokenCount }
+import extdeps.languages.json.emit { JsonKeyValue, JsonBool, json_kv, json_string, json_object }
+import gunbc.spark.serving_arm {
+  ReasoningResponseProjection, ParsedReasoningField, InlineReasoning,
+  gitcommit90_sm121_exl3_row, gunbc_sparkrun_ds4_row,
+}
+import extdeps.deepseek.deepseek_v4 {
+  deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
+  deepseek_v4_thinking_end_token, deepseek_v4_chat_reasoning_field,
+  deepseek_v4_chat_reasoning_field_vllm_alias, deepseek_v4_context_length,
+  DeepseekV4ThinkMax, deepseek_v4_reasoning_mode_wire,
+}
+import extdeps.zhipu.glm_5_3_flash {
+  glm_5_3_flash_model_id, glm_5_3_flash_reasoning_effort_kwarg, glm_5_3_flash_clear_thinking_kwarg,
+  glm_5_3_flash_thinking_end_token, glm_5_3_flash_chat_reasoning_field, glm_5_3_flash_context_length,
+  GlmEffortHigh, GlmEffortMax, glm_5_3_flash_reasoning_effort_wire,
+  glm_5_3_flash_vllm_tool_call_parser,
+}
+
+// THE REASONING WIRE SEAM. The harness used to import extdeps.deepseek.deepseek_v4 directly and name
+// its kwargs, its end token and its reasoning field in twelve places, so "which model is served" and
+// "how a turn asks for reasoning" were one fact spelled once, in the consumer. That is the fork this
+// module removes, and repointing those twelve imports at a GLM module would have preserved it exactly
+// -- the same fork under a new name.
+//
+// THE QUESTION THE HARNESS IS ENTITLED TO ASK IS "WHAT IS THIS SERVING UNIT'S REASONING WIRE", and
+// the answer is dispatched here rather than inside either citation, because DESIGN section 3 places
+// the dispatch that selects a realization at the periphery: a generic hub may not enumerate concrete
+// products or dispatch among their authorities. Each arm below DELEGATES to its own upstream module
+// and spells no protocol fact of its own.
+//
+// A UNIT IS A MODEL PLUS THE FLAGS IT IS SERVED UNDER, not a model, because the facts the harness
+// needs are not all model facts. Whether reasoning arrives already split into reasoning_content or
+// inline behind an end token is decided by whether the engine was launched with a reasoning parser
+// for that family -- vLLM ships glm45 for GLM and, on this fleet's build, nothing for DeepSeek V4.
+// Attributing that to the model would be authority substitution; attributing it to the unit is
+// exactly right.
+type HarnessServingUnit
+  = DeepseekV4FlashOnVllm
+  | Glm53FlashOnVllm
+
+fn harness_serving_unit_wire(unit: HarnessServingUnit) -> NonEmptyStr {
+  match unit {
+    DeepseekV4FlashOnVllm => "deepseek-v4-flash on vllm" as NonEmptyStr
+    Glm53FlashOnVllm => "glm-5.3-flash on vllm" as NonEmptyStr
+  }
+}
+
+// THE LEVEL IS THE HARNESS'S OWN VOCABULARY, AND IT IS DELIBERATELY NOT EITHER MODEL'S. DeepSeek
+// names non-think / high / max; GLM names low / high / max and has no off at all. A shared type that
+// spelled one vendor's arms would make the other's wire a translation of a nickname, so the arms here
+// are the harness's three intents -- do not reason, reason ordinarily, reason as hard as you can --
+// and each unit's arm below is responsible for expressing or REFUSING each one.
+type HarnessReasoningLevel
+  = ReasoningOff
+  | ReasoningStandard
+  | ReasoningMaximum
+
+fn harness_reasoning_level_wire(level: HarnessReasoningLevel) -> NonEmptyStr {
+  match level {
+    ReasoningOff => "off" as NonEmptyStr
+    ReasoningStandard => "standard" as NonEmptyStr
+    ReasoningMaximum => "maximum" as NonEmptyStr
+  }
+}
+
+// A LEVEL A UNIT CANNOT EXPRESS IS REFUSED, NOT APPROXIMATED. GLM-5.3-Flash's generation prompt opens
+// the think block unconditionally and its effort key defaults to max when absent, so there is no
+// request this harness can send that turns reasoning off. Silently sending the model's floor instead
+// would be the fabricated plausible output DESIGN section 5 forbids: the caller asked for no
+// reasoning, would be billed for the deepest available, and nothing on the wire would say so.
+type HarnessReasoningKwargs
+  = ReasoningKwargsAdmitted { kwargs: List<JsonKeyValue> }
+  | ReasoningLevelUnsupported { unit: NonEmptyStr, level: NonEmptyStr, cause: NonEmptyStr }
+
+// THE DEEPSEEK ARM, unchanged in behaviour from the harness's former inline spelling and moved here
+// whole. Non-think sends nothing, because on vLLM the ABSENCE of the switch is the non-think mode.
+// Think High sends the thinking switch alone: the canonical encoder carries a preamble string only
+// for "max", "high" is the thinking mode's own default, and measured on the live artifact an effort
+// key of "high" renders nothing. Only Think Max carries the effort key.
+fn harness_deepseek_reasoning_kwargs(level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
+  match level {
+    ReasoningOff => ReasoningKwargsAdmitted { kwargs: [] }
+    ReasoningStandard =>
+      ReasoningKwargsAdmitted { kwargs: [json_kv(key: "chat_template_kwargs", value: json_object([
+        json_kv(key: deepseek_v4_vllm_thinking_kwarg as String, value: JsonBool { value: true }),
+      ]))] }
+    ReasoningMaximum =>
+      ReasoningKwargsAdmitted { kwargs: [json_kv(key: "chat_template_kwargs", value: json_object([
+        json_kv(key: deepseek_v4_vllm_thinking_kwarg as String, value: JsonBool { value: true }),
+        json_kv(key: deepseek_v4_vllm_reasoning_effort_kwarg as String,
+                value: json_string(s: deepseek_v4_reasoning_mode_wire(mode: DeepseekV4ThinkMax) as String)),
+      ]))] }
+  }
+}
+
+// THE GLM ARM, AND IT IS NOT THE DEEPSEEK ARM WITH A DIFFERENT STRING IN IT. Three differences, each
+// of which would have been a silent defect had the import simply been repointed:
+//
+//   - THE EFFORT KEY IS ALWAYS SENT, INCLUDING AT THE STANDARD LEVEL. On DeepSeek, omitting the
+//     effort means "the thinking mode's default"; on GLM, omitting it means MAX. So the arm that
+//     sends nothing extra is the one that costs the most, and expressing "reason ordinarily" REQUIRES
+//     naming "high" explicitly.
+//   - THERE IS NO THINKING BOOLEAN. GLM's chat template carries no `thinking` key; sending DeepSeek's
+//     would be an unrecognised kwarg, and unrecognised effort values on this model resolve to max
+//     without an error, so a mistake here is invisible on the wire.
+//   - CLEAR_THINKING IS SENT FALSE, EXPLICITLY, AND THAT IS THE TEMPLATE'S OWN DEFAULT. It is spelled
+//     rather than omitted because this is a TOOL-USING loop: the model card recommends true for chat
+//     scenarios, and a future caller reading an absent key cannot tell a considered default from an
+//     oversight. Prior turns' reasoning must stay in context, and this row is the harness saying so.
+fn harness_glm_reasoning_kwargs(level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
+  match level {
+    ReasoningOff => ReasoningLevelUnsupported {
+      unit: harness_serving_unit_wire(unit: Glm53FlashOnVllm),
+      level: harness_reasoning_level_wire(level: ReasoningOff),
+      cause: "GLM-5.3-Flash reasons unconditionally: its generation prompt opens the think block and reasoning_effort defaults to max when the key is absent, so no request turns reasoning off. Its floor is the low effort, which is a reduction and not a disable; sending it under the name of off would answer a question the model cannot be asked" as NonEmptyStr,
+    }
+    ReasoningStandard =>
+      ReasoningKwargsAdmitted { kwargs: [json_kv(key: "chat_template_kwargs", value: json_object([
+        json_kv(key: glm_5_3_flash_reasoning_effort_kwarg as String,
+                value: json_string(s: glm_5_3_flash_reasoning_effort_wire(effort: GlmEffortHigh) as String)),
+        json_kv(key: glm_5_3_flash_clear_thinking_kwarg as String, value: JsonBool { value: false }),
+      ]))] }
+    ReasoningMaximum =>
+      ReasoningKwargsAdmitted { kwargs: [json_kv(key: "chat_template_kwargs", value: json_object([
+        json_kv(key: glm_5_3_flash_reasoning_effort_kwarg as String,
+                value: json_string(s: glm_5_3_flash_reasoning_effort_wire(effort: GlmEffortMax) as String)),
+        json_kv(key: glm_5_3_flash_clear_thinking_kwarg as String, value: JsonBool { value: false }),
+      ]))] }
+  }
+}
+
+fn harness_reasoning_kwargs_for(unit: HarnessServingUnit, level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
+  match unit {
+    DeepseekV4FlashOnVllm => harness_deepseek_reasoning_kwargs(level: level)
+    Glm53FlashOnVllm => harness_glm_reasoning_kwargs(level: level)
+  }
+}
+
+// WHETHER THINKING WAS REQUESTED IS A PROPERTY OF THE PAIR, NOT OF THE LEVEL, which is precisely what
+// the former harness-local predicate could not express: it read the level alone and answered false
+// for off. On GLM that answer is wrong at every level, because the model reasons whether or not the
+// request says so -- and the completion-format check downstream depends on this, so a level-only
+// answer would have let a GLM completion with no reasoning at all pass unexamined.
+fn harness_unit_thinking_requested(unit: HarnessServingUnit, level: HarnessReasoningLevel) -> Bool {
+  match unit {
+    Glm53FlashOnVllm => true
+    DeepseekV4FlashOnVllm =>
+      match level {
+        ReasoningOff => false
+        ReasoningStandard => true
+        ReasoningMaximum => true
+      }
+  }
+}
+
+// THE MODEL IDENTITY, ONCE. This is the seam's answer to "what do I put in the request's model
+// field", and each arm delegates to its own upstream authority rather than spelling a string here.
+fn harness_unit_model_id(unit: HarnessServingUnit) -> NonEmptyStr {
+  match unit {
+    DeepseekV4FlashOnVllm => "deepseek-v4-flash:iq3s-split" as NonEmptyStr
+    Glm53FlashOnVllm => glm_5_3_flash_model_id
+  }
+}
+
+// THE ENGINE'S TOOL-CALL PARSER FOR THIS UNIT, delegated for the same reason. The DeepSeek arm keeps
+// the string because extdeps.deepseek.deepseek_v4 carries no parser row; that asymmetry is the
+// DeepSeek module's gap, named here rather than papered over with a second GLM-shaped row.
+fn harness_unit_tool_call_parser(unit: HarnessServingUnit) -> NonEmptyStr {
+  match unit {
+    DeepseekV4FlashOnVllm => "deepseek_v4" as NonEmptyStr
+    Glm53FlashOnVllm => glm_5_3_flash_vllm_tool_call_parser
+  }
+}
+
+// THE FIELD PRIOR REASONING RIDES ON, and its alias where the engine exposes a second spelling.
+// Both models use the DeepSeek-originated reasoning_content on the chat-completions shape; vLLM
+// additionally exposes "reasoning". The alias is empty where a unit has none, so a consumer folds a
+// list rather than branching on a sentinel.
+// THE FIELD NAME COMES FROM THE RUNTIME THAT EMITS IT, AND THIS SEAM ASKED TWO MODEL AUTHORITIES FOR
+// IT INSTEAD. Which member carries the split reasoning is decided by the ENGINE BUILD -- by whether it
+// was launched with a reasoning parser and by what that parser names its output -- so it is a runtime
+// fact in exactly the sense this module's own header describes, and gunbc.spark.serving_arm already
+// owns it as ReasoningResponseProjection on the runtime row, measured inside each pinned image.
+//
+// THE GLM ARM PREVIOUSLY CITED DEEPSEEK'S ALIAS ROW, which is one model authority answering for
+// another model's wire, green only because the two values coincide. The repair attempted first was to
+// give GLM its own alias row in extdeps.zhipu -- which is the SAME defect relocated, because the
+// annotation over ReasoningResponseProjection had already established that the model authority's name
+// is not this unit's primary. A third spelling of a fact the runtime row measured would have been the
+// fork this branch exists to remove, introduced by the commit removing it.
+//
+// SO BOTH ANSWERS ARE DERIVED FROM THE PROJECTION. A parsed unit's primary is the member the engine
+// actually emits; an inline unit has no member at all, and the harness must split client-side on the
+// end token, so the list is empty rather than carrying a name that will never appear. The model
+// authorities keep their rows -- `reasoning_content` IS what Zhipu's and DeepSeek's own APIs return --
+// and they are simply not what this fleet's engines emit.
+fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningResponseProjection {
+  match unit {
+    DeepseekV4FlashOnVllm => gunbc_sparkrun_ds4_row.reasoning_projection
+    Glm53FlashOnVllm => gitcommit90_sm121_exl3_row.reasoning_projection
+  }
+}
+
+fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
+  match harness_unit_reasoning_projection(unit: unit) {
+    ParsedReasoningField { field: f } => f
+    InlineReasoning { end_token: _ } => harness_unit_model_reasoning_field(unit: unit)
+  }
+}
+
+// WHAT AN INLINE UNIT ANSWERS, AND WHY IT IS THE MODEL'S NAME RATHER THAN A REFUSAL. Nothing on the
+// wire carries reasoning for such a unit, so any name is unused by the decoder; naming the model's own
+// field keeps the answer meaningful if that unit is later relaunched WITH a parser, and keeps this
+// function total without inventing a sentinel the caller would have to branch on.
+fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
+  match unit {
+    DeepseekV4FlashOnVllm => deepseek_v4_chat_reasoning_field
+    Glm53FlashOnVllm => glm_5_3_flash_chat_reasoning_field
+  }
+}
+
+// THE ALIASES ARE THE OTHER NAMES A READER SHOULD TRY, and for a parsed unit that is the model
+// authority's own spelling -- the one the vendor's hosted API returns, which a future engine build
+// may well switch to. For an inline unit there is no member to alias.
+fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmptyStr> {
+  match harness_unit_reasoning_projection(unit: unit) {
+    ParsedReasoningField { field: _ } => [harness_unit_model_reasoning_field(unit: unit)]
+    InlineReasoning { end_token: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+// WHETHER THE ENGINE SPLITS REASONING SERVER-SIDE, AND THIS IS A FACT ABOUT THE PINNED IMAGE RATHER
+// THAN ABOUT UPSTREAM vLLM. The distinction is the whole reason this answer is per UNIT and not per
+// model, and an earlier revision of this row got it wrong in exactly the way the seam exists to
+// prevent.
+//
+// WHAT WAS ASSERTED AND WHY IT WAS WRONG. This row read `Glm53FlashOnVllm => true`, citing the vLLM
+// recipe's `--reasoning-parser glm45`. The recipe is correct about CURRENT upstream vLLM; the fleet
+// does not run current upstream vLLM. Measured on the running container of the serving head
+// (image sparkrun_vllm_ds4_gb10, vLLM 0.21.1rc1.dev339+g1967a5627bc3): `vllm/reasoning/` holds
+// twenty parser modules and NOT ONE of them is GLM, and a find for any GLM-named file on a reasoning
+// path returns nothing. So on this image `--reasoning-parser glm45` names a parser that is not there.
+//
+// THE INSTRUMENT IS FILE PRESENCE, AND IT IS CONTROL-VERIFIED. A registry introspection was tried
+// first and DISCARDED as invalid: it reported zero tool parsers and zero reasoning parsers, including
+// `deepseek_v4`, which this very engine is serving with at that moment -- the registries populate
+// lazily, so an empty reading is not an absence. File presence tracks availability in the direction
+// that matters, checked against that same control: `deepseekv4_tool_parser.py` is present and
+// `deepseek_v4` is in the live serve line.
+//
+// TOOL CALLING IS AVAILABLE; REASONING SPLITTING IS NOT. `glm47_moe_tool_parser.py` IS present in
+// `vllm/tool_parsers/`, so the tool-call half of the GLM serve line has its parser. Only the
+// reasoning half is missing, which is why this is a one-value correction rather than a verdict that
+// the image cannot serve the model.
+//
+// THE GLM ROW WAS FALSE AND THE RUNNING CANARY FALSIFIED IT, 2026-09-08. Everything above is a
+// measurement of the PINNED DEEPSEEK IMAGE, and the conclusion was carried across to a unit that does
+// not run on that image. The canary runs the community SM121 runtime, whose serve line the live engine
+// echoes back as `reasoning_parser: glm45` inside its own StructuredOutputsConfig -- so this unit's
+// server DOES split reasoning, and the row said it did not. That is the same fault the checkpoint's
+// attention row carried: a fact established about one artifact, asserted about another.
+//
+// THE EVIDENCE IS A PARSED COMPLETION, NOT A FILE LISTING, which matters because the previous row was
+// inferred from `ls` over a parser directory. Asked a question that forces deliberation, the canary
+// returns the reasoning SPLIT OUT under its own key -- 539 characters of it -- with the answer alone
+// in `content`. The server is parsing, and this row now says so.
+//
+// FOUR EARLIER MEASUREMENTS SAID THE OPPOSITE AND EVERY ONE OF THEM WAS READING THE WRONG KEY. This
+// engine returns `reasoning`; it returns no `reasoning_content` at all. Reading the canonical name got
+// zero four times running, which was very nearly recorded here as "the server does not surface
+// reasoning" -- a conclusion drawn from an absent field rather than from an observed one. The alias is
+// now a measured row on the model's own authority
+// (extdeps.zhipu.glm_5_3_flash glm_5_3_flash_chat_reasoning_field_vllm_alias) instead of being
+// borrowed from DeepSeek's, which is what let the mistake stand: the borrowed value was correct, so
+// nothing failed, and the seam looked settled while the fact underneath it was unowned.
+//
+// THE HAZARD THIS SEAM MUST NOT HIDE is what a TRUNCATED thinking block does. Capped at 1500 tokens
+// the same question returned finish_reason `length` with BOTH fields null -- the reasoning block's end
+// token never arrived, so there was no completed reasoning for one field and no speech for the other.
+// That is a well-formed 200 carrying no text anywhere, which a consumer checking only for an HTTP
+// error reads as an empty answer instead of as a truncation. It is named rather than modelled because
+// the honest fix is the token budget, and the seam's job is to say WHICH FIELD to read, not to invent
+// content when neither is populated.
+fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
+  match unit {
+    DeepseekV4FlashOnVllm => false
+    Glm53FlashOnVllm => true
+  }
+}
+
+// THE INLINE CLOSER, for the client-side split the unit above still needs. Carried even where the
+// server parses, because a parser can be absent from a rebuilt engine and the token is the model's
+// either way.
+fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr {
+  match unit {
+    DeepseekV4FlashOnVllm => deepseek_v4_thinking_end_token
+    Glm53FlashOnVllm => glm_5_3_flash_thinking_end_token
+  }
+}
+
+// THE MODEL'S DECLARED WINDOW. A CEILING, and the seam says so by name: neither arm's figure is a
+// measurement of a deployment, and neither may be read as one.
+fn harness_unit_declared_context_ceiling(unit: HarnessServingUnit) -> TokenCount {
+  match unit {
+    DeepseekV4FlashOnVllm => deepseek_v4_context_length
+    Glm53FlashOnVllm => glm_5_3_flash_context_length
+  }
+}
