@@ -172,8 +172,6 @@ fn read_count_or_sentinel(c: RegionCoverage) -> Int {
     Absent => 0 - 1,
   }
 }
-  }
-}
 
 fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
   let facilities_seen = facility_count_or_sentinel(c: c)
