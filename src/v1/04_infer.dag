@@ -161,7 +161,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_node_bounded, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -7993,8 +7993,21 @@ data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig loo
 // them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary
 // is minted beside the resolver's own typed carrier.
 
+// MASKED: FALSE AT THE PEEL — this peel is a GROUNDING recursion in the sense of
+// v1.compiler.infer_resolve resolve_node_bounded_masked_boundary: it descends into the alias's
+// DEFINING-module structure to discover fields, so its resolutions are the defining module's
+// import responsibility, not the use site's. Every authored reference in the peel's input was
+// already charged at its own authored site (declared annotations by resolve_item_types, callee
+// signatures in their own module), so a masked pass here can only double-charge or -- measured on
+// the 2026-09-09 census, 316 occurrences across 56 modules -- charge a definer's local names
+// against an importer whose text never wrote them (witness:
+// test.claim.undeclared_bare_type_reference_class_witness
+// constructing_through_an_imported_alias_charges_no_unlisted_import_use_on_the_expansion).
+// Diagnostics still accumulate: masked gates only the UnlistedImportUse leaf check, so hard
+// refusals (UnresolvedType, ArityMismatch, InternalError) keep flowing to the judgment-producing
+// callers this carrier was widened for.
 fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
-  let once = resolve_node(n: n, env: env, module_name: module_name)
+  let once = resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0, masked: false)
   let resolved_once = once.resolved
   if (resolved_once.connective == Conj || resolved_once.connective == Disj) {
     once
