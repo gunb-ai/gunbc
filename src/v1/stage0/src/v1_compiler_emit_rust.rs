@@ -17515,7 +17515,18 @@ if ((child.children.clone().len() as i64) == 0) {
                     if variant_is_synthetic_positional_payload(child.children.clone(), env.source_indices.clone()) {
                         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            ".to_string(), variant_path.clone()), "(_) => panic!(\"no ".to_string()), fname.clone()), " on positional-payload variant\"),".to_string())
                     } else {
-                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            ".to_string(), variant_path.clone()), " { ".to_string()), crate::v1_compiler_emit::emit_ident(fname.clone(), RenderTarget::Rust)), ": __val, .. } => ".to_string()), crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), "__val".to_string())), ",".to_string())
+                        {
+                            let arm_field_boxed = match Rc::new({ let mut __result = Vec::new(); for f in child.children.clone().iter().cloned() { if (crate::v1_compiler_infer_env::authored_name(env.clone(), f.clone()) == fname.clone()) { __result.push(f); } } __result }).first().cloned() {
+    Some(f) => needs_box_wrapping(crate::v1_compiler_infer_types::resolved_type(f.clone()), recursive_types.clone(), shared_types.clone(), env.source_indices.clone()),
+    std::option::Option::None => false,
+};
+let clone_expr = if arm_field_boxed.clone() {
+                                crate::v1_compiler_emit_core_support::apply_type_template1(sharing.deref_clone.clone(), "*__val".to_string())
+                            } else {
+                                crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), "__val".to_string())
+                            };
+v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            ".to_string(), variant_path.clone()), " { ".to_string()), crate::v1_compiler_emit::emit_ident(fname.clone(), RenderTarget::Rust)), ": __val, .. } => ".to_string()), clone_expr.clone()), ",".to_string())
+}
                     }
                 }
 }); } __result });
