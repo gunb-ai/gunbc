@@ -1,0 +1,46 @@
+module test.claim.serving.router_realization_witness
+
+import std.types { Bool, String }
+import gunbc.serving.router_realization {
+  PermittedInRealization, ForbiddenInRealization, RouterCapability, NormaliseRequestToDemand,
+  AskPlacementAuthority, ProjectEndpointFromGrant, ProxyBytes, ReleaseSeatOnCompletion,
+  ComputeOwnLoadScore, SelectHostDirectly, MaintainAuthoritativeBindingLedger,
+  FabricatePlacementWhenUnreadable, router_capability_permission, router_capabilities,
+  router_realization_contract,
+}
+
+fn is_permitted(c: RouterCapability) -> Bool {
+  match router_capability_permission(c: c) {
+    PermittedInRealization => true
+    ForbiddenInRealization { because: _ } => false
+  }
+}
+
+fn refusal_says(c: RouterCapability, pattern: String) -> Bool {
+  match router_capability_permission(c: c) {
+    ForbiddenInRealization { because: b } => string_contains(s: b as String, pattern: pattern)
+    PermittedInRealization => false
+  }
+}
+
+// THE REALIZATION'S FORBIDDEN CAPABILITIES ARE ENUMERATED, and each names why. Every forbidden one
+// is something the router does today, which is what makes this a migration and not a description.
+test fn the_router_may_not_select_a_host_or_fabricate_a_placement() -> Bool {
+  fold([NormaliseRequestToDemand, AskPlacementAuthority, ProjectEndpointFromGrant, ProxyBytes, ReleaseSeatOnCompletion], init: true, f: (acc, c) => acc && is_permitted(c: c))
+    && fold([ComputeOwnLoadScore, SelectHostDirectly, MaintainAuthoritativeBindingLedger, FabricatePlacementWhenUnreadable], init: true, f: (acc, c) => acc && !is_permitted(c: c))
+    && refusal_says(c: FabricatePlacementWhenUnreadable, pattern: "absorbing fallback")
+    && refusal_says(c: SelectHostDirectly, pattern: "DESIGN section 3b")
+    && refusal_says(c: ComputeOwnLoadScore, pattern: "second scoring function")
+}
+
+// THE ROSTER IS THE CONTRACT, AND IT IS COMPLETE IN THE SENSE THAT MATTERS: every capability the
+// module can spell appears in the emitted contract, so a capability added later cannot be quietly
+// left out of what the ctrl-side change is measured against.
+test fn every_capability_reaches_the_emitted_contract() -> Bool {
+  let contract = router_realization_contract()
+  length(router_capabilities) == 9
+    && fold(router_capabilities, init: true, f: (acc, c) => acc && string_contains(s: contract, pattern: match router_capability_permission(c: c) { PermittedInRealization => "permitted "  ForbiddenInRealization { because: _ } => "forbidden " }))
+    && string_contains(s: contract, pattern: "forbidden select-host-directly")
+    && string_contains(s: contract, pattern: "permitted proxy-bytes")
+    && !string_contains(s: contract, pattern: "permitted select-host-directly")
+}

@@ -7,7 +7,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types {
   CabinetDensityClaim, DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
   CabinetPowerFigure, PublishedRealPower, PublishedApparentPower,
-  cabinet_density_air_established, cabinet_density_air_upper_bound,
+  cabinet_density_air_established, cabinet_density_air_ceiling,
+  CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
 }
 import extdeps.colo.databank {
@@ -20,7 +21,7 @@ import extdeps.colo.iron_mountain {
 }
 import gunbc.colo_census_coverage {
   RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
-  coverage_density_read_count, coverage_facility_count,
+  coverage_facility_count, coverage_density_read_count,
   nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley, census_regions,
 }
 
@@ -40,10 +41,21 @@ fn established_watts(d: CabinetDensityClaim) -> Int {
   }
 }
 
-fn bound_watts(d: CabinetDensityClaim) -> Int {
-  match cabinet_density_air_upper_bound(d: d) {
-    Present { value } => watt_count(w: value),
-    Absent => 0 - 1,
+// A CEILING IS ASKED WHETHER IT REFUSES A REQUIREMENT; IT IS NEVER ASKED WHAT THE CABINET SUPPLIES.
+// These two helpers are the whole surface the witnesses use, and neither yields a Watt - which is
+// the point of review 62791's fix: a bound handed to something wanting a reading is now ill-typed
+// rather than defended by a comment.
+fn ceiling_refuses_at(d: CabinetDensityClaim, required: Int) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => ceiling_refuses(c: value, required: watt(count: required)),
+    Absent => false,
+  }
+}
+
+fn has_ceiling(d: CabinetDensityClaim) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => true,
+    Absent => false,
   }
 }
 
@@ -63,7 +75,8 @@ data apparent_power_fixture: CabinetDensityClaim = DensityMarketedAirOnly {
 test fn w_published_kilowatts_establish_real_power() -> Bool {
   established_watts(d: databank_lga4_density) == 35000
     && established_watts(d: iron_mountain_nje1_density) == 30000
-    && bound_watts(d: databank_lga4_density) == 35000
+    && ceiling_refuses_at(d: databank_lga4_density, required: 35001)
+    && !ceiling_refuses_at(d: databank_lga4_density, required: 34999)
 }
 
 // THE DISCRIMINATING RED, AND THE REASON THE APPARENT-POWER ARM EXISTS. A kVA publication
@@ -74,10 +87,14 @@ test fn w_apparent_power_establishes_no_real_power() -> Bool {
   established_watts(d: apparent_power_fixture) == 0 - 1
 }
 
-// The same figure DOES bound real power from above, because kW <= kVA. That is what makes it
-// usable to reject a cabinet too small even at the bound, and useless to admit one.
+// The same figure DOES bound real power from above, because kW <= kVA - usable to REJECT a cabinet
+// too small even at the bound, useless to admit one. The witness now exercises that asymmetry
+// rather than reading the number out: 5001 W is refused on published evidence alone, and 4999 W is
+// NOT refused, which is not the same as admitted. There is no longer any way to ask this fixture
+// what it supplies, which is what makes the distinction structural instead of documented.
 test fn w_apparent_power_still_bounds_real_power_above() -> Bool {
-  bound_watts(d: apparent_power_fixture) == 5000
+  ceiling_refuses_at(d: apparent_power_fixture, required: 5001)
+    && !ceiling_refuses_at(d: apparent_power_fixture, required: 4999)
 }
 
 // AN UNREAD CLAIM YIELDS NOTHING ON EITHER AXIS. The earlier accessor answered 0 here - a
@@ -86,7 +103,8 @@ test fn w_apparent_power_still_bounds_real_power_above() -> Bool {
 // page states no density at all, and the row records the absence rather than the assertion.
 test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
   established_watts(d: iron_mountain_wpa1_density) == 0 - 1
-    && bound_watts(d: iron_mountain_wpa1_density) == 0 - 1
+    && !has_ceiling(d: iron_mountain_wpa1_density)
+    && !ceiling_refuses_at(d: iron_mountain_wpa1_density, required: 999999)
 }
 
 // A READ DENSITY AND A SELLABLE GRAIN ARE INDEPENDENT FACTS. A cabinet marketed at 30 kW that the
@@ -104,6 +122,16 @@ test fn w_density_and_grain_are_separate_facts() -> Bool {
   grain_admits_single_cabinet(g: databank_lga4_retail_grain)
     && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
     && established_watts(d: databank_lga4_density) == 35000
+}
+
+// AN UNREAD DENSITY REFUSES NOTHING, WHICH IS THE ARM THAT KEEPS THE CEILING FROM BEING A FREE
+// ADMISSION. `ceiling_refuses_at` answers false for an absent ceiling, and false means UNDETERMINED
+// rather than fits - so this asserts the pair that separates the two: a real ceiling refuses an
+// impossible requirement, and an absent one refuses nothing at all. Reading a bare false as "fits"
+// would admit every unread cabinet in the census.
+test fn w_absent_ceiling_refuses_nothing_and_a_real_one_does() -> Bool {
+  !ceiling_refuses_at(d: iron_mountain_wpa1_density, required: 999999)
+    && ceiling_refuses_at(d: apparent_power_fixture, required: 999999)
 }
 
 // THE COVERAGE CARRIER'S CONSUMER, ENROLLED FOR THE SAME REASON AS THE ONES ABOVE. Review 62758
@@ -157,31 +185,25 @@ test fn w_a_surveyed_empty_region_is_not_an_unsurveyed_one() -> Bool {
 }
 
 // A SURVEYED REGION WITH FACILITIES ANSWERS ITS COUNT, and this witness is kept together with an
-// honest statement of what it could NOT see. The relation is asserted rather than the literal,
-// because a witness repeating a hand-authored number it cannot re-derive proves only that the file
-// was not edited. But the relation chosen - read densities never exceed facilities - was too weak
-// to discriminate the error that actually occurred: the corridor row carried 28 when the corpus
-// holds 27, and 1 <= 28 is exactly as true as 1 <= 27, so this stayed green beside the miscount for
-// as long as it existed. Avoiding the literal was right; this relation was not the answer. The
-// answer is derivation, and both counts are now folded from the facility and claim rows themselves,
-// which makes a miscount unwritable rather than merely checkable. This witness stays as the
-// transposition control it always was, and stops being cited as evidence the counts are right.
+// honest statement of what it CANNOT see. The relation is asserted rather than the literal, because
+// a witness repeating a hand-authored number it cannot re-derive proves only that the file was not
+// edited. But the relation chosen - read densities never exceed facilities - was too weak to
+// discriminate the error that actually occurred: the corridor row carried 28 when the corpus holds
+// 27, and 1 <= 28 is exactly as true as 1 <= 27, so this stayed green beside the miscount for as
+// long as it existed. Avoiding the literal was right; this relation was not the answer. The answer
+// is derivation, and silent-heron-303 is landing it - both counts folded from the facility and
+// claim rows themselves, which makes a miscount unwritable rather than merely checkable. This
+// witness stays as the transposition control it always was, and stops being cited as evidence the
+// counts are right.
 //
-// THE VACUOUS ARM IS AT facilities <= 0, NOT < 0, AND THAT DISTINCTION IS THE WHOLE BUG REVIEW
-// 62803 CAUGHT. A surveyed-empty region answers Present 0 facilities and Absent reads, so the
-// sentinels are 0 and -1: guarding only on facilities < 0 left southern_new_jersey and
-// hudson_valley failing both reads >= 0 and facilities > 0, and quantifying over the roster turned
-// that from unreachable into two live violators. Zero facilities cannot be exceeded by any number
-// of reads, so it is vacuously true rather than a violation. Both discriminating REDs survive the
-// widening: a transposed pair (1 facility, 27 reads) still fails, and reads going Absent while
-// facilities are present - the real inconsistency between the two accessors - fails on reads >= 0.
-//
-// AND IT RANGES OVER THE WHOLE ROSTER RATHER THAN COUNTING IT. This test previously ended with
-// census_regions.length() == 3, which is measure() == measure() over a roster authored in this same
-// repo: the literal's whole content was that nobody had added a region, and adding one correctly
-// would have reddened it. Quantifying the invariant instead - no region in the roster violates the
-// relation - grows with the census rather than fighting it, and reds for a reason rather than for a
-// change.
+// AND THE LINE THAT SAID `census_regions.length() == 3` IS GONE, KILLED BY bright-swift-678 WHOSE
+// ROW MADE IT FOUR. A roster-length literal reds on every legitimate addition and catches no defect
+// the relation beside it does not already catch, so the next lane adding a region would have had to
+// edit a test to make its own row legal. The uncomfortable part is that this annotation ALREADY
+// argued for asserting the relation rather than the literal, and the literal was in the body it
+// annotates - the principle was stated correctly one line above the place it was not applied. The
+// fold now runs the relation over EVERY row rather than the one row the author happened to name,
+// which is both stronger and free of the roster's length.
 fn read_count_or_sentinel(c: RegionCoverage) -> Int {
   match coverage_density_read_count(c: c) {
     Present { value } => value,
@@ -189,6 +211,17 @@ fn read_count_or_sentinel(c: RegionCoverage) -> Int {
   }
 }
 
+// THE VACUOUS ARM IS AT facilities <= 0, NOT < 0, AND THAT DISTINCTION IS WHAT REVIEW 62803 CAUGHT.
+// A surveyed-empty region answers Present 0 facilities and Absent reads, so the sentinels are 0 and
+// -1; guarding only on facilities < 0 left southern_new_jersey and hudson_valley failing both
+// reads >= 0 and facilities > 0, and quantifying over the roster turned that from unreachable into
+// two live violators. Zero facilities cannot be exceeded by any number of reads, so it is vacuously
+// true rather than a violation. Both discriminating REDs survive the widening: a transposed pair
+// (1 facility, 27 reads) still fails, and reads going Absent while facilities are present - the
+// real inconsistency between the two accessors - fails on reads >= 0.
+//
+// Both sides are now DERIVED from the facility and claim rows rather than transcribed, so the
+// transposition this control was written to catch is no longer authorable from the region row.
 fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
   let facilities_seen = facility_count_or_sentinel(c: c)
   let reads_seen = read_count_or_sentinel(c: c)
@@ -216,7 +249,6 @@ test fn w_a_read_claim_counts_and_an_unread_one_does_not() -> Bool {
 }
 
 test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bool {
-  density_reads_never_exceed_facilities(c: nj_hudson_bergen_essex_corridor)
+  all(census_regions, c => density_reads_never_exceed_facilities(c: c))
     && facility_count_or_sentinel(c: nj_hudson_bergen_essex_corridor) > 0
-    && census_regions.filter(c => !density_reads_never_exceed_facilities(c: c)).length() == 0
 }

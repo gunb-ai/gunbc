@@ -22,6 +22,7 @@ data derived_row_roster_seed_growth_justification: SeedGrowthJustification = See
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROSTER_BASENAME", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROW_MODULE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROSTER_MODULE", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROW_DIR_REL", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "is_recurring_failure_mode_row_dir", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ensure_if_row_dir", field: WholeDeclaration },

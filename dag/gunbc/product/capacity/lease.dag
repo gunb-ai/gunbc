@@ -104,6 +104,17 @@ fn capacity_after_expiry(law: ReleaseLaw, grant: LeaseGrant, at: EpochSecs, quie
   }
 }
 
+// EQUALITY LIVES BESIDE THE TYPE, exactly as head_expectation_eq does in event_chain. It was first
+// written at a consumer that needed to compare a pool's law with a caller's, which is how one concept
+// grows two spellings: the next consumer writes it again, and the two are free to disagree about a
+// safety law.
+fn release_law_eq(left: ReleaseLaw, right: ReleaseLaw) -> Bool {
+  match left {
+    FencedResource => match right { FencedResource => true  QuiescenceRequired => false }
+    QuiescenceRequired => match right { QuiescenceRequired => true  FencedResource => false }
+  }
+}
+
 fn release_law_wire(law: ReleaseLaw) -> String {
   match law {
     FencedResource => "fenced-resource"

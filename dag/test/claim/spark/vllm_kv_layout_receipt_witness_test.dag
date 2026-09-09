@@ -1,0 +1,360 @@
+module test.claim.spark.vllm_kv_layout_receipt_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
+import std.measure {
+  TokenCount, token_count, concurrent_request_hundredths,
+  AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+  attention_layer_count,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
+import extdeps.vllm.log_lines { VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency }
+import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
+import extdeps.vllm.kv_layout {
+  KvGroupLayout, FullAttention, SlidingWindowAttention,
+  ResolvedKvLayout, resolved_kv_layout,
+  VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
+}
+import gunbc.spark.vllm_kv_layout_observe {
+  VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent, admit_kv_layout,
+  SeatingAuthority, SeatingAuthorized, SeatingRefused, seating_authority_for,
+  receipt_wire,
+  CaptureJoin, SameCapture, DifferentCapture, CaptureIncomparable, CaptureNotEstablished, same_capture,
+}
+
+fn w_digest(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+data w_exe: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data w_unit: String = "3333333333333333333333333333333333333333333333333333333333333333"
+data w_capture: String = "5555555555555555555555555555555555555555555555555555555555555555"
+data w_capture_other: String = "6666666666666666666666666666666666666666666666666666666666666666"
+
+fn w_foreign_revision() -> VllmSourceRevision {
+  vllm_source_revision(
+    repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+    full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+  )
+}
+
+fn w_fork_revision() -> VllmSourceRevision {
+  vllm_source_revision(
+    repository: "github.com/example/vllm-fork" as NonEmptyStr,
+    full_revision: vllm_source_revision_read.full_revision,
+  )
+}
+
+fn w_launch_id(invocation: String) -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupA,
+    head: spark_pair_serving_head(group: FabricGroupA),
+    systemd_invocation: invocation as NonEmptyStr,
+    container_id: "gunbc-spark-pair" as NonEmptyStr,
+    executable_digest: w_digest(hex: w_exe),
+    unit_digest: w_digest(hex: w_unit),
+    started_at: 1788000000,
+  )
+}
+
+fn w_pool_admission(tokens: Int, revision: VllmSourceRevision) -> VllmKvPoolAdmission {
+  vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: tokens),
+    reading: vllm_startup_reading(
+      line: GpuKvCacheSize,
+      captured_text: "GPU KV cache size: n tokens" as NonEmptyStr,
+      observed_at_revision: revision,
+    ),
+  )
+}
+
+fn w_admitted_pool(tokens: Int, revision: VllmSourceRevision) -> VllmObservedKvPool? {
+  match w_pool_admission(tokens: tokens, revision: revision) {
+    KvPoolAdmitted { pool: p } => Present { value: p }
+    KvPoolRefused { cause: _ } => none
+  }
+}
+
+fn w_concurrency_reading(revision: VllmSourceRevision) -> VllmStartupReading {
+  vllm_startup_reading(
+    line: MaximumConcurrency,
+    captured_text: "Maximum concurrency for 1,048,576 tokens per request: 11.22x" as NonEmptyStr,
+    observed_at_revision: revision,
+  )
+}
+
+fn w_reported(pool: VllmObservedKvPool, hundredths: Nat) -> VllmReportedCapacity? {
+  match vllm_reported_capacity(
+    pool: pool,
+    max_concurrency: concurrent_request_hundredths(count: hundredths),
+    reading: w_concurrency_reading(revision: pool.observed_at_revision),
+  ) {
+    ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+    ReportedCapacityRefused { cause: _ } => none
+  }
+}
+
+fn w_admit(
+  invocation: String,
+  layout: ResolvedKvLayout,
+  pool: VllmObservedKvPool,
+  hundredths: Nat,
+) -> VllmKvLayoutReceipt? {
+  w_admit_capture(invocation: invocation, layout: layout, pool: pool, hundredths: hundredths, digest: w_digest(hex: w_capture))
+}
+
+fn w_admit_capture(
+  invocation: String,
+  layout: ResolvedKvLayout,
+  pool: VllmObservedKvPool,
+  hundredths: Nat,
+  digest: ContentHash,
+) -> VllmKvLayoutReceipt? {
+  match w_reported(pool: pool, hundredths: hundredths) {
+    Absent => none
+    Present { value: reported } =>
+      Present {
+        value: admit_kv_layout(
+          launch: w_launch_id(invocation: invocation),
+          layout: layout,
+          reported: reported,
+          source_capture_digest: digest,
+        )
+      }
+  }
+}
+
+fn w_layout_with(blocks: Nat, groups: List<KvGroupLayout>, revision: VllmSourceRevision) -> ResolvedKvLayout {
+  resolved_kv_layout(
+    allocator_blocks: allocator_block_count(count: blocks),
+    scheduler_block_size: token_count(count: 16),
+    hash_block_size: token_count(count: 16),
+    max_model_len: token_count(count: 1048576),
+    max_num_batched_tokens: token_count(count: 8192),
+    groups: groups,
+    established_at_revision: revision,
+  )
+}
+
+fn w_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
+  w_layout_with(blocks: 54475, groups: groups, revision: vllm_source_revision_read)
+}
+
+fn w_full(layers: Nat, block: Nat) -> KvGroupLayout {
+  KvGroupLayout { kind: FullAttention, layer_count: attention_layer_count(count: layers), block_size: token_count(count: block) }
+}
+
+// TODAY'S REAL EVIDENCE LANDS UNREADABLE, WHICH IS THE POINT. The group A head's own two startup
+// lines are mutually consistent, its inventory is real, and the receipt still refuses to be
+// observed -- because the engine emits no group metadata, so the one non-circular check has no
+// second opinion to compare against. An absent second opinion is not agreement, and it is not
+// established disagreement (KvLayoutInconsistent) either.
+test fn a_real_capture_with_no_group_metadata_is_unreadable_not_observed() -> Bool {
+  match w_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } =>
+      match w_admit(invocation: "inv-20-43", layout: w_layout(groups: []), pool: p, hundredths: 1122) {
+        Absent => false
+        Present { value: r } =>
+          match r {
+            KvLayoutUnreadable { launch: _, cause: c } =>
+              string_contains(s: c as String, pattern: "cannot be checked")
+                && string_contains(s: c as String, pattern: "unobserved")
+            _ => false
+          }
+      }
+  }
+}
+
+// AND IT AUTHORIZES NOTHING. The refusal is not cosmetic: a receipt that is not observed cannot seat
+// a request even against the very engine it describes.
+test fn an_unreadable_receipt_seats_nothing() -> Bool {
+  match w_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } =>
+      match w_admit(invocation: "inv-20-43", layout: w_layout(groups: []), pool: p, hundredths: 1122) {
+        Absent => false
+        Present { value: r } =>
+          match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-20-43"), sequence_budget: token_count(count: 500000)) {
+            SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "no capacity is established")
+            SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
+          }
+      }
+  }
+}
+
+fn w_reproducing_receipt(invocation: String, pool: VllmObservedKvPool) -> VllmKvLayoutReceipt? {
+  w_admit(
+    invocation: invocation,
+    layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: vllm_source_revision_read),
+    pool: pool,
+    hundredths: 100,
+  )
+}
+
+test fn a_layout_whose_groups_reproduce_the_printed_cost_is_observed() -> Bool {
+  match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } =>
+      match w_reproducing_receipt(invocation: "inv-20-43", pool: p) {
+        Absent => false
+        Present { value: r } =>
+          match r {
+            KvLayoutObserved { launch: _, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: _ } =>
+              allocator_block_count_value(c: b) == 65536
+                && string_contains(s: receipt_wire(r: r), pattern: "observed")
+                && string_contains(s: receipt_wire(r: r), pattern: "5555555555555555555555555555555555555555555555555555555555555555")
+            _ => false
+          }
+      }
+  }
+}
+
+test fn an_observed_receipt_refuses_to_seat_a_request_a_later_launch_will_serve() -> Bool {
+  match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } =>
+      match w_reproducing_receipt(invocation: "inv-20-43", pool: p) {
+        Absent => false
+        Present { value: r } => {
+          let budget = token_count(count: 500000)
+          (match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-22-11"), sequence_budget: budget) {
+             SeatingRefused { cause: c } => string_contains(s: c as String, pattern: "different-launch")
+             SeatingAuthorized { blocks_available: _, blocks_per_request: _ } => false
+           })
+            && (match seating_authority_for(receipt: r, serving: w_launch_id(invocation: "inv-20-43"), sequence_budget: budget) {
+                  SeatingAuthorized { blocks_available: a, blocks_per_request: per } =>
+                    allocator_block_count_value(c: a) == 65536 && allocator_block_count_value(c: per) == 31250
+                  SeatingRefused { cause: _ } => false
+                })
+        }
+      }
+  }
+}
+
+test fn garbled_lines_and_a_contradicting_layout_are_different_refusals() -> Bool {
+  match w_admitted_pool(tokens: 11767856, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: garbled_pool } =>
+      match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+        Absent => false
+        Present { value: ok_pool } =>
+          match w_admit(invocation: "inv-20-43", layout: w_layout(groups: []), pool: garbled_pool, hundredths: 440) {
+            Absent => false
+            Present { value: garbled } =>
+              match w_admit(
+                invocation: "inv-20-43",
+                layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 2, block: 16)], revision: vllm_source_revision_read),
+                pool: ok_pool,
+                hundredths: 100,
+              ) {
+                Absent => false
+                Present { value: contradicting } =>
+                  (match garbled { KvLayoutInconsistent { launch: _, cause: c } => string_contains(s: c as String, pattern: "disagree with each other")  _ => false })
+                    && (match contradicting { KvLayoutInconsistent { launch: _, cause: c } => string_contains(s: c as String, pattern: "different engines")  _ => false })
+              }
+          }
+      }
+  }
+}
+
+test fn a_reading_from_another_revision_refuses_instead_of_being_compared() -> Bool {
+  match w_admitted_pool(tokens: 1048576, revision: w_foreign_revision()) {
+    Absent => false
+    Present { value: p } =>
+      match w_admit(
+        invocation: "inv-20-43",
+        layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: vllm_source_revision_read),
+        pool: p,
+        hundredths: 100,
+      ) {
+        Absent => false
+        Present { value: r } =>
+          match r {
+            KvLayoutUnreadable { launch: _, cause: c } =>
+              string_contains(s: c as String, pattern: "not valid across revisions")
+            _ => false
+          }
+      }
+  }
+}
+
+// THE CONTROL FOR THE LAYOUT-SIDE REVISION GUARD: same numbers as the reproducing receipt, only
+// the layout's established revision varies. A duplicate of the observed positive control
+// discriminates nothing.
+test fn a_layout_from_another_revision_refuses_instead_of_being_compared() -> Bool {
+  match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } =>
+      match w_admit(
+        invocation: "inv-20-43",
+        layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: w_foreign_revision()),
+        pool: p,
+        hundredths: 100,
+      ) {
+        Absent => false
+        Present { value: r } =>
+          match r {
+            KvLayoutUnreadable { launch: _, cause: c } =>
+              string_contains(s: c as String, pattern: "not valid across revisions")
+            _ => false
+          }
+      }
+  }
+}
+
+// THE HASH ALONE IS NOT THE IDENTITY. VllmSourceRevision is repository plus revision; a fork at
+// the modelled hash used to compare equal and would have made revision_is_modelled green.
+test fn a_reading_from_a_fork_at_the_modelled_hash_refuses_instead_of_being_compared() -> Bool {
+  match w_admitted_pool(tokens: 1048576, revision: w_fork_revision()) {
+    Absent => false
+    Present { value: p } =>
+      match w_admit(
+        invocation: "inv-20-43",
+        layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: vllm_source_revision_read),
+        pool: p,
+        hundredths: 100,
+      ) {
+        Absent => false
+        Present { value: r } =>
+          match r {
+            KvLayoutUnreadable { launch: _, cause: c } =>
+              string_contains(s: c as String, pattern: "vllm-fork")
+            _ => false
+          }
+      }
+  }
+}
+
+test fn two_observed_receipts_of_one_launch_join_on_their_capture_digest() -> Bool {
+  match w_admitted_pool(tokens: 1048576, revision: vllm_source_revision_read) {
+    Absent => false
+    Present { value: p } =>
+      match w_reproducing_receipt(invocation: "inv-20-43", pool: p) {
+        Absent => false
+        Present { value: first } =>
+          match w_admit_capture(
+            invocation: "inv-20-43",
+            layout: w_layout_with(blocks: 65536, groups: [w_full(layers: 1, block: 16)], revision: vllm_source_revision_read),
+            pool: p,
+            hundredths: 100,
+            digest: w_digest(hex: w_capture_other),
+          ) {
+            Absent => false
+            Present { value: other } =>
+              match w_admit(invocation: "inv-20-43", layout: w_layout(groups: []), pool: p, hundredths: 1122) {
+                Absent => false
+                Present { value: unread } =>
+                  (match same_capture(a: first, b: first) { SameCapture => true  _ => false })
+                    && (match same_capture(a: first, b: other) { DifferentCapture => true  _ => false })
+                    && (match same_capture(a: unread, b: first) { CaptureNotEstablished { cause: c } => string_contains(s: c as String, pattern: "not an observed layout")  _ => false })
+              }
+          }
+      }
+  }
+}

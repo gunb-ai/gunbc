@@ -13,8 +13,8 @@ import product.cable_leg_observation {
   CableLegObservation, SecondaryNotObserved, cable_leg_observation,
 }
 import product.cable_plant_converge {
-  CablePlant, cable_plant, CableLegReading, LegReadingTaken, CablePlantConvergence,
-  converge_cable_plant,
+  CablePlant, cable_plant, CableLegReading, LegReadingTaken, CablePlantInspection,
+  inspect_cable_plant,
 }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
@@ -170,6 +170,6 @@ data fabric_cable_plant: CablePlant = cable_plant(
     observation: fabric_leg_cable_observed.coding,
   }))
 
-fn fabric_cable_plant_convergence() -> CablePlantConvergence {
-  converge_cable_plant(subject: fabric_cable_plant)
+fn fabric_cable_plant_convergence() -> CablePlantInspection {
+  inspect_cable_plant(subject: fabric_cable_plant)
 }
