@@ -172,8 +172,14 @@ fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
   }
 }
 
+// THE RELATION HOLDS FOR EVERY ROW IN THE ROSTER, NOT FOR A COUNT OF THEM. This assertion carried
+// census_regions.length() == 3 until Central New Jersey became the fourth row, and the failure was
+// the useful kind: a literal roster length is a change detector, not a check - it reds on every
+// legitimate addition and catches no defect that the relation below does not already catch. The
+// comment above this test already said the relation is asserted rather than the literal; the length
+// check was the one place that did not follow it. Folding over the roster makes the test stronger
+// AND roster-growth-proof, so the next lane adding a region does not have to edit this line.
 test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bool {
-  density_reads_never_exceed_facilities(c: nj_hudson_bergen_essex_corridor)
+  all(census_regions, c => density_reads_never_exceed_facilities(c: c))
     && facility_count_or_sentinel(c: nj_hudson_bergen_essex_corridor) > 0
-    && census_regions.length() == 3
 }

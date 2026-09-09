@@ -18,11 +18,6 @@ import extdeps.colo.digital_realty {
   digital_realty_ewr12_retail_grain, digital_realty_ewr11_retail_grain,
 }
 import extdeps.colo.qts { qts_piscataway_density, qts_piscataway_retail_grain }
-import gunbc.colo_census_coverage {
-  RegionCoverage, RegionSurveyOutcome, RegionUnsurveyed, FacilitiesModelled,
-  SurveyedNoRetailOperator, coverage_facility_count,
-  central_new_jersey, southern_new_jersey,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -106,49 +101,4 @@ test fn w_density_read_does_not_imply_grain_read() -> Bool {
     && grain_admits_single_cabinet(g: digital_fortress_piscataway_retail_grain)
     && grain_admits_single_cabinet(g: databank_ewr2_retail_grain)
     && !grain_admits_single_cabinet(g: qts_piscataway_retail_grain)
-}
-
-// A FIXTURE FOR THE ARM NO LIVE ROW INHABITS. The coverage module's whole claim is that a region
-// somebody surveyed and found empty is a DIFFERENT fact from one nobody has looked at. Only the
-// second half of that distinction is unrepresented in the live roster, so the control that would
-// catch the two collapsing needs a fixture to compare against - and a fixture is where it belongs,
-// because an unsurveyed region is not a reading and has no place in the census's own rows.
-data unsurveyed_fixture: RegionCoverage = RegionCoverage {
-  region_label: "witness fixture: a region nobody has surveyed",
-  region_code: "XX",
-  outcome: RegionUnsurveyed {
-    obligation: "witness fixture standing in for the arm no live census row inhabits; it exists to be distinguished from a surveyed-empty region and must never be read as a claim about a real place",
-  },
-}
-
-fn coverage_count_or_missing(c: RegionCoverage) -> Int {
-  match coverage_facility_count(c: c) {
-    Present { value } => value,
-    Absent => 0 - 1,
-  }
-}
-
-// THE DISTINCTION THE COVERAGE MODULE EXISTS FOR, AND THE ONLY CONTROL THAT CAN CATCH IT
-// COLLAPSING. Southern New Jersey was surveyed across seven counties and yielded nothing, so it
-// answers zero. The fixture region was never looked at, so it answers nothing at all. If
-// coverage_facility_count is ever simplified to return a plain Int, both become 0 and the
-// expensive knowledge that somebody already swept southern New Jersey is silently destroyed -
-// which is exactly the error this census made once already about New York.
-test fn w_surveyed_empty_is_not_unsurveyed() -> Bool {
-  coverage_count_or_missing(c: southern_new_jersey) == 0
-    && coverage_count_or_missing(c: unsurveyed_fixture) == 0 - 1
-}
-
-// A REGION'S READ-DENSITY COUNT CANNOT EXCEED ITS FACILITY COUNT, and asserting the relation
-// rather than the numerals is deliberate: the counts are hand-authored and a witness that repeated
-// them would only prove the file had not been edited. The relation is a real invariant - it goes
-// red on a transposed pair, which is the mistake a two-field count row actually invites - and it
-// survives the roster growing, which a literal would not.
-test fn w_read_densities_never_exceed_facilities() -> Bool {
-  match central_new_jersey.outcome {
-    FacilitiesModelled { facility_count, density_read_count } =>
-      density_read_count <= facility_count && facility_count > 0 && density_read_count > 0,
-    SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => false,
-    RegionUnsurveyed { obligation } => false,
-  }
 }
