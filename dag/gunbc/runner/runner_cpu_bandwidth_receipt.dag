@@ -1,7 +1,6 @@
 module gunbc.runner.runner_cpu_bandwidth_receipt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { ByteSize }
 import gunbc.runner.runner_guest_egress_attempt {
   cpu_bound_write_refused, CpuBoundStanding, CpuBoundInterfacePresent,
@@ -52,18 +51,6 @@ data placement_established_from_both_ends: Bool = placement_was_bidirectional()
 data memory_current_at_placement: ByteSize = placement_accounting.memory_current
 
 data memory_max_at_placement: ByteSize = placement_accounting.memory_max
-
-data cites_placement_verdict: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.runner.runner_cgroup_placement_receipt" as NonEmptyStr,
-  decl_name: "placement_verdict" as NonEmptyStr,
-  field: WholeDeclaration,
-}
-
-data cites_placement_accounting: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.runner.runner_cgroup_placement_receipt" as NonEmptyStr,
-  decl_name: "placement_accounting" as NonEmptyStr,
-  field: WholeDeclaration,
-}
 
 // ── what the run shows ─────────────────────────────────────────────────────────────────────────
 

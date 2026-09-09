@@ -1,7 +1,6 @@
 module gunbc.runner.runner_host_filtered_egress
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import gunbc.runner_microvm_network {
   RunnerSlotNetwork, runner_slot_host_cidr, runner_slot_guest_ip_boot_arg,
@@ -73,24 +72,6 @@ fn host_reached_the_guest_on_the_point_to_point_tap() -> Bool {
 }
 
 data routed_attachment_already_carries_the_guest: Bool = host_reached_the_guest_on_the_point_to_point_tap()
-
-data cites_guest_egress_outcome: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.runner.runner_guest_egress_attempt" as NonEmptyStr,
-  decl_name: "egress_outcome" as NonEmptyStr,
-  field: WholeDeclaration,
-}
-
-data cites_cpu_bound_failure: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.runner.runner_guest_egress_attempt" as NonEmptyStr,
-  decl_name: "cpu_bound_failure" as NonEmptyStr,
-  field: WholeDeclaration,
-}
-
-data cites_guest_reachability: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.runner.runner_guest_network_receipt" as NonEmptyStr,
-  decl_name: "guest_reachability" as NonEmptyStr,
-  field: WholeDeclaration,
-}
 
 // ── the host uplink is static, on purpose ───────────────────────────────────────────────────────
 
