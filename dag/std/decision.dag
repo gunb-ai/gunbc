@@ -55,7 +55,7 @@ import std.pareto {
 
 // Named for the FRAMEWORK (choose-under-objectives), not for std.realization. Nothing in this
 // module's types or functions references Materialization, Recompute/Memoize/Share, or
-// world_converge: convergence's selection is a consumer, not the namesake. A fleet operating point
+// goal assessment (std.goal_assessment): convergence's selection is a consumer, not the namesake. A fleet operating point
 // is not a realization in the Materialization sense. Fence: std.disposition is Terminal | Scaffold
 // — a triage outcome, not choice-under-objectives. The thing that would reverse this name: if
 // decision VARIABLES were typed to materialization choices, the general name would overclaim.

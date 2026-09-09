@@ -4,7 +4,11 @@ import std.types { NonEmptyStr, String, Int }
 import std.types { list_length }
 import std.algebra { trim }
 import std.types { List }
-import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond }
+import std.nat { Nat }
+import std.measure {
+  ByteSize, byte_size, byte_size_count, Microsecond, microsecond,
+  milli_per_unit, micro_per_unit, seconds_per_minute, minutes_per_hour,
+}
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -137,16 +141,25 @@ data systemd_tasks_current_property: NonEmptyStr = systemd_unit_property_wire(pr
 // "1min" becomes decidable equality instead of a string comparison. Unknown units, empty input, or
 // a malformed part refuse with Absent -- never a partial sum.
 type SystemdTimeSpanPart {
-  value: Int
+  value: Nat
   unit: String
 }
 
-fn systemd_time_span_unit_usec(unit: String) -> Int? {
-  if unit == "usec" || unit == "us" { Present { value: 1 } }
-  else if unit == "msec" || unit == "ms" { Present { value: 1000 } }
-  else if unit == "seconds" || unit == "second" || unit == "sec" || unit == "s" || unit == "" { Present { value: 1000000 } }
-  else if unit == "minutes" || unit == "minute" || unit == "min" || unit == "m" { Present { value: 60000000 } }
-  else if unit == "hours" || unit == "hour" || unit == "hr" || unit == "h" { Present { value: 3600000000 } }
+fn systemd_time_span_unit_usec(unit: String) -> Nat? {
+  if unit == "usec" || unit == "us" {
+    let one: Nat = 1
+    Present { value: one }
+  }
+  else if unit == "msec" || unit == "ms" { Present { value: milli_per_unit() } }
+  else if unit == "seconds" || unit == "second" || unit == "sec" || unit == "s" || unit == "" {
+    Present { value: micro_per_unit() }
+  }
+  else if unit == "minutes" || unit == "minute" || unit == "min" || unit == "m" {
+    Present { value: seconds_per_minute() * micro_per_unit() }
+  }
+  else if unit == "hours" || unit == "hour" || unit == "hr" || unit == "h" {
+    Present { value: minutes_per_hour() * seconds_per_minute() * micro_per_unit() }
+  }
   else { none }
 }
 
@@ -160,7 +173,15 @@ fn systemd_time_span_split(part: String) -> SystemdTimeSpanPart? {
     match parse_int(s: substring(s: part, start: 0, end: digits)) {
       Absent => none
       Present { value: v } =>
-        Present { value: SystemdTimeSpanPart { value: v, unit: substring(s: part, start: digits, end: string_length(s: part)) } }
+        if v < 0 {
+          none
+        } else {
+          match checked_int_magnitude(a: v) {
+            CheckedNatOverflow { cause: _ } => none
+            CheckedNatReady { value: n } =>
+              Present { value: SystemdTimeSpanPart { value: n, unit: substring(s: part, start: digits, end: string_length(s: part)) } }
+          }
+        }
     }
   }
 }
@@ -170,24 +191,22 @@ fn systemd_duration_usec(text: String) -> Microsecond? {
   if list_length(items: parts) == 0 {
     none
   } else {
-    let total = fold(parts, init: 0, f: (acc, part) =>
-      if acc < 0 { acc } else {
-        match systemd_time_span_split(part: part) {
-          Absent => 0 - 1
-          Present { value: vu } =>
-            match systemd_time_span_unit_usec(unit: vu.unit) {
-              Absent => 0 - 1
-              Present { value: mult } => acc + vu.value * mult
-            }
-        }
+    let total = fold(parts, init: Present { value: 0 }, f: (acc, part) =>
+      match acc {
+        Absent => none
+        Present { value: so_far } =>
+          match systemd_time_span_split(part: part) {
+            Absent => none
+            Present { value: vu } =>
+              match systemd_time_span_unit_usec(unit: vu.unit) {
+                Absent => none
+                Present { value: mult } => Present { value: so_far + vu.value * mult }
+              }
+          }
       })
-    if total < 0 {
-      none
-    } else {
-      match checked_int_magnitude(a: total) {
-        CheckedNatOverflow { cause: _ } => none
-        CheckedNatReady { value: n } => Present { value: microsecond(count: n) }
-      }
+    match total {
+      Absent => none
+      Present { value: n } => Present { value: microsecond(count: n) }
     }
   }
 }

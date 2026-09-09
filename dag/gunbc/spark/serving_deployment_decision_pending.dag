@@ -87,11 +87,11 @@ data pending_serving_decisions: List<PendingServingDecision> = [
     basis_today: "off for first boot to remove an execution variable. MTP's quality standing is UNREAD on this fleet -- it must not be assumed lossless and taken for free" as NonEmptyStr,
   },
   PendingServingDecision {
-    parameter: "gunbc.harness.harness_seat harness_seat_operator_policy_seats" as NonEmptyStr,
-    authored_at: "2026-09-06" as NonEmptyStr,
-    current_value: "3" as NonEmptyStr,
+    parameter: "gunbc.harness.harness_seat harness_interactive_quality_seats" as NonEmptyStr,
+    authored_at: "2026-09-09" as NonEmptyStr,
+    current_value: "1" as NonEmptyStr,
     role: ShouldBeDecisionVariable,
-    basis_today: "operator policy against concurrency observed on a DeepSeek group; declared uncalibrated for any other model" as NonEmptyStr,
+    basis_today: "a product decision following measured co-tenancy degradation, carrying no claim about what the KV pool holds. THIS ROW PREVIOUSLY CITED harness_seat_operator_policy_seats AT 3, WHICH MAIN DELETED: the seat model was replaced by an interactive-quality ceiling with its own dissolution condition, and a pending-decision row naming a declaration that no longer exists is a citation defect rather than a pending decision. The entry is retained because the QUESTION is still open for a GLM serving binding -- which seat ceiling governs it -- while the row it used to point at is gone" as NonEmptyStr,
   },
 ]
 
