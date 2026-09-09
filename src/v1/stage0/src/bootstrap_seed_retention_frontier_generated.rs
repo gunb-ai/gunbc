@@ -11,7 +11,6 @@ pub const SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES: &[&str] = &[
     "coproduct_reflection.rs",
     "data_initializer_identity.rs",
     "declaration_index.rs",
-    "namespace_wave_admission.rs",
     "resolved_graph_cache.rs",
     "shared_typecheck_store.rs",
     "recorded_fixture.rs",
