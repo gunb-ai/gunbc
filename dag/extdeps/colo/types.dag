@@ -143,15 +143,55 @@ type CabinetPowerFigure
   = PublishedRealPower { power: Watt }
   | PublishedApparentPower { power: VoltAmpere }
 
+// A PUBLISHED NUMBER IS NOT A PUBLISHED BOUND, AND UNTIL THIS TYPE EXISTED NOTHING COULD TELL THEM
+// APART. CabinetPowerFigure answers WHAT UNIT the operator published. Nothing answered WHICH
+// DIRECTION the number bounds - and both directions occur verbatim in this corpus, in the same
+// field, distinguishable only by a plus sign an author had to notice: "high-density up to 30 kW/rack"
+// is a CAP; "35kW+ Cab Density Air" is a FLOOR the operator advertises being able to exceed.
+//
+// THE QUANTIFIER IS ORTHOGONAL TO EVERYTHING ELSE ABOUT THE FIGURE, so it is one type applied at
+// every figure site rather than a new arm per combination. An operator may publish a floor for air
+// and a cap for liquid; a per-combination arm set would need one arm per pairing and would fork the
+// quantifier concept across them, which is the re-invention that fails DESIGN section 2's test.
+//
+// WHY THE CONFLATION SURVIVED, WHICH IS THE PART WORTH KEEPING: it failed in the SAFE direction. A
+// floor read as a cap makes the screen REFUSE a facility that may well allow far more - a candidate
+// lost silently. The reverse, a cap read as a floor, ADMITS a cabinet the breaker cannot carry. One
+// costs an opportunity, the other trips a rack, and a single field carrying both means which one you
+// get is decided by the wording an author happened to paste rather than by the type.
+//
+// TWO REVIEWS FOUND THIS INDEPENDENTLY ON THE SAME DAY FROM OPPOSITE ENDS. A design review named the
+// conflation abstractly - lower bounds, ceilings, ranges and averages sharing one carrier. A census
+// lane hit it concretely: seven Equinix per-IBX pages publish a row labelled MINIMUM Cabinet Density,
+// and having no arm for it the lane left all seven DensityUnread rather than file a floor as a
+// maximum. That was the right call and it cost seven real readings; this type is what makes it
+// unnecessary.
+//
+// AN AVERAGE IS AN ARM, AND THE REASON IS THE DISTINCTION BETWEEN READ AND USABLE. "Cooling level
+// average is 3kW per cabinet" bounds NOTHING about a particular cabinet in either direction - half
+// of them may exceed it - so it supports no admission and no refusal. The first cut of this type
+// left it out, which forced a lane holding two such rows to file them as DensityUnread: a claim
+// that WAS read, recorded as never looked at. Those are different facts, and collapsing them makes
+// the census understate its own coverage while hiding a real reading in an obligation string.
+//
+// So the arm exists and NO OPERATION CONSUMES IT. That is the whole design: the quantity is
+// representable, countable and citable, and there is no function into which it can be fed to
+// produce a bound. Representability is not permission.
+type PublishedPowerQuantity
+  = CapabilityAtLeast { lower: CabinetPowerFigure }
+  | MarketedAtMost { upper: CabinetPowerFigure }
+  | MarketedInterval { lower: CabinetPowerFigure, upper: CabinetPowerFigure }
+  | PublishedAverage { average: CabinetPowerFigure }
+
 type CabinetDensityClaim
   = DensityMarketedMax {
-      air_cooled: CabinetPowerFigure
-      liquid_cooled: CabinetPowerFigure
+      air_cooled: PublishedPowerQuantity
+      liquid_cooled: PublishedPowerQuantity
       claim_wording: NonEmptyStr
       citation: NonEmptyStr
     }
   | DensityMarketedAirOnly {
-      air_cooled: CabinetPowerFigure
+      air_cooled: PublishedPowerQuantity
       claim_wording: NonEmptyStr
       citation: NonEmptyStr
     }
@@ -159,31 +199,19 @@ type CabinetDensityClaim
       obligation: NonEmptyStr
     }
 
-// THE ESTABLISHED REAL-POWER READING, AND THERE IS NO OTHER TOTAL ONE. The previous accessor
-// returned 0 for an unread claim - a fabricated in-band answer sitting on the same axis as real
-// readings, defended only by a comment telling callers to consult a predicate first, which is the
-// validation-beside-construction shape DESIGN section 5 warns about. The Optional makes the
-// confusable zero unconstructible instead, so the companion predicate is gone rather than
-// documented around.
+// THE ESTABLISHED-READING ACCESSOR IS GONE RATHER THAN REWRITTEN, AND THE SPLIT ABOVE IS WHY.
+// `cabinet_density_air_established` returned a Watt reading whenever the published figure was in
+// real power. Once a figure carries its DIRECTION, no arm can honestly answer: a cap is not a
+// measurement because the cabinet may deliver less; a floor is not one in the other direction; and
+// a range names two real numbers while saying nothing about where between them the cabinet sits.
+// Every arm would be Absent, so the function becomes a constant dressed as an accessor - a
+// decoration that gets cited as coverage, which DESIGN section 4b rules worse than absent.
 //
-// Absent has TWO causes and they are different facts with the same consequence for a consumer:
-// nobody published a figure, or somebody published apparent power and no power factor exists to
-// convert it. Either way there is no established watt reading, and an admission decision that
-// needs one must refuse.
-fn cabinet_density_air_established(d: CabinetDensityClaim) -> Watt? {
-  match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
-    DensityUnread { obligation } => Absent,
-  }
-}
-
-fn cabinet_power_established(f: CabinetPowerFigure) -> Watt? {
-  match f {
-    PublishedRealPower { power } => Present { value: power },
-    PublishedApparentPower { power } => Absent,
-  }
-}
+// IT HAD NO PRODUCTION CONSUMER TO BREAK: on main its only caller was its own witness, so deleting
+// it costs nothing and that is itself the finding. The accessor had been answering a question
+// nothing asked, and carrying the quantifier is what made that legible. A consumer that needs what
+// a cabinet WILL supply is asking for a quote or a metered reading; neither is a marketing page,
+// and it must go get one rather than find a plausible number here.
 
 // A CEILING IS NOT A READING, AND AFTER THIS IT CANNOT BE HANDED TO ANYTHING THAT WANTS ONE.
 // Because kW <= kVA, an apparent-power publication bounds real power from above, so a candidate too
@@ -207,8 +235,8 @@ type CabinetPowerCeiling = CeilingAt { at_most: Watt }
 
 fn cabinet_density_air_ceiling(d: CabinetDensityClaim) -> CabinetPowerCeiling? {
   match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => quantity_ceiling(q: air_cooled),
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => quantity_ceiling(q: air_cooled),
     DensityUnread { obligation } => Absent,
   }
 }
@@ -217,6 +245,68 @@ fn cabinet_power_ceiling(f: CabinetPowerFigure) -> CabinetPowerCeiling {
   match f {
     PublishedRealPower { power } => CeilingAt { at_most: power },
     PublishedApparentPower { power } => CeilingAt { at_most: watt(count: volt_ampere_count(v: power)) },
+  }
+}
+
+// A FLOOR YIELDS NO CEILING AND THAT IS THE ENTIRE POINT. CapabilityAtLeast says the operator will
+// go at least this high and places no upper bound at all, so there is nothing here for a ceiling to
+// be. Returning the lower value would produce a number of the right unit and the right magnitude
+// POINTING THE WRONG WAY - the shape that survives a careful reading, because every check on it
+// passes. An interval ceilings at its UPPER end and discards its lower, since only the upper bounds
+// from above. An average bounds nothing and has no arm into this function's answer.
+fn quantity_ceiling(q: PublishedPowerQuantity) -> CabinetPowerCeiling? {
+  match q {
+    MarketedAtMost { upper } => Present { value: cabinet_power_ceiling(f: upper) },
+    CapabilityAtLeast { lower } => Absent,
+    MarketedInterval { lower, upper } => Present { value: cabinet_power_ceiling(f: upper) },
+    PublishedAverage { average } => Absent,
+  }
+}
+
+// THE OPPOSITE DIRECTION, WHICH THE FIRST CUT OF THIS SPLIT THREW AWAY. Sending a floor to Absent
+// makes it harmless and also useless, and that is a real loss rather than a safe default: a
+// marketed floor is exactly the evidence that ADMITS. "35kW+ Cab Density Air" against a 27.3 kW
+// requirement says the requirement sits below what the operator advertises being able to do, which
+// is the cheapest possible screen and the whole reason a census reads these pages. An interval
+// admits on its LOWER end for the same reason - everything up to there is inside what was
+// published - and a cap admits nothing, because a marketed maximum is a product statement and not
+// a guarantee that any particular cabinet is available at it.
+//
+// TRUE MEANS THE PUBLISHED WORDING COVERS THE REQUIREMENT. IT IS NOT A QUOTE, NOT AN ALLOCATION AND
+// NOT AVAILABILITY - the operator has said this much is within what they build, and nothing more.
+// False means UNDETERMINED in exactly the way `ceiling_refuses` returning false does; the two are
+// duals and neither ever answers the other's question.
+// THE ROUTE FROM A CLAIM TO THE ADMITTING DIRECTION, WHICH THE CEILING SIDE ALREADY HAD. Without
+// it `quantity_admits` is reachable only by a caller that has already destructured the claim, which
+// is the shape DESIGN section 3c calls dangling: a well-formed declaration with no route by which a
+// consumer arrives at it. This is that route, and it is deliberately the same shape as
+// `cabinet_density_air_ceiling` so the two directions are asked the same way.
+fn cabinet_density_air_quantity(d: CabinetDensityClaim) -> PublishedPowerQuantity? {
+  match d {
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Present { value: air_cooled },
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Present { value: air_cooled },
+    DensityUnread { obligation } => Absent,
+  }
+}
+
+fn quantity_admits(q: PublishedPowerQuantity, required: Watt) -> Bool {
+  match q {
+    CapabilityAtLeast { lower } => figure_covers(f: lower, required: required),
+    MarketedInterval { lower, upper } => figure_covers(f: lower, required: required),
+    MarketedAtMost { upper } => false,
+    PublishedAverage { average } => false,
+  }
+}
+
+// The crossing is the conservative one and it goes the other way from the ceiling's. There kW <= kVA
+// let an apparent figure bound real power from ABOVE; here a floor must be read as REAL watts to
+// admit, and an apparent figure is a weaker claim than the same numeral in watts - so an apparent
+// floor admits nothing rather than being converted. Refusing to cross is what keeps the admission
+// from being one power factor more generous than the operator's sentence.
+fn figure_covers(f: CabinetPowerFigure, required: Watt) -> Bool {
+  match f {
+    PublishedRealPower { power } => watt_count(w: required) <= watt_count(w: power),
+    PublishedApparentPower { power } => false,
   }
 }
 

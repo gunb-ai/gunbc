@@ -7,7 +7,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types {
   CabinetDensityClaim, DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
   CabinetPowerFigure, PublishedRealPower, PublishedApparentPower,
-  cabinet_density_air_established, cabinet_density_air_ceiling,
+  PublishedPowerQuantity, MarketedAtMost, CapabilityAtLeast, MarketedInterval, PublishedAverage,
+  cabinet_density_air_ceiling, cabinet_density_air_quantity, quantity_admits,
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
 }
@@ -30,13 +31,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // it is modelled, and section 5 that a run nobody can repeat is not a consumer. These are those
 // controls, enrolled.
 
-fn established_watts(d: CabinetDensityClaim) -> Int {
-  match cabinet_density_air_established(d: d) {
-    Present { value } => watt_count(w: value),
-    Absent => 0 - 1,
-  }
-}
-
 // A CEILING IS ASKED WHETHER IT REFUSES A REQUIREMENT; IT IS NEVER ASKED WHAT THE CABINET SUPPLIES.
 // These two helpers are the whole surface the witnesses use, and neither yields a Watt - which is
 // the point of review 62791's fix: a bound handed to something wanting a reading is now ill-typed
@@ -44,6 +38,13 @@ fn established_watts(d: CabinetDensityClaim) -> Int {
 fn ceiling_refuses_at(d: CabinetDensityClaim, required: Int) -> Bool {
   match cabinet_density_air_ceiling(d: d) {
     Present { value } => ceiling_refuses(c: value, required: watt(count: required)),
+    Absent => false,
+  }
+}
+
+fn admits_at(d: CabinetDensityClaim, required: Int) -> Bool {
+  match cabinet_density_air_quantity(d: d) {
+    Present { value } => quantity_admits(q: value, required: watt(count: required)),
     Absent => false,
   }
 }
@@ -61,35 +62,46 @@ fn has_ceiling(d: CabinetDensityClaim) -> Bool {
 // rather than in an operator module because it is evidence about the CARRIER, not a census row -
 // the real Telehouse rows belong to whichever lane reads that operator.
 data apparent_power_fixture: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedApparentPower { power: volt_ampere(count: 5000) },
+  air_cooled: MarketedInterval {
+    lower: PublishedApparentPower { power: volt_ampere(count: 3500) },
+    upper: PublishedApparentPower { power: volt_ampere(count: 5000) },
+  },
   claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
   citation: "witness fixture reproducing the Telehouse Chelsea publication shape; the live rows are carried by the operator's own module",
 }
 
-// POSITIVE CONTROL. A published kilowatt figure yields an established watt reading equal to what
-// the operator marketed, and the same figure as its own upper bound.
-test fn w_published_kilowatts_establish_real_power() -> Bool {
-  established_watts(d: databank_lga4_density) == 35000
-    && established_watts(d: iron_mountain_nje1_density) == 30000
-    && ceiling_refuses_at(d: databank_lga4_density, required: 35001)
-    && !ceiling_refuses_at(d: databank_lga4_density, required: 34999)
+// POSITIVE CONTROL, AND IT IS NOW THE CAP ROW RATHER THAN BOTH ROWS. Iron Mountain publishes
+// "high-density up to 30 kW/rack" - a MarketedAtMost - so a ceiling exists, refuses 30001 W and
+// does not refuse 29999 W. Not-refused is undetermined, never admitted, which is why the second
+// conjunct is negated rather than read as a fit.
+test fn w_a_published_cap_bounds_from_above() -> Bool {
+  has_ceiling(d: iron_mountain_nje1_density)
+    && ceiling_refuses_at(d: iron_mountain_nje1_density, required: 30001)
+    && !ceiling_refuses_at(d: iron_mountain_nje1_density, required: 29999)
 }
 
-// THE DISCRIMINATING RED, AND THE REASON THE APPARENT-POWER ARM EXISTS. A kVA publication
-// establishes NO real-power reading: kW = kVA x power factor, no power factor is published, and
-// assuming unity would overstate the cabinet in the flattering direction. If this ever returns
-// 5000 instead of refusing, the carrier has silently equated apparent and real power again.
-test fn w_apparent_power_establishes_no_real_power() -> Bool {
-  established_watts(d: apparent_power_fixture) == 0 - 1
+// THE DISCRIMINATING RED FOR THE QUANTIFIER SPLIT, ON THE LIVE ROW THAT MOTIVATED IT. DataBank
+// publishes "35kW+ Cab Density Air" - the plus is the operator's own - so the figure is a marketed
+// FLOOR and bounds nothing from above. Before the split this row fed `cabinet_power_ceiling` and
+// produced a 35 kW ceiling: a number of the right unit and the right magnitude pointing the wrong
+// way, which every check passed. If the floor arm ever derives a ceiling again, THIS GOES RED - and
+// it is the only witness that can, because a wrong ceiling is indistinguishable from a right one at
+// every other seam. The 999999 W conjunct is what separates absent-ceiling from generous-ceiling:
+// an absent ceiling refuses nothing at all, including the absurd.
+test fn w_a_marketed_floor_yields_no_ceiling() -> Bool {
+  !has_ceiling(d: databank_lga4_density)
+    && !ceiling_refuses_at(d: databank_lga4_density, required: 999999)
 }
 
-// The same figure DOES bound real power from above, because kW <= kVA - usable to REJECT a cabinet
-// too small even at the bound, useless to admit one. The witness now exercises that asymmetry
-// rather than reading the number out: 5001 W is refused on published evidence alone, and 4999 W is
-// NOT refused, which is not the same as admitted. There is no longer any way to ask this fixture
-// what it supplies, which is what makes the distinction structural instead of documented.
-test fn w_apparent_power_still_bounds_real_power_above() -> Bool {
+// A RANGE CEILINGS AT ITS CAP AND DISCARDS ITS FLOOR, AND THE FLOOR CONJUNCT IS WHY THIS WITNESS
+// EXISTS RATHER THAN JUST THE CAP ONE. Telehouse publishes "standard power to rack at 3.5kVA with
+// scalable options to 5kVA" - two real numbers, and only the larger bounds from above. A carrier
+// that ceilinged at the FLOOR would refuse 3501 W and would look perfectly reasonable doing it, so
+// the second conjunct is the one that catches it. kW <= kVA carries the crossing, so 5001 W is
+// refused on published evidence alone without any power factor being assumed.
+test fn w_an_interval_bounds_at_its_upper_end_not_its_lower() -> Bool {
   ceiling_refuses_at(d: apparent_power_fixture, required: 5001)
+    && !ceiling_refuses_at(d: apparent_power_fixture, required: 3501)
     && !ceiling_refuses_at(d: apparent_power_fixture, required: 4999)
 }
 
@@ -98,8 +110,7 @@ test fn w_apparent_power_still_bounds_real_power_above() -> Bool {
 // the zero unconstructible. WPA-1 is the live row: a review asserted 20 kW cabinets there, the
 // page states no density at all, and the row records the absence rather than the assertion.
 test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
-  established_watts(d: iron_mountain_wpa1_density) == 0 - 1
-    && !has_ceiling(d: iron_mountain_wpa1_density)
+  !has_ceiling(d: iron_mountain_wpa1_density)
     && !ceiling_refuses_at(d: iron_mountain_wpa1_density, required: 999999)
 }
 
@@ -117,7 +128,8 @@ fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
 test fn w_density_and_grain_are_separate_facts() -> Bool {
   grain_admits_single_cabinet(g: databank_lga4_retail_grain)
     && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
-    && established_watts(d: databank_lga4_density) == 35000
+    && has_ceiling(d: iron_mountain_nje1_density)
+    && !has_ceiling(d: databank_lga4_density)
 }
 
 // AN UNREAD DENSITY REFUSES NOTHING, WHICH IS THE ARM THAT KEEPS THE CEILING FROM BEING A FREE
@@ -212,4 +224,32 @@ fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
 test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bool {
   all(census_regions, c => density_reads_never_exceed_facilities(c: c))
     && facility_count_or_sentinel(c: nj_hudson_bergen_essex_corridor) > 0
+}
+
+// THE ADMITTING DIRECTION, WHICH IS WHY A FLOOR IS WORTH CARRYING RATHER THAN DISCARDING. DataBank
+// publishes "35kW+ Cab Density Air" and the planned cabinet draws 27,300 W, so the requirement sits
+// below what the operator advertises being able to build: admitted on published evidence. The same
+// row admits NOTHING at 35,001 W, because a floor says at least, not at most - and Iron Mountain's
+// "up to 30 kW" admits nothing at any requirement at all, since a marketed maximum is a product
+// statement rather than a promise that a cabinet is available at it.
+//
+// THE THIRD CONJUNCT IS THE ONE THAT WOULD CATCH A REVERSAL. If the arms were ever swapped - floors
+// answering the ceiling and caps answering admission - the first two conjuncts could still pass on
+// the right numerals while the meaning had inverted; a cap that admits is the state this asserts
+// cannot exist.
+test fn w_a_marketed_floor_admits_below_itself_and_a_cap_admits_nothing() -> Bool {
+  admits_at(d: databank_lga4_density, required: 27300)
+    && !admits_at(d: databank_lga4_density, required: 35001)
+    && !admits_at(d: iron_mountain_nje1_density, required: 27300)
+    && !admits_at(d: iron_mountain_wpa1_density, required: 1)
+}
+
+// AN APPARENT-POWER FLOOR ADMITS NOTHING, WHICH IS THE CROSSING REFUSED IN THE DIRECTION THE
+// CEILING ALLOWS IT. kW <= kVA lets a kVA figure bound real power from ABOVE, so the interval
+// fixture ceilings; the same inequality means a kVA floor is a WEAKER claim than the same numeral
+// in watts, so admitting on it would be one power factor more generous than the operator's own
+// sentence. The fixture's lower end is 3.5 kVA and 1 W is not admitted by it.
+test fn w_an_apparent_power_lower_end_admits_nothing() -> Bool {
+  !admits_at(d: apparent_power_fixture, required: 1)
+    && ceiling_refuses_at(d: apparent_power_fixture, required: 5001)
 }
