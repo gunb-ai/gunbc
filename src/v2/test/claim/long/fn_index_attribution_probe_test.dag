@@ -1,9 +1,9 @@
-module test.claim.long.fn_index_attribution_probe
+module test.claim.long.fn_index_attribution_probe_test
 
 // THE INSTRUMENT FOR gunbc.rung_drop.determinism_transitive_reachability, NAMED BY THAT ROW SO ITS
 // FIGURES ARE RE-DERIVED RATHER THAN TRANSCRIBED (DESIGN §6). Run it as
 //   claim_batch --source-root dag --source-root src/v2
-//     --entry src/v2/test/claim/long/fn_index_attribution_probe.dag --functions <the arms below>
+//     --entry src/v2/test/claim/long/fn_index_attribution_probe_test.dag --functions <the arms below>
 // which charges each arm separately, and read the differences between arms rather than any arm's
 // absolute value. RUN ONE ARM PER INVOCATION WHEN YOU WANT MEMORY: claim_batch reports VmHWM for
 // the PROCESS at exit and not per witness, so peak RSS is attributable to an arm only when that
