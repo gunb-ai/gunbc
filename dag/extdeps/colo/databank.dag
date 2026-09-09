@@ -5,8 +5,7 @@ import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedMax, DensityUnread,
-  CabinetPowerFigure, PublishedRealPower,
+  CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -56,11 +55,16 @@ data databank_lga4_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // in this metro holds three. That gap between what is marketed and what is published for retail
 // sale is the census's central finding, and it is a reason to obtain quotes rather than a reason
 // to believe a quote will be affordable: nothing here says what 35 kW costs.
-data databank_lga4_density: CabinetDensityClaim = DensityMarketedMax {
-  air_cooled: PublishedRealPower { power: watt(count: 35000) },
-  liquid_cooled: PublishedRealPower { power: watt(count: 100000) },
-  claim_wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liq",
-  citation: "databank.com Orangeburg campus LGA4 page, raw fetch 2026-09-09 (HTTP 200). THE WORDING ABOVE IS NOW THE LITERAL SPEC-TABLE CELLS AND WAS NOT BEFORE. The first cut read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool, not text on the page. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the WORDING did not, which is the general shape silent-heron-303 found across the census. The plus signs are the operator's own, so these are marketed floors on a maximum rather than exact ceilings; the integers are the stated numerals."
+//
+// DEMOTED WITH EWR1, AND THIS ONE WAS THE LIVE INSTANCE RATHER THAN THE LATENT ONE. EWR1's wrong
+// ceiling was never read by any call site. This row's was: the census's own positive control asserted
+// established_watts == 35000 and a refusal at 35,001 W over a figure whose wording is "35kW+". So the
+// stronger claim - a marketed floor asserted as an exact reading - was executing under a green
+// witness, in the control that exists to prove the accessor works. It proved instead that nobody had
+// checked what the row said. The control now runs on iron_mountain_nje1_density, whose wording is
+// "up to 30 kW/rack" and which therefore genuinely has the property being asserted.
+data databank_lga4_density: CabinetDensityClaim = DensityUnread {
+  obligation: "THIS PAGE WAS READ AND IT PUBLISHES TWO FIGURES, neither of which this carrier can hold pointing the right way. The operator publishes, verbatim: \"35kW+ Cab Density Air\" and \"100kW+ Cab Density Liq\". Both plus signs are the operator's own, so both are capability FLOORS - at least thirty-five kilowatts on air, at least one hundred on liquid - and the figure-bearing arms here are marketed MAXIMA. Typed as a maximum, thirty-five thousand became an at-most, and the census asserted that a cabinet advertised at thirty-five kilowatts OR MORE refuses 35,001 W. RESOLVE by re-typing both as floor-carrying figures once the carrier expresses a quantity's direction; the numerals and wording above are the reading and no re-fetch is required. RETRIEVAL EVIDENCE, unchanged and still verified: databank.com Orangeburg campus LGA4 page, raw fetch 2026-09-09 (HTTP 200). THE WORDING ABOVE IS NOW THE LITERAL SPEC-TABLE CELLS AND WAS NOT BEFORE. The first cut read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool, not text on the page. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the WORDING did not, which is the general shape silent-heron-303 found across the census. The plus signs are the operator's own, so these are marketed floors on a maximum rather than exact ceilings; the integers are the stated numerals.",
 }
 
 data databank_lga4_retail_grain: RetailGrainStanding = SingleCabinetOffered {

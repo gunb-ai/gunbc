@@ -12,7 +12,7 @@ import extdeps.colo.types {
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
 }
 import extdeps.colo.databank {
-  databank_lga4_density, databank_lga4_retail_grain,
+  databank_lga4_retail_grain,
   databank_ewr1_newark, databank_ewr1_retail_grain,
   databank_phl1_density, databank_phl1_retail_grain,
 }
@@ -107,11 +107,19 @@ data apparent_power_fixture: CabinetDensityClaim = DensityMarketedAirOnly {
 
 // POSITIVE CONTROL. A published kilowatt figure yields an established watt reading equal to what
 // the operator marketed, and the same figure as its own upper bound.
+//
+// ITS SUBJECT CHANGED WHEN LGA4 WAS DEMOTED, AND THE SUBJECT IS THE WHOLE POINT. This control used to
+// run on databank_lga4_density, whose wording is "35kW+" - a FLOOR. So it asserted that a cabinet
+// advertised at thirty-five kilowatts OR MORE establishes exactly thirty-five and refuses 35,001 W,
+// which is the strongest form of the defect this census exists to refuse, executing inside its own
+// positive control. iron_mountain_nje1_density says "high-density UP TO 30 kW/rack" - an actual
+// marketed maximum - so the control keeps a subject that genuinely has the property being asserted.
+// A positive control over a wrong-direction row does not prove the accessor works; it proves nobody
+// checked what the row said.
 test fn w_published_kilowatts_establish_real_power() -> Bool {
-  established_watts(d: databank_lga4_density) == 35000
-    && established_watts(d: iron_mountain_nje1_density) == 30000
-    && ceiling_refuses_at(d: databank_lga4_density, required: 35001)
-    && !ceiling_refuses_at(d: databank_lga4_density, required: 34999)
+  established_watts(d: iron_mountain_nje1_density) == 30000
+    && ceiling_refuses_at(d: iron_mountain_nje1_density, required: 30001)
+    && !ceiling_refuses_at(d: iron_mountain_nje1_density, required: 29999)
 }
 
 // THE FIRST CONJUNCT PINS THE CAUSE AND IS NOT DECORATION. established_watts collapses Absent to
@@ -166,7 +174,7 @@ fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
 test fn w_density_and_grain_are_separate_facts() -> Bool {
   grain_admits_single_cabinet(g: databank_lga4_retail_grain)
     && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
-    && established_watts(d: databank_lga4_density) == 35000
+    && established_watts(d: iron_mountain_nje1_density) == 30000
 }
 
 // AN UNREAD DENSITY REFUSES NOTHING, WHICH IS THE ARM THAT KEEPS THE CEILING FROM BEING A FREE
