@@ -22,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.dataverge",
-      decl_name: "dataverge_jersey_city",
+      decl_name: "dataverge_facilities",
       field: WholeDeclaration
     }
   },
@@ -64,6 +64,8 @@ data dataverge_jersey_city: ColoFacilityRow = ColoFacilityRow {
   region_code: "NJ",
   facility_note: "Inflect profile (read 2026-08-18): 0.6 MW total power, 2N power with N+1 UPS, N+1 cooling, PCI DSS / SOC 2 / HIPAA claimed; on-site carriers listed AT&T, Cogent, Crown Castle, Lightpath, Lumen; DataVerge marketing claims 30-plus carriers across its footprint. Located in the Newport office tower district.",
 }
+
+data dataverge_facilities: List<ColoFacilityRow> = [dataverge_brooklyn, dataverge_jersey_city]
 
 data dataverge_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "quote request or tour scheduling via dataverge.com",
