@@ -325,21 +325,17 @@ fn account_token_mint_route(shape: CloudflareAccountTokenShape) -> AccountTokenM
 fn permission_groups_from_grants(
   grants: List<CloudflarePermissionGrant>
 ) -> List<PermissionGroupRef> {
-  fold(grants, init: [], f: fn(acc, g) {
-    match g {
-      PermissionGroupGrant { group: grp } => concat(acc, [grp])
-      AccountApiTokensWrite => acc
-      AccountApiTokensRead => acc
-    }
+  flat_map(grants, g => match g {
+    PermissionGroupGrant { group: grp } => [grp]
+    AccountApiTokensWrite => []
+    AccountApiTokensRead => []
   })
 }
 
 fn permission_groups_from_policies(
   policies: List<AccountTokenPolicy>
 ) -> List<PermissionGroupRef> {
-  fold(policies, init: [], f: fn(acc, p) {
-    concat(acc, p.permission_groups)
-  })
+  flat_map(policies, p => p.permission_groups)
 }
 
 fn permission_group_ids_agree(
