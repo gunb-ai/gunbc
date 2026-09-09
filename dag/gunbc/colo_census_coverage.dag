@@ -138,6 +138,12 @@ data hudson_valley: RegionCoverage = RegionCoverage {
   },
 }
 
+// THIS ROSTER IS INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It
+// carries the regions a lane surveyed, including ones surveyed and found empty; it does not carry a
+// RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding
+// those rows is worth doing only when the census's geographic scope is decided - an unsurveyed
+// roster over an undecided scope is a list whose length is an artefact of where the author stopped
+// typing. Carried as an annotation rather than a String row because no fold reads it: per DESIGN
+// section 4c an ordinary String declaration whose sole purpose is commentary is misplaced or dead
+// data, and // is the explicit quarantine boundary for exactly this.
 data census_regions: List<RegionCoverage> = [nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
-
-data coverage_growth_note: NonEmptyStr = "This roster is INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It carries the regions a lane surveyed and found empty; it does not yet carry a RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding those rows is worth doing only when the census's geographic scope is decided - an unsurveyed roster over an undecided scope is a list whose length is an artefact of where the author stopped typing."
