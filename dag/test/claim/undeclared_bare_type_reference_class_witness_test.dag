@@ -205,3 +205,55 @@ test fn constructing_through_an_imported_alias_charges_no_unlisted_import_use_on
     FixtureInstrumentRefused { cause: c } => false
   }
 }
+
+// THE QUALIFIED-USE ARM, the third emission shape the census's definer-resolvable column measures
+// (242 occurrences, 107 pairs, 2026-09-09 post-alias-peel). A type-position reference spelled
+// fully qualified -- `uses net: std.resources.Network`, or a child module naming its own parent
+// (`v2.lens.complexity_accumulator_copy.analyze` naming
+// `v2.lens.complexity_accumulator_copy.PortReading`) -- resolves through the symbol index, and the
+// leaf mask check then looks the FULL qualified text up in source_visible_names, which only ever
+// carries bare names (locals + kernel + listed names + is-all exports). So the row fires on EVERY
+// masked qualified use, and -- measured on this exact shape pre-fix -- keeps firing after the
+// import is added: no import-list edit can discharge it, which is the defect signature the two
+// arms above already carry. The design's import-scoped policy is the opposite gate: "a module's
+// import list says which QUALIFIED names are visible" (namespace-resolution-design.md section 7),
+// so the fix is at the visibility map's construction: v1.compiler.infer build_type_env now also
+// enters each imported name under its qualified spelling (selective: the listed names; is-all: the
+// module's own interface names -- never ancestry names, which do not live at that path). A
+// qualified use of an unlisted name or an unimported module still fires; only the spelling the
+// import honestly declares goes quiet.
+data ubtr_qualified_definer_source: String = "module ubtr.qdef\n\ntype UbtrQualified {\n  tag: Int\n}\n"
+
+data ubtr_qualified_user_listed_source: String = "module ubtr.quser\n\nimport ubtr.qdef { UbtrQualified }\n\nfn ubtr_read(q: ubtr.qdef.UbtrQualified) -> Int {\n  q.tag\n}\n"
+
+data ubtr_qualified_user_unlisted_source: String = "module ubtr.quser\n\nfn ubtr_read(q: ubtr.qdef.UbtrQualified) -> Int {\n  q.tag\n}\n"
+
+fn ubtr_qualified_run(user_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("ubtr/qdef.dag", ubtr_qualified_definer_source),
+      fixture_source("ubtr/quser.dag", user_source)
+    ],
+    entry: "ubtr/quser.dag"
+  })
+}
+
+// THE DISCRIMINATING RED, pre-fix: the user lists UbtrQualified from ubtr.qdef and references it
+// as ubtr.qdef.UbtrQualified -- the most explicit spelling of the same declaration -- and the
+// emitter still charges it. Post-fix the row is gone.
+test fn qualified_use_of_a_listed_import_charges_no_unlisted_import_use() -> Bool {
+  match ubtr_qualified_run(ubtr_qualified_user_listed_source) {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_rows_of_class(rows: rows, wanted: "UnlistedImportUse")) == 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE GATE STILL GATES: the same qualified spelling with NO import edge is precisely the genuine
+// class -- the dependency is real and undeclared -- and must keep firing after the fix. This is
+// the control that keeps the visibility-map change from widening into "qualified names are always
+// fine", which would be the absorbing-fallback arm (DESIGN 5) wearing a repair's clothes.
+test fn qualified_use_without_any_import_still_charges_unlisted_import_use() -> Bool {
+  ubtr_diagnosed_as(ubtr_qualified_run(ubtr_qualified_user_unlisted_source), "UnlistedImportUse")
+}
