@@ -437,10 +437,14 @@ type SystemdSliceDirective sole_constructor {
 // unwritable state writable again to buy reuse. The memory half of the filing stays open and keeps its
 // own trigger.
 //
-// There is deliberately no `slice_cpu_quota` mint beside slice_cpu_weight. One was written and
-// deleted unused (review 57699): the live CPU-quota producer is gunbc.host_converge
-// runner_cpu_boundary_knobs, which reaches the property-generic PerSlotMemoryCap target directly, so
-// a slice-directive mint would have been set-completion with no caller -- the residue DESIGN 6 names.
+// There was deliberately no `slice_cpu_quota` mint beside slice_cpu_weight -- one was written and
+// deleted unused (review 57699) because the live CPU-quota producer was gunbc.host_converge
+// runner_cpu_boundary_knobs, which reaches the property-generic PerSlotMemoryCap target directly.
+// gunbc.fabric_cell_effect is now that caller: a microVM guest's topology has to be derived from
+// a quantity the CELL enforces, and the cell carried CPUWeight alone, which guarantees no amount
+// of anything. The quota the fleet already declares lands on the runner UNIT, a different systemd
+// object from the cell slice, so the cell had no absolute entitlement to derive from until this
+// directive existed.
 // It costs one line to add when a slice-directive consumer exists.
 type SystemdDirectiveValue
   = DirectiveByteCount { bytes: ByteSize }
