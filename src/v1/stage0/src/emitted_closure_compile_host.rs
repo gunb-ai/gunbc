@@ -485,8 +485,18 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// Package header from `extdeps.rust.version` `render_cargo_package_header_prefix`; dependency
 /// rows from `v1.compiler.stage0_crates` `stage0_foundation_runtime_dependencies` (the seed's
 /// runtime dependency set, which emitted code links against), each rendered by that module's
-/// `render_stage0_crate_dep`. No `[lib]` section: `src/lib.rs` is cargo's own default, so naming
-/// it would be a second spelling.
+/// `render_stage0_crate_dep`.
+///
+/// THE `[lib]` NAME IS THE EMITTER'S CONTRACT, NOT A SPELLING OF THE PATH. `src/lib.rs` stays
+/// cargo's default path; what must be named is the LIB TARGET's crate name, because the emitted
+/// `main.rs` reaches the closure through it: `v1.compiler.emit_rust` `emit_rust_selected` binds
+/// the self-emitted crate's name (`v1_compiled` for every non-retained-host pipeline entry), and
+/// the SourceRootEvalDriver and DirectIngestDriver mains both `use v1_compiled::…`. The package
+/// name is per-entry (one slug per probe, sharing one target dir), so without this section the
+/// lib takes the package's name and the driver main's self-references fail E0433 — measured on
+/// the required-v2-native lane's first preparation. Pipeline-free probe entries never named
+/// their crate in a `use`, so the gap was unreachable until a pipeline entry became a probe
+/// subject.
 ///
 /// The corpus's hand-authored TOML string (`tools.self_host_curated_seed_linked_harness`
 /// `cssl_v1_compiled_probe_lib_cargo_toml`) is deliberately not used: it is marked scaffold debt
@@ -530,8 +540,11 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
     let features = render_stage0_crate_features_section(stage0_features_for_crate_kind(
         GeneratedPartitionCrateKind::GeneratedFoundationCrate,
     ));
+    // `v1_compiled` is the emitter's own literal (`emit_rust_selected`), mirrored here the way
+    // every seed mirror in this file is: the host cannot reach into the emission for it, and the
+    // emitted main.rs's self-references fail to link under any other lib name.
     format!(
-        "{}\nedition = \"2021\"\n{features}\n[dependencies]\n{rendered}",
+        "{}\nedition = \"2021\"\n\n[lib]\nname = \"v1_compiled\"\n{features}\n[dependencies]\n{rendered}",
         render_cargo_package_header_prefix(probe_package_name(entry))
     )
 }
@@ -1947,8 +1960,12 @@ mod tests {
             assert!(manifest.contains(name), "missing dependency row {name}");
         }
         assert!(manifest.contains("/repo/src/v1/stage0"));
-        // `src/lib.rs` is cargo's own default, so restating it would be a second spelling.
-        assert!(!manifest.contains("[lib]"));
+        // THE LIB NAME IS THE EMITTER'S SELF-NAME CONTRACT: the emitted driver mains reach the
+        // closure through `use v1_compiled::…` (`v1.compiler.emit_rust` `emit_rust_selected`
+        // binds the name), so the probe crate's lib target must carry it even though the package
+        // name is per-entry. The PATH stays cargo's default and is not restated.
+        assert!(manifest.contains("[lib]\nname = \"v1_compiled\"\n"));
+        assert!(!manifest.contains("path = \"src/lib.rs\""));
     }
 
     /// One emitted crate on disk, authored by the caller, so each test states the shape it means.
