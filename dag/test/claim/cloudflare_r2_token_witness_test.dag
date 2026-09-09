@@ -11,8 +11,6 @@ import extdeps.cloudflare.account_api_tokens {
   ScannableUserApiToken,
   ScannableGlobalApiKey,
   Pre2026Unprefixed,
-  account_tokens_collection_url,
-  account_tokens_permission_groups_path,
   parse_account_token_status,
   TokenActive,
   token_policy_effect_wire,
@@ -72,13 +70,6 @@ test fn account_token_formats_are_prefixed() -> Bool {
       == ScannableGlobalApiKey
     && classify_cloudflare_credential_format(value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T")
       == Pre2026Unprefixed
-}
-
-test fn account_tokens_create_url_joins_account_id() -> Bool {
-  account_tokens_collection_url(account_id: "023e105f4ecef8ad9ca31a8372d0c353")
-    == "https://api.cloudflare.com/client/v4/accounts/023e105f4ecef8ad9ca31a8372d0c353/tokens"
-    && account_tokens_permission_groups_path(account_id: "023e105f4ecef8ad9ca31a8372d0c353")
-      == "/accounts/023e105f4ecef8ad9ca31a8372d0c353/tokens/permission_groups"
 }
 
 test fn token_status_and_effect_use_upstream_wire_words() -> Bool {
@@ -253,7 +244,7 @@ test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
     && any(cloudflare_r2_token_mint_frontier_rows, row =>
       frontier_row_names_decl(
         row: row,
-        ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "r2_s3_pair_from_mint"),
+        ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_access_pair_from_created_token"),
       ))
     && any(vendor_cloudflare_frontier_rows, row =>
       frontier_row_names_decl(

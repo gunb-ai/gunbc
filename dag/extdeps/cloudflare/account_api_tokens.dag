@@ -322,18 +322,6 @@ fn admit_account_token_api_mint(
   }
 }
 
-fn account_tokens_collection_path(account_id: String) -> String {
-  join(["/accounts/", account_id, "/tokens"], "")
-}
-
-fn account_tokens_permission_groups_path(account_id: String) -> String {
-  join(["/accounts/", account_id, "/tokens/permission_groups"], "")
-}
-
-fn account_tokens_collection_url(account_id: String) -> String {
-  join([cloudflare_client_v4_base as String, account_tokens_collection_path(account_id: account_id)], "")
-}
-
 service cloudflare.AccountTokens {
   config {
     endpoint: cloudflare_client_v4_base

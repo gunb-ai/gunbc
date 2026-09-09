@@ -24,17 +24,13 @@ import extdeps.cloudflare.account_api_tokens {
   CreateAccountOwnedToken,
   R2S3ObjectRead,
   credential_supports,
-  CreatedAccountToken,
-  CreateAccountTokenRequest,
   admit_account_token_api_mint,
   AccountTokenApiMintStanding,
   account_api_tokens_write_permission_name
 }
 import extdeps.cloudflare.r2 {
   R2Jurisdiction,
-  r2_object_read_create_request,
-  r2_s3_access_pair_from_created_token,
-  R2S3AccessPair
+  r2_object_read_create_request
 }
 
 // POLICY, NOT UPSTREAM. The GitHub org-admin lane
@@ -46,8 +42,8 @@ import extdeps.cloudflare.r2 {
 // module (org-admin SecretMaterial / spark SecretRef standing): a held Secret here would be a
 // second custody path.
 
-// Cluster: admit_r2_object_read_api_mint, admit_account_token_api_mint, and r2_s3_pair_from_mint
-// have no executing AccountTokens.Create in this change.
+// Cluster: admit_r2_object_read_api_mint, admit_account_token_api_mint, and
+// r2_s3_access_pair_from_created_token have no executing AccountTokens.Create in this change.
 // Subjects are DeclarationRefs (std.roster_frontier); rationale is this annotation, not a String field.
 data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
@@ -65,7 +61,7 @@ data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
     ),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "r2_s3_pair_from_mint"),
+    ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_access_pair_from_created_token"),
     reason: "no executing AccountTokens.Create; witness is not a consumer",
     dissolution: unbound_dissolution(
       description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
@@ -159,20 +155,6 @@ fn subsequent_r2_tokens_are_not_a_human_provision() -> Bool {
   ) == 1
 }
 
-fn r2_object_read_mint_request(
-  name: String,
-  account_id: String,
-  jurisdiction: R2Jurisdiction,
-  bucket_name: String
-) -> CreateAccountTokenRequest {
-  r2_object_read_create_request(
-    name: name,
-    account_id: account_id,
-    jurisdiction: jurisdiction,
-    bucket_name: bucket_name
-  )
-}
-
 fn admit_r2_object_read_api_mint(
   name: String,
   account_id: String,
@@ -181,15 +163,11 @@ fn admit_r2_object_read_api_mint(
 ) -> AccountTokenApiMintStanding {
   admit_account_token_api_mint(
     shape: cloudflare_r2_object_read_token_shape(),
-    request: r2_object_read_mint_request(
+    request: r2_object_read_create_request(
       name: name,
       account_id: account_id,
       jurisdiction: jurisdiction,
       bucket_name: bucket_name
     )
   )
-}
-
-fn r2_s3_pair_from_mint(token: CreatedAccountToken) -> R2S3AccessPair {
-  r2_s3_access_pair_from_created_token(token: token)
 }
