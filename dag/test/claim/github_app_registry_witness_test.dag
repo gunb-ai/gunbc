@@ -15,8 +15,12 @@ import gunbc.runner_microvm_attempt {
   microvm_attempt, bind_owned_attempt, runner_microvm_attempt_unit_name,
 }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId, JitRunnerLabel }
+import gunbc.runner.runner_jit_admission {
+  jit_admission_axis_standing, AttemptBindingAxis, AxisDeferred,
+}
 import gunbc.runner_jit_mint {
   JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
+  JitMintRefusedAttemptUnbound,
   plan_jit_mint,
 }
 import extdeps.uri { Uri, uri_https }
@@ -954,6 +958,7 @@ fn planned(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintPlan {
     organization: gunbai_org_ref,
     runner_group_id: JitRunnerGroupId { value: 1 },
     labels: [JitRunnerLabel { value: "self-hosted" }],
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
 
@@ -992,6 +997,23 @@ test fn witness_jit_mint_authorizes_an_owned_cell_with_the_runner_permission() -
       path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
         && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
         && string_contains(s: dest, pattern: "/jit.img")
+    _ => false
+  }
+}
+
+test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
+  match plan_jit_mint(
+    binding: jit_binding(owned: true),
+    authority: app_credential,
+    control_plane: observed_grant(perms: runner_grant),
+    organization: gunbai_org_ref,
+    runner_group_id: JitRunnerGroupId { value: 1 },
+    labels: [JitRunnerLabel { value: "self-hosted" }],
+    attempt_binding: AxisDeferred {
+      trigger: "fixture: deferred standing must refuse a mint that would not carry the attempt identity" as NonEmptyStr,
+    },
+  ) {
+    JitMintRefusedAttemptUnbound { cause: _ } => true
     _ => false
   }
 }

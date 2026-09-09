@@ -1078,7 +1078,7 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
 // existing ones, and migrating the whole population is a seed-wide refactor of the stage that IS
 // the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is
 // deleted at v2 self-host, at which point every row in this class goes with it; the same trigger
-// compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same
+// gunbc.compiler_diagnostic_seed_projection carries for the hand-Rust arms, because it is the same
 // seed and the same endpoint.
 
 fn collect_explicit_return_values(n: Node) -> List<Node> {

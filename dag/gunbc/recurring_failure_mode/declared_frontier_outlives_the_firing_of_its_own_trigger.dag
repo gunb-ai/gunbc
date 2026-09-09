@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.declared_frontier_outlives_the_firing_of_its_own_trigger
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data declared_frontier_outlives_the_firing_of_its_own_trigger: RecurringFailureMode = RecurringFailureMode {
+  identity: "declared_frontier_outlives_the_firing_of_its_own_trigger" as NonEmptyStr,
+
+  receipts: [
+    "**a declared consumption frontier outlives the firing of its own trigger** (INVALID STATE: a declaration admitted under section 3c as consumed by a named later consumer, whose trigger has since been SATISFIED BY OTHER MEANS, so the declaration is dangling while every artifact around it still describes it as a frontier). ",
+
+    "HARM: THE ONE STATE SECTION 3c CALLS RED IS REACHED WITHOUT ANY EDIT TO THE DECLARATION. A frontier is admitted precisely because its consumer is coming; when the requirement is discharged elsewhere, the promise does not become false by being rewritten, it becomes false by STANDING STILL. Nothing refuses, because nothing joins a trigger to the event that fires it, and the declaration reads exactly as it did on the day it was admitted -- correct, well modelled, and now unconsumed. This is the section 3c dangling case arrived at by the passage of time rather than by an author's omission, which is why an author's diligence at the moment of writing cannot prevent it. ",
+
+    "**THE SPECIMEN IS THIS PROJECT AND THE LANE THAT FILED THIS ROW, gunbc#10836.** A namespace relation was admitted as a declared frontier, with its consumer named as the failure-mode roster's hand-authored membership tail, and its trigger stated at capability grain: that roster membership become DERIVED from the row-files so no shared tail must be edited to register a row. gunbc#10822 landed exactly that capability -- the roster file deleted, membership read from the row directory -- WHILE THE DECLARATION WAS STILL IN REVIEW. The trigger fired at 15:04Z; the pull request had been opened at 12:35Z; the discharging change had been open since 02:45Z. The frontier was true when written and dangling by merge time, and no gate, lens or check observed the transition. ",
+
+    "**THE PART THAT MADE IT DISCOVERABLE IS THE PART TO KEEP, AND IT WAS ADDED BY A REVIEWER.** The trigger had first been written in a pull request body. A reviewer required it beside the declaration on the ground that section 3c admits a later consumer only with the trigger stated there -- and a body is not in the tree a later reader greps. That relocation is the only reason the firing was noticed at all: a human read the in-tree trigger, recognised the capability another change had just landed, and reclassified the declaration. Had the trigger stayed in the body it would not have been reachable from any search over the corpus, and the declaration would have merged dangling and stayed dangling. ",
+
+    "DISTINGUISHING FACTS, and the neighbour it is NOT. This is not a stale claim about a changed premise: the frontier's sentence remains ACCURATE about what it promised, and no edit falsified it. What changed is the WORLD's disposition of the obligation, so a check that re-reads the claim against its premise finds nothing wrong. It is also not an unsatisfiable trigger -- the opposite -- the trigger was satisfiable, was satisfied, and satisfaction is exactly what left the declaration stranded. The class exists because a trigger is written as a condition for a FUTURE edit and is never evaluated as a condition on the PRESENT tree. ",
+
+    "RECOGNITION RULE: a declaration whose only executing consumers are its own probes, carrying a trigger that names a capability the corpus ALREADY has. The check is decidable and mechanical in principle -- the frontier's consumer and trigger are in the tree beside the declaration, and whether the named capability exists is a question the corpus can answer -- so the ceiling is structural: no accepted program carries a frontier whose trigger is already satisfied. The next-rung trigger is a typed frontier carrier rather than a comment: the named consumer and the trigger declared as data that a fold can read, so that a frontier whose capability has landed refuses instead of waiting to be noticed by a reader. Until then the class is mitigated only by review, and its detection rate is the rate at which humans happen to read old comments. ",
+
+    "**AND ONE PROCESS RECEIPT, because the same gap produced the work AND left it unconsumed.** The dispatch that authorised the declaration was justified as unconditional -- needed under every outcome of a pending ruling. The discharging change had been open for nearly ten hours at that moment. Unconditional NEED does not imply that a particular PRODUCTION is non-redundant, so the admission test acquired a third clause: a convergence census -- no already-live lane is independently on track to discharge the same requirement -- alongside ruling-invariance and option-preservation. One search of open changes touching the named consumer would have found it. ",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,68 @@
+module gunbc.runner.runner_host_image_placeability
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+data runner_host_image_placeability_disposition: Disposition = SingleAuthority
+
+// §3c: host_image_placeability_standing is the typed access-refusal census. A wet fleet-converge
+// image probe is a different observation, not a correction of this arm.
+data host_image_placeability_wet_probe_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a fleet-converge host-image boot probe that writes HostImagePlaceability from an observed tmpfs exec, not from this access-refused standing. TRIGGER: that probe exists and this standing is no longer the only HostImagePlaceability value in the observing layer. SUFFICIENT FOR deleting this row. NOT satisfied by another witness matching the standing." as NonEmptyStr)
+
+// CAN A GUNBC BINARY BE CARRIED IN THE HOST IMAGE AND EXECUTED ON TMPFS AT BOOT?
+//
+// That is a placeability question, not a "does cargo run work" question. A binary that runs from a
+// checkout, over a network mount, or after a runner has started presupposes the lifecycle the boot
+// path lacks: at jailer exec the host has a tmpfs root and no runner, because bringing a runner
+// into being is the purpose of the boot.
+//
+// AN EXEC FORMAT ERROR IS NOT A PLACEABILITY FINDING. Session containers are arm64; the hosts are
+// linux/amd64. A binary built in the session will not execute there, and that mismatch is
+// build-provenance, not an answer to whether an amd64 binary in the image can run at boot.
+
+type PlaceabilityRefusalCause
+  = HostShellAndBootImageAccessRefused
+  | BinaryAbsentFromHostImage
+  | ExecutedFromCheckoutOrNetworkMount
+  | ExecFormatErrorIsBuildProvenance
+
+type HostImagePlaceability
+  = ExecutedAtBoot { exit_status: Int }
+  | PlaceabilityRefused { cause: PlaceabilityRefusalCause }
+
+fn placeability_question_closed(outcome: HostImagePlaceability) -> Bool {
+  match outcome {
+    ExecutedAtBoot { exit_status: _ } => true
+    PlaceabilityRefused { cause: c } => match c {
+      HostShellAndBootImageAccessRefused => true
+      BinaryAbsentFromHostImage => true
+      ExecutedFromCheckoutOrNetworkMount => false
+      ExecFormatErrorIsBuildProvenance => false
+    }
+  }
+}
+
+// CLOSED IS NOT ANSWERED. HostShellAndBootImageAccessRefused closes the work item because the
+// probe was not permitted. It is not evidence about the host image: it does not say a gunbc
+// binary cannot be carried or cannot execute on tmpfs. BinaryAbsentFromHostImage and
+// ExecutedAtBoot are the arms that answer the image. A reader who treats access-refused as a
+// placeability measurement is reading the wrong field.
+fn placeability_answers_the_host_image(outcome: HostImagePlaceability) -> Bool {
+  match outcome {
+    ExecutedAtBoot { exit_status: _ } => true
+    PlaceabilityRefused { cause: c } => match c {
+      BinaryAbsentFromHostImage => true
+      HostShellAndBootImageAccessRefused => false
+      ExecutedFromCheckoutOrNetworkMount => false
+      ExecFormatErrorIsBuildProvenance => false
+    }
+  }
+}
+
+// TYPED CAUSE, 2026-09-08. Access to shell and to boot a host image was refused. This records
+// that the probe was not permitted. It does not measure the image. A later wet probe through
+// fleet converge would be a different observation, not a correction of this arm.
+data host_image_placeability_standing: HostImagePlaceability = PlaceabilityRefused {
+  cause: HostShellAndBootImageAccessRefused,
+}
