@@ -23338,6 +23338,30 @@ pub fn build_type_env(
                                     v1_rt::rc_map_insert(x, n.clone(), true)
                                 },
                             );
+                            let a2 = Rc::new(v1_rt::map_keys(
+                                &parent_mod
+                                    .interface
+                                    .clone()
+                                    .env
+                                    .clone()
+                                    .str_bindings
+                                    .clone(),
+                            ))
+                            .iter()
+                            .cloned()
+                            .fold(
+                                a1.clone(),
+                                |x: Rc<HashMap<String, bool>>, n: String| {
+                                    v1_rt::rc_map_insert(
+                                        x,
+                                        v1_rt::concat(
+                                            imp.module_path.clone(),
+                                            v1_rt::concat(".".to_string(), n.clone()),
+                                        ),
+                                        true,
+                                    )
+                                },
+                            );
                             Rc::new(v1_rt::map_keys(
                                 &parent_mod
                                     .interface
@@ -23350,7 +23374,7 @@ pub fn build_type_env(
                             .iter()
                             .cloned()
                             .fold(
-                                a1.clone(),
+                                a2.clone(),
                                 |x: Rc<HashMap<String, bool>>, n: String| {
                                     v1_rt::rc_map_insert(x, n.clone(), true)
                                 },
@@ -23359,12 +23383,27 @@ pub fn build_type_env(
                         std::option::Option::None => acc.clone(),
                     }
                 } else {
-                    imp.specific_names.clone().iter().cloned().fold(
-                        acc.clone(),
-                        |x: Rc<HashMap<String, bool>>, n: String| {
-                            v1_rt::rc_map_insert(x, n.clone(), true)
-                        },
-                    )
+                    {
+                        let with_bare = imp.specific_names.clone().iter().cloned().fold(
+                            acc.clone(),
+                            |x: Rc<HashMap<String, bool>>, n: String| {
+                                v1_rt::rc_map_insert(x, n.clone(), true)
+                            },
+                        );
+                        imp.specific_names.clone().iter().cloned().fold(
+                            with_bare.clone(),
+                            |x: Rc<HashMap<String, bool>>, n: String| {
+                                v1_rt::rc_map_insert(
+                                    x,
+                                    v1_rt::concat(
+                                        imp.module_path.clone(),
+                                        v1_rt::concat(".".to_string(), n.clone()),
+                                    ),
+                                    true,
+                                )
+                            },
+                        )
+                    }
                 }
             },
         );

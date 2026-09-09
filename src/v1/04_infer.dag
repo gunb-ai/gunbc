@@ -12785,6 +12785,23 @@ fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_inde
 // separately here rather than derived from the union. Type parameters are deliberately absent --
 // they are authored, but they are not imports, and that map answers "which declaration did an
 // import name", not "what is in lexical scope".
+//
+// QUALIFIED SPELLINGS ARE VISIBLE EXACTLY WHEN THE IMPORT DECLARES THEM. The import-scoped
+// policy's gate is "a module's import list says which qualified names are visible"
+// (namespace-resolution-design.md section 7), but this map only ever carried BARE names, so the
+// resolver's leaf check fired UnlistedImportUse on every masked qualified use -- including
+// `q.def.QFoo` beside `import q.def { QFoo }`, a row no import-list edit could discharge. The
+// defect's census signature (2026-09-09): the listed-import column moved 511 -> 393 (118
+// occurrences) when the fix landed, while definer-resolvable (242 -- qualified uses with NO
+// import edge, dischargeable by adding the edge, so genuine worklist rows) and pool-coincidence
+// (2,614) stood unchanged. The fold below therefore enters each imported name under its
+// qualified spelling as well: selective imports qualify exactly the listed names; is-all
+// imports qualify the module's OWN interface names -- never ancestry names, which are not
+// containment paths under the importing module's target and could never resolve as
+// `<that module>.<name>`. A qualified use of an unlisted name or an unimported module still
+// fires; witness test.claim.undeclared_bare_type_reference_class_witness
+// qualified_use_of_a_listed_import_charges_no_unlisted_import_use (RED pre-fix) beside
+// qualified_use_without_any_import_still_charges_unlisted_import_use (the gate still gates).
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
@@ -12919,11 +12936,13 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       match map_get(parent_index, imp.module_path) {
         Present { value: parent_mod } =>
           let a1 = fold(map_keys(parent_mod.interface.env.str_bindings), init: acc, f: (x, n) => map_insert(x, n, true))
-          fold(map_keys(parent_mod.interface.env.ancestry_str_bindings), init: a1, f: (x, n) => map_insert(x, n, true))
+          let a2 = fold(map_keys(parent_mod.interface.env.str_bindings), init: a1, f: (x, n) => map_insert(x, concat(imp.module_path, concat(".", n)), true))
+          fold(map_keys(parent_mod.interface.env.ancestry_str_bindings), init: a2, f: (x, n) => map_insert(x, n, true))
         Absent => acc
       }
     } else {
-      fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, true))
+      let with_bare = fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, true))
+      fold(imp.specific_names, init: with_bare, f: (x, n) => map_insert(x, concat(imp.module_path, concat(".", n)), true))
     }
   )
   let authored_import_names = fold(module.resolved_imports, init: empty_map(), f: (acc, imp) =>
