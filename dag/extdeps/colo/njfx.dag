@@ -57,7 +57,7 @@ data njfx_wall: ColoFacilityRow = ColoFacilityRow {
 data njfx_wall_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 16000) },
   claim_wording: "power densities ranging from 2 kW to 16 kW per cabinet",
-  citation: "njfx.net colocation page (njfx.net/colocation/), read 2026-09-08. The page does not name the cooling medium for the 16 kW figure; the air-only arm is used because no liquid-cooled claim appears anywhere on the page, and the integer here is the top of the operator's stated range.",
+  citation: "njfx.net colocation page (njfx.net/colocation/), read 2026-09-08, and the wording verified against the raw bytes 2026-09-09 (HTTP 200, 167854 bytes, the sentence occurs literally). Scope check: the figure sits under the heading High-Density Power inside Infrastructure Built for Mission-Critical Operations on this operator's single-campus Wall Township page, with no promotion banner and no other metro named anywhere on it, so the figure is this facility's. The page does not name the cooling medium for the 16 kW figure; the air-only arm is used because no liquid-cooled claim appears anywhere on the page, and the integer here is the top of the operator's stated range.",
 }
 
 // DENSITY READ, GRAIN NOT. The two questions are independent and this facility is the case that
@@ -67,16 +67,14 @@ data njfx_wall_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "The pages read 2026-09-08 (njfx.net/, njfx.net/colocation/, njfx.net/about/, njfx.net/connect/) state a per-cabinet power band but never state a minimum commitment. Establish whether a single cabinet is sold, and at which end of the 2 kW to 16 kW band, before ranking this campus against the waterfront candidates.",
 }
 
-data njfx_wall_retail_rates: RetailRateStanding = RatesQuoteOnly {
-  contact_route: "njfx.net/connect/ contact form",
-  obligation: "No pricing is published on any njfx.net page read 2026-09-08; the colocation page references a pricing guide it does not itself contain. The quote must ask for the 16 kW cabinet specifically, because the same page also markets 2 kW cabinets.",
-}
-
 // THE OTHER OPERATOR ON THIS PROPERTY, NAMED AND DELIBERATELY NOT MODELLED. The cable landing
 // station adjacent to the NJFX colocation building is Tata Communications', and Tata does sell
 // colocation as a global product. No Tata page reachable on 2026-09-08 describes a Wall, New
 // Jersey colocation offer as a facility with an address, density or grain - the only Tata surface
-// found was a global colocation service description. A global product page is not a facility
-// reading, so Tata contributes no row here rather than a row assembled from two pages about
-// different things.
-data njfx_tata_adjacency_obligation: NonEmptyStr = "Determine whether Tata Communications sells colocation at the Wall, New Jersey cable landing station as a distinct facility, and if so model it under extdeps.colo.tata_communications with its own address, density and grain. The searches run 2026-09-08 surfaced only Tata's global colocation service description and press material about the NJFX meet-me room, neither of which is a facility page."
+// found was a global colocation service description, which is a product page and not a facility
+// reading. So Tata contributes no row rather than a row assembled from two pages about different
+// things, and whoever asks NJFX for a quote should ask the same question of Tata directly.
+data njfx_wall_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "njfx.net/connect/ contact form",
+  obligation: "No pricing is published on any njfx.net page read 2026-09-08; the colocation page references a pricing guide it does not itself contain. The quote must ask for the 16 kW cabinet specifically, because the same page also markets 2 kW cabinets.",
+}

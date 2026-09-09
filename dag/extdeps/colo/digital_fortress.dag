@@ -56,7 +56,7 @@ data digital_fortress_piscataway: ColoFacilityRow = ColoFacilityRow {
 data digital_fortress_piscataway_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 15000) },
   claim_wording: "15kW per cabinet available without any significant redesign",
-  citation: "digital-fortress.com Piscataway data center page, read 2026-09-08. No liquid-cooled claim appears on the page. Note the qualifier: this is availability-on-request wording, not a standing per-cabinet maximum, and a quote must confirm it for the specific cabinet offered.",
+  citation: "digital-fortress.com Piscataway data center page, read 2026-09-08, and the wording verified against the raw bytes 2026-09-09 (HTTP 200, 481600 bytes, the sentence occurs literally). Scope check: the sentence is a bullet in the Reliability block under the page's own h1, Piscataway, New Jersey Data Center, in the same list as the 1.8 MW UPS figure. This operator also runs Seattle and Chicago sites and names them on this page, but every such mention is in navigation above or below the block, never inside it, and there is no promotional banner scoping the figure to another product. No liquid-cooled claim appears on the page. Note the qualifier: this is availability-on-request wording, not a standing per-cabinet maximum, and a quote must confirm it for the specific cabinet offered.",
 }
 
 data digital_fortress_piscataway_retail_grain: RetailGrainStanding = SingleCabinetOffered {

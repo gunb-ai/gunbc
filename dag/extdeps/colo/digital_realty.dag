@@ -103,8 +103,13 @@ data digital_realty_ewr12_retail_grain: RetailGrainStanding = SingleCabinetOffer
   citation: "digitalrealty.com EWR12 page, read 2026-09-08",
 }
 
-data digital_realty_ewr19_obligation: NonEmptyStr = "A third Piscataway campus building, EWR19, is named in Digital Realty campus material surfaced 2026-09-08. The operator page under the EWR19 path on the same URL pattern that serves EWR11 and EWR12 returned HTTP 404 on 2026-09-08, so no address, size, density or grain is carried for it and it contributes no row. Locate the live page or a spec sheet and model it; until then this operator's Piscataway campus is modelled at two buildings of three."
 
+// A THIRD BUILDING ON THIS CAMPUS THAT CONTRIBUTES NO ROW. Digital Realty campus material names
+// EWR19 alongside the two buildings above. The operator page under the EWR19 path on the same URL
+// pattern that serves EWR11 and EWR12 returned HTTP 404 on 2026-09-08, so no address, size, density
+// or grain is readable and no row is written from the campus material alone. This operator's
+// Piscataway campus is therefore modelled at two buildings of three, and the missing one needs a
+// live page or a spec sheet rather than an inference from its siblings.
 data digital_realty_facilities: List<ColoFacilityRow> = [digital_realty_ewr10, digital_realty_ewr20, digital_realty_ewr11, digital_realty_ewr12]
 
 data digital_realty_retail_rates: RetailRateStanding = RatesQuoteOnly {
