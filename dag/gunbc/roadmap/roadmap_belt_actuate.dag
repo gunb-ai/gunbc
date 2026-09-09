@@ -2173,7 +2173,10 @@ fn belt_observe_from_result(
   match classify_tmux_session_list(exit_ok: success, stdout: stdout, stderr: stderr) {
     TmuxSessionsListed { entries } =>
       Observed {
-        live: dispatch_live_sessions_from_entries(entries: entries),
+        live: dispatch_live_sessions_from_entries(
+          entries: entries,
+          selection: dispatch_actuator_selection(node_sizing: Unsized),
+        ),
       }
     TmuxNoServer { evidence: _ } =>
       Observed { live: [] }
@@ -3551,6 +3554,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: panes,
                   pane_observation_refusal: "",
+                  selection: dispatch_actuator_selection(node_sizing: Unsized),
                 ),
               }
             BeltAttemptPanesRefused { reason } =>
@@ -3559,6 +3563,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: [],
                   pane_observation_refusal: reason,
+                  selection: dispatch_actuator_selection(node_sizing: Unsized),
                 ),
               }
           }
@@ -5531,7 +5536,10 @@ fn belt_stop_node_for_instance(
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     Observed { live } => {
-      match dispatch_tmux_session_scope(node_id: node_id) {
+      match dispatch_tmux_session_scope(
+        node_id: node_id,
+        selection: dispatch_actuator_selection(node_sizing: Unsized),
+      ) {
         Absent =>
           StopRefusedResult {
             node_id: node_id,

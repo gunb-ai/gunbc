@@ -52,7 +52,9 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_publication_dir_for_instance,
   dispatch_attempt_state_path_for_instance,
   dispatch_actuator_selection,
+  dispatch_actuator_vendor_selection,
   dispatch_actuator_selection_for_provider,
+  DispatchActuatorSelection,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
   dispatch_provider_inner_argv,
@@ -708,22 +710,40 @@ test fn witness_live_sessions_panel_rows() -> Bool {
   }
 }
 
+// ITS SUBJECT IS THE VENDOR PATH, WHICH IS WHAT IT ALWAYS TESTED. Both selection clauses called
+// dispatch_actuator_selection, and DCH-3 (2026-09-02) repointed that at the harness -- a different
+// executor with a different refusal vocabulary -- while the assertions kept naming
+// dispatch_selection_standing_ineligible_reason, which only the VENDOR path can produce. So the
+// witness was asserting a value its subject could no longer return, on a route the hermetic floor
+// could not execute, and both defects were invisible because nothing had changed this file since.
+//
+// dispatch_actuator_vendor_selection is the function that still holds the semantics this witness was
+// written for, and it is hermetic: neither gunbc.provider_standing nor gunbc.dispatch_selection
+// performs I/O, and srv1_live_dashboard_instance is pure construction. One selection is resolved and
+// then CARRIED into the classifier, so both clauses judge the same specimen -- previously they made
+// two independent live reads that could disagree.
+//
+// The assertions are deliberately NOT weakened to "refuses for any reason". That would have made the
+// witness pass while losing the only thing it discriminates: that the STANDING-INELIGIBLE cause is
+// what propagates. A check weakened until it greens is the escape hatch DESIGN section 5 forbids.
 test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   let entry = fixture_projection_standing_refusal_tmux_entry()
   let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+  let selection = dispatch_actuator_vendor_selection(node_sizing: Unsized)
+  match selection {
     DispatchActuatorSelectionRefused { reason } =>
       reason == dispatch_selection_standing_ineligible_reason
     DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
   }
-    && count(dispatch_live_sessions_from_entries(entries: [entry])) == 0
+    && count(dispatch_live_sessions_from_entries(entries: [entry], selection: selection)) == 0
     && match classify_dispatch_request(
       node: node,
       ready: ready,
       tmux_entries: [entry],
       attempt_key: "feedfacefeedface",
+      selection: selection,
     ) {
       DispatchRefused { reason: r } => r == dispatch_selection_standing_ineligible_reason
       DispatchPermitted { session_name: _, worktree_path: _, branch_name: _, brief: _, reasoning_effort: _ } => false

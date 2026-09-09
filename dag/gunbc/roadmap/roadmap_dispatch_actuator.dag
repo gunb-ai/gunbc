@@ -1460,8 +1460,18 @@ fn dispatch_tmux_session_scope_for_process_fingerprint(
   }
 }
 
-fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope? {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+// THE SELECTION IS CARRIED HERE TOO, for the reason classify_dispatch_request states above: a
+// projection that performs its own live selection cannot be witnessed hermetically, and this one
+// sits under the live-sessions fold, so the standing-refusal specimen reached http.Client.Get
+// through THREE independent routes rather than one. Threading the resolved selection through the
+// fold makes all three judge the SAME specimen, which is also the more correct shape -- the previous
+// code made one live read per entry per clause, so a roster that changed mid-fold could return rows
+// for one entry and not another with nothing recording that they disagreed.
+fn dispatch_tmux_session_scope(
+  node_id: RoadmapNodeId,
+  selection: DispatchActuatorSelection,
+) -> TmuxSessionScope? {
+  match selection {
     DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
       Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
@@ -2795,11 +2805,28 @@ fn classify_dispatch_request_for_process_fingerprint(
   }
 }
 
+// THE SELECTION IS A PARAMETER, NOT AN EFFECT THIS CLASSIFIER PERFORMS. It used to call
+// dispatch_actuator_selection itself, and since DCH-3 pointed that at the harness the call reached
+// harness_observe_roster -> http.Client.Get, an operation with no mock_response. A classifier that
+// performs I/O cannot be witnessed hermetically BY CONSTRUCTION, and that is exactly what happened:
+// witness_projection_standing_refusal_specimen_holds could not reach its subject on the floor, and
+// nothing noticed for six days because the changed-witness lane enrols only witnesses in CHANGED
+// files and nothing had touched that file since.
+//
+// Carrying the selection rather than re-deriving it is the same move this module now makes for the
+// model and already made for effort and the process fingerprint (DESIGN 2: carry, rewire or share
+// the first value). It costs the caller nothing -- the one production shape already has a selection
+// in hand -- and it makes the refusal-propagation arm testable with a constructed refusal instead of
+// a live roster read. The alternative considered and rejected was giving http.Client.Get a
+// fail-closed mock_response like its bounded siblings: one line, but it flips every Get consumer
+// under the floor from "cannot run" to "runs and refuses", a corpus-wide change of meaning that this
+// witness's repair has no business making.
 fn classify_dispatch_request(
   node: RoadmapNode,
   ready: List<RoadmapNode>,
   tmux_entries: List<TmuxLsEntry>,
   attempt_key: String,
+  selection: DispatchActuatorSelection,
 ) -> DispatchRequestGate {
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
@@ -2807,7 +2834,7 @@ fn classify_dispatch_request(
     if !node_repo_supported(node: node) {
       DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
     } else {
-      match dispatch_actuator_selection(node_sizing: node.sizing) {
+      match selection {
         DispatchActuatorSelectionRefused { reason } =>
           DispatchRefused { reason: reason }
         DispatchActuatorSelectionOk { provider: _, effort, model: _, process_fingerprint } =>
@@ -2927,9 +2954,12 @@ fn dispatch_session_cleanup_for_live_session(sess: DispatchLiveSession) -> Dispa
   }
 }
 
-fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession? {
+fn dispatch_live_session_for_entry(
+  entry: TmuxLsEntry,
+  selection: DispatchActuatorSelection,
+) -> DispatchLiveSession? {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId) {
+  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId, selection: selection) {
     Present { value: scope } => live_session_row(entry: entry, scope: scope)
     Absent => none
   }
@@ -2938,8 +2968,9 @@ fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession? {
 fn append_present_live_session(
   acc: List<DispatchLiveSession>,
   entry: TmuxLsEntry,
+  selection: DispatchActuatorSelection,
 ) -> List<DispatchLiveSession> {
-  match dispatch_live_session_for_entry(entry: entry) {
+  match dispatch_live_session_for_entry(entry: entry, selection: selection) {
     Present { value: row } => concat(acc, [row])
     Absent => acc
   }
@@ -2947,11 +2978,12 @@ fn append_present_live_session(
 
 fn dispatch_live_sessions_from_entries(
   entries: List<TmuxLsEntry>,
+  selection: DispatchActuatorSelection,
 ) -> List<DispatchLiveSession> {
   fold(
     filter_dispatch_tmux_sessions(entries: entries),
     init: [],
-    f: fn(acc, e) { append_present_live_session(acc: acc, entry: e) },
+    f: fn(acc, e) { append_present_live_session(acc: acc, entry: e, selection: selection) },
   )
 }
 
@@ -3361,9 +3393,10 @@ fn append_present_live_session_with_process(
   entry: TmuxLsEntry,
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
+  selection: DispatchActuatorSelection,
 ) -> List<DispatchLiveSession> {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId) {
+  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId, selection: selection) {
     Present { value: scope } =>
       match live_session_row_with_process(
         entry: entry,
@@ -3385,6 +3418,7 @@ fn dispatch_live_sessions_with_process(
   entries: List<TmuxLsEntry>,
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
+  selection: DispatchActuatorSelection,
 ) -> List<DispatchLiveSession> {
   fold(
     filter_dispatch_tmux_sessions(entries: entries),
@@ -3395,6 +3429,7 @@ fn dispatch_live_sessions_with_process(
         entry: entry,
         panes: panes,
         pane_observation_refusal: pane_observation_refusal,
+        selection: selection,
       )
     },
   )

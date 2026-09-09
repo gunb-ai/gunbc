@@ -163,6 +163,22 @@ fn claude_workspace_trust_seeded(config_text: String, project_path: String) -> B
 // identifier it always transmits (extdeps.llm.cursor_cli cursor_model_auto), not an absent flag --
 // so hoisting the shape to the hub today would model a generality with one home and no second
 // consumer.
+//
+// AND THIS MODULE IS THE WRONG SHAPE TO BE GROWING, which is stated here rather than left for a
+// reader to notice, because DESIGN section 3b admits a divergence with its reason beside it and
+// reds only the unstated one. extdeps.llm.cli carries three external authority anchors spanning TWO
+// independently governed upstreams -- OpenAI's codex and Anthropic's claude CLI -- and declares no
+// ExternalModelScope at all. Section 3's external decomposition forbids that twice: a module may not
+// silently hold several independently governed subjects, and a generic hub may not enumerate
+// concrete products, which `claude_cli_program` and `codex_cli_program` do. The two flag rows and
+// two arg builders above are four MORE rows on that surface.
+//
+// They are placed here anyway because the alternative is worse in the same section's terms: the
+// argv shapers that consume them are in this module, so splitting only the flag out would put one
+// fact in two modules. The root cut that actually dissolves this is a section 3 replacement
+// migration -- extdeps.llm.cli split per subject, each with its own declared scope, the shapers
+// moving with their upstream -- which is a root cut and not a leaf edit, so it is named here as
+// owed rather than half-done underneath a model-transmission change.
 
 type ProviderModelSelection
   = ProviderAccountDefaultModel
