@@ -2,7 +2,14 @@ module gunbc.spark.glm_canary_converge
 
 import std.types { String, Bool, List, NonEmptyStr, Secret }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value, ByteSize, byte_size, byte_size_count, basis_point_count }
+import extdeps.vllm.runtime_defaults {
+  defaults_source_revision, vllm_runtime_defaults_for,
+  VllmMemoryRequest, ResolvedVllmMemoryPolicy,
+  KvBytesMode, AutoProfiledMode, MemoryResolutionRefused,
+  VllmResolutionOrigin, ExplicitArgument, RuntimeDefault,
+  resolve_vllm_memory_policy,
+}
 import std.algebra { trim }
 import product.placement_supply { HostIdentity }
 import extdeps.zhipu.glm_5_3_flash {
@@ -461,6 +468,61 @@ fn serve_agreement_text(a: ServeAgreement) -> String {
   }
 }
 
+// ── THE EFFECTIVE MEMORY POLICY OF A LAUNCH THAT NAMES NEITHER FLAG ────────────────────────────
+//
+// THE CANARY'S REQUEST IS BOTH-OMITTED, AND THAT IS A FACT ABOUT ITS ARGV RATHER THAN A GAP IN THIS
+// MODEL. Its serve line carries no --gpu-memory-utilization and no --kv-cache-memory; the request
+// below says exactly that, and the resolution against the runtime's claimed revision is what turns it
+// into the 0.92 the engine reported. Until this existed the fleet had one route with a modelled 82%
+// and one with a figure nothing here could name.
+//
+// THE DEVICE TOTAL IS THE MEASURED BYTE COUNT, not the 121.69 GiB projection. `free -g` on a member
+// reported 121 GiB and the engine's own line reports 121.69; the exact figure is what the envelope
+// derivation needs, because a GiB rendering cannot distinguish the byte the ceiling rounds up.
+data glm_canary_device_total_bytes: ByteSize = byte_size(count: 130662027264)
+
+data glm_canary_memory_request: VllmMemoryRequest = VllmMemoryRequest {
+  utilization: none,
+  kv_cache_bytes: none,
+}
+
+fn glm_canary_resolved_memory(arm: GlmCanaryArm) -> ResolvedVllmMemoryPolicy {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => MemoryResolutionRefused { cause: "this arm has no runtime row, so no revision governs its omitted memory flags" as NonEmptyStr }
+    Present { value: rrow } =>
+      resolve_vllm_memory_policy(
+        request: glm_canary_memory_request,
+        device_total: glm_canary_device_total_bytes,
+        defaults: vllm_runtime_defaults_for(revision: defaults_source_revision(r: rrow.claimed_defaults_revision)),
+      )
+  }
+}
+
+// THE RECEIPT NAMES THE ORIGIN, NOT JUST THE NUMBER. "0.92" alone is what a reader could already get
+// from the engine's log; what the log cannot say is WHO decided it. An explicit argument is a decision
+// this repository owns and must revisit; a runtime default is one it accepted and inherits the
+// consequences of when upstream moves.
+fn glm_canary_memory_policy_text(arm: GlmCanaryArm) -> String {
+  match glm_canary_resolved_memory(arm: arm) {
+    MemoryResolutionRefused { cause: c } => join(["REFUSED: ", c as String], "")
+    KvBytesMode { bytes_per_rank: b, origin: o, noncausal_utilization: _ } =>
+      join(["explicit kv-cache-memory ", to_string(byte_size_count(b: b)), " bytes (", glm_canary_origin_text(o: o), ")"], "")
+    AutoProfiledMode { utilization: u, origin: o, requested_envelope_bytes: e } =>
+      join([
+        "auto-profiled at ", to_string(basis_point_count(bp: u)), " basis points (", glm_canary_origin_text(o: o),
+        "), envelope ", to_string(byte_size_count(b: e)), " bytes",
+      ], "")
+  }
+}
+
+fn glm_canary_origin_text(o: VllmResolutionOrigin) -> String {
+  match o {
+    ExplicitArgument { field: _ } => "explicitly requested by this arm"
+    RuntimeDefault { source_revision: r, field: _ } =>
+      join(["runtime default at revision ", r.full_revision as String, ", image/source equivalence unestablished"], "")
+  }
+}
+
 // ── THE CUTOVER ────────────────────────────────────────────────────────────────────────────────
 //
 // THE ENGINE ARGV IS NOT THE CONTAINER SPEC, AND ONLY THE FIRST WAS MODELLED. glm_canary_serve_argv
@@ -731,6 +793,7 @@ fn glm_canary_receipt_body(at: String, executor: String, path: SparkReachPath, v
     "  verdict: ", glm_canary_convergence_text(v: verdict), "\n",
     "  serve: ", glm_canary_serve_argv_text(arm: glm_canary_arm), "\n",
     "  running: ", glm_canary_serve_agreement_text(v: verdict), "\n",
+    "  memory: ", glm_canary_memory_policy_text(arm: glm_canary_arm), "\n",
   ], "")
 }
 

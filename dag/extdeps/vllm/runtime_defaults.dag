@@ -166,7 +166,12 @@ fn vllm_revision_eq(a: VllmSourceRevision, b: VllmSourceRevision) -> Bool {
 //
 // TWO OPTIONAL FIELDS RATHER THAN FOUR ARMS, because the arms were the cross product of two
 // independent presences and spelling a cross product by hand is how the fourth case went missing.
-type VllmMemoryRequest sole_constructor {
+// NOT sole_constructor, DELIBERATELY. An earlier spelling here gated construction, which blocked every
+// caller that needs to declare one -- witnesses and launch sites alike -- for no wall anybody asked
+// for. Gated construction belongs where a value's ORIGIN must be controlled, as TransportScript and
+// ArgvCommand control what may become a running process. A memory request is the opposite: it is
+// authored at each launch site, and it is the RESOLUTION that must be trustworthy, not the request.
+type VllmMemoryRequest {
   utilization: BasisPoint?
   kv_cache_bytes: ByteSize?
 }
