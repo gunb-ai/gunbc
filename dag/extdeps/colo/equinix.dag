@@ -89,6 +89,7 @@ data equinix_ny9_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   citation: "equinix.com NY9 products table, read 2026-09-08",
 }
 
+<<<<<<< HEAD
 data equinix_facilities: List<ColoFacilityRow> = [
   equinix_ny2,
   equinix_ny4,
@@ -99,6 +100,9 @@ data equinix_facilities: List<ColoFacilityRow> = [
   equinix_ny7,
   equinix_ny9,
 ]
+=======
+data equinix_facilities: List<ColoFacilityRow> = concat(equinix_secaucus_campus, [equinix_ny9])
+>>>>>>> 23048970d8 (Compose Equinix's facility roster from the Secaucus campus list plus NY9.)
 
 data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "equinix.com sales",
