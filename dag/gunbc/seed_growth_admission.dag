@@ -18,6 +18,7 @@ import gunbc.namespace_structural_observation_bridge_seed_growth { namespace_str
 import gunbc.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
 import gunbc.namespace_wave_admission { namespace_wave_admission_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
+import gunbc.regen_digest_spelling_seed_growth { regen_digest_spelling_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
@@ -238,6 +239,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     parsed_import_statement_bridge_seed_growth_justification,
     namespace_wave_admission_seed_growth_justification,
     qualified_pipe_callee_seed_growth_justification,
+    regen_digest_spelling_seed_growth_justification,
     target_invocation_seed_growth_justification,
     bootstrap_operation_seed_growth_justification,
     cli_dispatch_host_boundary_seed_growth_justification,

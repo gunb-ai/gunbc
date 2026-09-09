@@ -139,7 +139,9 @@ test fn witness_expectations_derive_from_the_emitted_srv1_units() -> Bool {
   belt && timer && mismatched
 }
 
-// (8) systemd.time(7) normalization: "60s" == "1min" is decidable equality; unknown units refuse.
+// (8) systemd.time(7) normalization: "60s" == "1min" is decidable equality; unknown units, empty
+// input, a malformed part, and a mixed span whose second token is unknown all refuse — never a
+// partial sum.
 test fn witness_systemd_duration_normalizes_equal_spellings() -> Bool {
   (match systemd_duration_usec(text: "60s") { Present { value: v } => microsecond_count(v) == 60000000  Absent => false })
     && (match systemd_duration_usec(text: "1min") { Present { value: v } => microsecond_count(v) == 60000000  Absent => false })
@@ -147,6 +149,8 @@ test fn witness_systemd_duration_normalizes_equal_spellings() -> Bool {
     && (match systemd_duration_usec(text: "5s") { Present { value: v } => microsecond_count(v) == 5000000  Absent => false })
     && (match systemd_duration_usec(text: "2 fortnights") { Present { value: _ } => false  Absent => true })
     && (match systemd_duration_usec(text: "") { Present { value: _ } => false  Absent => true })
+    && (match systemd_duration_usec(text: "1min 30fortnights") { Present { value: _ } => false  Absent => true })
+    && (match systemd_duration_usec(text: "min") { Present { value: _ } => false  Absent => true })
 }
 
 // (9) RED (review 5061891290 P1-3): a timer whose EFFECTIVE cadence is not R's emitted value
