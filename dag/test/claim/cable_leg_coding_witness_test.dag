@@ -292,8 +292,10 @@ test fn the_delivered_leg_is_read_but_still_not_interpretable() -> Bool {
   consistency_gap_is_compliance_unspecified(c: cable_leg_consistency(obs: delivered_fs_leg))
 }
 
-// AND THE UNREAD ARM KEEPS A HOME, NAMED AS THE SYNTHETIC IT NOW IS. No leg on this fleet has an
-// unread secondary any more, so without this fixture consistency_cause_is_unread would be an arm
+// AND THE UNREAD ARM KEEPS A HOME, NAMED AS THE SYNTHETIC IT NOW IS. Neither leg this fleet has
+// DUMPED has an unread secondary -- six of the eight endpoints have never been read at all, and
+// carry no observation to be unread ABOUT -- so without this fixture consistency_cause_is_unread
+// would be an arm
 // nothing exercises. It is deliberately NOT called "delivered": one name must not carry two
 // measurement states, and the fleet's answer is the one above.
 data leg_with_unread_secondary: CableLegObservation = cable_leg_observation(

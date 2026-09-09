@@ -96,10 +96,14 @@ import gunbc.fleet_intent_network {
 // cable_leg_unread_fields reports it -- the gap moved from this fleet to the general case, which is
 // where it belongs.
 
+// WHAT THE LINK REPORTS, which is a different subject from what the EEPROM says. The negotiated
+// speed and the NIC's advertised set are read from the HOST, per fleet and not per module, so they
+// stay here. The per-module EEPROM bytes are receipts and live in fabric_leg_eeprom_observations,
+// one row per acquisition -- an earlier head carried a `coding` field here as well, which made the
+// same bytes answerable from two places.
 type FabricLegCableObserved {
   vendor: NonEmptyStr
   part_number: NonEmptyStr
-  coding: CableLegObservation
   nic_supported_speeds: NonEmptyStr
   linked_speed_gbps: Nat
 }
@@ -107,13 +111,6 @@ type FabricLegCableObserved {
 data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved {
   vendor: "FS" as NonEmptyStr,
   part_number: "QDD-400G-4QPC015" as NonEmptyStr,
-  coding: cable_leg_observation(
-    identifier: transceiver_identifier_from_byte(code: 17),
-    primary_compliance_code: 11,
-    secondary_compliance: SecondaryObserved { code: 0 },
-    encoding: sff8636_encoding_from_byte(code: 8),
-    nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
-    extended_rate: ExtendedRateObserved { code: 106 }),
   nic_supported_speeds: "50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028)" as NonEmptyStr,
   linked_speed_gbps: 50,
 }
@@ -190,33 +187,69 @@ data srv10_fabric_link_observed: Bool = true
 //
 // The required mode is the rail's, not the cable's: 100GBASE-CR2 is what a two-lane leg must attest
 // for this fabric to run at the speed it was bought for.
-// TWO LEGS WERE READ, NOT EIGHT, AND THE PLANT SAYS SO. The raw dump on 2026-09-08 covered
-// spark-a3ee and spark-ac79 -- both in cage 1, at lanes 1 and 3. The other six endpoints, including
-// every leg in cage 2, have never been read.
+// TWO LEGS WERE READ, NOT EIGHT, AND EACH READ IS ITS OWN RECEIPT. The raw dump on 2026-09-08
+// covered spark-a3ee and spark-ac79 -- two of eight endpoints, both in cage 1, at lanes 1 and 3.
 //
-// An earlier head of this row mapped ALL EIGHT lanes to the one measured coding. That is the
-// absorbing fallback DESIGN section 5 forbids, wearing the costume of a receipt: it converted six
-// unknown legs into LegReadingTaken and so bypassed the exact refusal cable_plant_converge exists to
-// produce. Worse for this subject specifically -- the legs are FIELD PROGRAMMABLE, which is the whole
-// reason this model exists, so "same SKU" cannot stand in for "same coding" even as a guess, and
-// reprogramming one leg would have silently reprogrammed all eight in the model.
-data fabric_dump_hosts: List<NonEmptyStr> = [
-  "spark-a3ee" as NonEmptyStr,
-  "spark-ac79" as NonEmptyStr,
-]
-
-fn fabric_leg_was_dumped(o: FabricLaneObserved) -> Bool {
-  length(filter(fabric_dump_hosts, h => h == o.spark_hostname)) > 0
+// An earlier head mapped ALL EIGHT lanes to one measured coding, which is the absorbing fallback
+// DESIGN section 5 forbids wearing the costume of a receipt: six unknown legs became LegReadingTaken
+// and bypassed the refusal the plant exists to produce. The first repair fixed the count but kept
+// ONE shared observation for BOTH measured legs, which is the same defect one order smaller. These
+// are FIELD PROGRAMMABLE parts -- the entire reason this model exists -- so the representation must
+// be able to say that spark-a3ee carries new coding while spark-ac79 still carries old. A shared row
+// cannot say it: editing it moves both legs at once.
+//
+// So one row per acquisition, carrying the identity that makes it a receipt rather than a value: the
+// host it was taken from, the module's own vendor serial, and the date code. The two legs agree
+// today; that agreement is DERIVED by comparing rows, never assumed by storing one.
+type FabricLegEepromObservation {
+  host: NonEmptyStr
+  vendor_serial: NonEmptyStr
+  date_code: NonEmptyStr
+  coding: CableLegObservation
 }
 
+// Each row states what ITS dump returned, written out rather than pointing at a shared value. The
+// two agree byte for byte today; that agreement is a DERIVABLE fact about two receipts, and storing
+// it as one row would make the agreement unfalsifiable and the divergence unrepresentable.
+data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
+  FabricLegEepromObservation {
+    host: "spark-a3ee" as NonEmptyStr,
+    vendor_serial: "S2630771509-2" as NonEmptyStr,
+    date_code: "260728" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 11,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
+  FabricLegEepromObservation {
+    host: "spark-ac79" as NonEmptyStr,
+    vendor_serial: "S2630771509-3" as NonEmptyStr,
+    date_code: "260728" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 11,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+  },
+]
+
+fn fabric_leg_observation_for(o: FabricLaneObserved) -> List<FabricLegEepromObservation> {
+  filter(fabric_leg_eeprom_observations, r => r.host == o.spark_hostname)
+}
+
+// MEMBERSHIP IS DERIVED FROM THE RECEIPTS, never from a parallel roster of which hosts were dumped.
+// A second list would be a second answer to "was this leg read", and the two would disagree the
+// first time a receipt was added without updating it.
 fn fabric_leg_reading(o: FabricLaneObserved) -> CableLegReading {
-  if fabric_leg_was_dumped(o: o) {
-    LegReadingTaken {
-      endpoint: fabric_lane_interface(o: o),
-      observation: fabric_leg_cable_observed.coding,
-    }
-  } else {
-    LegNeverRead { endpoint: fabric_lane_interface(o: o) }
+  match fabric_leg_observation_for(o: o).first() {
+    Present { value: r } =>
+      LegReadingTaken { endpoint: fabric_lane_interface(o: o), observation: r.coding }
+    Absent => LegNeverRead { endpoint: fabric_lane_interface(o: o) }
   }
 }
 

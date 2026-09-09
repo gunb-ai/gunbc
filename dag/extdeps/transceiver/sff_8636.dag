@@ -164,11 +164,24 @@ fn sff8636_nominal_rate_from_byte140(code: Nat) -> Sff8636NominalRate {
 //
 // 00h IS A SENTINEL HERE TOO. The specification gives it "not specified", so it decodes to
 // Unspecified rather than to zero baud, for the same reason byte 140's 00h does.
-fn sff8636_nominal_rate_from_byte222(code: Nat) -> Sff8636NominalRate {
-  if code == 0 {
-    NominalRateUnspecified
+// THE DOMAIN IS ONE BYTE, AND A VALUE OUTSIDE IT IS NOT A RATE. `Nat` admits 256, 1000, anything --
+// none of which any SFF-8636 EEPROM can hold, so a caller passing one has not read a byte and must
+// not receive a measurement. The out-of-domain arm is separate from the specification's own
+// sentinels: 00h means "not specified" and is a real byte, while 300 is a defect in whatever
+// produced it.
+//
+// FFh IS NOT SPECIAL HERE. Byte 140 uses FFh as the escape that points AT this field; byte 222 has
+// no such convention, so FFh in byte 222 is the ordinary value 255 and decodes to 63,750 MBd. That
+// is stated because it is the obvious thing to assume and it is wrong.
+type Sff8636ByteDecode<T> = ByteDecoded { value: T } | ByteOutOfDomain { code: Nat }
+
+fn sff8636_nominal_rate_from_byte222(code: Nat) -> Sff8636ByteDecode<Sff8636NominalRate> {
+  if code > 255 {
+    ByteOutOfDomain { code: code }
+  } else if code == 0 {
+    ByteDecoded { value: NominalRateUnspecified }
   } else {
-    NominalRateDirect { rate: symbol_rate(code * 250000000) }
+    ByteDecoded { value: NominalRateDirect { rate: symbol_rate(code * 250000000) } }
   }
 }
 

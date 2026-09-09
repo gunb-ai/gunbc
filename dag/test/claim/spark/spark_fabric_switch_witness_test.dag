@@ -6,12 +6,37 @@ import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, oper
 import extdeps.mikrotik.crs812 { crs812_lane_speed_wire, Lane50GCr2, crs812_passive_dac_requires_forced_mode }
 import extdeps.transceiver.sff_8636 {
   Sff8636NominalRate, NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
+  transceiver_identifier_from_byte, sff8636_encoding_from_byte,
+  sff8636_nominal_rate_from_byte140,
 }
 import std.measure { symbol_rate_count }
-import product.cable_leg_observation { cable_leg_declared_nominal_rate }
+import product.cable_leg_observation {
+  CableLegObservation, cable_leg_observation, cable_leg_declared_nominal_rate,
+  SecondaryNotObserved, ExtendedRateNotObserved,
+}
+import product.cable_plant_converge { CableLegReading, LegReadingTaken, LegNeverRead }
 import gunbc.spark.fabric_switch_observed {
   fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
+  fabric_leg_eeprom_observations, fabric_leg_reading, fabric_cable_plant,
   FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
+}
+
+// The coding from the FIRST receipt, for the byte-level witnesses below. Reached THROUGH the receipt
+// population rather than a shared row, so a witness cannot assert about a leg nobody read. The
+// Absent arm cannot be hit while fabric_leg_eeprom_observations is non-empty, and it is deliberately
+// an all-sentinel observation rather than a plausible one: if the population is ever emptied, the
+// witnesses below fail loudly instead of quietly asserting about a fabricated leg.
+fn fabric_delivered_leg_coding_probe() -> CableLegObservation {
+  match fabric_leg_eeprom_observations.first() {
+    Present { value: r } => r.coding
+    Absent => cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 0),
+      primary_compliance_code: 0,
+      secondary_compliance: SecondaryNotObserved,
+      encoding: sff8636_encoding_from_byte(code: 0),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 0),
+      extended_rate: ExtendedRateNotObserved)
+  }
 }
 
 // EIGHT LANES, EIGHT DISTINCT HOSTS, ONE LEG EACH, all on odd lanes of the two 400G cages.
@@ -54,7 +79,7 @@ test fn the_link_speed_is_the_cable_codings_ceiling_and_forced_mode_is_required(
 // carries 26.5625 GBd, and byte 222's 250 MBd resolution cannot express that. 106 is a quantized
 // nominal consistent with the 50G PAM4 family, which is a weaker and true statement.
 test fn the_escape_resolves_to_the_declared_rate_byte_222_holds() -> Bool {
-  match cable_leg_declared_nominal_rate(obs: fabric_leg_cable_observed.coding) {
+  match cable_leg_declared_nominal_rate(obs: fabric_delivered_leg_coding_probe()) {
     NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 26500000000
     NominalRateEscaped => false
     NominalRateUnspecified => false
@@ -62,13 +87,55 @@ test fn the_escape_resolves_to_the_declared_rate_byte_222_holds() -> Bool {
 }
 
 // THE RAW BYTE IS STILL AN ESCAPE, and resolution does not rewrite it. Following byte 222 answers
-// what the leg signals at; it does not turn byte 140 into a direct rate, and a later reader must
-// still see that this observation stands on an escape that was followed rather than on a byte that
-// spoke for itself. Kept beside the resolved witness because the two are different facts.
+// what the module DECLARES its nominal rate to be -- not what the leg signals at, which no EEPROM
+// byte can establish -- and it does not turn byte 140 into a direct rate. A later reader must still
+// see that this observation stands on an escape that was followed rather than on a byte that spoke
+// for itself. Kept beside the resolved witness because the two are different facts.
 test fn the_escaped_nominal_rate_is_not_a_measurement() -> Bool {
-  match fabric_leg_cable_observed.coding.nominal_rate {
+  match fabric_delivered_leg_coding_probe().nominal_rate {
     NominalRateEscaped => true
     NominalRateDirect { rate: r } => false
     NominalRateUnspecified => false
   }
+}
+
+
+// THE POPULATION CONTROL THE EIGHT-TO-TWO REPAIR DID NOT HAVE. The fleet witness only asserts that
+// the switch inherits a refusal, which would pass with one leg read, six, or none -- so it does not
+// protect the cardinality that repair introduced. This does: exactly two legs carry readings, six do
+// not, and the two are the endpoints actually dumped on 2026-09-08.
+//
+// It reds if anyone re-broadens the plant to map every lane to one coding, which is the specific
+// regression that motivated the repair.
+fn plant_readings_taken() -> Nat {
+  length(flat_map(fabric_lane_observations, o =>
+    match fabric_leg_reading(o: o) {
+      LegReadingTaken { endpoint: e, observation: ob } => [e]
+      LegNeverRead { endpoint: e } => []
+    }))
+}
+
+fn plant_readings_never() -> Nat {
+  length(flat_map(fabric_lane_observations, o =>
+    match fabric_leg_reading(o: o) {
+      LegNeverRead { endpoint: e } => [e]
+      LegReadingTaken { endpoint: e, observation: ob } => []
+    }))
+}
+
+test fn exactly_two_of_eight_legs_carry_a_reading() -> Bool {
+  plant_readings_taken() == 2 && plant_readings_never() == 6
+}
+
+// AND THE TWO RECEIPTS ARE INDEPENDENT ROWS, not one value read twice. Distinct vendor serials are
+// what make them separate acquisitions; if a later edit collapses them back to a shared coding, the
+// serials collapse with it and this reds. That matters because the parts are field programmable: the
+// model must be able to represent one leg recoded and the other not.
+test fn the_two_receipts_have_distinct_module_identities() -> Bool {
+  length(fabric_leg_eeprom_observations) == 2
+    && match fabric_leg_eeprom_observations.first() {
+         Present { value: a } =>
+           length(filter(fabric_leg_eeprom_observations, r => r.vendor_serial == a.vendor_serial)) == 1
+         Absent => false
+       }
 }
