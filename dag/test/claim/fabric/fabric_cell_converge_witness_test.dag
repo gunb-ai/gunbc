@@ -5,7 +5,7 @@ import std.types { list_length, String, NonEmptyStr, Int }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, CpuQuotaRefused }
 import std.measure { byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fabric_cell_observation_admission {
@@ -43,6 +43,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_boundary_address_digest_of,
   fabric_cell_slice_name,
   fabric_cell_address_standing,
+  fabric_cell_address_standing_for_quota,
   FabricCellAddressRef,
   fabric_cell_family_membership,
   FabricCellFamilyMembership,
@@ -630,4 +631,30 @@ test fn witness_drifted_quota_standing_is_not_converged() -> Bool {
       d: boundary_address_present(member: quota_boundary_member(quota_identity: "1000000")),
     ),
   )
+}
+
+test fn witness_a_refused_cpu_quota_survey_blocks_standing_on_an_absent_boundary() -> Bool {
+  match fabric_cell_address_standing_for_quota(
+    slot: srv3_fabric_slot(),
+    d: AddressMissingOnHost {
+      ref: FabricCellAddressRef {
+        slot: srv3_fabric_slot(),
+        address: FabricCellResourceBoundaryAddress,
+      },
+    },
+    quota: CpuQuotaRefused { cause: "fixture: cores-per-slot unresolved" },
+  ) {
+    StandingBlocked { disposition: d } =>
+      match d {
+        AddressUnreadable { ref: _, cause: c } =>
+          string_contains(s: c, pattern: "desired CPU quota refused: fixture: cores-per-slot unresolved")
+        AddressPresent { ref: _, member: _ } => false
+        AddressMissingOnHost { ref: _ } => false
+        AddressUnobserved { ref: _ } => false
+        AddressContradicted { ref: _ } => false
+      }
+    StandingSatisfied { ref: _ } => false
+    StandingObservedDrift { ref: _, observed_state_digest: _ } => false
+    StandingExplicitlyAbsent { ref: _ } => false
+  }
 }

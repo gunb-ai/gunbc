@@ -21,7 +21,7 @@ import gunbc.runner_slot_allocation {
   CpuQuotaResolved,
   CpuQuotaRefused,
 }
-import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives }
+import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives, SliceDirectivesComplete, SliceDirectivesQuotaSurveyRefused }
 import extdeps.systemd.unit_file { slice_cpu_quota, systemd_slice_directive_line }
 import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
 
@@ -134,19 +134,24 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // cell or a sixth directive moves this row without an edit, and a roster that dropped the fabric
 // grants goes red.
 test fn witness_population_tracks_the_slot_roster() -> Bool {
-  let slots = desired_runner_slot_members(deploy: srv3_runner_host_deploy).length()
-  let activation = runner_slot_activation_operations(deploy: srv3_runner_host_deploy).length()
-  let fabric_slots = fabric_cell_host_slots(deploy: srv3_runner_host_deploy).length()
-  let directives = fabric_cell_slice_desired_directives().length()
-  let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
-  let allocation_store = fabric_allocation_store_privileged_operations(deploy: srv3_runner_host_deploy).length()
-  runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
-    == runner_slot_teardown_grant_index_bound + (slots * 3) + 5 + fabric_expected + allocation_store
-    && allocation_store == 2
-    && fabric_cell_privileged_operations(deploy: srv3_runner_host_deploy).length() == fabric_expected
-    && activation == slots * 2
-    && slots > 0
-    && fabric_slots > 0
+  match fabric_cell_slice_desired_directives() {
+    SliceDirectivesQuotaSurveyRefused { cause: _ } => false
+    SliceDirectivesComplete { directives: ds } => {
+      let slots = desired_runner_slot_members(deploy: srv3_runner_host_deploy).length()
+      let activation = runner_slot_activation_operations(deploy: srv3_runner_host_deploy).length()
+      let fabric_slots = fabric_cell_host_slots(deploy: srv3_runner_host_deploy).length()
+      let directives = ds.length()
+      let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
+      let allocation_store = fabric_allocation_store_privileged_operations(deploy: srv3_runner_host_deploy).length()
+      runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
+        == runner_slot_teardown_grant_index_bound + (slots * 3) + 5 + fabric_expected + allocation_store
+        && allocation_store == 2
+        && fabric_cell_privileged_operations(deploy: srv3_runner_host_deploy).length() == fabric_expected
+        && activation == slots * 2
+        && slots > 0
+        && fabric_slots > 0
+    }
+  }
 }
 
 // THE CPUQuota GRANT IS THE SURVEYED DIRECTIVE, NOT A TRANSCRIBED PERCENTAGE. The generated
@@ -158,17 +163,25 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
 // survey must leave no `CPUQuota=` grant, because there is then no argv to authorize.
 test fn witness_fabric_slice_cpu_quota_grant_is_the_surveyed_directive() -> Bool {
   match gunbc_runner_slot_cpu_quota() {
-    CpuQuotaResolved { threads: t } => {
-      let assignment = systemd_slice_directive_line(directive: slice_cpu_quota(threads: t))
-      let desired_lines = join(
-        map(fabric_cell_slice_desired_directives(), d => systemd_slice_directive_line(directive: d)),
-        "\n",
-      )
-      string_contains(s: srv3_runner_host_sudoers(), pattern: assignment)
-        && string_contains(s: desired_lines, pattern: assignment)
-    }
+    CpuQuotaResolved { threads: t } =>
+      match fabric_cell_slice_desired_directives() {
+        SliceDirectivesQuotaSurveyRefused { cause: _ } => false
+        SliceDirectivesComplete { directives: ds } => {
+          let assignment = systemd_slice_directive_line(directive: slice_cpu_quota(threads: t))
+          let desired_lines = join(
+            map(ds, d => systemd_slice_directive_line(directive: d)),
+            "\n",
+          )
+          string_contains(s: srv3_runner_host_sudoers(), pattern: assignment)
+            && string_contains(s: desired_lines, pattern: assignment)
+        }
+      }
     CpuQuotaRefused { cause: _ } =>
-      !string_contains(s: srv3_runner_host_sudoers(), pattern: "CPUQuota=")
+      match fabric_cell_slice_desired_directives() {
+        SliceDirectivesComplete { directives: _ } => false
+        SliceDirectivesQuotaSurveyRefused { cause: _ } =>
+          !string_contains(s: srv3_runner_host_sudoers(), pattern: "CPUQuota=")
+      }
   }
 }
 
