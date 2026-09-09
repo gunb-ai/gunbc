@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.callback_failure_indistinguishable_from_success
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data callback_failure_indistinguishable_from_success: RecurringFailureMode = RecurringFailureMode {
+  identity: "callback_failure_indistinguishable_from_success" as NonEmptyStr,
+
+  receipts: [
+    "**a callback whose failure is not inspected exits the same way a working client does, so 'the client succeeded' and 'the client never applied anything' are one observation** (INVALID STATE: `udhcpc` exits 0 with no address because this image's callback applied no configuration, and later a supplied `-s` script is present whose log is empty. HARM: a runner host is diagnosed as having obtained -- or failed to obtain -- a lease on evidence that cannot tell those states apart, so the next repair is aimed at DHCP, busybox, or the segment when the instrument itself swallowed the result. DISTINGUISHING FACTS: busybox does not inspect or propagate a callback's status; an exec that failed before the script's first statement (mode, interpreter, noexec mount, log path) is identical to a callback never attempted; and nothing in the same run distinguishes 'the segment offered no lease' from 'a lease was obtained and discarded'. An earlier revision claimed busybox applies nothing without `-s`; that is too strong, because busybox carries a compiled default script path and `-s` replaces it -- inventing a cause from the exit code is this class's second face. RECOGNITION RULE: whenever a helper exits zero and a side effect is missing, ask whether the helper's contract includes the callback's status; if the status is dropped, the zero is not success. It is the same shape as [[absent_reads_identically_to_never_looked]] arriving through a child process rather than a search path. RUNG FOUND AT: mitigatable -- the empty log and missing address were recorded rather than promoted to a confident cause. CEILING: structurally guaranteed once the client's exit is the join of its own status AND the callback's, so a callback that did not run cannot produce exit 0. NEXT-RUNG TRIGGER: a DHCP (or equivalent) client whose result type carries callback-invoked / callback-refused / no-offer as separate arms, sufficient that 'exited 0, no address' has no constructor. A log file the callback might write does not discharge this -- absence of the log is exactly the indistinguishable state.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.runner.runner_guest_egress_attempt", decl_name: "egress_blocked_by", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_guest_egress_attempt", decl_name: "egress_outcome", field: WholeDeclaration },
+
+  ],
+}

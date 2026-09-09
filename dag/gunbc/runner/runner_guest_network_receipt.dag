@@ -1,6 +1,7 @@
 module gunbc.runner.runner_guest_network_receipt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size }
 
 // GUEST USERSPACE, AND A HOST THAT CAN REACH IT. Attempt slice6b-net-05165ea5 on the Mt. Collins
 // unit, 2026-09-07. The guest mounted its squashfs root, ran /sbin/init, brought systemd 255.4 up on
@@ -8,7 +9,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 data guest_network_attempt: NonEmptyStr = "slice6b-net-05165ea5"
 data guest_network_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-guest-network-userspace.log"
 data guest_network_evidence_sha256: NonEmptyStr = "7e3daec01709ffad7790d77f477ffee3379a3b7c1abb0cb53f9592c9330af8a2"
-data guest_network_evidence_byte_count: Int = 11836
+data guest_network_evidence_byte_count: ByteSize = byte_size(11836)
 
 // ── guest userspace ─────────────────────────────────────────────────────────────────────────────
 
@@ -90,17 +91,47 @@ data corrected_claim: NonEmptyStr = "earlier receipts said the guest was killed 
 // publishes by atomic rename precisely so a reader never observes a path mid-write; a convenience
 // `cp` in a build script reintroduced the hazard that design exists to remove. Content-addressed
 // names would have made it structurally impossible rather than merely avoidable.
-data defect_publish_over_live_path: NonEmptyStr = "copying a new image over the path the controller was serving produced two firmware load failures with a matching on-disk digest; a fresh name fixed it, and atomic rename or content-addressed naming would have prevented it"
+type ImagePublishDefect
+  = PublishedOverALiveReaderPath {
+      reader: NonEmptyStr
+      on_disk_digest_matched_built: Bool
+      reader_view: NonEmptyStr
+      repair_that_worked: NonEmptyStr
+      construction_that_would_prevent: NonEmptyStr
+    }
+
+data defect_publish_over_live_path: ImagePublishDefect = PublishedOverALiveReaderPath {
+  reader: "the BMC firmware serving the boot image over NFS",
+  on_disk_digest_matched_built: true,
+  reader_view: "stale -- two boots failed with Boot option loading failed after a 302 MiB copy onto the mounted path",
+  repair_that_worked: "publish under a fresh name",
+  construction_that_would_prevent: "atomic rename, as gunbc.machine_intake_boot_image_fetch already does, or a content-addressed name",
+}
 
 // DEFINITIONS PLACED AFTER THEIR USE. $TAP and $GUEST_MAC were assigned below the heredoc that
 // writes vm.json, so both expanded EMPTY and Firecracker refused a blank guest_mac outright. The
 // refusal was loud, exact and named the field and column, which is the only reason it cost one run.
-data defect_use_before_definition: NonEmptyStr = "the network variables were defined after the configuration heredoc that consumed them; Firecracker refused the blank MAC by name and column"
+type ConfigurationBindingDefect
+  = UseBeforeDefinition { variables: List<NonEmptyStr>, consumer: NonEmptyStr, refusal: NonEmptyStr }
+
+data defect_use_before_definition: ConfigurationBindingDefect = UseBeforeDefinition {
+  variables: ["TAP", "GUEST_MAC"],
+  consumer: "the heredoc that writes vm.json",
+  refusal: "Firecracker refused a blank guest_mac by field and column",
+}
 
 // A NAME TRUNCATED RATHER THAN BUILT SHORT. Deriving the interface name from the full attempt id and
 // cutting to the 15-character limit produced a trailing dash -- functional, and indistinguishable
 // from corruption in a diagnostic. It is now composed short.
-data defect_truncated_interface_name: NonEmptyStr = "the tap name was cut to the 15-character limit and ended in a dash; it worked and read like corruption"
+type InterfaceNameConstruction
+  = TruncatedToKernelLimit { limit_chars: Int, ended_in: NonEmptyStr, functional: Bool }
+  | ComposedShort
+
+data defect_truncated_interface_name: InterfaceNameConstruction = TruncatedToKernelLimit {
+  limit_chars: 15,
+  ended_in: "a trailing dash, from cutting the full attempt id",
+  functional: true,
+}
 
 // ── standing ────────────────────────────────────────────────────────────────────────────────────
 

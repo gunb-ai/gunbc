@@ -2,6 +2,7 @@ module gunbc.runner.runner_cpu_bandwidth_receipt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { ByteSize }
 import gunbc.runner.runner_guest_egress_attempt {
   cpu_bound_failure, CpuBoundAppliedNow, CpuBoundRefusedWithErrno,
 }
@@ -56,9 +57,9 @@ fn placement_was_bidirectional() -> Bool {
 
 data placement_established_from_both_ends: Bool = placement_was_bidirectional()
 
-data memory_current_at_placement_bytes: Int = placement_accounting.memory_current_bytes
+data memory_current_at_placement: ByteSize = placement_accounting.memory_current
 
-data memory_max_at_placement_bytes: Int = placement_accounting.memory_max_bytes
+data memory_max_at_placement: ByteSize = placement_accounting.memory_max
 
 data cites_cpu_bound_failure: DeclarationRef = DeclarationRef {
   module_path: "gunbc.runner.runner_guest_egress_attempt" as NonEmptyStr,

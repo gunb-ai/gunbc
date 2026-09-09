@@ -9,9 +9,10 @@ import gunbc.runner.runner_host_filtered_egress {
 import gunbc.runner.runner_cpu_bandwidth_receipt {
   cpu_max_write_previously_refused,
   placement_established_from_both_ends,
-  memory_current_at_placement_bytes,
-  memory_max_at_placement_bytes,
+  memory_current_at_placement,
+  memory_max_at_placement,
 }
+import std.measure { byte_size_count }
 
 // THE THREE STRANDED RECEIPTS REACH EXECUTION THROUGH THE MODULES THAT USED TO NAME THEM ONLY IN
 // ANNOTATIONS. A typecheck of those imports is not this test; reading the folds is.
@@ -22,6 +23,6 @@ test fn the_three_stranded_receipts_are_consumed_by_execution() -> Bool {
     && routed_attachment_already_carries_the_guest
     && cpu_max_write_previously_refused
     && placement_established_from_both_ends
-    && memory_current_at_placement_bytes > 0
-    && memory_max_at_placement_bytes > memory_current_at_placement_bytes
+    && byte_size_count(b: memory_current_at_placement) > 0
+    && byte_size_count(b: memory_max_at_placement) > byte_size_count(b: memory_current_at_placement)
 }

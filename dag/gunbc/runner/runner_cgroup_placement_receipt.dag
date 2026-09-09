@@ -1,6 +1,7 @@
 module gunbc.runner.runner_cgroup_placement_receipt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size }
 
 // THE ATTEMPT IS BOUNDED NOW, AND THE BOUND WAS OBSERVED FROM BOTH SIDES WHILE IT HELD. Attempt
 // slice5b-cgroup-77e659df on the Mt. Collins unit, 2026-09-06. The live census had found the VMM
@@ -16,7 +17,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 data placement_attempt: NonEmptyStr = "slice5b-cgroup-77e659df"
 data placement_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-cgroup-placement.log"
 data placement_evidence_sha256: NonEmptyStr = "d3445167c1cc22d9dc3607374c402407f7fb37e23ce15a5428368d0f2281504d"
-data placement_evidence_byte_count: Int = 7931
+data placement_evidence_byte_count: ByteSize = byte_size(7931)
 
 // ── placement, read from both ends ──────────────────────────────────────────────────────────────
 
@@ -38,14 +39,14 @@ data placement_verdict: CgroupPlacementVerdict = PlacementBidirectional {
 // kernel charging the attempt's pages to the attempt's cgroup -- which is the fact that separates a
 // limit that applies from a limit that was merely written to a file.
 type CgroupAccounting {
-  memory_current_bytes: Int
-  memory_max_bytes: Int
+  memory_current: ByteSize
+  memory_max: ByteSize
   pids_max: Int
 }
 
 data placement_accounting: CgroupAccounting = CgroupAccounting {
-  memory_current_bytes: 88010752,
-  memory_max_bytes: 1073741824,
+  memory_current: byte_size(88010752),
+  memory_max: byte_size(1073741824),
   pids_max: 64,
 }
 
@@ -106,7 +107,16 @@ data placement_defect_found: PlacementDefect = PlacementDefect {
 // attempt cgroup, so the leaf could not be emptied or removed at retirement. It was cleared by the
 // next boot, but a supervisor doing this on a long-lived host would have leaked a cgroup holding
 // pid 1.
-data placement_defect_side_effect: NonEmptyStr = "the failed attempt moved init into the attempt cgroup, so retirement could neither empty nor remove the leaf; a fresh boot cleared it"
+type PlacementDefectRetirement
+  = LeafHeldInit { process_in_leaf: NonEmptyStr, emptied: Bool, removed: Bool, cleared_by: NonEmptyStr }
+  | LeafRetiredCleanly
+
+data placement_defect_retirement: PlacementDefectRetirement = LeafHeldInit {
+  process_in_leaf: "pid 1 -- init",
+  emptied: false,
+  removed: false,
+  cleared_by: "the next boot, not retirement",
+}
 
 // ── still open: the cpu bound did not apply ─────────────────────────────────────────────────────
 

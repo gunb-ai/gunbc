@@ -1,6 +1,7 @@
 module gunbc.runner.runner_guest_egress_attempt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size }
 
 // AN ATTEMPT THAT DID NOT REACH ITS GOAL, recorded because two of its by-products are worth more
 // than the goal was. Attempt slice7c-bridge-e6a5b5c2 on the Mt. Collins unit, 2026-09-07. The aim
@@ -13,7 +14,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 data egress_attempt: NonEmptyStr = "slice7c-bridge-e6a5b5c2"
 data egress_attempt_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-bridge-egress-attempt.log"
 data egress_attempt_evidence_sha256: NonEmptyStr = "694f5a64bcd8f3739091f28a0b1f4bdfde94e0c144d0bf9c6efa43e87bf688a9"
-data egress_attempt_evidence_byte_count: Int = 225444
+data egress_attempt_evidence_byte_count: ByteSize = byte_size(225444)
 
 type EgressAttemptOutcome
   = GuestEgressEstablished { via: NonEmptyStr }
@@ -142,7 +143,21 @@ data egress_blocked_by: List<NonEmptyStr> = [
 // userspace at all -- busybox carries brctl and ip and neither nft nor iptables -- and CONFIG_MODULES=n
 // means anything the kernel defconfig marks modular is absent outright. A filtered egress path needs
 // its own kernel options and its own binary, which is its own slice.
-data egress_policy_debt: NonEmptyStr = "the bridge grants unfiltered segment access, which DefaultDenyEgress forbids; admissible only for the qualification profile with one pinned image, and a prerequisite for any real job"
+type EgressPolicyStanding
+  = IsolationProfileHeld
+  | IsolationProfileBreached {
+      requirement: NonEmptyStr
+      admissible_for: NonEmptyStr
+      not_admissible_for: NonEmptyStr
+      chosen_because: NonEmptyStr
+    }
+
+data egress_policy_debt: EgressPolicyStanding = IsolationProfileBreached {
+  requirement: "DefaultDenyEgress for every untrusted class",
+  admissible_for: "RunnerHostQualificationProbe running one digest-pinned image",
+  not_admissible_for: "any real job",
+  chosen_because: "this image has no netfilter userspace and CONFIG_MODULES=n, so a filtered path needs its own kernel options and binary",
+}
 
 data egress_open: List<NonEmptyStr> = [
   "why udhcpc exits 0 without invoking its own script, and whether the segment offered a lease at all",
