@@ -370,6 +370,18 @@ type NamespaceDeltaDisposition
 // binding its generator's inputs do NOT explain remains NewPoolCoincidenceResolution
 // and remains refused; that refusal is the arm's positive control, not a leftover.
 //
+// THE RESIDUAL RISK, STATED RATHER THAN LEFT FOR A READER TO FIND. This arm trusts
+// the generator's DECLARED inputs, and what it actually checks is the declaration,
+// not the generator's behaviour. If a generator's implementation ever drifts from
+// what it declares -- reading a second directory, or emitting a binding no input
+// explains -- the wall auto-admits against a stale premise and says nothing, because
+// the premise is exactly what it is not in a position to re-derive. That is an
+// honest boundary rather than a rung: it is the same class of fact as any other
+// declared-and-not-enforced input relation, and the ceiling is a generator whose
+// declared inputs ARE its inputs by construction. Until that exists, the mitigation
+// is that the declaration and the implementation sit in one module, so drift is a
+// same-file edit rather than an action at a distance.
+//
 // SO THE PARTITION THE OPERATOR RULED GAINS ONE AUTO-ADMITTED MEMBER and loses none.
 // The membership arm already reached this answer for the same files -- an added row
 // edge auto-admits as ExplicitlyEvaluatedZeroDelta, "reached by a name this module
