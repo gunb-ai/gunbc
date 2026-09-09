@@ -8,14 +8,18 @@ import gunbc.compile_diagnostic_census {
   census_rows_of_class,
   census_total_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import tools.multi_module_compile_fixture {
   MultiModuleCompileFixtureOutcome, FixtureInstrumentRefused, FixtureCompileRefused,
   FixtureCompileCompleted, MultiModuleCompileFixture, fixture_source, compile_fixture,
   fixture_blocking_rows, fixture_rows_of_class,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ReadsLiveTree is the fact: this file calls compile_dag_diagnostic_census, which walks the
+// live checkout. SubstrateInputsOnly was a lying stamp so the floor would fold it while
+// DeclinedLiveTree declined honest ReadsLiveTree siblings. That arm is deleted.
 
 // Paired control for v1 coproduct match exhaustiveness via compile_dag_diagnostic_census. An
 // exhaustive Trio match must observe zero NonExhaustiveMatch rows; a match omitting Blue must
@@ -83,7 +87,7 @@ fn fixture_blocking_class_count(o: MultiModuleCompileFixtureOutcome, wanted: Str
   match o {
     FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       census_total_count(rows: fixture_blocking_rows(rows: fixture_rows_of_class(rows: rows, wanted: wanted)))
-    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       census_total_count(rows: fixture_blocking_rows(rows: fixture_rows_of_class(rows: rows, wanted: wanted)))
     FixtureInstrumentRefused { cause: _ } => -1
   }

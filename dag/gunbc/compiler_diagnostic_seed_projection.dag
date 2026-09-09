@@ -1,0 +1,279 @@
+module gunbc.compiler_diagnostic_seed_projection
+
+import gunbc.capability_origin { CapabilityOrigin, ModeledCapability, NoNewCapability }
+import gunbc.roadmap_model { RoadmapNodeId }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { List, NonEmptyStr, String }
+import v2.std.algebra { list_append, list_map }
+
+// THE TYPED HOME for the receipt that seven lanes wrote into one String row, v1.std.core
+// compiler_diagnostic_seed_projection_note. That row was a DESIGN section 4c defect in terms -- a
+// receipt, a deferral schedule, a count and a dissolution condition carried as ordinary program
+// data, where intent is mechanically indistinguishable from a value. Review 62020 found it on
+// gunbc#10688; migrating it there would have been the opportunistic version, so it landed here.
+//
+// WHAT THE ROW ACTUALLY CARRIED, decomposed rather than moved (DESIGN section 2). Four subjects,
+// and they are not one thing:
+//
+//   1. A SEED-CHANGE DISPOSITION, restated once per lane in near-identical words: extending the
+//      CompilerDiagnostic coproduct forces an arm in the seed's total match over it, and that arm
+//      originates no capability in Rust. Seven paragraphs, ONE fact -- so it is one
+//      SeedGrowthChangeDisposition row here, and the seventh lane adds no paragraph because the
+//      row already says what its paragraph would have said.
+//   2. STANDING OBLIGATIONS on any lane that extends the coproduct, two of which are already
+//      DISCHARGED. Carried as CoproductExtensionObligation rows with their status, because a
+//      discharged obligation that is deleted leaves the next author unable to tell whether it was
+//      answered or forgotten, and one that is kept undated reads as live debt forever.
+//   3. TRANSCRIBED FIGURES: seven lanes' (a)/(b)/(c) command outputs, each measured against a base
+//      commit that no longer exists in any reachable branch. They are WITHDRAWN, not migrated --
+//      see the withdrawal row below, which names the instrument that re-derives them instead
+//      (DESIGN section 6: name the instrument, never transcribe its output). The row's own
+//      argument was that a figure nobody re-runs survives its own truth; it then accumulated seven
+//      sets of such figures, and the sixth lane's paragraph records the fifth's commands measuring
+//      the WRONG FILE after a split. That is the argument winning against the row that made it.
+//   4. RESTATEMENTS of facts other authorities own -- that v1_std_core.rs and compiler_tests.rs are
+//      generated rather than hand-Rust. Not carried here: gunbc.stage0_rust_source_lifecycle_scaffold
+//      derives that population, and restating it is the second representation DESIGN section 3
+//      forbids. The dispositions below simply do not name generated files.
+//
+// A CENSUS CORRECTION THE MIGRATION FOUND, recorded because it is exactly the rot the old row
+// existed to expose. Every lane wrote "two TOTAL matches in the hand-maintained seed transport,
+// cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor", which reads
+// as two hand-Rust ITEMS. There is ONE item: both matches -- the class match and the name match --
+// are inside compile_clean_diagnostic_histogram_key, and since the sixth lane's file split it lives
+// in src/v1/stage0/src/cli_run/compile_clean.rs, not cli_run.rs. So the disposition below carries
+// one DeclarationRef, and a receipt that had been read as covering two items covered one.
+
+// WHY THIS MODULE CARRIES THE ANCHOR AND ITS SIBLING CARRIES THE DISPOSITION, WHICH IS AN IMPORT
+// FACT AND NOT A MODELLING PREFERENCE. The receipt's consumer is gunbc.plans.compile_clean_forcecheck,
+// which RENDERS these paragraphs rather than restating them. A plan is reached from
+// gunbc.plan_registry, and gunbc.seed_growth_admission reaches that registry through
+// gunbc.rust_item_host_observation and gunbc.generated_artifact -- so a single module carrying both
+// the SeedGrowthChangeDisposition rows and the renderer closes a cycle, which the substrate refused
+// at emit rather than accepting (DESIGN section 4: acyclicity is the import graph's only structural
+// law, and it is a wall, not a convention). So the ANCHOR IDENTITY lives here, in a leaf that
+// imports no admission machinery, and gunbc.compiler_diagnostic_seed_projection_disposition DERIVES
+// its ExistingSeedItemModified rows from these anchors. The identity is authored once; the
+// disposition is a projection of it, not a second copy.
+
+data compiler_diagnostic_seed_projection_dissolution_lane: RoadmapNodeId = "v1-zero-hand-maintained-rust" as NonEmptyStr as RoadmapNodeId
+
+// THE DISSOLUTION LANE IS RENDERED FROM THE ROW, NOT SPELLED BESIDE IT. This paragraph carried
+// "v1-zero-hand-maintained-rust" as a literal while the typed row above sat unconsumed -- one fact
+// with two spellings, which is the fork this whole migration is about, and a declaration nothing
+// consumes is redundant work in its purest form (review 62126; DESIGN sections 3 and 3c).
+fn dissolution_paragraph() -> String {
+  concat(
+    concat(
+      "Dissolution is INHERITED and not minted: the arms cannot live anywhere but the seed's projection of the coproduct, and they disappear exactly when the seed does, at the ROADMAP row `",
+      compiler_diagnostic_seed_projection_dissolution_lane as String
+    ),
+    "`.  The gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in `.dag` and are deferred for a stated reason, so they do owe a schedule of their own; an exhaustiveness arm owes none, and that distinction is the receipt."
+  )
+}
+
+fn compiler_diagnostic_dag_authority() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v1.std.core" as NonEmptyStr,
+    decl_name: "CompilerDiagnostic" as NonEmptyStr,
+    field: WholeDeclaration
+  }
+}
+
+// THE ONE ROW SEVEN PARAGRAPHS WERE SAYING. An arm in the seed's projection is the mechanical
+// consequence of the .dag coproduct gaining a member: without it the seed does not compile, so no
+// author chose to write it in Rust, and that is the whole claim -- NoNewCapability, carried by the
+// disposition sibling. It cannot live anywhere but the seed's projection of the coproduct, which is
+// why it owes no dissolution schedule of its own and inherits the one the seed itself carries --
+// unlike the gate's other explicit deferrals, the emit-surface retirement rows, which are DECISION
+// SURFACES that could live in .dag and therefore do owe a schedule. That distinction was the old
+// row's opening argument and is the reason this is a disposition rather than a
+// SeedGrowthJustification: nothing is ADDED to the seed, an existing item is MODIFIED.
+// THE SHAPE OF THE CHANGE IS A TYPED FIELD, NOT A SENTENCE AND NOT A CONSTANT. It was both until
+// this revision: `anchor_paragraph` spelled "originates no capability" in English while
+// `anchor_disposition` in the sibling constructed `NoNewCapability` independently, so the rendered
+// receipt and the typed disposition asserted one fact twice with nothing joining them -- a fork of
+// exactly the kind this migration exists to remove, rebuilt inside the migration.
+//
+// WHAT THE JOIN ACTUALLY BUYS, AT ITS HONEST RUNG (review 62238, and the correction is the point).
+// This annotation claimed both readers were TOTAL MATCHES and that neither compiled until both were
+// extended. That is false and was rung inflation in prose: `anchor_origin_clause` matches, and
+// `anchor_disposition` passes the field straight through. What holds is weaker and still worth
+// having -- ONE FIELD, TWO READERS, so the sentence and the disposition cannot disagree, because
+// there is only one thing to disagree about. What does NOT hold is exhaustiveness forcing the two
+// sides to change together: a new CapabilityOrigin variant reds `anchor_origin_clause` alone, and
+// the pass-through takes it silently. An annotation is never evidence that a machine claim holds
+// (section 4c), which is exactly why this one had to be corrected rather than argued.
+type CoproductProjectionAnchor {
+  item: DeclarationRef
+  origin: CapabilityOrigin
+  boundary: NonEmptyStr
+}
+
+// NO NEW SHAPE TYPE IS MINTED HERE, AND THE FIRST ATTEMPT AT THIS REPAIR DID MINT ONE. A fresh
+// AnchorChangeShape whose sole variant meant "modified, no new capability" would have been a second
+// authority for a distinction gunbc.capability_origin CapabilityOrigin already owns -- section 2's
+// test is that net concepts must not grow by re-invention, and a decomposition that mints a fresh
+// authority for an existing concept is a failed decomposition. The anchor carries the existing type.
+fn anchor_origin_clause(o: CapabilityOrigin) -> String {
+  match o {
+    NoNewCapability => "is MODIFIED, never added, and originates no capability",
+    ModeledCapability { origin: _ } => "is MODIFIED and ORIGINATES CAPABILITY, which this receipt does not admit"
+  }
+}
+
+data compiler_diagnostic_seed_projection_anchors: List<CoproductProjectionAnchor> = [
+  CoproductProjectionAnchor {
+    origin: NoNewCapability,
+    item: DeclarationRef {
+      module_path: "v1_compiler.cli_run.compile_clean" as NonEmptyStr,
+      decl_name: "compile_clean_diagnostic_histogram_key" as NonEmptyStr,
+      field: WholeDeclaration
+    },
+    boundary: "src/v1/stage0/src/cli_run/compile_clean.rs compile_clean_diagnostic_histogram_key carries BOTH total matches over CompilerDiagnostic -- the class match and the name match -- so extending the coproduct forces two arms in ONE hand-Rust item and adds none. The item's own signature, callers and behaviour are untouched by a coproduct extension; what changes is arm count. Severity and gate disposition are NOT decided here: v1.std.core diagnostic_disposition is the single total authority for both and is exhaustive by construction, so a variant with no stated disposition does not compile." as NonEmptyStr
+  }
+]
+
+// WHAT A LANE EXTENDING THE COPRODUCT OWES, AND WHICH OF THOSE OBLIGATIONS ARE ALREADY DEAD.
+//
+// Two of the three below are discharged, and they are kept with their discharge rather than
+// deleted. A discharged obligation deleted silently is indistinguishable from one nobody noticed;
+// a discharged obligation kept without saying so reads as live debt and never stops being cited.
+// The status arm is what separates them, and there is deliberately no arm meaning "probably fine".
+type CoproductArmObligationStatus
+  = ObligationStandingUntilSeedDeletion
+  | ObligationDischargedByClimb { climb: NonEmptyStr, authority: DeclarationRef }
+  | ObligationDischargedByDeletion { deleted_subject: NonEmptyStr, discharge: NonEmptyStr }
+
+type CoproductExtensionObligation {
+  obligation: NonEmptyStr
+  status: CoproductArmObligationStatus
+}
+
+data compiler_diagnostic_extension_obligations: List<CoproductExtensionObligation> = [
+  CoproductExtensionObligation {
+    obligation: "Add one arm to each total match in compile_clean_diagnostic_histogram_key. Not enforced by a gate and not needing one: the seed does not compile without them, so the class is structurally impossible rather than validated, and it disappears with the seed." as NonEmptyStr,
+    status: ObligationStandingUntilSeedDeletion
+  },
+  CoproductExtensionObligation {
+    obligation: "Add a matching entry to the compile-clean ADVISORY ALLOWLIST for a non-blocking variant, or the frontier it represents is invisible to the gate meant to bound it. This obligation existed because compile_clean_diagnostic_is_advisory was a CLOSED ALLOWLIST rather than the complement of is_hard, so a variant in neither predicate was rendered to the terminal while the gate counted zero of it -- a third Boolean state both aggregates hid." as NonEmptyStr,
+    status: ObligationDischargedByClimb {
+      climb: "The classifier now takes ONE complete population -- the diagnostics vector compile-clean consumes -- and projects it into an exhaustive binary partition: advisory is the exact complement of compile_clean_diagnostic_is_hard, so no diagnostic can enter neither bucket and no separately classified population can drift. Adding a variant no longer requires an allowlist edit that can be forgotten, so the obligation has no subject left. This is a climb that deletes the invisible state, not a lowered rung: blocking classification is unchanged and every non-hard diagnostic becomes counted. The remaining accepting direct-call boundary is declared independently by gunbc.rung_drop direct_call_unbound_carried_generic_compat, THE DISCHARGE IS NOW EXERCISED AND NOT ONLY ASSERTED: the eighth lane adds the first NON-BLOCKING variants since the climb -- EffectSummaryIncompleteAtFunctionValue and EffectSummaryIncompleteAtLocalBinding, both SeverityNonError with GateAdvisoryTypecheck -- and neither required an allowlist edit, which under the closed allowlist is exactly the pair that would have been rendered while the gate counted zero of them." as NonEmptyStr,
+      authority: DeclarationRef {
+        module_path: "v1.std.core" as NonEmptyStr,
+        decl_name: "diagnostic_disposition" as NonEmptyStr,
+        field: WholeDeclaration
+      }
+    }
+  },
+  CoproductExtensionObligation {
+    obligation: "Carry cli_run selection_control_input_sources in the gate's list of explicit deferrals owing a dissolution schedule." as NonEmptyStr,
+    status: ObligationDischargedByDeletion {
+      deleted_subject: "v1_compiler.cli_run selection_control_input_sources" as NonEmptyStr,
+      discharge: "Deleted with affected-set selection on 2026-08-15, so the deferral was discharged by deletion rather than by a schedule. It stayed cited for weeks afterwards, naming nothing -- the DESIGN section 3 stale-citation class, inside a receipt whose own argument was that an unverifiable citation rots silently." as NonEmptyStr
+    }
+  }
+]
+
+// THE FIGURES ARE WITHDRAWN, NOT MIGRATED, AND THAT IS THE POINT OF THE MIGRATION.
+//
+// Eight lanes each transcribed three command outputs: a hand-Rust fn census over the subject file
+// at base and at head, a numstat added/removed, and a count of added lines declaring a fn. Each was
+// honestly measured when authored. Every one of them is now unreachable: four name origin/main,
+// which moves under other people's merges, and the three that name a merge-base name a commit on a
+// branch that squash-merged and no longer exists. Two name cli_run.rs, which stopped carrying the
+// subject when the sixth lane's file split moved it. Carrying them into a typed field would give
+// the same unverifiable numbers a nicer shape, which DESIGN section 2 prices as a failed
+// decomposition and DESIGN section 4b calls worse than absent, because a transcribed figure is
+// cited as coverage.
+//
+// WHAT REPLACES THEM IS AN INSTRUMENT AND NOT A NUMBER. The measurement the figures were making --
+// "did this change grow hand Rust" -- is derivable at item grain today by
+// tools.rust_item_census_instrument over gunbc.rust_item_host_observation, which reads
+// item identities from the live tree through gunbc.rust_item_scan rather than by grepping a fn
+// keyword. That is strictly stronger than what was transcribed: a grep for '^fn ' cannot see an item
+// added inside an existing function, which is the arm gunbc.seed_growth_admission exists to refuse.
+// Precedent in shape: gunbc#10773 withdrew a transcribed 141-row argv census from a witness note on
+// the same reasoning, one commit before this migration.
+type TranscribedFigureWithdrawal {
+  withdrawn: NonEmptyStr
+  reason: NonEmptyStr
+  instrument: DeclarationRef
+}
+
+data compiler_diagnostic_seed_projection_withdrawn_figures: TranscribedFigureWithdrawal = TranscribedFigureWithdrawal {
+  withdrawn: "EIGHT lanes' hand-Rust census figures for the CompilerDiagnostic seed projection: per-lane fn counts over the subject file at base and head (747, 884, 890, 895, 896, 38, and the eighth lane's three-file reading cli_run.rs 643 -> 645, compile_clean.rs 38 -> 38, declaration_index.rs 46 -> 46), per-lane numstat added/removed (23, 4, 8, 2, 2, 4, and the eighth lane's 108/15, 8/0, 9/0), and per-lane counts of added lines declaring a fn (0 in every lane but the eighth, which reads 3)." as NonEmptyStr,
+  reason: "Every figure is unreachable rather than merely stale. Four were measured against origin/main, a MOVING ref, so the command reports a different number without anyone touching the change it certifies -- the fourth lane measured that drift happening, 2 added / 0 removed becoming 6 added / 64 removed within hours, the 64 removals being main's work. The four measured against a named merge-base name commits on squash-merged branches that no longer exist, the eighth lane's 1e51ea99bb among them, and that lane recorded its own base moving from 2857b3b11c mid-branch -- a STABLE base is stable for a branch, not across a merge. Two more name cli_run.rs, which stopped carrying the subject at the sixth lane's file split. WHAT THE FIGURES ASSERTED IS NOT ONE CLAIM ACROSS THE EIGHT LANES, and stating it as one would be the false quantifier this migration exists to stop carrying: seven asserted the hand-Rust carrier census was FLAT, which is preserved as the NoNewCapability disposition above -- a claim about the change rather than a number about a tree. THE EIGHTH ASSERTS THE OPPOSITE AND IS RIGHT TO: it grows two declarations plus one host enum in cli_run.rs, having first certified flatness over a file that did not move while omitting the one that did (review 61647). That growth is a different subject from this anchor, which is why the disposition is unchanged: it is the lane's own seed growth, owed to gunbc.seed_growth_admission by the lane that wrote it, not a capability originated by extending the coproduct." as NonEmptyStr,
+  instrument: DeclarationRef {
+    module_path: "tools.rust_item_census_instrument" as NonEmptyStr,
+    decl_name: "census" as NonEmptyStr,
+    field: WholeDeclaration
+  }
+}
+
+
+// THE PROJECTED PARAGRAPHS, WHICH ARE WHY THIS CARRIER IS NOT A STRING ROW WEARING A TYPE.
+//
+// gunbc.plans.compile_clean_forcecheck cites this receipt and, until this migration, restated it in
+// four hand-authored paragraphs beside the citation -- the same fork the plan's own text already
+// records itself committing once (review 45565 quoted figures back from the doc after they had been
+// re-derived on the carrier). The plan now RENDERS these strings, so the committed markdown is a
+// projection of the rows above and the generated-artifact drift gate reds when the two disagree.
+// That is the executing consumer: editing a row here changes the emitted document, and editing the
+// document alone is reverted on the next heal.
+fn obligation_paragraph(o: CoproductExtensionObligation) -> String {
+  match o.status {
+    ObligationStandingUntilSeedDeletion =>
+      concat("**Standing obligation.** ", o.obligation)
+    ObligationDischargedByClimb { climb: climb, authority: authority } =>
+      concat(
+        concat(concat("**Discharged by a climb**, authority `", authority.module_path), concat(" ", authority.decl_name)),
+        concat(concat("`. The obligation was: ", o.obligation), concat(" WHAT DISCHARGED IT: ", climb))
+      )
+    ObligationDischargedByDeletion { deleted_subject: subject, discharge: discharge } =>
+      concat(
+        concat(concat("**Discharged by deletion** of `", subject), "`. The obligation was: "),
+        concat(concat(o.obligation, " WHAT DISCHARGED IT: "), discharge)
+      )
+  }
+}
+
+fn anchor_item_key(a: CoproductProjectionAnchor) -> String {
+  concat(concat(a.item.module_path, " "), a.item.decl_name)
+}
+
+fn anchor_paragraph(a: CoproductProjectionAnchor) -> String {
+  concat(
+    concat(
+      concat("**Seed disposition — `", anchor_item_key(a: a)),
+      concat(concat("` ", concat(anchor_origin_clause(o: a.origin), ".** Extending `")), concat(compiler_diagnostic_dag_authority().module_path, concat(" ", compiler_diagnostic_dag_authority().decl_name)))
+    ),
+    concat("` forces the arms; without them the seed does not compile, so they are the mechanical consequence of the `.dag` change rather than host capability chosen in Rust. BOUNDARY: ", a.boundary)
+  )
+}
+
+fn withdrawal_paragraph() -> String {
+  concat(
+    concat("**The transcribed figures are WITHDRAWN and are not restated here.** ", compiler_diagnostic_seed_projection_withdrawn_figures.reason),
+    concat(
+      concat(" WHAT WAS WITHDRAWN: ", compiler_diagnostic_seed_projection_withdrawn_figures.withdrawn),
+      concat(
+        concat(" THE INSTRUMENT THAT RE-DERIVES IT: `", compiler_diagnostic_seed_projection_withdrawn_figures.instrument.module_path),
+        concat(concat(" ", compiler_diagnostic_seed_projection_withdrawn_figures.instrument.decl_name), "`, run rather than quoted.")
+      )
+    )
+  )
+}
+
+fn compiler_diagnostic_seed_projection_paragraphs() -> List<String> {
+  list_append(
+    left: list_append(
+      left: list_map(xs: compiler_diagnostic_seed_projection_anchors, f: anchor_paragraph),
+      right: list_map(xs: compiler_diagnostic_extension_obligations, f: obligation_paragraph)
+    ),
+    right: [
+      withdrawal_paragraph(),
+      dissolution_paragraph(),
+    ]
+  )
+}

@@ -1,0 +1,12 @@
+module fixtures.free_call_pool_binding.subject_offchain
+
+// THE CONFOUND-EXCLUDER. `subject_module`'s definer is its SIBLING, which leaves open the reading
+// that containment distance is doing the work -- namespace-resolution-design section 13's
+// ancestor-chain uniqueness would predict exactly that. This subject calls a definer under a
+// DIFFERENT top-level container (`fixtures.free_call_pool_binding_offchain`), shares no ancestor
+// with it below the root, imports nothing, and resolves identically.
+//
+// So containment distance is not the variable and the import line is.
+fn subject_offchain_use() -> Int {
+  pool_specimen_offchain_call(n: 7)
+}

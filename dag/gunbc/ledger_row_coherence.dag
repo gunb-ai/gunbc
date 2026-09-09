@@ -9,6 +9,7 @@ import gunbc.generated_artifact {
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
+  SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
@@ -26,9 +27,10 @@ import gunbc.rung_drop.roster { rung_drop_roster }
 // longer renders rows its own authority still declares. The ledger's own header says it "carries
 // the rows in full"; when this class is live that sentence is false and nothing says so.
 //
-// THE CLASS IS INVISIBLE BECAUSE IT IS REPAIRED, NOT BECAUSE IT IS RARE. Heal regenerates the two
-// design ledgers after a provisional merge -- gunbc.generated_artifact concurrent_divergence_repair
-// names exactly these two artifacts as HealRegeneratesAfterProvisionalMerge -- so the ordinary life
+// THE CLASS IS INVISIBLE BECAUSE IT IS REPAIRED, NOT BECAUSE IT IS RARE. Heal regenerates the
+// rung-drop ledger after a provisional merge -- gunbc.generated_artifact concurrent_divergence_repair
+// names DesignRungDropsArtifact as HealRegeneratesAfterProvisionalMerge (the failure-mode projection
+// is NotCommitted and is not a heal subject) -- so the ordinary life
 // of this defect is: a branch merges main, which imports a row FILE without regenerating the
 // projection; the head is authority-ahead-of-projection; heal regenerates and the difference is
 // gone. Every observable trace is one commit whose message is "regenerate drifted generated
@@ -124,6 +126,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     Stage0CrateLayoutGeneratedRsArtifact => []
     Stage0CratePartitionGeneratedDagArtifact => []
     Stage0ExecutableAssemblyGeneratedDagArtifact => []
+    SeedRetentionFrontierGeneratedRsArtifact => []
     V1InterpreterDispatchGeneratedRsArtifact => []
     EvaluationBudgetConsequenceGeneratedRsArtifact => []
     FileTransportRealizationGeneratedRsArtifact => []

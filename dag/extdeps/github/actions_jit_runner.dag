@@ -1,6 +1,6 @@
 module extdeps.github.actions_jit_runner
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, HttpStatus }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
@@ -50,6 +50,10 @@ type JitRunnerConfigRequest {
   work_folder: JitWorkFolder
 }
 
+// THE BODY IS THIS RECORD. There is no host, boot, signature, expiry, or replay field; a checker
+// that claims to read those axes out of the mint request is inventing an admission surface GitHub
+// does not have. Attempt identity is the name field.
+
 // THE CREDENTIAL IS OPAQUE AND CARRIES ITS OWN HANDLING RULE IN ITS TYPE. It is never rendered into
 // an argv, a log line, or a receipt; the only sanctioned destination is bytes on a read-only drive
 // the guest mounts. That rule is not a preference: gunbc.credential_argv_exposure already measures
@@ -66,7 +70,10 @@ type EncodedJitConfig sole_constructor {
 
 type JitConfigMintOutcome
   = JitConfigMinted { config: EncodedJitConfig, runner_id: Int }
-  | JitConfigMintRefused { status: Int, reason: String }
+  | JitConfigMintRefused { status: HttpStatus, reason: String }
+  | JitConfigMintNotFound { reason: String }
+  | JitConfigMintConflict { reason: String }
+  | JitConfigMintValidationFailed { reason: String }
 
 // THE ENDPOINT PATH IS DERIVED FROM THE ORG, never concatenated at a call site, so a caller cannot
 // address a different organization's runners by assembling the path itself.
@@ -81,10 +88,17 @@ fn jit_runner_label_wire(l: JitRunnerLabel) -> String {
 // A MINT THAT DID NOT RETURN 201 IS A REFUSAL AND NOT AN EMPTY CONFIG. GitHub answers 201 with the
 // blob; every other status means no runner identity was created, and treating a non-201 as "no
 // config yet" would let a guest boot with an empty drive and sit waiting for work it can never be
-// assigned -- a VM burning its whole deadline looking healthy.
-data jit_config_created_status: Int = 201
+// assigned -- a VM burning its whole deadline looking healthy. The response schema carries runner
+// identity and encoded_jit_config, and does not carry an expiry.
+data jit_config_created_status: HttpStatus = 201
 
-fn jit_config_mint_outcome(status: Int, encoded: String, runner_id: Int, error_body: String) -> JitConfigMintOutcome {
+data jit_config_not_found_status: HttpStatus = 404
+
+data jit_config_conflict_status: HttpStatus = 409
+
+data jit_config_validation_failed_status: HttpStatus = 422
+
+fn jit_config_mint_outcome(status: HttpStatus, encoded: String, runner_id: Int, error_body: String) -> JitConfigMintOutcome {
   if status == jit_config_created_status {
     if encoded == "" {
       JitConfigMintRefused {
@@ -98,7 +112,19 @@ fn jit_config_mint_outcome(status: Int, encoded: String, runner_id: Int, error_b
       }
     }
   } else {
-    JitConfigMintRefused { status: status, reason: error_body }
+    if status == jit_config_not_found_status {
+      JitConfigMintNotFound { reason: error_body }
+    } else {
+      if status == jit_config_conflict_status {
+        JitConfigMintConflict { reason: error_body }
+      } else {
+        if status == jit_config_validation_failed_status {
+          JitConfigMintValidationFailed { reason: error_body }
+        } else {
+          JitConfigMintRefused { status: status, reason: error_body }
+        }
+      }
+    }
   }
 }
 

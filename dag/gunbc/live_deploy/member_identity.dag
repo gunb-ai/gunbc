@@ -138,19 +138,15 @@ fn observed_member_member(o: ObservedMember) -> ConvergedMember {
 // WHY A MEMBER'S DECISION COULD NOT BE MADE, as a closed vocabulary rather than prose, so a
 // consumer can branch on the cause and the text is rendered once.
 //
-// RepositoryBootstrapUnavailable is the honest arm for an ABSENT tree (review on PR #10696): a
-// Create for the tree would have to turn an empty directory into a repository at the candidate, and
-// no route in this repository does that -- the publication oneshot is git-native repository
-// convergence (gunbc.live_deploy.repository_convergence) whose pre-state observation refuses a
-// non-repository, and the rsync-era tree sync copies files while excluding .git, so an attempted
-// Create left a directory that is not a repository and every later observation refused it. Until a
-// bootstrap transition exists (initialize, import the candidate, reset, read back) the deploy
-// refuses tree absence by name, installing nothing.
+// RepositoryBootstrapUnavailable IS GONE, and it is deleted rather than left unreachable because its
+// entire content was a claim that is now false. It said no route in this repository could turn an
+// empty directory into a repository at the candidate. #10722 built that route and proved it wet, and
+// #10724 made the publication member invoke it and nothing else. A refusal cause whose text asserts
+// the absence of a capability that exists would be read by the next author as a standing limitation.
 type MemberRefusalCause
   = DesiredIdentityIsForAnotherMember { desired: ConvergedMember }
   | ObservationIsOfAnotherMember { observed: ConvergedMember }
   | HostUnobservable { cause: String }
-  | RepositoryBootstrapUnavailable
   | DecisionFiledUnderAnotherMember { found: ConvergedMember }
   | DesiredExecutableUnreadable { cause: String }
   | DesiredExecutableAbsent
@@ -160,7 +156,6 @@ fn member_refusal_text(c: MemberRefusalCause) -> String {
     DesiredIdentityIsForAnotherMember { desired } => join(["desired identity is for ", converged_member_label(m: desired)], "")
     ObservationIsOfAnotherMember { observed } => join(["observation is of ", converged_member_label(m: observed)], "")
     HostUnobservable { cause } => join(["could not observe the host: ", cause], "")
-    RepositoryBootstrapUnavailable => "the repository root is absent and no bootstrap transition exists: a Create would leave a non-repository directory (rsync excludes .git) that repository convergence then refuses; initialize the repository at the candidate before deploying"
     DecisionFiledUnderAnotherMember { found } => join(["decision slot holds a decision about ", converged_member_label(m: found)], "")
     DesiredExecutableUnreadable { cause } => join(["the release executable could not be read in the deploying checkout: ", cause], "")
     DesiredExecutableAbsent => "the release executable target/release/gunbc is absent from the deploying checkout; build before deploying"
@@ -243,7 +238,10 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
 // The tree's desired identity is always clean by construction (a release is a revision, and the
 // projection we publish is its tracked set), so an observed dirty projection at the right revision
 // compares unequal and is a Replace -- the stale-projection case the rsync era hid. An absent tree
-// is a REFUSAL, not a Create, for the reason RepositoryBootstrapUnavailable states.
+// is a CREATE like any other member: the publication oneshot bootstraps an empty root to the
+// candidate and reads HEAD, index and tracked worktree back as that one revision (#10722), and the
+// publication member invokes that oneshot and nothing else (#10724). The absent arm therefore needs
+// no member special case at all.
 fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: ObservedMember) -> MemberDecision {
   if !converged_member_eq(a: member, b: member_identity_member(i: desired)) {
     MemberRefused { member: member, cause: DesiredIdentityIsForAnotherMember { desired: member_identity_member(i: desired) } }
@@ -252,10 +250,7 @@ fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: Obs
   } else {
     match observed {
       MemberUnobservable { member: _, cause } => MemberRefused { member: member, cause: HostUnobservable { cause: cause } }
-      MemberAbsentOnHost { member: _ } => match member {
-        TreePublication => MemberRefused { member: member, cause: RepositoryBootstrapUnavailable }
-        _ => Create { member: member, to: desired }
-      }
+      MemberAbsentOnHost { member: _ } => Create { member: member, to: desired }
       MemberObserved { identity } =>
         if member_identity_eq(a: identity, b: desired) { AlreadyConverged { member: member } }
         else { Replace { member: member, from: identity, to: desired } }

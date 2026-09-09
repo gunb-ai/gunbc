@@ -101,6 +101,7 @@ pub enum NamespaceDeltaDisposition {
     NewUnresolvedness,
     NewPoolCoincidenceResolution,
     AuthoredReferenceResolution,
+    DerivedGeneratorInputResolution,
     UnexplainedSubjectMotion,
     NotEvaluated,
 }
@@ -121,6 +122,9 @@ pub fn disposition_label(d: NamespaceDeltaDisposition) -> &'static str {
         NamespaceDeltaDisposition::NewUnresolvedness => "NewUnresolvedness",
         NamespaceDeltaDisposition::NewPoolCoincidenceResolution => "NewPoolCoincidenceResolution",
         NamespaceDeltaDisposition::AuthoredReferenceResolution => "AuthoredReferenceResolution",
+        NamespaceDeltaDisposition::DerivedGeneratorInputResolution => {
+            "DerivedGeneratorInputResolution"
+        }
         NamespaceDeltaDisposition::UnexplainedSubjectMotion => "UnexplainedSubjectMotion",
         NamespaceDeltaDisposition::NotEvaluated => "NotEvaluated",
     }
@@ -138,7 +142,8 @@ pub fn disposition_auto_admitted(d: NamespaceDeltaDisposition) -> bool {
         NamespaceDeltaDisposition::SameDeclarationIdentityRebind
         | NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved
         | NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta
-        | NamespaceDeltaDisposition::AuthoredReferenceResolution => true,
+        | NamespaceDeltaDisposition::AuthoredReferenceResolution
+        | NamespaceDeltaDisposition::DerivedGeneratorInputResolution => true,
         NamespaceDeltaDisposition::TargetChanged
         | NamespaceDeltaDisposition::NewAmbiguity
         | NamespaceDeltaDisposition::NewUnresolvedness
@@ -153,7 +158,7 @@ pub const DISPOSITION_AUTHORITY_MODULE: &str = "gunbc.compiler_frontend_program_
 pub const DISPOSITION_AUTHORITY_DECL: &str = "NamespaceDeltaDisposition";
 
 /// Every label this host enum carries, in the authority's own spelling.
-pub const DISPOSITION_LABELS: [&str; 10] = [
+pub const DISPOSITION_LABELS: [&str; 11] = [
     "SameDeclarationIdentityRebind",
     "UnusedSubjectMembershipRemoved",
     "ExplicitlyEvaluatedZeroDelta",
@@ -162,6 +167,7 @@ pub const DISPOSITION_LABELS: [&str; 10] = [
     "NewUnresolvedness",
     "NewPoolCoincidenceResolution",
     "AuthoredReferenceResolution",
+    "DerivedGeneratorInputResolution",
     "UnexplainedSubjectMotion",
     "NotEvaluated",
 ];
@@ -1588,91 +1594,93 @@ pub struct TransitionAdmission {
 ///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
 ///   the correct reading for all nine.
 ///
-/// EXIT_OK RELOCATES TO std.process. Seven `TargetChanged` bindings in
-/// `tools.floor_effect_gate_witness` (`<gate>_passes` for emit_host_gate, cheap_claim_pool_gate,
-/// extdeps_external_authority_gate, dag_compile_clean_gate, generated_artifact_drift_gate,
-/// extdeps_scope_placement_gate, prose_row_introduction_gate) resolve `exit_ok` at base to
-/// `tools.ci_gates` and at head to `std.process`. Spelling unchanged; predicate exhaustive with no
-/// wildcard arm; behaviour unchanged; the witnesses that consume it are unchanged. TRIGGER: they
-/// go when this relocation is on main, then report CONSUMED and come due on the roster's next touch.
-/// Adjudicate that deletion by joining each row against main on its own tuple, not this sentence.
-const EXIT_OK_REHOME_LABEL: &str =
-    "exit_ok relocates from tools.ci_gates to std.process: spelling unchanged, behaviour \
-     unchanged, the predicate is exhaustive with no wildcard arm, and the floor witnesses \
-     that consume it are unchanged";
-
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "emit_host_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "cheap_claim_pool_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "extdeps_external_authority_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "dag_compile_clean_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "generated_artifact_drift_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "extdeps_scope_placement_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: EXIT_OK_REHOME_LABEL,
-        subject: AdmissionSubject::Binding {
-            module: "tools.floor_effect_gate_witness",
-            in_declaration: "prose_row_introduction_gate_passes",
-            spelling: "exit_ok",
-            target: "std.process",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
+/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
+/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
+/// permissions standing over nothing.
+///
+/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
+/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
+/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
+/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
+///
+/// THE gunbc#10688 ROWS DISSOLVE HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. The two `call_semantics_target` re-home rows reported CONSUMED on required run
+/// 34262728404 (PR #10856), which is the roster-touching change their trigger named.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, on each row's
+/// own (module, in_declaration, spelling, target) tuple against main. On main,
+/// `src/v1/00_core.dag` opens `module v1.std.core` and declares
+/// `fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity`;
+/// `src/v1/05_emit_rust.dag` DECLARES no such function and imports the spelling, and both named
+/// declarations still spell it -- `emit_rust_expr_call` and `emit_rust_tco_non_self_call` each
+/// call `call_semantics_target(cs: cs)`. So base and head bind the spelling to the same declarer,
+/// no run can produce either `TargetChanged` delta, and CONSUMED is the correct reading rather
+/// than an author error.
+///
+/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
+/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
+/// touch. Adjudicate that deletion by joining each row against main on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+///
+/// SIXTH DISSOLUTION (2026-09-08). #10688 merged; both rows report consumed. This change touches
+/// the roster (base-side reconstruction of the gitignored failure-mode fold), so the deletion is
+/// owed here.
+///
+/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch.
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE: a required run reported
+/// both as already satisfied at the base -- consumed by its own merge.
+///
+/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
+/// `cumulative_metric_read_as_per_event`, is added as its own file under
+/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
+/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
+/// the head side that name newly resolves into the class's own module, which is
+/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
+/// the membership rule the directory IS, not by anyone rebinding an existing name.
+///
+/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
+/// one file per class precisely so that two lanes appending different classes never rewrite one
+/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
+/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
+/// is the same motion whether it was intended or accidental, and only the author can say which.
+///
+/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
+/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
+/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
+/// trusting this sentence.
+/// THE gunbc#10813 ROW DISSOLVES HERE (2026-09-08), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
+/// NAMED, AND THE DEFECT IT WAS ADMITTING IS REPAIRED IN THE SAME CHANGE. Two separate facts, and
+/// the row would go on either one alone.
+///
+/// FIRST, THE TRIGGER FIRED. gunbc#10813 is on main, so the class file
+/// `dag/gunbc/recurring_failure_mode/cumulative_metric_read_as_per_event.dag` and the roster naming
+/// it are present on BOTH sides. Adjudicated by the join the row demanded rather than by its
+/// sentence: on main that file opens
+/// `module gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event` and the roster names
+/// the spelling, so base and head resolve it into the same module, no run can produce the delta,
+/// and CONSUMED is the correct reading. Its label goes with it, leaving the roster an EMPTY
+/// enumeration.
+///
+/// SECOND, AND THIS IS WHY NO SUCCESSOR ROW REPLACES IT: the delta that row admitted was not the
+/// ledger's growth shape. It was an artifact of the BASELINE, repaired by this same change.
+/// `run_required_wave_admission` rebuilt the base index by carrying forward every head record the
+/// diff did not touch; `dag/gunbc/recurring_failure_mode/roster.dag` is gitignored and written on
+/// the read path, so it can never appear in `git diff --name-status`, and the HEAD's generated
+/// roster was therefore carried in as the BASE's. Both symptoms follow: the binding key existed on
+/// both sides so it read `base {} -> head {row}`, and the authorship discriminator compared the
+/// roster's base and head source, which were THE SAME BYTES, so an ordinary append read as not
+/// locally authored and classified `NewPoolCoincidenceResolution`. With the roster's base side
+/// DERIVED from the base tree's row membership, the roster module's source genuinely differs across
+/// the sides and an append classifies `AuthoredReferenceResolution`, which is auto-admitted.
+///
+/// THE EVIDENCE IS EXECUTED, NOT ARGUED: the required run on this change's own previous head
+/// (34271585163) added a failure-mode class with NO admission row for it and reported
+/// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
+/// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
+/// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -2018,6 +2026,7 @@ pub fn adjudicate(
                 base_set,
                 head_set,
                 locally_authored_claim_added(head, base_record, head_record, &key.1),
+                derived_generator_input_binding(module, head_set),
             );
             deltas.push(NamespaceDelta {
                 subject: DeltaSubject::Binding {
@@ -2194,6 +2203,36 @@ fn admission_consumed_at_base(
     }
 }
 
+/// Whether a binding this module gained is the mechanical image of its GENERATOR'S DECLARED
+/// INPUT RELATION.
+///
+/// THE QUESTION IS NOT "IS THIS MODULE GENERATED". A generated module is exactly where a wrong
+/// binding has no human reader, so exempting the category would be the fail-open direction of the
+/// same conflation the `0 -> 1` split repaired. The question is whether the generator's OWN
+/// DECLARED INPUTS explain the binding: `derived_row_roster` declares that the roster is produced
+/// by reading the `.dag` files of `ROW_MODULE`, so a roster binding whose every candidate is a
+/// module of that directory is the deterministic consequence of a file the change adds, and is
+/// decidable here from the generator's constants rather than from a reader's judgement.
+///
+/// EVERY OTHER BINDING A DERIVED MODULE ACQUIRES STILL REFUSES, and that refusal is this arm's
+/// positive control rather than an unhandled case: a roster binding to a module OUTSIDE its
+/// generator's input directory is not explained by the generator, so it stays
+/// `NewPoolCoincidenceResolution`.
+fn derived_generator_input_binding(module: &str, head: &BTreeSet<String>) -> bool {
+    let roster_module = crate::cli_run::derived_row_roster::ROSTER_MODULE;
+    if module != roster_module {
+        return false;
+    }
+    let input_prefix = format!("{}.", crate::cli_run::derived_row_roster::ROW_MODULE);
+    !head.is_empty()
+        && head.iter().all(|candidate| {
+            candidate != roster_module
+                && candidate
+                    .strip_prefix(&input_prefix)
+                    .is_some_and(|stem| !stem.contains('.'))
+        })
+}
+
 /// Which disposition a changed candidate SET carries.
 ///
 /// EVERY ARM IS OVER SETS, NOT WINNERS. `1 -> 0` stopped denoting anything; `1 -> 2` now admits
@@ -2207,14 +2246,26 @@ fn admission_consumed_at_base(
 /// the repair the wall wants, and the state it refused. Opposite owners, opposite repairs, one
 /// symbol: DESIGN's state-space conflation.
 ///
+/// `0 -> 1` HAS A THIRD STATE, AND IT IS THE ONE A GENERATED MODULE INHABITS. The `authored_here`
+/// discriminator presumes a module that HAS an author to consult. A DERIVED module does not: its content
+/// is produced by a generator, `authored_here` is false for every binding it will ever acquire,
+/// and so every binding it gains reads as a coincidence in the pool. `derived_generator_input`
+/// answers the question authorship cannot — is this binding THE MECHANICAL IMAGE OF THE
+/// GENERATOR'S DECLARED INPUT RELATION, the deterministic consequence of a source file the change
+/// adds. It is deliberately NOT "the module is generated": admitting that category would
+/// auto-admit every binding any generated module ever acquires, on the one surface where a wrong
+/// binding has no human reader. A generated module acquiring a binding its generator's inputs do
+/// not explain stays `NewPoolCoincidenceResolution` and stays refused.
+///
 /// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
-/// consults authorship (`membership_supported`), which admitted the membership edge of the very
-/// change this arm refused. So `authored_here` is passed in, not re-derived: see
-/// `locally_authored_claim_added`.
+/// consults authorship (`membership_declared`, over `membership_bound_through`), which admitted
+/// the membership edge of the very change this arm refused. So `authored_here` is passed in, not
+/// re-derived: see `locally_authored_claim_added`.
 fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
     authored_here: bool,
+    derived_generator_input: bool,
 ) -> NamespaceDeltaDisposition {
     if head.is_empty() {
         return NamespaceDeltaDisposition::NewUnresolvedness;
@@ -2222,6 +2273,8 @@ fn binding_disposition(
     if base.is_empty() {
         return if authored_here {
             NamespaceDeltaDisposition::AuthoredReferenceResolution
+        } else if derived_generator_input {
+            NamespaceDeltaDisposition::DerivedGeneratorInputResolution
         } else {
             NamespaceDeltaDisposition::NewPoolCoincidenceResolution
         };
@@ -2644,8 +2697,17 @@ pub fn run_required_wave_admission(
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
+    // A DERIVED ARTIFACT IS NEVER IN THE DIFF, SO IT MUST NOT BE INHERITED FROM THE HEAD.
+    // The baseline is reconstructed by carrying every head record the diff did not touch and
+    // re-reading the rest from the base tree. `roster.dag` is gitignored and written on the read
+    // path, so the diff can never name it — and carrying it made the HEAD's roster stand as the
+    // BASE's. Its base side is not read from git either (the tree does not carry it); it is
+    // DERIVED from the base tree's row membership, below, by the same renderer the writer uses.
     let mut base_index = DeclarationIndex::default();
     for record in index_records(head_index) {
+        if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
+            continue;
+        }
         if !head_parsed.iter().any(|c| *c == &record.rel_path) {
             crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
         }
@@ -2679,6 +2741,32 @@ pub fn run_required_wave_admission(
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         };
         match base_records(rel, &content) {
+            Ok(records) => {
+                for record in records {
+                    crate::cli_run::declaration_index::index_insert(&mut base_index, record);
+                }
+            }
+            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+        }
+    }
+
+    // THE DERIVED ROSTER'S BASE SIDE, from the base tree's row membership. `base_paths` is the
+    // authoritative listing already in hand, so this asks the same question the writer asks of a
+    // directory. A base tree carrying no row files under that root has no roster module at all,
+    // and `roster_from_path_listing` answers `None` rather than fabricating a present empty list.
+    let base_path_refs: Vec<&str> = base_paths.iter().map(|p| p.as_str()).collect();
+    for record in index_records(head_index) {
+        let Some(root) = crate::cli_run::derived_row_roster::roster_root_prefix(&record.rel_path)
+        else {
+            continue;
+        };
+        let Some(content) = crate::cli_run::derived_row_roster::roster_from_path_listing(
+            base_path_refs.iter().copied(),
+            root,
+        ) else {
+            continue;
+        };
+        match base_records(&record.rel_path, &content) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);

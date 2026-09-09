@@ -1,0 +1,61 @@
+module gunbc.rung_drop.transitional_admission_exception
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
+
+// DECLARED 2026-09-08 (dashboard node adhoc-cf84ab88-8dc). The five falsifier-family cadences whose
+// workflow (falsifier.yml) was deleted at #8283 have no scheduled route. std.witness_admission
+// witness_cadence_has_scheduled_route returns false for all five. Admission rows on those cadences
+// must be refused by explicit_witness_admission_cadence_executes (DESIGN §3 single authority, §5
+// coverage-by-illusion). Admission rows on three cadences carry live admission data that
+// must transition to a scheduled-route cadence first. Two of them (self_host_body_producer,
+// self_host_use_site_verdict) are ALSO rostered in gunbc.rung_drop.deleted_cadence_reference_drop.
+// transitional_admission_exception_identities is the single authority for both the gate exception
+// and the RungDrop population — the data below is the ONLY list; the RungDrop consumes it
+// through a function (DESIGN §3 single authority, §4b(3) bounded population).
+
+data transitional_admission_exception_identities: List<String> = [
+  "dag/test/claim/method_arg_declared_contract_witness_test.dag::w_method_arg_infers_against_declared_contract_not_element_type_test",
+  "src/v2/test/claim/manual/english_emit_add_test.dag::english_emit_add_ingest_round_trip_holds",
+  "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag::legacy_test_behavior_unclassified_frontier_is_zero",
+  "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag::observation_emit_frontier_is_zero",
+  "dag/test/claim/long/g2_data_reference_under_selection_witness_test.dag::specimen_classifies_as_runtime_read",
+  "dag/test/claim/long/g2_data_reference_under_selection_witness_test.dag::specimen_does_not_classify_as_local_read",
+  "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag::witness_p1_proof_kernel_acceptance_contract_holds",
+  "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag::witness_namespace_reference_derived_closure_closing_contract_holds",
+  "src/v2/test/claim/long/direct_rust_door_production_group_test.dag::direct_rust_door_production_group_closing_expectation_holds",
+  "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag::self_host_parse_engine_hooks_behavioral_receipt_holds",
+  "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag::self_host_use_site_verdict_behavioral_receipt_holds",
+  "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds",
+  "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag::self_host_discovery_enumeration_behavioral_receipt_holds",
+  "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag::self_host_target_carriers_behavioral_receipt_holds",
+  "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag::self_host_03_normalize_behavioral_receipt_holds",
+  "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
+  "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_live_structural_fixture_mint_site_discovered_reds",
+  "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
+  "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag::witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
+  "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds",
+  "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_ingest_overflow_refuses_never_empty_holds",
+  "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag::compiler_closure_ingest_boundary_exact_cap_transport_holds",
+  "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag::infer_transform_add_vertical_witness_holds",
+]
+
+// CONSTRUCTOR — derives the RungDrop from the single identity list authority.
+// DESIGN §3 single authority: the population field reads from the data above,
+// not from a separately-maintained list.
+fn transitional_admission_exception() -> RungDrop {
+  RungDrop {
+    identity: "transitional_admission_exception" as NonEmptyStr,
+    subject: "admission rows on falsifier-family cadences with no scheduled route, awaiting transition to a cadence that executes",
+    declared: "2026-09-08",
+    standing: Standing,
+    declaration: TypedDeclaration {
+      previous: Mitigatable,
+      temporary: OutsideTheLadder,
+      reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml, deleted at 611fd02770 (#8283)" },
+      population: transitional_admission_exception_identities,
+      restoration_trigger: "each named identity carries a cadence with a live scheduled route, at which point each row above is removed from transitional_admission_exception_identities and the identity's exception in explicit_witness_admission.dag is deleted (the gate consumes the list, so removing from the list retires the exception). The cadence category those routes need is gunbc.rung_drop.shared_capability missing_cadence_category; the remainder is the per-identity migration onto a live route. Waiters whose remaining unsatisfied condition is only that capability retire together. When the category fires and any named identity still lacks a live scheduled route, this identity is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and this row stays Standing until every named identity has that route. If every named identity already has a live scheduled route when the category fires, retire with the enrolled set.",
+    }
+  }
+}

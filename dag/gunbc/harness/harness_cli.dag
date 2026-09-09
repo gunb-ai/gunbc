@@ -1,6 +1,9 @@
 module gunbc.harness.harness_cli
 
-import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.types { String, Int, FilePath, NonEmptyStr }
+import std.nat { Nat }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
 import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
@@ -8,12 +11,13 @@ import std.measure { TokenCount, token_count, token_count_value, Second, second,
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
-  HarnessTurnConfig, HarnessTurnOutcome,
-  TurnProviderStopped, TurnStepBudgetExhausted, TurnTransportRefused,
-  TurnResponseUnreadable, TurnRequestUnwritable,
-  harness_run_turn, harness_outcome_label, harness_outcome_detail,
+  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact,
+  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label,
+  harness_outcome_detail,
 }
-import gunbc.harness.harness_guidance { harness_worker_guidance_at, harness_guidance_prose, harness_worker_guidance, harness_probe_guidance }
+import gunbc.harness.harness_guidance {
+  harness_worker_guidance_at, harness_guidance_prose, harness_probe_guidance,
+}
 import gunbc.compute.test_run {
   test_process_command, test_process_receipt_path, test_process_pattern_placeholder,
   compile_process_command, compile_process_receipt_path, compile_process_entry_placeholder,
@@ -22,13 +26,15 @@ import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, rev
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window }
-import gunbc.harness.harness_backend { HarnessBackendUrl, BackendUrlBound, BackendUrlRefused, harness_serving_backend_url }
 import gunbc.harness.harness_seat {
-  HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, harness_bind_seat,
-  HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire,
+  HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
+  HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat,
+  harness_seat_release_wire, harness_release_held, harness_release_capability,
+  HarnessReleaseCapability, harness_release_capability_wire,
 }
-import product.capacity.lease { LeasePolicy, QuiescenceRequired }
+import product.capacity.lease { LeasePolicy, QuiescenceRequired, GrantIdentity }
 import extdeps.tools.hostname
+import extdeps.filesystem.filesystem_io
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
 // rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
@@ -213,6 +219,7 @@ fn harness_macbook_config(backend_url: String) -> HarnessTurnConfig {
     context_budget: harness_context_budget,
     request_deadline: harness_request_deadline,
     environment: harness_macbook_environment(),
+    completion: CompletesOnProviderStop,
   }
 }
 
@@ -239,6 +246,7 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
   match outcome {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
       ExitSuccess
+    TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
     _ =>
       ExitFailure {
         code: 1,
@@ -255,10 +263,129 @@ fn harness_backend_refusal_exit(detail: String) -> ProcessExit {
   ExitFailure { code: 1, reason: join(["harness backend: ", detail], "") }
 }
 
+// A PENDING PLACEMENT IS NOT A BACKEND REFUSAL, AND THE EXIT SAYS SO. Every admissible serving
+// group is occupied by an interactive turn already in flight, so placing this one beside it would
+// stall a decode somebody is reading. The remedy is to run again in a moment, and an operator or a
+// belt reading this line needs to be able to tell that apart from a fleet that is broken.
+fn harness_placement_pending_exit(detail: String) -> ProcessExit {
+  ExitFailure { code: 1, reason: join(["harness placement pending: ", detail], "") }
+}
+
+// ── THE CALLABLE PLACEMENT BOUNDARY, WHICH IS WHAT A ROUTER CALLS INSTEAD OF PICKING ──────────
+//
+// gunbc.serving.router_realization says what the ctrl router may and may not do once the fabric owns
+// placement. These two entries are the half of that boundary this repository can supply: ask for a
+// placement, and give the seat back.
+//
+// WHY IT IS TWO ENTRIES AND NOT ONE. The harness's own turns acquire and release inside one process,
+// so a binding value carries the release. A proxied request cannot: the grant is handed across a
+// process boundary and the release happens when the proxied response ends, which is a different
+// invocation. So the grant is printed in a form the caller can hand back -- the exact partition, the
+// reference, and the fence the grant was issued under -- and harness_release_cli performs the same
+// append the in-process release does, after checking that fence against the pool it names.
+//
+// THE ENDPOINT PRINTED IS THE ONE THE GRANT NAMES. A caller that takes this url is talking to the
+// engine the seat was taken against; a caller that ignores it and picks its own host has left the
+// boundary, which is the capability router_realization forbids by name.
+// THE ATTEMPT IDENTITY IS THE ROUTER'S TO SUPPLY, and it is a separate argument from the actor
+// because the two answer different questions: the actor says WHO is placing, the attempt says WHICH
+// placement this is. One router placing two requests in the same second is one actor and two attempts,
+// and the acquisition reference is only unique if the second fact is actually distinct. A router that
+// reuses one gets a duplicate reference, which the pool refuses over its whole history -- loud, and
+// never two requests sharing a seat.
+//
+// THE PROBE ENTRIES DERIVE THEIRS FROM THE CLOCK, which is honest about what it buys: two probes
+// started in the same second on the same partition head collide and the second refuses. That is rare,
+// loud and fail-closed, and it is the shape that goes away when the substrate can name a process.
+fn harness_probe_attempt(label: String) -> NonEmptyStr {
+  match now_epoch_seconds() {
+    Absent => label as NonEmptyStr
+    Present { value: now } => join([label, "@", to_string(now)], "") as NonEmptyStr
+  }
+}
+
+// THE RECEIPT CARRIES THE EXACT PARTITION AND THE GRANT'S FENCE, not the group name alone. A release
+// that re-derived the partition from the group would address a newer partition than the one holding
+// the seat the moment the ceiling is versioned again, and a bare reference names an entry without
+// establishing that its bearer is the holder.
+fn harness_place_cli(actor: String, attempt: String, receipt: String) -> ProcessExit {
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: actor as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
+  match binding {
+    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant, partition, group_wire, launch, layout: _ } => {
+      let capability = harness_release_capability(partition: partition, grant: grant)
+      let line = join([
+        "url=", url,
+        " group=", group_wire,
+        " partition=", capability.partition as String,
+        " endpoint_process=", launch.process_start_field as String,
+        " reference=", capability.reference as String,
+        " grant=", capability.grant as String,
+        " generation=", to_string(capability.generation),
+        " expires_at=", to_string(grant.expires_at), "\n",
+      ], "")
+      let w = Filesystem.Write(path: receipt, content: line)
+      if w.success {
+        ExitSuccess
+      } else {
+        harness_place_receipt_failed(binding: binding, cause: w.error)
+      }
+    }
+  }
+}
+
+// A RECEIPT THAT COULD NOT BE WRITTEN LEAKS THE SEAT UNLESS THE SEAT IS GIVEN BACK. The grant is
+// already taken when the write is attempted, and the caller that would have released it never
+// learns its reference -- so the seat sits held until quiescence and the group takes nothing for a
+// full lease. The release happens here, and its own outcome travels in the failure text, because a
+// release that also failed is a different operational state from one that worked (review 62155).
+fn harness_place_receipt_failed(binding: HarnessSeatBinding, cause: String) -> ProcessExit {
+  let released = harness_release_seat(binding: binding, reason: "the placement receipt could not be written" as NonEmptyStr)
+  ExitFailure {
+    code: 1,
+    reason: join(["harness placement receipt write failed: ", cause, "; ", harness_seat_release_wire(r: released)], ""),
+  }
+}
+
+// THE RELEASE IS NOT BEST-EFFORT. A seat that was granted and never released stays held until
+// quiescence is established, so a failed release is a line stop rather than a footnote: the caller
+// learns it, and the operator sees a group whose pool does not drain.
+//
+// AND IT TAKES THE WHOLE CAPABILITY, which is what the placement receipt hands out: the exact
+// partition, the reference, and the grant fence it was issued under. The earlier form took a group
+// name and any reference, which let a caller address a partition it never held a grant in.
+fn harness_release_cli(partition: String, reference: String, grant: String, generation: Int, reason: String) -> ProcessExit {
+  let capability = HarnessReleaseCapability {
+    partition: partition as PartitionId,
+    reference: reference as NonEmptyStr,
+    grant: grant as GrantIdentity,
+    generation: generation as Nat,
+  }
+  match harness_release_held(short_hostname: harness_executor_short_hostname(), capability: capability, reason: reason as NonEmptyStr) {
+    HarnessSeatReleased { partition: _ } => ExitSuccess
+    HarnessSeatReleaseRefused { detail: d } =>
+      ExitFailure { code: 1, reason: join(["harness seat release refused for ", harness_release_capability_wire(c: capability), ": ", d], "") }
+  }
+}
+
+// THE PROBE TAKES THE SEAT LIKE EVERY OTHER TURN, because it IS every other turn: it posts a real
+// prompt to a real engine and runs the tool loop, so its arriving prefill lands beside whatever else
+// that group is decoding exactly as a worker's would. It reached the engine through
+// harness_serving_backend_url -- a picker, not a grant -- which made the one path whose whole purpose
+// is to exercise the harness the one path that bypassed the wall the harness now enforces. A
+// bypass that only a diagnostic uses is still a bypass, and it is the one most likely to be run
+// while something else is in flight.
 fn harness_probe_cli() -> ProcessExit {
-  match harness_serving_backend_url(shape: harness_default_wire_shape) {
-    BackendUrlRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    BackendUrlBound { url, declined_count: _ } => harness_turn_exit(outcome: harness_probe_outcome(backend_url: url))
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy)
+  match binding {
+    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
+      let outcome = harness_probe_outcome(backend_url: url)
+      let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
+      harness_turn_exit_released(outcome: outcome, seat: seat_release)
+    }
   }
 }
 
@@ -311,6 +438,7 @@ fn harness_worker_config(
       timeout_program: timeout_program,
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
+    completion: CompletesOnProviderStop,
   }
 }
 
@@ -344,10 +472,11 @@ fn harness_worker_cli(
   repo_root: String,
   gunbc_program: String,
 ) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: join(["worker:", worktree, "@", events_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
       let outcome = harness_run_turn(
         config: harness_worker_config(
           worktree: worktree as FilePath,
@@ -372,8 +501,8 @@ fn harness_worker_cli(
 // syllogism) and one more fact the worker never receives: the path of the verdict file the review
 // is complete by. The exit says whether a turn completed, exactly as for the worker; whether a verdict
 // was written, and what it says, is read by the belt from that file, never from this exit.
-fn harness_reviewer_system_prompt_at(verdict_path: String) -> String {
-  review_guidance_prose(rows: harness_reviewer_guidance_at(verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
+fn harness_reviewer_system_prompt_at(worktree: String, verdict_path: String) -> String {
+  review_guidance_prose(rows: harness_reviewer_guidance_at(worktree: worktree, verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
 }
 
 // A REVIEW IS READ-MOSTLY AND SHORT. Half the worker's rounds: read the diff, read what it touches,
@@ -390,16 +519,18 @@ fn harness_reviewer_config(
   timeout_program: FilePath,
   request_scratch_path: FilePath,
   events_path: FilePath,
-  verdict_path: String,
+  verdict_dir: String,
+  verdict_name: String,
   backend_url: String,
 ) -> HarnessTurnConfig {
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
-    system_prompt: harness_reviewer_system_prompt_at(verdict_path: verdict_path),
+    system_prompt: harness_reviewer_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget,
@@ -409,6 +540,7 @@ fn harness_reviewer_config(
       timeout_program: timeout_program,
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
+    completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
   }
 }
 
@@ -418,19 +550,23 @@ fn harness_reviewer_cli(
   timeout_program: String,
   request_scratch_path: String,
   events_path: String,
-  verdict_path: String,
+  verdict_dir: String,
+  verdict_name: String,
 ) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
       let outcome = harness_run_turn(
         config: harness_reviewer_config(
           worktree: worktree as FilePath,
           timeout_program: timeout_program as FilePath,
           request_scratch_path: request_scratch_path as FilePath,
           events_path: events_path as FilePath,
-          verdict_path: verdict_path,
+          verdict_dir: verdict_dir,
+          verdict_name: verdict_name,
           backend_url: url,
         ),
         prompt: brief,
@@ -443,8 +579,8 @@ fn harness_reviewer_cli(
 }
 
 // THE AUDITOR ENTRY: the reviewer's harness under the auditor's own prompt (gunbc.harness.harness_goal_audit_guidance).
-fn harness_auditor_system_prompt_at(verdict_path: String) -> String {
-  audit_guidance_prose(rows: harness_auditor_guidance_at(verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
+fn harness_auditor_system_prompt_at(worktree: String, verdict_path: String) -> String {
+  audit_guidance_prose(rows: harness_auditor_guidance_at(worktree: worktree, verdict_path: verdict_path, verdict_shape: review_verdict_shape_text()))
 }
 
 fn harness_auditor_config(
@@ -452,16 +588,18 @@ fn harness_auditor_config(
   timeout_program: FilePath,
   request_scratch_path: FilePath,
   events_path: FilePath,
-  verdict_path: String,
+  verdict_dir: String,
+  verdict_name: String,
   backend_url: String,
 ) -> HarnessTurnConfig {
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
   HarnessTurnConfig {
     backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
-    system_prompt: harness_auditor_system_prompt_at(verdict_path: verdict_path),
+    system_prompt: harness_auditor_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget,
@@ -471,6 +609,7 @@ fn harness_auditor_config(
       timeout_program: timeout_program,
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
+    completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
   }
 }
 
@@ -480,19 +619,23 @@ fn harness_auditor_cli(
   timeout_program: String,
   request_scratch_path: String,
   events_path: String,
-  verdict_path: String,
+  verdict_dir: String,
+  verdict_name: String,
 ) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: join(["auditor:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, layout: _ } => {
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
       let outcome = harness_run_turn(
         config: harness_auditor_config(
           worktree: worktree as FilePath,
           timeout_program: timeout_program as FilePath,
           request_scratch_path: request_scratch_path as FilePath,
           events_path: events_path as FilePath,
-          verdict_path: verdict_path,
+          verdict_dir: verdict_dir,
+          verdict_name: verdict_name,
           backend_url: url,
         ),
         prompt: brief,
@@ -504,14 +647,20 @@ fn harness_auditor_cli(
   }
 }
 
+// AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall
+// with a door beside it.
 fn harness_probe_report() -> String {
-  match harness_serving_backend_url(shape: harness_default_wire_shape) {
-    BackendUrlRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
-    BackendUrlBound { url, declined_count: _ } => {
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), shape: harness_default_wire_shape, actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy)
+  match binding {
+    HarnessSeatRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
+    HarnessSeatPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")
+    HarnessSeatBound { url, grant: _, partition: _, group_wire: _, launch: _, layout: _ } => {
       let outcome = harness_probe_outcome(backend_url: url)
+      let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       join([
         "harness probe outcome: ", harness_outcome_label(outcome: outcome), "\n",
         harness_outcome_detail(outcome: outcome), "\n",
+        "seat: ", harness_seat_release_wire(r: seat_release), "\n",
       ], "")
     }
   }

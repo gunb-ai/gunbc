@@ -9,6 +9,7 @@ import v2.compiler.self_host.seed_retention_frontier {
   retained_reason_undeclared,
   seed_retention_census,
   seed_retention_frontier_roster,
+  seed_retention_frontier_top_level_src_basenames,
   seed_retention_frontier_total_holds,
   seed_retention_reason_split_holds,
   seed_retention_roster_paths_unique,
@@ -145,4 +146,13 @@ test fn witness_declared_and_undeclared_populations_are_both_nonempty() -> Bool 
   (length(xs: declared_reason_rows()) > 0)
     && (length(xs: undeclared_reason_rows()) > 0)
     && (length(xs: seed_retention_frontier_roster) > 0)
+}
+
+// NOT EVIDENCE FOR THE JOIN. Length > 0 proves the projection emitted at least one basename.
+// It does not prove required_regen_host skipped a committed-not-emitted member by frontier
+// membership: that class is unreachable on the merge path while HAND_MAINTAINED absorbs
+// std_logic.rs first. Discrimination is the off-path #[test] pair, not this witness.
+
+test fn witness_top_level_src_basenames_are_nonempty() -> Bool {
+  length(xs: seed_retention_frontier_top_level_src_basenames()) > 0
 }

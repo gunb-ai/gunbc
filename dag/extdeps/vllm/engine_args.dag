@@ -76,10 +76,29 @@ fn vllm_distributed_executor_backend_wire(backend: VllmDistributedExecutorBacken
   }
 }
 
-// THE ARGUMENTS A LAUNCH ACTUALLY CARRIES. `max_num_batched_tokens` is deliberately ABSENT from this
-// record rather than present-and-optional: see the do-not-set row below, which is a typed refusal
-// subject and not a comment.
+// ── THE PREFILL SCHEDULING AXIS, WHICH IS A REQUEST AND NOT AN EFFECTIVE VALUE ────────────────
+//
+// A launch that omits `--max-num-batched-tokens` has NOT thereby chosen a value. This build
+// resolves a default from the device-memory probe, the usage context and the parallel
+// configuration, and that resolution can be driven by the probe REFUSING rather than answering --
+// which is what happens on a GB10 and is modelled at extdeps.vllm.batch_defaults.
+//
+// So `none` below means UNREQUESTED and nothing more. The effective budget is a different fact
+// from the requested one, it is knowable only by reading it back off the running engine, and it
+// has its own type over there. Reading absence here as "no chunking" or as any particular number
+// is the mistake this field exists to make unwritable.
+type ChunkedPrefillRequest
+  = ChunkedPrefillRequested
+  | ChunkedPrefillNotRequested
+
+type VllmPrefillSchedulingPolicy {
+  max_num_batched_tokens: TokenCount
+  chunked_prefill: ChunkedPrefillRequest
+}
+
+// THE ARGUMENTS A LAUNCH ACTUALLY CARRIES.
 type VllmEngineArgs {
+  prefill_scheduling: VllmPrefillSchedulingPolicy?
   tensor_parallel_size: Nat
   gpu_memory_utilization: VllmMemoryUtilization
   max_model_len: TokenCount
@@ -116,27 +135,32 @@ data vllm_negative_dcp_with_sliding_window: VllmVerifiedNegative = VllmVerifiedN
   observed_at_revision: vllm_source_revision_read
 }
 
-// ── ARGUMENTS THAT ARE MODELLED IN ORDER TO BE REFUSED ─────────────────────────────────────────
+// ── THE DO-NOT-SET ROW FOR --max-num-batched-tokens IS WITHDRAWN, AND FOR A LAYER REASON ──────
 //
-// A DO-NOT-SET ROW IS A TYPED SUBJECT BECAUSE A COMMENT IS NOT ENFORCEABLE. `--max-num-batched-tokens`
-// is a real upstream argument and this module cites it as one; what gunbc does with it is policy.
-// The measured ground: on a GB10 it only ever COSTS KV pool, because prefill on this box is
-// compute-bound and a larger batch buys no throughput -- so every value is a strict loss.
-type VllmDiscouragedArg {
-  arg: NonEmptyStr
-  ground: NonEmptyStr
-}
-
-data vllm_discouraged_max_num_batched_tokens: VllmDiscouragedArg = VllmDiscouragedArg {
-  arg: "--max-num-batched-tokens" as NonEmptyStr,
-  ground: "on a unified-memory GB10 this only reduces the KV pool; prefill is compute-bound so a larger batch buys no throughput" as NonEmptyStr
-}
+// It read: "on a unified-memory GB10 this only reduces the KV pool; prefill is compute-bound so a
+// larger batch buys no throughput". Both halves have now been measured, and the row was wrong in
+// its LOCATION before it was wrong in its content.
+//
+// WHAT THE MEASUREMENT SAID (gunbc.spark.prefill_batch_sweep, four launches, 2026-09-07). "It
+// reduces the KV pool" is TRUE and was never the objection: 11,767,856 tokens at 2048 against
+// 5,836,755 at 16384. "A larger batch buys no throughput" is NEARLY true -- 7.5% across an 8x
+// range -- but the ground offered for it was not: it was inferred from average RoCE link
+// utilisation, and a low average is equally consistent with latency-bound collectives or host gaps.
+// What the row missed entirely is the axis that actually decides the trade: the budget IS the
+// duration of one uninterruptible step, so it sets what a co-tenant decoder waits, measured at
+// 30.1ms alone against 2168.2ms beside a cold prefill.
+//
+// WHY IT IS NOT REPLACED WITH A CORRECTED ROW HERE. Whether to set the flag, and to what, is a
+// PRODUCT decision that trades interactive latency against prefill throughput against KV capacity.
+// extdeps owns the argument's SHAPE; the policy belongs to the consumer, and modelling it here was
+// the layer inversion DESIGN section 3 names. The measured trade and the standing decision live at
+// gunbc.spark.prefill_batch_sweep, and the upstream resolution that currently supplies the value in
+// the flag's absence lives at extdeps.vllm.batch_defaults.
+//
+// The `VllmDiscouragedArg` type goes with it: it had exactly one row, and a general "arguments we
+// advise against" vocabulary in extdeps is that same inversion waiting for its second instance.
 
 data vllm_verified_negatives: List<VllmVerifiedNegative> = [
   vllm_negative_nvfp4_kv_for_mla,
   vllm_negative_dcp_with_sliding_window,
-]
-
-data vllm_discouraged_args: List<VllmDiscouragedArg> = [
-  vllm_discouraged_max_num_batched_tokens,
 ]

@@ -502,8 +502,8 @@ pub fn load_sources_for_entry_with_pool_index(
 // command exiting nonzero). So the emission transaction lives HERE, and BOTH the CLI's
 // `--entry` arm and the required phase call it. Keeping two callers equal by hand would
 // have been a fork with three live parameters to drift on -- the pool-index policy, the
-// census population, and the silent-pick gate -- and the first draft of this phase had
-// already drifted on the first of them.
+// census population, and (until it was deleted as permanently green) the CLI's silent-pick
+// gate -- and the first draft of this phase had already drifted on the first of them.
 //
 // THE ENTRY IS THE v2 COMPILER ROOT, AND THE PARAGRAPH THAT USED TO SIT HERE ARGUED FOR
 // THE OPPOSITE (operator ruling, 2026-08-25). It chose the smallest entry in the tree and
@@ -528,8 +528,11 @@ pub fn load_sources_for_entry_with_pool_index(
 // invariant's clothes. The invariant is that emission COMPLETED -- the transaction ran to
 // its end and produced a tree -- and the refusal predicate is not restated here either:
 // it is `v1_compiler_compile` `stage0_self_compile_refusal_message`, the same authority
-// the CLI already stops on (a blocking diagnostic, or an empty emitted file set), plus
-// the CLI's own silent-pick gate. A gate that refused on ANY diagnostic would be
+// the CLI already stops on (a blocking diagnostic, or an empty emitted file set) -- AND
+// NOTHING ELSE. It formerly named the CLI's own silent-pick gate as a second refusal
+// source; that gate was deleted as permanently green, so the sentence is corrected here
+// rather than left standing, because a reader of this refusal contract would otherwise
+// conclude silent-pick is walled on this path. A gate that refused on ANY diagnostic would be
 // permanently red -- the v2 compiler closure carries hundreds of advisory diagnostics
 // against zero blocking, which is a standing property of the corpus rather than a figure
 // worth pinning -- so advisory diagnostics are COUNTED and reported and never refused on.

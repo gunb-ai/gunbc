@@ -18,6 +18,7 @@ import gunbc.runner_jit_mint {
   JitMintAuthorized,
   JitMintRefusedCellNotOwned,
   JitMintRefusedCredential,
+  JitMintRefusedAttemptUnbound,
 }
 
 data runner_jit_perform_disposition: Disposition = SingleAuthority
@@ -119,6 +120,13 @@ func perform_jit_mint_wet(
     JitMintRefusedCellNotOwned { cause: c } =>
       JitCredentialRefused {
         cause: join(["the cell is not owned, so no guest may use it and no credential was minted: ", c], ""),
+      }
+    JitMintRefusedAttemptUnbound { cause: c } =>
+      JitCredentialRefused {
+        cause: join([
+          "the mint name does not require attempt-binding, so a minted credential would not carry the attempt's identity and none was requested: ",
+          c,
+        ], ""),
       }
     JitMintRefusedCredential { organization: org, unsatisfied: _ } =>
       JitCredentialRefused {

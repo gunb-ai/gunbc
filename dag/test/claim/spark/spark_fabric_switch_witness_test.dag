@@ -4,6 +4,9 @@ import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { host_identity_eq }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv12, operator_host_srv1 }
 import extdeps.mikrotik.crs812 { crs812_lane_speed_wire, Lane50GCr2, crs812_passive_dac_requires_forced_mode }
+import extdeps.transceiver.sff_8636 {
+  Sff8636NominalRate, NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
+}
 import gunbc.spark.fabric_switch_observed {
   fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
   FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
@@ -33,7 +36,21 @@ test fn groups_derive_from_the_cage_and_a_host_off_the_fabric_has_none() -> Bool
 // desired state carries is the one the leg actually linked at.
 test fn the_link_speed_is_the_cable_codings_ceiling_and_forced_mode_is_required() -> Bool {
   fabric_leg_cable_observed.linked_speed_gbps == 50
-    && fabric_leg_cable_observed.nominal_rate_mbps == 25500
     && (crs812_lane_speed_wire(s: Lane50GCr2) as String) == "50G-baseCR2"
     && crs812_passive_dac_requires_forced_mode
+}
+
+
+// THE ESCAPE IS CARRIED AS AN ESCAPE, NOT AS A RATE. `ethtool -m` printed "BR, nominal: 25500 Mb/s"
+// for these legs, and 25500 is 255 x 100 -- the escape value multiplied out. An earlier head of this
+// change recorded that number as an observed field, and retyping it to SymbolRate to satisfy a
+// unit review moved a sentinel INTO the type minted to make that conflation unwritable. This witness
+// holds the honest answer: byte 140 at FFh resolves to NominalRateEscaped and to no measurement at
+// all. It goes red the moment anyone reconstitutes a rate from the escape.
+test fn the_escaped_nominal_rate_is_not_a_measurement() -> Bool {
+  match fabric_leg_cable_observed.coding.nominal_rate {
+    NominalRateEscaped => true
+    NominalRateDirect { rate: r } => false
+    NominalRateUnspecified => false
+  }
 }

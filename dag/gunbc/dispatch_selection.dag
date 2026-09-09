@@ -3,6 +3,9 @@ module gunbc.dispatch_selection
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
 import v2.std.optional { optional_absent, optional_present }
 import extdeps.llm.cli {
+  ProviderModelSelection,
+  ProviderAccountDefaultModel,
+  ProviderModelPinned,
   ReasoningEffort,
   ReasoningMedium,
   ReasoningHigh,
@@ -156,14 +159,14 @@ type ProviderSelectionRequest
   | SelectCodex {
       profile: ExecutionProfile,
       account: CodexAccountSelection,
-      model: NonEmptyStr,
+      model: ProviderModelSelection,
       effort: ReasoningEffort,
       operator_asserted_native_limit_bucket: NonEmptyStr?,
     }
   | SelectClaude {
       profile: ExecutionProfile,
       credential: ClaudeCredentialRef,
-      model: NonEmptyStr,
+      model: ProviderModelSelection,
       effort: ReasoningEffort,
       workflow_mode: NonEmptyStr,
     }
@@ -176,14 +179,14 @@ type ProviderSelectionRequest
 
 type ResolvedCodexSelection {
   account: CodexAccountSelection
-  model: NonEmptyStr
+  model: ProviderModelSelection
   effort: ReasoningEffort
   process_fingerprint: NonEmptyStr
 }
 
 type ResolvedClaudeSelection {
   credential: ClaudeCredentialRef
-  model: NonEmptyStr
+  model: ProviderModelSelection
   effort: ReasoningEffort
   workflow_mode: NonEmptyStr
   process_fingerprint: NonEmptyStr
@@ -206,8 +209,12 @@ type DispatchCredentialBindingIdentity
   | ClaudeCredentialBinding { credential: ClaudeCredentialRef }
   | CursorCredentialBinding { credential: CursorCredentialRef }
 
+// The vendor arm carries the SELECTION, not a bare identifier, so a receipt cannot spell "the
+// account default" as though it were a pinned model named account-default. Cursor keeps its own
+// arm because it does not inhabit the axis: cursor_model_auto is a real identifier it always
+// transmits, so there is no absent-flag state for it to represent.
 type DispatchModelIdentity
-  = DispatchModelNamed { model: NonEmptyStr }
+  = DispatchModelNamed { model: ProviderModelSelection }
   | DispatchCursorModelIdentity { model: CursorModelId }
 
 type DispatchProviderControl
@@ -270,8 +277,15 @@ data dispatch_codex_process_fingerprint_unobserved_selection_refusal: NonEmptySt
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmptyStr
 
-data dispatch_codex_default_model: NonEmptyStr = "account-default" as NonEmptyStr
-data dispatch_claude_default_model: NonEmptyStr = "account-default" as NonEmptyStr
+// WAS THE STRING "account-default" ON BOTH ROWS. That sentinel is what made the dropped model
+// invisible: it is not an identifier any provider would accept, so no argv row could pass it and
+// none did, and the field read as a resolved model everywhere downstream while meaning "we did not
+// pick one". It could not be separated from a genuine pin spelled the same way, and it fed
+// claude_limit_dispatch_draw_for_model a draw key that can never match a real ProviderModelLimit
+// subject_model. Under extdeps.llm.cli ProviderModelSelection the same fact is the default ARM,
+// which the argv rows handle by passing no flag -- the state is now represented rather than spelled.
+data dispatch_codex_default_model: ProviderModelSelection = ProviderAccountDefaultModel
+data dispatch_claude_default_model: ProviderModelSelection = ProviderAccountDefaultModel
 
 // LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion
 // because model-to-limitId join is unobserved (extdeps.llm.codex_app_server
@@ -304,10 +318,21 @@ fn codex_limit_dispatch_draw_for_selection(
   }
 }
 
-fn claude_limit_dispatch_draw_for_model(model: NonEmptyStr) -> ProviderLimitDispatchDraw {
-  LimitDispatchDrawModel {
-    credential: LimitCredentialUnspecified,
-    model: model,
+// The default arm draws AUTOMATIC rather than on a model key. Under the old sentinel this function
+// returned LimitDispatchDrawModel keyed on "account-default", a draw model that matches no
+// ProviderModelLimit subject_model in provider_standing's limit join, so the model-scoped draw was
+// silently inert on every default selection. Naming the absence lets the join say what it means:
+// with no pinned model there is no model-scoped draw to make, and every native bucket blocks, which
+// is the conservative arm provider_standing already documents for the unobserved
+// native-token-to-model join.
+fn claude_limit_dispatch_draw_for_model(model: ProviderModelSelection) -> ProviderLimitDispatchDraw {
+  match model {
+    ProviderAccountDefaultModel => LimitDispatchDrawAutomatic
+    ProviderModelPinned { model: pinned } =>
+      LimitDispatchDrawModel {
+        credential: LimitCredentialUnspecified,
+        model: pinned,
+      }
   }
 }
 
@@ -1507,6 +1532,21 @@ fn resolved_process_fingerprint(resolved: ResolvedProviderSelection) -> NonEmpty
     ResolvedCodex { selection: s, instance: _, account_binding: _ } => s.process_fingerprint
     ResolvedClaude { selection: s, instance: _ } => s.process_fingerprint
     ResolvedCursor { selection: s, instance: _ } => s.process_fingerprint
+  }
+}
+
+// THE PROJECTION THAT CLOSES THE DROP, sibling to resolved_process_fingerprint and to
+// gunbc.roadmap_dispatch_actuator dispatch_applied_effort. The actuator read applied_effort and
+// process_fingerprint off the receipt and NOTHING for the model, so a resolved selection reached
+// the spawn with its model gone; there was no projection to read, and the argv rows had no
+// parameter to read it into. Cursor's arm pins rather than defaulting because it always transmits
+// its identifier -- cursor_model_auto is a real model name, not an absent flag.
+fn resolved_model_selection(resolved: ResolvedProviderSelection) -> ProviderModelSelection {
+  match resolved {
+    ResolvedCodex { selection: s, instance: _, account_binding: _ } => s.model
+    ResolvedClaude { selection: s, instance: _ } => s.model
+    ResolvedCursor { selection: s, instance: _ } =>
+      ProviderModelPinned { model: s.model as NonEmptyStr }
   }
 }
 

@@ -140,6 +140,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider,
   dispatch_provider_label, dispatch_codex_home,
   dispatch_actuator_selection,
+  DispatchActuatorSelection,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
   dispatch_tmux_session_name,
@@ -1554,6 +1555,13 @@ fn belt_footprint_admission_for_instance(
   )
 }
 
+// ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider
+// from one live selection, and belt_resolved_spawn_plan then read the roster AGAIN beneath it -- and
+// it was that second answer whose model reached the process. If the roster moved between the two, a
+// replica dropping out being exactly the event this fleet sees, the preflighted provider and the
+// spawned one could disagree with nothing recording it. That is the same class the observe fold
+// closed, sitting on the one route where the model actually reaches a process, and this module's own
+// rule is that the fix is the carrier rather than the call.
 fn belt_actuate_spawn_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -1588,8 +1596,9 @@ fn belt_actuate_spawn_for_instance(
         provider: belt_dispatch_spawn_unselected_provider_wire_label(),
         launch: launch,
       }
-    EnvironmentAdmitted { receipts, validation_summary } =>
-      match dispatch_actuator_selection(node_sizing: node.sizing) {
+    EnvironmentAdmitted { receipts, validation_summary } => {
+      let selection = dispatch_actuator_selection(node_sizing: node.sizing)
+      match selection {
         DispatchActuatorSelectionRefused { reason } =>
           SpawnFailed {
             node_id: node.node as String,
@@ -1598,7 +1607,7 @@ fn belt_actuate_spawn_for_instance(
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
             launch: launch,
           }
-        DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
           match belt_provider_preflight_for_instance(
             instance: instance,
             provider: provider,
@@ -1624,9 +1633,11 @@ fn belt_actuate_spawn_for_instance(
                 ),
                 provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
                 launch: launch,
+                selection: selection,
               )
           }
       }
+    }
   }
   }
 }
@@ -1638,6 +1649,7 @@ fn belt_actuate_spawn_exec_for_instance(
   admission_receipt: String,
   provider_wire_label: String,
   launch: LaunchIdentity,
+  selection: DispatchActuatorSelection,
 ) -> BeltSpawnOutcome {
   belt_actuate_spawn_exec_modeled(
     instance: instance,
@@ -1647,6 +1659,7 @@ fn belt_actuate_spawn_exec_for_instance(
     admission_receipt: admission_receipt,
     provider_wire_label: provider_wire_label,
     launch: launch,
+    selection: selection,
   )
 }
 
@@ -1664,6 +1677,7 @@ fn belt_actuate_spawn_exec_modeled(
   admission_receipt: String,
   provider_wire_label: String,
   launch: LaunchIdentity,
+  selection: DispatchActuatorSelection,
 ) -> BeltSpawnOutcome {
   let attempt_key = dispatch_attempt_key(
     node_id: node.node,
@@ -1692,12 +1706,14 @@ fn belt_actuate_spawn_exec_modeled(
         instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
         provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
         attempt_key: attempt_key, session_name: session_name, origin: FreshFromBase,
+        selection: selection,
       )
     ContinuationContinue { origin } =>
       belt_actuate_spawn_with_origin(
         instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
         provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
         attempt_key: attempt_key, session_name: session_name, origin: origin,
+        selection: selection,
       )
   }
 }
@@ -1765,6 +1781,7 @@ fn belt_actuate_spawn_with_origin(
   attempt_key: String,
   session_name: String,
   origin: AttemptOrigin,
+  selection: DispatchActuatorSelection,
 ) -> BeltSpawnOutcome {
   match belt_resolved_spawn_plan(
     instance: instance,
@@ -1772,6 +1789,7 @@ fn belt_actuate_spawn_with_origin(
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
     attempt_key: attempt_key,
     origin: origin,
+    selection: selection,
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -1898,6 +1916,13 @@ fn belt_actuate_spawn_with_origin(
 }
 }
 
+// ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider
+// from one live selection, and belt_resolved_spawn_plan then read the roster AGAIN beneath it -- and
+// it was that second answer whose model reached the process. If the roster moved between the two, a
+// replica dropping out being exactly the event this fleet sees, the preflighted provider and the
+// spawned one could disagree with nothing recording it. That is the same class the observe fold
+// closed, sitting on the one route where the model actually reaches a process, and this module's own
+// rule is that the fix is the carrier rather than the call.
 fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
   let instance = srv1_live_dashboard_instance()
   match dispatch_environment_admit(
@@ -1918,8 +1943,9 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
         provider: belt_dispatch_spawn_unselected_provider_wire_label(),
         launch: launch,
       }
-    EnvironmentAdmitted { receipts, validation_summary } =>
-      match dispatch_actuator_selection(node_sizing: node.sizing) {
+    EnvironmentAdmitted { receipts, validation_summary } => {
+      let selection = dispatch_actuator_selection(node_sizing: node.sizing)
+      match selection {
         DispatchActuatorSelectionRefused { reason } =>
           SpawnFailed {
             node_id: node.node as String,
@@ -1928,7 +1954,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
             launch: launch,
           }
-        DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
           match belt_provider_preflight(provider: provider) {
             ProviderPreflightRefused { step: st, detail: d } =>
               SpawnFailed {
@@ -1951,9 +1977,11 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
                 ),
                 provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
                 launch: launch,
+                selection: selection,
               )
           }
       }
+    }
   }
 }
 
@@ -1964,6 +1992,7 @@ fn belt_actuate_spawn_exec(
   admission_receipt: String,
   provider_wire_label: String,
   launch: LaunchIdentity,
+  selection: DispatchActuatorSelection,
 ) -> BeltSpawnOutcome {
   belt_actuate_spawn_exec_modeled(
     instance: srv1_live_dashboard_instance(),
@@ -1973,6 +2002,7 @@ fn belt_actuate_spawn_exec(
     admission_receipt: admission_receipt,
     provider_wire_label: provider_wire_label,
     launch: launch,
+    selection: selection,
   )
 }
 
@@ -2072,14 +2102,15 @@ fn belt_resolved_spawn_plan(
   session_uuid: String,
   attempt_key: String,
   origin: AttemptOrigin,
+  selection: DispatchActuatorSelection,
 ) -> DispatchSpawnPlan {
-  match dispatch_actuator_selection(node_sizing: node.sizing) {
+  match selection {
     DispatchActuatorSelectionRefused { reason } =>
       DispatchSpawnRefused {
         step: "dispatch-selection" as NonEmptyStr,
         detail: reason as String,
       }
-    DispatchActuatorSelectionOk { provider, effort, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider, effort, model, process_fingerprint: _ } =>
       dispatch_spawn_commands_for_resolved_instance(
         instance: instance,
         node: node,
@@ -2087,6 +2118,7 @@ fn belt_resolved_spawn_plan(
         attempt_key: attempt_key,
         provider: provider,
         effort: effort,
+        model: model,
         origin: origin,
       )
   }
@@ -2172,7 +2204,10 @@ fn belt_observe_from_result(
   match classify_tmux_session_list(exit_ok: success, stdout: stdout, stderr: stderr) {
     TmuxSessionsListed { entries } =>
       Observed {
-        live: dispatch_live_sessions_from_entries(entries: entries),
+        live: dispatch_live_sessions_from_entries(
+          entries: entries,
+          selection: dispatch_actuator_selection(node_sizing: Unsized),
+        ),
       }
     TmuxNoServer { evidence: _ } =>
       Observed { live: [] }
@@ -3550,6 +3585,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: panes,
                   pane_observation_refusal: "",
+                  selection: dispatch_actuator_selection(node_sizing: Unsized),
                 ),
               }
             BeltAttemptPanesRefused { reason } =>
@@ -3558,6 +3594,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: [],
                   pane_observation_refusal: reason,
+                  selection: dispatch_actuator_selection(node_sizing: Unsized),
                 ),
               }
           }
@@ -4246,11 +4283,34 @@ fn belt_workflow_progress_for_attempt_ref(
 // decision in gunbc.roadmap.roadmap_belt_commit, and only on CommitNeeded stages everything and
 // commits with the decided message. Every refusal is typed and carried into the tick receipt as
 // commit_pass; verify is made data-dependent on these outcomes so it observes the committed head.
+// AN ATTEMPT WITH NO KEY NAMES NO WORKTREE, AND THAT IS NOT A COMMIT THAT FAILED.
+//
+// dispatch_worktree_path_for_instance joins node_id, "-a" and the attempt key unconditionally, so an
+// EMPTY key addresses `<root>/<node>-a` -- a path that cannot exist, because a keyed attempt's
+// directory ends in the key and a keyless one (this host still carries seven from July, before the
+// key convention) is just `<root>/<node>`. `git status` in a directory that is not there exits
+// nonzero, that became CommitFailed, and one CommitFailed fails the whole pass. Measured on srv1:
+// commit_pass failed on EVERY tick, verify then deferred for "no attempt is ready", and the roadmap
+// moved nothing for eighteen hours while every stage reported honestly about a subject none of them
+// could reach.
+//
+// THE FAILURE WAS NEVER IN THE COMMIT. Nothing was wrong with those worktrees and no git operation
+// was refused; the pass computed an address for an attempt that has none. Reporting that as
+// CommitFailed is the not-applicable-rendered-as-malformed conflation DESIGN names: one symbol over
+// "this commit was refused" and "this attempt could not be addressed", which have different owners
+// and different repairs.
+//
+// IT IS COUNTED AND IT DOES NOT HALT ITS SIBLINGS. A keyless attempt is a real defect in whatever
+// wrote it, so it is not silently skipped -- it gets its own arm and its own count. But it must not
+// fail the pass, because that is the absorbing arm: one unaddressable legacy row blocking every
+// other attempt forever is strictly worse than the row itself, and it is what kept the pipeline
+// severed. Typed, located, counted, siblings continue.
 type BeltCommitOutcome
   = CommitRecorded { node_id: String, message: String }
   | CommitSkipped { node_id: String, reason: String }
   | CommitFailed { node_id: String, detail: String }
   | CommitDeferred { node_id: String, reason: String }
+  | CommitSubjectUnaddressable { node_id: String, reason: String }
 
 fn belt_commit_git(instance: HostDashboardInstance, worktree: String, args: List<String>) -> BeltExecOutcome {
   belt_exec(
@@ -4279,6 +4339,12 @@ fn belt_commit_attempt_for_instance(
   progress: WorkflowAttemptProgress,
 ) -> BeltCommitOutcome {
   let node_id = progress.node_id
+  if trim(s: progress.attempt_key) == "" {
+    CommitSubjectUnaddressable {
+      node_id: node_id,
+      reason: "the attempt carries no key, so no dispatch worktree path names it: the path is built as <root>/<node>-a<key> and an empty key addresses <root>/<node>-a, which cannot exist",
+    }
+  } else {
   let worktree = dispatch_worktree_path_for_instance(
     instance: instance,
     node_id: node_id,
@@ -4309,6 +4375,7 @@ fn belt_commit_attempt_for_instance(
           }
       }
   }
+  }
 }
 
 fn belt_commit_outcome_json_value(o: BeltCommitOutcome) -> JsonValue {
@@ -4321,6 +4388,8 @@ fn belt_commit_outcome_json_value(o: BeltCommitOutcome) -> JsonValue {
       json_object(members: [json_kv(key: "outcome", value: json_string(s: "failed")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
     CommitDeferred { node_id, reason } =>
       json_object(members: [json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
+    CommitSubjectUnaddressable { node_id, reason } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "subject-unaddressable")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
   }
 }
 
@@ -4349,6 +4418,7 @@ fn belt_commit_outcome_is_failure(o: BeltCommitOutcome) -> Bool {
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => true
     CommitDeferred { node_id: _, reason: _ } => false
+    CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   }
 }
 
@@ -4358,6 +4428,7 @@ fn belt_commit_outcome_is_recorded(o: BeltCommitOutcome) -> Bool {
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => false
     CommitDeferred { node_id: _, reason: _ } => false
+    CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   }
 }
 
@@ -4367,6 +4438,7 @@ fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassO
     CommitRecorded { node_id: _, message: _ } => false
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => false
+    CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   })
   if count(ledger_refusals) > 0 {
     match ledger_refusals.first() {
@@ -5495,7 +5567,10 @@ fn belt_stop_node_for_instance(
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     Observed { live } => {
-      match dispatch_tmux_session_scope(node_id: node_id) {
+      match dispatch_tmux_session_scope(
+        node_id: node_id,
+        selection: dispatch_actuator_selection(node_sizing: Unsized),
+      ) {
         Absent =>
           StopRefusedResult {
             node_id: node_id,
@@ -6274,7 +6349,7 @@ data belt_dispatch_path_prefix: String = "/dispatch/"
 // standing refuses production re-query.
 fn belt_dispatch_provider_label() -> String {
   match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
       dispatch_provider_label(provider: provider)
     DispatchActuatorSelectionRefused { reason } =>
       concat("selection-refused: ", reason as String)

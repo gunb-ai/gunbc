@@ -936,6 +936,12 @@ fn preamble_step_command(step: PipelineStep) -> String {
   }
 }
 
+// THE GUARD IS ASSERTED BY SHAPE, NOT BY ITS QUOTING. This previously pinned the exact string
+// "id -u gunbc-publication >/dev/null 2>&1 || ", which encoded the hand-spelled unquoted
+// authorship this caller used to carry. The precondition now renders through the same quoting
+// authority as the operation it guards (gunbc.executor_privileged_operation), so the login arrives
+// single-quoted -- equivalent shell, one fewer place that decides quoting. What the witness owes is
+// that the check runs and short-circuits the useradd, which is what it now asserts.
 test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_account() -> Bool {
   let spec = deployment_spec_srv1()
   let ensure = deploy_publication_principal_ensure_command(spec: spec)
@@ -943,7 +949,9 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
     DeployAccessReady { access } => deploy_apply_preamble_steps(access: access, spec: spec)
     DeployAccessJobPrincipalRefused { refusal: _ } => []
   }
-  string_contains(s: ensure, pattern: "id -u gunbc-publication >/dev/null 2>&1 || ")
+  string_contains(s: ensure, pattern: "gunbc-publication")
+    && string_contains(s: ensure, pattern: ">/dev/null 2>&1 || ")
+    && string_contains(s: ensure, pattern: "id")
     && string_contains(s: ensure, pattern: "useradd")
     && string_contains(s: ensure, pattern: "--system")
     && string_contains(s: ensure, pattern: "--no-create-home")
@@ -1021,6 +1029,30 @@ fn owned_step_index(steps: List<DeploymentStep>, kind: OwnedArtifactKind) -> Int
 type StepScan {
   at: Int
   found: Int
+}
+
+// THE PUBLICATION MEMBER EMITS THE CONVERGENCE ONESHOT AND NOTHING ELSE, which is the actuator half
+// of the fresh-host path. The other half lives in member_identity_witness_test: an absent tree is
+// decided as a Create and its plan publishes. Composed, those two say a fresh host reaches the
+// bootstrap -- and each half is discriminating on its own, which a single end-to-end assertion over
+// a full-install plan would not be, because a wholesale install emits the same line for every reason.
+//
+// THE `rsync` ARM IS THE ONE THAT WOULD HAVE CAUGHT #10724 REGRESSING. Before that change this
+// fragment wrote the rsync tree-sync unit, restarted it, and only then wrote the convergence unit to
+// the same path -- two programs under one unit name. If that route ever returns, this reds.
+//
+// IT DOES NOT ASSERT THE UNIT NAME IS GONE, and the first draft of this witness wrongly did. The
+// convergence unit is still WRITTEN TO the tree-sync path: `gunbc-tree-sync.service` appears in this
+// fragment as a destination, which is the section 3 nickname #10724 declared as residue rather than
+// repaired. Renaming a live systemd unit is a member-lifecycle migration -- the old unit must be
+// stopped and removed on the host -- so the name outlives the program by design for now. Asserting
+// its absence would be asserting the migration happened.
+test fn the_publication_member_emits_convergence_and_no_rsync() -> Bool {
+  let spec = deployment_spec_srv1()
+  let fragment = member_fragment_text(member: TreePublication, plan: deploy_witness_full_install_plan(spec: spec))
+  string_contains(s: fragment, pattern: "--function repository_converge_srv1_owner_wet")
+    && string_contains(s: fragment, pattern: "repository_convergence_readback_wet")
+    && !string_contains(s: fragment, pattern: "rsync")
 }
 
 test fn a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release() -> Bool {
