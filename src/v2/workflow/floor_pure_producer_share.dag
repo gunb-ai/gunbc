@@ -230,10 +230,44 @@ import v2.std.collection { List }
 // census (the demand concentration), plus this run's `[floor-shared-fill]` ledger, which must now
 // show the fill landing at preparation with disposition=Stored and the twelve former fillers
 // serving hits.
+// THE THREE INGESTED-FIXTURE PIPELINE ROWS BELOW EARN THEIR PLACE ON THE v2-self-host BRANCH'S
+// OWN FLOOR RECEIPT, not on inference. That run refused five changed witnesses over the per-claim
+// ceiling at one head: v2.test.long.emit_host_classical_not_ingested_equals_eval's
+// canonical/staging/staging-swapped emit claims (FAIL rows naming marginal_cpu_ns 488209894 and
+// 473955219 against limit_ms=500 — each dying when a 13-29ms in-flight fill of the rostered
+// target_project_arrow_body_to_value_expression crossed the line — plus the canonical claim
+// INTERRUPTED-BEFORE-VERDICT at cpu_at_least=501ms) and
+// v2.test.long.emit_host_native_only_verdict's two produced_module claims (505ms
+// COMPLETED-OVER-COST-REQUIREMENT, 542ms INTERRUPTED). The recompute instrument is claim_batch's
+// gross [witness] receipt over the two entry files: every emit claim in the classical_not family
+// re-runs tokenize→parse→normalize→resolve→find-arrow over one of two module-constant sources
+// (~370-420ms of each ~475-510ms claim, with every pipeline claim in that file funneling through
+// one of the two constants), and produced_add_module_source is ~382ms of each ~476-505ms
+// produced_module claim. The sharing census is the call-site graph itself: the two classical_not
+// arrows feed every tree producer in their file, and produced_add_module_source feeds the
+// equals_eval pair and the native_only pair. Serve-below-recompute is the header's zero-walk
+// capability rather than a new measurement: the values are a resolved-module Node tree and a
+// Medium<String>, both small and fully portable (no Closure/OriginBoundNode at any depth — the
+// InferredTree one stage up carries the facts PartialFunction and is deliberately NOT the share
+// point), so a serve is an Rc hand-over against a ~370-382ms recompute. Re-derive rather than
+// trust: claim_batch --entry <either test file> [witness] lines for the recompute side, and this
+// run's [floor-shared-fill] ledger, which must show the three fills landing at preparation with
+// disposition=Stored and the five former over-budget claims serving hits.
+//
+// WARM, NEVER CLAIM-FORCED, BY THE CEILING ARITHMETIC. A claim-forced fill happens inside the
+// first touching claim's fold; a ~370-382ms fill leaves under 130ms of headroom on this lane's
+// own measurement, and the lane's runner crossed the ceiling on the meet/join arms at 545/550ms
+// for work this host performs in ~400ms (run 34290525720's COMPLETED-OVER-COST rows) — so an
+// in-fold fill of this size dies mid-flight on the lane exactly as prepare_grammar's did (the
+// dag_prepared_grammar row above). All three producers are nullary, so preparation forces them
+// outside every per-claim budget, and every claiming claim serves the landed fill.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
-  "v2.compiler.program_assembly.dag_prepared_grammar"
+  "v2.compiler.program_assembly.dag_prepared_grammar",
+  "v2.test.long.emit_host_produced_module_equals_eval.produced_add_module_source",
+  "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
+  "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
