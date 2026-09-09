@@ -2,7 +2,6 @@ module test.claim.spark_snapshot_verify_wrapper_local_wet
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
-import std.algebra { string_contains }
 import std.resources { Network }
 import extdeps.exec.command { LocalExec }
 import extdeps.posix.sh_invocation { posix_sh_program_command }

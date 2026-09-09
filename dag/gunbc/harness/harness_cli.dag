@@ -27,7 +27,6 @@ import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, rev
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window, harness_serving_unit }
-import gunbc.harness.harness_backend { HarnessBackendUrl, BackendUrlBound, BackendUrlRefused, harness_serving_backend_url }
 import gunbc.harness.harness_seat {
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat,
