@@ -12,7 +12,7 @@ import std.algebra {
   FreeMonoid,
   FreeSemigroup
 }
-import v2.std.text { string_replace }
+import v2.std.text { String, string_replace }
 import v2.std.algebra {
   Equal,
   Greater,
@@ -579,8 +579,8 @@ fn produced_decl_render_from_rows(
 // decomposes into this four-arm spelling algebra. Escapes apply in list order (a backslash rule
 // must precede the rules that introduce backslashes).
 type EmitSpellingEscape {
-  from: String
-  to: String
+  from: v2.std.text.String
+  to: v2.std.text.String
 }
 
 type TokenClassEmitTransform
@@ -862,9 +862,9 @@ fn target_lex_rule_literal_step(
           if c == token_class {
             match pattern {
               LiteralPattern { text: text } =>
-                Accepted { value: text, diagnostics: None }
+                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
               KeywordPattern { text: text } =>
-                Accepted { value: text, diagnostics: None }
+                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
               _ =>
                 Rejected {
                   diagnostics: diagnostics_singleton(
@@ -938,7 +938,7 @@ fn render_target_text(t: TargetText) -> String {
 }
 
 fn target_text_is_empty(t: TargetText) -> Bool {
-  is_empty(xs: t.source)
+  is_empty(xs: chars(s: t.source))
 }
 
 fn bound_tokens_source_text(
@@ -991,7 +991,7 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
 // shape declares `from` itself as FreeSemigroup<Char> so the empty row is unwritable; the climb
 // trigger is char-level literal sugar in the .dag realization, without which producers cannot
 // author the nonempty carrier from an escape row's quoted spelling.
-fn apply_emit_spelling_escapes(spelling: String, escapes: List<EmitSpellingEscape>) -> String {
+fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitSpellingEscape>) -> v2.std.text.String {
   fold_list(
     xs: escapes,
     empty: spelling,
@@ -1013,8 +1013,10 @@ fn apply_emit_spelling_transform(
     EmitSpellingIdentity => spelling
     EmitSpellingConstant { value: v } => v
     EmitSpellingWrap { prefix: p, suffix: s } => concat(p, concat(spelling, s))
-    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } =>
-      concat(p, concat(o, concat(apply_emit_spelling_escapes(spelling: spelling, escapes: es), c)))
+    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } => {
+      let escaped = apply_emit_spelling_escapes(spelling: chars(s: spelling), escapes: es)
+      concat(p, concat(o, concat(chars_to_string(chars: escaped, start: 0, end: length(xs: escaped)), c)))
+    }
   }
 }
 
@@ -1605,6 +1607,89 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
         ],
         occurrence_id: OccurrenceSynthetic
       }
+  }
+}
+
+// THE DECLARED CANONICAL-OPERATION ROSTER, AS A NODE. Every CanonicalOperation this authority
+// declares, rendered by target_model_canonical_operation_wire_node and gathered under one Conj
+// root. This is the single authority an inference membership rule consults to ground canonical-
+// operation wire atoms by lookup (the same frame as the dag authority's declared-inhabitants
+// roster): the roster root is the evidence, and it is never structurally equal to any member, so
+// the self-evidence wall holds by construction. Adding an operation to this authority means adding
+// its row here -- the roster is closed over exactly the operations declared above.
+
+fn target_model_canonical_operation_roster_edge(
+  name: Symbol,
+  operation: CanonicalOperation
+) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: target_model_canonical_operation_wire_node(operation: operation)
+  }
+}
+
+fn target_model_canonical_operations_roster_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_add,
+        operation: canonical_operation_op_add()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_mul,
+        operation: canonical_operation_op_mul()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_negate,
+        operation: canonical_operation_op_negate()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_and,
+        operation: canonical_operation_op_and()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_or,
+        operation: canonical_operation_op_or()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_not,
+        operation: canonical_operation_op_not()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_sub,
+        operation: canonical_operation_op_sub()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_div,
+        operation: canonical_operation_op_div()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_lt,
+        operation: canonical_operation_op_lt()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_le,
+        operation: canonical_operation_op_le()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_gt,
+        operation: canonical_operation_op_gt()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_ge,
+        operation: canonical_operation_op_ge()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_eq,
+        operation: canonical_operation_op_eq()
+      ),
+      target_model_canonical_operation_roster_edge(
+        name: ^canonical_operation_roster_member_ne,
+        operation: canonical_operation_op_ne()
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4018,7 +4103,7 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
             kind: TypeNode {
               connective: Atom {
                 identity: symbol_intern_lexeme(
-                  lexeme: list_snoc_item(xs: Empty, item: codepoint)
+                  lexeme: chars_to_string(chars: list_snoc_item(xs: Empty, item: codepoint), start: 0, end: 1)
                 )
               }
             },
@@ -12945,6 +13030,19 @@ fn target_transform_positional_operand_binding(node: Node, index: Int) -> Outcom
 
 fn target_transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   target_transform_positional_operand_binding(node: node, index: 0)
+}
+
+fn target_transform_operator_child(node: Node) -> Outcome<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: child } => outcome_accepted(value: child)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: node
+        )
+      )
+  }
 }
 
 fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Outcome<Node> {

@@ -875,13 +875,15 @@ fn primitive_definition_identity(definition: PrimitiveDefinition) -> PrimitiveId
   definition.identity
 }
 
+// The filter is let-bound, not written in the branch condition: a filter in a condition is an
+// unprojectable construct (the FilterInBranchCondition wall), so the condition reads the bound
+// name.
 fn primitive_duplicate_semantic_definition_violation(
   definitions: List<PrimitiveDefinition>,
   target: PrimitiveIdentity
 ) -> PrimitiveJoinViolation? {
-  if count(
-    definitions |> filter(fn(d) { primitive_identity_eq(left: d.identity, right: target) })
-  ) > 1 {
+  let matches = definitions |> filter(fn(d) { primitive_identity_eq(left: d.identity, right: target) })
+  if count(matches) > 1 {
     Present { value: DuplicateSemanticDefinition { identity: target } }
   } else {
     none

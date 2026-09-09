@@ -1936,7 +1936,221 @@ fn receipt_1_eced9d24_receipt() -> CompilePhaseFrontierReceipt {
   )
 }
 
+// Receipt 2 was produced by the same one-entry instrument (tools.emission_entry_instrument
+// measure_entry_emission) in a local invocation over the branch tree at 66765317ec, the tip of the
+// XL-N String-carrier lane. TWO things change at this receipt and they are recorded separately
+// because the design requires it.
+//
+// THE EPOCH CHANGES, AND THE CAUSE IS THE INSTRUMENT, NOT THE TOOLCHAIN. The measured
+// `cargo check` now PINS the host triple on the invocation (tools.emission_entry_instrument
+// measure_cargo_half, found by review on gunbc#9857), where both prior receipts recorded
+// TargetDefaultedToHost. comparison_inputs_same therefore answers false against receipt_1 even
+// though cargo, rustc, the triple, the profile and the classification policy are all unchanged,
+// and the series fold admits the transition only with a reclassified predecessor. The
+// reclassification is the IDENTITY MAP on receipt_1's board: nothing about the pinning changes
+// which diagnostics rustc emits for an identical closure on an identical triple, so receipt_1's
+// raw population classified under this epoch is receipt_1's board unchanged. That claim is
+// checkable: the live gate's comparability probe reads the same five fields.
+//
+// THE POPULATION MOVES 155 -> 15. The 140-identity net reduction is credited to two landed lanes,
+// measured at each step: the emitter's qualified-alias peel in field position (60cbd7b697, 72 ->
+// 28 on this closure) and the twelve-error source cluster on top of it (66765317ec, 28 -> 15):
+// integer.dag's decimal-digits boundary converts at ingress, 01_tokenize.dag converts structural
+// lexemes to the host carrier at Token/UnboundSourceAnnotation construction, target_model.dag's
+// EmitSpellingEscape carrier went structural with host/structural conversion at the
+// EmitSpellingQuote boundary (bash.dag's escape rows follow), and three bare Violates
+// constructions route through v2.std.witness's witness_violates so the emitter reads the carrier
+// from a Witness-headed position. Nine of the thirteen added identities are hop relocations --
+// the same (file, code, message) key at a new line:column after those edits -- admitted by the
+// hop index, not by disposition. The remaining four sit in v2_extdeps_languages_python.rs and
+// v2_extdeps_languages_typescript.rs, files with NO receipt_1 identities: both modules entered the
+// emitted closure only after receipt_1's tree (the v2.compiler.compile import closure walks to
+// 158 resolved modules at eced9d24c599 and 164 at 66765317ec, python and typescript absent at the
+// former and present at the latter), which is exactly what ExposedByNewEmittedModule admits.
+data receipt_2_66765317_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
+  producer: "rustfmt --emit stdout --edition 2021",
+  files_observed: 171,
+  refused_files: []
+}
+
+data receipt_2_66765317_raw_error_diagnostic_identities: List<String> = [
+  "src/v2_std_compilers_lexing.rs:168:11	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs:234:44	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:254:75	E0599	no method named `concat` found for struct `std::string::String` in the current scope",
+  "src/v2_std_compilers_target_model.rs:618:12	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:622:12	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:707:37	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:2629:43	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:536:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:545:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_python.rs:328:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_python.rs:967:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_typescript.rs:177:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_typescript.rs:1597:11	E0308	mismatched types",
+  "src/v2_compiler_parse.rs:529:143	E0282	type annotations needed",
+  "src/v2_compiler_parse.rs:836:59	E0308	mismatched types"
+]
+
+data receipt_2_66765317_phase_board_fold: PersistedPhaseBoardFold = phase_board_from_census_identities(
+  parse_observation: receipt_2_66765317_parse_observation,
+  raw_identities: receipt_2_66765317_raw_error_diagnostic_identities
+)
+
+fn receipt_2_66765317_receipt() -> CompilePhaseFrontierReceipt {
+  let receipt_1 = receipt_1_eced9d24_receipt()
+  seal_compile_phase_receipt(
+    sequence: 2,
+    observed_at: "2026-09-07T17:16:45Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "66765317ec3c33c5f948853abfe04bff57f535b5" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "739dc39ded5f4edd99d7849402b54c4fa3fa8465" } }),
+      emitted_artifact_identity: sha256_digest(hex: "484963a7eb74b5d96fe622cdfd1b89684314d06443547e20e1fe7374e93df763" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "db954404133bb15dc2295821f9248901098c9529307004d0d0277bb3ddeeac32" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "bb7f3c7684a9288c0401e4d7d63cefcd644d0f02e80330c021b6f53c4e1009a6" as NonEmptyStr),
+      cargo_identity: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
+      rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
+      invocation: CompilePhaseInvocation {
+        target: "x86_64-unknown-linux-gnu",
+        target_selection: TargetPinnedOnInvocation,
+        profile: "check/dev",
+        features: []
+      },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "rustc-1.93.0-x86_64-pinned-check-dev-rustc-error-index-1.93.0" as NonEmptyStr
+    },
+    invocation: "local-105b239b-7518-43d7-b526-a5e2ee0b610b" as NonEmptyStr,
+    position: PhaseBoardSuccessor { predecessor_invocation: "buildbuddy-44d90e35-ccba-41d1-9a90-928a914b26a2" as NonEmptyStr },
+    previous_prefix_digest: Present { value: receipt_1.prefix_digest },
+    parse_evidence: ParseReached { evidence: receipt_2_66765317_parse_observation },
+    board: receipt_2_66765317_phase_board_fold.board,
+    raw_error_diagnostic_identities: receipt_2_66765317_raw_error_diagnostic_identities,
+    unplaced_identities: receipt_2_66765317_phase_board_fold.unplaced_identities,
+    newly_exposed: [
+      NewlyExposedDiagnostic {
+        identity: "src/v2_extdeps_languages_python.rs:328:13	E0308	mismatched types",
+        cause: ExposedByNewEmittedModule { module: "src/v2_extdeps_languages_python.rs" }
+      },
+      NewlyExposedDiagnostic {
+        identity: "src/v2_extdeps_languages_python.rs:967:11	E0308	mismatched types",
+        cause: ExposedByNewEmittedModule { module: "src/v2_extdeps_languages_python.rs" }
+      },
+      NewlyExposedDiagnostic {
+        identity: "src/v2_extdeps_languages_typescript.rs:177:13	E0308	mismatched types",
+        cause: ExposedByNewEmittedModule { module: "src/v2_extdeps_languages_typescript.rs" }
+      },
+      NewlyExposedDiagnostic {
+        identity: "src/v2_extdeps_languages_typescript.rs:1597:11	E0308	mismatched types",
+        cause: ExposedByNewEmittedModule { module: "src/v2_extdeps_languages_typescript.rs" }
+      }
+    ],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: Present { value: receipt_1.board },
+    producer: PhaseBoardProducer {
+      module_path: "tools.emission_entry_instrument",
+      function: "measure_entry_emission",
+      entry: "src/v2/compiler/00_compile.dag"
+    }
+  )
+}
+
+// Receipt 3 was produced by the same one-entry instrument in a local invocation over the branch
+// tree at 5ee4892b70, three commits past receipt_2's subject, and it records the XL-N lane's
+// arrival: THE EMITTED CLOSURE'S CARGO CENSUS IS EMPTY. cargo check --lib on the 172-file emitted
+// crate reports zero error diagnostics (coded and codeless), so the board attributes every phase
+// a PhaseCount of zero and furthest_phase_reached stands at Borrowck. The fifteen removals against
+// receipt_2 need no disposition -- the ratchet admits a shrinking population -- and nothing was
+// added, so newly_exposed is empty and no epoch machinery is in play.
+//
+// THE EPOCH DOES NOT CHANGE, AND THE INSTRUMENT CHANGE UNDER THIS RECEIPT IS WHY THAT CLAIM IS
+// CHECKABLE. The cargo half now copies the repo's rust-toolchain.toml into the scratch crate
+// before invoking cargo (tools.emission_entry_instrument measure_cargo_half), so the measured
+// channel is pinned by construction rather than by host default. Every recorded comparison field
+// is nevertheless IDENTICAL to receipt_2 -- cargo 1.93.0, rustc 1.93.0, the pinned triple, the
+// check/dev profile, the classification policy digest -- because receipt_2's census was already
+// compiled by that toolchain (the run's target-dir rustc fingerprint records 1.93.0), and the pin
+// removes the host-default resolution path that a later run fell through to. comparison_inputs_same
+// therefore answers true against receipt_2, and the same-epoch arm forbids a reclassified
+// predecessor, so none is carried.
+//
+// THE THREE LANDED REPAIRS, each measured before this receipt was taken. The emitter's
+// substituted-declaration provenance guard (b21d3282cf) routes a Conj/Disj type-argument node --
+// inference substitutes the resolved declaration into a data annotation's type-argument position --
+// to its own-span provenance, so BooleanAlgebra<v2.std.logic.Bool> renders the structural enum
+// instead of the kernel bool that the referencing scope's #9813 shadowing answers for the bare
+// leaf; that cleared the python.rs:328 / typescript.rs:177 pair. The source-side carrier batch
+// (285b02eed2) converts at the construction boundaries the receipt_2 census named: lex-pattern
+// text goes structural at construction in lexing.dag and the three language modules, the bool
+// groundings qualify their annotation, target_model returns the host carrier out of
+// target_lex_rule_literal_step and converts at its two other boundaries, qualified_name.dag and
+// 02_parse.dag move their two-character lookahead and emptiness checks onto host-carrier
+// operations, and row_key's concat pipeline becomes nested calls so the lowering no longer emits a
+// method that does not exist. The channel pin (5ee4892b70) is the instrument repair above.
+//
+// ONE HONESTY NOTE ON THE ARTIFACT IDENTITY. This receipt's emitted_artifact_identity differs from
+// the pre-commit validation run's over the SAME bytes-by-value closure: the known import-set
+// ordering class (src/v1/05_emit_rust.dag's rostered annotation -- pure `pub use` reordering,
+// normalized-identical after rustfmt) makes the raw emitted bytes run-dependent, and this
+// instrument digests the raw bytes. The census the ratchet compares is order-independent and
+// unaffected; the identity is recorded as this run's observation, not a reproducibility claim.
+data receipt_3_5ee4892b_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
+  producer: "rustfmt --emit stdout --edition 2021",
+  files_observed: 171,
+  refused_files: []
+}
+
+data receipt_3_5ee4892b_raw_error_diagnostic_identities: List<String> = [
+]
+
+data receipt_3_5ee4892b_phase_board_fold: PersistedPhaseBoardFold = phase_board_from_census_identities(
+  parse_observation: receipt_3_5ee4892b_parse_observation,
+  raw_identities: receipt_3_5ee4892b_raw_error_diagnostic_identities
+)
+
+fn receipt_3_5ee4892b_receipt() -> CompilePhaseFrontierReceipt {
+  let receipt_2 = receipt_2_66765317_receipt()
+  seal_compile_phase_receipt(
+    sequence: 3,
+    observed_at: "2026-09-07T23:07:19Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "5ee4892b709bd42fc9ba6a067cecf888ed2673f1" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "07eee038259e268e1a543edddb9d3f105e2d11cf" } }),
+      emitted_artifact_identity: sha256_digest(hex: "83d95342004c0aa5954eaf46bf9c1cf5112473de5d38fce98d33ad2f889b6e11" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "a31526e509283dc2235f470bc737f0906cd83baa2fd18fa603f0d3c573249a0b" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "bb7f3c7684a9288c0401e4d7d63cefcd644d0f02e80330c021b6f53c4e1009a6" as NonEmptyStr),
+      cargo_identity: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
+      rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
+      invocation: CompilePhaseInvocation {
+        target: "x86_64-unknown-linux-gnu",
+        target_selection: TargetPinnedOnInvocation,
+        profile: "check/dev",
+        features: []
+      },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "rustc-1.93.0-x86_64-pinned-check-dev-rustc-error-index-1.93.0" as NonEmptyStr
+    },
+    invocation: "local-8b8875a1-eac3-47b1-a041-aa04fa22b2dd" as NonEmptyStr,
+    position: PhaseBoardSuccessor { predecessor_invocation: "local-105b239b-7518-43d7-b526-a5e2ee0b610b" as NonEmptyStr },
+    previous_prefix_digest: Present { value: receipt_2.prefix_digest },
+    parse_evidence: ParseReached { evidence: receipt_3_5ee4892b_parse_observation },
+    board: receipt_3_5ee4892b_phase_board_fold.board,
+    raw_error_diagnostic_identities: receipt_3_5ee4892b_raw_error_diagnostic_identities,
+    unplaced_identities: receipt_3_5ee4892b_phase_board_fold.unplaced_identities,
+    newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "tools.emission_entry_instrument",
+      function: "measure_entry_emission",
+      entry: "src/v2/compiler/00_compile.dag"
+    }
+  )
+}
+
 data self_host_compile_phase_frontier_receipts: List<CompilePhaseFrontierReceipt> = [
   genesis_5006ddc6_receipt(),
-  receipt_1_eced9d24_receipt()
+  receipt_1_eced9d24_receipt(),
+  receipt_2_66765317_receipt(),
+  receipt_3_5ee4892b_receipt()
 ]

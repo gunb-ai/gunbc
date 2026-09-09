@@ -22,7 +22,7 @@ import v2.std.optional {
   optional_present,
   optional_prefer_first_present
 }
-import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional, witness_violates }
 
 fn optional_absent_unwrap_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -87,7 +87,7 @@ fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
     xs: xs,
     empty: IndexedLookup {
       index: 0,
-      value: Violates { diagnostic: absent }
+      value: witness_violates(diagnostic: absent)
     },
     cons: fn(acc, item) {
       IndexedLookup {

@@ -4196,6 +4196,10 @@ struct PartitionRebuildActuation {
     package_closure: Vec<String>,
     excluded_packages: Vec<String>,
     decision_line: String,
+    /// The model's ReleaseScopeEmpty arm: every changed mirror is excluded from the release
+    /// build by construction (e.g. a `#[cfg(test)]`-gated module), so the correct package
+    /// closure IS the empty set and the build runs purely as verification of that claim.
+    release_scope_empty: bool,
 }
 
 type ModelValue = crate::v1_interpreter::Value;
@@ -4277,11 +4281,21 @@ fn partition_rebuild_actuation(
         ))
         }
     };
+    let release_scope_empty = match call("stage0_partition_rebuild_release_scope_empty_today")? {
+        ModelValue::Bool(value) => value,
+        other => {
+            return Err(format!(
+                "refusal: stage0_partition_rebuild_release_scope_empty_today returned {} instead of Bool",
+                other.type_label_public()
+            ))
+        }
+    };
     Ok(PartitionRebuildActuation {
         actuatable,
         package_closure,
         excluded_packages,
         decision_line,
+        release_scope_empty,
     })
 }
 
@@ -4295,7 +4309,7 @@ fn partitioned_rebuild_from_installed(
             actuation.decision_line
         ));
     }
-    if actuation.package_closure.is_empty() {
+    if actuation.package_closure.is_empty() && !actuation.release_scope_empty {
         return Err(format!(
             "StageSeedBuildRefused: actuation admitted an empty package closure -- {}",
             actuation.decision_line
@@ -5924,11 +5938,15 @@ pub fn run_regen_round_cost(
         .iter()
         .map(|stage| stage.build_compiled_crates)
         .sum();
+    // The receipt field is named in the model's vocabulary: a "mirror" is the basename the
+    // partition rows and rosters key on. The stages carry projected PATHS, so project through
+    // the single bridge -- feeding paths to the decision model rendered a spurious
+    // MirrorHasNoOwningPackage line on every drifted round's receipt.
     let installed_mirrors = transaction_receipt
         .stages
         .iter()
         .flat_map(|stage| stage.surfaces.iter())
-        .map(|surface| surface.projected_path.clone())
+        .map(|surface| emit_path_basename(&surface.projected_path).to_string())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();

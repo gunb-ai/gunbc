@@ -25,7 +25,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Dissolve-on: re-enroll per-PR when measured under gunbc_ci_fast_lane_witness_eval_budget, or
 // delete as duplicate of a faster mechanism receipt.
 
-test fn inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_underived_holds() -> Bool {
+// FLIPPED 2026-09-07 per DESIGN 4b(4): this was the e2e frontier guard
+// `inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_underived_holds`, asserting the
+// python→typescript compile refused headed by infer_grounding_not_derived while the python inhabitants
+// were on the grounding frontier. The declared-inhabitant membership derivation widening to the closed
+// ingest set (v2.compiler.infer infer_node_declared_in_language_inhabitants) grounded the python and
+// typescript inhabitant fact atoms, so the compile now ACCEPTS and emits the canonical typescript add
+// fn byte-identical to ts_source_text. It stands as the permanent regression control for that
+// acceptance; the python→go member below stays a refusal guard because go is outside the closed ingest
+// set and its inhabitants remain frontier.
+test fn inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds() -> Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -33,9 +42,9 @@ test fn inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_un
         source_model: python_target_model(),
         target_model: ts_target_model()
       ) {
-        Rejected { diagnostics: d } =>
-          d.head.reason == ^infer_grounding_not_derived
-        Accepted { value: _, diagnostics: _ } => false
+        Accepted { value: source, diagnostics: _ } =>
+          source.carried == ts_source_text
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
