@@ -20,8 +20,11 @@ import extdeps.colo.iron_mountain {
 }
 import extdeps.colo.netrality { netrality_401_n_broad_density, netrality_401_n_broad_retail_grain }
 import extdeps.colo.tierpoint {
-  tierpoint_philadelphia_density, tierpoint_lehigh_valley_density,
-  tierpoint_philadelphia_retail_grain, tierpoint_lehigh_valley_retail_grain,
+  tierpoint_philadelphia_density, tierpoint_allentown_density, tierpoint_bethlehem_density,
+  tierpoint_lehigh_valley_density, tierpoint_valley_forge_density,
+  tierpoint_philadelphia_retail_grain, tierpoint_allentown_retail_grain,
+  tierpoint_bethlehem_retail_grain, tierpoint_lehigh_valley_retail_grain,
+  tierpoint_valley_forge_retail_grain,
 }
 import extdeps.colo.h5 { h5_philadelphia_density, h5_philadelphia_retail_grain }
 import extdeps.colo.lightwave_networks { lightwave_philadelphia_density, lightwave_philadelphia_retail_grain }
@@ -35,7 +38,8 @@ import extdeps.colo.three_sixty_five {
 import gunbc.colo_census_coverage {
   RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
   coverage_facility_count,
-  nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley, census_regions,
+  nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley,
+  pa_philadelphia_and_lehigh_valley, census_regions,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -252,7 +256,10 @@ test fn w_philadelphia_has_exactly_one_established_density() -> Bool {
 // answers a number, somebody has divided a building by an assumed cabinet count.
 test fn w_every_other_pennsylvania_density_establishes_nothing() -> Bool {
   established_watts(d: tierpoint_philadelphia_density) == 0 - 1
+    && established_watts(d: tierpoint_allentown_density) == 0 - 1
+    && established_watts(d: tierpoint_bethlehem_density) == 0 - 1
     && established_watts(d: tierpoint_lehigh_valley_density) == 0 - 1
+    && established_watts(d: tierpoint_valley_forge_density) == 0 - 1
     && established_watts(d: h5_philadelphia_density) == 0 - 1
     && established_watts(d: databank_phl1_density) == 0 - 1
     && established_watts(d: lightwave_philadelphia_density) == 0 - 1
@@ -279,7 +286,10 @@ test fn w_unread_pennsylvania_densities_have_no_ceiling() -> Bool {
 test fn w_pennsylvania_grain_is_independent_of_density() -> Bool {
   grain_admits_single_cabinet(g: netrality_401_n_broad_retail_grain)
     && grain_admits_single_cabinet(g: tierpoint_philadelphia_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_allentown_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_bethlehem_retail_grain)
     && grain_admits_single_cabinet(g: tierpoint_lehigh_valley_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_valley_forge_retail_grain)
     && grain_admits_single_cabinet(g: h5_philadelphia_retail_grain)
     && established_watts(d: tierpoint_philadelphia_density) == 0 - 1
     && !grain_admits_single_cabinet(g: databank_phl1_retail_grain)
@@ -287,4 +297,14 @@ test fn w_pennsylvania_grain_is_independent_of_density() -> Bool {
     && !grain_admits_single_cabinet(g: flexential_allentown_retail_grain)
     && !grain_admits_single_cabinet(g: five_9s_allentown_retail_grain)
     && !grain_admits_single_cabinet(g: three_sixty_five_philadelphia_retail_grain)
+}
+
+// THE REGION'S OWN COVERAGE RECEIPT, FOLDED. Review 62827 found the Pennsylvania survey landing in
+// extdeps with no row in the observing layer, which is the case this coverage module exists to
+// prevent: a region somebody surveyed rendering identically to one nobody has opened. This is the
+// count relation, not the count - the literal it carries is a hand-authored number a witness
+// cannot re-derive, and a test repeating it would prove only that the file was not edited.
+test fn w_the_pennsylvania_survey_is_a_recorded_measurement() -> Bool {
+  facility_count_or_sentinel(c: pa_philadelphia_and_lehigh_valley) > 0
+    && density_reads_never_exceed_facilities(c: pa_philadelphia_and_lehigh_valley)
 }
