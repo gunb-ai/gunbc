@@ -10,7 +10,7 @@ import v2.extdeps.languages.python {
   python_emitted_add_fn_node,
   python_target_model
 }
-import v2.extdeps.languages.typescript { ts_target_model }
+import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 import v2.extdeps.languages.rust {
@@ -393,7 +393,17 @@ fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
   }
 }
 
-test fn cross_language_compile_refuses_canonical_underived_holds() -> Bool {
+// FLIPPED 2026-09-07 per DESIGN 4b(4). This was the pipeline-level frontier guard
+// `cross_language_compile_refuses_canonical_underived_holds`, asserting the python→typescript
+// compile refused headed by `infer_grounding_not_derived` while the python inhabitants sat on the
+// grounding frontier — the control the add-slice stall cited as confirming the refusal persisted.
+// The declared-inhabitant membership derivation widening to the closed ingest set
+// (v2.compiler.infer infer_node_declared_in_language_inhabitants) grounded the python and
+// typescript inhabitant fact atoms, so the compile now ACCEPTS and emits the canonical typescript
+// add fn byte-identical to `ts_source_text` — verified by execution. It stands as the permanent
+// regression control for that acceptance; the translate-level grounding-gate refusal class stays
+// covered by the synthetic underived controls in this file.
+test fn cross_language_compile_python_to_typescript_round_trip_holds() -> Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: parse_tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -401,9 +411,9 @@ test fn cross_language_compile_refuses_canonical_underived_holds() -> Bool {
         source_model: python_target_model(),
         target_model: ts_target_model()
       ) {
-        Rejected { diagnostics: d } =>
-          translate_refused_canonical_grounding(d: d)
-        Accepted { value: _, diagnostics: _ } => false
+        Accepted { value: source, diagnostics: _ } =>
+          source.carried == ts_source_text
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }

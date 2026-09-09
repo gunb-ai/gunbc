@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.healed_head_leaves_its_own_required_check_unsatisfied
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data healed_head_leaves_its_own_required_check_unsatisfied: RecurringFailureMode = RecurringFailureMode {
+  identity: "healed_head_leaves_its_own_required_check_unsatisfied" as NonEmptyStr,
+
+  receipts: [
+    "Invalid state: the head that satisfies the generated-artifact gate is the one head on which that gate's job does not run, so a pull request sits at BLOCKED with every executed check green and nothing left for its author to do. ",
+
+    "Harm: the lane reads four green jobs and a MERGEABLE mergeable flag and concludes it is ready, then waits on a merge that cannot happen. The waiting is unbounded, because the condition that would clear it is another commit, and the lane has no reason to author one. ",
+
+    "RUNG FOUND AT: 1, mitigatable. The remedy today is knowing to push a further commit, which is a fact about a person rather than a property of the mechanism. ",
+
+    "THE MECHANISM, AND IT IS NOT A BUG IN heal. heal-generated-artifacts regenerates a drifted projection and pushes the healed commit. On that commit the job SKIPS -- correctly, because re-healing its own output is how a loop starts. But the check is required, and a skipped required check is not a satisfied one: GitHub reports the combined status as pending with zero contexts while every other job on the head has already concluded success. So the apparatus is not lying and no job is wrong; the green a reader sees is real and it is not the thing the merge gate is waiting for. ",
+
+    "RECEIPT, gunbc#10757 (2026-09-09), two heads on one branch, differing only in who authored them. On `f3f1f50ba` -- authored by the lane -- heal RAN, concluded success, and the pull request read CLEAN. On `2bc7918a31` -- heal's own auto-heal commit on top of it -- heal SKIPPED, the three other jobs concluded success, `witnesses` concluded success, and the pull request read BLOCKED with mergeable=MERGEABLE. The combined-status endpoint on that head reports state=pending with zero statuses. Nothing regressed between the two heads; the second is strictly the projection the first was missing. ",
+
+    "RECOGNITION RULE: when a pull request reads BLOCKED with mergeable MERGEABLE and every check-run on the head concluded success or skipped, read the SKIPPED ones before re-running anything. A skipped required check is the shape that produces this state, and re-running a run whose jobs all concluded costs a full cycle and changes nothing. Do not read the aggregate `witnesses` success as covering it -- that job answers whether the lanes it reads passed, not whether every required context on the head is satisfied. ",
+
+    "CEILING: 3, structurally guaranteed. Whether a head is a heal head is derivable at the moment heal pushes it, so a mechanism that dispatched revalidation on the healed head in a form that SATISFIES the required context -- rather than skipping it -- would make this state unreachable rather than merely recognisable. NEXT-RUNG TRIGGER, a capability: the healed head's revalidation satisfies every required context it does not re-run, so a lane's readiness is decidable from the head alone. ",
+
+    "WHAT IS NOT CLAIMED: this row repairs nothing and no lane is at fault in the receipt above. It is filed because the state is indistinguishable from a lane's own mistake -- a green branch that will not merge reads as something the author did wrong -- and a class that looks like author error is the one that gets rediscovered rather than fixed. ",
+  ],
+
+  evidence: [],
+}

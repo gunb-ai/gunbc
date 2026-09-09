@@ -12,15 +12,30 @@ import extdeps.colo.coresite { coresite_ny2, coresite_ny3, coresite_secaucus_den
 import extdeps.colo.colocation_america { colocation_america_njdc2_secaucus, colocation_america_cabinet_density }
 import extdeps.colo.centersquare { centersquare_weehawken, centersquare_ewr5_secaucus, centersquare_cabinet_density }
 import extdeps.colo.digital_realty { digital_realty_ewr10, digital_realty_cabinet_density }
-import extdeps.colo.three_sixty_five { three_sixty_five_carlstadt, three_sixty_five_weehawken, three_sixty_five_cabinet_density }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_carlstadt, three_sixty_five_weehawken, three_sixty_five_cabinet_density,
+  three_sixty_five_philadelphia, three_sixty_five_philadelphia_density,
+  three_sixty_five_philadelphia_university_city, three_sixty_five_philadelphia_university_city_density,
+}
 import extdeps.colo.dataverge { dataverge_jersey_city, dataverge_cabinet_density }
 import extdeps.colo.evocative { evocative_ewr1, evocative_ewr1_density }
 import extdeps.colo.summit { summit_secaucus, summit_secaucus_density }
-import extdeps.colo.h5 { h5_secaucus, h5_secaucus_density }
+import extdeps.colo.h5 { h5_secaucus, h5_secaucus_density, h5_philadelphia, h5_philadelphia_density }
 import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_density }
 import extdeps.colo.interserver { interserver_secaucus, interserver_teb4_secaucus, interserver_cabinet_density }
 import extdeps.colo.halsey_165 { halsey_165_newark, halsey_165_cabinet_density }
-import extdeps.colo.databank { databank_ewr1_newark, databank_ewr1_density }
+import extdeps.colo.databank { databank_ewr1_newark, databank_ewr1_density, databank_phl1_philadelphia, databank_phl1_density }
+import extdeps.colo.tierpoint {
+  tierpoint_philadelphia, tierpoint_philadelphia_density,
+  tierpoint_allentown, tierpoint_allentown_density,
+  tierpoint_bethlehem, tierpoint_bethlehem_density,
+  tierpoint_lehigh_valley, tierpoint_lehigh_valley_density,
+  tierpoint_valley_forge, tierpoint_valley_forge_density,
+}
+import extdeps.colo.lightwave_networks { lightwave_philadelphia, lightwave_philadelphia_density }
+import extdeps.colo.flexential { flexential_philadelphia_collegeville, flexential_philadelphia_collegeville_density }
+import extdeps.colo.five_9s_digital { five_9s_allentown, five_9s_allentown_density }
+import extdeps.colo.netrality { netrality_401_n_broad, netrality_401_n_broad_density }
 import extdeps.colo.lumen { lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken, lumen_cabinet_density }
 import v2.std.optional { Optional, Present, Absent }
 
@@ -395,4 +410,49 @@ data hudson_valley: RegionCoverage = RegionCoverage {
 // typing. Carried as an annotation rather than a String row because no fold reads it: per DESIGN
 // section 4c an ordinary String declaration whose sole purpose is commentary is misplaced or dead
 // data, and // is the explicit quarantine boundary for exactly this.
-data census_regions: List<RegionCoverage> = [nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
+// EASTERN PENNSYLVANIA, SURVEYED 2026-09-08 AND 2026-09-09. Thirteen facilities across Philadelphia
+// and the Lehigh Valley carry a cited density claim and a grain standing, and exactly ONE of the
+// thirteen publishes a per-cabinet figure at all - Netrality's 30 kW at 401 North Broad, the only
+// one in the region and the only one verified verbatim against the page's own bytes. The other
+// twelve publish plant: square footage, raised floor, generator counts, UPS modules, critical IT
+// load. That ratio is the region's finding and it is why the row is here rather than in a pull
+// request body: a reader who sees twelve DensityUnread rows and no receipt cannot tell a surveyed
+// market that publishes nothing from a market nobody has opened.
+//
+// THE COUNTS DISSOLVED ON MERGE, WHICH IS WHAT THE ROW ITSELF ASKED FOR. This region landed with
+// facility_count: 13 and density_read_count: 1 hand-authored, and its own annotation said they
+// "dissolve into the derived counts being folded from the facility and claim rows themselves".
+// FacilitiesModelled now carries the rows, so that is what happened here: the thirteen facilities
+// and thirteen claims below are the region's membership and the counts are folded from them. The
+// membership is not inferred - it is the roster this lane's own witness executes, twelve claims in
+// w_every_other_pennsylvania_density_establishes_nothing plus the one read density in
+// w_philadelphia_has_exactly_one_established_density.
+data pa_philadelphia_and_lehigh_valley: RegionCoverage = RegionCoverage {
+  region_label: "PA Philadelphia and Lehigh Valley",
+  region_code: "PA",
+  outcome: FacilitiesModelled {
+    facilities: [
+      tierpoint_philadelphia, tierpoint_allentown, tierpoint_bethlehem,
+      tierpoint_lehigh_valley, tierpoint_valley_forge,
+      h5_philadelphia, databank_phl1_philadelphia, lightwave_philadelphia,
+      flexential_philadelphia_collegeville, five_9s_allentown,
+      three_sixty_five_philadelphia, three_sixty_five_philadelphia_university_city,
+      netrality_401_n_broad,
+    ],
+    densities: [
+      tierpoint_philadelphia_density, tierpoint_allentown_density, tierpoint_bethlehem_density,
+      tierpoint_lehigh_valley_density, tierpoint_valley_forge_density,
+      h5_philadelphia_density, databank_phl1_density, lightwave_philadelphia_density,
+      flexential_philadelphia_collegeville_density, five_9s_allentown_density,
+      three_sixty_five_philadelphia_density, three_sixty_five_philadelphia_university_city_density,
+      netrality_401_n_broad_density,
+    ],
+  },
+}
+
+data census_regions: List<RegionCoverage> = [
+  nj_hudson_bergen_essex_corridor,
+  southern_new_jersey,
+  hudson_valley,
+  pa_philadelphia_and_lehigh_valley,
+]

@@ -441,15 +441,21 @@ test fn the_persisted_genesis_census_is_fully_attributed_to_its_phases() -> Bool
 }
 
 // The end-to-end claim, asserted on the exact string the ledger projection publishes: the standing
-// the document renders may not say the emitted compiler clears typeck or borrowck while the latest
-// validated receipt's census says otherwise.
-test fn the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed() -> Bool {
+// the document renders must agree with the latest validated receipt's census. This row was born as
+// the frontier-state pin `the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed`,
+// asserting the red state while the census carried typeck errors. Receipt 3's census is EMPTY --
+// the emitted closure's cargo check reports zero error diagnostics, furthest phase borrowck -- so
+// per DESIGN 4b(4) the guard flips to its permanent regression control: the rendered standing must
+// now claim typeck and borrowck passed, and any future receipt whose census re-enters either phase
+// renders "N remaining" here and reds this row.
+test fn the_published_frontier_standing_claims_typeck_and_borrowck_passed() -> Bool {
   match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierValidated { latest: latest } => {
       let rendered = render_phase_board(board: latest.board)
-      !string_contains(s: rendered, pattern: "typeck PASSES")
-        && !string_contains(s: rendered, pattern: "borrowck PASSES")
-        && string_contains(s: rendered, pattern: "borrowck not yet reached")
+      string_contains(s: rendered, pattern: "typeck PASSES")
+        && string_contains(s: rendered, pattern: "borrowck PASSES")
+        && !string_contains(s: rendered, pattern: "not yet reached")
+        && !string_contains(s: rendered, pattern: "remaining")
     }
     standing => false
   }

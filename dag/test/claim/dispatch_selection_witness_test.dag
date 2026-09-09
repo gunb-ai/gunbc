@@ -26,6 +26,11 @@ import gunbc.roadmap_dashboard_instance {
 }
 import gunbc.provider_account { codex_roadmap_account_selection }
 import gunbc.provider_standing {
+  LimitDispatchDrawUnspecified,
+  LimitDispatchDrawAccount,
+  LimitDispatchDrawNativeBucket,
+  LimitDispatchDrawModel,
+  LimitDispatchDrawAutomatic,
   ProviderStandingBundle,
   ProviderAccountLimit,
   ProviderNativeLimitBucket,
@@ -88,6 +93,8 @@ import gunbc.dispatch_selection {
   automatic_codex_behavior_preservation_holds,
   inventory_includes_provider_kind,
   dispatch_codex_default_model,
+  dispatch_claude_default_model,
+  claude_limit_dispatch_draw_for_model,
   dispatch_deep_selection_heuristic_note,
   dispatch_execution_preference_alias_note,
   dispatch_execution_receipt_bar_note,
@@ -635,4 +642,35 @@ test fn dispatch_selection_keystone_holds() -> Bool {
     && witness_exact_override_requires_explicit_provider_arm()
     && witness_automatic_multibucket_native_exhaustion_refuses_join_undetermined()
     && witness_explicit_override_bengalfox_admitted_from_same_inventory()
+}
+
+
+// THE LIMIT DRAW IS A WALL, NOT A NAMED INERTNESS. Under the old string sentinel this fn always
+// returned LimitDispatchDrawModel, keyed on "account-default" -- a draw model that matches no
+// ProviderModelLimit subject_model, so the model-scoped draw was silently inert on every default
+// selection. It is still inert there, but now BY NAME: the default arm returns
+// LimitDispatchDrawAutomatic, which says "there is no pinned model to draw against" instead of
+// claiming a model-scoped draw that cannot match. The pair below is what keeps that honest, and its
+// RED is authorable in both directions -- an edit returning a Model draw for the default arm reds
+// the first, and one collapsing the pinned arm to Automatic reds the second.
+
+test fn w_default_model_draws_automatic_not_a_model_key() -> Bool {
+  match claude_limit_dispatch_draw_for_model(model: dispatch_claude_default_model) {
+    LimitDispatchDrawAutomatic => true
+    LimitDispatchDrawModel { credential: _, model: _ } => false
+    LimitDispatchDrawNativeBucket { credential: _, native_key: _ } => false
+    LimitDispatchDrawAccount { credential: _ } => false
+    LimitDispatchDrawUnspecified => false
+  }
+}
+
+test fn w_pinned_model_draws_on_that_exact_model() -> Bool {
+  let pinned = "witness-pinned-model" as NonEmptyStr
+  match claude_limit_dispatch_draw_for_model(model: ProviderModelPinned { model: pinned }) {
+    LimitDispatchDrawModel { credential: _, model: m } => m == pinned
+    LimitDispatchDrawAutomatic => false
+    LimitDispatchDrawNativeBucket { credential: _, native_key: _ } => false
+    LimitDispatchDrawAccount { credential: _ } => false
+    LimitDispatchDrawUnspecified => false
+  }
 }

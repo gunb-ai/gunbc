@@ -57,7 +57,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v2.std.text { String }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Violates, Witness, witness_violates }
 
 // THIS MODULE IS THE COMPILER PIPELINE ENTRY. It carries the fact rather than being recognised
 // by name: the emitter selected its entry-point arm by matching "v1.compiler.compile", a
@@ -218,7 +218,7 @@ fn apply_compile_lens_introspect(
       outcome_with_diagnostics(value: w, diagnostics: od)
     Rejected { diagnostics: d } =>
       outcome_with_diagnostics(
-        value: Violates { diagnostic: d.head },
+        value: witness_violates(diagnostic: d.head),
         diagnostics: Some { diagnostics: d }
       )
   }

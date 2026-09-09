@@ -620,6 +620,7 @@ test fn witness_not_ready_node_refused() -> Bool {
     attempt_key: "feedfacefeedface",
     process_fingerprint: dispatch_codex_process_fingerprint,
     effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
   ) {
     DispatchRefused { reason: r } => string_contains(s: r as String, pattern: "not in ready frontier")
     _ => false
@@ -637,8 +638,9 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
     attempt_key: "feedfacefeedface",
     process_fingerprint: dispatch_codex_process_fingerprint,
     effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
   ) {
-    DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, reasoning_effort: e } =>
+    DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, reasoning_effort: e, model: _ } =>
       s == "gunbc-dispatch-ready-node"
         && string_contains(s: w, pattern: "ready-node-afeedfacefeedface")
         && b == "dispatch/ready-node-afeedfacefeedface"
@@ -660,6 +662,7 @@ test fn witness_live_lease_refused() -> Bool {
     attempt_key: "feedfacefeedface",
     process_fingerprint: dispatch_codex_process_fingerprint,
     effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
   ) {
     DispatchRefused { reason: r } =>
       string_contains(s: r as String, pattern: "name occupied")
@@ -746,7 +749,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
       selection: selection,
     ) {
       DispatchRefused { reason: r } => r == dispatch_selection_standing_ineligible_reason
-      DispatchPermitted { session_name: _, worktree_path: _, branch_name: _, brief: _, reasoning_effort: _ } => false
+      DispatchPermitted { session_name: _, worktree_path: _, branch_name: _, brief: _, reasoning_effort: _, model: _ } => false
     }
 }
 
@@ -979,15 +982,25 @@ test fn the_prepared_publication_directory_is_inside_the_attempt_directory() -> 
 // was no parameter for a model on either vendor argv row, so a model resolved by
 // gunbc.dispatch_selection reached the launched process nowhere: these four witnesses are red on
 // that tree by construction, because the call does not typecheck without the field and the pattern
-// is absent from the wire with it defaulted. The pinned identifier here is the one the operator is
-// introducing, so the probe is the live case rather than a placeholder.
+// is absent from the wire with it defaulted.
+//
+// THE PIN IS A VENDOR IDENTIFIER, AND THAT IS THE WHOLE SCOPE OF THIS AXIS. An earlier revision
+// pinned glm-5.3-flash here and called it the live case. It is not: GLM is served by the LOCAL
+// harness backend, whose model is the single constant gunbc.harness.harness_wire
+// harness_engine_model, and nothing on that path travels through --model at all -- swapping the
+// harness engine is an edit to that constant, not a selection this carrier makes. Worse, the value
+// was pinned into a CLAUDE argv, where `claude --model glm-5.3-flash` is rejected by Anthropic at
+// run time. The two CLIs can only be pointed at a local endpoint through provider-endpoint routing
+// that this corpus does not carry, so this axis selects among VENDOR models and the specimen says
+// so. Driving local models through the vendor CLIs is a separate capability, named here as absent
+// rather than implied by a witness value.
 //
 // The two default-arm witnesses are the POSITIVE CONTROL in the other direction: they are the
 // reason the account-default arm may pass no flag at all rather than a sentinel identifier, and
 // they go red if a later edit makes the default arm spell a model the provider would have to
 // reject at run time.
 
-data witness_pinned_dispatch_model: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
+data witness_pinned_dispatch_model: NonEmptyStr = "claude-opus-4-1-20250805" as NonEmptyStr
 
 test fn witness_pinned_model_reaches_claude_argv() -> Bool {
   let argv = claude_spawn_argv(
