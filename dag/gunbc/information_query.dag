@@ -2,6 +2,8 @@ module gunbc.information_query
 
 import std.types { String, NonEmptyStr, List, Bool, EpochMs }
 import std.nat { Nat }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import extdeps.uri { Uri }
 import extdeps.external_authority { ExternalAuthority }
 import std.citation {
@@ -66,6 +68,21 @@ import std.claim_evidence {
 // exercised only over constructed receipts. Both capabilities are named rather than pointed at a
 // pull request, because a trigger naming an artifact is satisfied while the capability stays dead
 // (DESIGN 4b(3)).
+
+// THE DISSOLUTION CONDITION, IN A CARRIER RATHER THAN IN THE PROSE ABOVE. DESIGN 4c puts a
+// dissolution condition in a typed home because no Accepted program can read an annotation, and the
+// admission of this pair as a frontier rests entirely on the trigger being real. It is BOUND rather
+// than described: the debt ends exactly when the harness declares the tool that routes an
+// information need here, which dissolution_trigger_fired can decide against the present declaration
+// set. If that declaration never appears, this pair is deleted.
+data information_query_frontier_dissolution: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears {
+    ref: decl_ref(
+      module_path: "gunbc.harness.harness_tool",
+      decl_name: "QueryInformationTool",
+    ),
+  },
+}
 
 // Freshness is a property of the CLAIM the evidence is offered for, not of the document. A
 // time-invariant proposition is not stale because the page is old; a current-state proposition is

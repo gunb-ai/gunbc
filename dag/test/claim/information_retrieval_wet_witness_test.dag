@@ -2,6 +2,8 @@ module test.claim.information_retrieval_wet_witness
 
 import std.types { NonEmptyStr, Bool }
 import std.claim_evidence { RecordedFactId, EvidenceSupports }
+import extdeps.http.client
+import extdeps.uri { uri_wire }
 import gunbc.information_retrieval { information_retrieve_evidence }
 import gunbc.information_query {
   TimeInvariant,
@@ -30,15 +32,20 @@ import test.claim.information_query_witness {
 // observation, because nothing can yet digest a body in memory; an unreachable one yields a
 // transport failure. Neither may fabricate a receipt for bytes nobody reconciled.
 //
-// It matches the ARM rather than admissibility, for the reason the hermetic unreachable witness
-// does: an invented receipt routed through insufficiency would be inadmissible too, so asking only
-// whether the result is inadmissible cannot see the failure this witness exists to catch.
-test fn w_wet_retrieval_never_fabricates_a_receipt() -> Bool {
+// THE ORACLE IS THE TRANSPORT, NOT A DISJUNCTION OF THE ARMS. An earlier version returned true on
+// BOTH arms the function can produce, so its false branch was unreachable and it could never go red
+// -- permanently green by construction, and worse than absent because it would be cited as coverage
+// (DESIGN 4b: ask whether the check\'s RED is authorable before writing the check). This runs the
+// same transport independently and requires the arm to AGREE with what the network actually did, so
+// swapping the two arms, or refusing a fetch that succeeded, turns it red.
+test fn w_wet_retrieval_arm_matches_what_the_transport_did() -> Bool {
   match fixture_digest(hex: fixture_expected_hex) {
     Absent => false
-    Present { value: expected } =>
+    Present { value: expected } => {
+      let target = fixture_target(expected: expected)
+      let probe = http.Client.GetBounded(url: uri_wire(uri: target.expected_pin.subject.access_route))
       match information_retrieve_evidence(
-        target: fixture_target(expected: expected),
+        target: target,
         observed_at: 1788825000000,
         fact_id: "information-retrieval-wet-witness-fact" as RecordedFactId,
         scope: TimeInvariant,
@@ -49,9 +56,10 @@ test fn w_wet_retrieval_never_fabricates_a_receipt() -> Bool {
         fidelity_losses: [],
         independence: SoleRetrieval,
       ) {
-        InformationEvidenceUnavailable { cause: _ } => true
-        InformationEvidenceUnobservable { detail: _ } => true
+        InformationEvidenceUnobservable { detail: _ } => probe.success
+        InformationEvidenceUnavailable { cause: _ } => !probe.success
         InformationEvidenceInferred { inference: _ } => false
       }
+    }
   }
 }
