@@ -47,7 +47,7 @@ data telehouse_chelsea: ColoFacilityRow = ColoFacilityRow {
 data telehouse_chelsea_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedApparentPower { power: volt_ampere(count: 5000) },
   claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
-  citation: "telehouse.com New York Chelsea page; raw fetch 2026-09-09 HTTP 200, 159840 bytes, claim_wording occurs verbatim. The figure is the stated 5 kVA scalable option, not the 3.5 kVA standard. Apparent power is not converted to watts: no power factor is published.",
+  citation: "telehouse.com New York Chelsea page; raw fetch 2026-09-09 HTTP 200, 159840 bytes. Wording matched on tag-stripped text (and as one contiguous string in markup). Element boundary: a single <li> under <h3>Power:</h3>, itself under <h2>Data Center Infrastructure</h2> after <h1>Telehouse New York Chelsea</h1> - this facility, not a promotion or another metro (no Limited Time / other-city banner). One list item, not fused spec-strip cells. Positive control: page contains Chelsea and 10th Avenue. The figure is the stated 5 kVA scalable option, not the 3.5 kVA standard. Apparent power is not converted to watts: no power factor is published.",
 }
 
 data telehouse_chelsea_retail_grain: RetailGrainStanding = SingleCabinetOffered {
@@ -70,7 +70,7 @@ data telehouse_teleport: ColoFacilityRow = ColoFacilityRow {
 data telehouse_teleport_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 20000) },
   claim_wording: "Up to 20kW per cabinet maximum capacity",
-  citation: "telehouse.com New York Teleport page; raw fetch 2026-09-09 HTTP 200, 164583 bytes, claim_wording occurs verbatim.",
+  citation: "telehouse.com New York Teleport page; raw fetch 2026-09-09 HTTP 200, 164583 bytes. Wording matched on tag-stripped text. Element boundary: a single <li> 'Up to 20kW per cabinet maximum capacity' under <h3>Data Center Infrastructure</h3>, immediately after <h2>About Telehouse New York Teleport Datacenter</h2> and the 162,000 sq ft Staten Island / Port Authority Teleport prose. Page <h1> reads 'Telehouse Data Center in New Jersey and New York' (customer geography / dual utility feeds, not a second facility's density block). No Limited Time / other-metro promotion above this <li>. One list item, not fused cells. Positive control: page contains Teleport and Staten.",
 }
 
 data telehouse_teleport_retail_grain: RetailGrainStanding = CageOrSuiteMinimum {
