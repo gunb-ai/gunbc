@@ -15,7 +15,8 @@ import extdeps.colo.types {
   DensityFigureLookup, FigureFound, FigureAbsent, FigureDuplicated, density_figure_for_medium,
   DensityScreen, ScreenHolds, ScreenUndetermined, ScreenNeedsEvidence,
   density_wording_covers, density_ceiling_refuses,
-  figure_wording_is_verified, density_claim_wording_is_verified,
+  ClaimWordingStanding, ClaimWordingVerified, ClaimWordingSummarized, ClaimWordingUnread,
+  claim_wording_standing,
   density_claim_figures, medium_eq,
   quantity_ceiling,
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
@@ -566,11 +567,33 @@ test fn w_model_occupancy_is_not_screen_utility() -> Bool {
 // DataBank is the positive control on the axis under test: raw fetch at HTTP 200, literal spec-table
 // cells, so its air figure IS verified. Without that conjunct a blanket `false` from
 // `figure_wording_is_verified` would pass the first three, which is the permanently-green shape.
+fn wording_standing_is(d: CabinetDensityClaim, expect_verified: Bool, expect_summarized: Bool) -> Bool {
+  match claim_wording_standing(d: d) {
+    ClaimWordingVerified => expect_verified,
+    ClaimWordingSummarized { discharge } => expect_summarized,
+    ClaimWordingUnread => !expect_verified && !expect_summarized,
+  }
+}
+
+// THREE ROWS, THREE DIFFERENT ARMS, WHICH THE Bool THIS REPLACES COULD NOT DISTINGUISH. The earlier
+// version asserted `!verified` for Iron Mountain and `verified` for DataBank, and would have been
+// equally green if Iron Mountain had answered UNREAD - because a projection to false fused
+// nobody-read-it with read-through-a-summarizer. Those have opposite remedies, so the witness now
+// names the arm each row lands in:
+//
+//   DataBank LGA4        raw fetch, HTTP 200, literal spec cells   -> ClaimWordingVerified
+//   Iron Mountain NJE-1  summarizing tool, raw re-fetch 429'd      -> ClaimWordingSummarized
+//   Iron Mountain WPA-1  page states no density at all             -> ClaimWordingUnread
+//
+// The fourth conjunct keeps occupancy and utility separate from both, which is the original point of
+// this witness: NJE-1 is inventoried, is not screenable on air, and is not verified - three answers
+// from three functions about one row.
 test fn w_occupancy_verification_and_utility_are_three_facts() -> Bool {
-  density_claim_figures(d: iron_mountain_nje1_density).length() > 0
-    && !density_claim_wording_is_verified(d: iron_mountain_nje1_density)
+  wording_standing_is(d: databank_lga4_density, expect_verified: true, expect_summarized: false)
+    && wording_standing_is(d: iron_mountain_nje1_density, expect_verified: false, expect_summarized: true)
+    && wording_standing_is(d: iron_mountain_wpa1_density, expect_verified: false, expect_summarized: false)
+    && density_claim_figures(d: iron_mountain_nje1_density).length() > 0
     && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
-    && density_claim_wording_is_verified(d: databank_lga4_density)
 }
 
 // A FIGURE THE SCREEN CANNOT REACH IS STILL A READING THE CENSUS MUST COUNT, and Iron Mountain is the

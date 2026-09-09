@@ -548,6 +548,19 @@ type DensityScreen
   | ScreenUndetermined
   | ScreenNeedsEvidence { contested_medium: CoolingMediumStanding }
 
+// FRONTIER, PER DESIGN SECTION 3c, STATED RATHER THAN LEFT TO BE COUNTED. This route and its dual
+// below are consumed by this change's witnesses today and by nothing else in the tree. Their named
+// consumers are the three census lanes holding rebases on this carrier: bright-swift-678 is re-keying
+// three NJ-central witnesses off the deleted air-only accessors onto exactly these two, and
+// silent-heron-303 and keen-newt-324 screen their corridor and New York rows through them. The trigger
+// is those re-keyed screens landing.
+//
+// This is the middle state section 3c admits, not the dangling one, and the distinction is the reason
+// `cabinet_density_air_established` was deleted while these stay: that accessor had no consumer AND no
+// arm that could honestly answer it - every arm returned Absent, so it was a constant dressed as an
+// accessor. Absence of a caller was the receipt that nobody missed it, not the ground for removing it.
+// These answer; they are simply asked by code that has not landed yet, and deleting them would leave
+// three held lanes with a carrier that models a screen and cannot perform one.
 fn density_wording_covers(
   d: CabinetDensityClaim,
   requested: CoolingMediumStanding,
@@ -612,42 +625,55 @@ type RemoteHandsWindowRate {
   citation: NonEmptyStr
 }
 
-// THE VERIFICATION COORDINATE'S CONSUMER, WITHOUT WHICH THE FIELD WOULD BE WELL-MODELLED AND DEAD.
-// FigureVerificationStanding is written by every row and every fixture in this census and, until this
-// function, READ BY NOTHING - a declaration with no fold over it, which DESIGN section 3c calls
-// dangling regardless of how well it is shaped. It is the failure mode this file has now hit twice
-// from opposite directions: an accessor answering a question nothing asked, and a field answering
-// nothing at all.
+// A THREE-STATE QUESTION GETS A TYPED ARM, AND THE FIRST CUT ANSWERED IT WITH A Bool - WHICH IS THE
+// SHAPE THIS FILE HAS NOW DELETED THREE TIMES AND REINTRODUCED ONE SCREEN OVER. `figure_wording_is_verified`
+// projected the closed FigureVerificationStanding coproduct onto true/false, and
+// `density_claim_wording_is_verified` folded that to a single Bool at claim grain - fusing TWO
+// DIFFERENT CAUSES into one `false`: a claim nobody read, and a claim read through a summarizing tool.
+// Those have opposite remedies - go read the page, versus go re-read it raw - which is the same
+// distinction ScreenUndetermined and ScreenNeedsEvidence draw one screen over, and the witness module
+// states the rule outright: an outcome that is the union of N causes cannot serve as the control for
+// one of them.
 //
-// IT IS THE SECOND OF THE THREE FACTS A COVERAGE CENSUS KEEPS, and it is a separate function from the
-// inventory route on purpose. Occupancy asks whether the model holds a figure;
-// this asks whether the operator's own words were retrieved. Iron Mountain answers YES to the first
-// and NO to this one, which is exactly the row that would be miscounted by any single predicate -
-// and the third fact, whether the figure is useful for a particular requirement, depends on the
-// requirement and stays with the consumer where DESIGN section 3 puts it.
-fn figure_wording_is_verified(f: PublishedDensityFigure) -> Bool {
-  match f.verification {
-    WordingVerbatim { retrieval } => true,
-    WordingSummarized { retrieval, discharge } => false,
-  }
-}
+// AND THE Bool DISCARDED THE `discharge` ROUTE. WordingSummarized carries the thing that would upgrade
+// it - a raw fetch that clears the checkpoint, a spec sheet, a quote - and a projection to false threw
+// that away at the one seam where a consumer asking "is this verified" would most want to know what
+// would make it so.
+//
+// THE FIGURE-LEVEL PROJECTION IS DELETED RATHER THAN RETYPED, because at figure grain the field IS the
+// answer: a caller matches `f.verification` and gets both arms with their payloads. A function that
+// re-matches a two-arm coproduct to hand back less than it read is not an accessor, it is a lossy one.
+type ClaimWordingStanding
+  = ClaimWordingVerified
+  | ClaimWordingSummarized { discharge: NonEmptyStr }
+  | ClaimWordingUnread
 
-// THE FOLD IS OVER EVERY FIGURE AND NOT OVER A REQUESTED MEDIUM, WHICH IS THE ONLY WAY IT REACHES
-// THE ROW IT MOST NEEDS TO ANSWER FOR. Iron Mountain's single figure is CoolingMediumUnspecified,
-// and an unspecified medium satisfies no request by construction - so a per-medium verification
-// accessor cannot see that figure at all, and would answer false for the same reason it answers
-// false for a claim with no figures. Two different facts, one indistinguishable answer, which is the
-// conflation this file keeps removing; retrieval standing is a property of the READING and must not
-// be asked through the screening coordinate.
+// FIRST SUMMARIZED FIGURE WINS AND CARRIES ITS DISCHARGE, which is deliberate rather than arbitrary:
+// the question is whether this claim's wording can be cited as the operator's own, and one summarized
+// figure is enough to answer no. The discharge returned is that figure's, so a reader is pointed at a
+// route rather than told a fact. A claim with several summarized figures has several discharges and
+// this surfaces one; that is a narrowing, not a widen, because the answer - not verified, here is a
+// way to fix it - is correct for every one of them.
 //
-// FALSE FOR DensityUnread IS HONEST RATHER THAN CONFLATED: there is no wording to have verified. It
-// is the inventory route that separates unread from read-but-unverified - an unread claim has no
-// figures at all - and the two are asked together precisely because neither answers alone.
-fn density_claim_wording_is_verified(d: CabinetDensityClaim) -> Bool {
+// FRONTIER, PER DESIGN SECTION 3c: consumed by this change's witnesses today, and by
+// bright-swift-678's split verification count in the NJ-central census, which carries verbatim and
+// summarized readings as separate figures rather than one fused density_read_count. The trigger is
+// that count landing - and it is named as the CONSUMER rather than as a pull request, because four
+// artifact-shaped triggers in this lane were falsified tonight by artifacts moving.
+fn claim_wording_standing(d: CabinetDensityClaim) -> ClaimWordingStanding {
   match d {
     DensityPublished { figures } =>
-      all(non_empty_to_list(xs: figures), f => figure_wording_is_verified(f: f)),
-    DensityUnread { obligation } => false,
+      fold(non_empty_to_list(xs: figures), init: ClaimWordingVerified, f: fn(acc, fig) {
+        match acc {
+          ClaimWordingSummarized { discharge } => acc,
+          ClaimWordingUnread => acc,
+          ClaimWordingVerified => match fig.verification {
+            WordingVerbatim { retrieval } => acc,
+            WordingSummarized { retrieval, discharge } => ClaimWordingSummarized { discharge: discharge },
+          },
+        }
+      }),
+    DensityUnread { obligation } => ClaimWordingUnread,
   }
 }
 
@@ -689,6 +715,12 @@ fn density_claim_wording_is_verified(d: CabinetDensityClaim) -> Bool {
 // A CONTROL THAT WANTS TO ASSERT ARM MEMBERSHIP RATHER THAN A COUNT still can, and should say so in
 // its own annotation: over a structurally non-empty carrier `density_claim_figures(d).length() == 0`
 // IS the unread arm. The intent belongs in the assertion that has it, not in a second matcher.
+// FRONTIER, SAME SECTION AND SAME LANES: the inventory route's named consumer is
+// silent-heron-303's `coverage_density_read_count`, which replaces a witness-local `density_claim_is_read`
+// and reaches presence through this list rather than through a predicate. The trigger is that fold
+// landing. It is also the only route by which an unlabelled figure is readable at all - four of five
+// read New York rows are CoolingMediumUnspecified and no screen may consume them - so its absence
+// would strand verified readings, which is why it exists before its production caller does.
 fn density_claim_figures(d: CabinetDensityClaim) -> List<PublishedDensityFigure> {
   match d {
     DensityPublished { figures } => non_empty_to_list(xs: figures),
