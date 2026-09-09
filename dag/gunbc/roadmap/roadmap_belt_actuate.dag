@@ -140,6 +140,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider,
   dispatch_provider_label, dispatch_codex_home,
   dispatch_actuator_selection,
+  DispatchActuatorSelection,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
   dispatch_tmux_session_name,
