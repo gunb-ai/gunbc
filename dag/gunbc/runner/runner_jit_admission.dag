@@ -66,16 +66,16 @@ fn attempt_binding_admits_mint_name(standing: JitAdmissionAxisStanding) -> Bool 
 // a 409 on a second mint of the same name does not answer.
 
 type AxisMintObservability
-  = MintObservableCoverage { question: MintSurfaceCoverageQuestion }
+  = MintExpiresAtCoverage
   | MintUnobservableDeclaredBoundary
 
 type MintSurfaceCoverageQuestion
   = GenerateJitconfig201ExpiresAtPresence
-  | ReplayRunnerIdAndDuplicateName409
+  | DuplicateJitconfigName409
 
 fn axis_mint_observability(axis: JitAdmissionAxis) -> AxisMintObservability {
   match axis {
-    ExpiryAxis => MintObservableCoverage { question: GenerateJitconfig201ExpiresAtPresence }
+    ExpiryAxis => MintExpiresAtCoverage
     ReplayAxis => MintUnobservableDeclaredBoundary
     SignatureAxis => MintUnobservableDeclaredBoundary
     UnitBindingAxis => MintUnobservableDeclaredBoundary
@@ -95,6 +95,6 @@ data generate_jitconfig_201_expires_at_coverage: MintSurfaceLiveCensus = LiveCen
   question: GenerateJitconfig201ExpiresAtPresence,
 }
 
-data replay_runner_id_and_duplicate_name_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
-  question: ReplayRunnerIdAndDuplicateName409,
+data duplicate_jitconfig_name_409_coverage: MintSurfaceLiveCensus = LiveCensusUnmet {
+  question: DuplicateJitconfigName409,
 }

@@ -5,9 +5,9 @@ import std.dissolution { dissolution_description }
 import gunbc.runner_jit_mint { plan_jit_mint_consumer_frontier }
 import gunbc.runner.runner_jit_admission {
   ExpiryAxis, JitAdmissionAxis,
-  axis_mint_observability, MintObservableCoverage, MintUnobservableDeclaredBoundary,
-  GenerateJitconfig201ExpiresAtPresence, ReplayRunnerIdAndDuplicateName409,
-  generate_jitconfig_201_expires_at_coverage, replay_runner_id_and_duplicate_name_coverage,
+  axis_mint_observability, MintExpiresAtCoverage, MintUnobservableDeclaredBoundary,
+  GenerateJitconfig201ExpiresAtPresence, DuplicateJitconfigName409,
+  generate_jitconfig_201_expires_at_coverage, duplicate_jitconfig_name_409_coverage,
   MintSurfaceLiveCensus, LiveCensusUnmet, LiveCensusDischarged,
 }
 import gunbc.runner.runner_host_image_placeability {
@@ -142,7 +142,7 @@ fn still_open_from_live_census(census: MintSurfaceLiveCensus) -> List<NonEmptySt
   match census {
     LiveCensusUnmet { question: GenerateJitconfig201ExpiresAtPresence } =>
       ["generate-jitconfig 201 expires_at presence is unmet live census"]
-    LiveCensusUnmet { question: ReplayRunnerIdAndDuplicateName409 } =>
+    LiveCensusUnmet { question: DuplicateJitconfigName409 } =>
       ["duplicate-name 409 mint observation is unmet live census"]
     LiveCensusDischarged { question: _, receipt: _ } => []
   }
@@ -151,17 +151,15 @@ fn still_open_from_live_census(census: MintSurfaceLiveCensus) -> List<NonEmptySt
 fn still_open_from_mint_axis(axis: JitAdmissionAxis) -> List<NonEmptyStr> {
   match axis_mint_observability(axis: axis) {
     MintUnobservableDeclaredBoundary => []
-    MintObservableCoverage { question: GenerateJitconfig201ExpiresAtPresence } =>
+    MintExpiresAtCoverage =>
       still_open_from_live_census(census: generate_jitconfig_201_expires_at_coverage)
-    MintObservableCoverage { question: ReplayRunnerIdAndDuplicateName409 } =>
-      still_open_from_live_census(census: replay_runner_id_and_duplicate_name_coverage)
   }
 }
 
 data still_open: List<NonEmptyStr> = concat(
   still_open_from_mint_axis(axis: ExpiryAxis),
   concat(
-    still_open_from_live_census(census: replay_runner_id_and_duplicate_name_coverage),
+    still_open_from_live_census(census: duplicate_jitconfig_name_409_coverage),
     [
       dissolution_description(condition: plan_jit_mint_consumer_frontier) as NonEmptyStr,
       dissolution_description(condition: host_image_placeability_wet_probe_frontier) as NonEmptyStr,
