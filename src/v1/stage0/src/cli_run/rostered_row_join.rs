@@ -490,9 +490,11 @@ fn join_row_files_to_roster_members(
                 "dag/{}/{stem}.dag",
                 crate::cli_run::derived_row_roster::ROW_DIR_REL
             ),
-            detail: "this row file exists on disk and is not named by \
-                     `gunbc.recurring_failure_mode.roster.recurring_failure_mode_roster`"
-                .to_string(),
+            detail: format!(
+                "this row file exists on disk and is not named by \
+                 `{}.recurring_failure_mode_roster`",
+                crate::cli_run::derived_row_roster::ROSTER_MODULE
+            ),
         });
     }
     for name in rostered_names.difference(&file_stems) {
