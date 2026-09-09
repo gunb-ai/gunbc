@@ -37,7 +37,7 @@ import v1.std.core {
   CardOptional, no_span,
   unit_type, string_type,
   default_ident_span, kernel_span, node_name_span, intern,
-  qualified_last_segment
+  qualified_last_segment, resolved_node_is_kernel_identity_for_name
 }
 
 import v1.compiler.infer_types {
@@ -630,7 +630,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
               diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: type_name, span: n.span), module_name: module_name)]
             }
           } else {
-            let unlisted_diags = if masked && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: type_name) == false {
+            let unlisted_diags = if masked && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: type_name) == false && resolved_node_is_kernel_identity_for_name(node: n, name: type_name) == false {
               [make_error_node(diagnostic: UnlistedImportUse { name: type_name, span: n.span }, module_name: module_name)]
             } else { [] }
             NodeResolveResult { resolved: final_resolved, diagnostics: unlisted_diags }

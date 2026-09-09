@@ -169,6 +169,12 @@ test fn witness_shared_build_input_edit_requires_whole_rebuild_holds() -> Bool {
 // in the partition's coverage of its own output. That is why the second instance was evidence
 // rather than a duplicate, and it is why the remaining cli_run.rs instance should NOT be read as
 // establishing the generated-output gap: the case that did establish it has been repaired.
+//
+// A THIRD INSTANCE, SAME CLASS, SAME REPAIR. v1_compiler_infer_resolve.rs refused the same way
+// on 2026-09-09: an authored edit to v1.compiler.infer_resolve drifted that mirror and
+// --regen-round-cost refused its partitioned rebuild with MirrorHasNoOwningPackage naming it.
+// The repair gave the mirror its owner in the v1-infer partition, and
+// witness_infer_resolve_rebuild_owner_is_v1_infer_holds below asserts exactly that.
 test fn witness_unowned_mirror_refuses_holds() -> Bool {
   match witness_decide(changed: ["cli_run.rs"]) {
     RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: m } } => m == "cli_run.rs"
@@ -191,6 +197,27 @@ test fn witness_unowned_mirror_refuses_holds() -> Bool {
 test fn witness_compiler_tests_rust_rebuild_owner_is_v1_infer_holds() -> Bool {
   match stage0_partition_rebuild_decision_today(
     changed_mirrors: ["v1_compiler_compiler_tests_rust.rs"],
+    unlocatable: []
+  ) {
+    PartitionRebuildScopeDerived { changed_mirrors: ms, owning_packages: owners, package_closure: closure, executable_assembly: _ } =>
+      (count(ms) == 1)
+        && (count(owners) == 1)
+        && witness_has(items: owners, item: "v1-stage0-v1-infer")
+        && witness_has(items: closure, item: "v1-compiler")
+    WholeCompilerRebuildRequired { cause: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
+// The live flip for the ownership hole exposed by the 2026-09-09 regen round on an authored
+// v1.compiler.infer_resolve edit: this generated mirror imports v1.compiler.infer_types and
+// v1.compiler.infer_env -- both v1-infer members -- and std-core modules only, so the v1-infer
+// partition is its one physical owner. Keep the package identity in the assertion, as above:
+// merely changing the refusal into any derived scope would not establish that the mirror landed
+// in the dependency layer its imports require.
+test fn witness_infer_resolve_rebuild_owner_is_v1_infer_holds() -> Bool {
+  match stage0_partition_rebuild_decision_today(
+    changed_mirrors: ["v1_compiler_infer_resolve.rs"],
     unlocatable: []
   ) {
     PartitionRebuildScopeDerived { changed_mirrors: ms, owning_packages: owners, package_closure: closure, executable_assembly: _ } =>

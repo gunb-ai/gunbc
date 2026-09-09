@@ -410,6 +410,41 @@ test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -
     )
 }
 
+// The live two-surface flip for v1.compiler.infer_resolve, moved for the 2026-09-09 regen-round
+// refusal on an authored 04_resolve edit -- the same generated-output coverage hole as
+// compiler_tests_rust above, closed by the same repair. The census must resolve the emitted
+// mirror to its one partition owner, the shell subtraction must remove it, and the committed
+// host-shell lib.rs must not still declare it.
+test fn w_infer_resolve_moves_from_host_shell_to_one_partition_surface() -> Bool {
+  let module_basename = "v1_compiler_infer_resolve"
+  let host_shell_lib = filesystem_read(path: "src/v1/stage0/src/lib.rs").content
+  let census = stage0_live_assembly_ownership_census(
+    declared_modules: [module_basename],
+    emitted_module_basenames: [module_basename]
+  )
+  (length(xs: census.refusals) == 0)
+    && (length(xs: census.owners) == 1)
+    && any(xs: census.owners, predicate: fn(owner) {
+      match owner {
+        EmittedPartitionOwner { module_basename: m, package_name: p } =>
+          (m == module_basename) && (p == "v1-stage0-v1-infer")
+        HostShellEmittedOwner { module_basename: _, host_package: _ } => false
+        RetainedHostOwner { module_basename: _, host_package: _, retention_row: _ } => false
+        BinaryEntrypointOwner { target: _, package_name: _ } => false
+        WetActuatorLibModuleOwner { module_basename: _, host_package: _, declaration_route: _ } => false
+      }
+    })
+    && (stage0_host_shell_emitted_owner_count(census: census) == 0)
+    && (length(xs: stage0_host_shell_declared_modules(
+      declared_modules: [module_basename],
+      partition_rows: stage0_module_bearing_crate_rows()
+    )) == 0)
+    && !string_contains(
+      s: host_shell_lib,
+      pattern: "pub mod v1_compiler_infer_resolve;"
+    )
+}
+
 // The host shell links the partition through one declared edge, and it is the top module-bearing
 // package rather than the emit shell. Asserted because the whole re-export chain -- and therefore
 // whether a `crate::` path in a module that stayed still resolves -- rests on that one name.
