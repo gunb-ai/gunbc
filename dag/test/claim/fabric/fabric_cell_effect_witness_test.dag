@@ -39,6 +39,7 @@ import gunbc.fabric_cell_effect {
   fabric_cell_realization_refusal_count,
   fabric_cell_plan_effects,
   fabric_cell_boundary_add_realization,
+  FabricCellAddressRealization,
   AddressRefused,
   AddressRealizable,
 }
