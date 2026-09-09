@@ -8,7 +8,8 @@ import extdeps.posix.sh_invocation { posix_sh_program_command }
 import gunbc.command_runner { run_shell_command_observe }
 import gunbc.spark.model_snapshot_materialize {
   sentinel_command_line, read_instrument,
-  InstrumentVerified, InstrumentRejectedTheSubject,
+  InstrumentReading, InstrumentDidNotRun,
+  InstrumentVerified, InstrumentRejectedTheSubject, InstrumentContradictedItself,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -49,7 +50,7 @@ test fn a_failing_verify_exits_nonzero_and_says_failed_by_real_execution() -> Bo
     command: posix_sh_program_command(script: sentinel_command_line(argv: ["false"])),
     transport: LocalExec,
   )
-  obs.exit_code != 0 && read_instrument(stdout: obs.stdout) == InstrumentRejectedTheSubject
+  obs.exit_code != 0 && read_instrument(exit_code: obs.exit_code, stdout: obs.stdout) == InstrumentRejectedTheSubject
 }
 
 // ── THE POSITIVE CONTROL ───────────────────────────────────────────────────────────────────────
@@ -60,7 +61,7 @@ test fn a_passing_verify_exits_zero_and_says_ok_by_real_execution() -> Bool {
     command: posix_sh_program_command(script: sentinel_command_line(argv: ["true"])),
     transport: LocalExec,
   )
-  obs.exit_code == 0 && read_instrument(stdout: obs.stdout) == InstrumentVerified
+  obs.exit_code == 0 && read_instrument(exit_code: obs.exit_code, stdout: obs.stdout) == InstrumentVerified
 }
 
 // ── THE STATUS IS THE COMMAND'S OWN ────────────────────────────────────────────────────────────
@@ -72,7 +73,7 @@ test fn the_wrapper_propagates_the_exact_exit_status_by_real_execution() -> Bool
     command: posix_sh_program_command(script: sentinel_command_line(argv: ["sh", "-c", "exit 3"])),
     transport: LocalExec,
   )
-  obs.exit_code == 3 && read_instrument(stdout: obs.stdout) == InstrumentRejectedTheSubject
+  obs.exit_code == 3 && read_instrument(exit_code: obs.exit_code, stdout: obs.stdout) == InstrumentRejectedTheSubject
 }
 
 // ── ARGV BOUNDARIES SURVIVE THE RENDER ─────────────────────────────────────────────────────────
@@ -85,5 +86,48 @@ test fn an_argument_containing_a_space_stays_one_word_by_real_execution() -> Boo
     command: posix_sh_program_command(script: sentinel_command_line(argv: ["test", "-d", "/nonexistent path with spaces"])),
     transport: LocalExec,
   )
-  obs.exit_code != 0 && read_instrument(stdout: obs.stdout) == InstrumentRejectedTheSubject
+  obs.exit_code != 0 && read_instrument(exit_code: obs.exit_code, stdout: obs.stdout) == InstrumentRejectedTheSubject
+}
+
+// ── THE DISCRIMINATOR THE PREVIOUS FIX LEFT OPEN ───────────────────────────────────────────────
+//
+// A COMMAND THAT PRINTS THE OK MARKER AND THEN EXITS NONZERO. This is the case that reached
+// InstrumentVerified -- and therefore AcquisitionFetched -- after the wrapper had already been
+// repaired to preserve the exit status, because both readers bound `exit_code: _` and decoded from
+// stdout alone. The status was carefully preserved and then discarded two functions later, and the
+// repair was reported as complete.
+//
+// IT IS RUN AS A REAL PROCESS rather than asserted against a hand-built pair, so what is under test is
+// the composition -- wrapper, shell, exit status, decoder -- and not a fixture of what one believes
+// the shell does.
+test fn an_ok_marker_with_a_nonzero_status_is_a_contradiction_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(
+    command: posix_sh_program_command(script: join([
+      "echo ", "GUNBC-VERIFY-OK", "; exit 4",
+    ], "")),
+    transport: LocalExec,
+  )
+  obs.exit_code == 4 && w_is_contradiction(r: read_instrument(exit_code: obs.exit_code, stdout: obs.stdout))
+}
+
+// AND ITS MIRROR: the FAILED marker beside a zero status, which is exactly what the original
+// `cmd && echo OK || echo FAILED` wrapper emitted on every failure. Reading that as a plain rejection
+// would be right by luck for that wrapper and wrong for any wrapper that means its status.
+test fn a_failed_marker_with_a_zero_status_is_a_contradiction_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(
+    command: posix_sh_program_command(script: join([
+      "echo ", "GUNBC-VERIFY-FAILED", "; exit 0",
+    ], "")),
+    transport: LocalExec,
+  )
+  obs.exit_code == 0 && w_is_contradiction(r: read_instrument(exit_code: obs.exit_code, stdout: obs.stdout))
+}
+
+fn w_is_contradiction(r: InstrumentReading) -> Bool {
+  match r {
+    InstrumentContradictedItself { detail: _ } => true
+    InstrumentVerified => false
+    InstrumentRejectedTheSubject => false
+    InstrumentDidNotRun => false
+  }
 }

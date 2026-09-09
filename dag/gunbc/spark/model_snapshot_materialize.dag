@@ -226,21 +226,65 @@ fn with_execution_sentinel(argv: List<String>) -> List<String> {
   ["sh", "-c", sentinel_command_line(argv: argv)]
 }
 
-type InstrumentReading
-  = InstrumentDidNotRun
-  | InstrumentVerified
-  | InstrumentRejectedTheSubject
 
 // NEITHER SENTINEL PRESENT MEANS THE INSTRUMENT NEVER REACHED ITS OWN `echo`, so nothing was learned
 // about the subject. That is a THIRD state, not a bad verdict, and keeping it distinct is the entire
 // point: a permission error, a missing image and a genuinely corrupt checkpoint must not share an arm.
-fn read_instrument(stdout: String) -> InstrumentReading {
-  if stdout.contains(verify_ok_sentinel as String) {
-    InstrumentVerified
-  } else if stdout.contains(verify_failed_sentinel as String) {
-    InstrumentRejectedTheSubject
+// THE EXIT STATUS WAS PRESERVED AND THEN DISCARDED TWO FUNCTIONS LATER, WHICH LEFT THE FALSE SUCCESS
+// OPEN. An earlier change rewrote the wrapper so it captures the command's own status and exits with
+// it -- and both callers then bound `exit_code: _` and decoded from stdout alone. So the status that
+// work existed to preserve reached nobody, and a verifier printing the OK marker before exiting
+// nonzero still resolved to InstrumentVerified and then to AcquisitionFetched. The wrapper was fixed;
+// the reader was not, and the fix reported as complete.
+//
+// SO THE READING IS A FUNCTION OF BOTH TERMS. Success requires exit zero AND the OK marker. Neither
+// alone is sufficient, and the two disagreeing is not a tie to be broken by preferring one -- it is a
+// fourth state, because an instrument whose status and output contradict each other has not told us
+// what it found. Collapsing that into either verdict would be the state-space conflation this module
+// has already corrected three times elsewhere.
+type InstrumentReading
+  = InstrumentDidNotRun
+  | InstrumentVerified
+  | InstrumentRejectedTheSubject
+  | InstrumentContradictedItself { detail: String }
+
+fn read_instrument(exit_code: Int, stdout: String) -> InstrumentReading {
+  let said_ok = stdout.contains(verify_ok_sentinel as String)
+  let said_failed = stdout.contains(verify_failed_sentinel as String)
+  if said_ok && said_failed {
+    InstrumentContradictedItself { detail: "the output carries BOTH sentinels, so which verdict it reached is unestablished" }
+  } else if said_ok {
+    read_instrument_ok_claim(exit_code: exit_code)
+  } else if said_failed {
+    read_instrument_failed_claim(exit_code: exit_code)
   } else {
     InstrumentDidNotRun
+  }
+}
+
+// AN OK MARKER WITH A NONZERO STATUS IS THE DISCRIMINATING CASE. It is exactly what a partially
+// repaired wrapper produces, and exactly what the previous reader admitted as success.
+fn read_instrument_ok_claim(exit_code: Int) -> InstrumentReading {
+  if exit_code == 0 {
+    InstrumentVerified
+  } else {
+    InstrumentContradictedItself {
+      detail: join(["the output claims verification passed while the process exited ", to_string(exit_code)], ""),
+    }
+  }
+}
+
+// A FAILED MARKER WITH A ZERO STATUS IS THE SAME DEFECT MIRRORED, and it is what the ORIGINAL
+// `cmd && echo OK || echo FAILED` wrapper emitted on every failure: the correct sentinel beside a
+// status that said success. Reading it as a plain rejection would be right by luck here and wrong for
+// any wrapper that means its status.
+fn read_instrument_failed_claim(exit_code: Int) -> InstrumentReading {
+  if exit_code == 0 {
+    InstrumentContradictedItself {
+      detail: "the output claims verification failed while the process exited zero, which is the status-destroying wrapper shape",
+    }
+  } else {
+    InstrumentRejectedTheSubject
   }
 }
 
@@ -297,11 +341,13 @@ fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, su
 fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionObservation {
   match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
     RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
-    RemoteRan { exit_code: _, stdout: out, stderr: err } =>
-      match read_instrument(stdout: out) {
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      match read_instrument(exit_code: code, stdout: out) {
         InstrumentDidNotRun =>
           AcquisitionProbeFailed { reason: join(["the verification instrument never executed, so nothing was learned about the snapshot: ", err], "") as NonEmptyStr }
         InstrumentVerified => AcquisitionVerified
+        InstrumentContradictedItself { detail: d } =>
+          AcquisitionProbeFailed { reason: join(["the verification instrument contradicted itself, so its verdict is unestablished: ", d, ": ", err], "") as NonEmptyStr }
         InstrumentRejectedTheSubject =>
           AcquisitionProbeFailed { reason: join(["verification refused the snapshot and the reason is undetermined -- this is NOT established as a digest mismatch: ", err], "") as NonEmptyStr }
       }
@@ -589,8 +635,13 @@ fn spark_verify_after_transfer(ctx: SparkMaterializeContext, verify: List<String
       AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
         identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
       } } }
-    RemoteRan { exit_code: _, stdout: out, stderr: err } =>
-      match read_instrument(stdout: out) {
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      match read_instrument(exit_code: code, stdout: out) {
+        InstrumentContradictedItself { detail: d } =>
+          AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+            identity: subject.identity, source: origin.identity,
+            reason: join(["after the transfer the verification instrument contradicted itself, so nothing is established about the bytes: ", d, ": ", err], "") as NonEmptyStr,
+          } } }
         InstrumentDidNotRun =>
           AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
             identity: subject.identity, source: origin.identity,
