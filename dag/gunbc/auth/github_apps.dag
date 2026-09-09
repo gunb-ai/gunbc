@@ -43,7 +43,7 @@ data gunbai_bot_declared: DeclaredGitHubApp = DeclaredGitHubApp {
   owner_login: "gunb-ai",
   app_id: GitHubAppId { value: 3909950 },
   client_id: "Iv23lidZeLYckmtvN3e8",
-  slug: "gunbai",
+  slug: "gunbai-bot",
 }
 
 data gunbai_ci_declared: DeclaredGitHubApp = DeclaredGitHubApp {
@@ -61,6 +61,15 @@ data gunbai_ci_app_pem_secret: SecretRef = SecretRef {
 }
 
 data gunbai_ci_declared_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 104134109 }
+
+data gunbai_bot_app_pem_secret: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "agent-github-app-private-key",
+  version: "latest",
+  hash_state: HashPending,
+}
+
+data gunbai_bot_declared_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 136673607 }
 
 type ManagedGitHubAppKeyRole
   = ActiveSigningKey
@@ -119,7 +128,9 @@ fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
   )
 }
 
-data gunbai_bot_signer_custody: SignerCustody = SignerMaterialAvailabilityUnobserved
+data gunbai_bot_signer_custody: SignerCustody = SignerMaterialAvailableForImport {
+  source: gunbai_bot_app_pem_secret
+}
 
 fn signer_seal_failure(
   signer: ObservedGitHubAppSigner,

@@ -268,12 +268,61 @@ jobs:
     permissions:
       contents: write
       actions: write
+      id-token: write
     steps:
+      - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
+        id: wif_auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        timeout-minutes: 5
+      - name: Mint the gunbai-bot installation token the heal push advances under
+        id: heal_app_token
+        run: |
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/app-installation-key"
+          HDR_FILE="$RUNNER_TEMP/app-installation-auth-header"
+          JWT_FILE="$RUNNER_TEMP/app-installation-jwt"
+          TOKEN_HEADERS="$RUNNER_TEMP/app-installation-token-headers"
+          TOKEN_BODY="$RUNNER_TEMP/app-installation-token-body"
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE" "$JWT_FILE" "$TOKEN_HEADERS" "$TOKEN_BODY" "$RUNNER_TEMP/app-installation-key-sm-body"; unset GUNBC_APP_INSTALLATION_TOKEN GH_TOKEN; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          SM_BODY="$RUNNER_TEMP/app-installation-key-sm-body"
+          SM_CODE="$(curl -sS -o "$SM_BODY" -w '%{http_code}' -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/agent-github-app-private-key/versions/latest:access")"
+          rm -f "$HDR_FILE"
+          if [ "$SM_CODE" != 200 ]; then rm -f "$SM_BODY"; echo "AppInstallationKeyUnreadable: Secret Manager answered HTTP $SM_CODE for projects/gunbai-secrets/secrets/agent-github-app-private-key/versions/latest to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist -- REMEDY: confirm projects/gunbai-secrets/secrets/agent-github-app-private-key exists and that roles/secretmanager.secretAccessor is bound on it for fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Minting NO token." >&2; exit 1; fi
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$SM_BODY" > "$KEY_FILE"
+          rm -f "$SM_BODY"
+          chmod 600 "$KEY_FILE"
+          NOW=$(date +%s)
+          b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+          JWT_HEADER=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          JWT_PAYLOAD=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((NOW-60))" "$((NOW+540))" "3909950" | b64url)
+          JWT_SIG=$(printf '%s.%s' "$JWT_HEADER" "$JWT_PAYLOAD" | openssl dgst -sha256 -sign "$KEY_FILE" | b64url)
+          rm -f "$KEY_FILE"
+          printf 'Authorization: Bearer %s.%s.%s\n' "$JWT_HEADER" "$JWT_PAYLOAD" "$JWT_SIG" > "$JWT_FILE"
+          curl -sS -X POST -H @"$JWT_FILE" -H 'Accept: application/vnd.github+json' -D "$TOKEN_HEADERS" -o "$TOKEN_BODY" "https://api.github.com/app/installations/136673607/access_tokens"
+          rm -f "$JWT_FILE"
+          if ! head -n1 "$TOKEN_HEADERS" | grep -q ' 201 '; then echo "AppInstallationTokenRefused: GitHub answered $(head -n1 "$TOKEN_HEADERS" | tr -d '\r') for the gunbai-bot installation; a revoked key, a removed installation, or a missing contents or workflows permission each look like this -- inspect the App's installation on the organization" >&2; exit 1; fi
+          GUNBC_APP_INSTALLATION_TOKEN="$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))["token"])' "$TOKEN_BODY")"
+          rm -f "$TOKEN_HEADERS" "$TOKEN_BODY"
+          export GUNBC_APP_INSTALLATION_TOKEN
+          echo "app-installation: token minted in-run for app gunbai-bot installation 136673607 (one-hour lifetime; key wiped; token held in this step's environment only)"
+          echo "::add-mask::$GUNBC_APP_INSTALLATION_TOKEN"
+          echo "token=$GUNBC_APP_INSTALLATION_TOKEN" >> "$GITHUB_OUTPUT"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
       - name: Checkout triggering branch head (heal pushes the regeneration back to this branch)
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
+          token: ${{ steps.heal_app_token.outputs.token }}
       - name: Isolate toolchain homes
         run: |
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
@@ -318,9 +367,6 @@ jobs:
           git config user.name "gunbc-ci-auto-heal"
           git config user.email "gunbc-ci-auto-heal@users.noreply.github.com"
           AUTHOR_COMMIT_DRIFT=""
-          if [ -e ".github/workflows/witnesses.yml" ] && ! git diff --quiet -- ".github/workflows/witnesses.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/witnesses.yml"; fi
-          if [ -e ".github/workflows/fleet-converge.yml" ] && ! git diff --quiet -- ".github/workflows/fleet-converge.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/fleet-converge.yml"; fi
-          if [ -e ".github/workflows/fleet-desired.yml" ] && ! git diff --quiet -- ".github/workflows/fleet-desired.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/fleet-desired.yml"; fi
           echo "heal_author_commit_required=0" >> "$GITHUB_OUTPUT"
           if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
             rm -rf "heal-author-commit-required"
@@ -330,47 +376,10 @@ jobs:
             done
             echo "heal_author_commit_required=1" >> "$GITHUB_OUTPUT"
           fi
-          if [ -e ".gitignore" ]; then git add ".gitignore"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitignore"; fi
-          if [ -e ".gitattributes" ]; then git add ".gitattributes"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .gitattributes"; fi
-          if [ -e "ROADMAP.md" ]; then git add "ROADMAP.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: ROADMAP.md"; fi
-          if [ -e "DESIGN.md" ]; then git add "DESIGN.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: DESIGN.md"; fi
-          if [ -e "docs/design-rung-drops.md" ]; then git add "docs/design-rung-drops.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/design-rung-drops.md"; fi
-          if [ -e ".githooks/pre-push" ]; then git add ".githooks/pre-push"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-push"; fi
-          if [ -e ".githooks/pre-commit" ]; then git add ".githooks/pre-commit"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/pre-commit"; fi
-          if [ -e ".githooks/generated-artifact-merge" ]; then git add ".githooks/generated-artifact-merge"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: .githooks/generated-artifact-merge"; fi
-          if [ -e "dag/gunbc/stage0/stage0_crate_layout_generated.dag" ]; then git add "dag/gunbc/stage0/stage0_crate_layout_generated.dag"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: dag/gunbc/stage0/stage0_crate_layout_generated.dag"; fi
-          if [ -e "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs" ]; then git add "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"; fi
-          if [ -e "dag/gunbc/stage0/stage0_crate_partition_generated.dag" ]; then git add "dag/gunbc/stage0/stage0_crate_partition_generated.dag"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: dag/gunbc/stage0/stage0_crate_partition_generated.dag"; fi
-          if [ -e "dag/gunbc/stage0/stage0_executable_assembly_generated.dag" ]; then git add "dag/gunbc/stage0/stage0_executable_assembly_generated.dag"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: dag/gunbc/stage0/stage0_executable_assembly_generated.dag"; fi
-          if [ -e "src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs" ]; then git add "src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs"; fi
-          if [ -e "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs" ]; then git add "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: src/v1/stage0/src/v1_interpreter_dispatch_generated.rs"; fi
-          if [ -e "src/v1/stage0/src/evaluation_budget_consequence_generated.rs" ]; then git add "src/v1/stage0/src/evaluation_budget_consequence_generated.rs"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: src/v1/stage0/src/evaluation_budget_consequence_generated.rs"; fi
-          if [ -e "tools/fabric_ci_fci1_bounded_execution_context.env" ]; then git add "tools/fabric_ci_fci1_bounded_execution_context.env"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: tools/fabric_ci_fci1_bounded_execution_context.env"; fi
-          if [ -e "src/v1/stage0/src/gunbc_file_transport_generated.rs" ]; then git add "src/v1/stage0/src/gunbc_file_transport_generated.rs"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: src/v1/stage0/src/gunbc_file_transport_generated.rs"; fi
-          if [ -e "provisioning/srv1/gunbc-ghrunner.sudoers" ]; then git add "provisioning/srv1/gunbc-ghrunner.sudoers"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: provisioning/srv1/gunbc-ghrunner.sudoers"; fi
-          if [ -e "provisioning/srv2/gunbc-ghrunner.sudoers" ]; then git add "provisioning/srv2/gunbc-ghrunner.sudoers"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: provisioning/srv2/gunbc-ghrunner.sudoers"; fi
-          if [ -e "provisioning/srv3/gunbc-ghrunner.sudoers" ]; then git add "provisioning/srv3/gunbc-ghrunner.sudoers"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: provisioning/srv3/gunbc-ghrunner.sudoers"; fi
-          if [ -e "provisioning/srv4/gunbc-ghrunner.sudoers" ]; then git add "provisioning/srv4/gunbc-ghrunner.sudoers"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: provisioning/srv4/gunbc-ghrunner.sudoers"; fi
-          if [ -e "docs/plans/dag-v2-defork-audit.md" ]; then git add "docs/plans/dag-v2-defork-audit.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/dag-v2-defork-audit.md"; fi
-          if [ -e "docs/plans/v2-self-hosting.md" ]; then git add "docs/plans/v2-self-hosting.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/v2-self-hosting.md"; fi
-          if [ -e "docs/plans/model-realization-fork.md" ]; then git add "docs/plans/model-realization-fork.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/model-realization-fork.md"; fi
-          if [ -e "docs/plans/inert-layer-lens.md" ]; then git add "docs/plans/inert-layer-lens.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/inert-layer-lens.md"; fi
-          if [ -e "docs/plans/compile-clean-forcecheck.md" ]; then git add "docs/plans/compile-clean-forcecheck.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/compile-clean-forcecheck.md"; fi
-          if [ -e "docs/plans/budget-tree.md" ]; then git add "docs/plans/budget-tree.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/budget-tree.md"; fi
-          if [ -e "docs/plans/compute-envelope-model.md" ]; then git add "docs/plans/compute-envelope-model.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/compute-envelope-model.md"; fi
-          if [ -e "docs/plans/input-envelope-roadmap.md" ]; then git add "docs/plans/input-envelope-roadmap.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/input-envelope-roadmap.md"; fi
-          if [ -e "docs/plans/ci-humming.md" ]; then git add "docs/plans/ci-humming.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/ci-humming.md"; fi
-          if [ -e "docs/plans/realization-measurement-loop.md" ]; then git add "docs/plans/realization-measurement-loop.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/realization-measurement-loop.md"; fi
-          if [ -e "docs/plans/host-effect-orchestration.md" ]; then git add "docs/plans/host-effect-orchestration.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/host-effect-orchestration.md"; fi
-          if [ -e "docs/plans/representation-minimization.md" ]; then git add "docs/plans/representation-minimization.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/representation-minimization.md"; fi
-          if [ -e "docs/plans/cli-run-hollowing-plan.md" ]; then git add "docs/plans/cli-run-hollowing-plan.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/cli-run-hollowing-plan.md"; fi
-          if [ -e "docs/plans/discrete-cost-derivation.md" ]; then git add "docs/plans/discrete-cost-derivation.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/discrete-cost-derivation.md"; fi
-          if [ -e "docs/plans/deploy-convergence-observed-side.md" ]; then git add "docs/plans/deploy-convergence-observed-side.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/deploy-convergence-observed-side.md"; fi
-          if [ -e "docs/plans/floor-claim-cost-distribution.md" ]; then git add "docs/plans/floor-claim-cost-distribution.md"; else echo "chore-heal: registered generated artifact absent on this tree, not staging: docs/plans/floor-claim-cost-distribution.md"; fi
           PRIOR_HEAD=$(git rev-parse HEAD)
           if git diff --cached --quiet; then
             if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
-              echo "::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=ActionsJobCredentialScopeUnavailable regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet'" >&2
+              echo "::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=ManagedInstallationGrantUnobserved+ManagedInstallationGrantUnobserved+ManagedInstallationGrantUnobserved regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet'" >&2
               exit 1
             fi
             echo "HealNoChange head=$PRIOR_HEAD"
@@ -388,7 +397,7 @@ jobs:
             GUNBC_HEALED_HEAD="$HEALED_HEAD" GUNBC_HEAL_BRANCH_REF="${{ github.head_ref || github.ref_name }}" "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/ci_heal_dispatch.dag --function main
             echo "SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required"
             if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
-              echo "::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=ActionsJobCredentialScopeUnavailable regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet'" >&2
+              echo "::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=ManagedInstallationGrantUnobserved+ManagedInstallationGrantUnobserved+ManagedInstallationGrantUnobserved regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet'" >&2
             fi
             exit 1
           fi

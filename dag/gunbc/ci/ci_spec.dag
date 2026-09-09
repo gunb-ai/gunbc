@@ -1,9 +1,13 @@
 module gunbc.ci_spec
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
-import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
-import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
-import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
+import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
+import gunbc.auth.github_apps {
+  gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id,
+  gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id,
+  DeclaredGitHubApp
+}
+import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.org_admin_auth {
   github_app_installation_access_token_url,
   github_app_jwt_backdate_seconds,
@@ -74,7 +78,7 @@ import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
 }
-import std.types { GitRef }
+import std.types { GitRef, NonEmptyStr }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
@@ -1457,28 +1461,80 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
 // administrator sibling records): the mint POST writes its headers and body to files, and anything
 // but 201 refuses with the status line, so a revoked key, a removed installation and a missing
 // permission each surface as what they are rather than as a JSON decode traceback.
-fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
-  [
+// ONE MINT, N APPS -- the shared installation-token construction (DESIGN §2 horizontal).
+// This block was the org-admin prelude with gunbai-ci spelled into it at six places. The heal
+// branch advance needs the SAME construction against a DIFFERENT App, and copying it would have
+// forked one concept across two authorities: the day the JWT lifetime or the 201 check moves, one
+// copy is edited and the other silently keeps minting. The varying facts are a record; the caller
+// supplies what it does with the token as a tail, because THAT is the only genuinely different
+// part -- org-admin exports GH_TOKEN for a gunbc invocation, heal hands the token to a checkout.
+type AppInstallationTokenLease {
+  secret: SecretRef
+  app: DeclaredGitHubApp
+  installation: GitHubAppInstallationId
+  unreadable_remedy: NonEmptyStr
+  // Names the caller aliases the minted token to. The trap must wipe every name the token is
+  // reachable under, not just the one the shared mint assigns -- the first cut of this refactor
+  // renamed the variable and silently stopped unsetting the alias, leaving an installation token
+  // live in the step environment after the trap had "cleaned up".
+  additional_unset_vars: String
+  // What a 201-refusal should send the reader to inspect. Generalising this to "a missing
+  // permission" dropped the one word that names the App setting, which is the whole remedy.
+  token_refusal_permission_hint: NonEmptyStr
+}
+
+// The remedy is a lease field rather than a literal: a 403 on the heal key is fixed by a different
+// converge than a 403 on the org-admin key, and a refusal naming the wrong one sends the reader to
+// a terminal to improvise.
+fn app_installation_key_unreadable_message(lease: AppInstallationTokenLease, http_status: String) -> String {
+  join([
+    "AppInstallationKeyUnreadable: Secret Manager answered HTTP ", http_status, " for ",
+    secret_ref_version_resource(ref: lease.secret),
+    " to the fleet-cloud-convergence principal. 403 means the version exists and is not readable OR does not exist",
+    " -- REMEDY: ", lease.unreadable_remedy as String,
+    " Minting NO token."
+  ], "")
+}
+
+// Three distinct causes present identically at this boundary, so the sentence names all three
+// rather than guessing one.
+fn app_installation_token_refused_message(installation: String, status_line: String, permission_hint: String) -> String {
+  join([
+    "AppInstallationTokenRefused: GitHub answered ", status_line, " for the ", installation,
+    " installation; a revoked key, a removed installation, or ", permission_hint,
+    " each look like this -- inspect the App's installation on the organization"
+  ], "")
+}
+
+fn app_installation_token_prelude(
+  lease: AppInstallationTokenLease,
+  tail: List<PipelineStep>
+) -> List<PipelineStep> {
+  fold(tail, init: [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
     Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/org-admin-app-key\"") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/org-admin-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "JWT_FILE=\"$RUNNER_TEMP/org-admin-app-jwt\"") },
-    Do { run: ci_retry_body_run(command: "TOKEN_HEADERS=\"$RUNNER_TEMP/org-admin-token-headers\"") },
-    Do { run: ci_retry_body_run(command: "TOKEN_BODY=\"$RUNNER_TEMP/org-admin-token-body\"") },
+    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/app-installation-key\"") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/app-installation-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "JWT_FILE=\"$RUNNER_TEMP/app-installation-jwt\"") },
+    Do { run: ci_retry_body_run(command: "TOKEN_HEADERS=\"$RUNNER_TEMP/app-installation-token-headers\"") },
+    Do { run: ci_retry_body_run(command: "TOKEN_BODY=\"$RUNNER_TEMP/app-installation-token-body\"") },
     Do {
       run: ci_retry_body_run(
-        command: "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\" \"$JWT_FILE\" \"$TOKEN_HEADERS\" \"$TOKEN_BODY\" \"$RUNNER_TEMP/org-admin-app-key-sm-body\"; unset GUNBC_ORG_ADMIN_TOKEN GH_TOKEN; }"
+        command: join([
+          "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\" \"$JWT_FILE\" \"$TOKEN_HEADERS\" \"$TOKEN_BODY\" \"$RUNNER_TEMP/app-installation-key-sm-body\"; unset GUNBC_APP_INSTALLATION_TOKEN GH_TOKEN",
+          lease.additional_unset_vars,
+          "; }"
+        ], "")
       )
     },
     Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: "SM_BODY=\"$RUNNER_TEMP/org-admin-app-key-sm-body\"") },
+    Do { run: ci_retry_body_run(command: "SM_BODY=\"$RUNNER_TEMP/app-installation-key-sm-body\"") },
     Do {
       run: ci_retry_body_run(
         command: join([
           "SM_CODE=\"$(curl -sS -o \"$SM_BODY\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
-          secret_ref_access_url(ref: gunbai_ci_app_pem_secret),
+          secret_ref_access_url(ref: lease.secret),
           "\")\""
         ], "")
       )
@@ -1488,8 +1544,8 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
-          org_admin_app_key_unreadable_message(
-            resource: secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+          app_installation_key_unreadable_message(
+            lease: lease,
             http_status: "$SM_CODE"
           ),
           "\" >&2; exit 1; fi"
@@ -1510,7 +1566,7 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
           "))\" \"$((NOW+",
           to_string(github_app_jwt_lifetime_seconds),
           "))\" \"",
-          to_string(gunbai_ci_declared.app_id.value),
+          to_string(lease.app.app_id.value),
           "\" | b64url)"
         ], "")
       )
@@ -1522,7 +1578,7 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "curl -sS -X POST -H @\"$JWT_FILE\" -H 'Accept: application/vnd.github+json' -D \"$TOKEN_HEADERS\" -o \"$TOKEN_BODY\" \"",
-          github_app_installation_access_token_url(installation_id: gunbai_ci_declared_installation_id.value),
+          github_app_installation_access_token_url(installation_id: lease.installation.value),
           "\""
         ], "")
       )
@@ -1532,31 +1588,75 @@ fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
       run: ci_retry_body_run(
         command: join([
           "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
-          org_admin_installation_token_refused_message(
-            installation: "gunbai-ci",
-            status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
+          app_installation_token_refused_message(
+            installation: lease.app.slug as String,
+            status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')",
+            permission_hint: lease.token_refusal_permission_hint as String
           ),
           "\" >&2; exit 1; fi"
         ], "")
       )
     },
-    Do { run: ci_retry_body_run(command: "GUNBC_ORG_ADMIN_TOKEN=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\"") },
+    Do { run: ci_retry_body_run(command: "GUNBC_APP_INSTALLATION_TOKEN=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\"") },
     Do { run: ci_retry_body_run(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"") },
-    Do { run: ci_retry_body_run(command: "export GUNBC_ORG_ADMIN_TOKEN") },
-    Do { run: ci_retry_body_run(command: "export GH_TOKEN=\"$GUNBC_ORG_ADMIN_TOKEN\"") },
+    Do { run: ci_retry_body_run(command: "export GUNBC_APP_INSTALLATION_TOKEN") },
     Do {
       run: ci_retry_body_run(
         command: join([
-          "echo \"org-admin: installation token minted in-run for app ",
-          gunbai_ci_declared.slug as String,
+          "echo \"app-installation: token minted in-run for app ",
+          lease.app.slug as String,
           " installation ",
-          to_string(gunbai_ci_declared_installation_id.value),
+          to_string(lease.installation.value),
           " (one-hour lifetime; key wiped; token held in this step's environment only)\""
         ], "")
       )
     }
-  ]
+  ], f: fn(acc, s) { acc.append(s) })
 }
+
+data org_admin_app_token_lease: AppInstallationTokenLease = AppInstallationTokenLease {
+  secret: gunbai_ci_app_pem_secret,
+  app: gunbai_ci_declared,
+  installation: gunbai_ci_declared_installation_id,
+  unreadable_remedy: "run org_admin_app_key_access_converge_with_supplied_token (gunbc.fleet.org_actions_converge) with a control-plane token to bind roles/secretmanager.secretAccessor, and confirm the version exists.",
+  additional_unset_vars: " GUNBC_ORG_ADMIN_TOKEN",
+  token_refusal_permission_hint: "a missing Self-hosted-runners permission"
+}
+
+fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
+  app_installation_token_prelude(lease: org_admin_app_token_lease, tail: [
+    Do { run: ci_retry_body_run(command: "GUNBC_ORG_ADMIN_TOKEN=\"$GUNBC_APP_INSTALLATION_TOKEN\"") },
+    Do { run: ci_retry_body_run(command: "export GUNBC_ORG_ADMIN_TOKEN") },
+    Do { run: ci_retry_body_run(command: "export GH_TOKEN=\"$GUNBC_ORG_ADMIN_TOKEN\"") }
+  ])
+}
+
+// THE HEAL BRANCH ADVANCE'S OWN LEASE. The token leaves this step as a STEP OUTPUT rather than an
+// exported variable, because its consumer is the checkout action in a LATER step -- an env export
+// would not survive the step boundary. ::add-mask:: is registered before the value is written, so
+// the token cannot appear in any subsequent log line even if a later step echoes it.
+data heal_push_app_token_lease: AppInstallationTokenLease = AppInstallationTokenLease {
+  secret: gunbai_bot_app_pem_secret,
+  app: gunbai_bot_declared,
+  installation: gunbai_bot_declared_installation_id,
+  unreadable_remedy: "confirm projects/gunbai-secrets/secrets/agent-github-app-private-key exists and that roles/secretmanager.secretAccessor is bound on it for fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com.",
+  additional_unset_vars: "",
+  token_refusal_permission_hint: "a missing contents or workflows permission"
+}
+
+fn gunbc_ci_heal_app_token_script() -> String {
+  gunbc_invoke_step_emit_pipeline(
+    p: Pipeline { steps: gunbc_ci_heal_app_token_prelude(), on_failure: FailFast }
+  )
+}
+
+fn gunbc_ci_heal_app_token_prelude() -> List<PipelineStep> {
+  app_installation_token_prelude(lease: heal_push_app_token_lease, tail: [
+    Do { run: ci_retry_body_run(command: "echo \"::add-mask::$GUNBC_APP_INSTALLATION_TOKEN\"") },
+    Do { run: ci_retry_body_run(command: "echo \"token=$GUNBC_APP_INSTALLATION_TOKEN\" >> \"$GITHUB_OUTPUT\"") }
+  ])
+}
+
 
 // THE APP-JWT PRELUDE (operator decision 2026-09-05, option (b)). GET /app and
 // GET /app/hook/config authenticate as the APP; the installation access token that

@@ -850,14 +850,37 @@ test fn witness_dispatch_and_push_credentials_differ_in_outcome() -> Bool {
   )
 }
 
-test fn witness_unresolved_migration_target_yields_no_credential() -> Bool {
+// THE LIVE TARGET IS NOW RESOLVED, AND THIS WITNESS MOVED WITH IT RATHER THAN BEING DELETED.
+// It previously pinned heal_push_migration_target as AppUndecided yielding no credential. That
+// was true and is now false: the heal push binds the gunbai-bot App on installation 136673607.
+// The two unresolved arms below are KEPT as explicitly constructed negative controls, so the
+// evidence that an undecided or installation-less target still yields nothing stays enrolled --
+// only the LIVE target moved (guarantee ladder, dissolution on climb: production machinery goes,
+// the discriminating controls do not). The installation id is pinned as a literal on purpose:
+// comparing it to the authority it is read from would be an identity, not a check.
+test fn witness_heal_push_target_resolves_to_the_app_credential() -> Bool {
   match resolved_target_credential(target: heal_push_migration_target) {
+    Present { value: c } => credential_authorizes(
+      authority: c,
+      control_plane: observed_grant(perms: full_workflow_grant),
+      effect: workflow_advance_effect
+    )
+    Absent => false
+  } && match heal_push_migration_target {
+    AppUndecided { profile: _, pending: _ } => false
+    InstallationUnresolved { app: _, profile: _ } => false
+    InstallationResolved { app, installation, profile } =>
+      app.app_id.value == gunbai_bot_declared.app_id.value
+      && installation.value == 136673607
+      && profile.name == "heal-branch-advance"
+  } && match resolved_target_credential(
+    target: AppUndecided {
+      profile: GitHubCredentialProfileRef { name: "heal-branch-advance" },
+      pending: PrivilegePartitionUndecided
+    }
+  ) {
     Absent => true
     Present { value: _ } => false
-  } && match heal_push_migration_target {
-    AppUndecided { profile, pending: _ } => profile.name == "heal-branch-advance"
-    InstallationUnresolved { app: _, profile: _ } => false
-    InstallationResolved { app: _, installation: _, profile: _ } => false
   } && match resolved_target_credential(
     target: InstallationUnresolved {
       app: gunbai_bot_declared,

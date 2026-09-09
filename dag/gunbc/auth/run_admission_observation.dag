@@ -1,0 +1,92 @@
+module gunbc.auth.run_admission_observation
+
+import std.types { NonEmptyStr, Bool }
+import extdeps.github.run_admission {
+  ForkPrApprovalPolicy,
+  ApprovalForFirstTimeContributors,
+  ForkPrApprovalPolicyObservation,
+  ApprovalPolicyObserved,
+  ContributorStanding,
+  EstablishedContributor,
+  FirstTimeContributor,
+  ContributorStandingUnobserved,
+  OrganizationMembership,
+  NotOrganizationMember
+}
+
+// WHAT THIS REPOSITORY'S ACTIONS SETTINGS ACTUALLY SAY, read rather than assumed.
+// GET repos/gunb-ai/gunbc/actions/permissions/fork-pr-contributor-approval answered
+// {"approval_policy":"first_time_contributors"} on 2026-09-09 to an operator token.
+//
+// IT IS RECORDED AS AN OBSERVATION AND NOT A CONSTANT because it is a mutable repository setting
+// no code here owns: a reader who finds this row disagreeing with the API should trust the API and
+// re-take the observation, which is why the endpoint is named beside the value.
+//
+// THE FORK-SHAPED NAME IS WHAT HID THIS. Both the setting's title and its REST path say "fork",
+// and every withheld run measured here is SAME-REPOSITORY -- head_repository equals repository on
+// all 17. The policy text resolves it: it checks "both the pull request author and the actor of
+// the pull request event", with no fork precondition on the actor arm.
+data gunbc_fork_pr_approval_policy: ForkPrApprovalPolicy = ApprovalForFirstTimeContributors
+
+data gunbc_fork_pr_approval_observation: ForkPrApprovalPolicyObservation = ApprovalPolicyObserved {
+  policy: gunbc_fork_pr_approval_policy
+}
+
+// THE MEASURED STANDINGS. Each row is a count taken over gunb-ai/gunbc on 2026-09-09, not a
+// judgement about the account: standing is per-repository, so these do not travel.
+type ObservedActorStanding {
+  actor: NonEmptyStr
+  standing: ContributorStanding
+  membership: OrganizationMembership
+  evidence: NonEmptyStr
+}
+
+// github-actions[bot] is the Actions job credential's identity. It has never had a commit or pull
+// request merged into this repository -- it cannot, since a GITHUB_TOKEN push is attributed to it
+// but authored by whatever the job's git config says, and no PR is ever opened AS it here.
+data actions_bot_standing: ObservedActorStanding = ObservedActorStanding {
+  actor: "github-actions[bot]",
+  standing: FirstTimeContributor,
+  membership: NotOrganizationMember,
+  evidence: "of the last 600 pull_request runs in gunb-ai/gunbc this actor holds 24, and the ENTIRE status=action_required listing (17 runs) is this actor; 17 of 24 withheld against 0 of 576 for every other actor. Re-derive by listing repos/gunb-ai/gunbc/actions/runs with event=pull_request grouped by actor.login against the status=action_required listing grouped by actor.login."
+}
+
+// gunbai-bot[bot] is App 3909950's installation identity. Session workers push and open PRs with
+// its installation tokens, so it has merged commits here in quantity.
+data gunbai_bot_standing: ObservedActorStanding = ObservedActorStanding {
+  actor: "gunbai-bot[bot]",
+  standing: EstablishedContributor,
+  membership: NotOrganizationMember,
+  evidence: "holds 475 of the last 600 pull_request runs in gunb-ai/gunbc and appears zero times in the status=action_required listing; merged commits authored gunbai-bot[bot] are present throughout the main history."
+}
+
+data observed_actor_standings: List<ObservedActorStanding> = [
+  actions_bot_standing,
+  gunbai_bot_standing
+]
+
+// An actor with no row is UNOBSERVED, never assumed established. The unobserved arm is what makes
+// standing_requires_approval refuse, so a newly introduced push identity stops the line rather
+// than silently inheriting a verdict measured for a different one.
+fn observed_standing_for(actor: NonEmptyStr) -> ObservedActorStanding? {
+  fold(observed_actor_standings, init: none, f: fn(found, row) {
+    match found {
+      Present { value } => Present { value: value }
+      Absent => if row.actor == actor { Present { value: row } } else { none }
+    }
+  })
+}
+
+fn actor_standing(actor: NonEmptyStr) -> ContributorStanding {
+  match observed_standing_for(actor: actor) {
+    Present { value: row } => row.standing
+    Absent => ContributorStandingUnobserved
+  }
+}
+
+fn actor_membership(actor: NonEmptyStr) -> OrganizationMembership {
+  match observed_standing_for(actor: actor) {
+    Present { value: row } => row.membership
+    Absent => NotOrganizationMember
+  }
+}

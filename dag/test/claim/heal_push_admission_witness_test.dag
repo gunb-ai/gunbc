@@ -1,0 +1,131 @@
+module test.claim.heal_push_admission_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, Bool }
+import extdeps.github.run_admission {
+  ForkPrApprovalPolicyObservation, ApprovalPolicyObserved, ApprovalPolicyUnobserved,
+  ApprovalForFirstTimeContributors, ApprovalForContributorsNewToGitHub, ApprovalForAllExternalContributors,
+  ContributorStanding, EstablishedContributor, FirstTimeContributor, ContributorStandingUnobserved,
+  OrganizationMembership, OrganizationMember, NotOrganizationMember,
+  WorkflowRunAdmission, RunExecutes, RunWithheldPendingApproval, RunAdmissionUnmodelled, RunAdmissionUnobserved,
+  workflow_run_admission, run_admission_executes
+}
+import extdeps.github.actions_token { PullRequestEvent, WorkflowDispatchEvent, PushEvent }
+import gunbc.auth.run_admission_observation {
+  gunbc_fork_pr_approval_observation, actor_standing, actor_membership
+}
+import gunbc.ci_heal_credential {
+  live_heal_push_is_judged, live_heal_push_admission, heal_admission_for_actor
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn admits(actor: NonEmptyStr) -> Bool {
+  run_admission_executes(admission: heal_admission_for_actor(actor: actor))
+}
+
+// ── THE ASSERTION THAT FLIPS ────────────────────────────────────────────────────────────────
+// RED on every tree where the heal push binds the Actions job credential, GREEN once it binds the
+// App. It reads the EMITTED checkout step through the credential model, so it cannot be satisfied
+// by editing a declaration while the workflow still pushes as github-actions[bot] -- the failure
+// mode DESIGN §5 names, a check green because the spec moved and the realization did not.
+test fn witness_heal_push_creates_a_run_that_executes() -> Bool {
+  live_heal_push_is_judged && match live_heal_push_admission {
+    RunExecutes => true
+    RunWithheldPendingApproval { actor: _ } => false
+    RunAdmissionUnmodelled { event_note: _ } => false
+    RunAdmissionUnobserved => false
+  }
+}
+
+// ── THE DISCRIMINATING NEGATIVE, WHICH NEVER RETIRES ────────────────────────────────────────
+// The Actions job credential's actor is still withheld under this repository's live policy. This
+// is the root cause itself, asserted as a standing fact: if it ever goes green without the policy
+// row changing, the model has stopped describing GitHub and the arm above proves nothing.
+test fn witness_actions_job_credential_actor_is_withheld() -> Bool {
+  !admits(actor: "github-actions[bot]") && match heal_admission_for_actor(actor: "github-actions[bot]") {
+    RunWithheldPendingApproval { actor } => actor == "github-actions[bot]"
+    RunExecutes => false
+    RunAdmissionUnmodelled { event_note: _ } => false
+    RunAdmissionUnobserved => false
+  }
+}
+
+// The positive control for the same function: the App's actor is admitted under the same policy,
+// so the arm above is discriminating on the ACTOR and not merely refusing everything.
+test fn witness_app_installation_actor_is_admitted() -> Bool {
+  admits(actor: "gunbai-bot[bot]")
+}
+
+// ── THE AXES, EACH PROVEN TO BE READ RATHER THAN HARDCODED ──────────────────────────────────
+// EVENT: workflow_dispatch is exempt for the SAME actor whose pull_request runs are withheld.
+// This is the repository's own measurement (500 dispatch runs, 0 withheld, 151 by this actor)
+// and it is what makes the deleted dispatch workaround explicable rather than superstition.
+test fn witness_dispatch_is_exempt_for_the_withheld_actor() -> Bool {
+  run_admission_executes(admission: workflow_run_admission(
+    observation: gunbc_fork_pr_approval_observation,
+    event: WorkflowDispatchEvent,
+    actor: "github-actions[bot]",
+    standing: actor_standing(actor: "github-actions[bot]"),
+    membership: actor_membership(actor: "github-actions[bot]")
+  )) && !run_admission_executes(admission: workflow_run_admission(
+    observation: gunbc_fork_pr_approval_observation,
+    event: PullRequestEvent,
+    actor: "github-actions[bot]",
+    standing: actor_standing(actor: "github-actions[bot]"),
+    membership: actor_membership(actor: "github-actions[bot]")
+  ))
+}
+
+// POLICY: the SAME first-time actor is admitted under the loosest setting and withheld under the
+// live one. Without this arm the policy field could be ignored entirely and every test above
+// would still pass.
+test fn witness_policy_setting_changes_the_verdict_for_one_actor() -> Bool {
+  run_admission_executes(admission: workflow_run_admission(
+    observation: ApprovalPolicyObserved { policy: ApprovalForContributorsNewToGitHub },
+    event: PullRequestEvent,
+    actor: "github-actions[bot]",
+    standing: FirstTimeContributor,
+    membership: NotOrganizationMember
+  )) && !run_admission_executes(admission: workflow_run_admission(
+    observation: ApprovalPolicyObserved { policy: ApprovalForFirstTimeContributors },
+    event: PullRequestEvent,
+    actor: "github-actions[bot]",
+    standing: FirstTimeContributor,
+    membership: NotOrganizationMember
+  ))
+}
+
+// FAIL-CLOSED: an actor with no measured standing is withheld, not assumed established. A new
+// push identity therefore stops the line instead of inheriting a verdict taken for another.
+test fn witness_unobserved_actor_is_withheld() -> Bool {
+  !admits(actor: "some-unmeasured-identity[bot]")
+}
+
+// UNOBSERVED POLICY REFUSES: not knowing the setting is a different state from knowing it admits.
+test fn witness_unobserved_policy_refuses() -> Bool {
+  !run_admission_executes(admission: workflow_run_admission(
+    observation: ApprovalPolicyUnobserved,
+    event: PullRequestEvent,
+    actor: "gunbai-bot[bot]",
+    standing: EstablishedContributor,
+    membership: NotOrganizationMember
+  ))
+}
+
+// UNMODELLED EVENTS DO NOT SILENTLY ADMIT. push carries no measurement here, so it returns its own
+// state and is not executable -- the honest boundary rather than a guess in either direction.
+test fn witness_unmeasured_event_is_not_admitted() -> Bool {
+  match workflow_run_admission(
+    observation: gunbc_fork_pr_approval_observation,
+    event: PushEvent,
+    actor: "gunbai-bot[bot]",
+    standing: EstablishedContributor,
+    membership: NotOrganizationMember
+  ) {
+    RunAdmissionUnmodelled { event_note: _ } => true
+    RunExecutes => false
+    RunWithheldPendingApproval { actor: _ } => false
+    RunAdmissionUnobserved => false
+  }
+}

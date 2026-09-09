@@ -55,13 +55,16 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_heal_credential {
   ci_heal_branch_head_checkout_step,
   ci_regen_heal_if,
-  ci_heal_job_permissions
+  ci_heal_job_permissions,
+  ci_heal_app_token_step_id
 }
+import gunbc.fleet_workflow_steps { ci_fleet_wif_auth_step }
 import gunbc.ci_spec {
   gunbc_ci_heal_regen_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
   gunbc_ci_heal_repo_local_git_config_invoke,
   gunbc_ci_heal_commit_push_script,
+  gunbc_ci_heal_app_token_script,
   ci_heal_author_commit_artifact_dir,
   ci_heal_author_commit_artifact_name,
   ci_heal_author_commit_required_output
@@ -1968,8 +1971,37 @@ fn heal_author_commit_bundle_step() -> Step {
 // rustfmt here by analogy would be the false declaration this file already caught once on the
 // floor's run step, in the opposite direction: claiming a consumer that does not exist rather than
 // omitting one that does. The toolchain provider is still consumed, by the build step above it.
+// THE CREDENTIAL IS MINTED BEFORE THE CHECKOUT, NOT AFTER, and the order is load-bearing rather
+// than tidy: the checkout is the step that RECEIVES the token, so a mint placed after it would
+// hand the push the Actions job credential this whole change exists to stop using.
+fn heal_app_token_mint_step() -> Step {
+  RunStep {
+    name: Present { value: "Mint the gunbai-bot installation token the heal push advances under" },
+    id: Present { value: ci_heal_app_token_step_id },
+    run: gunbc_ci_heal_app_token_script(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn heal_generated_artifacts_bound_steps() -> List<WitnessFloorBoundStep> {
   [
+    WitnessFloorBoundStep {
+      step: ci_fleet_wif_auth_step(),
+      role: capability_neutral,
+      step_name: "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)",
+    },
+    WitnessFloorBoundStep {
+      step: heal_app_token_mint_step(),
+      role: capability_neutral,
+      step_name: "Mint the gunbai-bot installation token the heal push advances under",
+    },
     WitnessFloorBoundStep {
       step: ci_heal_branch_head_checkout_step(),
       role: capability_neutral,

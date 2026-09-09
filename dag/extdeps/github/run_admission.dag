@@ -1,0 +1,141 @@
+module extdeps.github.run_admission
+
+import std.types { NonEmptyStr, String, Bool }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.github.actions_token { GitHubWorkflowEvent, PullRequestEvent, PushEvent, WorkflowDispatchEvent, MergeGroupEvent, ScheduleEvent }
+
+// WHETHER A CREATED RUN EXECUTES, which is a DIFFERENT question from what a run's token may do
+// once it is executing -- extdeps.github.actions_token owns the second and this module owns the
+// first. They were conflated here for a week: a carrier reasoning about the heal push read the
+// grant model, found contents:write, and concluded the push would be judged. The grant was right
+// and the run never ran, because admission is decided BEFORE any token is issued.
+data fork_pr_contributor_approval_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/how-tos/manage-workflow-runs/approve-runs-from-forks"
+  }
+}
+
+// The REST surface the policy is READ from, named so the observation below can be re-derived
+// rather than trusted: GET repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval
+data fork_pr_contributor_approval_api_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/permissions#get-private-repo-fork-pr-approval-policy"
+  }
+}
+
+// GitHub's three settings, in the order the settings page lists them (least to most restrictive).
+// Modelled as a closed coproduct rather than a Bool because the middle value is the one this
+// repository holds and the outer two behave differently for the SAME actor.
+type ForkPrApprovalPolicy
+  = ApprovalForContributorsNewToGitHub
+  | ApprovalForFirstTimeContributors
+  | ApprovalForAllExternalContributors
+
+type ForkPrApprovalPolicyObservation
+  = ApprovalPolicyUnobserved
+  | ApprovalPolicyObserved { policy: ForkPrApprovalPolicy }
+
+// THE ACTOR'S STANDING IN ONE REPOSITORY, not a global property of the account. "First-time" is
+// GitHub's own word and it means "has never had a commit or pull request merged INTO THIS
+// REPOSITORY" -- an account can be a decade old, own the App, and still be first-time here.
+// That is exactly the trap: github-actions[bot] predates most of GitHub and is first-time in
+// every repository it has never authored a merged commit in, which is all of them.
+type ContributorStanding
+  = EstablishedContributor
+  | FirstTimeContributor
+  | ContributorNewToGitHub
+  | ContributorStandingUnobserved
+
+// A member or owner of the repository's organization is never external, whatever their standing.
+type OrganizationMembership
+  = OrganizationMember
+  | NotOrganizationMember
+  | OrganizationMembershipUnobserved
+
+type WorkflowRunAdmission
+  = RunExecutes
+  | RunWithheldPendingApproval { actor: NonEmptyStr }
+  | RunAdmissionUnmodelled { event_note: NonEmptyStr }
+  | RunAdmissionUnobserved
+
+// THE EVENT AXIS, AND THE THREE ARMS THAT ARE HONESTLY UNMODELLED RATHER THAN GUESSED.
+// workflow_dispatch is exempt: measured over 500 dispatch runs in gunb-ai/gunbc with zero
+// action_required, including 151 actored by the same github-actions[bot] whose pull_request runs
+// are withheld. pull_request is gated. push, merge_group and schedule carry NO measurement in
+// this repository and a plausible-looking guess about them is precisely the fabricated output
+// DESIGN §5 forbids, so they return their own state and any consumer must handle it.
+fn event_admission_is_actor_gated(event: GitHubWorkflowEvent) -> WorkflowRunAdmission {
+  match event {
+    PullRequestEvent => RunAdmissionUnobserved
+    WorkflowDispatchEvent => RunExecutes
+    PushEvent => RunAdmissionUnmodelled { event_note: "push admission is unmeasured in this repository" }
+    MergeGroupEvent => RunAdmissionUnmodelled { event_note: "merge_group admission is unmeasured in this repository" }
+    ScheduleEvent => RunAdmissionUnmodelled { event_note: "schedule admission is unmeasured in this repository" }
+  }
+}
+
+// Whether THIS standing needs approval under THIS policy. Organization membership short-circuits
+// the strictest setting only; the other two ask about repository standing regardless.
+fn standing_requires_approval(
+  policy: ForkPrApprovalPolicy,
+  standing: ContributorStanding,
+  membership: OrganizationMembership
+) -> Bool {
+  match policy {
+    ApprovalForAllExternalContributors => match membership {
+      OrganizationMember => false
+      NotOrganizationMember => true
+      OrganizationMembershipUnobserved => true
+    }
+    ApprovalForFirstTimeContributors => match standing {
+      EstablishedContributor => false
+      FirstTimeContributor => true
+      ContributorNewToGitHub => true
+      ContributorStandingUnobserved => true
+    }
+    ApprovalForContributorsNewToGitHub => match standing {
+      EstablishedContributor => false
+      FirstTimeContributor => false
+      ContributorNewToGitHub => true
+      ContributorStandingUnobserved => true
+    }
+  }
+}
+
+// The join. An unobserved policy refuses rather than assuming the permissive arm: not knowing the
+// setting is not the same fact as knowing it admits, and collapsing them is the state-space
+// conflation this repository keeps cataloguing.
+fn workflow_run_admission(
+  observation: ForkPrApprovalPolicyObservation,
+  event: GitHubWorkflowEvent,
+  actor: NonEmptyStr,
+  standing: ContributorStanding,
+  membership: OrganizationMembership
+) -> WorkflowRunAdmission {
+  match event_admission_is_actor_gated(event: event) {
+    RunExecutes => RunExecutes
+    RunAdmissionUnmodelled { event_note } => RunAdmissionUnmodelled { event_note: event_note }
+    RunWithheldPendingApproval { actor: a } => RunWithheldPendingApproval { actor: a }
+    RunAdmissionUnobserved => match observation {
+      ApprovalPolicyUnobserved => RunAdmissionUnobserved
+      ApprovalPolicyObserved { policy } =>
+        if standing_requires_approval(policy: policy, standing: standing, membership: membership) {
+          RunWithheldPendingApproval { actor: actor }
+        } else {
+          RunExecutes
+        }
+    }
+  }
+}
+
+fn run_admission_executes(admission: WorkflowRunAdmission) -> Bool {
+  match admission {
+    RunExecutes => true
+    RunWithheldPendingApproval { actor: _ } => false
+    RunAdmissionUnmodelled { event_note: _ } => false
+    RunAdmissionUnobserved => false
+  }
+}
