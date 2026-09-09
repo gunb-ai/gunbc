@@ -14,7 +14,7 @@ import product.cable_leg_observation {
   CableLegObservation, cable_leg_observation, cable_leg_declared_nominal_rate,
   SecondaryNotObserved, ExtendedRateNotObserved,
 }
-import product.cable_plant_converge { CableLegReading, LegReadingTaken, LegNeverRead }
+import product.cable_plant_assessment { CableLegReading, LegReadingTaken, LegNeverRead }
 import gunbc.spark.fabric_switch_observed {
   fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
   fabric_leg_eeprom_observations, fabric_leg_reading, fabric_cable_plant,
