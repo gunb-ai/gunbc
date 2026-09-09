@@ -32,6 +32,16 @@ use std::path::Path;
 pub const ROSTER_BASENAME: &str = "roster.dag";
 /// Module path of the row files; `ROW_DIR_REL` is this spelling with `/` for `.`.
 pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
+/// The MODULE the derived roster declares, owned here rather than re-derived by consumers.
+///
+/// A CONSUMER RECOVERING THIS FROM `ROSTER_BASENAME` MUST STRIP `.dag` AND CHOOSE WHAT TO DO WHEN
+/// THE SUFFIX IS ABSENT, and every such choice is a guess about a name this module owns. One
+/// consumer is the wave-admission wall, where the recovered name gates an AUTO-ADMISSION: a
+/// fabricated fallback there would keep comparing against a plausible name instead of refusing,
+/// which is exactly the fabricated-plausible-output DESIGN section 5 forbids. Declaring the module
+/// once removes the recovery, so there is no default left to guess (section 3: the generator owns
+/// the name its own output declares).
+pub const ROSTER_MODULE: &str = "gunbc.recurring_failure_mode.roster";
 pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
 /// Is `rel` the DERIVED roster itself, under any sweep root?

@@ -2217,20 +2217,14 @@ fn admission_consumed_at_base(
 /// generator's input directory is not explained by the generator, so it stays
 /// `NewPoolCoincidenceResolution`.
 fn derived_generator_input_binding(module: &str, head: &BTreeSet<String>) -> bool {
-    let roster_module = format!(
-        "{}.{}",
-        crate::cli_run::derived_row_roster::ROW_MODULE,
-        crate::cli_run::derived_row_roster::ROSTER_BASENAME
-            .strip_suffix(".dag")
-            .unwrap_or("roster")
-    );
+    let roster_module = crate::cli_run::derived_row_roster::ROSTER_MODULE;
     if module != roster_module {
         return false;
     }
     let input_prefix = format!("{}.", crate::cli_run::derived_row_roster::ROW_MODULE);
     !head.is_empty()
         && head.iter().all(|candidate| {
-            candidate != &roster_module
+            candidate != roster_module
                 && candidate
                     .strip_prefix(&input_prefix)
                     .is_some_and(|stem| !stem.contains('.'))
