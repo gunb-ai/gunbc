@@ -623,8 +623,12 @@ fn non_empty<T>(xs: FreeMonoid<T>) -> Bool {
   }
 }
 
+// `count` is the primitive authority for carrier size (O(1) on the persistent-vector
+// realization); the fold this replaced was O(n) per call, and the parse repeat loop calls
+// length on the remaining-token list twice per element — an O(elements x tokens) quadratic
+// measured at 40% of self-hosted parse self-time (2026-09-09, required-v2-native lane work).
 fn length<T>(xs: FreeMonoid<T>) -> Int {
-  fold_list(xs: xs, empty: 0, cons: fn(count, _) { count + 1 })
+  xs |> count
 }
 
 fn for_all<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
@@ -690,8 +694,12 @@ fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
   })
 }
 
+// `list_push` is the primitive single-item append (amortized O(log n) on the persistent
+// carrier); routing through list_append paid a full O(n) right-fold per snoc, which made
+// every build-by-appending accumulator quadratic — measured on the first-set union fold in
+// the self-hosted parser (2026-09-09, required-v2-native lane work).
 fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
-  list_append(left: xs, right: Cons { head: item, tail: Empty })
+  xs |> list_push(item)
 }
 
 type ListPrefixState<T> {
