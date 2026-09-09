@@ -4,10 +4,11 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, EpochSecs }
 import std.measure { basis_point }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
-import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
-import gunbc.spark.serving_deployment_selection { ServingExecutionProfile }
+import gunbc.spark.serving_deployment_selection {
+  ServingExecutionProfile, execution_profile_of, glm_native_tp1_x8, serving_parameters_current,
+}
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import extdeps.vllm.server { vllm_source_revision }
 import extdeps.vllm.memory_profile { vllm_parse_memory_profile }
@@ -37,11 +38,18 @@ fn w_launch(invocation: String) -> VllmServingLaunch {
   )
 }
 
-data w_profile: ServingExecutionProfile = ServingExecutionProfile {
-  artifact: decl_ref(module_path: "gunbc.spark.serving_arm", decl_name: "glm53_exl3_205_row"),
-  tensor_parallel_degree: 1,
-  parameters_digest: "witness-fixture" as String,
-}
+// THE PROFILE IS DERIVED, NOT AUTHORED, AND THE SEAL IS WHAT TAUGHT ME THAT. This fixture used to
+// build a `ServingExecutionProfile` directly, with a `parameters_digest` of "witness-fixture" -- a
+// digest denoting no parameters anyone could run. The compiler refused it: the type is
+// `sole_constructor` and its defining module says why in its own words, that no caller may describe a
+// profile no candidate expresses. A test fixture is a caller like any other, and the fix is to obey
+// the seal rather than to widen it with an `admit_callers` for the convenience of a witness.
+//
+// SO THE SUBJECT IS A REAL ONE: the TP=1 GLM candidate and the current parameters row that already
+// exist in the selection authority. Nothing is minted here, which also means the digest this witness
+// compares against is the digest a real launch would carry.
+data w_profile: ServingExecutionProfile =
+  execution_profile_of(c: glm_native_tp1_x8, p: serving_parameters_current)
 
 fn w_admit(observed: String, claimed: String, text: String) -> VllmMemoryReceiptAdmission {
   admit_memory_receipt(
