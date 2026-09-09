@@ -165,3 +165,43 @@ test fn imported_generic_call_charges_no_unlisted_import_use_on_the_formal() -> 
     FixtureInstrumentRefused { cause: c } => false
   }
 }
+
+// THE IMPORTED-ALIAS ARM, the second wrong-env attribution shape. The census (2026-09-09,
+// post-kernel-guard) carries ~316 occurrences whose charged name is ABSENT from the attributed
+// module's text, with the span sitting in the DEFINER's file: an imported paramless type alias
+// (CodexPackageLockNode = PackageLockNode<NpmLockPathKey, ...> in gunbc.package_delivery) whose
+// expansion is resolved under the IMPORTER's masked env when the importer constructs through the
+// alias, charging the definer-tree argument names against an import list that could never list
+// them honestly -- the names are the definer's locals, and the definer's own module compiles
+// clean. The masked-boundary authority (v1.compiler.infer_resolve
+// resolve_node_bounded_masked_boundary) states the invariant this violates: grounding recursions
+// descend into DEFINING-module structure with masked=false, because that structure is the
+// defining module's import responsibility, not the use site's. This arm is red exactly while a
+// path resolves the imported alias's expansion without flipping the mask.
+data ubtr_alias_definer_source: String = "module ubtr.adef\n\ntype UbtrKey {\n  raw: Int\n}\n\ntype UbtrSel {\n  picked: Int\n}\n\ntype UbtrPackNode<K, S> {\n  key: K\n  sel: S\n}\n\ntype UbtrAliasedNode = UbtrPackNode<UbtrKey, UbtrSel>\n"
+
+// THE CONSTRUCTION THROUGH THE ALIAS IS LOAD-BEARING, as it was at
+// codex_package_lock_parse_witness_test.dag:142: a bare annotation (n: UbtrAliasedNode) resolves
+// the alias as a leaf and stops at the nominal brand, but CONSTRUCTING the record forces the
+// expansion to resolve so its fields can be checked -- and that expansion is the definer's tree.
+// The user's text names only UbtrAliasedNode, which it lists; UbtrKey and UbtrSel never appear.
+data ubtr_alias_user_source: String = "module ubtr.auser\n\nimport ubtr.adef { UbtrAliasedNode }\n\nfn ubtr_rebuild(n: UbtrAliasedNode) -> UbtrAliasedNode {\n  UbtrAliasedNode { key: n.key, sel: n.sel }\n}\n"
+
+fn ubtr_alias_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("ubtr/adef.dag", ubtr_alias_definer_source),
+      fixture_source("ubtr/auser.dag", ubtr_alias_user_source)
+    ],
+    entry: "ubtr/auser.dag"
+  })
+}
+
+test fn constructing_through_an_imported_alias_charges_no_unlisted_import_use_on_the_expansion() -> Bool {
+  match ubtr_alias_run() {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_rows_of_class(rows: rows, wanted: "UnlistedImportUse")) == 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}

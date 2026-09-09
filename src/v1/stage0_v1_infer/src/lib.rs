@@ -40,6 +40,18 @@ pub mod v1_compiler_coercion;
 #[path = "../../stage0/src/v1_compiler_compiler_tests_rust.rs"]
 pub mod v1_compiler_compiler_tests_rust;
 #[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_resolve.rs"]
+pub mod v1_compiler_resolve;
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_infer.rs"]
+pub mod v1_compiler_infer;
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_infer_access.rs"]
+pub mod v1_compiler_infer_access;
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_infer_cycle.rs"]
+pub mod v1_compiler_infer_cycle;
+#[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_emit_info.rs"]
 pub mod v1_compiler_infer_emit_info;
 #[rustfmt::skip]
@@ -49,8 +61,17 @@ pub mod v1_compiler_infer_env;
 #[path = "../../stage0/src/v1_compiler_infer_items.rs"]
 pub mod v1_compiler_infer_items;
 #[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_infer_lookup.rs"]
+pub mod v1_compiler_infer_lookup;
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_infer_method.rs"]
+pub mod v1_compiler_infer_method;
+#[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_occurrence_binding.rs"]
 pub mod v1_compiler_infer_occurrence_binding;
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_infer_patterns.rs"]
+pub mod v1_compiler_infer_patterns;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_resolve.rs"]
 pub mod v1_compiler_infer_resolve;
@@ -63,6 +84,12 @@ pub mod v1_compiler_infer_sigs;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_types.rs"]
 pub mod v1_compiler_infer_types;
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_ownership.rs"]
+pub mod v1_compiler_ownership;
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_emit_core_support.rs"]
+pub mod v1_compiler_emit_core_support;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_type_head_exposure.rs"]
 pub mod v1_compiler_type_head_exposure;
