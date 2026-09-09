@@ -1,25 +1,35 @@
-module test.claim.fn_index_attribution_probe
+module test.claim.long.fn_index_attribution_probe
 
 // THE INSTRUMENT FOR gunbc.rung_drop.determinism_transitive_reachability, NAMED BY THAT ROW SO ITS
 // FIGURES ARE RE-DERIVED RATHER THAN TRANSCRIBED (DESIGN §6). Run it as
-//   claim_batch --source-root dag --source-root src/v2 --source-root scratch-probe
-//     --entry scratch-probe/test/claim/fn_index_attribution_probe.dag --functions <the arms below>
+//   claim_batch --source-root dag --source-root src/v2
+//     --entry src/v2/test/claim/long/fn_index_attribution_probe.dag --functions <the arms below>
 // which charges each arm separately, and read the differences between arms rather than any arm's
 // absolute value. RUN ONE ARM PER INVOCATION WHEN YOU WANT MEMORY: claim_batch reports VmHWM for
 // the PROCESS at exit and not per witness, so peak RSS is attributable to an arm only when that
 // arm is the only one in the process. Frame structure is itself a variable here -- c and f are
 // separate witness frames, g and h are one frame each -- so name it whenever you quote a ratio.
 //
-// IT LIVES IN scratch-probe BECAUSE IT IS AN INSTRUMENT AND NOT A FLOOR WITNESS. These rows assert
+// IT LIVES IN THE LONG HOME BECAUSE IT IS AN INSTRUMENT AND NOT A FLOOR WITNESS. These rows assert
 // only non-emptiness; they establish nothing about the corpus and must never be read as coverage.
+// Its authored module name starts with `test.claim.long.`, which is one of
+// v2.workflow.required_floor long_home_prefixes, so the required floor DECLINES it by name --
+// declined_long_module -- rather than running eight multi-second arms on every push. The floor
+// reads the AUTHORED NAME and not the path, so the name is the admission fact and the directory is
+// only where it is stored; long_home_storage_agreement refuses the two states where those disagree.
 //
-// AND THAT HOME CARRIES AN EXPOSURE. scratch-probe is reached by no source root, no scan dir and no
-// row other than the one above, so this module sits OUTSIDE EVERY COMPILED CLOSURE: a renamed
-// builtin or a changed signature rots it with no red anywhere. WHY THAT IS NOT DISCHARGED HERE, AND
-// WHEN THIS MODULE DIES, are both stated in that row and are deliberately not restated here -- one
-// fact, one home. THE ONE THING A READER OF THIS FILE MUST ACT ON: if the row sent you, RUN THIS
-// FIRST and repair it if it has rotted, before quoting any finding that depends on it, because
-// those findings are only as live as the thing that re-derives them.
+// AND IT IS INSIDE A COMPILED SOURCE ROOT, WHICH IS THE HALF AN EARLIER HOME DID NOT HAVE. This
+// module was first written under a scratch-probe/ directory reached by no source root, so a renamed
+// builtin or a changed signature would have rotted it with no red anywhere -- and worse, the floor
+// refused every arm as declined_changed_witness_outside_discovery the moment a change touched the
+// file, because a planned witness it cannot reach is a refusal rather than a skip. The row that
+// names this instrument argued the only discharge was adding a root to a closed roster. That was
+// wrong: the long home already gives both halves -- compiled, so rot is a red, and declined, so the
+// arms do not run on every push -- and it needed no roster edit at all.
+//
+// THE ONE THING A READER OF THIS FILE MUST ACT ON: if the row sent you, RUN THIS FIRST and repair
+// it if it has rotted, before quoting any finding that depends on it, because those findings are
+// only as live as the thing that re-derives them.
 // What they are for is the SHAPE of the cost, which is why each arm is chosen to differ from its
 // neighbour in exactly one term.
 //
