@@ -44,6 +44,7 @@ import gunbc.scm.integration { SquashIntegrated }
 import gunbc.scm.repository_envelope {
   AdmittedMergeSubject,
   admit_merge_subject,
+  MergeSideName,
   MergeBaseOutcome,
   MergeBaseDerived,
   MergeBaseSourceAlreadyConsumed,
