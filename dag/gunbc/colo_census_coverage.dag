@@ -183,21 +183,30 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 //     So repointing the trigger at #10888 - the obvious repair, and the one about to be made - would
 //     have fired on that merge and retired this obligation with the accessor still absent.
 //
-// THE CAPABILITY NOW EXISTS, AND RE-CHECKING RATHER THAN TRUSTING THE PARAGRAPH ABOVE IS WHAT FOUND
-// IT. At #10888 head ad6ca7b9a3 the carrier declares density_claim_contains_figure - medium-agnostic,
-// direction-agnostic, a two-arm test over DensityPublished and DensityUnread. That is precisely the
-// route this trigger names, and it did not exist at the head read one hour earlier. The sentence
-// immediately above was true when written and false by the time it was pushed, which is the hazard a
-// capability-shaped trigger is supposed to survive: it stays checkable against whatever head is
-// current, where a pull-request-shaped one would have been silently wrong in both directions.
+// THE CAPABILITY NOW EXISTS, AND STATING IT WITHOUT NAMING THE FUNCTION IS THE FOURTH REVISION OF
+// THIS PARAGRAPH FOR THE SAME REASON. Three earlier wordings each named an artifact - a pull request,
+// then a head SHA, then a function - and each was falsified within hours by that artifact moving. The
+// carrier lane has since ruled one of those functions deleted as a duplicate, so a note naming it
+// would have been wrong a fourth time, for a fourth reason, on a paragraph whose entire subject is
+// that triggers must not name artifacts. Writing the artifact down was the defect each time; the
+// lesson did not transfer until it had cost four edits.
 //
-// SO THE TRIGGER IS THE CAPABILITY AND IT IS NOW MET AT THAT HEAD: a route on extdeps.colo.types
-// answering whether a claim carries any published figure, without committing to medium or direction.
-// ON REBASE this function is DELETED and coverage_density_read_count calls density_claim_contains_figure
-// directly. That is the whole disposition - not a rewrite of this predicate against the new arms,
-// which would be the habit repeating a third time in the file that condemns it. Recorded here rather
-// than in a PR thread, because the next reader of this function needs to know it is owed a home, and
-// needs the trigger to be one that can actually be checked.
+// SO, NAMING NO ARTIFACT: extdeps.colo.types carries a route from which "did this operator publish any
+// figure" is answerable without committing to a medium or a direction. That holds whether the carrier
+// exposes the question directly or exposes the figures and lets presence fall out - over a
+// structurally non-empty figures carrier an empty result IS the unread arm, equal BY CONSTRUCTION and
+// not by coincidence, so both shapes satisfy this trigger and neither is named here.
+//
+// THAT IS THE CAPABILITY-OVER-ARTIFACT RULE PAYING FOR ITSELF RATHER THAN BEING ARGUED FOR. The
+// capability survived the deletion of the function implementing it. Every artifact-shaped wording of
+// this same trigger has now been falsified - the closed pull request, the superseded SHA, the deleted
+// accessor - while the capability sentence has needed no revision on the facts, only on the naming.
+//
+// ON REBASE this function is DELETED and coverage_density_read_count asks the carrier, in whatever
+// shape the carrier settles on. It is NOT rewritten against the new arms: that would be the same
+// predicate authored a fourth time in the file that already carries the sentence predicting the third.
+// Recorded here rather than in a PR thread, because the next reader of this function needs to know it
+// is owed a home, and needs the trigger to be one that can actually be checked.
 fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
   match d {
     DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => true,
