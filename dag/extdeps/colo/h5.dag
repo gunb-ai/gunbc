@@ -70,5 +70,5 @@ data h5_philadelphia_density: CabinetDensityClaim = DensityUnread {
 
 data h5_philadelphia_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "Customers can license cages and cabinets",
-  citation: "h5datacenters.com Philadelphia data center page, read 2026-09-08; the phrase occurs verbatim in the raw served HTML re-fetched 2026-09-09 (HTTP 200, 68,972 bytes).",
+  citation: "h5datacenters.com Philadelphia data center page, read 2026-09-08; the phrase occurs verbatim in the raw served HTML re-fetched 2026-09-09 (HTTP 200, 68,972 bytes), inside one <p> under the h1 'Philadelphia Data Center Overview' with no promotional banner above it.",
 }
