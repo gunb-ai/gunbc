@@ -1,6 +1,6 @@
 module gunbc.spark.serving_deployment_selection
 
-import std.types { Bool, Int, String, NonEmptyStr, List }
+import std.types { Bool, Int, String, NonEmptyStr, List, Timestamp }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import v2.std.optional { Present, Absent }
@@ -17,6 +17,12 @@ import std.decision {
   SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy,
   RealizationSelectionRefused, NoFeasibleRealization, CandidateFieldUnestablished,
   select_realization,
+}
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
+import std.scoped_authorization {
+  AuthorizationScope, AuthorizedAction, AttemptIdentity, AuthorizationRequest, OperatorGrant,
+  ScopedAuthorization, AuthorizationPending, AuthorizationGranted, AuthorizationDenied,
 }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -669,87 +675,129 @@ fn covers_demand(p: ServingDecisionParameters, demand: WorkloadDemandStanding) -
   token_count_value(t: p.max_model_len) >= token_count_value(t: demand_context(d: demand))
 }
 
-// ── THE COMPLETE OBJECTIVE ROSTER, WITH THE UNFUNDED DIMENSIONS PRESENT AS GAPS ───────────────
+// ── EVERY DIMENSION CARRIES A DISPOSITION, AND "NOT VALUED" IS ONE OF THEM ────────────────────
 //
-// THE PREVIOUS VERSION FUNDED FIVE AXES AND MENTIONED THE REST IN PROSE. That is how a selection
-// becomes green on a narrow question the moment its two blocking axes fill in: decode latency,
-// prefill throughput, goodput, KV capacity, victim stall, stability, power and operational cost were
-// invisible to the machine, so nothing would have stopped a topology being chosen without them.
+// AN EARLIER ROSTER HAD TWO STATES -- funded, or unfunded and therefore an evidence obligation -- and
+// that binary is wrong in a way that keeps the tuning alive. A dimension the operator DELIBERATELY
+// DOES NOT VALUE would sit in the unfunded set forever, asking for measurements nobody intends to
+// take, and the decision would never settle. Worse, redundancy was FUNDED: independent replica count
+// and the capacity share lost to one replica failing were both ranked axes, so this module preferred
+// four two-rank replicas over two four-rank ones for a reason the operator rejects outright.
 //
-// So every dimension that can change this decision is declared HERE, and the ones with no
-// measurement produce an AxisGap rather than being absent. The consequence is intended: the function
-// returns SelectionNeedsEvidence naming each missing reading, and it keeps doing so until the
-// measurements exist. No weights are guessed and no axis is dropped to obtain an answer.
+// OPERATOR RULING (2026-09-09): REDUNDANCY HAS ZERO DECISION VALUE FOR THIS DEPLOYMENT. Not a low
+// weight and not an outstanding obligation -- zero. Replica count, capacity share lost after a
+// failure, physical failure-domain count and survival of one Spark failing must neither enter Pareto
+// nor produce an evidence gap.
+//
+// SO REPLICA COUNT SURVIVES ONLY AS A DIAGNOSTIC. Two four-rank replicas may still be the better
+// shape, but NOT because one survives a failure -- because two scheduler queues, two KV pools and two
+// concurrent cold prefills may produce better measured service. That advantage must be earned through
+// the outcomes it produces, not awarded for the count that might produce them. Rewarding the count
+// directly is how a proxy becomes the objective.
+type AxisDisposition
+  = AxisHardConstraint
+  | AxisFundedObjective
+  | AxisObservedDiagnostic
+  | AxisExcludedByOperatorPolicy { reason: NonEmptyStr }
+
+type ServingAxis sole_constructor {
+  identity: DeclarationRef
+  goal: AxisGoal
+  disposition: AxisDisposition
+}
+
+fn serving_axis(identity: DeclarationRef, goal: AxisGoal, disposition: AxisDisposition) -> ServingAxis {
+  ServingAxis { identity: identity, goal: goal, disposition: disposition }
+}
+
 data ax_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_quality")
 data ax_weight_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_weight_fit")
 data ax_runtime_feasible: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_runtime_feasible")
 data ax_context_covered: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_context_covered")
 data ax_workload_established: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_workload_established")
-data ax_stability: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_stability")
+data ax_memory_stability: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_memory_stability")
 data ax_useful_context: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_useful_context")
+data ax_accepted_task_goodput: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_accepted_task_goodput")
+data ax_time_to_first_token: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_time_to_first_token")
+data ax_inter_token_latency: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_inter_token_latency")
+data ax_cotenant_impact: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_cotenant_impact")
+data ax_queued_request_time: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_queued_request_time")
+data ax_warm_conversation_capacity: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_warm_conversation_capacity")
 data ax_independent_replicas: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_independent_replicas")
 data ax_replica_capacity_share_lost: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_replica_capacity_share_lost")
-data ax_decode_latency: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_decode_latency")
-data ax_time_to_first_token: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_time_to_first_token")
-data ax_victim_inter_token_latency: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_victim_inter_token_latency")
-data ax_prefill_goodput: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_prefill_goodput")
-data ax_accepted_task_goodput: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_accepted_task_goodput")
-data ax_warm_conversation_capacity: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_warm_conversation_capacity")
 data ax_physical_failure_domains: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_physical_failure_domains")
-data ax_operating_power: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_operating_power")
-data ax_operational_complexity: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_operational_complexity")
 
-data serving_selection_axes: List<SelectionAxis> = [
-  SelectionAxis { identity: ax_quality, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_weight_fit, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_runtime_feasible, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_context_covered, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_workload_established, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_stability, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_useful_context, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_independent_replicas, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_replica_capacity_share_lost, goal: LowerIsBetter },
-  SelectionAxis { identity: ax_decode_latency, goal: LowerIsBetter },
-  SelectionAxis { identity: ax_time_to_first_token, goal: LowerIsBetter },
-  SelectionAxis { identity: ax_victim_inter_token_latency, goal: LowerIsBetter },
-  SelectionAxis { identity: ax_prefill_goodput, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_accepted_task_goodput, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_warm_conversation_capacity, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_physical_failure_domains, goal: HigherIsBetter },
-  SelectionAxis { identity: ax_operating_power, goal: LowerIsBetter },
-  SelectionAxis { identity: ax_operational_complexity, goal: LowerIsBetter },
+data redundancy_exclusion_reason: NonEmptyStr = "operator ruling 2026-09-09: redundancy is not funded for this deployment. Excluded rather than weighted low, and excluded rather than left unfunded -- an unfunded dimension keeps asking for evidence, and evidence nobody intends to use is how a decision never settles" as NonEmptyStr
+
+data serving_axis_roster: List<ServingAxis> = [
+  serving_axis(identity: ax_quality, goal: HigherIsBetter, disposition: AxisHardConstraint),
+  serving_axis(identity: ax_weight_fit, goal: HigherIsBetter, disposition: AxisHardConstraint),
+  serving_axis(identity: ax_runtime_feasible, goal: HigherIsBetter, disposition: AxisHardConstraint),
+  serving_axis(identity: ax_context_covered, goal: HigherIsBetter, disposition: AxisHardConstraint),
+  serving_axis(identity: ax_workload_established, goal: HigherIsBetter, disposition: AxisHardConstraint),
+  serving_axis(identity: ax_memory_stability, goal: HigherIsBetter, disposition: AxisHardConstraint),
+  serving_axis(identity: ax_useful_context, goal: HigherIsBetter, disposition: AxisFundedObjective),
+  serving_axis(identity: ax_accepted_task_goodput, goal: HigherIsBetter, disposition: AxisFundedObjective),
+  serving_axis(identity: ax_time_to_first_token, goal: LowerIsBetter, disposition: AxisFundedObjective),
+  serving_axis(identity: ax_inter_token_latency, goal: LowerIsBetter, disposition: AxisFundedObjective),
+  serving_axis(identity: ax_cotenant_impact, goal: LowerIsBetter, disposition: AxisFundedObjective),
+  serving_axis(identity: ax_queued_request_time, goal: LowerIsBetter, disposition: AxisFundedObjective),
+  serving_axis(identity: ax_warm_conversation_capacity, goal: HigherIsBetter, disposition: AxisFundedObjective),
+  serving_axis(identity: ax_independent_replicas, goal: HigherIsBetter, disposition: AxisObservedDiagnostic),
+  serving_axis(identity: ax_replica_capacity_share_lost, goal: LowerIsBetter, disposition: AxisExcludedByOperatorPolicy { reason: redundancy_exclusion_reason }),
+  serving_axis(identity: ax_physical_failure_domains, goal: HigherIsBetter, disposition: AxisExcludedByOperatorPolicy { reason: redundancy_exclusion_reason }),
 ]
+
+fn axis_is_ranked(a: ServingAxis) -> Bool {
+  match a.disposition {
+    AxisHardConstraint => true
+    AxisFundedObjective => true
+    AxisObservedDiagnostic => false
+    AxisExcludedByOperatorPolicy { reason: _ } => false
+  }
+}
+
+fn axis_is_hard(a: ServingAxis) -> Bool {
+  match a.disposition {
+    AxisHardConstraint => true
+    AxisFundedObjective => false
+    AxisObservedDiagnostic => false
+    AxisExcludedByOperatorPolicy { reason: _ } => false
+  }
+}
+
+// ONLY RANKED AXES REACH THE SPINE. A diagnostic or an excluded dimension that appeared in `axes`
+// would be compared, which is precisely what the ruling forbids -- and one appearing in a candidate's
+// readings without being in `axes` is a projector contradiction the spine refuses. So both lists are
+// derived from one roster rather than maintained beside it.
+data serving_selection_axes: List<SelectionAxis> = map(
+  filter(serving_axis_roster, a => axis_is_ranked(a: a)),
+  a => SelectionAxis { identity: a.identity, goal: a.goal })
 
 data id_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_selection_constraints")
 
-data serving_selection_constraints: List<HardConstraint> = [
-  HardConstraint { identity: id_constraint_authority, axis: ax_quality, bound_micro: 1 },
-  HardConstraint { identity: id_constraint_authority, axis: ax_weight_fit, bound_micro: 1 },
-  HardConstraint { identity: id_constraint_authority, axis: ax_runtime_feasible, bound_micro: 1 },
-  HardConstraint { identity: id_constraint_authority, axis: ax_context_covered, bound_micro: 1 },
-  HardConstraint { identity: id_constraint_authority, axis: ax_workload_established, bound_micro: 1 },
-  HardConstraint { identity: id_constraint_authority, axis: ax_stability, bound_micro: 1 },
-]
+data serving_selection_constraints: List<HardConstraint> = map(
+  filter(serving_axis_roster, a => axis_is_hard(a: a)),
+  a => HardConstraint { identity: id_constraint_authority, axis: a.identity, bound_micro: 1 })
 
-// THE MEASUREMENTS THAT DO NOT EXIST YET, each named so its absence is a located obligation rather
-// than a silence. A row leaves this list when a real observation carrier feeds its axis.
+// THE MEASUREMENTS THAT DO NOT EXIST YET, and this list is now derived from the roster rather than
+// authored beside it -- so an axis cannot be funded here and forgotten there. An EXCLUDED axis
+// produces no obligation, which is the whole point of the disposition: the decision can settle without
+// evidence for a dimension nobody values.
 data unfunded_performance_axes: List<DeclarationRef> = [
-  ax_stability,
-  ax_decode_latency,
-  ax_time_to_first_token,
-  ax_victim_inter_token_latency,
-  ax_prefill_goodput,
+  ax_memory_stability,
   ax_accepted_task_goodput,
+  ax_time_to_first_token,
+  ax_inter_token_latency,
+  ax_cotenant_impact,
+  ax_queued_request_time,
   ax_warm_conversation_capacity,
-  ax_physical_failure_domains,
-  ax_operating_power,
-  ax_operational_complexity,
 ]
 
 fn unfunded_axis_obligation(axis: DeclarationRef) -> NonEmptyStr {
   join([
     "no observation feeds ", declaration_ref_display_key(ref: axis),
-    " for this exact execution profile, and this decision cannot be settled while a dimension that could change it has no reading",
+    " for this exact execution profile, and this decision cannot be settled while a FUNDED dimension has no reading. Fleet-normalised: the comparison is all eight Sparks as one eight-rank replica against all eight as two four-rank replicas, not one replica against one",
   ], "") as NonEmptyStr
 }
 
@@ -1020,8 +1068,6 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
     [
       reading(axis: ax_context_covered, v: flag(b: covers_demand(p: p, demand: e.workload))),
       reading(axis: ax_useful_context, v: useful_context(p: p, demand: e.workload)),
-      reading(axis: ax_independent_replicas, v: c.topology.replica_count),
-      reading(axis: ax_replica_capacity_share_lost, v: replica_capacity_share_lost_percent(c: c)),
     ])
 }
 
@@ -1032,6 +1078,13 @@ fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, 
              runtime_gap(profile: execution_profile_of(c: c, p: p), e: e)),
       concat(weight_fit_gap(c: c, e: e, p: p), workload_gap(e: e))),
     map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) }))
+}
+
+// THE DIAGNOSTICS ARE COMPUTED AND NOT RANKED. Replica count is still worth reading -- it is how a
+// reader sees what shape a candidate is -- and it reaches no comparison. The excluded axes are not
+// computed at all: a number nobody may use is not worth deriving.
+fn candidate_diagnostics(c: DeploymentCandidate) -> List<AxisReading> {
+  [reading(axis: ax_independent_replicas, v: c.topology.replica_count)]
 }
 
 fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> ParetoEntry {
@@ -1526,6 +1579,169 @@ data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input
   selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "glm_quality_requirement"),
 )
 
+
+// ── AN EXPERIMENT AND A SELECTED DEPLOYMENT ARE DIFFERENT PROPOSITIONS ────────────────────────
+//
+// THERE IS AN APPARENT CIRCULARITY IN EVERYTHING ABOVE: the selector needs measurements, the
+// measurements need a running engine, and the engine is supposed to come from the selector. Read as
+// one path it is unresolvable, and the temptation is to let the selector answer on thin evidence so
+// something can launch -- which is exactly the failure two reviews of this module already caught.
+//
+// The resolution is that there are TWO paths to a running engine and they are not the same kind of
+// thing. An EXPERIMENT is authorized by an operator for a bounded purpose and exists to acquire
+// evidence. A PRODUCTION DEPLOYMENT is selected from that evidence. An experiment is therefore not a
+// weakly-evidenced selection; it is a different act with a different warrant.
+//
+// THIS INHABITS std.scoped_authorization RATHER THAN COINING AN ADMISSION VOCABULARY. That module is
+// the home DESIGN section 3b names for grants, and gunbc.srv3_os_install_actuate_workflow already
+// inhabits it for a destructive BMC override. A second experiment-approval type beside it would be
+// the fork section 3 forbids, and it would also lose what that module has already got right: single
+// use is a STATE TRANSITION rather than a check, so two concurrent runs cannot both read one grant as
+// unconsumed.
+//
+// NO GRANTED APPROVAL IS DECLARED IN THIS SOURCE. srv3's own annotation calls a source-declared grant
+// the thing its lane exists to remove, carried only because no out-of-band channel exists yet. This
+// module declines to add a second one: the request below is PENDING, which is the truthful state --
+// nobody has approved a native four-rank launch. An operator grant arrives from outside the
+// repository or the experiment does not run.
+//
+// AND THERE IS NO FUNCTION FROM AN EXPERIMENT ARM TO A DEPLOYMENT SHAPE. That is deliberate and it is
+// why no witness row asserts the conversion refuses: the conversion has no constructor, so such a
+// row's red would be unauthorable and the check would be a decoration. An experiment's receipts reach
+// production by being ADDED TO THE EVIDENCE SNAPSHOT and letting the selector answer again, which is
+// the only route between the two paths.
+type ServingExperimentSubject sole_constructor {
+  artifact: DeclarationRef
+  topology: TopologyShape
+  parameters_digest: String
+}
+
+fn serving_experiment_subject(artifact: DeclarationRef, topology: TopologyShape, parameters_digest: String) -> ServingExperimentSubject {
+  ServingExperimentSubject { artifact: artifact, topology: topology, parameters_digest: parameters_digest }
+}
+
+fn experiment_subject_eq(a: ServingExperimentSubject, b: ServingExperimentSubject) -> Bool {
+  declaration_ref_eq(a: a.artifact, b: b.artifact)
+    && topology_shape_eq(a: a.topology, b: b.topology)
+    && a.parameters_digest == b.parameters_digest
+}
+
+// THE ARM HAS NO EXPORTED BUILDER, for the same reason SelectedServingDeployment has none: possessing
+// it IS the proof that an operator authorized this exact profile, and a caller able to construct one
+// could authorize its own experiment.
+type ServingExperimentArm sole_constructor {
+  subject: ServingExperimentSubject
+  artifact: ModelArtifact
+  parameters: ServingDecisionParameters
+  granted_by: NonEmptyStr
+  expires_at: Timestamp
+  purpose: NonEmptyStr
+}
+
+type ServingExperimentAdmission
+  = ExperimentArmAdmitted { arm: ServingExperimentArm }
+  | ExperimentAwaitingApproval { escalation_id: NonEmptyStr, purpose: NonEmptyStr }
+  | ExperimentApprovalDenied { escalation_id: NonEmptyStr, reason: NonEmptyStr }
+  | ExperimentAdmissionRefused { because: NonEmptyStr }
+
+// THE GRANT'S SUBJECT IS COMPARED TO THE ARM BEING LAUNCHED. A grant approving a four-rank native
+// experiment does not authorize an eight-rank one, nor the same topology under different fixed
+// parameters -- the digest carries context, memory fraction, batch budget, sequence population,
+// executor, KV layout, speculative policy and runtime, so any of those moving is a different subject
+// and needs its own approval. Without this comparison the grant would authorize by name rather than
+// by content, which is how an approval for one experiment silently covers the next.
+fn admit_serving_experiment(
+  authorization: ScopedAuthorization<ServingExperimentSubject>,
+  artifact: ModelArtifact,
+  topology: TopologyShape,
+  parameters: ServingDecisionParameters,
+) -> ServingExperimentAdmission {
+  let requested = serving_experiment_subject(artifact: artifact.identity, topology: topology, parameters_digest: parameters_key(p: parameters))
+  match authorization {
+    AuthorizationPending { request: r } =>
+      ExperimentAwaitingApproval { escalation_id: r.escalation_id, purpose: r.purpose }
+    AuthorizationDenied { escalation_id: e, denied_by: _, denied_at: _, reason: rs } =>
+      ExperimentApprovalDenied { escalation_id: e, reason: rs }
+    AuthorizationGranted { grant: g, claim: _ } =>
+      if !experiment_subject_eq(a: g.subject, b: requested) {
+        ExperimentAdmissionRefused {
+          because: join([
+            "the grant approves a different experiment subject than the one being launched: approved ",
+            declaration_ref_display_key(ref: g.subject.artifact), " at tp",
+            to_string(g.subject.topology.tensor_parallel_degree), " x", to_string(g.subject.topology.replica_count),
+            " under parameters ", g.subject.parameters_digest,
+            "; requested ", declaration_ref_display_key(ref: requested.artifact), " at tp",
+            to_string(requested.topology.tensor_parallel_degree), " x", to_string(requested.topology.replica_count),
+            " under parameters ", requested.parameters_digest,
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        ExperimentArmAdmitted {
+          arm: ServingExperimentArm {
+            subject: requested,
+            artifact: artifact,
+            parameters: parameters,
+            granted_by: g.granted_by,
+            expires_at: g.expires_at,
+            purpose: g.purpose,
+          },
+        }
+      }
+  }
+}
+
+// ── THE NATIVE FOUR-RANK EVIDENCE ARM, REQUESTED AND NOT APPROVED ─────────────────────────────
+//
+// This is the experiment the remaining program needs: serve the native FP8 checkpoint on four ranks
+// long enough to acquire the footprint, runtime-feasibility, quality and depth observations the
+// selector is missing. Four ranks because the weight bound proves one and two cannot hold 305.8 GiB
+// against 99.8 GiB usable per rank -- so this topology is not a preference, it is the minimum that
+// can run at all.
+//
+// IT IS NOT THE SELECTED PRODUCTION DEPLOYMENT and must not become one by having been run. Its
+// parameters are the current fixed set, whose standings say plainly that the window is decided, the
+// sequence ceiling is decided, and the KV layout and runtime are not established for GLM at all.
+data glm_native_tp4_experiment_topology: TopologyShape = topology_shape(tensor_parallel_degree: 4, replica_count: 1)
+
+data glm_native_tp4_experiment_subject: ServingExperimentSubject = serving_experiment_subject(
+  artifact: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
+  topology: glm_native_tp4_experiment_topology,
+  parameters_digest: parameters_key(p: serving_parameters_current),
+)
+
+data glm_native_tp4_experiment_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: NamespacePosition {
+    tree: ServiceOpTree { service: "spark-serving" },
+    path: ["spark-serving", "glm-5.3-flash", "native-fp8", "tp4"],
+  },
+  action: "spark-serving.experiment-arm.launch" as AuthorizedAction,
+}
+
+data glm_native_tp4_experiment_request: AuthorizationRequest<ServingExperimentSubject> = AuthorizationRequest {
+  escalation_id: "glm-native-fp8-tp4-evidence-arm" as NonEmptyStr,
+  scopes: [glm_native_tp4_experiment_scope],
+  subject: glm_native_tp4_experiment_subject,
+  purpose: "Serve the native FP8 GLM-5.3-Flash checkpoint on four ranks to acquire the footprint, runtime-feasibility, quality and representative-depth observations the serving selector currently lacks. This is an evidence arm, not a production deployment: it takes four Sparks, and on this fleet those are currently held by the DeepSeek group, so approving it displaces existing serving capacity." as NonEmptyStr,
+  attempt: "glm-native-fp8-tp4-evidence-arm-attempt" as AttemptIdentity,
+  intent_hash: content_hash_of_value(value: "glm-5.3-flash native fp8 at tensor-parallel 4, one replica, under the current fixed parameter set" as NonEmptyStr),
+  destructive: true,
+}
+
+// PENDING, DELIBERATELY. Nobody has approved this, and a granted row authored here would be the
+// standing credential srv3's lane exists to remove.
+data glm_native_tp4_experiment_authorization: ScopedAuthorization<ServingExperimentSubject> = AuthorizationPending {
+  request: glm_native_tp4_experiment_request,
+}
+
+fn glm_native_tp4_experiment_admission() -> ServingExperimentAdmission {
+  admit_serving_experiment(
+    authorization: glm_native_tp4_experiment_authorization,
+    artifact: artifact_glm_53_flash_native,
+    topology: glm_native_tp4_experiment_topology,
+    parameters: serving_parameters_current,
+  )
+}
 
 // ── THE DEEPSEEK ARM ──────────────────────────────────────────────────────────────────────────
 //

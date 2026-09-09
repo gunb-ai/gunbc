@@ -2,7 +2,7 @@ module test.claim.spark.serving_deployment_selection_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.measure { token_count }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_deployment_selection {
@@ -31,6 +31,10 @@ import gunbc.spark.serving_deployment_selection {
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input,
   serving_parameter_standings, provenance_kind,
+  serving_selection_axes, candidate_gaps, candidate_diagnostics,
+  ax_replica_capacity_share_lost, ax_physical_failure_domains, ax_independent_replicas,
+  ax_accepted_task_goodput, ax_time_to_first_token, ax_cotenant_impact,
+  ExperimentAwaitingApproval, glm_native_tp4_experiment_admission,
   ParameterStandingCompleteness, AllParametersHaveStanding, ParametersWithoutStanding,
   ParametersWithConflictingStandings, parameter_standing_completeness,
   deepseek_quality_requirement,
@@ -521,4 +525,60 @@ test fn every_fixed_parameter_has_exactly_one_standing() -> Bool {
 test fn a_decided_window_and_an_observed_flag_are_different_kinds_of_fact() -> Bool {
   (join(map(filter(serving_parameter_standings, r => (r.parameter as String) == "max_model_len"), r => provenance_kind(prov: r.provenance) as String), "") == "decided")
     && (join(map(filter(serving_parameter_standings, r => (r.parameter as String) == "enable_prefix_caching"), r => provenance_kind(prov: r.provenance) as String), "") == "observed")
+}
+
+// ── REDUNDANCY REACHES NO COMPARISON, AND ASKS FOR NOTHING ────────────────────────────────────
+//
+// Operator ruling 2026-09-09: redundancy has ZERO decision value for this deployment. Two things have
+// to hold for that to be true, and they are different: an excluded dimension must not be RANKED, and
+// it must not produce an OBLIGATION. The second is the one an earlier roster got wrong -- a dimension
+// nobody values sat in the unfunded set asking forever for evidence nobody intended to take, which is
+// the endless tuning re-entering through the back door.
+//
+// These rows go red if anyone re-funds replica capacity share or failure domains, which is the change
+// they exist to catch.
+fn ranked_axis_identities() -> List<String> {
+  map(serving_selection_axes, a => declaration_ref_display_key(ref: a.identity))
+}
+
+test fn no_excluded_dimension_reaches_the_pareto_comparison() -> Bool {
+  !(ranked_axis_identities() |> any(k => k == declaration_ref_display_key(ref: ax_replica_capacity_share_lost)))
+    && !(ranked_axis_identities() |> any(k => k == declaration_ref_display_key(ref: ax_physical_failure_domains)))
+    && !(ranked_axis_identities() |> any(k => k == declaration_ref_display_key(ref: ax_independent_replicas)))
+}
+
+test fn no_excluded_dimension_produces_an_evidence_obligation() -> Bool {
+  let gaps = map(candidate_gaps(c: native_tp4_x2, e: evidence_admitting(profiles: [], w: established_demand), p: serving_parameters_current), g => declaration_ref_display_key(ref: g.axis))
+  !(gaps |> any(k => k == declaration_ref_display_key(ref: ax_replica_capacity_share_lost)))
+    && !(gaps |> any(k => k == declaration_ref_display_key(ref: ax_physical_failure_domains)))
+    && !(gaps |> any(k => k == declaration_ref_display_key(ref: ax_independent_replicas)))
+}
+
+// AND THE FUNDED SERVICE OUTCOMES DO STILL ASK. Excluding redundancy must not have quietly excluded
+// everything: the dimensions the operator DOES value are unmeasured and say so, which is why both real
+// subjects still return obligations.
+test fn the_funded_service_outcomes_still_produce_obligations() -> Bool {
+  let gaps = map(candidate_gaps(c: native_tp4_x2, e: evidence_admitting(profiles: [], w: established_demand), p: serving_parameters_current), g => declaration_ref_display_key(ref: g.axis))
+  (gaps |> any(k => k == declaration_ref_display_key(ref: ax_accepted_task_goodput)))
+    && (gaps |> any(k => k == declaration_ref_display_key(ref: ax_time_to_first_token)))
+    && (gaps |> any(k => k == declaration_ref_display_key(ref: ax_cotenant_impact)))
+}
+
+// REPLICA COUNT SURVIVES AS A DIAGNOSTIC, computed so a reader can see what shape a candidate is,
+// and reaching no comparison. Excluded is not the same as deleted.
+test fn replica_count_is_still_readable_as_a_diagnostic() -> Bool {
+  count(candidate_diagnostics(c: native_tp4_x2)) == 1
+}
+
+// ── AN EXPERIMENT IS NOT A SELECTED DEPLOYMENT ────────────────────────────────────────────────
+//
+// The native four-rank arm is REQUESTED and not approved, so it does not admit. That is the truthful
+// state: nobody has granted a launch that would displace the DeepSeek group. No witness row asserts
+// that an experiment arm cannot become a deployment shape, because no such conversion exists -- its
+// red would be unauthorable and the check would be a decoration.
+test fn the_native_experiment_arm_awaits_approval_rather_than_launching() -> Bool {
+  match glm_native_tp4_experiment_admission() {
+    ExperimentAwaitingApproval { escalation_id: _, purpose: _ } => true
+    _ => false
+  }
 }
