@@ -13,10 +13,14 @@ import product.cable_leg_observation {
 import product.cable_plant_converge {
   CablePlant, cable_plant, CableLegReading, LegNeverRead, LegReadingTaken,
   CablePlantObserved, CablePlantReceipt, CableLegOutcome,
-  PlantLegNeverRead, PlantHoldsNoLegs, PlantCodingCannotBeActuatedHere,
-  converge_cable_plant,
+  PlantLegNeverRead, PlantHoldsNoLegs,
+  inspect_cable_plant,
 }
-import gunbc.world_converge { WorldConverged, WorldNotConverged }
+import std.goal_assessment {
+  GoalInspected, GoalObservationRefused,
+  GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+}
+import v2.std.algebra { non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE INSTALLED PLANT. The order gates answer "should this be bought"; this
@@ -80,23 +84,30 @@ data empty_plant: CablePlant = cable_plant(
 
 // THE CENTRAL WITNESS: the fabric as it stands does not converge, and the refusal names the legs.
 test fn the_installed_plant_does_not_converge() -> Bool {
-  match converge_cable_plant(subject: installed_plant) {
-    WorldNotConverged { subject: s, refusal: r } =>
-      match r {
-        PlantCodingCannotBeActuatedHere { divergences: ds } => list_length(items: ds) == 2
-        PlantLegNeverRead { endpoint: e } => false
-        PlantHoldsNoLegs { plant: p } => false
+  match inspect_cable_plant(subject: installed_plant) {
+    GoalObservationRefused { subject: s, cause: c } => false
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: ds } => list_length(items: non_empty_to_list(xs: ds)) == 2
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
       }
-    WorldConverged { subject: s, observed: o, receipt: rc } => false
   }
 }
 
 // THE POSITIVE CONTROL. Without it the refusal above could be produced by a plant that never
 // converges for any input, which would make the wall decoration rather than a check.
 test fn a_correctly_coded_plant_converges() -> Bool {
-  match converge_cable_plant(subject: repaired_plant) {
-    WorldConverged { subject: s, observed: o, receipt: rc } => rc.legs_read == 2
-    WorldNotConverged { subject: s, refusal: r } => false
+  match inspect_cable_plant(subject: repaired_plant) {
+    GoalObservationRefused { subject: s, cause: c } => false
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalSatisfied { evidence: e } => e.legs_read == 2
+        GoalDiverged { deviations: ds } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
   }
 }
 
@@ -104,28 +115,26 @@ test fn a_correctly_coded_plant_converges() -> Bool {
 // discriminating input for the absorbing fallback: a plant reported over its read subset would
 // converge here, because the leg that WAS read is correctly coded.
 test fn one_unread_leg_refuses_the_plant() -> Bool {
-  match converge_cable_plant(subject: partially_read_plant) {
-    WorldNotConverged { subject: s, refusal: r } =>
-      match r {
+  match inspect_cable_plant(subject: partially_read_plant) {
+    GoalObservationRefused { subject: s, cause: c } =>
+      match c {
         PlantLegNeverRead { endpoint: e } => e == ("qsfp56-dd-1-3" as NonEmptyStr)
-        PlantCodingCannotBeActuatedHere { divergences: ds } => false
         PlantHoldsNoLegs { plant: p } => false
       }
-    WorldConverged { subject: s, observed: o, receipt: rc } => false
+    GoalInspected { subject: s, observed: o, assessment: a } => false
   }
 }
 
 // A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE. Zero legs agree trivially, and a green derived
 // from an empty population is the vacuous pass DESIGN section 5 refuses.
 test fn an_empty_plant_does_not_converge() -> Bool {
-  match converge_cable_plant(subject: empty_plant) {
-    WorldNotConverged { subject: s, refusal: r } =>
-      match r {
+  match inspect_cable_plant(subject: empty_plant) {
+    GoalObservationRefused { subject: s, cause: c } =>
+      match c {
         PlantHoldsNoLegs { plant: p } => true
         PlantLegNeverRead { endpoint: e } => false
-        PlantCodingCannotBeActuatedHere { divergences: ds } => false
       }
-    WorldConverged { subject: s, observed: o, receipt: rc } => false
+    GoalInspected { subject: s, observed: o, assessment: a } => false
   }
 }
 
@@ -133,17 +142,14 @@ test fn an_empty_plant_does_not_converge() -> Bool {
 // port to walk to. A refusal that said only "the plant diverges" would be a diagnostic without a
 // location, which is the half of fail-closed DESIGN section 5 asks for by name.
 test fn the_refusal_names_the_diverging_endpoints() -> Bool {
-  match converge_cable_plant(subject: installed_plant) {
-    WorldNotConverged { subject: s, refusal: r } =>
-      match r {
-        PlantCodingCannotBeActuatedHere { divergences: ds } =>
-          match ds.first() {
-            Present { value: d } => d.endpoint == ("qsfp56-dd-1-1" as NonEmptyStr)
-            Absent => false
-          }
-        PlantLegNeverRead { endpoint: e } => false
-        PlantHoldsNoLegs { plant: p } => false
+  match inspect_cable_plant(subject: installed_plant) {
+    GoalObservationRefused { subject: s, cause: c } => false
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: ds } => ds.head.endpoint == ("qsfp56-dd-1-1" as NonEmptyStr)
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
       }
-    WorldConverged { subject: s, observed: o, receipt: rc } => false
   }
 }

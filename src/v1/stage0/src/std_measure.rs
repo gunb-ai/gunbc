@@ -173,6 +173,10 @@ pub fn milli_per_unit() -> Nat {
     1000
 }
 
+pub fn micro_per_unit() -> Nat {
+    (milli_per_unit() * milli_per_unit())
+}
+
 pub fn mega_factor() -> Nat {
     (1000 * 1000)
 }

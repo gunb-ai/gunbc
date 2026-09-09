@@ -9,7 +9,7 @@ import gunbc.roadmap_model {
   Sized,
   Unsized,
 }
-import extdeps.llm.cli { ReasoningMedium, ReasoningHigh }
+import extdeps.llm.cli { ReasoningMedium, ReasoningHigh, ProviderModelPinned }
 import extdeps.llm.cli_lifecycle {
   CodexCliProvider,
   CursorCliProvider,
@@ -567,7 +567,7 @@ test fn witness_select_claude_automatic_honors_request_credential_and_model() ->
   let request_credential = ClaudeStateRootRef {
     root: "/managed/claude-enrollment" as FilePath,
   }
-  let request_model = "claude-managed-model" as NonEmptyStr
+  let request_model = ProviderModelPinned { model: "claude-managed-model" as NonEmptyStr }
   let claude_provider = ProviderInstance {
     kind: ClaudeCliProvider,
     host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },

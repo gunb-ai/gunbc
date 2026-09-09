@@ -14,8 +14,8 @@ import product.cable_leg_observation {
   ExtendedRateObserved,
 }
 import product.cable_plant_converge {
-  CablePlant, cable_plant, CableLegReading, LegReadingTaken, LegNeverRead, CablePlantConvergence,
-  converge_cable_plant,
+  CablePlant, cable_plant, CableLegReading, LegReadingTaken, LegNeverRead, CablePlantInspection,
+  inspect_cable_plant,
 }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
@@ -180,12 +180,13 @@ fn fabric_group_of_host(host: HostIdentity) -> FabricGroup? {
 // it the RMA candidate was wrong about the NIC. Whatever failed in its setup, it is not the fabric.
 data srv10_fabric_link_observed: Bool = true
 
-// ================= THE PLANT AS A CONVERGENCE SUBJECT =================
+// ================= THE PLANT AS AN INSPECTION SUBJECT =================
 //
-// Every lane above carries one leg of the same breakout, and every leg was read to the same bytes,
-// so the plant is the lane roster joined to the one coding observation. It is DERIVED from the lane
-// list rather than re-listed: a lane added above enters the plant with no second edit, which is the
-// property a hand-copied roster loses on its first divergence.
+// Every lane above carries one leg of the same breakout, and the plant is the lane roster joined to
+// what was READ of each -- which is not the same for every lane, and the next block is why. It is
+// DERIVED from the lane list rather than re-listed: a lane added above enters the plant with no
+// second edit, which is the property a hand-copied roster loses on its first divergence, and a lane
+// enters as unread until someone dumps it.
 //
 // The required mode is the rail's, not the cable's: 100GBASE-CR2 is what a two-lane leg must attest
 // for this fabric to run at the speed it was bought for.
@@ -224,6 +225,6 @@ data fabric_cable_plant: CablePlant = cable_plant(
   required_mode: ieee_100gbase_cr2,
   readings: map(fabric_lane_observations, o => fabric_leg_reading(o: o)))
 
-fn fabric_cable_plant_convergence() -> CablePlantConvergence {
-  converge_cable_plant(subject: fabric_cable_plant)
+fn fabric_cable_plant_convergence() -> CablePlantInspection {
+  inspect_cable_plant(subject: fabric_cable_plant)
 }
