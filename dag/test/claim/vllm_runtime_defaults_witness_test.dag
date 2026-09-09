@@ -1,0 +1,189 @@
+module test.claim.vllm_runtime_defaults
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import std.measure { basis_point, basis_point_count, byte_size, byte_size_count }
+import extdeps.vllm.server { vllm_source_revision }
+import extdeps.vllm.runtime_defaults {
+  VllmRuntimeDefaults, VllmDefaultsResolution, VllmDefaultsKnown, VllmDefaultsUnestablished,
+  vllm_runtime_defaults_for, vllm_defaults_487ecf187, vllm_defaults_1967a5627,
+  VllmMemoryRequest, VllmMemoryArgsOmitted, VllmUtilizationExplicit, VllmKvBytesExplicit,
+  ResolvedVllmMemoryPolicy, KvBytesMode, AutoProfiledMode, MemoryResolutionRefused,
+  VllmResolutionOrigin, ExplicitArgument, RuntimeDefault,
+  resolve_vllm_memory_policy, vllm_requested_envelope_bytes,
+  VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
+  ResolvedVllmPrefixCaching, PrefixCachingResolved, PrefixCachingUnresolvable,
+  resolve_vllm_prefix_caching,
+}
+
+// THE SUBJECT IS "WHO DECIDED THIS VALUE", and every witness below is written so it can answer
+// differently. A module that resolved every field to the same number no matter what was asked would
+// pass a shape check and establish nothing; these arms are chosen to disagree with each other.
+//
+// THE DEVICE TOTAL IS THE ONE MEASURED ON A SPARK, in exact bytes rather than the 121.69 GiB
+// projection any log prints. 130_662_027_264 bytes is 121.69 GiB, and using the byte figure here is
+// the same discipline the module states: the GiB value is a rendering, the bytes are the authority.
+data w_spark_total_bytes_count = 130662027264
+
+// ── THE OMISSION THE GLM CANARY ACTUALLY MAKES ─────────────────────────────────────────────────
+//
+// This is the witness that would have answered the question that started this program. The canary's
+// serve line carries neither memory flag, and until this module existed nothing could say what its
+// effective policy was.
+test fn an_omitted_memory_request_resolves_to_the_revisions_own_default() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryArgsOmitted,
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    defaults: VllmDefaultsKnown { defaults: vllm_defaults_487ecf187 },
+  ) {
+    KvBytesMode { bytes_per_rank: _, origin: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+    AutoProfiledMode { utilization: u, origin: o, requested_envelope_bytes: _ } =>
+      basis_point_count(bp: u) == 9200 && w_origin_is_runtime_default(o: o)
+  }
+}
+
+// THE ORIGIN IS THE HALF THAT MATTERS, and asserting only the value would let an explicit 9200 pass
+// as though it were the default. "This repository chose 0.92" and "this repository accepted upstream's
+// 0.92" are different facts with different owners when upstream changes it.
+fn w_origin_is_runtime_default(o: VllmResolutionOrigin) -> Bool {
+  match o {
+    ExplicitArgument => false
+    RuntimeDefault { source_revision: _, declaration: d } => (d as String) == "CacheConfig.gpu_memory_utilization"
+  }
+}
+
+fn w_origin_is_explicit(o: VllmResolutionOrigin) -> Bool {
+  match o {
+    ExplicitArgument => true
+    RuntimeDefault { source_revision: _, declaration: _ } => false
+  }
+}
+
+// ── AN EXPLICIT REQUEST MAKES THE DEFAULT NON-CAUSAL ───────────────────────────────────────────
+//
+// The DeepSeek pair route's 82% must not be overwritten by the revision default it shares a runtime
+// family with. The discriminating part is that the SAME defaults are supplied here as in the witness
+// above, so only the request can account for the difference.
+test fn an_explicit_utilization_overrides_the_revision_default() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmUtilizationExplicit { fraction: basis_point(count: 8200) },
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    defaults: VllmDefaultsKnown { defaults: vllm_defaults_487ecf187 },
+  ) {
+    KvBytesMode { bytes_per_rank: _, origin: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+    AutoProfiledMode { utilization: u, origin: o, requested_envelope_bytes: _ } =>
+      basis_point_count(bp: u) == 8200 && w_origin_is_explicit(o: o)
+  }
+}
+
+// ── EXPLICIT KV BYTES MAKE THE FRACTION NON-CAUSAL ─────────────────────────────────────────────
+//
+// Upstream's precedence, and the arm carries no fraction AT ALL rather than one nothing reads -- so a
+// reader cannot find two numbers here and have to guess which the engine uses.
+test fn explicit_kv_bytes_supersede_utilization_entirely() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmKvBytesExplicit { bytes_per_rank: byte_size(count: 26572776960) },
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    defaults: VllmDefaultsKnown { defaults: vllm_defaults_487ecf187 },
+  ) {
+    AutoProfiledMode { utilization: _, origin: _, requested_envelope_bytes: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+    KvBytesMode { bytes_per_rank: b, origin: o } =>
+      byte_size_count(b: b) == 26572776960 && w_origin_is_explicit(o: o)
+  }
+}
+
+// ── AN UNMODELLED REVISION REFUSES RATHER THAN BORROWING ───────────────────────────────────────
+//
+// THE DISCRIMINATING RED OF THIS MODULE. Both modelled revisions declare 9200, so an implementation
+// that answered 9200 unconditionally passes every witness above. This is the one that fails it. The
+// coincidence is real and it is exactly the shape that let one model's reasoning-field alias answer
+// for another's earlier on this branch.
+test fn an_omission_against_an_unmodelled_revision_refuses() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryArgsOmitted,
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    defaults: vllm_runtime_defaults_for(revision: vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    )),
+  ) {
+    AutoProfiledMode { utilization: _, origin: _, requested_envelope_bytes: _ } => false
+    KvBytesMode { bytes_per_rank: _, origin: _ } => false
+    MemoryResolutionRefused { cause: _ } => true
+  }
+}
+
+// AND THE MODELLED ONES ARE FOUND, without which the refusal above is satisfied by a lookup that
+// never finds anything.
+test fn both_modelled_revisions_resolve_to_their_own_row() -> Bool {
+  w_resolves_known(r: vllm_defaults_487ecf187) && w_resolves_known(r: vllm_defaults_1967a5627)
+}
+
+fn w_resolves_known(r: VllmRuntimeDefaults) -> Bool {
+  match vllm_runtime_defaults_for(revision: r.source_revision) {
+    VllmDefaultsUnestablished { revision: _ } => false
+    VllmDefaultsKnown { defaults: d } =>
+      (d.source_revision.full_revision as String) == (r.source_revision.full_revision as String)
+  }
+}
+
+// ── THE ENVELOPE IS DERIVED FROM ITS INPUTS ────────────────────────────────────────────────────
+//
+// 111.95 GiB is not a stored fact. This asserts the product, in bytes, against the two figures that
+// produce it -- so a future edit that stored the envelope beside them would have to disagree with
+// arithmetic to pass.
+test fn the_requested_envelope_is_the_product_of_device_total_and_fraction() -> Bool {
+  byte_size_count(b: vllm_requested_envelope_bytes(
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    utilization: basis_point(count: 9200),
+  )) == 120209065082
+}
+
+// AND IT MOVES WITH THE FRACTION, without which the row above passes against a constant.
+test fn a_different_fraction_yields_a_different_envelope() -> Bool {
+  byte_size_count(b: vllm_requested_envelope_bytes(
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    utilization: basis_point(count: 8200),
+  )) < byte_size_count(b: vllm_requested_envelope_bytes(
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    utilization: basis_point(count: 9200),
+  ))
+}
+
+// ── PREFIX CACHING: THE DEFAULT IS A SHARING DECISION ──────────────────────────────────────────
+//
+// The canary omits this flag and therefore enables it. Recording that as a resolved value with a
+// runtime-default origin is what lets a tenancy policy disagree with it; an unmodelled revision
+// leaves whether requesters share a cache domain UNESTABLISHED rather than assuming either answer.
+test fn omitted_prefix_caching_resolves_enabled_from_the_revision() -> Bool {
+  match resolve_vllm_prefix_caching(
+    request: PrefixCachingOmitted,
+    defaults: VllmDefaultsKnown { defaults: vllm_defaults_487ecf187 },
+  ) {
+    PrefixCachingUnresolvable { cause: _ } => false
+    PrefixCachingResolved { enabled: e, origin: o } => e && w_origin_is_runtime_default_named(o: o)
+  }
+}
+
+fn w_origin_is_runtime_default_named(o: VllmResolutionOrigin) -> Bool {
+  match o {
+    ExplicitArgument => false
+    RuntimeDefault { source_revision: _, declaration: d } => (d as String) == "CacheConfig.enable_prefix_caching"
+  }
+}
+
+test fn prefix_caching_against_an_unmodelled_revision_is_unresolvable() -> Bool {
+  match resolve_vllm_prefix_caching(
+    request: PrefixCachingOmitted,
+    defaults: vllm_runtime_defaults_for(revision: vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    )),
+  ) {
+    PrefixCachingResolved { enabled: _, origin: _ } => false
+    PrefixCachingUnresolvable { cause: _ } => true
+  }
+}
