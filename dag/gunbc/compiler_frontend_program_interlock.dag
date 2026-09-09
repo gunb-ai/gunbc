@@ -25,6 +25,7 @@ type ProgramMilestone
   | SelfHostCargoPhaseEnrolled
   | SelfHostRatchetObservationEnrolled
   | SelfHostRatchetGateEnrolled
+  | NamespaceWaveAdmissionEnrolled
   | NamespaceBaselineObservationComplete
   | NamespaceFirstSemanticWave
   | NamespaceFixForwardComplete
@@ -54,6 +55,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     SelfHostCargoPhaseEnrolled => "self-host S3: required cargo-executing CI phase, enrolled with a discriminating red" as NonEmptyStr
     SelfHostRatchetObservationEnrolled => "self-host S4a: the ratchet enrolled as an OBSERVATION -- taken and persisted, never merge-blocking" as NonEmptyStr
     SelfHostRatchetGateEnrolled => "self-host S4b: the ratchet enrolled as a GATE, merge-blocking, against S2's identity-grain population" as NonEmptyStr
+    NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over subject-membership and occurrence-binding deltas, with closure delta carried as blast radius rather than as a third wall" as NonEmptyStr
     NamespaceBaselineObservationComplete => "namespace Step 0.5: the pre-deletion baseline -- a content-addressed, past-tense record of what the legacy resolver ACTUALLY SELECTED over one exact base" as NonEmptyStr
     NamespaceFirstSemanticWave => "namespace: first semantic wave -- the first exact corpus-rewrite wave landed while the legacy semantic root still exists" as NonEmptyStr
     NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
@@ -96,9 +98,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 
 // AN EIGHTH FINDING, AND IT IS NEITHER A FUSION NOR AN OMISSION -- IT IS A LABEL ASSERTING A
 // GUARANTEE THE MECHANISM CANNOT PROVIDE (nimble-moth-416, 2026-08-26, relayed through
-// warm-hawk-909). NamespaceWaveAdmissionEnrolled -- DELETED 2026-09-08 with the wave-admission
-// phase itself, and kept here for the finding rather than the milestone -- read as a wall over
-// THREE deltas: closure,
+// warm-hawk-909). NamespaceWaveAdmissionEnrolled read as a wall over THREE deltas: closure,
 // subject membership, and occurrence binding. Closure cannot be one. Closure is a pure function of
 // membership, so "the closure moved and no membership moved" is UNAUTHORABLE -- there is no input
 // that produces it -- and an arm for it would be permanently green by construction. DESIGN section
@@ -262,8 +262,9 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     SelfHostCargoPhaseEnrolled => []
     SelfHostRatchetObservationEnrolled => []
     SelfHostRatchetGateEnrolled => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoPhaseEnrolled, SelfHostRatchetObservationEnrolled]
+    NamespaceWaveAdmissionEnrolled => []
     NamespaceBaselineObservationComplete => []
-    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceBaselineObservationComplete]
+    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled, NamespaceBaselineObservationComplete]
     NamespaceFixForwardComplete => [NamespaceFirstSemanticWave]
     NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]

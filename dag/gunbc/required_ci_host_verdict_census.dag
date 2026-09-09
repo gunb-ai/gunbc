@@ -83,6 +83,16 @@ data required_ci_host_verdict_rows: List<RequiredCiHostVerdictRow> = [
     }
   },
   {
+    phase: "namespace-wave-admission",
+    lane: WitnessesLane,
+    host_site: "v1_compiler.cli_run.namespace_wave_admission run_required_wave_admission plus claim_executor report_wave_admission_outcome",
+    relation: ReDecidesCarrier {
+      carrier: decl_ref(module_path: "gunbc.namespace_wave_admission", decl_name: "namespace_wave_admission_bindings"),
+      host_decision: "Rust reconstructs the disposition vocabulary over its private DeclarationIndex and then maps the resulting outcome into phase_failures",
+      root_cut: cut(phase: "namespace-wave-admission", carrier: "gunbc.namespace_wave_admission namespace_wave_admission_bindings")
+    }
+  },
+  {
     phase: "regen",
     lane: BuildLane,
     host_site: "v1_compiler.required_regen_host run_required_regen plus claim_executor RequiredCiPhase::Regen",

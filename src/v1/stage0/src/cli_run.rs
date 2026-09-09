@@ -182,6 +182,8 @@ pub(crate) use test_migration::*;
 // DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
+#[path = "namespace_wave_admission.rs"]
+pub mod namespace_wave_admission;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
