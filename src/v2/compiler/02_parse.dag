@@ -275,6 +275,7 @@ type ParseTableRealization {
   nullable_set: PointwisePower<Symbol>
   first_rows: Map<Symbol, List<Symbol>>
   productions_by_name: Map<Symbol, GrammarProduction>
+  prepared_exprs: Map<Symbol, PreparedGrammarExpr>
 }
 
 type ParseTable = ParseTableRealization
@@ -535,7 +536,8 @@ fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, 
     memo_lookup_calls: lookups,
     nullable_set: table.nullable_set,
     first_rows: table.first_rows,
-    productions_by_name: table.productions_by_name
+    productions_by_name: table.productions_by_name,
+    prepared_exprs: table.prepared_exprs
   }
 }
 
@@ -641,7 +643,8 @@ fn parse_table_for_production_analyzed(
     memo_lookup_calls: 0,
     nullable_set: analysis.nullable_set,
     first_rows: analysis.first_rows,
-    productions_by_name: grammar_production_index(productions: validated.root.productions)
+    productions_by_name: grammar_production_index(productions: validated.root.productions),
+    prepared_exprs: analysis.prepared_exprs
   }
 }
 
@@ -669,7 +672,8 @@ fn parse_table_empty() -> ParseTable {
     memo_lookup_calls: 0,
     nullable_set: PointwisePower { member: fn(_) { false } },
     first_rows: empty_map(),
-    productions_by_name: empty_map()
+    productions_by_name: empty_map(),
+    prepared_exprs: empty_map()
   }
 }
 
@@ -756,11 +760,13 @@ fn parse_mint_from_source(
 // list whose consumers read as "parse stamped this", which is the fabricated answer. Empty is the
 // answer to a different question than OccurrenceSynthetic's -- nothing was minted at all there --
 // and both are correctly empty for this one.
-fn parse_minted_id_from_node(n: Node) -> List<OccurrenceId> {
+// Snoc-built, never append-per-node: list_append(acc, [id]) re-folds the accumulator per
+// element (O(n^2) per captured repeat), list_snoc_item is the primitive push (O(log n)).
+fn parse_minted_id_snoc(acc: List<OccurrenceId>, n: Node) -> List<OccurrenceId> {
   match n.occurrence_id {
-    OccurrenceMinted { id: id } => Cons { head: id, tail: std.algebra.Empty }
-    OccurrenceSynthetic => std.algebra.Empty
-    OccurrenceProjected { id: _, caused_by: _ } => std.algebra.Empty
+    OccurrenceMinted { id: id } => list_snoc_item(xs: acc, item: id)
+    OccurrenceSynthetic => acc
+    OccurrenceProjected { id: _, caused_by: _ } => acc
   }
 }
 
@@ -768,9 +774,7 @@ fn parse_minted_id_list(nodes: List<Node>) -> List<OccurrenceId> {
   fold_list(
     xs: nodes,
     empty: std.algebra.Empty,
-    cons: fn(acc, n) {
-      list_append(left: acc, right: parse_minted_id_from_node(n: n))
-    }
+    cons: fn(acc, n) { parse_minted_id_snoc(acc: acc, n: n) }
   )
 }
 
@@ -1171,8 +1175,8 @@ fn parse_nonterminal_memoized_core(
           }
         Violates { diagnostic: _ } =>
           let table_miss = parse_table_record_miss(table: table_at_lookup)
-          let inner = parse_expr(
-            expr: production.expression,
+          let inner = parse_expr_with_first(
+            expr: parse_table_prepared_expr(table: table_miss, production: production),
             tokens: tokens,
             all_tokens: all_tokens,
             root: root,
@@ -1305,6 +1309,7 @@ type GrammarExprFirstFold {
 type GrammarFirstAnalysis {
   nullable_set: PointwisePower<Symbol>
   first_rows: Map<Symbol, List<Symbol>>
+  prepared_exprs: Map<Symbol, PreparedGrammarExpr>
 }
 
 fn grammar_empty_terminal_list() -> List<Symbol> {
@@ -1503,6 +1508,100 @@ fn choice_branches_ambiguous(left: GrammarExprFirstFold, right: GrammarExprFirst
   }
 }
 
+// A prepared grammar expression is the parse-time carrier for FIRST knowledge: the grammar is
+// fixed for a whole parse, so each Choice node's branch folds (and its ambiguity verdict) are
+// pure functions of the grammar and are computed ONCE here, at preparation, bottom-up — every
+// node's fold combines its children's already-computed folds in O(union) instead of re-walking
+// the subtree. The pre-hoisting dispatch recomputed expr_first_fold on both branches at every
+// Choice node at every token position: right-nested choice chains made that O(k^2) per position
+// with O(t^2) union constants, measured as the dominant self-hosted parse cost (2026-09-09,
+// required-v2-native lane work: 209s -> 33s on a 315KB table module from the algebra carrier
+// fixes, then 33s -> 14s from this hoist, forecast by a pointer-keyed memo probe).
+type PreparedGrammarExpr
+  = PreparedTerminal { token_class: Symbol, stamp: TerminalStampMode }
+  | PreparedNonterminal { production: Symbol }
+  | PreparedSequence { left: PreparedGrammarExpr, right: PreparedGrammarExpr }
+  | PreparedChoice {
+      left: PreparedGrammarExpr,
+      right: PreparedGrammarExpr,
+      left_first: GrammarExprFirstFold,
+      right_first: GrammarExprFirstFold,
+      ambiguous: Bool
+    }
+  | PreparedOptional { element: PreparedGrammarExpr }
+  | PreparedRepeat { element: PreparedGrammarExpr }
+
+type PreparedExprFold {
+  tree: PreparedGrammarExpr
+  first: GrammarExprFirstFold
+}
+
+fn prepare_grammar_expr(
+  expr: GrammarExpr,
+  nullable_set: PointwisePower<Symbol>,
+  first_rows: Map<Symbol, List<Symbol>>
+) -> PreparedExprFold {
+  match expr {
+    Terminal { token_class: token_class, stamp: stamp } =>
+      PreparedExprFold {
+        tree: PreparedTerminal { token_class: token_class, stamp: stamp },
+        first: expr_first_fold_terminal(token_class: token_class)
+      }
+    Nonterminal { production: production } =>
+      PreparedExprFold {
+        tree: PreparedNonterminal { production: production },
+        first: expr_first_fold_nonterminal(name: production, nullable_set: nullable_set, first_rows: first_rows)
+      }
+    Sequence { left: left, right: right } =>
+      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows)
+      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows)
+      PreparedExprFold {
+        tree: PreparedSequence { left: left_prepared.tree, right: right_prepared.tree },
+        first: expr_first_fold_sequence(left: left_prepared.first, right: right_prepared.first)
+      }
+    Choice { left: left, right: right } =>
+      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows)
+      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows)
+      PreparedExprFold {
+        tree: PreparedChoice {
+          left: left_prepared.tree,
+          right: right_prepared.tree,
+          left_first: left_prepared.first,
+          right_first: right_prepared.first,
+          ambiguous: choice_branches_ambiguous(left: left_prepared.first, right: right_prepared.first)
+        },
+        first: expr_first_fold_choice(left: left_prepared.first, right: right_prepared.first)
+      }
+    Optional { element: element } =>
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+      PreparedExprFold {
+        tree: PreparedOptional { element: element_prepared.tree },
+        first: expr_first_fold_optional(element: element_prepared.first)
+      }
+    Repeat { element: element } =>
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+      PreparedExprFold {
+        tree: PreparedRepeat { element: element_prepared.tree },
+        first: expr_first_fold_repeat(element: element_prepared.first)
+      }
+  }
+}
+
+// The on-the-fly arm for tables whose analysis did not carry prepared trees (parse_table_empty
+// and test-built tables): identical folds, computed at call time. Tables built by
+// parse_table_for_production_analyzed always resolve Present here — both maps are folded from
+// the same root.productions, so Absent-after-Holds is unreachable by construction, and this arm
+// computes the same value rather than widening anything.
+fn parse_table_prepared_expr(table: ParseTable, production: GrammarProduction) -> PreparedGrammarExpr {
+  match v2.std.collection.map_get(m: table.prepared_exprs, key: production.name) {
+    Accepted { value: Present { value: prepared }, diagnostics: _ } => prepared
+    Accepted { value: Absent, diagnostics: _ } =>
+      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows).tree
+    Rejected { diagnostics: _ } =>
+      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows).tree
+  }
+}
+
 fn append_choice_ambiguity_row(
   acc: List<GrammarChoiceAmbiguityRow>,
   production: Symbol,
@@ -1595,9 +1694,21 @@ fn compute_grammar_first_analysis_given(
   root: GrammarRoot,
   nullable_set: PointwisePower<Symbol>
 ) -> GrammarFirstAnalysis {
+  let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
   GrammarFirstAnalysis {
     nullable_set: nullable_set,
-    first_rows: compute_production_first_rows(root: root, nullable_set: nullable_set)
+    first_rows: first_rows,
+    prepared_exprs: fold_list(
+      xs: root.productions,
+      empty: empty_map(),
+      cons: fn(acc, p) {
+        map_insert(
+          m: acc,
+          key: p.name,
+          value: prepare_grammar_expr(expr: p.expression, nullable_set: nullable_set, first_rows: first_rows).tree
+        )
+      }
+    )
   }
 }
 
@@ -2141,8 +2252,8 @@ fn parse_expr_terminal(
 }
 
 fn parse_expr_sequence(
-  left: GrammarExpr,
-  right: GrammarExpr,
+  left: PreparedGrammarExpr,
+  right: PreparedGrammarExpr,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
@@ -2184,8 +2295,8 @@ fn parse_expr_sequence(
 }
 
 fn parse_choice_residue_backtrack(
-  left: GrammarExpr,
-  right: GrammarExpr,
+  left: PreparedGrammarExpr,
+  right: PreparedGrammarExpr,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
@@ -2215,8 +2326,8 @@ fn parse_choice_residue_backtrack(
 }
 
 fn parse_choice_on_present_token(
-  left: GrammarExpr,
-  right: GrammarExpr,
+  left: PreparedGrammarExpr,
+  right: PreparedGrammarExpr,
   tok: Token,
   tokens: List<Token>,
   all_tokens: List<Token>,
@@ -2250,17 +2361,18 @@ fn parse_choice_on_present_token(
 }
 
 fn parse_choice_first_dispatch(
-  left: GrammarExpr,
-  right: GrammarExpr,
+  left: PreparedGrammarExpr,
+  right: PreparedGrammarExpr,
+  left_first: GrammarExprFirstFold,
+  right_first: GrammarExprFirstFold,
+  ambiguous: Bool,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  let left_first = expr_first_fold(expr: left, nullable_set: table.nullable_set, first_rows: table.first_rows)
-  let right_first = expr_first_fold(expr: right, nullable_set: table.nullable_set, first_rows: table.first_rows)
-  if choice_branches_ambiguous(left: left_first, right: right_first) {
+  if ambiguous {
     parse_choice_residue_backtrack(
       left: left,
       right: right,
@@ -2298,7 +2410,7 @@ fn parse_choice_first_dispatch(
 }
 
 fn parse_expr_optional(
-  element: GrammarExpr,
+  element: PreparedGrammarExpr,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
@@ -2327,7 +2439,7 @@ fn parse_expr_optional(
 }
 
 fn parse_expr_repeat_step(
-  element: GrammarExpr,
+  element: PreparedGrammarExpr,
   all_tokens: List<Token>,
   root: GrammarRoot,
   acc: ParseRepeatAcc
@@ -2383,7 +2495,7 @@ fn parse_expr_repeat_step(
 }
 
 fn parse_expr_repeat(
-  element: GrammarExpr,
+  element: PreparedGrammarExpr,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
@@ -2410,7 +2522,7 @@ fn parse_expr_repeat(
 }
 
 fn parse_expr_with_first(
-  expr: GrammarExpr,
+  expr: PreparedGrammarExpr,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
@@ -2418,7 +2530,7 @@ fn parse_expr_with_first(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   match expr {
-    Terminal { token_class: token_class, stamp: stamp } =>
+    PreparedTerminal { token_class: token_class, stamp: stamp } =>
       parse_expr_terminal(
         token_class: token_class,
         stamp: stamp,
@@ -2426,7 +2538,7 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    Nonterminal { production: prod_name } =>
+    PreparedNonterminal { production: prod_name } =>
       parse_nonterminal_memoized(
         all_tokens: all_tokens,
         tokens: tokens,
@@ -2435,7 +2547,7 @@ fn parse_expr_with_first(
         prod_name: prod_name,
         prov: prov
       )
-    Sequence { left: left, right: right } =>
+    PreparedSequence { left: left, right: right } =>
       parse_expr_sequence(
         left: left,
         right: right,
@@ -2445,17 +2557,20 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    Choice { left: left, right: right } =>
+    PreparedChoice { left: left, right: right, left_first: left_first, right_first: right_first, ambiguous: ambiguous } =>
       parse_choice_first_dispatch(
         left: left,
         right: right,
+        left_first: left_first,
+        right_first: right_first,
+        ambiguous: ambiguous,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
         table: table,
         prov: prov
       )
-    Optional { element: element } =>
+    PreparedOptional { element: element } =>
       parse_expr_optional(
         element: element,
         tokens: tokens,
@@ -2464,7 +2579,7 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    Repeat { element: element } =>
+    PreparedRepeat { element: element } =>
       parse_expr_repeat(
         element: element,
         tokens: tokens,
@@ -2476,6 +2591,9 @@ fn parse_expr_with_first(
   }
 }
 
+// Compat entry for callers holding a raw GrammarExpr (grammar tests, stall probes): prepares
+// the expression on the fly from the table's carried analysis — the same folds the production
+// path reads from its prepared map — then dispatches on the prepared tree.
 fn parse_expr(
   expr: GrammarExpr,
   tokens: List<Token>,
@@ -2485,7 +2603,7 @@ fn parse_expr(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   parse_expr_with_first(
-    expr: expr,
+    expr: prepare_grammar_expr(expr: expr, nullable_set: table.nullable_set, first_rows: table.first_rows).tree,
     tokens: tokens,
     all_tokens: all_tokens,
     root: root,
