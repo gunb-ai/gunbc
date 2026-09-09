@@ -3,6 +3,7 @@ module v2.compiler.self_host.candidate_generation
 import extdeps.communication.medium { Medium }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.emit { emit }
+import v2.compiler.emit_produced { emit_produced_decl, produced_decl_conjs_in_tree }
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -30,11 +31,13 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   bind_outcome,
+  node_locus,
   outcome_accepted,
   outcome_rejected,
   invariant_port_locus
 }
 import v2.std.node { Node, Symbol }
+import std.algebra { Cons, Empty }
 import v2.std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
@@ -66,10 +69,17 @@ type WrittenProvenancedRustArtifact {
   write: RustWorkspaceWriteReceipt
 }
 
-// Lane B direct v2 Rust door: generate_rust_emission_candidate wires serialize_target composed with
-// translate (v2.compiler.emit); mint_written_provenanced_rust_artifact writes Cargo.toml and
-// src/main.rs through Filesystem.Write so ingest-assemble-infer-translate-serialize-write is one
-// candidate_generation surface.
+// Lane B direct v2 Rust door: the PRODUCTION composition is
+// generate_rust_module_emission_candidate — the inferred module's produced declaration emitted
+// through v2.compiler.emit_produced, because a resolved module is a module shell (grammar
+// projection over named declarations), not a type record, so emitting it means emitting its
+// declarations and never record-projecting the shell through translate.
+// mint_written_provenanced_rust_artifact writes Cargo.toml and src/lib.rs through Filesystem.Write
+// so ingest-assemble-infer-emit-write is one candidate_generation surface.
+// generate_rust_emission_candidate (raw v2.compiler.emit over the whole inferred tree) remains ONLY
+// as the fixture lane's composition: fixture_synthetic_emission rides it over
+// direct_rust_door_inferred_tree, a target-side fixture root with no module shell, and it deletes
+// with that lane's own dissolution trigger. No production caller remains on it.
 
 data direct_rust_door_scaffold_build_cause: Symbol = ^direct_rust_door_scaffold_build
 
@@ -166,6 +176,51 @@ fn generate_rust_emission_candidate(
   )
 }
 
+// The production module composition. Admission is exactly one produced-decl-shaped node (the
+// collector in v2.compiler.emit_produced defines the shape): the door's specimen class is the
+// single-declaration module, and zero or surplus populations refuse typed and located rather than
+// picking a winner. The multi-declaration join convention lands with the first multi-declaration
+// consumer — emit_produced_module's trailing separator is pinned by its own goldens and is not
+// this composition's fact.
+fn generate_rust_module_emission_candidate(
+  inferred: InferredTree,
+  target: TargetModel
+) -> Outcome<RustEmissionCandidate> {
+  match produced_decl_conjs_in_tree(root: inferred.root) {
+    Empty =>
+      outcome_rejected(
+        d: Diagnostic {
+          reason: ^rust_module_emission_decl_absent,
+          at: node_locus(node: inferred.root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    Cons { head: decl, tail: rest } =>
+      match rest {
+        Empty =>
+          bind_outcome(
+            o: emit_produced_decl(decl: decl, target: target),
+            f: fn(source) {
+              outcome_accepted(
+                value: RustEmissionCandidate {
+                  source: source,
+                  emitted: inferred.root
+                }
+              )
+            }
+          )
+        Cons { head: surplus, tail: _ } =>
+          outcome_rejected(
+            d: Diagnostic {
+              reason: ^rust_module_emission_decl_ambiguous,
+              at: node_locus(node: surplus),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+      }
+  }
+}
+
 fn write_rust_workspace(
   workspace_dir: String,
   source: Medium<String>
@@ -221,7 +276,7 @@ fn mint_provenanced_rust_artifact(
   module_path: String
 ) -> Outcome<ProvenancedRustArtifact> {
   bind_outcome(
-    o: generate_rust_emission_candidate(inferred: inferred, target: target),
+    o: generate_rust_module_emission_candidate(inferred: inferred, target: target),
     f: fn(candidate) {
       mint_artifact_from_rust_emission_candidate(
         candidate: candidate,
@@ -258,9 +313,9 @@ fn mint_written_provenanced_rust_artifact(
 }
 
 // STAGE-LOCATED production observation for the ingest-path Rust door. Replaces the Outcome-only
-// surface whose Rejected arm erased WHICH stage refused: assembly, inference, emission (translate
-// composed with serialize_target, observed as one production seam because v2.compiler.emit is one
-// composition and splitting it here would fork it), or producer-receipt mint.
+// surface whose Rejected arm erased WHICH stage refused: assembly, inference, emission (the
+// single-declaration module composition of generate_rust_module_emission_candidate, observed as
+// one production seam), or producer-receipt mint.
 // generate_provenanced_rust_candidate_from_ingest is now a PROJECTION of this observation, not a
 // second traversal — the pipeline is walked once per call and every existing caller keeps its
 // Outcome shape.
@@ -285,7 +340,7 @@ fn observe_provenanced_rust_emission_from_ingest(
       match infer(tree: resolved) {
         Rejected { diagnostics: d } => InferenceRejected { diagnostics: d }
         Accepted { value: inferred, diagnostics: _ } =>
-          match generate_rust_emission_candidate(inferred: inferred, target: target) {
+          match generate_rust_module_emission_candidate(inferred: inferred, target: target) {
             Rejected { diagnostics: d } => EmissionRejected { diagnostics: d }
             Accepted { value: candidate, diagnostics: _ } =>
               match mint_artifact_from_rust_emission_candidate(

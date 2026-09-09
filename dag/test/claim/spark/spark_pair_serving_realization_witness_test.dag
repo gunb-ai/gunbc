@@ -8,9 +8,59 @@ import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
   SparkPairHostRealization, SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
   spark_pair_realizations, spark_pair_container_env_covers_every_baked_name,
+  spark_pair_realization, spark_pair_head_unit_file, spark_pair_container_spec, spark_pair_container_env,
+}
+import gunbc.spark.pair_serving_desired {
+  spark_pair_serving_unit_with, SeqCapacityMeasured,
+  SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+  spark_pair_serving_engine_args,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import gunbc.spark.model_snapshot_acquisition {
+  ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned, glm_5_3_flash_snapshot,
+  SnapshotPlacement, HubCachePlacement, spark_hub_cache_root,
 }
 
 fn w_first() -> SparkPairRealization? { first(spark_pair_realizations()) }
+
+// THE CONTROLLED FIXTURE, AND WHY THE UNIT-FILE TESTS BELOW NEED ONE NOW. The live desired roster
+// refuses -- its sequence capacity is unmeasured for GLM-5.3-Flash, and its weights snapshot is
+// unobserved -- so nothing on the live path renders a unit file, and every structural assertion about
+// unit ORDERING would silently become vacuous if it kept reading that path. The shape of a rendered
+// unit is a fact about the renderer, not about today's fleet state, so it is asserted against a
+// fixture that supplies both missing facts explicitly. That separation is the point: one test says
+// the live roster refuses, the others say what the renderer produces when it does not.
+// THE FIXTURE'S REPO IS DEEPSEEK'S, AND IT NAMED GLM WHILE THIS WITNESS ASSERTED NO GLM APPEARS. The
+// rendered unit derives its model path from this snapshot, so a GLM repo put the string "GLM" into the
+// very text the assertions require to be absent -- and the commit that corrected those assertions
+// added an annotation calling this "the DeepSeek-shaped pair route" without changing the repo sitting
+// beside it. The prose and the data disagreed, which is the defect that commit existed to fix,
+// committed inside the fix.
+//
+// THE UNPINNED FIXTURE BELOW KEEPS ITS GLM REPO DELIBERATELY: that test asserts a refusal for a
+// missing revision and never inspects rendered text, so the repo it names is immaterial to what it
+// establishes -- and changing it would suggest the repo mattered there.
+//
+// THE FIXTURE DECLARES ITS PLACEMENT BECAUSE THE SNAPSHOT NOW HAS ONE, and a fixture that omitted it
+// would not compile -- which is the type doing its job. The Hub-cache placement is the right one here:
+// this fixture stands for the DeepSeek-shaped pair route, whose weights genuinely live in the Hub cache
+// layout (measured on the serving head, `models--deepseek-ai--DeepSeek-V4-Flash/snapshots/<rev>`), and
+// the local-directory placement belongs to the canary arm instead.
+data w_fixture_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
+  identity: "fixture-model" as NonEmptyStr,
+  repo: HubRepoId { kind: HubModelRepo, path: "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr },
+  revision: "fixture0000000000000000000000000000000000" as NonEmptyStr,
+  revision_provenance: "controlled fixture: this witness asserts renderer shape, never a resolved revision" as NonEmptyStr,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+}
+
+fn w_fixture_unit() -> SparkPairServingUnit {
+  spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityMeasured {
+    max_num_seqs: 32,
+    basis: "controlled fixture: this witness asserts renderer shape, never a measured capacity" as NonEmptyStr,
+  })
+}
 
 fn w_unit_text(u: SparkPairUnitRender) -> String {
   match u {
@@ -20,7 +70,7 @@ fn w_unit_text(u: SparkPairUnitRender) -> String {
 }
 
 fn w_realized(f: fn(SparkPairHostRealization, List<SparkPairHostRealization>) -> Bool) -> Bool {
-  match w_first() {
+  match Present { value: spark_pair_realization(unit: w_fixture_unit()) } {
     Absent => false
     Present { value: r } =>
       match r {
@@ -30,17 +80,100 @@ fn w_realized(f: fn(SparkPairHostRealization, List<SparkPairHostRealization>) ->
   }
 }
 
-// THE FIRST PAIR RENDERS, AND THE ENGINE LINE CARRIES THE WHOLE TUPLE AND NOTHING THE OPERATOR
-// FORBADE: TP=4 over Ray (the group's four hosts), 1M context, 32 sequences, fp8_ds_mla, 0.82, the deepseek_v4 parser with
-// auto tool choice, prefix caching, and no --max-num-batched-tokens.
-test fn the_head_unit_serves_the_tuple_and_never_the_forbidden_flag() -> Bool {
-  w_realized(f: fn(h, _ws) {
-    let t = w_unit_text(u: h.unit)
-    string_contains(s: t, pattern: "ExecStart=/usr/bin/docker exec gunbc-spark-pair /opt/env/bin/vllm serve /weights/models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1 ")
-      && string_contains(s: t, pattern: " --tensor-parallel-size 4 --distributed-executor-backend ray --max-model-len 1048576 --max-num-seqs 32 --enable-auto-tool-choice --tool-call-parser deepseek_v4 --kv-cache-dtype fp8_ds_mla --gpu-memory-utilization 0.82 --enable-prefix-caching")
-      && string_contains(s: t, pattern: "--served-model-name deepseek-v4-flash:iq3s-split --host 0.0.0.0 --port 30000")
-      && !string_contains(s: t, pattern: "--max-num-batched-tokens")
-  })
+// THE LIVE ROSTER RENDERS DEEPSEEK, AND THIS WITNESS IS WHY IT DOES. A revision of this branch
+// pointed the production served-model name at GLM-5.3-Flash while this module still built its
+// runtime from `extdeps.docker.images.sparkrun_vllm_ds4_gb10` -- whose vLLM was measured on
+// 2026-09-08 not to register `Glm5NextForConditionalGeneration` at all. This witness was RED on that
+// revision, and it was right: the production planner had begun admitting a tuple that cannot start.
+//
+// IT WOULD HAVE BEEN EASY TO MAKE GREEN THE WRONG WAY, by relaxing it to accept whatever the roster
+// now renders. That would have blessed the impossible combination instead of reporting it. The
+// combination is removed instead: GLM lives behind gunbc.spark.glm_canary_converge, which admits its
+// exact arm through `serving_arm_admits` -- the wall that refuses an image that cannot load the
+// checkpoint.
+test fn the_live_roster_renders_the_model_its_image_can_actually_load() -> Bool {
+  match w_first() {
+    Absent => false
+    Present { value: r } =>
+      match r {
+        SparkPairRealizationRefused { group: _, cause: _ } => false
+        SparkPairRealized { group: _, head: h, workers: _ } => {
+          let t = w_unit_text(u: h.unit)
+          string_contains(s: t, pattern: "--served-model-name deepseek-v4-flash:iq3s-split")
+            && string_contains(s: t, pattern: "--tool-call-parser deepseek_v4")
+            && string_contains(s: t, pattern: "--kv-cache-dtype fp8_ds_mla")
+            && !string_contains(s: t, pattern: "GLM")
+            && !string_contains(s: t, pattern: "glm")
+        }
+      }
+  }
+}
+
+// AN UNPINNED SNAPSHOT CANNOT RENDER A SERVE LINE, asserted with the capacity supplied so that the
+// pin is the only thing missing. A path under `snapshots/<revision>/` needs a revision; composing one
+// out of a branch name would name a directory whose contents change under it, which is why the
+// renderer refuses rather than substituting `main`.
+test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -> Bool {
+  match w_fixture_unit() {
+    SparkPairServingUnitRefused { group: _, cause: _ } => false
+    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
+      match spark_pair_head_unit_file(
+        args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
+        snapshot: ModelSnapshotUnpinned {
+          identity: "fixture-unpinned" as NonEmptyStr,
+          repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
+          cause: "fixture" as NonEmptyStr,
+        },
+        head: h.lane,
+        spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
+      ) {
+        SparkPairUnitRendered { unit_name: _, text: _ } => false
+        SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
+          string_contains(s: c as String, pattern: "no pinned revision")
+      }
+  }
+}
+
+// THE POSITIVE CONTROL: with the snapshot supplied, the serve line renders and carries THIS MODEL'S
+// identity, parser and KV layout -- all three derived from extdeps.zhipu.glm_5_3_flash rather than
+// from a reading of whatever was running on 2026-09-03. The refusal above would be satisfied by a
+// renderer that refused everything; this is what stops that.
+// THIS WITNESS ASSERTED THE WRONG MODEL FOR THIS ROUTE, and it had been red on the required lane for
+// hours before anyone read the lane rather than a local run. It demanded GLM's identity, GLM's tool
+// parser and a plain `fp8` cache from the PAIR route -- a state an earlier revision of this branch
+// briefly created by pointing that route at GLM, and which was deliberately reverted because the
+// image this route builds from was measured not to register GLM at all. The revert restored the
+// production rows and left the witness asserting the reverted state, so the test was faithfully
+// checking a configuration the branch had decided was wrong.
+//
+// A WITNESS THAT SURVIVES A REVERT IS THE REVERT'S OWN BLIND SPOT. Reverting the rows was the correct
+// call and it was incomplete: the assertion is part of the claim, so restoring one without the other
+// leaves the corpus asserting both directions at once, and the only thing that noticed was CI.
+//
+// IT NOW ASSERTS WHAT THE ROUTE SERVES: DeepSeek's served-model name and tool parser, the fp8_ds_mla
+// layout its Multi-head Latent Attention requires, no GLM identity anywhere in the rendered text, and
+// the batch budget main pinned -- which the previous form explicitly asserted was ABSENT, so it would
+// have gone red against main's change even had the model question been settled.
+test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout() -> Bool {
+  match w_fixture_unit() {
+    SparkPairServingUnitRefused { group: _, cause: _ } => false
+    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
+      match spark_pair_head_unit_file(
+        args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32),
+        snapshot: w_fixture_snapshot,
+        head: h.lane,
+        spec: spark_pair_container_spec(env: spark_pair_container_env(lane: h.lane)),
+      ) {
+        SparkPairUnitRenderRefused { unit_name: _, cause: _ } => false
+        SparkPairUnitRendered { unit_name: _, text: t } =>
+          string_contains(s: t, pattern: "--served-model-name deepseek-v4-flash:iq3s-split")
+            && string_contains(s: t, pattern: "--tool-call-parser deepseek_v4")
+            && string_contains(s: t, pattern: "--kv-cache-dtype fp8_ds_mla")
+            && !string_contains(s: t, pattern: "GLM")
+            && !string_contains(s: t, pattern: "glm47")
+            && string_contains(s: t, pattern: "--max-num-batched-tokens 2048")
+      }
+  }
 }
 
 // PLACEMENT RELEASED BEFORE LAUNCH IS AN ORDERING FACT OF THE UNIT: start the container, stop the

@@ -27,6 +27,10 @@ import product.cable_leg_observation {
   GapEncodingUnspecified, GapEncodingNotUnderstood,
   cable_leg_observation, assess_cable_leg, cable_leg_consistency,
   cable_leg_unread_fields, cable_leg_interpretation_gaps,
+  ExtendedRateObserved, ExtendedRateNotObserved,
+  CableLegField, ExtendedRateField, SecondaryComplianceField,
+  PrimaryComplianceField, EncodingField, NominalRateField,
+  cable_leg_declared_nominal_rate,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -87,17 +91,19 @@ test fn the_aggregate_is_derived_from_lanes_and_service_rate() -> Bool {
 // The bytes as read from the delivered leg: identifier 0x11, primary extended compliance 0x0B,
 // encoding 0x08 (PAM4), nominal-rate byte 255.
 //
-// BYTE 116 WAS NOT READ, and that is recorded as SecondaryNotObserved rather than as an empty
-// secondary. The distinction is load-bearing here: an unread field cannot participate in a proof
-// that the WHOLE profile disagrees with the encoding byte, because the unread field may carry the
-// application the encoding belongs to. An earlier head modelled the unread field as absent and
-// therefore proved a contradiction out of a gap in its own observation.
+// BYTE 116 WAS READ ON 2026-09-08 AND HOLDS 00h. It is recorded as SecondaryObserved { code: 0 },
+// which is NOT the same as an empty secondary: SFF-8024 gives 00h the meaning "Unspecified", so the
+// field is observed and still carries no attestation. That distinction is load-bearing -- an earlier
+// head modelled a missing secondary as absent and proved a contradiction out of a gap in its own
+// observation -- and it is why reading the byte improved coverage without making the profile
+// decidable. leg_with_unread_secondary below keeps the genuinely-unread arm exercised.
 data delivered_fs_leg: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),
   primary_compliance_code: 11,
-  secondary_compliance: SecondaryNotObserved,
+  secondary_compliance: SecondaryObserved { code: 0 },
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 fn is_insufficient(f: CableLegFinding) -> Bool {
   match f {
@@ -174,7 +180,8 @@ data leg_with_unmodelled_code: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 254,
   secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 test fn an_unmodelled_code_is_not_understood_rather_than_attesting_nothing() -> Bool {
   code_not_understood(f: assess_cable_leg(
@@ -275,34 +282,41 @@ fn consistency_cause_is_scope(c: ProfileConsistency) -> Bool {
   }
 }
 
-// THE DELIVERED CABLE: byte 116 was never read, so the cause is the unread field and nothing
-// stronger. This is the arm that used to be a contradiction accusation.
-test fn the_delivered_leg_consistency_is_undecidable_for_want_of_a_reading() -> Bool {
-  consistency_cause_is_unread(c: cable_leg_consistency(obs: delivered_fs_leg))
+// THE DELIVERED CABLE IS NOW FULLY READ, AND STILL NOT DECIDABLE -- which is the stronger claim and
+// the one the bytes actually support. Byte 116 WAS read on 2026-09-08 and holds 00h, so the cause is
+// no longer a missing reading: SFF-8024 gives 00h the meaning "Unspecified", which improves coverage
+// while leaving interpretation non-exhaustive. This is the bug the file has guarded twice already --
+// an earlier head treated a read 00h as establishing absence and licensed a verdict the bytes do not
+// support -- and it is now asserted against the REAL leg rather than a synthetic stand-in.
+test fn the_delivered_leg_is_read_but_still_not_interpretable() -> Bool {
+  consistency_gap_is_compliance_unspecified(c: cable_leg_consistency(obs: delivered_fs_leg))
 }
 
-// THE INVERSE CONTROL, and the specific bug it guards. A leg whose byte 116 WAS read and found 00h
-// must NOT become decidable: 00h is "Unspecified", so reading it improves observation coverage while
-// leaving interpretation non-exhaustive. An earlier head treated this exact case as establishing
-// absence and licensed a verdict the bytes do not support.
-data secondary_unspecified_leg: CableLegObservation = cable_leg_observation(
+// AND THE UNREAD ARM KEEPS A HOME, NAMED AS THE SYNTHETIC IT NOW IS. Neither leg this fleet has
+// DUMPED has an unread secondary -- six of the eight endpoints have never been read at all, and
+// carry no observation to be unread ABOUT -- so without this fixture consistency_cause_is_unread
+// would be an arm
+// nothing exercises. It is deliberately NOT called "delivered": one name must not carry two
+// measurement states, and the fleet's answer is the one above.
+data leg_with_unread_secondary: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),
   primary_compliance_code: 11,
-  secondary_compliance: SecondaryObserved { code: 0 },
+  secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateObserved { code: 106 })
 
-test fn reading_an_unspecified_secondary_does_not_make_the_profile_decidable() -> Bool {
-  consistency_gap_is_compliance_unspecified(c: cable_leg_consistency(obs: secondary_unspecified_leg))
+test fn an_unread_secondary_is_undecidable_for_want_of_a_reading() -> Bool {
+  consistency_cause_is_unread(c: cable_leg_consistency(obs: leg_with_unread_secondary))
 }
 
 // THE TWO AXES ARE SEPARATE, asserted directly: for 00h the field WAS observed and the
 // interpretation is still not exhaustive. Collapsing these into one boolean is what made the defect
 // recur, so the split is the thing under test.
 test fn an_unspecified_secondary_is_observed_but_not_exhaustively_interpreted() -> Bool {
-  length(cable_leg_unread_fields(obs: secondary_unspecified_leg)) == 0
-    && length(cable_leg_interpretation_gaps(obs: secondary_unspecified_leg)) > 0
-    && length(cable_leg_unread_fields(obs: delivered_fs_leg)) > 0
+  length(cable_leg_unread_fields(obs: delivered_fs_leg)) == 0
+    && length(cable_leg_interpretation_gaps(obs: delivered_fs_leg)) > 0
+    && length(cable_leg_unread_fields(obs: leg_with_unread_secondary)) > 0
 }
 
 // A FULLY READ, FULLY UNDERSTOOD PROFILE still cannot be decided -- and the cause names the frontier
@@ -312,7 +326,8 @@ data fully_understood_leg: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 11,
   secondary_compliance: SecondaryObserved { code: 64 },
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 test fn a_fully_read_profile_is_undecidable_only_for_interface_scope() -> Bool {
   consistency_cause_is_scope(c: cable_leg_consistency(obs: fully_understood_leg))
@@ -338,7 +353,8 @@ data encoding_unspecified_leg: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 11,
   secondary_compliance: SecondaryObserved { code: 64 },
   encoding: sff8636_encoding_from_byte(code: 0),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 test fn an_unspecified_encoding_is_named_rather_than_blamed_on_interface_scope() -> Bool {
   consistency_gap_is_encoding_unspecified(c: cable_leg_consistency(
@@ -372,6 +388,46 @@ test fn an_ordinary_byte140_is_read_as_a_symbol_rate() -> Bool {
   match sff8636_nominal_rate_from_byte140(code: 254) {
     NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 25400000000
     NominalRateEscaped => false
+    NominalRateUnspecified => false
+  }
+}
+
+
+// AN ESCAPE NOBODY FOLLOWED IS AN UNREAD FIELD, and this is the fixture that keeps that arm honest.
+// Every other leg in this file now carries the byte 222 that was actually read off the fleet on
+// 2026-09-08, so without this one `ExtendedRateNotObserved` would be a variant nothing exercises --
+// the dangling declaration DESIGN section 3c names -- and the coverage census could stop reporting
+// it without any witness noticing.
+data escape_never_followed_leg: CableLegObservation = cable_leg_observation(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 64,
+  secondary_compliance: SecondaryObserved { code: 0 },
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateNotObserved)
+
+test fn an_unfollowed_escape_is_reported_as_an_unread_field() -> Bool {
+  match cable_leg_unread_fields(obs: escape_never_followed_leg).first() {
+    Present { value: f } =>
+      match f {
+        ExtendedRateField => true
+        SecondaryComplianceField => false
+        PrimaryComplianceField => false
+        EncodingField => false
+        NominalRateField => false
+      }
+    Absent => false
+  }
+}
+
+// AND IT STAYS ESCAPED RATHER THAN RESOLVING TO A GUESS. This is the discriminating input for the
+// fabrication the whole subject exists to catch: multiplying byte 140's FFh out would produce 25500
+// here, which is what `ethtool` prints and what an earlier head of this work recorded as a
+// measurement. Resolution must decline instead.
+test fn an_unfollowed_escape_does_not_resolve_to_a_rate() -> Bool {
+  match cable_leg_declared_nominal_rate(obs: escape_never_followed_leg) {
+    NominalRateEscaped => true
+    NominalRateDirect { rate: r } => false
     NominalRateUnspecified => false
   }
 }

@@ -1,10 +1,11 @@
 module gunbc.harness.harness_cli
 
-import std.types { String, Int, FilePath, NonEmptyStr }
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.nat { Nat }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
+import gunbc.harness.harness_reasoning_wire { HarnessReasoningLevel, ReasoningMaximum }
 import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
 import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
@@ -25,7 +26,7 @@ import gunbc.compute.test_run {
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
-import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window }
+import gunbc.harness.harness_wire { harness_engine_model, harness_engine_context_window, harness_serving_unit }
 import gunbc.harness.harness_seat {
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat,
@@ -76,7 +77,11 @@ data harness_default_step_budget: Int = 8
 // operator's choice for coding work. The switch reaches the model as chat_template_kwargs on the
 // harness's own endpoint -- proven honored there -- and not as the Anthropic thinking field, which
 // vLLM's messages endpoint ignores for this model (probed: it answered cold).
-data harness_reasoning_mode: DeepseekV4ReasoningMode = DeepseekV4ThinkMax
+// THE LEVEL IS THE HARNESS'S INTENT, NOT A VENDOR'S LABEL. It was DeepseekV4ThinkMax; naming a
+// model's arm here made this row a fourth place the served model was spelled, and it would have had
+// to be re-spelled on every model change. `ReasoningMaximum` says what the operator chose -- reason
+// as hard as this unit can -- and the seam decides what that costs on the wire.
+data harness_reasoning_mode: HarnessReasoningLevel = ReasoningMaximum
 
 // THE WIRE SHAPE THIS FLEET NEEDS, MEASURED. The harness spoke the Anthropic messages shape until
 // 2026-09-04; on this fleet's vLLM that endpoint accepts a replayed thinking block and renders none
@@ -211,6 +216,7 @@ fn harness_macbook_config(backend_url: String) -> HarnessTurnConfig {
     backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
+    serving_unit: harness_serving_unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_default_system_prompt,
@@ -426,6 +432,7 @@ fn harness_worker_config(
     backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
+    serving_unit: harness_serving_unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_worker_system_prompt_at(worktree: worktree as String, repo_root: repo_root, gunbc_program: gunbc_program),
@@ -528,6 +535,7 @@ fn harness_reviewer_config(
     backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
+    serving_unit: harness_serving_unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_reviewer_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),
@@ -597,6 +605,7 @@ fn harness_auditor_config(
     backend_url: backend_url,
     model: harness_default_model(),
     max_tokens: harness_default_max_tokens,
+    serving_unit: harness_serving_unit,
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_auditor_system_prompt_at(worktree: worktree as String, verdict_path: verdict_path),

@@ -1,0 +1,148 @@
+module gunbc.cloudflare.r2_token_mint
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  ProvisioningHumanBurden,
+  FleetOnce,
+  NoDischargeSiteModeled,
+}
+import extdeps.cloudflare.account_api_tokens {
+  CloudflareAccountTokenShape,
+  AccountOwnedApiToken,
+  AccountApiTokensWrite,
+  HumanDashboardAcquired,
+  CreatedViaAccountTokensApi,
+  NoExpiryUntilRevoked,
+  AccountApiTokensSurface,
+  admit_account_token_api_mint,
+  AccountTokenApiMintStanding,
+  account_api_tokens_write_permission_name
+}
+import extdeps.cloudflare.r2 {
+  R2Jurisdiction,
+  r2_object_read_create_request,
+  r2_object_read_grant
+}
+
+// POLICY, NOT UPSTREAM. The GitHub org-admin lane
+// (extdeps.github.org_admin_auth + gunbc.auth.org_admin_credential + docs/plans/org-admin-credential-acquisition.md)
+// is the acquisition pattern: upstream owns the credential SHAPE; this module owns the human
+// FleetOnce ceremony, which artifact is bootstrap vs minted, and that subsequent mint is a
+// workflow over Create — not a second acquisition algebra. std.human_intervention prices the
+// dashboard step as FleetOnce so it is not paid on every R2 token. Bytes stay out of this
+// module (org-admin SecretMaterial / spark SecretRef standing): a held Secret here would be a
+// second custody path.
+
+// Cluster: admit_r2_object_read_api_mint, admit_account_token_api_mint, and
+// r2_s3_access_pair_from_created_token have no executing AccountTokens.Create in this change.
+// Subjects are DeclarationRefs (std.roster_frontier); rationale is this annotation, not a String field.
+data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_read_api_mint"),
+    reason: "no executing AccountTokens.Create; witness is not a consumer",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
+    ),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "admit_account_token_api_mint"),
+    reason: "no executing AccountTokens.Create; witness is not a consumer",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
+    ),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_access_pair_from_created_token"),
+    reason: "no executing AccountTokens.Create; witness is not a consumer",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
+    ),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "cloudflare_r2_token_human_burden"),
+    reason: "no executing consumer of the FleetOnce bootstrap burden; witness is not a consumer",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration consumes cloudflare_r2_token_human_burden on an executing converge or gunbc-run entry that prices the dashboard bootstrap; a witness that the burden exists does not fire this",
+    ),
+  ),
+]
+
+data vendor_cloudflare_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
+    reason: "cited company entity has no executing gunbc consumer in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration names this fleet's Cloudflare account and cites extdeps.vendor.cloudflare as the company; the vendor row is not consumed by token minting",
+    ),
+  ),
+]
+
+fn cloudflare_bootstrap_token_shape() -> CloudflareAccountTokenShape {
+  CloudflareAccountTokenShape {
+    kind: AccountOwnedApiToken,
+    grants: [AccountApiTokensWrite],
+    acquisition: HumanDashboardAcquired,
+    lifetime: NoExpiryUntilRevoked,
+    revocation: AccountApiTokensSurface
+  }
+}
+
+fn cloudflare_r2_object_read_token_shape() -> CloudflareAccountTokenShape {
+  CloudflareAccountTokenShape {
+    kind: AccountOwnedApiToken,
+    grants: [r2_object_read_grant()],
+    acquisition: CreatedViaAccountTokensApi,
+    lifetime: NoExpiryUntilRevoked,
+    revocation: AccountApiTokensSurface
+  }
+}
+
+data cloudflare_account_token_bootstrap_intervention_identity: String = "cloudflare-account-token-bootstrap"
+
+fn cloudflare_account_token_bootstrap_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: cloudflare_account_token_bootstrap_intervention_identity as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: join(
+      ["Cloudflare account API token with ", account_api_tokens_write_permission_name as String],
+      ""
+    ) as NonEmptyStr,
+    instruction: join(
+      [
+        "As Super Administrator, create one account-owned API token in the Cloudflare dashboard (Manage Account > Account API Tokens) with ",
+        account_api_tokens_write_permission_name as String,
+        ", then place the value in the existing secret-custody path. The value is shown once. Do not put it in argv, a worktree file, a receipt, or chat. Every later account token is minted by POST /accounts/<account_id>/tokens using this bootstrap token."
+      ],
+      ""
+    ) as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled
+  }
+}
+
+fn cloudflare_r2_token_human_burden() -> ProvisioningHumanBurden {
+  ProvisioningHumanBurden {
+    interventions: [cloudflare_account_token_bootstrap_intervention()]
+  }
+}
+
+fn admit_r2_object_read_api_mint(
+  name: String,
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> AccountTokenApiMintStanding {
+  admit_account_token_api_mint(
+    shape: cloudflare_r2_object_read_token_shape(),
+    request: r2_object_read_create_request(
+      name: name,
+      account_id: account_id,
+      jurisdiction: jurisdiction,
+      bucket_name: bucket_name
+    )
+  )
+}

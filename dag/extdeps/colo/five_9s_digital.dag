@@ -1,0 +1,62 @@
+module extdeps.colo.five_9s_digital
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, RetailGrainUnread,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.five9sdigital.com/data-centers/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.five_9s_digital",
+      decl_name: "five_9s_allentown",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE LARGEST POWER NUMBER IN THE LEHIGH VALLEY AND THE LEAST RETAIL ONE. This operator's own
+// portfolio page (read 2026-09-08) lists Allentown as available at 11.1 MW within one year and a
+// further 51.1 MW eighteen months after phase one - an order of magnitude above every TierPoint
+// site in the same valley. It is carried because a census that silently dropped it would leave the
+// region's biggest available power looking absent, and it is carried WITHOUT a density or a grain
+// because the page sells power-ready capacity and states neither. The same page markets Phoenix as
+// 'High-Density Colocation Cabinets, Cages, Wholesale and Cloud Solutions', which shows the
+// operator does describe cabinet grain where it offers it - and does not, here.
+data five_9s_allentown: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Five 9s Digital",
+  facility_label: "Five 9s Digital Allentown",
+  address: AddressUnread {
+    obligation: "The operator's data-centers portfolio page, read 2026-09-08, lists Allentown with capacity and availability but NO street address. Secondary listings tie a Lehigh Valley building at 1110 St. Luke's Way to this operator and report it as decommissioned and offered for sale, which is a different claim from an operating retail facility; neither the address nor the status is carried from them. Read a facility page or a leasing sheet.",
+  },
+  municipality: "Allentown",
+  region_code: "PA",
+  facility_note: "Listed by the operator as available at 11.1 MW within one year, with 51.1 MW of additional power stated for eighteen months after phase-one delivery (read 2026-09-08). Power-ready capacity offered for lease or sale rather than a described retail colocation product.",
+}
+
+data five_9s_allentown_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's portfolio page read 2026-09-08 states facility megawatts and no per-cabinet figure at all. 11.1 MW is a building fact; dividing it by any assumed cabinet count would fabricate a density. Raw-byte confirmed 2026-09-09 (HTTP 200, full browser user-agent): 'kW' and 'kVA' occur zero times case-sensitively; the earlier case-insensitive matches were image asset URLs. THE SUBJECT CONTROL HERE IS WEAK AND THAT IS PART OF THE READING: 'Allentown' occurs once, because this is the operator's portfolio page rather than a facility page. A zero on a page that barely names the subject is evidence about the portfolio surface, not about the facility - the operator publishes no per-site page this census could find, and finding one is the first thing this obligation asks for. Read a facility spec sheet or obtain a quote.",
+}
+
+data five_9s_allentown_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The page describes the Allentown site as power-ready capacity and does not say whether space is sold at cabinet grain, by cage, or wholesale only. It is NOT recorded as CageOrSuiteMinimum, because that arm is a reading of a stated minimum and no minimum is stated here. Ask sales what the smallest sellable unit at this site is.",
+}
+
+data five_9s_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "five9sdigital.com named contacts on the data-centers page",
+  obligation: "No pricing of any kind is published; the page routes to two named individuals by telephone (read 2026-09-08).",
+}

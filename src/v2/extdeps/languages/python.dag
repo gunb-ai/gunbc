@@ -241,7 +241,7 @@ data python_singleton_facts_catalog: List<PythonSingletonPrimitiveFacts> = [
   python_facts_ellipsis
 ]
 
-data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data py_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
 
 fn python_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -1215,7 +1215,7 @@ fn python_target_model() -> TargetModel {
 }
 
 fn python_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
 }
 
 fn python_ident_lex_pattern() -> LexPattern {

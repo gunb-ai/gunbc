@@ -15,7 +15,7 @@ import v2.std.diagnostic {
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Present }
 import std.occurrence_identity { OccurrenceId }
-import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional, witness_violates }
 
 type OriginEvent
   = FromSource { locus: Locus }
@@ -85,7 +85,7 @@ fn span_index_resolve_textual_locus_from_ids(
 ) -> Witness<Locus> {
   fold_list(
     xs: ids,
-    empty: Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
+    empty: witness_violates(diagnostic: span_index_origin_chain_exhausted_diagnostic()),
     cons: fn(acc, id) {
       match acc {
         Holds { value: _ } => acc

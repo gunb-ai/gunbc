@@ -101,7 +101,6 @@ pub enum NamespaceDeltaDisposition {
     NewUnresolvedness,
     NewPoolCoincidenceResolution,
     AuthoredReferenceResolution,
-    DerivedGeneratorInputResolution,
     UnexplainedSubjectMotion,
     NotEvaluated,
 }
@@ -122,9 +121,6 @@ pub fn disposition_label(d: NamespaceDeltaDisposition) -> &'static str {
         NamespaceDeltaDisposition::NewUnresolvedness => "NewUnresolvedness",
         NamespaceDeltaDisposition::NewPoolCoincidenceResolution => "NewPoolCoincidenceResolution",
         NamespaceDeltaDisposition::AuthoredReferenceResolution => "AuthoredReferenceResolution",
-        NamespaceDeltaDisposition::DerivedGeneratorInputResolution => {
-            "DerivedGeneratorInputResolution"
-        }
         NamespaceDeltaDisposition::UnexplainedSubjectMotion => "UnexplainedSubjectMotion",
         NamespaceDeltaDisposition::NotEvaluated => "NotEvaluated",
     }
@@ -142,8 +138,7 @@ pub fn disposition_auto_admitted(d: NamespaceDeltaDisposition) -> bool {
         NamespaceDeltaDisposition::SameDeclarationIdentityRebind
         | NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved
         | NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta
-        | NamespaceDeltaDisposition::AuthoredReferenceResolution
-        | NamespaceDeltaDisposition::DerivedGeneratorInputResolution => true,
+        | NamespaceDeltaDisposition::AuthoredReferenceResolution => true,
         NamespaceDeltaDisposition::TargetChanged
         | NamespaceDeltaDisposition::NewAmbiguity
         | NamespaceDeltaDisposition::NewUnresolvedness
@@ -158,7 +153,7 @@ pub const DISPOSITION_AUTHORITY_MODULE: &str = "gunbc.compiler_frontend_program_
 pub const DISPOSITION_AUTHORITY_DECL: &str = "NamespaceDeltaDisposition";
 
 /// Every label this host enum carries, in the authority's own spelling.
-pub const DISPOSITION_LABELS: [&str; 11] = [
+pub const DISPOSITION_LABELS: [&str; 10] = [
     "SameDeclarationIdentityRebind",
     "UnusedSubjectMembershipRemoved",
     "ExplicitlyEvaluatedZeroDelta",
@@ -167,7 +162,6 @@ pub const DISPOSITION_LABELS: [&str; 11] = [
     "NewUnresolvedness",
     "NewPoolCoincidenceResolution",
     "AuthoredReferenceResolution",
-    "DerivedGeneratorInputResolution",
     "UnexplainedSubjectMotion",
     "NotEvaluated",
 ];
@@ -1681,7 +1675,42 @@ pub struct TransitionAdmission {
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
 ///
-/// THIRTY-FIFTH TRANSITION (2026-09-09, gunbc#10818). `CpuBoundStanding` (and the
+/// STRUCTURAL-TEXT AND LOGIC AUTHORITY REQUALIFICATION (2026-09-09, gunbc#10692). No ordinal is
+/// claimed, for the reason the entries above give. Five binding sites on the v2 self-host branch
+/// stop spelling two type names into the ambient kernel set and name the authority module
+/// instead, which is `TargetChanged` and is not auto-admitted: `EmitSpellingEscape.from/to`,
+/// `apply_emit_spelling_escapes.spelling` and `integer_string_to_decimal_digits_step.s` requalify
+/// `String` to `v2.std.text`; `py_bool_grounding` and `ts_bool_grounding` requalify their
+/// `BooleanAlgebra` parameter `Bool` to `v2.std.logic`.
+///
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check. The three
+/// `String` sites carry STRUCTURAL text — `v2.std.text.String` is `FreeMonoid<Char>`, and the
+/// chars(String) <- Variant cluster repair (this branch) restored structural reads end-to-end, so
+/// the carriers' types name the structural authority rather than the kernel homonym; the
+/// qualification is also load-bearing for native emission, whose host-String arm keys on
+/// declaration provenance (this branch, `is_host_text_carrier_type`), so an unqualified spelling
+/// would render the host carrier while value-position consumers render the structure. The two
+/// `Bool` sites bind a value whose own declaration already carries the qualified parameter:
+/// `v2.std.logic` declares `type Bool = True | False` and `bool_boolean_algebra:
+/// BooleanAlgebra<Bool>` resolves that spelling to its OWN module's declaration, so a grounding
+/// row annotated `BooleanAlgebra<Bool>` with the kernel reading stated a type its value does not
+/// inhabit. This is the gunbc#9907 namespace-lane requalification reaching five sites the XL-N
+/// closure repair touched.
+///
+/// ONE CHANGE CLASS. Nothing is requalified at the leaf: every spelling is identical on both
+/// sides, and what moved is the declaration behind it — from the ambient kernel type set
+/// (`<kernel>`) to the explicitly named authority module. No membership edge is added or removed
+/// by these five sites (the requalification is by qualified path or an import the module already
+/// carried), which is why the run reports exactly five binding rows and nothing else.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10692 merges. Main then binds
+/// each spelling to the named target, base and head agree, no run can produce these deltas, and
+/// all five report CONSUMED rather than stale — coming due on this roster's next touch.
+/// Adjudicate that deletion by joining each row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
+/// a trigger sentence is not evidence that the trigger fired.
+///
+/// CpuBoundStanding rehome (2026-09-09, gunbc#10818). `CpuBoundStanding` (and the
 /// `CpuBoundInterfacePresent` constructor `cpu_bound_standing` names) moved from
 /// `gunbc.runner.runner_cpu_bandwidth_receipt` onto `gunbc.runner.runner_guest_egress_attempt`,
 /// which already held the refusal standing, so one coproduct answers for the earlier unread write,
@@ -1695,7 +1724,59 @@ pub struct TransitionAdmission {
 /// `gunbc.runner.runner_guest_egress_attempt` inside `cpu_bound_standing`, the deltas stop being
 /// producible, and CONSUMED comes due on the roster's next touch — adjudicated by the
 /// declaring-module join, not by this sentence.
+const V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL: &str =
+    "gunbc#10692 structural-text/logic authority requalification 2026-09-09";
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.extdeps.languages.python",
+            in_declaration: "py_bool_grounding",
+            spelling: "Bool",
+            target: "v2.std.logic",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.extdeps.languages.typescript",
+            in_declaration: "ts_bool_grounding",
+            spelling: "Bool",
+            target: "v2.std.logic",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.target_model",
+            in_declaration: "EmitSpellingEscape",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.target_model",
+            in_declaration: "apply_emit_spelling_escapes",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.integer",
+            in_declaration: "integer_string_to_decimal_digits_step",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: "gunbc#10818 CpuBoundStanding rehome",
         subject: AdmissionSubject::Binding {
@@ -2062,7 +2143,6 @@ pub fn adjudicate(
                 base_set,
                 head_set,
                 locally_authored_claim_added(head, base_record, head_record, &key.1),
-                derived_generator_input_binding(module, head_set),
             );
             deltas.push(NamespaceDelta {
                 subject: DeltaSubject::Binding {
@@ -2239,36 +2319,6 @@ fn admission_consumed_at_base(
     }
 }
 
-/// Whether a binding this module gained is the mechanical image of its GENERATOR'S DECLARED
-/// INPUT RELATION.
-///
-/// THE QUESTION IS NOT "IS THIS MODULE GENERATED". A generated module is exactly where a wrong
-/// binding has no human reader, so exempting the category would be the fail-open direction of the
-/// same conflation the `0 -> 1` split repaired. The question is whether the generator's OWN
-/// DECLARED INPUTS explain the binding: `derived_row_roster` declares that the roster is produced
-/// by reading the `.dag` files of `ROW_MODULE`, so a roster binding whose every candidate is a
-/// module of that directory is the deterministic consequence of a file the change adds, and is
-/// decidable here from the generator's constants rather than from a reader's judgement.
-///
-/// EVERY OTHER BINDING A DERIVED MODULE ACQUIRES STILL REFUSES, and that refusal is this arm's
-/// positive control rather than an unhandled case: a roster binding to a module OUTSIDE its
-/// generator's input directory is not explained by the generator, so it stays
-/// `NewPoolCoincidenceResolution`.
-fn derived_generator_input_binding(module: &str, head: &BTreeSet<String>) -> bool {
-    let roster_module = crate::cli_run::derived_row_roster::ROSTER_MODULE;
-    if module != roster_module {
-        return false;
-    }
-    let input_prefix = format!("{}.", crate::cli_run::derived_row_roster::ROW_MODULE);
-    !head.is_empty()
-        && head.iter().all(|candidate| {
-            candidate != roster_module
-                && candidate
-                    .strip_prefix(&input_prefix)
-                    .is_some_and(|stem| !stem.contains('.'))
-        })
-}
-
 /// Which disposition a changed candidate SET carries.
 ///
 /// EVERY ARM IS OVER SETS, NOT WINNERS. `1 -> 0` stopped denoting anything; `1 -> 2` now admits
@@ -2282,17 +2332,6 @@ fn derived_generator_input_binding(module: &str, head: &BTreeSet<String>) -> boo
 /// the repair the wall wants, and the state it refused. Opposite owners, opposite repairs, one
 /// symbol: DESIGN's state-space conflation.
 ///
-/// `0 -> 1` HAS A THIRD STATE, AND IT IS THE ONE A GENERATED MODULE INHABITS. The `authored_here`
-/// discriminator presumes a module that HAS an author to consult. A DERIVED module does not: its content
-/// is produced by a generator, `authored_here` is false for every binding it will ever acquire,
-/// and so every binding it gains reads as a coincidence in the pool. `derived_generator_input`
-/// answers the question authorship cannot — is this binding THE MECHANICAL IMAGE OF THE
-/// GENERATOR'S DECLARED INPUT RELATION, the deterministic consequence of a source file the change
-/// adds. It is deliberately NOT "the module is generated": admitting that category would
-/// auto-admit every binding any generated module ever acquires, on the one surface where a wrong
-/// binding has no human reader. A generated module acquiring a binding its generator's inputs do
-/// not explain stays `NewPoolCoincidenceResolution` and stays refused.
-///
 /// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
 /// consults authorship (`membership_declared`, over `membership_bound_through`), which admitted
 /// the membership edge of the very change this arm refused. So `authored_here` is passed in, not
@@ -2301,7 +2340,6 @@ fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
     authored_here: bool,
-    derived_generator_input: bool,
 ) -> NamespaceDeltaDisposition {
     if head.is_empty() {
         return NamespaceDeltaDisposition::NewUnresolvedness;
@@ -2309,8 +2347,6 @@ fn binding_disposition(
     if base.is_empty() {
         return if authored_here {
             NamespaceDeltaDisposition::AuthoredReferenceResolution
-        } else if derived_generator_input {
-            NamespaceDeltaDisposition::DerivedGeneratorInputResolution
         } else {
             NamespaceDeltaDisposition::NewPoolCoincidenceResolution
         };
