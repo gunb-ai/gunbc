@@ -178,6 +178,33 @@ data hudson_valley: RegionCoverage = RegionCoverage {
   },
 }
 
+// DECLARED FRONTIER: THE UNREAD ARMS ARE DOWNSTREAM FACTS CURRENTLY LIVING UPSTREAM, AND THIS
+// MODULE IS WHERE THEY BELONG. DESIGN section 3 rules that observations this repository produces are
+// receipts in the observing layer and that missing observations are coverage obligations downstream,
+// never Unobserved properties authored inside an upstream module - a rule this repository has already
+// applied once, in #10671, whose title is "Rehome the cable-leg observation out of the SFF
+// specification". The colo census does the opposite today: DensityUnread, RetailGrainUnread and
+// AddressUnread sit inside extdeps.colo.<operator> across ten files and five lanes.
+//
+// THE FOLLOW-UP IS A SPLIT, NOT A MOVE, because each of those arms fuses two facts in one string.
+// Take an obligation reading "No cabinet pricing published on the pages read 2026-08-18; a written
+// quote for the reference load is required." Clause one is an OBSERVATION - we read these pages on
+// that date and they carried no figure - and clause two is a COVERAGE OBLIGATION - we still owe a
+// quote. Both are ours and both move here, but they have different lifetimes: a quote arriving
+// discharges the obligation while the observation stays true forever. Fused in one sentence neither
+// can be updated without rewriting the other, which is the prose-carrying-typed-facts shape section
+// 4c exists to prevent.
+//
+// So the destination must carry TWO TYPED FIELDS - what was read, when, and what it did not contain;
+// and what we still owe, with what discharges it - not one relocated string. Upstream keeps only the
+// READ arms, DensityMarketedMax and DensityMarketedAirOnly, which are genuinely facts about what the
+// operator publishes.
+//
+// The trigger is the split landing here, and it is deliberately census-wide in one motion: doing one
+// lane at a time would leave two shapes inside one carrier, which is worse than one uniform wrong
+// shape. Operator ruling, 2026-09-09, on escalation from this lane: land the rows first because the
+// rows are the expensive part, then follow with the shape.
+
 // THIS ROSTER IS INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It
 // carries the regions a lane surveyed, including ones surveyed and found empty; it does not carry a
 // RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding
