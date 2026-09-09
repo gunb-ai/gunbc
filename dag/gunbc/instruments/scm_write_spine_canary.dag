@@ -62,7 +62,7 @@ import gunbc.scm.squash_merge {
   SquashMergeResultLocatorCollision,
   SquashMergeAllocatorInvalid,
 }
-import gunbc.scm.merge_base {
+import gunbc.scm.repository_envelope {
   MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
   MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint,
   MergeBaseSourceIsAncestorOfTarget,

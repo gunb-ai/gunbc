@@ -21,7 +21,7 @@ import gunbc.scm.integration { NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
 import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
-import gunbc.scm.merge_base {
+import gunbc.scm.repository_envelope {
   MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
   MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint, MergeBaseSourceIsAncestorOfTarget,
 }
@@ -66,7 +66,6 @@ fn scene() -> Scene {
   let c0 = mb_commit(
     build: mb_stage(build: mb_start(), path: "a", text: "A0"),
     message: "base",
-    integration: NoSquashIntegration,
   )
   match mb_head(build: c0) {
     Absent => SceneUnavailable
@@ -74,7 +73,6 @@ fn scene() -> Scene {
       let t1 = mb_commit(
         build: mb_stage(build: c0, path: "t", text: "T0"),
         message: "target",
-        integration: NoSquashIntegration,
       )
       match mb_head(build: t1) {
         Absent => SceneUnavailable
@@ -82,7 +80,6 @@ fn scene() -> Scene {
           let s1 = mb_commit(
             build: mb_stage(build: mb_at(build: t1, target: base), path: "s", text: "S0"),
             message: "source",
-            integration: NoSquashIntegration,
           )
           match mb_head(build: s1) {
             Absent => SceneUnavailable
@@ -289,7 +286,6 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
   let c0 = mb_commit(
     build: mb_stage(build: mb_start(), path: "a", text: "A0"),
     message: "base",
-    integration: NoSquashIntegration,
   )
   match mb_head(build: c0) {
     Absent => false
@@ -297,7 +293,6 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
       let t1 = mb_commit(
         build: mb_stage(build: c0, path: "a", text: "TARGET"),
         message: "target",
-        integration: NoSquashIntegration,
       )
       match mb_head(build: t1) {
         Absent => false
@@ -305,7 +300,6 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
           let s1 = mb_commit(
             build: mb_stage(build: mb_at(build: t1, target: base), path: "a", text: "SOURCE"),
             message: "source",
-            integration: NoSquashIntegration,
           )
           match mb_head(build: s1) {
             Absent => false

@@ -53,9 +53,14 @@ type OrdinaryCommitMint
 // opportunity to fabricate a cause. The first draft of this module DID translate it, into a
 // parent-missing, behind a comment explaining that it could not fire; that comment was the tell.
 //
-// THE ADMISSION RULES ARE NOT DUPLICATED. `admit_commit_parent` is the same function the squash route
-// calls, and the row is built by the same constructor. What differs between the routes is only which
-// questions they ask, which is exactly what should differ.
+// THE ADMISSION RULES ARE NOT DUPLICATED, BUT THE SQUASH ROUTE NO LONGER SHARES THIS ONE. An earlier
+// revision of this note said `admit_commit_parent` was the same function squash merge calls. That
+// stopped being true when squash moved to the merge-store/basis route: its parent is not admitted from
+// a loose reference at all, it arrives already resolved inside the sealed merge subject, so there is no
+// parent admission left on that side to share. The two routes now share the ROW CONSTRUCTOR and the
+// allocator, not the parent question -- and that is the honest statement of what is common, because
+// admitting a parent from a bare reference is precisely the membership-only step the merge route was
+// rebuilt to stop performing.
 //
 // AND THE SUBJECT IS THE SEALED PAIR, so this helper cannot be handed a repository and a root that came
 // from different stores. It takes no repository argument at all: there is only one repository here, the

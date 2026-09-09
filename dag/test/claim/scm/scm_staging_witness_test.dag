@@ -55,7 +55,6 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
-  RepositoryCommitMintIntegrationSourceMissing,
   mint_repository_commit,
   commit_at_reference,
   encode_repository_checked,
@@ -187,7 +186,6 @@ fn stg_mint(
     root: CorpusManifestTarget { locator: candidate.locator },
     message: message,
     parent: repository.checked_out,
-    integration: NoSquashIntegration,
   ) {
     RepositoryCommitMinted { repository: minted, reference: reference } =>
       StgBuilt {
@@ -204,7 +202,6 @@ fn stg_mint(
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => StgSetupFailed
     RepositoryCommitMintRootIsSemanticNode { root: _ } => StgSetupFailed
     RepositoryCommitMintParentMissing { parent: _ } => StgSetupFailed
-    RepositoryCommitMintIntegrationSourceMissing { source: _ } => StgSetupFailed
   }
 }
 

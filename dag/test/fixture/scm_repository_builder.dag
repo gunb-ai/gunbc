@@ -19,7 +19,6 @@ import gunbc.scm.object_store {
   ObjectStore, ObjectId, empty_store,
   CorpusManifestEntry, CorpusManifestObjectRef, CorpusManifestTarget,
 }
-import gunbc.scm.integration { CommitIntegration }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -30,9 +29,19 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
-  RepositoryCommitMintIntegrationSourceMissing,
   mint_repository_commit,
   commit_at_reference,
+}
+import gunbc.scm.squash_merge {
+  squash_merge,
+  SquashMerged,
+  SquashMergeBaseRefused,
+  SquashMergeConflicted,
+  SquashMergeRootMissing,
+  SquashMergeRootIsAuthoredSource,
+  SquashMergeRootIsSemanticNode,
+  SquashMergeResultLocatorCollision,
+  SquashMergeAllocatorInvalid,
 }
 import gunbc.scm.write_spine {
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
@@ -95,7 +104,7 @@ fn mb_stage(build: MbBuild, path: String, text: String) -> MbBuild {
 // because `mb_at` re-points both together to model a branch point, and that pairing is what the merge
 // scenes are built on. The two describe the same CORPUS by different routes; delegating would silently
 // re-scene every claim already standing on this builder, which is a migration and not a cleanup.
-fn mb_commit(build: MbBuild, message: String, integration: CommitIntegration) -> MbBuild {
+fn mb_commit(build: MbBuild, message: String) -> MbBuild {
   match build {
     MbSetupFailed => MbSetupFailed
     MbBuilt { repository: repository, at: at } =>
@@ -107,7 +116,6 @@ fn mb_commit(build: MbBuild, message: String, integration: CommitIntegration) ->
             root: CorpusManifestTarget { locator: candidate.locator },
             message: message,
             parent: at,
-            integration: integration,
           ) {
             RepositoryCommitMinted { repository: minted, reference: reference } =>
               MbBuilt {
@@ -125,7 +133,6 @@ fn mb_commit(build: MbBuild, message: String, integration: CommitIntegration) ->
             RepositoryCommitMintRootIsAuthoredSource { root: _ } => MbSetupFailed
             RepositoryCommitMintRootIsSemanticNode { root: _ } => MbSetupFailed
             RepositoryCommitMintParentMissing { parent: _ } => MbSetupFailed
-            RepositoryCommitMintIntegrationSourceMissing { source: _ } => MbSetupFailed
           }
       }
   }
@@ -151,6 +158,49 @@ fn mb_at(build: MbBuild, target: RepositoryCommitRef) -> MbBuild {
             },
             at: Present { value: target },
           }
+      }
+  }
+}
+
+// AN INTEGRATED COMMIT IS NOW OBTAINED BY MERGING, BECAUSE IT CAN NO LONGER BE DECLARED.
+//
+// `mb_commit` used to take a `CommitIntegration`, so a scene could assert `SquashIntegrated { S1 }`
+// about a commit no merge had produced. That was convenient and it was the fixture-side face of the
+// production hole review found: membership of a source standing in for authority over the merge that
+// consumed it. The generic mint no longer accepts an integration, so this verb runs the REAL
+// `squash_merge` and the scene's integrated commit is one the merge authority actually admitted.
+//
+// This is stronger evidence than the old scene, not weaker: the consumed-source claims below now read
+// a receipt written by the operation they are about, so a `squash_merge` that stopped recording its
+// source would fail them instead of leaving them green against a hand-written row. The refusal arms
+// collapse to `MbSetupFailed` because a scene that cannot be built is a broken fixture, not a result.
+fn mb_squash(
+  build: MbBuild,
+  target: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+  message: String,
+) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match squash_merge(
+        repository: repository,
+        target: target,
+        source: source,
+        message: message,
+      ) {
+        SquashMerged { repository: merged, reference: reference } =>
+          mb_at(
+            build: MbBuilt { repository: merged, at: Present { value: reference } },
+            target: reference,
+          )
+        SquashMergeBaseRefused { refusal: _ } => MbSetupFailed
+        SquashMergeConflicted { conflicts: _ } => MbSetupFailed
+        SquashMergeRootMissing { root: _ } => MbSetupFailed
+        SquashMergeRootIsAuthoredSource { root: _ } => MbSetupFailed
+        SquashMergeRootIsSemanticNode { root: _ } => MbSetupFailed
+        SquashMergeResultLocatorCollision { identity: _ } => MbSetupFailed
+        SquashMergeAllocatorInvalid => MbSetupFailed
       }
   }
 }

@@ -25,7 +25,7 @@ module gunbc.scm.manifest_merge
 //   B=Present(X) S=Present(Y) T=Absent      -> no arm             -> CONFLICT  modify vs delete
 //
 // THE LAST TWO ARE THE ONES THIS MODULE EXISTS TO GET RIGHT, and they are the resurrection class of
-// gunbc.scm.merge_base one layer down -- at PATH grain rather than LINEAGE grain. Taking the deletion
+// gunbc.scm.repository_envelope one layer down -- at PATH grain rather than LINEAGE grain. Taking the deletion
 // silently discards an edit; taking the edit silently resurrects a file the other side deleted on
 // purpose. Neither is a conflict a user could see, and both produce a valid manifest. So the law must
 // refuse rather than pick a side, and it does so with no clause of its own: there is simply no
@@ -96,8 +96,26 @@ type ManifestPathConflict {
 // would instead give one invariant two names and two constructor families. So the merge produces the
 // SAME carrier `add` produces, through operations that preserve its invariant by construction, and
 // there is no assembly step after the fold. Ruled by external review.
+// THE CONFLICT-FREE RESULT IS SEALED, BECAUSE BEING PATH-UNIQUE IS NOT THE SAME FACT AS HAVING BEEN
+// MERGED WITHOUT CONFLICT.
+//
+// `PathUniqueManifestEntries` is the carrier `add` also produces, so a merge result that travelled as
+// one carried no evidence distinguishing it from any other path-unique set a caller happened to hold.
+// That mattered exactly once: the merge subject downstream took the entries as a peer argument, so an
+// arbitrary set could be paired with two real anchors and minted into a `SquashIntegrated` receipt
+// without `merge_manifests` ever having decided the paths. Membership of a carrier was standing in for
+// authority over an operation. Found by external review.
+//
+// So the conflict-free arm now yields a value only this fold can construct. The invariant is not
+// re-checked anywhere downstream -- it is unwritable to arrive without it. The inner carrier is
+// unchanged, so this mints no second uniqueness authority (DESIGN 3): it names WHICH path-unique set
+// this is, not a different kind of set.
+type MergedManifestEntries sole_constructor {
+  entries: PathUniqueManifestEntries
+}
+
 type ManifestMergeOutcome
-  = ManifestMerged { entries: PathUniqueManifestEntries }
+  = ManifestMerged { merged: MergedManifestEntries }
   | ManifestConflicted { conflicts: List<ManifestPathConflict> }
 
 type MergeAcc {
@@ -314,6 +332,6 @@ fn merge_manifests(
   if count(decided.conflicts) > 0 {
     ManifestConflicted { conflicts: reverse(decided.conflicts) }
   } else {
-    ManifestMerged { entries: decided.entries }
+    ManifestMerged { merged: MergedManifestEntries { entries: decided.entries } }
   }
 }

@@ -2,7 +2,7 @@ module gunbc.scm.squash_merge
 
 // THE MERGE VERB, WHICH IS THE COMPOSITION AND NOTHING ELSE.
 //
-// gunbc.scm.merge_base decides WHICH BASE a squash is entitled to use, and refuses when there is
+// gunbc.scm.repository_envelope decides WHICH BASE a squash is entitled to use, and refuses when there is
 // none. gunbc.scm.manifest_merge decides EACH PATH against a base, and refuses when the two sides
 // disagree irreconcilably. Both were built to refuse independently, and both did -- but nothing
 // joined them, so there was no operation a caller could invoke to merge anything. This module is
@@ -41,7 +41,9 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.integration { SquashIntegrated }
-import gunbc.scm.merge_base {
+import gunbc.scm.repository_envelope {
+  AdmittedMergeSubject,
+  admit_merge_subject,
   MergeBaseOutcome,
   MergeBaseDerived,
   MergeBaseSourceAlreadyConsumed,
@@ -264,22 +266,11 @@ fn carry_ancestral_mint(
 // THE SUBJECT CARRIES THE ANCHORS RATHER THAN PROJECTING THEM BACK DOWN TO LOOSE REFERENCES, which is
 // what made the old post-store admission possible at all: once the evidence had been flattened to two
 // bare refs, the only way to mint was to look them up again. Ruled by external review.
-type AdmittedMergeSubject sole_constructor {
-  repository: RepositoryEnvelope
-  anchors: ResolvedMergeAnchors
-  entries: PathUniqueManifestEntries
-}
-
 fn commit_merged_manifest(
   admitted: AdmittedMergeSubject,
   message: String,
 ) -> SquashMergeOutcome {
-  match store_and_admit_merge_basis(
-    repository: admitted.repository,
-    parent: admitted.anchors.target,
-    source: admitted.anchors.source,
-    unique: admitted.entries,
-  ) {
+  match store_and_admit_merge_basis(subject: admitted) {
     MergeStoreLocatorCollision { identity: i } =>
       SquashMergeResultLocatorCollision { identity: i }
     MergeStoreAdvanced(basis) =>
@@ -337,13 +328,9 @@ fn squash_merge(
                     target: target_manifest,
                   ) {
                     ManifestConflicted { conflicts: c } => SquashMergeConflicted { conflicts: c }
-                    ManifestMerged { entries: e } =>
+                    ManifestMerged { merged: e } =>
                       commit_merged_manifest(
-                        admitted: AdmittedMergeSubject {
-                          repository: repository,
-                          anchors: anchors,
-                          entries: e,
-                        },
+                        admitted: admit_merge_subject(anchors: anchors, merged: e),
                         message: message,
                       )
                   }

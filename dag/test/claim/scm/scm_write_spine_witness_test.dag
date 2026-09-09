@@ -60,7 +60,6 @@ fn scene() -> RepositoryEnvelope {
       text: "O0",
     ),
     message: "C0",
-    integration: NoSquashIntegration,
   ) {
     MbBuilt { repository: repository, at: _ } => repository
     MbSetupFailed => empty_repository()

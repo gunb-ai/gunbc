@@ -966,7 +966,7 @@ type PathUniqueManifestEntries sole_constructor {
 }
 
 fn path_unique_entry_list(unique: PathUniqueManifestEntries) -> List<CorpusManifestEntry> {
-  sort_by(map_values(unique.bindings), fn(e) { e.path as String })
+  canonical_manifest_entries(entries: map_values(unique.bindings))
 }
 
 // THE EMPTY CORPUS IS ITS OWN CONSTRUCTOR RATHER THAN AN EMPTY RECORD, because there is no record to
@@ -1070,7 +1070,7 @@ type AdmittedManifestEntries sole_constructor {
 // would be the validation-where-construction-was-available move DESIGN section 5 names, and its
 // answer would be an arm no caller could reach.
 fn admit_path_unique_entries(unique: PathUniqueManifestEntries) -> AdmittedManifestEntries {
-  AdmittedManifestEntries { entries: canonical_manifest_entries(entries: path_unique_entry_list(unique: unique)) }
+  AdmittedManifestEntries { entries: path_unique_entry_list(unique: unique) }
 }
 
 type ManifestEntriesAdmission

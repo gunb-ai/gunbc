@@ -46,7 +46,6 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
-  RepositoryCommitMintIntegrationSourceMissing,
   RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
   RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted,
   encode_repository,
@@ -61,9 +60,9 @@ import gunbc.scm.repository_envelope {
 }
 import test.fixture.scm_repository_builder {
   MbBuild, MbBuilt, MbSetupFailed,
-  mb_start, mb_stage, mb_commit, mb_at, mb_head, mb_root_of,
+  mb_start, mb_stage, mb_commit, mb_squash, mb_at, mb_head, mb_root_of,
 }
-import gunbc.scm.merge_base {
+import gunbc.scm.repository_envelope {
   MergeBaseOutcome,
   MergeBaseDerived,
   MergeBaseSourceAlreadyConsumed,
@@ -103,30 +102,25 @@ type MbScene
   | MbSceneUnavailable
 
 fn mb_scene() -> MbScene {
-  let b0 = mb_commit(build: mb_stage(build: mb_start(), path: "a", text: "X"), message: "base", integration: NoSquashIntegration)
+  let b0 = mb_commit(build: mb_stage(build: mb_start(), path: "a", text: "X"), message: "base")
   match mb_head(build: b0) {
     Absent => MbSceneUnavailable
     Present { value: c0 } =>
-      let bs1 = mb_commit(build: mb_stage(build: b0, path: "a", text: "Y"), message: "source", integration: NoSquashIntegration)
+      let bs1 = mb_commit(build: mb_stage(build: b0, path: "a", text: "Y"), message: "source")
       match mb_head(build: bs1) {
         Absent => MbSceneUnavailable
         Present { value: s1 } =>
-          let bm1 = mb_commit(
-            build: mb_stage(build: mb_at(build: bs1, target: c0), path: "a", text: "Y"),
-            message: "squash",
-            integration: SquashIntegrated { source: s1 },
-          )
+          let bm1 = mb_squash(build: bs1, target: c0, source: s1, message: "squash")
           match mb_head(build: bm1) {
             Absent => MbSceneUnavailable
             Present { value: m1 } =>
-              let bt1 = mb_commit(build: mb_stage(build: bm1, path: "a", text: "X"), message: "revert", integration: NoSquashIntegration)
+              let bt1 = mb_commit(build: mb_stage(build: bm1, path: "a", text: "X"), message: "revert")
               match mb_head(build: bt1) {
                 Absent => MbSceneUnavailable
                 Present { value: t1 } =>
                   let bs2 = mb_commit(
                     build: mb_stage(build: mb_at(build: bt1, target: s1), path: "b", text: "Z"),
                     message: "continue",
-                    integration: NoSquashIntegration,
                   )
                   match mb_head(build: bs2) {
                     Absent => MbSceneUnavailable
@@ -134,7 +128,6 @@ fn mb_scene() -> MbScene {
                       let bi1 = mb_commit(
                         build: mb_stage(build: mb_at(build: bs2, target: c0), path: "a", text: "Y"),
                         message: "independent",
-                        integration: NoSquashIntegration,
                       )
                       match mb_head(build: bi1) {
                         Absent => MbSceneUnavailable
@@ -247,42 +240,35 @@ test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool 
   }
 }
 
-// PREEXISTENCE. The mint refuses an anchor that is not already in the INPUT repository, and this is
-// the claim that makes the provenance record mean what it says. Without the check a caller could mint
-// a result and its supposed consumed source in one motion, producing a self-consistent repository
-// whose integration describes an event that could not have happened -- and every claim above would
-// still pass, because they read a record whose truthfulness they do not establish.
-test fn scm_mb_a_squash_cannot_record_a_source_that_does_not_yet_exist() -> Bool {
-  match mb_scene() {
-    MbSceneUnavailable => false
-    MbScene { repository: r, c0: c0, s1: _, m1: _, t1: _, s2: _, i1: _ } =>
-      match commit_at_reference(commits: r.commits, reference: c0) {
-        Absent => false
-        Present { value: base_commit } =>
-          match mint_repository_commit(
-            repository: r,
-            root: CorpusManifestTarget { locator: base_commit.root.locator },
-            message: "forward-dated",
-            parent: Present { value: c0 },
-            integration: SquashIntegrated {
-              source: RepositoryCommitRef { identity: MintedId { ordinal: 99 } },
-            },
-          ) {
-            RepositoryCommitMintIntegrationSourceMissing { source: s } =>
-              repository_commit_ref_eq(
-                left: s,
-                right: RepositoryCommitRef { identity: MintedId { ordinal: 99 } },
-              )
-            RepositoryCommitMinted { repository: _, reference: _ } => false
-            RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
-            RepositoryCommitMintRootMissing { root: _ } => false
-            RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
-            RepositoryCommitMintRootIsSemanticNode { root: _ } => false
-            RepositoryCommitMintParentMissing { parent: _ } => false
-          }
-      }
-  }
-}
+// PREEXISTENCE IS NO LONGER A CLAIM HERE, BECAUSE THE STATE IT REFUSED IS NO LONGER WRITABLE.
+//
+// This file used to carry `scm_mb_a_squash_cannot_record_a_source_that_does_not_yet_exist`: it minted
+// through the generic route with `SquashIntegrated { source: <ordinal 99> }` and asserted the refusal,
+// which is what stopped a caller minting a result and its supposed consumed source in one motion.
+//
+// The generic mint no longer TAKES an integration. `SquashIntegrated` is reachable through exactly one
+// route, `store_and_admit_merge_basis`, whose subject requires a derived base and a conflict-free
+// manifest merge -- so a forward-dated anchor has no constructor rather than a refusal. The class
+// climbed from mechanically preventable to structurally impossible, and DESIGN 4b(4) retires the
+// PRODUCTION machinery on a climb while keeping the discriminating RED enrolled.
+//
+// THE CLASS IS STILL WITNESSED, ON THE PATH WHERE ITS RED IS STILL AUTHORABLE.
+//
+// A first draft of this note claimed the RED was not authorable anywhere. That was an OVERCLAIM, and
+// the correction matters more than the deletion did. 4b(1) fixes a class's rung as the MINIMUM across
+// its in-scope paths, and preexistence has two: source-to-value and document-to-value. Only the first
+// climbed. `decode_repository` must still admit a repository someone else wrote, where the integration
+// anchor is whatever the DOCUMENT says -- so the invalid state remains perfectly writable as fixture
+// source, which is exactly the case 4b names when it says an unrepresentable state may still be handed
+// to the compiler by a fixture.
+//
+// So the discriminating REDs stay enrolled, two of them, immediately below:
+// `scm_mb_a_document_whose_integration_anchor_is_absent_refuses` and
+// `..._comes_later_refuses`. What was deleted is the probe on the MINT path, where the parameter it
+// needed no longer exists and a compilable rewrite could only assert what the removal already
+// guarantees -- a permanently-green check 4b names WORSE than absent, because it is afterwards cited
+// as coverage. Reporting the class as structurally impossible would be rung inflation: it is
+// structurally impossible to MINT and mechanically preventable to DECODE, and the second is its rung.
 
 // THE PROVENANCE SURVIVES THE DOCUMENT. An integration that encodes and does not decode would make
 // every claim above true of a repository in memory and false of the one on disk, which is the rung
@@ -427,7 +413,6 @@ test fn scm_merge_base_witnesses_hold() -> Bool {
     && scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base()
     && scm_mb_an_independent_lineage_sharing_content_still_derives_its_base()
     && scm_mb_replaying_the_consumed_source_itself_has_no_valid_base()
-    && scm_mb_a_squash_cannot_record_a_source_that_does_not_yet_exist()
     && scm_mb_the_integration_record_survives_a_document_round_trip()
     && scm_mb_a_well_ordered_subset_still_decodes()
     && scm_mb_a_document_whose_integration_anchor_is_absent_refuses()
