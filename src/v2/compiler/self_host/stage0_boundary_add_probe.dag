@@ -1,0 +1,20 @@
+module stage0_boundary_add_probe
+
+// THE DISK-BACKED SPECIMEN for the stage0 emission boundary's target profile.
+//
+// It is a file, not an inline string, because the fact under test is the whole route a real
+// corpus module takes: source_ref_for_observed_storage_path reads THIS path off the tree,
+// source_root_ingest_from_source_refs verifies its content hash, assembly and inference run over
+// what was read, and the production single-declaration composition emits it. The direct door's
+// own specimen carries its module source inline (direct_rust_door_fixture
+// direct_rust_door_dag_module_source), so no enrolled claim exercised the disk-backed seam; a
+// profile whose whole purpose is to make an emission land in an existing crate must be measured
+// over the route that crate's modules actually arrive by.
+//
+// The declaration is deliberately the shape the door already emits, so the claim over it
+// isolates the two BOUNDARY selections (visibility, integer carrier) from every value-expression
+// question. What this specimen is NOT is the acceptance subject for the production flip: that is
+// the real corpus module gunbc.rust_decl_type_overlay, and it does not emit yet
+// (v2.compiler.self_host.stage0_production_target's measured remainder).
+
+fn probe_add(x: Int, y: Int) -> Int { x + y }

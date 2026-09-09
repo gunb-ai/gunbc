@@ -2040,18 +2040,45 @@ fn rust_target_model_bundle_core() -> Node {
 }
 }
 
-fn rust_binding_spellings() -> Map<Symbol, String> {
+// WHICH RUST INTEGER CARRIES THE LANGUAGE'S Int IS A TARGET-PROFILE CHOICE, NOT A RUST FACT.
+// Rust has ten integer primitives and this module already declares facts for each of them
+// (rust_facts_i8 .. rust_facts_u128); which one realizes the language's unbounded `Int` at a
+// given emission boundary is decided by the profile that owns that boundary. The parameter
+// exists because a second boundary appeared: the stage0 seed crate's committed ABI is i64
+// (v2.compiler.self_host.stage0_production_target), while the direct-door fixtures are
+// organized around i32 and stay that way. Globally relabelling one to match the other would
+// fuse two targets into one row rather than model the difference (DESIGN section 3).
+fn rust_binding_spellings_for_int(int_spelling: String) -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
   let ma2 = map_insert(m0, ^rust_binding_fn_add2, "add2")
   let m1 = map_insert(ma2, ^rust_binding_param_x, "x")
   let m2 = map_insert(m1, ^rust_binding_param_y, "y")
   let mx = map_insert(m2, ^dag_binding_param_x, "x")
   let my = map_insert(mx, ^dag_binding_param_y, "y")
-  let mi = map_insert(my, ^dag_binding_type_int, "i32")
+  let mi = map_insert(my, ^dag_binding_type_int, int_spelling)
   let m3 = map_insert(mi, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
   map_insert(m5, ^target_collection_set_carrier, "Set")
+}
+
+fn rust_binding_spellings() -> Map<Symbol, String> {
+  rust_binding_spellings_for_int(int_spelling: "i32")
+}
+
+// Rust's item visibility keyword, declared here because the SPELLING is a Rust fact, and
+// deliberately NOT appended to rust_production_lex_rules: whether an emitted item is visible
+// outside its module is a property of the crate boundary the emission lands in, so the
+// selection belongs to the target profile that owns that boundary. The language source spells
+// no visibility at all.
+fn rust_visibility_public_lex_rule() -> LexRule {
+  rust_lex_rule(token_class: ^rust_token_kw_pub, text: "pub ")
+}
+
+fn rust_production_lex_rules_with(extra: List<LexRule>) -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(left: rust_production_lex_rules().rules, right: extra)
+  }
 }
 
 fn rust_emit_host_runtime_primitive_type_node() -> Node {
