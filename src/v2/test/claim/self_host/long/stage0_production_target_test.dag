@@ -127,33 +127,69 @@ data stage0_boundary_probe_path: String = "src/v2/compiler/self_host/stage0_boun
 
 data stage0_boundary_probe_declaration: String = "fn probe_add(x: Int, y: Int) -> Int { x + y }"
 
-fn stage0_boundary_probe_ref() -> SourceRef {
-  source_ref_for_observed_storage_path(path: stage0_boundary_probe_path)
-}
+// A path no file occupies. The read of it is the discriminating control below, and the string is
+// deliberately not near any real path: nothing in the tree can start answering for it.
+data stage0_boundary_absent_path: String = "src/v2/compiler/self_host/stage0_boundary_no_such_file.dag"
 
-fn stage0_boundary_read_source() -> String {
+// WHAT THE READ ANSWERED, WITH REFUSAL AS ITS OWN ARM. An earlier revision folded every failure
+// into one text sentinel and asked whether the sentinel contained a marker, which made the
+// refusal indistinguishable from a successful read of a file that merely lacked the marker -- a
+// broken read passed. Refusal and content are different answers and are carried as different
+// arms, so a claim about one cannot be satisfied by the other.
+type Stage0BoundaryRead
+  = Stage0BoundaryReadRefused
+  | Stage0BoundaryReadEmpty
+  | Stage0BoundaryReadCarried { source: String }
+
+fn stage0_boundary_read_of(path: String) -> Stage0BoundaryRead {
   match source_root_ingest_from_source_refs(
-    refs: Cons { head: stage0_boundary_probe_ref(), tail: Empty }
+    refs: Cons { head: source_ref_for_observed_storage_path(path: path), tail: Empty }
   ) {
-    Rejected { diagnostics: _ } => stage0_boundary_emit_refused
+    Rejected { diagnostics: _ } => Stage0BoundaryReadRefused
     Accepted { value: ingest, diagnostics: _ } =>
       match ingest {
-        Empty => stage0_boundary_emit_refused
-        Cons { head: read, tail: _ } => read.source.carried
+        Empty => Stage0BoundaryReadEmpty
+        Cons { head: read, tail: _ } => Stage0BoundaryReadCarried { source: read.source.carried }
       }
   }
 }
 
 // Substring scan via the ambient split: a marker is contained when splitting on it yields more
-// than one piece (the idiom test.claim.emit_copy_qualification_witness already uses).
-fn stage0_boundary_read_contains(marker: String) -> Bool {
-  (split(s: stage0_boundary_read_source(), delimiter: marker) |> count) > 1
+// than one piece (the idiom test.claim.emit_copy_qualification_witness already uses). A refused
+// or empty read contains nothing, which is the honest answer for both and is never mistaken for
+// a successful read here, because the claims below ask about the ARM as well as the content.
+fn stage0_boundary_read_contains(read: Stage0BoundaryRead, marker: String) -> Bool {
+  match read {
+    Stage0BoundaryReadRefused => false
+    Stage0BoundaryReadEmpty => false
+    Stage0BoundaryReadCarried { source: text } =>
+      (split(s: text, delimiter: marker) |> count) > 1
+  }
+}
+
+fn stage0_boundary_read_is_refused(read: Stage0BoundaryRead) -> Bool {
+  match read {
+    Stage0BoundaryReadRefused => true
+    Stage0BoundaryReadEmpty => false
+    Stage0BoundaryReadCarried { source: _ } => false
+  }
 }
 
 test fn stage0_boundary_committed_module_reads_through_the_storage_route_holds() -> Bool {
-  stage0_boundary_read_contains(marker: stage0_boundary_probe_declaration)
+  stage0_boundary_read_contains(
+    read: stage0_boundary_read_of(path: stage0_boundary_probe_path),
+    marker: stage0_boundary_probe_declaration
+  )
 }
 
-test fn stage0_boundary_read_does_not_fabricate_content_holds() -> Bool {
-  stage0_boundary_read_contains(marker: "fn probe_add(x: Int) -> Int {") == false
+// THE DISCRIMINATING CONTROL, AND ITS RED IS AUTHORABLE HERE. The state it forbids -- the read
+// answering with content for a path no file occupies -- is expressible in this claim's own
+// fixture surface: the path is an ordinary String this module supplies, so pointing it at a file
+// that does exist turns the arm red immediately, and a read that ever fabricated or substituted
+// content for a missing path would fail it in production. Its predecessor asserted that the
+// carried source did not contain an arity-1 declaration nobody could author, over a fixed
+// committed file, and was additionally green on refusal -- a check permanently green by
+// construction, which DESIGN section 4b calls worse than absent because it is cited as coverage.
+test fn stage0_boundary_absent_path_refuses_rather_than_answering_holds() -> Bool {
+  stage0_boundary_read_is_refused(read: stage0_boundary_read_of(path: stage0_boundary_absent_path))
 }
