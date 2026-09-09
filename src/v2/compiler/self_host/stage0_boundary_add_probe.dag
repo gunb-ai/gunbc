@@ -2,10 +2,12 @@ module stage0_boundary_add_probe
 
 // THE COMMITTED SPECIMEN FOR THE STORAGE-READ SEAM, AND ONLY THAT SEAM.
 //
-// What this file is read by is v2.test.long.stage0_production_target's two read claims: the path
+// What this file is read by is v2.test.self_host.stage0_production_target's read claim: the path
 // reaches source_ref_for_observed_storage_path, source_root_ingest_from_source_refs verifies the
-// bytes against the ref's content hash, and the claims assert that the source the ingest carries
-// contains this declaration and does not contain a declaration it never held. The door's own
+// bytes against the ref's content hash, and the claim asserts that the source the ingest carries
+// contains this declaration. Its discriminating sibling reads a path no file occupies and requires
+// a refusal rather than an answer, which is why this file's own content is not that claim's
+// subject and editing the prose around this declaration cannot break it. The door's own
 // specimen carries its module source inline (direct_rust_door_fixture
 // direct_rust_door_dag_module_source), so nothing else in the corpus exercises that route over a
 // file actually on disk.
