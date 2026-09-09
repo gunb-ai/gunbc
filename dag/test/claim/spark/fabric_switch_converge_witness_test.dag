@@ -1,0 +1,224 @@
+module test.claim.spark.fabric_switch_converge_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.mikrotik.crs812 {
+  Lane50GCr2, Lane100GCr2, Lane100GCr4, Fec91, FecAuto,
+  crs812_lane_speed_for_link_mode, LaneSpeedForMode, NoLaneSpeedForMode,
+}
+import extdeps.ethernet.link_mode {
+  ieee_50gbase_cr2, ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_25gbase_cr,
+}
+import gunbc.spark.fabric_switch_desired {
+  Crs812SwitchIntent, SwitchIntent, SwitchIntentUndecided,
+  LaneCarriesLeg, LaneOwnedByItsPair,
+}
+import gunbc.spark.fabric_switch_converge {
+  Crs812ConvergenceSubject, crs812_convergence_subject,
+  Crs812LaneReading, LaneNeverRead, LaneReadingTaken,
+  crs812_lane_speed_eq,
+  LaneSpeedDisagrees, LaneFecDisagrees,
+  LaneShouldCarryLegButIsDisabled, LaneShouldBeOwnedByItsPairButIsEnabled, LaneIsNotInTheIntent,
+  SwitchIntentUndecidedHere, SwitchLaneNeverRead, SwitchHoldsNoLanes, 
+  inspect_fabric_switch, fabric_switch_convergence,
+}
+import std.goal_assessment {
+  GoalInspected, GoalObservationRefused,
+  GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// GREEN BY EXECUTION FOR THE SWITCH SUBJECT. `cable_plant_converge_witness` holds the CABLES to
+// their required mode; this holds the SWITCH to the configuration those cables imply. The two are
+// separate subjects, so a repair to one can never green the other by accident -- which is the
+// property the split exists to buy.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data lane_a: NonEmptyStr = "qsfp56-dd-1-1" as NonEmptyStr
+data lane_a_pair: NonEmptyStr = "qsfp56-dd-1-2" as NonEmptyStr
+data lane_b: NonEmptyStr = "qsfp56-dd-1-3" as NonEmptyStr
+
+// The intent a converged 100GBASE-CR2 cable plant produces: the odd lane carries the leg at
+// Clause 91 FEC, the even lane is owned by it and is desired OFF rather than left at a default.
+data decided_intent: Crs812SwitchIntent = SwitchIntent {
+  identity: "gunbc-fabric-switch" as NonEmptyStr,
+  board_name: "CRS812-4XQ-4XC" as NonEmptyStr,
+  management_interface: "ether1" as NonEmptyStr,
+  bridge: "bridge" as NonEmptyStr,
+  lanes: [
+    LaneCarriesLeg { interface: lane_a, speed: Lane100GCr2, fec: Fec91 },
+    LaneOwnedByItsPair { interface: lane_a_pair },
+  ],
+}
+
+fn subject_with(readings: List<Crs812LaneReading>) -> Crs812ConvergenceSubject {
+  crs812_convergence_subject(
+    switch: "gunbc-fabric-switch" as NonEmptyStr,
+    intent: decided_intent,
+    readings: readings)
+}
+
+data configured_switch: Crs812ConvergenceSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane100GCr2, fec: Fec91, enabled: true },
+  LaneReadingTaken { interface: lane_a_pair, speed: Lane100GCr2, fec: Fec91, enabled: false },
+])
+
+data switch_running_at_half_rate: Crs812ConvergenceSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane50GCr2, fec: Fec91, enabled: true },
+  LaneReadingTaken { interface: lane_a_pair, speed: Lane100GCr2, fec: Fec91, enabled: false },
+])
+
+data switch_with_one_unread_lane: Crs812ConvergenceSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane100GCr2, fec: Fec91, enabled: true },
+  LaneNeverRead { interface: lane_a_pair },
+])
+
+data switch_with_an_unmodelled_lane: Crs812ConvergenceSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane100GCr2, fec: Fec91, enabled: true },
+  LaneReadingTaken { interface: lane_a_pair, speed: Lane100GCr2, fec: Fec91, enabled: false },
+  LaneReadingTaken { interface: lane_b, speed: Lane50GCr2, fec: FecAuto, enabled: true },
+])
+
+data switch_with_no_lanes: Crs812ConvergenceSubject = subject_with(readings: [])
+
+// THE POSITIVE CONTROL, FIRST. Every refusal below is only informative because this one converges:
+// an assessor that never returns GoalSatisfied would satisfy all of them and check nothing.
+test fn a_correctly_configured_switch_converges() -> Bool {
+  match inspect_fabric_switch(subject: configured_switch) {
+    GoalObservationRefused { subject: s, cause: f } => false
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalSatisfied { evidence: e } => e.lanes_read == 2
+        GoalDiverged { deviations: ds } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE CENTRAL DIVERGENCE, AND IT NAMES BOTH SIDES. An operator reading this needs the desired mode
+// and the reported one, not the fact that they differ -- a divergence carrying only "lane 1 is
+// wrong" is a diagnostic without the information needed to act on it.
+test fn a_lane_at_the_wrong_speed_diverges_and_names_both_modes() -> Bool {
+  match inspect_fabric_switch(subject: switch_running_at_half_rate) {
+    GoalObservationRefused { subject: s, cause: f } => false
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: dsn } =>
+          match dsn.head.cause {
+                LaneSpeedDisagrees { desired: want, reported: got } =>
+                  crs812_lane_speed_eq(a: want, b: Lane100GCr2)
+                    && crs812_lane_speed_eq(a: got, b: Lane50GCr2)
+                LaneFecDisagrees { desired: a, reported: b } => false
+                LaneShouldCarryLegButIsDisabled => false
+                LaneShouldBeOwnedByItsPairButIsEnabled => false
+                LaneIsNotInTheIntent => false
+              }
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE DISCRIMINATING INPUT FOR THE ABSORBING FALLBACK. Every lane that WAS read here agrees, so a
+// handler that reported over its read subset would converge -- and an uncaptured switch would be
+// indistinguishable from a correct one.
+test fn one_unread_lane_refuses_the_whole_switch() -> Bool {
+  match inspect_fabric_switch(subject: switch_with_one_unread_lane) {
+    GoalObservationRefused { subject: s, cause: f } =>
+      match f {
+        SwitchLaneNeverRead { interface: n } => n == lane_a_pair
+        SwitchIntentUndecidedHere { cause: c } => false
+        SwitchHoldsNoLanes { switch: sw } => false
+      }
+    GoalInspected { subject: s, observed: o, assessment: a } => false
+  }
+}
+
+// A LANE THE INTENT DOES NOT NAME IS A DIVERGENCE, NOT A LANE TO SKIP. This is the second
+// discriminating input for the same fallback, on the other axis: narrowing the comparison to the
+// lanes the intent happens to mention would make the switch converge MORE easily the more of it
+// went unmodelled.
+test fn a_lane_outside_the_intent_diverges() -> Bool {
+  match inspect_fabric_switch(subject: switch_with_an_unmodelled_lane) {
+    GoalObservationRefused { subject: s, cause: f } => false
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: dsn } =>
+          dsn.head.interface == lane_b
+            && match dsn.head.cause {
+                 LaneIsNotInTheIntent => true
+                 LaneSpeedDisagrees { desired: a, reported: b } => false
+                 LaneFecDisagrees { desired: a, reported: b } => false
+                 LaneShouldCarryLegButIsDisabled => false
+                 LaneShouldBeOwnedByItsPairButIsEnabled => false
+               }
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE. Zero lanes agree trivially, and a green derived
+// from an empty population is the vacuous pass DESIGN section 5 refuses by name.
+test fn a_switch_with_no_lanes_does_not_converge() -> Bool {
+  match inspect_fabric_switch(subject: switch_with_no_lanes) {
+    GoalObservationRefused { subject: s, cause: f } =>
+      match f {
+        SwitchHoldsNoLanes { switch: sw } => true
+        SwitchIntentUndecidedHere { cause: c } => false
+        SwitchLaneNeverRead { interface: n } => false
+      }
+    GoalInspected { subject: s, observed: o, assessment: a } => false
+  }
+}
+
+// THE FLEET'S OWN SWITCH, TODAY. The cable plant does not converge, so the switch's intent is
+// undecided, so the switch subject refuses at the observe stage -- carrying the CABLE refusal
+// rather than a switch-shaped restatement of it. This is the whole point of deriving the intent:
+// one fault, one report, and no second matcher that could disagree with the first.
+//
+// This witness holds a RED state of the real fleet. It goes green by the cables being recoded, and
+// when that happens it becomes the regression control that the switch subject still refuses when
+// its intent is undecided -- it does not retire.
+test fn the_fleet_switch_refuses_because_its_cables_do() -> Bool {
+  match fabric_switch_convergence() {
+    GoalObservationRefused { subject: s, cause: f } =>
+      match f {
+        SwitchIntentUndecidedHere { cause: c } => true
+        SwitchLaneNeverRead { interface: n } => false
+        SwitchHoldsNoLanes { switch: sw } => false
+      }
+    GoalInspected { subject: s, observed: o, assessment: a } => false
+  }
+}
+
+
+// THE LANE SPEED IS SELECTED BY THE REQUIRED MODE, not written down. These three rows are the
+// discriminating input for that claim: a literal in the desired module agrees with exactly one of
+// them, so if the derivation is ever replaced by a constant again, two of the three go red.
+test fn the_wire_value_is_selected_by_the_required_link_mode() -> Bool {
+  match crs812_lane_speed_for_link_mode(m: ieee_100gbase_cr2) {
+    LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane100GCr2)
+    NoLaneSpeedForMode { mode: u } => false
+  }
+    && match crs812_lane_speed_for_link_mode(m: ieee_50gbase_cr2) {
+         LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane50GCr2)
+         NoLaneSpeedForMode { mode: u } => false
+       }
+    && match crs812_lane_speed_for_link_mode(m: ieee_100gbase_cr4) {
+         LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane100GCr4)
+         NoLaneSpeedForMode { mode: u } => false
+       }
+}
+
+// A MODE THIS SWITCH HAS NO WIRE VALUE FOR REFUSES rather than falling back to the nearest speed.
+// Picking a neighbouring value would be the absorbing fallback: the switch would configure itself
+// to something nobody asked for, and the fact that the hardware cannot do the job would disappear.
+test fn a_mode_the_switch_cannot_run_has_no_wire_value() -> Bool {
+  match crs812_lane_speed_for_link_mode(m: ieee_25gbase_cr) {
+    NoLaneSpeedForMode { mode: u } => true
+    LaneSpeedForMode { speed: s } => false
+  }
+}

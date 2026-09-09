@@ -597,8 +597,36 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
   make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: message, span: span)
 }
 
-fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
+// constructor_binding_authority: the locals binding carries the OWNER coproduct NODE.
+// infer_record_lit used to re-derive that owner through lookup_type_by_name(parent_name)
+// and, on a miss, fall through to lookup_type_by_name(arm) / variant_arm_type_projection.
+// That miss is what differs between typechecking a module as its own subject (local
+// str_bindings hit) and resolving a larger entry over the same bytes (shared intern /
+// census / overlay can miss). It is not the three refuted bind stories (foreign unit
+// arm as competitor, Unique/Ambiguous owner-count, global_bare Conj insert).
+// A HIT of lookup_type_by_name that IS the owning Disj must still win: substituting
+// the locals node there left Int fields as NoConnective leaves (span in the consumer)
+// and emitted OperandIdentityUnavailableAt for `+` in std.import.
+// Locals fill every other arm: name-lookup miss, parent-enum miss (lookup_type_for
+// on the locals node fails under composed intern while the Disj node is still in
+// locals), expected coproduct that owns the arm, and a HIT that is not that owner
+// (unit-arm projection). A four-file compile_fixture over that geometry is not a
+// discriminating RED for the intern-miss that
+// gunbc.roadmap_belt_actuate belt_sessions_observe_for_instance hits under
+// tools.generated_artifact_gate; that producer is the required generated-artifact
+// resolve, not a second always-green floor witness.
+fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
+  match map_get(scope.locals, name) {
+    Present { value: binding } =>
+      if binding.resolved.connective == Disj
+        && has_child_named(n: binding.resolved, name: name, source_indices: scope.type_env.source_indices) {
+        Present { value: binding.resolved }
+      } else { none }
+    Absent => none
+  }
+}
 
+fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
@@ -1050,7 +1078,7 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
 // existing ones, and migrating the whole population is a seed-wide refactor of the stage that IS
 // the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is
 // deleted at v2 self-host, at which point every row in this class goes with it; the same trigger
-// compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same
+// gunbc.compiler_diagnostic_seed_projection carries for the hand-Rust arms, because it is the same
 // seed and the same endpoint.
 
 fn collect_explicit_return_values(n: Node) -> List<Node> {
@@ -8611,10 +8639,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
+    let owner_from_locals = local_coproduct_owner_from_locals(scope: scope, name: type_name.value)
+    let owner_from_variant_node = variant_owner_node(scope: scope, name: type_name.value)
     let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
       Present { value: p } => Present { value: p }
       Absent =>
-        match variant_owner_node(scope: scope, name: type_name.value) {
+        match owner_from_variant_node {
           Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
           Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
         }
@@ -8637,20 +8667,56 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Present { value: tn } => tn
       Absent => error_type
     }
-    let type_name_declares_own_type = match lookup_binding_on_chain(env: scope.type_env, name: type_name.value) {
+    let type_name_declares_own_product = match lookup_binding_on_chain(env: scope.type_env, name: type_name.value) {
       Present { value: name_binding } =>
         binding_declares_name(binding: name_binding, name: type_name.value, source_indices: scope.type_env.source_indices)
+          && name_binding.resolved.connective == Conj
       Absent => false
     }
-    let raw_resolved = match local_variant_parent {
+    let skip_owner_widen = type_name_declares_own_product || match local_variant_parent {
+      Present { value: parent_name } => parent_name == "Optional"
+      Absent => false
+    }
+    let interned_owner = match local_variant_parent {
       Present { value: parent_name } =>
-        if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
+        if skip_owner_widen { none } else {
           match lookup_type_by_name(env: scope.type_env, name: parent_name) {
-            Present { value: parent_decl } => parent_decl
-            Absent => variant_lookup_resolved
+            Present { value: parent_decl } =>
+              if parent_decl.connective == Disj
+                && has_child_named(n: parent_decl, name: type_name.value, source_indices: scope.type_env.source_indices) {
+                Present { value: parent_decl }
+              } else { none }
+            Absent => none
           }
         }
-      Absent => variant_lookup_resolved
+      Absent => none
+    }
+    let expected_owner = match record_lit_expected_coproduct(expected: expected, scope: scope) {
+      Present { value: coproduct } =>
+        if has_child_named(n: coproduct, name: type_name.value, source_indices: scope.type_env.source_indices) {
+          Present { value: coproduct }
+        } else { none }
+      Absent => none
+    }
+    let raw_resolved = if skip_owner_widen {
+      variant_lookup_resolved
+    } else {
+      match interned_owner {
+        Present { value: parent_decl } => parent_decl
+        Absent =>
+          match owner_from_locals {
+            Present { value: owner } => owner
+            Absent =>
+              match owner_from_variant_node {
+                Present { value: owner } => owner
+                Absent =>
+                  match expected_owner {
+                    Present { value: coproduct } => coproduct
+                    Absent => variant_lookup_resolved
+                  }
+              }
+          }
+      }
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent

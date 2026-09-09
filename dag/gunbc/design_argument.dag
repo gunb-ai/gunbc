@@ -3,6 +3,20 @@ module gunbc.design_argument
 import std.types { String, List }
 import std.decl_ref { DeclarationRef, decl_ref }
 
+// A NONEMPTY COLLECTION OF DECLARATION REFERENCES. The DAG language has no generic NonEmptyList
+// carrier, so this is the established corpus shape: one required first element plus the remaining
+// list. Used for conformance domain homes (DESIGN section 3b), which must name at least one
+// authority — a domain with no home has nothing to conform to, so this structure guarantees the
+// invariant at the type level rather than through a post-hoc check.
+type ConformanceHomes {
+  first: DeclarationRef
+  rest: List<DeclarationRef>
+}
+
+fn conformance_home_list(h: ConformanceHomes) -> List<DeclarationRef> {
+  concat([h.first], h.rest)
+}
+
 // EACH PROPOSITION CARRIES ITS OWN REVIEW READING, OR NONE. A DesignRow is one proposition of the
 // serial argument plus, where the proposition is checkable on a single change, the question a
 // reviewer asks of that change and the tells that its answer is yes. gunbc.roadmap.roadmap_review_criteria
@@ -21,99 +35,125 @@ type ReviewAnswerAlgebra
   = YesIsADefect
   | ConformanceThreeValued
 
-type PropositionReview {
-  part: String
-  question: String
-  tells: List<String>
-  answer: ReviewAnswerAlgebra
-  homes: List<DeclarationRef>
-}
+type PropositionReview
+  = DefectReview {
+      part: String
+      question: String
+      tells: List<String>
+    }
+  | ConformanceReview {
+      domain: ConformanceDomain
+    }
 
 // A CONFORMANCE DOMAIN IS ONE CONCEPT THE CORPUS ALREADY HOMES, WITH THE DECLARATIONS THAT ARE ITS
 // HOME (DESIGN section 3b). The conformance proposition's review parts are DERIVED from these rows,
 // one reviewer per domain, so the domain list has one authority and the prose in DESIGN.md names it
 // rather than repeating it. A domain is added by adding a row; a domain whose home does not yet exist
 // is a modeling obligation, not a row; a home that does not resolve is a section-3 citation defect.
+//
+// LABEL is the human-readable display name in the generated DESIGN.md roster.
+// NARRATIVE is the explanatory prose that follows the label in the bullet, excluding the mechanically
+// rendered home declarations and divergence examples. The homes list and tells ARE rendered from their
+// typed fields, never from narrative.
+//
+// THESE FIELDS ARE PROJECTION-ONLY. They affect the generated DESIGN.md and README blocks but never
+// the review criteria, the reviewer brief, the verdict interpretation, or the plan revision. The
+// review-plan identity hashes key, question, tells, answer algebra, and homes (gunbc.roadmap.roadmap_review_criteria
+// review_criterion_identity_text); label and narrative are deliberately excluded. Changing only
+// label or narrative must not invalidate a prior observation or change a criterion's plan revision.
 type ConformanceDomain {
   key: String
+  label: String
   question: String
-  homes: List<DeclarationRef>
+  homes: ConformanceHomes
   tells: List<String>
+  narrative: String
 }
 
 data conformance_domains: List<ConformanceDomain> = [
   ConformanceDomain {
     key: "conformance-extdeps",
+    label: "external facts",
     question: "Does the change carry a fact that other parties already agree on -- an upstream specification, a vendor's product, a protocol, a unit, a tool's interface -- without pointing at the extdeps module that owns it, or put such a fact somewhere other than the layer that owns it: a cited upstream fact modeled inside a product or workflow module, or a product policy or observation authored inside extdeps?",
-    homes: [decl_ref(module_path: "extdeps.external_authority", decl_name: "ExternalModelScope")],
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "extdeps.external_authority", decl_name: "ExternalModelScope"),
+      rest: [],
+    },
     tells: [
       "a new type, enum or constant that restates what a standard, vendor sheet, man page or API document already defines, with no extdeps module citing it",
       "a value that is really an upstream fact (a port, a field name, a version, a limit, a wire shape) spelled as a literal in gunbc/ or a workflow module",
       "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
       "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream"
     ],
+    narrative: "each independently versioned upstream has its own module; this is the strongest instance and was, until this section, the only one with a reviewer",
   },
   ConformanceDomain {
     key: "conformance-realization",
+    label: "materialization / realization",
     question: "Does the change cache, memoize, build, emit or execute something without inhabiting the corpus's realization model -- a content-addressed pure spec realized by a bound handler -- and if it departs from that model, does it say why?",
-    homes: [
-      decl_ref(module_path: "std.realization", decl_name: "Materialization"),
-      decl_ref(module_path: "std.materialization_provider", decl_name: "ArtifactRequest"),
-      decl_ref(module_path: "std.artifact_store", decl_name: "ArtifactStore"),
-      decl_ref(module_path: "std.cache_interface", decl_name: "StorageSurface"),
-      decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
-    ],
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "std.realization", decl_name: "Materialization"),
+      rest: [
+        decl_ref(module_path: "std.materialization_provider", decl_name: "ArtifactRequest"),
+        decl_ref(module_path: "std.artifact_store", decl_name: "ArtifactStore"),
+        decl_ref(module_path: "std.cache_interface", decl_name: "StorageSurface"),
+        decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
+      ],
+    },
     tells: [
       "a hand-rolled map, memo flag or scratch directory keyed by something other than declared-input content",
       "a shell or host call that executes what a realization handler already binds",
       "an output attached to a request that did not succeed, or a cache read that cannot say what produced the hit"
     ],
+    narrative: "caching and execution are one concept, keyed by content hash",
   },
   ConformanceDomain {
     key: "conformance-leasing",
+    label: "leasing / locking / grants",
     question: "Does the change take exclusive or bounded use of something -- a slot, a head, a host, a file, a budget -- without inhabiting the corpus's lease and grant model, and if it departs from that model, does it say why?",
-    homes: [
-      decl_ref(module_path: "std.temporal_effect", decl_name: "HeldLease"),
-      decl_ref(module_path: "std.durable_compare_and_set", decl_name: "CasExpectation"),
-      decl_ref(module_path: "std.scoped_authorization", decl_name: "ScopedAuthorization"),
-      decl_ref(module_path: "std.effect_grant", decl_name: "Grant"),
-      decl_ref(module_path: "std.resources", decl_name: "ResourceHandle"),
-    ],
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "std.temporal_effect", decl_name: "HeldLease"),
+      rest: [
+        decl_ref(module_path: "std.durable_compare_and_set", decl_name: "CasExpectation"),
+        decl_ref(module_path: "std.scoped_authorization", decl_name: "ScopedAuthorization"),
+        decl_ref(module_path: "std.effect_grant", decl_name: "Grant"),
+        decl_ref(module_path: "std.resources", decl_name: "ResourceHandle"),
+      ],
+    },
     tells: [
       "a flag file, a sleep, a retry loop or a bare Bool standing where a lease with a declared deadline was available",
       "a write to a shared head that does not carry the expectation it was computed against",
       "an effect performed without the grant that names who may perform it and how it is released"
     ],
+    narrative: "exclusive or bounded use: leases with a declared deadline, compare-and-set expectations, scoped authorizations, grants naming who may perform an effect and how it is released, resource handles",
   },
   ConformanceDomain {
     key: "conformance-compute",
+    label: "fabric / compute",
     question: "Does the change allocate, place or negotiate resources -- a machine, a serving head, a build slot, a budget -- without inhabiting the corpus's compute and fabric model, and if it departs from that model, does it say why?",
-    homes: [
-      decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOperation"),
-      decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "ComputeLayout"),
-      decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "CellReservation"),
-      decl_ref(module_path: "gunbc.fabric_executor_class", decl_name: "CapacityClassAdmission"),
-    ],
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOperation"),
+      rest: [
+        decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "ComputeLayout"),
+        decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "CellReservation"),
+        decl_ref(module_path: "gunbc.fabric_executor_class", decl_name: "CapacityClassAdmission"),
+      ],
+    },
     tells: [
       "a host name, address or port chosen in the change instead of resolved from the fabric",
       "work run in the caller's own process or tree instead of requested as an exact-tree operation from a provider",
       "a capacity or budget literal that the provider's admission already decides"
     ],
+    narrative: "allocation, placement and negotiation of resources: work contracts, compute layouts, fabric cell reservations, capacity class admission",
   },
 ]
 
 fn conformance_review_part(d: ConformanceDomain) -> PropositionReview {
-  PropositionReview {
-    part: d.key,
-    question: d.question,
-    tells: d.tells,
-    answer: ConformanceThreeValued,
-    homes: d.homes,
-  }
+  ConformanceReview { domain: d }
 }
 
 fn yes_no_review(part: String, question: String, tells: List<String>) -> PropositionReview {
-  PropositionReview { part: part, question: question, tells: tells, answer: YesIsADefect, homes: [] }
+  DefectReview { part: part, question: question, tells: tells }
 }
 
 // WHETHER A PROPOSITION IS REVIEWABLE ON ONE CHANGE IS ITSELF A MODELED FACT, with its reason when it
@@ -249,12 +289,12 @@ data design_section_2_to_7_rows: List<DesignRow> = [
   DesignRow {
     proposition: Proposition {
       id: "s3d.selection-precedes-convergence",
-      statement: "selection precedes convergence: Pareto assessment (std.pareto) computes the frontier and realization selection (std.decision) is the policy-bound choose-one, consuming Pareto without redeclarating its algebra; world_converge and ensure do not enumerate candidates or choose policy",
+      statement: "selection precedes convergence: Pareto assessment (std.pareto) computes the frontier and realization selection (std.decision) is the policy-bound choose-one, consuming Pareto without redeclarating its algebra; goal assessment and ensure do not enumerate candidates or choose policy",
       premises: ["s3.single-authority", "s5.fail-closed", "s1.minimal-safe-efficient"]
     },
     review: ReviewableOnChange { parts: [yes_no_review(
       part: "selection-precedes-convergence",
-      question: "Does the change choose or converge a realization while the candidate field, constraints, funded-axis evidence or policy are unresolved; redeclare Pareto dominance/orientation/interval/gap vocabulary; treat a Pareto front as a winner; mint SelectedWithin over an incomplete closure; or widen world_converge/ensure into candidate generation or policy choice?",
+      question: "Does the change choose or converge a realization while the candidate field, constraints, funded-axis evidence or policy are unresolved; redeclare Pareto dominance/orientation/interval/gap vocabulary; treat a Pareto front as a winner; mint SelectedWithin over an incomplete closure; or widen goal assessment (std.goal_assessment) / ensure into candidate generation or policy choice?",
       tells: [
         "a convergence or ensure path that enumerates candidates or selects a realization",
         "a second dominance, orientation, interval or evidence-gap algebra beside std.pareto",
