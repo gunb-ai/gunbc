@@ -50,7 +50,6 @@ import gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall { roster_re
 import gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall { self_host_wet_route_receipt_lifetime_stall }
 import gunbc.guarantee_stall.trigger_capability_referent_free_by_construction_stall { trigger_capability_referent_free_by_construction_stall }
 import gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall { axis_list_re_enumerates_its_variant_type_stall }
-import gunbc.namespace_wave_admission { namespace_wave_admission_occurrence_grain_stall, namespace_wave_admission_board_grain_stall }
 import gunbc.runner_service_activation { runner_activation_reachability_stall, runner_activation_safety_stall }
 import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption_classification_stall }
 import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_basis_boundedness_stall }
@@ -161,8 +160,8 @@ import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { 
 // DESIGN section 4b(3) failure, and this is that failure in its containment-scope form.
 
 // THE FIVE ROWS AT THE END ARRIVED LATE AND WERE FOUND BY THE JOIN, not by a reading of this file.
-// They are declared beside the subject they are about -- two in gunbc.namespace_wave_admission,
-// two in gunbc.runner_service_activation, one in gunbc.declaration_index_seed_growth -- rather
+// They are declared beside the subject they are about -- two in gunbc.runner_service_activation,
+// one in gunbc.declaration_index_seed_growth -- rather
 // than as row modules under this directory, so the file-versus-list set difference that made a
 // missing row obvious after the per-row split could never see them. They were declared, typed,
 // valid, and absent from every projection this roster feeds, which is the exact defect
@@ -170,6 +169,16 @@ import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { 
 // rostered here rather than moved: a row's prose is about the module it sits in, and relocating five
 // rows to make a set difference work would be the tidiness the section 3 citation rule refuses.
 // Their absence is what the declared-versus-rostered join first refused; nothing else had reported it.
+// TWO OF THOSE FIVE ARE GONE (2026-09-08), AND THEIR SUBJECT IS WHY. The rows declared in
+// gunbc.namespace_wave_admission -- the occurrence-grain and board-grain stalls -- were properties
+// OF THE WAVE-ADMISSION WALL, and that wall was deleted whole rather than repaired: a base/head
+// declaration comparison parsed both sides with the head compiler, so it refused every change to
+// the grammar itself. A stall says a class sits below its ceiling and names what blocks the climb;
+// with the wall gone there is no mechanism to climb, so retaining the rows would report a stalled
+// guarantee where there is now no guarantee at all -- the rung inflation this ladder exists to
+// refuse, in its subtlest direction. The loss is not absorbed by their deletion: it is declared at
+// gunbc.rung_drop.namespace_wave_admission_deleted, whose population carries the occurrence-binding
+// delta these two rows were about, and whose restoration trigger names the same capability.
 data all_guarantee_stalls: List<GuaranteeStall> = [
   pre_resolve_entry_closure_module_identity_stall,
   merge_admission_terminal_verdict_stall,
@@ -205,8 +214,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   roster_re_enumerates_its_own_rows_stall,
   self_host_wet_route_receipt_lifetime_stall,
   trigger_capability_referent_free_by_construction_stall,
-  namespace_wave_admission_occurrence_grain_stall,
-  namespace_wave_admission_board_grain_stall,
   runner_activation_reachability_stall,
   runner_activation_safety_stall,
   declaration_index_fixture_exemption_classification_stall,
