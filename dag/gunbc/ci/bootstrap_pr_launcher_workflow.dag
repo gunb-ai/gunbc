@@ -6,6 +6,7 @@ import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool,
   WorkflowTrigger, WorkflowDispatch,
   WorkflowPermissions, PermRead, PermWrite,
   RunnerSpec
@@ -41,17 +42,21 @@ import v2.std.optional { Present }
 // branch name would let anyone who can push to that branch choose what the bot's pull request
 // contains, which would make the bot author arbitrary content. Pinning the exact commit means the
 // launcher either opens the pull request that was reviewed or refuses.
-data bootstrap_pr_head_branch: String = "heal-canonical-author"
+data bootstrap_pr_head_branch: String = "heal-canonical-author-v2"
 
 // The exact commit reviewed as the bootstrap subject. A head that has moved is a REFUSAL, never a
 // silent retarget: the launcher's whole value is that what the bot authors was seen first.
-data bootstrap_pr_expected_head_sha: String = "c5ab56909bf9f191cda6c61cd8ed7c1587fd8c94"
+data bootstrap_pr_expected_head_sha: String = "72d2584a3e0e898e1a6622c7e992696ed4c11366"
+
+data bootstrap_pr_expected_author: String = "github-actions[bot]"
 
 data bootstrap_pr_title: String = "Heal authors as the identity that actually pushes"
 
 data bootstrap_pr_launcher_workflow_name: String = "bootstrap-pr-launcher"
 
 data bootstrap_pr_launcher_job_id: String = "open"
+
+data bootstrap_pr_launcher_concurrency_group: String = "gunbc-bootstrap-pr-launcher"
 
 fn bootstrap_pr_launcher_permissions() -> WorkflowPermissions {
   WorkflowPermissions {
@@ -85,11 +90,22 @@ fn bootstrap_pr_launcher_open_script() -> String {
     "BODY_FILE=\"$RUNNER_TEMP/bootstrap-pr-body.json\"\n",
     "python3 -c 'import json,sys; json.dump({\"title\": sys.argv[1], \"head\": sys.argv[2], \"base\": sys.argv[3], \"body\": sys.argv[4]}, open(sys.argv[5],\"w\"))' \\\n",
     "  \"", bootstrap_pr_title, "\" \"$HEAD_BRANCH\" \"$BASE\" \\\n",
-    "  \"Opened by the Actions job credential so this pull request is authored by github-actions[bot].\\n\\nThat authorship is the entire point: this repository is squash-only, so branch authorship cannot accrue contributor standing, and the remaining arm of the first_time_contributors policy is a merged PULL REQUEST. Merging this retires the withheld state for every future heal push.\\n\\nHead pinned to $EXPECTED by gunbc.ci.bootstrap_pr_launcher_workflow.\\n\\nEXPECT ONE APPROVAL: a pull request created with GITHUB_TOKEN gets its workflow runs in an approval-required state. That approval is the experiment, not an anomaly.\" \\\n",
+    "  \"Opened by the Actions job credential, so this pull request is authored by github-actions[bot]. Head pinned to $EXPECTED by gunbc.ci_bootstrap_pr_launcher_workflow.\\n\\nWHAT MERGING THIS ESTABLISHES, exactly one input: that github-actions[bot] has authored a merged pull request in this repository. It does NOT establish that later GITHUB_TOKEN pull_request synchronize runs will stop requiring approval -- GitHub documents an approval rule for GITHUB_TOKEN-caused pull_request runs that does not mention contributor standing at all, and in every population measured here the actor and the triggering credential are perfectly correlated, so the measurement cannot separate them. A separate experiment adjudicates that.\\n\\nEXPECT ONE APPROVAL on this pull request's own runs: a pull request created with GITHUB_TOKEN gets its runs in an approval-required state. That approval is expected by the documented rule and says nothing by itself about standing.\" \\\n",
     "  \"$BODY_FILE\"\n",
     "CODE=\"$(curl -sS -o \"$RUNNER_TEMP/bootstrap-pr-response.json\" -w '%\{http_code}' -X POST -H \"$AUTH\" -H 'Accept: application/vnd.github+json' -d @\"$BODY_FILE\" \"$API/pulls\")\"\n",
     "if [ \"$CODE\" != 201 ]; then echo \"::error::BootstrapPullRequestRefused: GitHub answered HTTP $CODE. A 403 here means the organisation setting 'Allow GitHub Actions to create and approve pull requests' is disabled -- that is a control-plane setting, not a defect in this workflow. Response: $(cat \"$RUNNER_TEMP/bootstrap-pr-response.json\")\" >&2; exit 1; fi\n",
-    "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(\"BootstrapPullRequestOpened number=%s author=%s head=%s\" % (d[\"number\"], d[\"user\"][\"login\"], d[\"head\"][\"sha\"]))' \"$RUNNER_TEMP/bootstrap-pr-response.json\"\n"
+    "NUM=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"number\"])' \"$RUNNER_TEMP/bootstrap-pr-response.json\")\"\n",
+    "GOT_AUTHOR=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"user\"][\"login\"])' \"$RUNNER_TEMP/bootstrap-pr-response.json\")\"\n",
+    "GOT_SHA=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"head\"][\"sha\"])' \"$RUNNER_TEMP/bootstrap-pr-response.json\")\"\n",
+    "GOT_HEAD_REF=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"head\"][\"ref\"])' \"$RUNNER_TEMP/bootstrap-pr-response.json\")\"\n",
+    "GOT_BASE_REF=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"base\"][\"ref\"])' \"$RUNNER_TEMP/bootstrap-pr-response.json\")\"\n",
+    "POSTFAIL=\"\"\n",
+    "if [ \"$GOT_AUTHOR\" != \"", bootstrap_pr_expected_author, "\" ]; then POSTFAIL=\"$POSTFAIL author=$GOT_AUTHOR\"; fi\n",
+    "if [ \"$GOT_SHA\" != \"$EXPECTED\" ]; then POSTFAIL=\"$POSTFAIL head_sha=$GOT_SHA\"; fi\n",
+    "if [ \"$GOT_HEAD_REF\" != \"$HEAD_BRANCH\" ]; then POSTFAIL=\"$POSTFAIL head_ref=$GOT_HEAD_REF\"; fi\n",
+    "if [ \"$GOT_BASE_REF\" != \"$BASE\" ]; then POSTFAIL=\"$POSTFAIL base_ref=$GOT_BASE_REF\"; fi\n",
+    "if [ -n \"$POSTFAIL\" ]; then curl -sS -o /dev/null -X PATCH -H \"$AUTH\" -H 'Accept: application/vnd.github+json' -d '\{\"state\":\"closed\"}' \"$API/pulls/$NUM\"; echo \"::error::BootstrapPullRequestMisattributed: pull request $NUM did not match its postconditions ($POSTFAIL); it has been CLOSED. A refused launcher must not leave behind the pull request it refuses to vouch for\" >&2; exit 1; fi\n",
+    "echo \"BootstrapPullRequestOpened number=$NUM author=$GOT_AUTHOR head=$GOT_SHA base=$GOT_BASE_REF\"\n"
   ], "")
 }
 
@@ -130,7 +146,13 @@ data bootstrap_pr_launcher_workflow: Workflow = Workflow {
   name: bootstrap_pr_launcher_workflow_name,
   run_name: none,
   on: [WorkflowDispatch { inputs: [] }],
-  concurrency: none,
+  concurrency: Present {
+    value: ConcurrencyMappingQueueNotMax {
+      group: bootstrap_pr_launcher_concurrency_group,
+      cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+      explicit_single: none
+    }
+  },
   env: none,
   permissions: none,
   jobs: [bootstrap_pr_launcher_job()],

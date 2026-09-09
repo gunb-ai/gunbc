@@ -3,6 +3,9 @@
 name: bootstrap-pr-launcher
 on:
   workflow_dispatch:
+concurrency:
+  group: gunbc-bootstrap-pr-launcher
+  cancel-in-progress: false
 jobs:
   open:
     runs-on: [self-hosted, linux, arm64]
@@ -16,8 +19,8 @@ jobs:
           set -euo pipefail
           API="https://api.github.com/repos/$GITHUB_REPOSITORY"
           AUTH="Authorization: Bearer $GITHUB_TOKEN"
-          HEAD_BRANCH="heal-canonical-author"
-          EXPECTED="c5ab56909bf9f191cda6c61cd8ed7c1587fd8c94"
+          HEAD_BRANCH="heal-canonical-author-v2"
+          EXPECTED="72d2584a3e0e898e1a6622c7e992696ed4c11366"
           BASE="main"
           OBSERVED="$(curl -sS -H "$AUTH" -H 'Accept: application/vnd.github+json' "$API/commits/$HEAD_BRANCH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("sha",""))')"
           if [ -z "$OBSERVED" ]; then echo "::error::BootstrapHeadUnreadable: $HEAD_BRANCH does not resolve in $GITHUB_REPOSITORY; opening NO pull request" >&2; exit 1; fi
@@ -27,11 +30,22 @@ jobs:
           BODY_FILE="$RUNNER_TEMP/bootstrap-pr-body.json"
           python3 -c 'import json,sys; json.dump({"title": sys.argv[1], "head": sys.argv[2], "base": sys.argv[3], "body": sys.argv[4]}, open(sys.argv[5],"w"))' \
             "Heal authors as the identity that actually pushes" "$HEAD_BRANCH" "$BASE" \
-            "Opened by the Actions job credential so this pull request is authored by github-actions[bot].\n\nThat authorship is the entire point: this repository is squash-only, so branch authorship cannot accrue contributor standing, and the remaining arm of the first_time_contributors policy is a merged PULL REQUEST. Merging this retires the withheld state for every future heal push.\n\nHead pinned to $EXPECTED by gunbc.ci.bootstrap_pr_launcher_workflow.\n\nEXPECT ONE APPROVAL: a pull request created with GITHUB_TOKEN gets its workflow runs in an approval-required state. That approval is the experiment, not an anomaly." \
+            "Opened by the Actions job credential, so this pull request is authored by github-actions[bot]. Head pinned to $EXPECTED by gunbc.ci_bootstrap_pr_launcher_workflow.\n\nWHAT MERGING THIS ESTABLISHES, exactly one input: that github-actions[bot] has authored a merged pull request in this repository. It does NOT establish that later GITHUB_TOKEN pull_request synchronize runs will stop requiring approval -- GitHub documents an approval rule for GITHUB_TOKEN-caused pull_request runs that does not mention contributor standing at all, and in every population measured here the actor and the triggering credential are perfectly correlated, so the measurement cannot separate them. A separate experiment adjudicates that.\n\nEXPECT ONE APPROVAL on this pull request's own runs: a pull request created with GITHUB_TOKEN gets its runs in an approval-required state. That approval is expected by the documented rule and says nothing by itself about standing." \
             "$BODY_FILE"
           CODE="$(curl -sS -o "$RUNNER_TEMP/bootstrap-pr-response.json" -w '%{http_code}' -X POST -H "$AUTH" -H 'Accept: application/vnd.github+json' -d @"$BODY_FILE" "$API/pulls")"
           if [ "$CODE" != 201 ]; then echo "::error::BootstrapPullRequestRefused: GitHub answered HTTP $CODE. A 403 here means the organisation setting 'Allow GitHub Actions to create and approve pull requests' is disabled -- that is a control-plane setting, not a defect in this workflow. Response: $(cat "$RUNNER_TEMP/bootstrap-pr-response.json")" >&2; exit 1; fi
-          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("BootstrapPullRequestOpened number=%s author=%s head=%s" % (d["number"], d["user"]["login"], d["head"]["sha"]))' "$RUNNER_TEMP/bootstrap-pr-response.json"
+          NUM="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["number"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
+          GOT_AUTHOR="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["user"]["login"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
+          GOT_SHA="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["head"]["sha"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
+          GOT_HEAD_REF="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["head"]["ref"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
+          GOT_BASE_REF="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["base"]["ref"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
+          POSTFAIL=""
+          if [ "$GOT_AUTHOR" != "github-actions[bot]" ]; then POSTFAIL="$POSTFAIL author=$GOT_AUTHOR"; fi
+          if [ "$GOT_SHA" != "$EXPECTED" ]; then POSTFAIL="$POSTFAIL head_sha=$GOT_SHA"; fi
+          if [ "$GOT_HEAD_REF" != "$HEAD_BRANCH" ]; then POSTFAIL="$POSTFAIL head_ref=$GOT_HEAD_REF"; fi
+          if [ "$GOT_BASE_REF" != "$BASE" ]; then POSTFAIL="$POSTFAIL base_ref=$GOT_BASE_REF"; fi
+          if [ -n "$POSTFAIL" ]; then curl -sS -o /dev/null -X PATCH -H "$AUTH" -H 'Accept: application/vnd.github+json' -d '{"state":"closed"}' "$API/pulls/$NUM"; echo "::error::BootstrapPullRequestMisattributed: pull request $NUM did not match its postconditions ($POSTFAIL); it has been CLOSED. A refused launcher must not leave behind the pull request it refuses to vouch for" >&2; exit 1; fi
+          echo "BootstrapPullRequestOpened number=$NUM author=$GOT_AUTHOR head=$GOT_SHA base=$GOT_BASE_REF"
         env:
           GITHUB_TOKEN: ${{ github.token }}
         timeout-minutes: 5
