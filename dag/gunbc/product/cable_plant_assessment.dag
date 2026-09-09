@@ -189,7 +189,11 @@ fn plant_conditional_outcomes(goal: LinkMode, observed: CablePlantObserved) -> L
     })
 }
 
-// ================= THE FOUR HANDLER STAGES =================
+// ================= THE TWO STAGES =================
+//
+// TWO, NOT FOUR. The heading this replaces counted the stages of the handler record #10814 deleted
+// -- an actuation stage and an unchanged-receipt stage that no longer exist and never ran for this
+// subject. Observation and assessment are the stages this module has.
 
 // BOTH PARTITIONS TAKE THE READINGS, NOT THE SUBJECT, which carries the required mode.
 fn plant_unread_endpoints(readings: List<CableLegReading>) -> List<NonEmptyStr> {
