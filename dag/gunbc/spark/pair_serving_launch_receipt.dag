@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_launch_receipt
 import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.spark.vllm_serving_launch {
   VllmServingLaunch, LaunchJoin, SameLaunch, same_launch, join_is_admissible,
@@ -154,22 +154,63 @@ fn attempt_is_serving(a: PairServingLaunchAttempt) -> Bool {
   }
 }
 
+fn desired_digest_agrees(left: ContentHash, right: ContentHash) -> Bool {
+  match compare_content_hash(left: left, right: right) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
+// ONE RUN IS ONE CONVERGENCE DECISION ON ONE HOST. The attempts in a flap are different
+// incarnations — that is the whole fact this standing exists to report — so same_launch is the
+// wrong join here. What they share is the rendered unit they were made FROM and the head they ran
+// on.
+
+type RunHomogeneity
+  = OneRun
+  | MixedDesiredDigest
+  | MixedHost
+
+fn run_homogeneity(attempts: List<PairServingLaunchAttempt>) -> RunHomogeneity {
+  match first(attempts) {
+    Absent => OneRun
+    Present { value: seed } =>
+      match first(filter(attempts, a => !desired_digest_agrees(left: seed.desired_digest, right: a.desired_digest))) {
+        Present { value: _ } => MixedDesiredDigest
+        Absent =>
+          match first(filter(attempts, a => (seed.incarnation.head as String) != (a.incarnation.head as String))) {
+            Present { value: _ } => MixedHost
+            Absent => OneRun
+          }
+      }
+  }
+}
+
 // ORDER IS THE CALLER'S, oldest first, because attempt_number is the convergence run's own counter
 // and a fold that re-sorted by it would be inventing an order the observations did not carry.
 fn serving_standing(attempts: List<PairServingLaunchAttempt>) -> ServingStanding {
-  let failures = filter(attempts, a => !attempt_is_serving(a: a))
-  let terminals = map(failures, a => a.terminal)
   if length(attempts) == 0 {
     ServingStandingUnobserved { cause: "no launch attempt was recorded for this unit, so whether it is serving is unobserved rather than false" as NonEmptyStr }
   } else {
-    match first(filter(attempts, a => attempt_is_serving(a: a))) {
-      Absent => NotServing { failed_attempts: length(failures), terminals: terminals }
-      Present { value: winner } =>
-        if length(failures) == 0 {
-          ServingOnFirstAttempt { incarnation: winner.incarnation }
-        } else {
-          ServingRecoveredAfterFailures { incarnation: winner.incarnation, failed_attempts: length(failures), terminals: terminals }
+    match run_homogeneity(attempts: attempts) {
+      MixedDesiredDigest =>
+        ServingStandingUnobserved { cause: "the attempt list mixes desired_digest values, so it is not one convergence decision and standing is unobserved rather than folded across them" as NonEmptyStr }
+      MixedHost =>
+        ServingStandingUnobserved { cause: "the attempt list mixes heads, so standing is unobserved rather than attributing another host's terminals to this one" as NonEmptyStr }
+      OneRun => {
+        let failures = filter(attempts, a => !attempt_is_serving(a: a))
+        let terminals = map(failures, a => a.terminal)
+        match first(filter(attempts, a => attempt_is_serving(a: a))) {
+          Absent => NotServing { failed_attempts: length(failures), terminals: terminals }
+          Present { value: winner } =>
+            if length(failures) == 0 {
+              ServingOnFirstAttempt { incarnation: winner.incarnation }
+            } else {
+              ServingRecoveredAfterFailures { incarnation: winner.incarnation, failed_attempts: length(failures), terminals: terminals }
+            }
         }
+      }
     }
   }
 }
