@@ -157,17 +157,26 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 //
 //   - #10885 is CLOSED, superseded by #10888. A trigger naming a dead pull request can never be
 //     satisfied by anything, so the obligation had no route to retirement at all.
-//   - #10888 does NOT carry a presence accessor. Its carrier exposes figure lookup, wording coverage
-//     and ceiling refusal, and no route answering mere publication. So had the trigger been repointed
-//     at #10888 - the obvious repair, and the one I was about to make - it would have fired on that
-//     merge and retired this obligation while the accessor still did not exist.
+//   - #10888 did NOT carry a presence accessor when the trigger was rewritten. Its carrier exposed
+//     figure lookup, wording coverage and ceiling refusal, and no route answering mere publication.
+//     So repointing the trigger at #10888 - the obvious repair, and the one about to be made - would
+//     have fired on that merge and retired this obligation with the accessor still absent.
 //
-// SO THE TRIGGER IS THE CAPABILITY: a route on extdeps.colo.types that answers whether a claim
-// carries any published figure, medium-agnostic and direction-agnostic, callable without
-// destructuring. When that route exists this module calls it and this function is deleted. Landing
-// #10888 is necessary for it and is not it. Recorded here rather than in a PR thread, because the
-// next reader of this function needs to know it is owed a home, and needs the trigger to be one
-// that can actually be checked.
+// THE CAPABILITY NOW EXISTS, AND RE-CHECKING RATHER THAN TRUSTING THE PARAGRAPH ABOVE IS WHAT FOUND
+// IT. At #10888 head ad6ca7b9a3 the carrier declares density_claim_contains_figure - medium-agnostic,
+// direction-agnostic, a two-arm test over DensityPublished and DensityUnread. That is precisely the
+// route this trigger names, and it did not exist at the head read one hour earlier. The sentence
+// immediately above was true when written and false by the time it was pushed, which is the hazard a
+// capability-shaped trigger is supposed to survive: it stays checkable against whatever head is
+// current, where a pull-request-shaped one would have been silently wrong in both directions.
+//
+// SO THE TRIGGER IS THE CAPABILITY AND IT IS NOW MET AT THAT HEAD: a route on extdeps.colo.types
+// answering whether a claim carries any published figure, without committing to medium or direction.
+// ON REBASE this function is DELETED and coverage_density_read_count calls density_claim_contains_figure
+// directly. That is the whole disposition - not a rewrite of this predicate against the new arms,
+// which would be the habit repeating a third time in the file that condemns it. Recorded here rather
+// than in a PR thread, because the next reader of this function needs to know it is owed a home, and
+// needs the trigger to be one that can actually be checked.
 fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
   match d {
     DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => true,
