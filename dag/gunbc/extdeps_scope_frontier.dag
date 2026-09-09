@@ -429,6 +429,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/colo/hivelocity.dag",
   "dag/extdeps/colo/interserver.dag",
   "dag/extdeps/colo/iron_mountain.dag",
+  "dag/extdeps/colo/lumen.dag",
   "dag/extdeps/colo/natcoweb.dag",
   "dag/extdeps/colo/netrality.dag",
   "dag/extdeps/colo/qts.dag",

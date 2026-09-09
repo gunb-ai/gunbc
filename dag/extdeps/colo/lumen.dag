@@ -1,6 +1,6 @@
 module extdeps.colo.lumen
 
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed,
@@ -74,12 +74,6 @@ data lumen_weehawken: ColoFacilityRow = ColoFacilityRow {
   region_code: "NJ",
   facility_note: "The 300 JFK Boulevard East building again, which also carries Centersquare EWR2-A,B and the Digital Realty EWR10 entry its own operator now lists as closed. Lumen's registry entry for the building is live as of the read date, so the building outlives one of its operators - which is exactly why this census keys rows on the operator and not on the address.",
 }
-
-data lumen_corridor_facilities: List<ColoFacilityRow> = [
-  lumen_newark_165_halsey,
-  lumen_jersey_city,
-  lumen_weehawken,
-]
 
 // A DENSITY RANGE THAT VARIES BY SITE IS NOT A READING OF ANY SITE. The operator's data-centers
 // page states cabinet power densities of "3kW - 12kW" and names no facility anywhere on the page.

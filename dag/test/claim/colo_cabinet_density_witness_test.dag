@@ -166,6 +166,13 @@ test fn w_a_surveyed_empty_region_is_not_an_unsurveyed_one() -> Bool {
 // answer is derivation, and both counts are now folded from the facility and claim rows themselves,
 // which makes a miscount unwritable rather than merely checkable. This witness stays as the
 // transposition control it always was, and stops being cited as evidence the counts are right.
+//
+// AND IT RANGES OVER THE WHOLE ROSTER RATHER THAN COUNTING IT. This test previously ended with
+// census_regions.length() == 3, which is measure() == measure() over a roster authored in this same
+// repo: the literal's whole content was that nobody had added a region, and adding one correctly
+// would have reddened it. Quantifying the invariant instead - no region in the roster violates the
+// relation - grows with the census rather than fighting it, and reds for a reason rather than for a
+// change.
 fn read_count_or_sentinel(c: RegionCoverage) -> Int {
   match coverage_density_read_count(c: c) {
     Present { value } => value,
@@ -202,5 +209,5 @@ test fn w_a_read_claim_counts_and_an_unread_one_does_not() -> Bool {
 test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bool {
   density_reads_never_exceed_facilities(c: nj_hudson_bergen_essex_corridor)
     && facility_count_or_sentinel(c: nj_hudson_bergen_essex_corridor) > 0
-    && census_regions.length() == 3
+    && census_regions.filter(c => !density_reads_never_exceed_facilities(c: c)).length() == 0
 }
