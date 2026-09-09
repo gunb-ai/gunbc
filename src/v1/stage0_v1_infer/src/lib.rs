@@ -52,6 +52,9 @@ pub mod v1_compiler_infer_items;
 #[path = "../../stage0/src/v1_compiler_infer_occurrence_binding.rs"]
 pub mod v1_compiler_infer_occurrence_binding;
 #[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_infer_resolve.rs"]
+pub mod v1_compiler_infer_resolve;
+#[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_service.rs"]
 pub mod v1_compiler_infer_service;
 #[rustfmt::skip]

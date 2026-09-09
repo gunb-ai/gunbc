@@ -54,8 +54,9 @@ pub use crate::v1_std_core::{
     make_param_node, make_resolved_param_node, make_resource_use_node, make_text_part_node,
     make_transport_node, map_children, no_span, node_name_span, param_node_default_value,
     param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
-    qualified_last_segment, resource_use_name_at, resource_use_resource, string_type,
-    transport_request_body, unit_type, with_optional_cardinality, with_required_cardinality,
+    qualified_last_segment, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
+    resource_use_resource, string_type, transport_request_body, unit_type,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -1874,7 +1875,7 @@ Rc::new(NodeResolveResult {
 })
                                                     } else {
                                                         {
-                                                            let unlisted_diags = if ((masked.clone() && (v1_rt::map_is_empty(&env.source_visible_names.clone()) == false)) && (v1_rt::map_has(&env.source_visible_names.clone(), type_name.clone()) == false)) {
+                                                            let unlisted_diags = if (((masked.clone() && (v1_rt::map_is_empty(&env.source_visible_names.clone()) == false)) && (v1_rt::map_has(&env.source_visible_names.clone(), type_name.clone()) == false)) && (crate::v1_std_core::resolved_node_is_kernel_identity_for_name(n.clone(), type_name.clone()) == false)) {
                                                                 Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnlistedImportUse {
     name: type_name.clone(),
     span: n.span.clone(),

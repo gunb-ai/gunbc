@@ -11,8 +11,10 @@ import tools.multi_module_compile_fixture {
   FixtureSource,
   fixture_source,
   compile_fixture,
-  fixture_has_class
+  fixture_has_class,
+  fixture_rows_of_class
 }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -117,4 +119,108 @@ test fn bare_type_reference_without_import_is_diagnosed() -> Bool {
 test fn the_same_source_with_the_import_line_compiles_clean() -> Bool {
   ubtr_completed_clean(ubtr_run(ubtr_user_with_import_source))
     && !ubtr_diagnosed_as(ubtr_run(ubtr_user_with_import_source), "UnlistedImportUse")
+}
+
+// THE KERNEL-FORMAL ARM. The advisory exists to charge an AUTHORED reference against the
+// referencing module's import list. A call to an imported generic fn resolves the callee's
+// kernel-minted formal node -- span and ident_span both <kernel:N>, inferred TypeVariable, no
+// ident -- as a leaf in the CALLER's masked env, where the name resolves through the ancestry
+// overlay (measured: ancestry_str_bindings carries an N binding whose resolved node is the
+// kernel-span TypeVariable mint, while the caller listed no such name and source_visible_names
+// rightly has no entry for it: the caller's text never mentions N). Measured pre-fix through this
+// exact fixture: one UnlistedImportUse row
+// naming N, the same shape the whole-tree census counted as 19 rows (17x N in
+// test.claim.occurrence_binding_witness_test, 1x P, 1x Subject). No import list can discharge a
+// reference no author wrote, so the emission site (v1.compiler.infer_resolve resolve_node_bounded)
+// guards on v1.std.core resolved_node_is_kernel_identity_for_name -- the one kernel-identity
+// authority, homed beside kernel_span -- and this arm is red exactly when that guard stops
+// holding. The shape below is the minimal reproduction, reached by bisecting
+// test.claim.occurrence_binding_witness_test: the generic CALL is load-bearing (a field chain on
+// a plain param does not reach the leaf), and the nested record pattern is load-bearing (a let
+// binding does not elaborate the formal).
+data ubtr_generic_definer_source: String = "module ubtr.gdef\n\ntype UbtrMonoid<N>\n  = UbtrEmpty\n  | UbtrCons { head: N, tail: UbtrMonoid<N> }\n\ntype UbtrPath<N> {\n  ancestors: UbtrMonoid<N>\n  terminal: N\n}\n\ntype UbtrWrap<N> {\n  containment: UbtrPath<N>\n}\n\ntype UbtrInner<N> {\n  occurrence: UbtrWrap<N>\n  candidate: UbtrWrap<N>\n}\n\ntype UbtrResult<N>\n  = UbtrBound { binding: UbtrInner<N> }\n  | UbtrUnbound\n\nfn ubtr_combine<N>(occurrence: UbtrWrap<N>, candidates: UbtrMonoid<UbtrWrap<N>>) -> UbtrResult<N> {\n  UbtrBound { binding: UbtrInner { occurrence: occurrence, candidate: occurrence } }\n}\n"
+
+data ubtr_generic_user_source: String = "module ubtr.guser\n\nimport ubtr.gdef { UbtrPath, UbtrWrap, UbtrInner, UbtrResult, UbtrBound, UbtrUnbound, UbtrMonoid, UbtrEmpty, UbtrCons, ubtr_combine }\n\nfn ubtr_mk(x: Int) -> UbtrWrap<Int> {\n  UbtrWrap { containment: UbtrPath { ancestors: UbtrEmpty, terminal: x } }\n}\n\nfn ubtr_probe() -> Int {\n  match ubtr_combine(occurrence: ubtr_mk(1), candidates: UbtrEmpty) {\n    UbtrBound { binding: UbtrInner { occurrence: o, candidate: c } } => o.containment.terminal\n    _ => 0\n  }\n}\n"
+
+fn ubtr_generic_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("ubtr/gdef.dag", ubtr_generic_definer_source),
+      fixture_source("ubtr/guser.dag", ubtr_generic_user_source)
+    ],
+    entry: "ubtr/guser.dag"
+  })
+}
+
+// THE OUTCOME IS READ BY MATCHING, as above: FixtureInstrumentRefused means the HARNESS broke, and
+// both refused arms answer false so a ragged manifest fails the claim rather than silently
+// satisfying it. The assertion is the whole class over this fixture, not the formal alone: every
+// name the user's text references is listed or kernel, so zero UnlistedImportUse rows of any name
+// is the correct post-fix state, and a future regression charging a DIFFERENT synthetic name is
+// caught here too.
+test fn imported_generic_call_charges_no_unlisted_import_use_on_the_formal() -> Bool {
+  match ubtr_generic_run() {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_rows_of_class(rows: rows, wanted: "UnlistedImportUse")) == 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// ----------------------------------------------------------------------------------------------
+// FALSE-NEGATIVE CONTROL FOR THE KERNEL-IDENTITY REPAIR (review finding 6, 2026-09-09).
+//
+// The repair arm above proves the selected false-positive rows disappear. It says nothing about
+// the boundary the repair must NOT cross: the repair widens an exclusion, and a widened
+// exclusion that also swallows the nearby true-positive population is the absorbing fallback
+// (DESIGN 5) wearing a repair's clothes. The arm below holds that boundary and names the
+// mutation it exists to red.
+// ----------------------------------------------------------------------------------------------
+
+// ONE SHARED READER: the count of diagnostics of a class charging one subject name. The census
+// row aggregates by (class, subject_name) with an occurrence count, so "exactly one diagnostic
+// naming N" is the sum over the matching rows, never the row count -- a class aggregated
+// differently would read as one row over several occurrences and pass a row-count check while
+// the population it reports on grew.
+fn ubtr_subject_count(rows: List<CompileDiagnosticCensusRow>, wanted: String, subject: String) -> Int {
+  fixture_rows_of_class(rows: rows, wanted: wanted)
+    |> filter(r => r.subject_name == subject)
+    |> fold(init: 0, f: fn(acc, r) { acc + r.count })
+}
+
+// THE NAME-COLLISION CONTROL FOR THE KERNEL-IDENTITY GUARD. The guard suppresses the charge when
+// the RESOLVED BINDING is a kernel-minted identity -- an identity test
+// (v1.std.core resolved_node_is_kernel_identity_for_name: the resolved node's ident span file
+// is the kernel mint's own), never a NAME test. This arm authors the synthetic formal's own
+// spelling (N, the formal the kernel arm above measures) as a REAL declaration in the definer and
+// references it bare with no import edge. The binding is the corpus declaration, whose ident span
+// is the definer's file, so the guard has no purchase and the charge must fire exactly once.
+// MUTATION THIS ARM REDS: broadening the exception from identity-based to name-based -- any
+// spelling test in place of the identity predicate -- silences this row.
+data ubtr_kernel_collision_definer_source: String = "module ubtr.kdef\n\ntype N {\n  code: Int\n}\n"
+
+data ubtr_kernel_collision_user_source: String = "module ubtr.kuser\n\ntype UbtrRowN {\n  payload: N\n  seq: Int\n}\n"
+
+fn ubtr_kernel_collision_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("ubtr/kdef.dag", ubtr_kernel_collision_definer_source),
+      fixture_source("ubtr/kuser.dag", ubtr_kernel_collision_user_source)
+    ],
+    entry: "ubtr/kuser.dag"
+  })
+}
+
+test fn authored_reference_spelled_like_a_kernel_formal_still_charges_unlisted_import_use() -> Bool {
+  match ubtr_kernel_collision_run() {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      ubtr_subject_count(rows: rows, wanted: "UnlistedImportUse", subject: "N") == 1,
+    // A terminal unresolved/ambiguous refusal satisfies the control as well: what must not
+    // happen is the authored occurrence passing SILENTLY (the widened-exclusion state).
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: "UnresolvedType")
+        || fixture_has_class(rows: rows, wanted: "AmbiguousReference")
+        || fixture_has_class(rows: rows, wanted: "UnlistedImportUse"),
+    FixtureInstrumentRefused { cause: c } => false
+  }
 }

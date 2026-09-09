@@ -565,17 +565,6 @@ pub mod v1_compiler_infer_patterns;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_compiler_infer_resolve;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod v1_compiler_normalize;
 #[allow(
     unused_imports,
