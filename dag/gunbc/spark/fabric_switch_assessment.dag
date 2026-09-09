@@ -11,6 +11,7 @@ import std.goal_assessment {
   assess_by_deviations_and_unknowns,
   GoalAssessmentRefused,
 }
+import v2.std.algebra { any }
 import v2.std.cardinality { Never }
 import gunbc.spark.fabric_switch_desired {
   DesiredSpeedUndecidedCause,
@@ -28,9 +29,10 @@ import gunbc.spark.fabric_switch_desired {
 // touch the assessment authority, which is the property that authority was shaped for.
 //
 // THE DESIRED SIDE IS DERIVED AND CAN REFUSE. `fabric_switch_intent()` is undecided whenever the
-// cable plant is, so this module's observe stage inherits that refusal rather than re-deciding it.
-// One cable fault therefore reports in exactly one place and propagates; it is never re-diagnosed
-// by a second matcher that could disagree with the first.
+// cable plant is, so this module's ASSESSMENT inherits that refusal rather than re-deciding it --
+// the observe stage cannot refuse at all, because its refusal type is `Never`. One cable fault
+// therefore reports in exactly one place and propagates; it is never re-diagnosed by a second
+// matcher that could disagree with the first.
 
 // WHAT THE SWITCH ACTUALLY REPORTS, AND THE ADMISSION THAT NOBODY HAS ASKED IT YET.
 //
@@ -260,23 +262,25 @@ fn observed_lane_interfaces(observed: Crs812SwitchObserved) -> List<NonEmptyStr>
   map(observed.lanes, l => l.interface)
 }
 
-fn interface_absent_from(read: List<NonEmptyStr>, needle: NonEmptyStr) -> Bool {
-  list_length(items: flat_map(read, n => if n == needle { [n] } else { [] })) == 0
+fn lane_unknown_if_unread(
+  read: List<NonEmptyStr>,
+  i: Crs812LaneIntent,
+) -> List<Crs812LaneUnknown> {
+  let want = lane_intent_interface(i: i)
+  if any(read, n => n == want) { [] } else { [Crs812LaneUnknown { interface: want }] }
 }
 
+// THE READ INTERFACES ARE PROJECTED ONCE, not once per expected lane. The fold this replaces called
+// `observed_lane_interfaces` INSIDE the loop, so a switch with n intent lanes and m read lanes did
+// n*m work and allocated n copies of the same list to answer one membership question each. DESIGN
+// section 6's standing rule is that a proven cost-shape defect is always fixed regardless of the
+// realized n, because n is not a time-stable fact.
 fn switch_unknowns(
   lanes: List<Crs812LaneIntent>,
   observed: Crs812SwitchObserved,
 ) -> List<Crs812LaneUnknown> {
-  flat_map(lanes, i =>
-    if interface_absent_from(
-      read: observed_lane_interfaces(observed: observed),
-      needle: lane_intent_interface(i: i),
-    ) {
-      [Crs812LaneUnknown { interface: lane_intent_interface(i: i) }]
-    } else {
-      []
-    })
+  let read = observed_lane_interfaces(observed: observed)
+  flat_map(lanes, i => lane_unknown_if_unread(read: read, i: i))
 }
 
 // THERE IS NO ACTUATION STAGE, AND ITS ABSENCE SAYS MORE THAN ITS REFUSAL DID. Writing a RouterOS
@@ -289,7 +293,8 @@ fn switch_unknowns(
 // carried as a VALUE, and the weaker copy was the arm a reader reached first.
 //
 // WHEN A TRANSPORT IS MODELLED it is a new stage over this assessment, not an arm reinstated here.
-// THE ANSWERS OVER AN ESTABLISHED SNAPSHOT, and the refusal is now about the GOAL rather than the
+
+// THE ANSWERS OVER AN ESTABLISHED SNAPSHOT, AND THE REFUSAL IS ABOUT THE GOAL rather than the
 // snapshot. An intent naming no lanes at all is a malformed question -- there is no population to
 // assess -- and that is the ONLY refusal here. An intent that names lanes none of which were read is
 // NOT that: it is a fully unknown assessment, which is indeterminate and reports one unknown per
@@ -339,10 +344,23 @@ fn inspect_fabric_switch(subject: Crs812SwitchSubject) -> Crs812SwitchInspection
 // ================= THE FLEET'S OWN SWITCH =================
 //
 // The readings are `LaneNeverRead` for every lane the intent names, because that is the true state:
-// no RouterOS capture exists. So this entry point refuses at the observe stage today, and it refuses
-// with the ONE fact that is missing -- the interface nobody read -- rather than reporting a switch
-// that trivially agrees because nothing was compared. It becomes a real comparison the moment a
-// capture lands, with no shape change anywhere.
+// no RouterOS capture exists.
+//
+// WHAT THIS ENTRY POINT ANSWERS TODAY, corrected: it does NOT refuse at the observe stage. The
+// observer's refusal type is `Never` -- the readings are declared corpus data, so there is no read
+// that can fail -- and it always establishes a snapshot. The refusal comes from the ASSESSMENT, and
+// its cause is the CABLE plant's: `fabric_switch_intent()` is undecided while the plant has not
+// converged, so there is no desired side to compare against. `the_fleet_switch_cannot_be_assessed_
+// because_its_cables_are_uncoded` is the witness that holds this.
+//
+// The sentence this replaces claimed a refusal "with the ONE fact that is missing -- the interface
+// nobody read", which was true of the shape BEFORE this cut and false of the one in the same diff.
+// It is recorded rather than quietly swapped because it is the exact failure this change exists to
+// delete -- a guarantee carried only by prose, surviving one edit past the code it described -- and
+// it reappeared in this module while that change was being written.
+//
+// Once the cables are recoded the intent decides, and the lanes nobody captured become one UNKNOWN
+// each rather than a refusal, with no shape change anywhere.
 fn fabric_switch_intent_interfaces() -> List<NonEmptyStr> {
   match fabric_switch_intent() {
     SwitchIntentUndecided { cause: c } => []
