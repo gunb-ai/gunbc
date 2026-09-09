@@ -142,15 +142,26 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 //
 // THE DIAGNOSIS ABOVE USED TO SAY THE DEFECT WAS "a Bool arm-matcher over a reusable coproduct". THAT
 // IS WRONG AND IT IS WORTH CORRECTING IN PLACE, because it is the sentence a future reader inherits.
-// A match returning Bool collapses to an equality test only when EVERY ARM OF THE COORDINATE IS
-// NULLARY, so that a complete inhabitant exists to compare against. CabinetDensityClaim's arms both
-// carry payload - DensityPublished { figures } and DensityUnread { obligation } - so there is nothing
-// to compare to without inventing the figures being asked about. For this type the match returning
-// Bool IS the authority shape, not a lazy alternative to one.
+// The shape of an arm-membership question has THREE forms, not two, and the first repair of this note
+// shipped the two-form version:
+//
+//   every arm nullary               -> collapse to an `_eq`. A complete inhabitant exists to name.
+//   payload IS the answer           -> an Optional accessor RETURNING the payload. The very fact that
+//                                      rules out equality - the arm carries fields - is the fact that
+//                                      says return them.
+//   the fact IS the discrimination  -> Bool, with the payload as EVIDENCE FOR the fact rather than the
+//                                      value being requested.
+//
+// CabinetDensityClaim's arms both carry payload, so equality is out either way; the live question is
+// the second branch against the third. This predicate is the third: "did this operator publish a
+// density at all" is a COVERAGE fact, which is what a census roster counts, and the figures are what
+// makes it true rather than what is being asked for. A caller wanting the figures asks the carrier's
+// inventory route for them.
 //
 // SO THE DEFECT IS LOCATION, NOT SHAPE: the question has a home in the carrier and is asked again
-// here. Left as it stood, this note would have sent the next author hunting for a collapse that
-// cannot exist for this type, and they would have discovered that only by trying to write it.
+// here. And the shape is not settled by "the arm carries fields" alone - the earlier wording of this
+// note would have sent the next author to a Bool by default, and the one before that to an `_eq` that
+// cannot be written for this type.
 //
 // WHY IT IS NOT REPAIRED IN THIS CHANGE. The right home is the carrier - a presence-shaped accessor
 // that answers "was anything published" without also committing to a direction and a medium, which
