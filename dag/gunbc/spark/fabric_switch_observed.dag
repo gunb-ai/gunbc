@@ -42,9 +42,11 @@ import gunbc.fleet_intent_network {
 // therefore derives "Supported Cable Speed 50G_2X" and refuses 100G_2X with "Cable speed not
 // enabled" (mstlink status opcode 16).
 //
-// THE COPPER IS NOT THE LIMIT, and this is measured rather than argued. Byte 222 says 6Ah = 106,
-// which at the specification's 250 MBd unit is 26,500 MBd -- 26.5 GBd, exactly right for 50G PAM4
-// per lane. An earlier head of this file said "a nominal rate of 25.5 Gb/s per lane", which was
+// THE COPPER IS NOT THE LIMIT, and the two supports for that are different claims. Byte 222 says
+// 6Ah = 106, which at the specification's 250 MBd unit is 26,500 MBd -- 26.5 GBd, exactly right for
+// 50G PAM4 per lane. That is what the module DECLARES about itself; it is not a measurement of the
+// electrical path. What establishes the path is separate and was observed: both ends link stably
+// when forced to 50G-CR2. Neither alone carries the conclusion, so both are named. An earlier head of this file said "a nominal rate of 25.5 Gb/s per lane", which was
 // `ethtool` rendering byte 140's FFh escape as 255 x 100 and was never a reading. The same copper
 // coded 100GBASE-CR2 links at 100G; the fix is the coding, not the cable.
 
