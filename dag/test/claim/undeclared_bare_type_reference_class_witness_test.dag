@@ -303,12 +303,13 @@ fn ubtr_kernel_collision_run() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
+// The FixtureCompileRefused arm satisfies the control as well as the counted charge: a terminal
+// unresolved/ambiguous refusal is an honest outcome. What must not happen is the authored
+// occurrence passing SILENTLY (the widened-exclusion state).
 test fn authored_reference_spelled_like_a_kernel_formal_still_charges_unlisted_import_use() -> Bool {
   match ubtr_kernel_collision_run() {
     FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       ubtr_subject_count(rows: rows, wanted: "UnlistedImportUse", subject: "N") == 1,
-    // A terminal unresolved/ambiguous refusal satisfies the control as well: what must not
-    // happen is the authored occurrence passing SILENTLY (the widened-exclusion state).
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       fixture_has_class(rows: rows, wanted: "UnresolvedType")
         || fixture_has_class(rows: rows, wanted: "AmbiguousReference")
