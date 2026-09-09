@@ -12,7 +12,7 @@ import extdeps.languages.json.parse {
   parse_json_document, json_object_unique_member, json_document_gap_text,
 }
 import gunbc.harness.harness_reasoning_wire {
-  HarnessServingUnit, Glm53FlashOnVllm,
+  HarnessServingUnit, Glm53FlashOnVllm, DeepseekV4FlashOnVllm,
   harness_unit_model_id, harness_unit_reasoning_field, harness_unit_reasoning_field_aliases,
 }
 import extdeps.llm.anthropic_messages_api {
@@ -419,9 +419,17 @@ fn harness_backend_url_for_address(shape: HarnessWireShape, address: String) -> 
 // the single thing chosen, and the model id is DERIVED from it through the seam, which in turn
 // derives it from the model's own upstream authority.
 //
-// GLM-5.3-Flash AS OF THIS MIGRATION. The DeepSeek arm remains inhabitable and its wire is intact --
-// the seam refuses to guess, so switching back is this row and nothing else.
-data harness_serving_unit: HarnessServingUnit = Glm53FlashOnVllm
+// THE ORDINARY HARNESS TALKS TO DEEPSEEK, BECAUSE THAT IS WHAT THE PRODUCTION ROUTE SERVES. This row
+// briefly read Glm53FlashOnVllm while the pair route this harness reaches was restored to DeepSeek --
+// so the global selector carried a canary experiment, and every ordinary harness action would have
+// encoded GLM's reasoning kwargs, effort key and tool parser into requests aimed at an endpoint
+// serving DeepSeek from an image measured not to register GLM at all.
+//
+// A CANARY IS NOT A DEFAULT. The GLM arm is reached through gunbc.spark.glm_canary_converge, which
+// names its own host, port and alias together; a caller that wants it selects that binding explicitly
+// rather than inheriting it from a row every other caller also reads. Making the one global selector
+// carry an experiment is how an experiment becomes production without anyone deciding it should.
+data harness_serving_unit: HarnessServingUnit = DeepseekV4FlashOnVllm
 
 data harness_engine_model: String = harness_unit_model_id(unit: harness_serving_unit) as String
 
