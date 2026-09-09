@@ -212,14 +212,24 @@ type GoalInspection<Subject, Goal, ObservationRequest, Observed, Evidence, Devia
 // because it is what it must go and read. What it must not receive is the DESIRE, because an
 // observation shaped by the hope cannot falsify it.
 //
-// THE ASSESSOR RECEIVES THE SUBJECT FOR THE SAME REASON: a refusal cause that has to name what it
-// could not assess should not have to be handed the identity through a closure.
+// THE ASSESSOR DOES NOT RECEIVE THE SUBJECT, and the asymmetry is deliberate rather than an
+// oversight. The observer needs it because it must go and read that subject -- gunbc.repo_ruleset's
+// observer builds its request path from `subject.owner` and `subject.name`, which is the consumer
+// that earns the parameter. An assessor has no such use: it compares a goal against a snapshot, and
+// the identity it would want for a located refusal is already carried by `GoalInspection` in BOTH
+// arms, so taking it again would be a second copy of a fact the result already holds.
+//
+// AN EARLIER CUT DID PASS IT, with a sentence here claiming a refusal cause should not have to
+// reach the identity through a closure. No assessor in the corpus read it -- five bindings, five
+// signatures, zero uses -- so the parameter was section 3c dangling and the sentence asserted a use
+// that did not exist. Recorded rather than silently reverted: this module's subject is prose
+// outliving the code, and this is where it recurred.
 fn inspect_goal<Subject, Goal, ObservationRequest, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal>(
   subject: Subject,
   goal: Goal,
   request: ObservationRequest,
   observe: fn(Subject, ObservationRequest) -> ObservationAttempt<Observed, ObserveRefusal>,
-  assess: fn(Subject, Goal, Observed) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
+  assess: fn(Goal, Observed) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
 ) -> GoalInspection<Subject, Goal, ObservationRequest, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal> {
   match observe(subject, request) {
     ObservationRefused { cause: cause } => GoalObservationRefused {
@@ -233,7 +243,7 @@ fn inspect_goal<Subject, Goal, ObservationRequest, Observed, Evidence, Deviation
       goal: goal,
       request: request,
       observed: observed,
-      assessment: assess(subject, goal, observed),
+      assessment: assess(goal, observed),
     }
   }
 }

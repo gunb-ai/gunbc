@@ -36,15 +36,8 @@ import gunbc.repo_ruleset {
   render_unknowns,
   ruleset_assess,
   desired_repo_ruleset_goal,
-  gunbc_passing_ci_ruleset_id,
 }
-import gunbc.repository { gunbc_repository }
-import extdeps.github.github { Repository }
 
-// THE SUBJECT THESE CLAIMS ARE ABOUT. It is the production one rather than a fixture: the assessor
-// now receives the subject, and a witness that handed it a different repository would be asserting
-// over a subject no production path assesses.
-data witness_subject: Repository = gunbc_repository
 
 // The observation is fixed on every field the claims below do not vary, so a verdict can never be
 // borrowed from another arm. `name` is the desired one and rule_types are the declared list, so
@@ -89,7 +82,6 @@ fn observed_clean(roster: BypassActorRosterObservation) -> RulesetObservation {
 // GoalIndeterminate with an empty known_deviations has reproduced the original defect exactly.
 test fn an_unreadable_roster_is_indeterminate_and_still_carries_the_proved_drift() -> Bool {
   match ruleset_assess(
-    subject: witness_subject,
     goal: desired_repo_ruleset_goal(),
     observed: fixture_observed(
       name: "drifted-name",
@@ -115,7 +107,6 @@ test fn an_unreadable_roster_is_indeterminate_and_still_carries_the_proved_drift
 // unknown left the divergence coproduct rather than staying in it as one more variant.
 test fn an_observed_live_bypass_actor_is_a_deviation_and_not_an_unknown() -> Bool {
   match ruleset_assess(
-    subject: witness_subject,
     goal: desired_repo_ruleset_goal(),
     observed: observed_clean(roster: BypassRosterObserved {
       actors: [RulesetBypassActor { actor_type: "Team", actor_id: 7, bypass_mode: "always" }],
@@ -134,7 +125,6 @@ test fn an_observed_live_bypass_actor_is_a_deviation_and_not_an_unknown() -> Boo
 // write was held. With no writer there is one representation.
 test fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool {
   match ruleset_assess(
-    subject: witness_subject,
     goal: desired_repo_ruleset_goal(),
     observed: fixture_observed(
       name: gunbc_passing_ci_ruleset_name,
@@ -156,7 +146,7 @@ test fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool {
 // the same value. Without this claim every claim above is satisfied by an assessor that refuses
 // everything identically.
 test fn a_clean_observed_ruleset_satisfies_the_goal() -> Bool {
-  match ruleset_assess(subject: witness_subject, goal: desired_repo_ruleset_goal(), observed: observed_clean(roster: BypassRosterObserved { actors: [] })) {
+  match ruleset_assess(goal: desired_repo_ruleset_goal(), observed: observed_clean(roster: BypassRosterObserved { actors: [] })) {
     GoalSatisfied { evidence: e } => e.writes_applied == 0 && e.removals_applied == 0
     _ => false
   }

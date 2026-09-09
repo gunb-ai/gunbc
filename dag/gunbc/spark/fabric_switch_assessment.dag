@@ -303,7 +303,6 @@ fn switch_unknowns(
 // expected lane. The cut before this one called the second case `SwitchHoldsNoLanes` and refused,
 // which reported a declared roster as an absent one.
 fn assess_fabric_switch(
-  switch: NonEmptyStr,
   goal: Crs812SwitchIntent,
   observed: Crs812SwitchObserved,
 ) -> GoalAssessment<Crs812SwitchReceipt, Crs812LaneDivergence, Crs812LaneUnknown, Crs812SwitchAssessRefusal> {

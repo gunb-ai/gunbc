@@ -35,7 +35,7 @@ fn fixture_observe(_: FixtureSubject, readable: Bool) -> ObservationAttempt<Fixt
 
 // The assessor answers AGREEMENT through the mint rather than by writing the arm, so this fixture
 // exercises the same construction every real binding uses.
-fn fixture_assess(_: FixtureSubject, goal: FixtureGoal, _: FixtureObserved) -> GoalAssessment<FixtureEvidence, FixtureDeviation, FixtureUnknownFact, FixtureAssessRefusal> {
+fn fixture_assess(goal: FixtureGoal, _: FixtureObserved) -> GoalAssessment<FixtureEvidence, FixtureDeviation, FixtureUnknownFact, FixtureAssessRefusal> {
   assess_by_deviations(evidence: FixtureEvidence { field: "unchanged" }, deviations: [])
 }
 

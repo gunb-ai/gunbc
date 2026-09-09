@@ -1227,7 +1227,6 @@ fn observation_unknowns(observation: RulesetObservation) -> List<RulesetUnknown>
 // Deviations and unknowns go to the mint together and the mint decides the arm: unknowns outrank
 // deviations, and the deviations survive into GoalIndeterminate rather than being dropped.
 fn ruleset_assess(
-  subject: Repository,
   goal: RepositoryRulesetGoal,
   observed: RulesetObservation,
 ) -> GoalAssessment<RepoRulesetConvergedEvidence, RulesetDivergence, RulesetUnknown, Never> {

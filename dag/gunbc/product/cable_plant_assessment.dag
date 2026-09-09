@@ -245,7 +245,6 @@ fn plant_unknowns(observed: CablePlantObserved) -> List<CableLegUnknown> {
 }
 
 fn assess_cable_plant(
-  plant: NonEmptyStr,
   goal: LinkMode,
   observed: CablePlantObserved,
 ) -> GoalAssessment<CablePlantReceipt, CableLegOutcome, CableLegUnknown, CablePlantAssessRefusal> {
