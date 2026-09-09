@@ -28,7 +28,7 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
 }
-import extdeps.clock { Clock }
+import extdeps.clock { Clock, clock_timestamp_to_unix_secs, ClockTimestampRead, ClockTimestampObserved, ClockTimestampRefused }
 import extdeps.github.pagination {
   github_first_page_cursor,
   github_listing_subject,
@@ -371,13 +371,26 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
 }
 
 type DurationResult
-  = DurationComputed { end: Timestamp, start: Timestamp }
+  = DurationComputed { duration_seconds: Int }
   | DurationInsufficientData
-  | DurationInconsistentTimestamps { end: Timestamp, start: Timestamp }
+  | DurationInconsistentTimestamps
 
 fn timestamp_diff_seconds(end: Timestamp, start: Timestamp) -> DurationResult {
-  if end < start { DurationInconsistentTimestamps { end: end, start: start } }
-  else { DurationComputed { end: end, start: start } }
+  let end_read = clock_timestamp_to_unix_secs(timestamp: end)
+  let start_read = clock_timestamp_to_unix_secs(timestamp: start)
+  match end_read {
+    ClockTimestampRefused { detail: _ } => DurationInsufficientData
+    ClockTimestampObserved { epoch_secs: end_secs } =>
+      match start_read {
+        ClockTimestampRefused { detail: _ } => DurationInsufficientData
+        ClockTimestampObserved { epoch_secs: start_secs } =>
+          if end_secs < start_secs {
+            DurationInconsistentTimestamps
+          } else {
+            DurationComputed { duration_seconds: end_secs - start_secs }
+          }
+      }
+  }
 }
 
 fn dead_time_under_hold_seconds(prior_jobs_completed_at: Timestamp?, terminal_laggard_started_at: Timestamp?) -> DurationResult {

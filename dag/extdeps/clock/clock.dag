@@ -68,6 +68,22 @@ service Clock {
       nonzero => String "date offset failed"
     }
   }
+
+  // CONVERT an ISO-8601 timestamp to Unix epoch seconds (as string).
+  // A wrapper function (not a transport coercion) parses the string with
+  // proper refusal — see clock_unix_timestamp_read. The operation output
+  // stays String because putting a decode inside the transport layer would
+  // have no way to refuse a non-numeric stdout.
+  operation TimestampToUnixSecs {
+    input { timestamp: Timestamp }
+    output { unix_secs: String from "stdout" }
+    readonly
+    transport shell { argv: ["date", "-u", "-d", "{timestamp}", "+%s"] }
+    exit {
+      0 => Unit
+      nonzero => String "date conversion failed"
+    }
+  }
 }
 
 // UnixMillis exists because a throttle needs to ANSWER `has 20 hours passed`, and answering it from Clock.Now is not possible without a date parser: Timestamp is `String` in std.types, so Clock.Now's apparent typing is an alias over rendered ISO-8601 text, not a magnitude. UnixSecs was no better for a different reason — it declared its output as String, so the one operation in the tree that produces a number produced it as text and every consumer would have owned the decode. The output is therefore EpochMs (std.types, `Int where range(min: 0)`), which is the existing magnitude carrier for exactly this quantity, so no new time type is minted.
@@ -93,5 +109,26 @@ fn clock_unix_millis_read() -> ClockUnixMillisRead {
       } else {
         ClockUnixMillisObserved { millis: n }
       }
+  }
+}
+// SAME OUTPUT-SHAPE DISCIPLINE AS clock_unix_millis_read: the operation's
+// output stays String, and this typed wrapper parses it with proper refusal.
+// The caller receives Int (seconds since epoch, which can legitimately be 0
+// or any positive value) — no EpochMs, because UnixSecs is seconds not ms
+// and minting a Seconds carrier here would be a new type only a few lines
+// above an existing surface that uses bare Int.
+type ClockTimestampRead
+  = ClockTimestampObserved { epoch_secs: Int }
+  | ClockTimestampRefused { detail: String }
+
+fn clock_timestamp_to_unix_secs(timestamp: Timestamp) -> ClockTimestampRead {
+  let result = Clock.TimestampToUnixSecs(timestamp: timestamp)
+  match parse_int(s: trim(result.unix_secs)) {
+    Absent =>
+      ClockTimestampRefused {
+        detail: concat("clock timestamp conversion is not an integer: ", result.unix_secs)
+      }
+    Present { value: n } =>
+      ClockTimestampObserved { epoch_secs: n }
   }
 }
