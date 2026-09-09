@@ -1,0 +1,857 @@
+module gunbc.spark.glm_canary_converge
+
+import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value }
+import std.algebra { trim }
+import product.placement_supply { HostIdentity }
+import extdeps.zhipu.glm_5_3_flash {
+  glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_reasoning_parser,
+  glm_5_3_flash_vllm_tool_call_parser,
+}
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.serving_arm {
+  ServingCheckpoint, ServingRuntime, ServingTopology,
+  Glm53Exl3_205, Gitcommit90Sm121Exl3, SingleSparkTp1,
+  ServingCheckpointRow, ServingRuntimeRow, ReasoningResponseProjection, ParsedReasoningField,
+  serving_topology_rank_count,
+  ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
+  serving_arm_admits, serving_checkpoint_row, serving_runtime_row,
+}
+import gunbc.spark.model_snapshot_acquisition {
+  ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotRole, SnapshotSeed,
+  SnapshotPlacement, LocalDirectoryPlacement, HubCachePlacement,
+}
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SparkMaterializeOutcome, SparkMaterialized, SparkMaterializeUnpinned,
+  SparkMaterializeRefused,
+  SnapshotAcquisitionExecutor, ContainerizedCli,
+  spark_materialize_member,
+  SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
+}
+import gunbc.artifact_acquisition {
+  AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused,
+  acquisition_refusal_text, acquisition_succeeded,
+}
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.spark.fabric_reach {
+  SparkReachPath, ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown,
+  observe_executor_reach, spark_reach_path_wire,
+}
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
+  fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
+
+// THE CONVERGENCE ROOT FOR THE GLM CANARY -- THE PIECE THAT DID NOT EXIST.
+//
+// WHAT WAS MISSING AND WHY IT WAS INVISIBLE. gunbc.spark.model_snapshot_materialize landed as a
+// typed, compiling, witnessed materialiser with ZERO CALLERS. Its intended consumer,
+// gunbc.spark.pair_serving_apply, carried an annotation saying "the acquisition is sequenced ahead
+// of it by the caller" -- and no caller was ever written. A grep for the module or its entry
+// function across the whole corpus returned exactly one hit: that comment. So the corpus asserted a
+// composition in prose that nothing performed, which is the invented-entailment failure applied to
+// an annotation: both halves checked out (the materialiser is real; the apply is real) and only the
+// arrow between them was missing.
+//
+// IT SURVIVED REVIEW BECAUSE COMPONENT QUALITY WAS READ AS INTEGRATION COMPLETENESS. The parts
+// compiled clean, carried witnesses, and were individually well shaped -- and that green signal was
+// taken for a route. The structural witness nobody had produced is the one this module exists to
+// make possible: ONE OPERATOR-REACHABLE ROOT that consumes an exact realization arm, runs the typed
+// materialiser, and reports a read-back receipt.
+//
+// THE CANARY ARM IS EXACT AND IS NOT THE PRODUCTION TARGET. Native FP8 at TP4 stays a separate arm;
+// this one must never silently answer for it. They differ in every axis that matters -- checkpoint
+// bytes, loader, quantisation, footprint, runtime registry, parser availability, response schema and
+// rank count -- which is precisely why gunbc.spark.serving_arm exists.
+
+// THE CONTAINER IS PART OF THE ARM BECAUSE THE ARM IS WHAT IS SERVED, and observing whether this arm
+// is running means asking a NAMED unit rather than guessing. Measured on the fleet 2026-09-08: the
+// canary's container is `glm-canary`, distinct from the served-model alias
+// `glm-5.3-flash-exl3-canary`, which is what the OpenAI surface reports. Deriving one from the other
+// would be a nickname (DESIGN section 3) and would break the moment either is renamed.
+//
+// THIS ANNOTATION SAT INSIDE THE FIELD LIST AND THE PARSER REFUSED THE WHOLE FILE. DESIGN section 4c
+// admits annotations only as standalone blocks attached to MODULE-SCOPE declarations; a comment among
+// fields is a body annotation and has no route in. The refusal named an offset three hundred lines
+// away, in a function this change never touched, because a heads-only parse loses its place and
+// reports where it finally gives up -- which is why the fix is at the definition and not there.
+type GlmCanaryArm {
+  checkpoint: ServingCheckpoint
+  runtime: ServingRuntime
+  topology: ServingTopology
+  host: HostIdentity
+  served_model_alias: NonEmptyStr
+  max_model_len: TokenCount
+  max_num_seqs: SeqBound
+  max_num_batched_tokens: BatchedTokenPolicy
+  speculation: SpeculationPolicy
+  port: Nat
+  container_name: NonEmptyStr
+}
+
+// THE SEQUENCE BOUND IS DECLARED AS WHAT IT IS. The engine reported 9.71x maximum concurrency at
+// full context for this arm, and that figure is KV CAPACITY FOR FULL-WINDOW REQUESTS -- not a safe
+// scheduler population, which also depends on activation peaks, mixed workloads and unified-memory
+// behaviour. Reading it as a measured max-num-seqs would repeat the exact error this migration
+// removed when it stopped carrying DeepSeek's 32.
+type SeqBound
+  = ExperimentalOperatorBound { count: Nat, basis: NonEmptyStr }
+  | MeasuredFromLaunchLine { count: Nat, basis: NonEmptyStr }
+
+// SPELLING A DEFAULT IS NOT A NO-OP. An operator ruling on 2026-09-08 set the canary's batched-token
+// limit explicitly. Even where the value equals what the engine would have chosen, authoring it
+// converts an ambient runtime outcome into a decision somebody made and can be held to.
+type BatchedTokenPolicy
+  = EngineDefault
+  | ExplicitBatchedTokenLimit { tokens: TokenCount, basis: NonEmptyStr }
+
+type SpeculationPolicy
+  = SpeculationDisabled { basis: NonEmptyStr }
+  | SpeculationMtp { draft_tokens: Nat, basis: NonEmptyStr }
+
+data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
+  checkpoint: Glm53Exl3_205,
+  runtime: Gitcommit90Sm121Exl3,
+  topology: SingleSparkTp1,
+  host: operator_host_srv9,
+  served_model_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
+  max_model_len: token_count(count: 262144),
+  max_num_seqs: ExperimentalOperatorBound {
+    count: 1,
+    basis: "operator experimental bound for first boot, 2026-09-08: nothing derives it. The engine's reported 9.71x concurrency at 262,144 tokens is KV capacity for full-window requests, NOT a safe scheduler population, and is deliberately not used as this figure's basis" as NonEmptyStr,
+  },
+  max_num_batched_tokens: ExplicitBatchedTokenLimit {
+    tokens: token_count(count: 2048),
+    basis: "operator ruling 2026-09-08, and it is the DESIRED value rather than the running one. A revision of this row changed it to the observed 7168 so the rendered line would agree with the live container, and said so in its own basis -- which is observed state replacing desired state, and it manufactures no-drift by editing the thing drift is measured against. The engine is running 7168; this row says 2048; the difference is a DRIFT to be reported, and a replacement is the only thing that resolves it. Superseding 2048 needs an explicit ruling that deletes this authority, not a convergence run that wants a quiet receipt" as NonEmptyStr,
+  },
+  speculation: SpeculationDisabled {
+    basis: "first boot removes a second execution variable: the goal is model/runtime/harness compatibility, not headline throughput. The runtime registers Glm5NextMTPModel, so MTP speculation is available once the base arm is established" as NonEmptyStr,
+  },
+  port: 30001,
+  container_name: "glm-canary" as NonEmptyStr,
+}
+
+// THE SNAPSHOT THE CANARY ARM ACQUIRES, derived from the arm's checkpoint row rather than spelled
+// again here -- so the revision the materialiser fetches and the revision the launch line names
+// cannot drift apart.
+fn glm_canary_snapshot(arm: GlmCanaryArm) -> ModelSnapshotDesired? {
+  match serving_checkpoint_row(c: arm.checkpoint) {
+    Absent => none
+    Present { value: row } => Present { value: ModelSnapshotPinned {
+      identity: arm.served_model_alias,
+      repo: row.repo,
+      revision: row.revision,
+      placement: row.placement,
+      revision_provenance: row.provenance,
+    } }
+  }
+}
+
+// ── THE ROOT ───────────────────────────────────────────────────────────────────────────────────
+
+type GlmCanaryConvergence
+  = CanaryArmRefused { cause: NonEmptyStr }
+  | CanaryMaterializeRefused { cause: NonEmptyStr }
+  | CanaryMaterialized { outcome: AcquisitionOutcome, already_present: Bool, serve: ServeAgreement }
+
+// THE PLACEMENT IS THE CANARY'S OWN, AND ADOPTING IT IS THE POINT. The first modelled run reported
+// this snapshot ABSENT and moved to fetch it, because the subject computed a Hub-cache path while the
+// bytes sat in the `local_dir` the community recipe uses -- on the same disk, serving a live engine.
+// The arm now declares that placement, so verification runs against the tree that exists rather than
+// one the model wished for.
+//
+// ADOPTING ALREADY-PRESENT STATE IS THE POINT OF THE FIRST RERUN, NOT AN OPTIMISATION. The canary's
+// 85 GB were fetched by hand before this root existed. A convergence that could only reach the
+// desired state by re-transferring them would be asserting ownership it does not have; the
+// materialiser's first observation must find the verified snapshot and return AlreadyPresent with no
+// mutation. If it cannot adopt state a human put there, THAT is the next real defect, and this root
+// is what makes the question askable.
+fn glm_canary_converge(ctx: SparkMaterializeContext) -> GlmCanaryConvergence {
+  let arm = glm_canary_arm
+  match serving_arm_admits(checkpoint: arm.checkpoint, runtime: arm.runtime, topology: arm.topology) {
+    ServingArmRefused { cause: c } => CanaryArmRefused { cause: c }
+    ServingArmAdmitted =>
+      match glm_canary_snapshot(arm: arm) {
+        Absent => CanaryMaterializeRefused { cause: "the canary arm's checkpoint has no modelled row, so no snapshot subject exists to acquire" as NonEmptyStr }
+        Present { value: snapshot } =>
+          match spark_materialize_member(ctx: ctx, role: SnapshotSeed, snapshot: snapshot) {
+            SparkMaterializeRefused { host: _, cause: c } =>
+              CanaryMaterializeRefused { cause: c }
+            SparkMaterializeUnpinned { host: _ } =>
+              CanaryMaterializeRefused { cause: "the canary snapshot carries no pinned revision" as NonEmptyStr }
+            SparkMaterialized { host: _, outcome: o } =>
+              CanaryMaterialized {
+                outcome: o,
+                already_present: glm_canary_outcome_already_present(o: o),
+                serve: glm_canary_observe_serve(ctx: ctx, arm: arm),
+              }
+          }
+      }
+  }
+}
+
+fn glm_canary_outcome_already_present(o: AcquisitionOutcome) -> Bool {
+  match o {
+    AcquisitionAlreadyPresent { identity: _, install_path: _ } => true
+    AcquisitionFetched { identity: _, install_path: _, source: _ } => false
+    AcquisitionRefused { cause: _ } => false
+  }
+}
+
+fn glm_canary_convergence_text(v: GlmCanaryConvergence) -> String {
+  match v {
+    CanaryArmRefused { cause: c } => join(["canary arm refused: ", c as String], "")
+    CanaryMaterializeRefused { cause: c } => join(["canary materialize refused: ", c as String], "")
+    CanaryMaterialized { outcome: o, already_present: p } =>
+      match o {
+        AcquisitionAlreadyPresent { identity: i, install_path: path } =>
+          join(["adopted already-present snapshot for ", i as String, " at ", path as String, " with no mutation"], "")
+        AcquisitionFetched { identity: i, install_path: path, source: s } =>
+          join(["materialized ", i as String, " at ", path as String, " from ", s.identity as String], "")
+        AcquisitionRefused { cause: cause } =>
+          join(["acquisition refused: ", acquisition_refusal_text(cause: cause)], "")
+      }
+  }
+}
+
+// THE ARM'S SERVING-UNIT PROJECTION, so a harness asking "what is this unit's reasoning wire" gets
+// the RUNTIME's answer rather than the model family's. This is the join the harness seam was
+// missing: its GLM arm answered from the model authority and was therefore wrong about the member
+// name for every runtime but the one it was written against.
+fn glm_canary_reasoning_projection(arm: GlmCanaryArm) -> ReasoningResponseProjection? {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => none
+    Present { value: row } => Present { value: row.reasoning_projection }
+  }
+}
+
+
+// THE ACQUISITION EXECUTOR IS THE ARM'S OWN RUNTIME IMAGE, NOT THE SERVING CONTAINER. No Spark host
+// carries an `hf` executable -- measured on every member reached 2026-09-08 -- so acquisition runs the
+// CLI inside a container. It must be THIS ARM'S image rather than whatever is already running: on the
+// canary host the running production container is the DeepSeek unit, and during a first acquisition
+// there may be no serving container at all. Weights are fetched BEFORE serving exists.
+//
+// THE MOUNT IS THE PLACEMENT'S HOST PATH, so the CLI writes to and verifies exactly the tree the arm
+// declares, and the container path is where that tree appears to the CLI. Both come from the one
+// placement value rather than being spelled beside it.
+fn glm_canary_acquisition_executor(arm: GlmCanaryArm) -> SnapshotAcquisitionExecutor {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => ContainerizedCli {
+      image: "(unmodelled runtime)" as NonEmptyStr,
+      cli_path: "/nonexistent" as NonEmptyStr,
+      host_path: "/nonexistent" as NonEmptyStr,
+      container_path: "/out" as NonEmptyStr,
+    }
+    Present { value: rrow } => ContainerizedCli {
+      image: rrow.image_reference,
+      cli_path: rrow.hub_cli_path,
+      host_path: glm_canary_host_path(arm: arm),
+      container_path: "/out" as NonEmptyStr,
+    }
+  }
+}
+
+fn glm_canary_host_path(arm: GlmCanaryArm) -> NonEmptyStr {
+  match serving_checkpoint_row(c: arm.checkpoint) {
+    Absent => "/nonexistent" as NonEmptyStr
+    Present { value: crow } =>
+      match crow.placement {
+        LocalDirectoryPlacement { host_path: p } => p
+        HubCachePlacement { cache_root: root } => root
+      }
+  }
+}
+
+// ── THE CANARY'S OWN LAUNCH LINE ───────────────────────────────────────────────────────────────
+//
+// THE CANARY RENDERS ITS OWN ARGV RATHER THAN BENDING THE PRODUCTION ONE, and that is the serving-arm
+// decomposition doing its job rather than a convenience. gunbc.spark.pair_serving_realization renders
+// a serve line for a DIFFERENT ARM: the DeepSeek checkpoint, on the DeepSeek image, at tensor-parallel
+// four, with no quantization flag and no reasoning parser. Widening it with conditionals until it
+// could also emit this arm would put two realizations in one renderer and let a change for one
+// silently alter the other -- which is exactly what happened when a served-model name was pointed at
+// GLM while the image stayed DeepSeek.
+//
+// EVERY FLAG COMES FROM THE ARM OR ITS ROWS. Nothing here is a literal that could drift from the
+// carrier the operator reads: the quantization from the checkpoint row, and the KV dtype and both
+// parser names from the model authority, with the window and bounds from the arm's own decision
+// fields.
+//
+// THE PARSER NAMES ARE MODEL FACTS AND THEIR AVAILABILITY IS A RUNTIME FACT, which is why they are not
+// read off the runtime row. `glm45` and `glm47` are what upstream's recipe prescribes FOR THIS MODEL;
+// whether a given engine build SHIPS those parsers is a different question, and it is the one
+// gunbc.spark.serving_arm answers -- the DeepSeek image carries the glm47 tool parser and no GLM
+// reasoning parser at all. Naming the parser from the runtime row would have made a build's inventory
+// answer for the model's prescription. The runtime row is still consulted, and its EXISTENCE is the
+// guard: a runtime with no row renders no launch line.
+//
+// THE ORDER IS THE RUNNING CANARY'S ORDER, AND THAT IS DELIBERATE RATHER THAN INCIDENTAL. Read back
+// from the live container 2026-09-08, the engine's argv places --max-num-batched-tokens between
+// --max-num-seqs and --reasoning-parser, and this renderer emits it there. vLLM does not care, so
+// nothing about the SERVER depends on it -- but a receipt that compares rendered argv against the
+// argv actually running can then compare sequences rather than sets, and a set comparison cannot tell
+// a flag that moved from a flag that changed value. Matching the order is what makes the comparison
+// able to fail for the right reason.
+//
+// WHAT THIS RENDERER IS FOR IS AGREEMENT BEFORE ACTUATION. The canary was launched by hand and has
+// served sixteen hours; the model's job is first to REPRODUCE that line, not to replace it. Only once
+// rendered and running agree is a convergence that restarts the engine an operation with a known
+// outcome rather than a twelve-minute experiment on a healthy server.
+fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
+  match serving_checkpoint_row(c: arm.checkpoint) {
+    Absent => none
+    Present { value: crow } =>
+      match serving_runtime_row(r: arm.runtime) {
+        Absent => none
+        Present { value: _ } => Present { value: concat(
+          concat(
+            [
+              "serve", "/model",
+              "--served-model-name", arm.served_model_alias as String,
+              "--quantization", crow.quantization_wire as String,
+              "--tensor-parallel-size", to_string(serving_topology_rank_count(t: arm.topology)),
+              "--kv-cache-dtype", glm_5_3_flash_vllm_kv_cache_dtype_wire as String,
+              "--max-model-len", to_string(token_count_value(t: arm.max_model_len)),
+              "--max-num-seqs", to_string(glm_canary_seq_bound(b: arm.max_num_seqs)),
+            ],
+            glm_canary_batched_token_argv(p: arm.max_num_batched_tokens),
+          ),
+          concat(
+            [
+              "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
+              "--tool-call-parser", glm_5_3_flash_vllm_tool_call_parser as String,
+              "--enable-auto-tool-choice",
+              "--no-enable-flashinfer-autotune",
+              "--host", "0.0.0.0",
+              "--port", to_string(arm.port),
+            ],
+            glm_canary_speculation_argv(p: arm.speculation),
+          )) }
+      }
+  }
+}
+
+fn glm_canary_seq_bound(b: SeqBound) -> Nat {
+  match b {
+    ExperimentalOperatorBound { count: n, basis: _ } => n
+    MeasuredFromLaunchLine { count: n, basis: _ } => n
+  }
+}
+
+// AN ENGINE DEFAULT EMITS NOTHING, so "the engine chose it" and "we chose the engine's value" stay
+// distinguishable on the wire as well as in the carrier.
+fn glm_canary_batched_token_argv(p: BatchedTokenPolicy) -> List<String> {
+  match p {
+    EngineDefault => []
+    ExplicitBatchedTokenLimit { tokens: t, basis: _ } =>
+      ["--max-num-batched-tokens", to_string(token_count_value(t: t))]
+  }
+}
+
+fn glm_canary_speculation_argv(p: SpeculationPolicy) -> List<String> {
+  match p {
+    SpeculationDisabled { basis: _ } => []
+    SpeculationMtp { draft_tokens: n, basis: _ } =>
+      ["--speculative-config", join(["{\"method\":\"mtp\",\"num_speculative_tokens\":", to_string(n), "}"], "")]
+  }
+}
+
+// ── IS THE ARM ACTUALLY SERVING ────────────────────────────────────────────────────────────────
+//
+// CONVERGENCE USED TO MEAN "THE WEIGHTS ARE PRESENT", AND THAT WAS AN OVERCLAIM. glm_canary_converged
+// answered true whenever acquisition succeeded, so a receipt could say the canary had converged while
+// nothing was serving at all, or while something ELSE was serving from the same bytes. Acquisition is
+// a precondition of the arm, not the arm.
+//
+// THIS STAGE READS AND NEVER ACTS, deliberately. It asks the target what its container was launched
+// with and compares that to what this arm renders; it does not start, stop or replace anything. The
+// asymmetry is the point: agreement is a fact worth recording automatically, while DISAGREEMENT is a
+// decision about a running server -- twelve minutes of downtime on this arm -- and belongs to an
+// operator with the diff in front of them. A convergence that silently restarted an engine on finding
+// a flag it did not expect would be the absorbing fallback DESIGN section 5 forbids, at the worst
+// possible grain.
+//
+// SEQUENCE COMPARISON, NOT SET COMPARISON, and the renderer emits the running order for exactly this
+// reason: a set comparison cannot distinguish a flag that MOVED from a flag whose VALUE changed, and
+// those have different remedies.
+//
+// THIS ARM IS EXPECTED TO REPORT DRIFT TODAY, AND THAT IS THE HONEST STATE. The desired batch budget
+// is the operator's 2048; the running engine carries 7168. An earlier revision made these agree by
+// changing the DESIRED value to the observed one -- which produces a green receipt by editing the
+// thing drift is measured against, and leaves no record that the fleet is running something nobody
+// selected. A convergence that reports ServeDiffers here is working; a convergence that reports
+// agreement would mean the model had been bent to match reality again.
+type ServeAgreement
+  = ServeAgreed
+  | ServeDiffers { running: String }
+  | ServeNotRunning { detail: String }
+  | ServeUnreadable { cause: String }
+
+// A GO TEMPLATE CANNOT BE WRITTEN AS A .dag STRING LITERAL, and the compiler said so twice before this
+// shape was reached. String literals here INTERPOLATE `{name}`, so `{{range .Args}}` is a literal brace
+// followed by an interpolation of `range` -- which refused as `undefined variable range`, and `end`
+// beside it. The first attempt failed harder and less legibly: escaped quotes sat inside that
+// interpolation and broke the string, surfacing as an unterminated function body three hundred lines
+// away at end of file.
+//
+// SO THE BRACES ARE DATA, ASSEMBLED RATHER THAN SPELLED. A brace followed by a non-identifier is left
+// literal -- which is why the JSON in the speculation flag above has always resolved -- but a brace
+// followed by a template keyword is not, and no escape for it exists here. Building the template from
+// declared brace constants is the honest way to emit a foreign syntax whose delimiters collide with the
+// host language's, and it keeps the collision visible instead of hiding it in a literal that only
+// happens to parse.
+data template_open_brace: NonEmptyStr = "{" as NonEmptyStr
+data template_close_brace: NonEmptyStr = "}" as NonEmptyStr
+
+fn go_template_action(body: String) -> String {
+  join([
+    template_open_brace as String, template_open_brace as String,
+    body,
+    template_close_brace as String, template_close_brace as String,
+  ], "")
+}
+
+// EACH ARGUMENT THEN A SPACE, trimmed at the end -- the same text a join with a quoted separator would
+// produce, without needing a quoted separator inside the template.
+fn docker_args_format() -> String {
+  join([
+    go_template_action(body: "range .Args"),
+    go_template_action(body: "."),
+    " ",
+    go_template_action(body: "end"),
+  ], "")
+}
+
+fn glm_canary_inspect_argv(arm: GlmCanaryArm) -> List<String> {
+  ["docker", "inspect", arm.container_name as String, "--format", docker_args_format()]
+}
+
+fn glm_canary_observe_serve(ctx: SparkMaterializeContext, arm: GlmCanaryArm) -> ServeAgreement {
+  match glm_canary_serve_argv(arm: arm) {
+    Absent => ServeUnreadable { cause: "this arm renders no launch line, so there is nothing to compare the running container against" }
+    Present { value: argv } =>
+      match spark_remote_run(ctx: ctx, argv: glm_canary_inspect_argv(arm: arm)) {
+        RemoteUnreachable { cause: c } => ServeUnreadable { cause: c }
+        RemoteRan { exit_code: e, stdout: out, stderr: err } =>
+          if e != 0 {
+            ServeNotRunning { detail: join(["docker inspect exited ", to_string(e), " for container ", arm.container_name as String, ": ", err], "") }
+          } else {
+            glm_canary_compare_serve(rendered: join(argv, " "), running: trim(s: out))
+          }
+      }
+  }
+}
+
+fn glm_canary_compare_serve(rendered: String, running: String) -> ServeAgreement {
+  if rendered == running {
+    ServeAgreed
+  } else {
+    ServeDiffers { running: running }
+  }
+}
+
+fn serve_agreement_text(a: ServeAgreement) -> String {
+  match a {
+    ServeAgreed => "the running container was launched with exactly this arm's rendered line"
+    ServeDiffers { running: r } => join(["the running container DIFFERS from this arm; no action taken. running: ", r], "")
+    ServeNotRunning { detail: d } => join(["nothing is serving this arm: ", d], "")
+    ServeUnreadable { cause: c } => join(["the running launch line could not be read, so agreement is UNDETERMINED (this is not evidence of disagreement): ", c], "")
+  }
+}
+
+// ── THE CUTOVER ────────────────────────────────────────────────────────────────────────────────
+//
+// THE ENGINE ARGV IS NOT THE CONTAINER SPEC, AND ONLY THE FIRST WAS MODELLED. glm_canary_serve_argv
+// renders what vLLM is asked to do; it says nothing about GPU access, mounts, network or IPC namespace,
+// and a cutover needs all of it. Measured off the running container 2026-09-08, the whole of what the
+// spec adds is four flags and one mount -- every one of its twenty-five environment variables comes
+// from the image, so there is nothing to carry.
+//
+// THE ENTRYPOINT ALREADY SUPPLIES `serve`, AND THIS IS THE TRAP THE MEASUREMENT CAUGHT. The container's
+// Path is `vllm` and its Args are twenty-six words beginning `serve`, while Config.Cmd is the
+// twenty-five that follow. So the rendered line matches `.Args` -- which is what the agreement check
+// compares against, correctly -- but handing it to `docker run` as the command would produce
+// `vllm serve serve /model ...` and fail on the first word. The command drops the head; the comparison
+// keeps it. Two different questions about one line.
+fn glm_canary_run_argv(arm: GlmCanaryArm) -> List<String>? {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => none
+    Present { value: rrow } =>
+      match glm_canary_serve_argv(arm: arm) {
+        Absent => none
+        Present { value: serve } => Present { value: concat([
+          "docker", "run", "-d",
+          "--name", arm.container_name as String,
+          "--gpus", "all",
+          "--network", "host",
+          "--ipc", "host",
+          "-v", join([glm_canary_host_path(arm: arm) as String, ":/model:ro"], ""),
+          rrow.image_reference as String,
+        ], serve.skip(n: 1)) }
+      }
+  }
+}
+
+// THE ROLLBACK IS RECORDED BEFORE ANYTHING IS DESTROYED, which is the whole reason this is a fold and
+// not a script. What is recorded is the argv the CURRENT container is running -- read from the host,
+// not derived from the model -- because the model is exactly what is being put on trial here. If the
+// replacement will not start, an operator needs the line that was working, from the thing that was
+// working, and a model-derived rollback would be worthless in precisely the case where the model is
+// wrong.
+type CanaryCutover
+  = CutoverNotAttempted { cause: String }
+  | CutoverRefusedBeforeActing { cause: String }
+  | CutoverServing { rollback: String }
+  | CutoverStartedButNotServing { rollback: String, detail: String }
+
+fn cutover_text(c: CanaryCutover) -> String {
+  match c {
+    CutoverNotAttempted { cause: x } => join(["no cutover attempted: ", x], "")
+    CutoverRefusedBeforeActing { cause: x } => join(["REFUSED BEFORE ACTING, the running engine was not touched: ", x], "")
+    CutoverServing { rollback: r } => join(["the modelled container is serving; the line it replaced was: ", r], "")
+    CutoverStartedButNotServing { rollback: r, detail: d } =>
+      join(["STARTED BUT NOT SERVING -- ", d, " -- restore with: docker run ... ", r], "")
+  }
+}
+
+// A CUTOVER IS ONLY ATTEMPTED WHEN THE MODEL ALREADY REPRODUCES THE RUNNING LINE. That is not caution,
+// it is the only condition under which the operation is honest: replacing a healthy engine with one
+// built from a DIFFERENT line is not a cutover, it is an unreviewed change to a live service. Where the
+// two disagree the refusal names the difference and the running engine is left alone -- the operator
+// decides, with the diff in front of them.
+//
+// SO WHAT THIS BUYS IS PROVENANCE, NOT CAPABILITY, and the receipt should not pretend otherwise. The
+// image digest, the weights and every flag are identical on both sides; what changes is that the
+// container becomes one this model started and can restart, instead of one a person started by hand and
+// nothing owns.
+fn glm_canary_cutover(ctx: SparkMaterializeContext, arm: GlmCanaryArm, agreement: ServeAgreement) -> CanaryCutover
+  uses net: Network
+{
+  match agreement {
+    ServeUnreadable { cause: c } => CutoverRefusedBeforeActing { cause: join(["the running launch line could not be read, so there is nothing to compare and no rollback to record: ", c], "") }
+    ServeDiffers { running: r } => CutoverRefusedBeforeActing { cause: join(["the running container was launched with a DIFFERENT line; replacing it would be an unreviewed change to a live service, not a cutover. running: ", r], "") }
+    ServeNotRunning { detail: d } => CutoverRefusedBeforeActing { cause: join(["nothing is serving this arm, so this would be a first launch rather than a cutover, and no rollback line exists: ", d], "") }
+    ServeAgreed =>
+      match glm_canary_run_argv(arm: arm) {
+        Absent => CutoverRefusedBeforeActing { cause: "this arm renders no container line" }
+        Present { value: run } => glm_canary_replace_container(ctx: ctx, arm: arm, run: run)
+      }
+  }
+}
+
+fn glm_canary_replace_container(ctx: SparkMaterializeContext, arm: GlmCanaryArm, run: List<String>) -> CanaryCutover {
+  match spark_remote_run(ctx: ctx, argv: glm_canary_inspect_argv(arm: arm)) {
+    RemoteUnreachable { cause: c } => CutoverRefusedBeforeActing { cause: join(["the rollback line could not be read, so nothing was touched: ", c], "") }
+    RemoteRan { exit_code: e, stdout: rollback, stderr: err } =>
+      if e != 0 {
+        CutoverRefusedBeforeActing { cause: join(["the rollback line could not be read, so nothing was touched: ", err], "") }
+      } else {
+        glm_canary_stop_and_start(ctx: ctx, arm: arm, run: run, rollback: trim(s: rollback))
+      }
+  }
+}
+
+fn glm_canary_stop_and_start(ctx: SparkMaterializeContext, arm: GlmCanaryArm, run: List<String>, rollback: String) -> CanaryCutover {
+  let removed = spark_remote_run(ctx: ctx, argv: ["docker", "rm", "-f", arm.container_name as String])
+  match spark_remote_run(ctx: ctx, argv: run) {
+    RemoteUnreachable { cause: c } => CutoverStartedButNotServing { rollback: rollback, detail: join(["the replacement could not be started: ", c], "") }
+    RemoteRan { exit_code: e, stdout: _, stderr: err } =>
+      if e != 0 {
+        CutoverStartedButNotServing { rollback: rollback, detail: join(["docker run exited ", to_string(e), ": ", err], "") }
+      } else {
+        glm_canary_await_serving(ctx: ctx, arm: arm, rollback: rollback, remaining: glm_canary_health_poll_budget)
+      }
+  }
+}
+
+// THE ENGINE IS NOT UP WHEN THE CONTAINER IS UP. Measured on this arm: the container returns
+// immediately and the engine took about twelve minutes to answer -- weights load, then a hundred and ten
+// seconds of profiling and graph capture. So "docker run exited zero" is not the success condition and
+// treating it as one would report a cutover complete while nothing served. The condition is the model's
+// own alias answering on its own port.
+data glm_canary_health_poll_budget: Nat = 60
+data glm_canary_health_poll_interval_seconds: Nat = 20
+
+fn glm_canary_health_argv(arm: GlmCanaryArm) -> List<String> {
+  ["curl", "-s", "-m", "5", join(["http://127.0.0.1:", to_string(arm.port), "/v1/models"], "")]
+}
+
+fn glm_canary_await_serving(ctx: SparkMaterializeContext, arm: GlmCanaryArm, rollback: String, remaining: Nat) -> CanaryCutover {
+  match spark_remote_run(ctx: ctx, argv: glm_canary_health_argv(arm: arm)) {
+    RemoteUnreachable { cause: c } =>
+      if remaining == 0 {
+        CutoverStartedButNotServing { rollback: rollback, detail: join(["the health probe never reached the host: ", c], "") }
+      } else {
+        glm_canary_health_wait(ctx: ctx, arm: arm, rollback: rollback, remaining: remaining)
+      }
+    RemoteRan { exit_code: _, stdout: body, stderr: _ } =>
+      if body.contains(arm.served_model_alias as String) {
+        CutoverServing { rollback: rollback }
+      } else if remaining == 0 {
+        CutoverStartedButNotServing {
+          rollback: rollback,
+          detail: join(["the engine did not serve ", arm.served_model_alias as String, " within ", to_string(glm_canary_health_poll_budget), " polls"], ""),
+        }
+      } else {
+        glm_canary_health_wait(ctx: ctx, arm: arm, rollback: rollback, remaining: remaining)
+      }
+  }
+}
+
+fn glm_canary_health_wait(ctx: SparkMaterializeContext, arm: GlmCanaryArm, rollback: String, remaining: Nat) -> CanaryCutover {
+  let slept = spark_remote_run(ctx: ctx, argv: ["sleep", to_string(glm_canary_health_poll_interval_seconds)])
+  glm_canary_await_serving(ctx: ctx, arm: arm, rollback: rollback, remaining: remaining - 1)
+}
+
+// ── THE CUTOVER'S OWN ENTRY, SEPARATE FROM CONVERGENCE ─────────────────────────────────────────
+//
+// THE CUTOVER IS NOT REACHABLE FROM THE CONVERGE WALK, and that separation is the safety property this
+// whole design rests on. glm_canary_converge_wet observes and never acts; it can be run on a schedule,
+// by anyone, at any time, and the worst it does is write a receipt. Replacing a live engine is a
+// different act with a different blast radius -- roughly twelve minutes of this arm serving nothing --
+// so it is a different entry point that an operator names deliberately. Folding it into convergence
+// would mean every future scheduled run carried the authority to restart a server.
+fn glm_canary_cutover_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["glm_canary_cutover: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: path } =>
+      match read_bootstrap_credential() {
+        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+        BootstrapCredentialReady { secret: administrator } =>
+          match fleet_ssh_attempt_identity(raw: glm_canary_attempt_raw) {
+            Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+            Present { value: attempt } => {
+              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                Present { value: trust } =>
+                  match with_materialized_ssh_key_file(
+                    identity_file_name: "gunbc-glm-canary-admin-password" as NonEmptyStr,
+                    secret_bytes: administrator as Secret,
+                    use: fn(file) {
+                      glm_canary_cutover_with(ctx: SparkMaterializeContext {
+                        host: glm_canary_arm.host,
+                        trust: trust,
+                        path: path,
+                        admin_credential: administrator as Secret,
+                        admin_credential_file: file,
+                        executor: glm_canary_acquisition_executor(arm: glm_canary_arm),
+                      })
+                    },
+                  ) {
+                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                    MaterializedSshKeyFileBracketCompleted { value: outcome } => {
+                      let body = glm_canary_cutover_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, outcome: outcome)
+                      let wr = Filesystem.Write(path: glm_canary_cutover_receipt_path, content: body)
+                      if !wr.success {
+                        exit_failure(reason: join(["glm canary cutover receipt write failed: ", wr.error], ""))
+                      } else if cutover_succeeded(c: outcome) {
+                        ExitSuccess
+                      } else {
+                        exit_failure(reason: join(["glm canary cutover did not complete:
+", body], ""))
+                      }
+                    }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+data glm_canary_cutover_receipt_path: NonEmptyStr = "target/glm-canary-cutover-receipt.txt" as NonEmptyStr
+
+// THE OBSERVATION IS TAKEN FRESH INSIDE THE CUTOVER, not passed in from an earlier run. A convergence
+// receipt from minutes ago is evidence about the past, and the gate this opens is about the present.
+fn glm_canary_cutover_with(ctx: SparkMaterializeContext) -> CanaryCutover {
+  let arm = glm_canary_arm
+  glm_canary_cutover(ctx: ctx, arm: arm, agreement: glm_canary_observe_serve(ctx: ctx, arm: arm))
+}
+
+fn cutover_succeeded(c: CanaryCutover) -> Bool {
+  match c {
+    CutoverNotAttempted { cause: _ } => false
+    CutoverRefusedBeforeActing { cause: _ } => false
+    CutoverStartedButNotServing { rollback: _, detail: _ } => false
+    CutoverServing { rollback: _ } => true
+  }
+}
+
+fn glm_canary_cutover_receipt_body(at: String, executor: String, outcome: CanaryCutover) -> String {
+  join([
+    "glm canary cutover at=", at, " executor=", executor, "
+",
+    "  arm: ", glm_canary_checkpoint_wire(arm: glm_canary_arm),
+    " host=", glm_canary_arm.host as String,
+    " container=", glm_canary_arm.container_name as String, "
+",
+    "  outcome: ", cutover_text(c: outcome), "
+",
+  ], "")
+}
+
+// ── THE OPERATOR-REACHABLE ENTRY ───────────────────────────────────────────────────────────────
+//
+// THIS IS THE PIECE WHOSE ABSENCE MADE EVERYTHING ABOVE UNREACHABLE. `glm_canary_converge` is an
+// `fn`: pure, foldable, and incapable of touching a host. Nothing gunbc can invoke was ever bound to
+// it, which is why the live canary went out through hand-written scripts -- a behavioural lookalike
+// that could validate external assumptions and could not exercise one construction wall, typed
+// refusal or effect ordering in this corpus.
+//
+// THE CREDENTIAL BRACKET IS THE POINT, NOT A DETAIL. The hand scripts passed an administrator
+// password as a command-line argument, which puts it in argv, shell history and process listings.
+// This ladder reaches the same hosts through the same five refusals the pair apply uses -- reach,
+// credential, attempt identity, TRUST ESTABLISHED BEFORE ANY LEG RUNS, then a materialised key file
+// whose PATH is handed to ssh rather than its bytes. Using the modelled route is what fixes the
+// credential handling; they are the same change.
+//
+// MATERIALIZE ONLY, DELIBERATELY. This entry stops after acquisition and does NOT launch. Launching
+// needs the arm's flags rendered into a unit, and gunbc.spark.pair_serving_realization is still
+// hard-wired to the DeepSeek-era image and a four-rank topology -- threading the canary arm through
+// it is a second and larger change. The smallest slice that answers the open question is the one
+// worth running first, and on success it MUTATES NOTHING: the snapshot is already on the host, so
+// the expected verdict is AlreadyPresent.
+
+data glm_canary_receipt_path: String = "target/glm-canary-converge-receipt.txt"
+data glm_canary_attempt_raw: String = "glm-canary-converge"
+
+fn glm_canary_receipt_body(at: String, executor: String, path: SparkReachPath, verdict: GlmCanaryConvergence) -> String {
+  join([
+    "glm canary converge at=", at, " executor=", executor,
+    " reach=", spark_reach_path_wire(p: path), "\n",
+    "  arm: checkpoint=", glm_canary_checkpoint_wire(arm: glm_canary_arm),
+    " runtime=", glm_canary_runtime_wire(arm: glm_canary_arm),
+    " host=", glm_canary_arm.host as String, "\n",
+    "  verdict: ", glm_canary_convergence_text(v: verdict), "\n",
+    "  serve: ", glm_canary_serve_argv_text(arm: glm_canary_arm), "\n",
+    "  running: ", glm_canary_serve_agreement_text(v: verdict), "\n",
+  ], "")
+}
+
+// THE RENDERED LAUNCH LINE IS PRINTED ON EVERY RECEIPT, WHICH IS WHAT MAKES IT A CONSUMED DECLARATION
+// RATHER THAN A WELL-SHAPED ORNAMENT. `glm_canary_serve_argv` was added with NO caller: it type-checked,
+// it read correctly, and no execution reached it -- which is precisely the dangling modelling DESIGN
+// section 3c names, and it is worth recording that it was introduced in the same session that quoted
+// that section at other people's code.
+//
+// AND IT IS THE COMPARISON THAT MATTERS, NOT THE DECORATION. The canary was launched by hand and has
+// served for hours; the receipt now carries what the MODEL would launch, beside the arm it launched
+// from, so a reader can hold it against `docker inspect` on the running container and see whether the
+// two agree BEFORE anyone authorises a restart. That is the cheapest possible form of the check, and
+// it costs one line per run.
+fn glm_canary_serve_agreement_text(v: GlmCanaryConvergence) -> String {
+  match v {
+    CanaryArmRefused { cause: _ } => "not observed: the arm was refused before any host was reached"
+    CanaryMaterializeRefused { cause: _ } => "not observed: acquisition refused before any host was reached"
+    CanaryMaterialized { outcome: _, already_present: _, serve: sv } => serve_agreement_text(a: sv)
+  }
+}
+
+fn glm_canary_serve_argv_text(arm: GlmCanaryArm) -> String {
+  match glm_canary_serve_argv(arm: arm) {
+    Absent => "REFUSED: no checkpoint or runtime row for this arm, so no launch line exists"
+    Present { value: argv } => join(argv, " ")
+  }
+}
+
+fn glm_canary_checkpoint_wire(arm: GlmCanaryArm) -> String {
+  match serving_checkpoint_row(c: arm.checkpoint) {
+    Absent => "(unmodelled)"
+    Present { value: r } => join([r.repo.path as String, "@", r.revision as String], "")
+  }
+}
+
+fn glm_canary_runtime_wire(arm: GlmCanaryArm) -> String {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => "(unmodelled)"
+    Present { value: r } => r.image_reference as String
+  }
+}
+
+// CONVERGED MEANS BOTH HALVES: the bytes are present AND the engine running on this host is the one
+// this arm describes. Either alone is a precondition wearing the word, and the acquisition half alone
+// is what this predicate used to accept.
+fn serve_agreed(a: ServeAgreement) -> Bool {
+  match a {
+    ServeAgreed => true
+    ServeDiffers { running: _ } => false
+    ServeNotRunning { detail: _ } => false
+    ServeUnreadable { cause: _ } => false
+  }
+}
+
+fn glm_canary_converged(v: GlmCanaryConvergence) -> Bool {
+  match v {
+    CanaryArmRefused { cause: _ } => false
+    CanaryMaterializeRefused { cause: _ } => false
+    CanaryMaterialized { outcome: o, already_present: _, serve: sv } =>
+      acquisition_succeeded(outcome: o) && serve_agreed(a: sv)
+  }
+}
+
+fn glm_canary_converge_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["glm_canary_converge: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: path } =>
+      match read_bootstrap_credential() {
+        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+        BootstrapCredentialReady { secret: administrator } =>
+          match fleet_ssh_attempt_identity(raw: glm_canary_attempt_raw) {
+            Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+            Present { value: attempt } => {
+              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                Present { value: trust } =>
+                  match with_materialized_ssh_key_file(
+                    identity_file_name: "gunbc-glm-canary-admin-password" as NonEmptyStr,
+                    secret_bytes: administrator as Secret,
+                    use: fn(file) {
+                      glm_canary_converge(ctx: SparkMaterializeContext {
+                        host: glm_canary_arm.host,
+                        trust: trust,
+                        path: path,
+                        admin_credential: administrator as Secret,
+                        admin_credential_file: file,
+                        executor: glm_canary_acquisition_executor(arm: glm_canary_arm),
+                      })
+                    },
+                  ) {
+                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                    MaterializedSshKeyFileBracketCompleted { value: verdict } => {
+                      let body = glm_canary_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, verdict: verdict)
+                      let wr = Filesystem.Write(path: glm_canary_receipt_path, content: body)
+                      if !wr.success {
+                        exit_failure(reason: join(["glm canary receipt write failed: ", wr.error], ""))
+                      } else if glm_canary_converged(v: verdict) {
+                        ExitSuccess
+                      } else {
+                        exit_failure(reason: join(["glm canary did not converge:\n", body], ""))
+                      }
+                    }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
