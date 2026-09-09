@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, SingleCabinetOffered,
+  RetailGrainStanding, RetailGrainUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -46,9 +46,8 @@ data sabey_375_pearl_density: CabinetDensityClaim = DensityUnread {
   obligation: "The 375 Pearl page read 2026-09-08 publishes building power (18 MW ramping to 40 MW) and N+2 feeder capacity, not a marketed kilowatts-per-cabinet ceiling. Reading campus megawatts as cabinet density is refused.",
 }
 
-data sabey_375_pearl_retail_grain: RetailGrainStanding = SingleCabinetOffered {
-  wording: "Deploy powered shell, colocation or build-to-suit data centers",
-  citation: "sabey.com 375 Pearl Manhattan page, read 2026-09-08. 'Colocation' is named beside powered shell and build-to-suit; the page does not separately say single cabinet, so a quote must confirm the smallest sellable unit.",
+data sabey_375_pearl_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "sabey.com 375 Pearl Manhattan page, read 2026-09-08, names colocation beside powered shell and build-to-suit and does not name a single-cabinet unit. A quote must confirm the smallest sellable grain.",
 }
 
 data sabey_retail_rates: RetailRateStanding = RatesQuoteOnly {
