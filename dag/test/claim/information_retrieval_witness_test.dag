@@ -1,4 +1,4 @@
-module test.claim.information_retrieval_wet_witness
+module test.claim.information_retrieval_witness
 
 import std.types { NonEmptyStr, Bool }
 import std.claim_evidence { RecordedFactId, EvidenceSupports }
@@ -21,24 +21,28 @@ import test.claim.information_query_witness {
 }
 
 // THE FIXTURES ARE IMPORTED, NOT COPIED. The hermetic witness module already owns this specimen --
-// the same locator, subject, pin and provenance -- and a second transcription of it would be two
-// authorities for one fixture (DESIGN section 2 and 3): they would drift, and a wet run would then
-// be measuring a different subject than the hermetic run it is supposed to correspond to.
+// the same locator, subject, pin and provenance -- and a second transcription would be two
+// authorities for one fixture (DESIGN sections 2 and 3): they drift, and this run would then measure
+// a different subject than the run it is supposed to correspond to.
 
-// THE RETRIEVAL REALIZATION IS EXERCISED AGAINST THE REAL WORLD, which is why this is a wet witness
-// and not part of the hermetic set. It runs http.Client.GetBounded for real, so which arm executes
-// depends on whether the network answers -- and that is the point: BOTH answers must land on
-// InformationEvidenceUnavailable. A reachable fetch yields a response with no representation
-// observation, because nothing can yet digest a body in memory; an unreachable one yields a
-// transport failure. Neither may fabricate a receipt for bytes nobody reconciled.
+// THIS IS A HERMETIC WITNESS, AND AN EARLIER REVISION LIED ABOUT THAT. It was named and annotated as
+// a wet, real-network witness. Under the merge envelope http.Client.GetBounded answers from its
+// mock_response, which is fixed { success: false }, so no live fetch happens on the path that
+// actually gates: the claim was true only when I ran it by hand.
 //
-// THE ORACLE IS THE TRANSPORT, NOT A DISJUNCTION OF THE ARMS. An earlier version returned true on
-// BOTH arms the function can produce, so its false branch was unreachable and it could never go red
-// -- permanently green by construction, and worse than absent because it would be cited as coverage
-// (DESIGN 4b: ask whether the check\'s RED is authorable before writing the check). This runs the
-// same transport independently and requires the arm to AGREE with what the network actually did, so
-// swapping the two arms, or refusing a fetch that succeeded, turns it red.
-test fn w_wet_retrieval_arm_matches_what_the_transport_did() -> Bool {
+// WHAT IT THEREFORE PINS, and it is a real red rather than a decoration: under the fixed mock the
+// transport cannot succeed, so information_retrieve_evidence MUST reach InformationEvidenceUnavailable.
+// A regression that returned Unobservable regardless of the transport turns this false. The oracle is
+// the transport's own answer rather than a disjunction over the arms, so the two cannot drift apart.
+//
+// WHAT IT CANNOT COVER is the success -> Unobservable arm, because the mock never succeeds and both
+// this probe and the function under test read that same mock. That gap is NOT papered over here: it
+// is recorded in gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall,
+// whose population names it and whose trigger names the capability that would close it. Enrolling
+// this file as a bin_wet row was the obvious move and is refused deliberately -- that lane has run
+// nothing since 2026-08-15 (excl_bin_wet_reason), so it would convert a partly-covered witness into
+// an uncovered one that the roster reports as covered.
+test fn w_retrieval_arm_agrees_with_the_transport() -> Bool {
   match fixture_digest(hex: fixture_expected_hex) {
     Absent => false
     Present { value: expected } => {
