@@ -39,7 +39,7 @@ import v2.std.optional { Optional, Present, Absent }
 // produces are receipts in the observing layer, never properties of the observed. So it lives
 // under gunbc rather than extdeps, and it cites the facility modules rather than being cited by
 // them.
-
+//
 // What a search actually resolved to, kept because a region is empty for reasons that differ in
 // what they oblige next. A region full of aggregators needs a different follow-up from one where
 // operators exist but sell no retail colocation.
