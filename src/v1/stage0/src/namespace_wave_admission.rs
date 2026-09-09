@@ -1720,7 +1720,13 @@ pub struct TransitionAdmission {
 /// had to be nameable where the commit-basis seal is sole-constructed. Every row is the same motion:
 /// a spelling authored on both sides -- `merge_base`, `MergeBaseOutcome`, `MergeBaseDerived`,
 /// `MergeBaseHistoryUnwalkable`, `MergeBaseHistoriesDisjoint`, `MergeBaseSourceAlreadyConsumed` --
-/// still denotes THE SAME DECLARATION and resolves to a different module. The module-membership half
+/// still denotes THE SAME DECLARATION and resolves to a different module. `MergeSideName` is the same
+/// motion arriving by a different road: it was DECLARED in `gunbc.scm.squash_merge` and moved into the
+/// envelope with the manifest read that needs it, so its row names `gunbc.scm.squash_merge` as the base
+/// target rather than `gunbc.scm.merge_base`. It is listed because the wall named it, on a run whose
+/// binary was verified to carry this label -- an earlier local run adjudicated against a STALE
+/// `claim_executor` and reported all 30 rows unadmitted, which is what checking the compiled-in label
+/// rather than the build's exit code caught. The module-membership half
 /// of the same motion is auto-admitted as SameDeclarationIdentityRebind on its own rows, which is the
 /// corroboration this file asks for; a binding whose MEANING had moved would refuse separately and is
 /// not covered here.
@@ -1790,6 +1796,16 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.scm.squash_merge",
             in_declaration: "SquashMergeOutcome",
             spelling: "MergeBaseOutcome",
+            target: "gunbc.scm.repository_envelope",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_MERGE_BASE_COHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.scm.squash_merge",
+            in_declaration: "SquashMergeOutcome",
+            spelling: "MergeSideName",
             target: "gunbc.scm.repository_envelope",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
