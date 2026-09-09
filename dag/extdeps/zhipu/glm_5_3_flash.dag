@@ -212,6 +212,16 @@ fn glm_5_3_flash_output_budget_for_input(window: TokenCount, input_tokens: Token
 // THE REVISION IS PART OF THE FACT, not a note beside it. A manifest without its revision is a claim
 // about a branch, and this repository is moving: the same API response that gave these sizes reported
 // lastModified 2026-09-07T12:13:47Z, so `main` for this repo demonstrably shifts under a reader.
+// THE ACQUISITION FOOTPRINT AND THE WEIGHT FOOTPRINT ARE DIFFERENT QUESTIONS ABOUT ONE MANIFEST, and
+// a consumer that confuses them sizes a disk against the wrong number. `safetensors_bytes` is what
+// the RANKS must hold -- the shards a tensor-parallel replica divides among itself. What a DOWNLOAD
+// must hold is the repository snapshot: config, tokenizer, generation config and the rest travel with
+// the shards, and the Hub cache fetches the snapshot rather than a hand-picked subset.
+//
+// The gap is 28,717,797 bytes for this artifact, which changes no eligibility decision on a
+// multi-terabyte disk. It is separated anyway, because the carrier's job is to say which quantity a
+// consumer is asking for, and a 28 MB coincidence today is not a reason to conflate two questions
+// that will diverge on the next artifact.
 type GlmCheckpointManifest sole_constructor {
   revision: NonEmptyStr
   safetensors_shard_count: Nat
@@ -231,8 +241,19 @@ data glm_5_3_flash_native_manifest: GlmCheckpointManifest = GlmCheckpointManifes
 // GiB IS DERIVED FOR PROSE AND IS NOT A SECOND AUTHORITY. The serving-arm row that carried 306 was a
 // rounded restatement of these bytes; a consumer wanting a human-sized number computes it here rather
 // than authoring one, so the rounding can never drift from the figure it rounds.
+//
+// AND IT ROUNDS UP, WHICH IS THE ONLY SAFE DIRECTION FOR A CONSUMER THAT SCREENS ON IT. The first
+// version of this helper used integer division, yielding 305 for a 305.79 GiB artifact -- and
+// gunbc.spark.serving_arm feeds exactly this value into a positive fit check. Rounding DOWN
+// understates the weights, which makes that check more permissive: it is the wrong direction for a
+// bound whose entire purpose is to refuse. A ceiling can only refuse a candidate that a byte-exact
+// test would have admitted, never admit one it would have refused.
+//
+// A CONSUMER THAT NEEDS EXACTNESS READS THE BYTES. This helper exists for screening and for prose,
+// and both are served by the conservative direction; feasibility arithmetic that must be exact takes
+// `safetensors_bytes` and does not round at all.
 fn glm_manifest_gibibytes(m: GlmCheckpointManifest) -> Nat {
-  m.safetensors_bytes / 1073741824
+  (m.safetensors_bytes + 1073741823) / 1073741824
 }
 
 // THE WEIGHTS CANNOT SIT ON ONE GB10 AND THAT NEEDS NO POLICY TO PROVE. Half of 328,337,455,672 is

@@ -316,11 +316,56 @@ fn first_or(list: List<SeedEligibilityObservation>) -> SeedEligibilityObservatio
   ), f: (acc, o) => seed_better(a: acc, b: o))
 }
 
-// THE DISK REQUIREMENT IS THE MANIFEST'S OWN FIGURE, imported rather than restated. This row
-// previously carried the literal 328337455672, which agreed with the selector's copy and with a
-// rounded 306 GiB in the serving-arm authority -- three spellings of one upstream fact, agreeing, and
-// therefore unable to catch their own first divergence.
-data model_snapshot_native_glm_bytes: Nat = glm_5_3_flash_native_manifest.safetensors_bytes
+// ── WHAT A DOWNLOAD MUST HOLD IS NOT WHAT THE RANKS MUST HOLD ─────────────────────────────────
+//
+// THIS ROW READ THE WRONG FIELD. It took `safetensors_bytes`, which is the quantity a tensor-parallel
+// replica divides among its ranks -- and a download holds the repository SNAPSHOT: config, tokenizer,
+// generation config and the rest arrive with the shards, because the Hub cache fetches a snapshot
+// rather than a hand-picked file subset. The gap is 28,717,797 bytes here and changes no eligibility
+// decision on a multi-terabyte disk, which is exactly why it was easy to get wrong and worth fixing
+// while it is still harmless: the carrier's contract is to state the acquisition footprint, and on the
+// next artifact the two figures need not be a rounding error apart.
+//
+// THE TRANSIENT OVERHEAD IS ZERO AND THAT IS A MECHANISM, NOT AN OPTIMISM. The Hub cache writes each
+// blob to `<sha>.incomplete` and RENAMES it in place on completion, then points a snapshot-directory
+// symlink at it -- so a partially fetched artifact never exists as a second full copy, and peak
+// occupancy is the snapshot total rather than twice it. If a placement ever stages through a separate
+// directory before moving, that placement carries its own overhead and this row stops being right for
+// it.
+//
+// A FREE-SPACE RESERVE IS OWED AND IS NOT INVENTED HERE. Eligibility should require headroom BEYOND
+// the artifact -- a disk at exactly 100 percent serves nothing -- but no reserve policy has been
+// established for these hosts, and picking a number to make the model look complete is the authored
+// literal this branch has been removing all along. So the requirement is the artifact total today and
+// the reserve is a named obligation rather than a guess.
+type AcquisitionDiskRequirement sole_constructor {
+  artifact_bytes: Nat
+  transient_overhead_bytes: Nat
+  overhead_basis: NonEmptyStr
+  free_space_reserve: FreeSpaceReserveStanding
+}
+
+type FreeSpaceReserveStanding
+  = FreeSpaceReserveDecided { bytes: Nat, decider: NonEmptyStr }
+  | FreeSpaceReserveUnestablished { obligation: NonEmptyStr }
+
+fn acquisition_disk_required_bytes(r: AcquisitionDiskRequirement) -> Nat {
+  match r.free_space_reserve {
+    FreeSpaceReserveDecided { bytes: b, decider: _ } => r.artifact_bytes + r.transient_overhead_bytes + b
+    FreeSpaceReserveUnestablished { obligation: _ } => r.artifact_bytes + r.transient_overhead_bytes
+  }
+}
+
+data model_snapshot_native_glm_requirement: AcquisitionDiskRequirement = AcquisitionDiskRequirement {
+  artifact_bytes: glm_5_3_flash_native_manifest.repository_total_bytes,
+  transient_overhead_bytes: 0,
+  overhead_basis: "the Hub cache renames <sha>.incomplete into place and symlinks the snapshot directory at it, so a partial fetch is never a second full copy and peak occupancy is the snapshot total" as NonEmptyStr,
+  free_space_reserve: FreeSpaceReserveUnestablished {
+    obligation: "no free-space reserve policy has been established for these hosts. Eligibility should require headroom beyond the artifact; until a reserve is derived or decided, the requirement is the artifact total and this row says so rather than carrying an invented margin" as NonEmptyStr,
+  },
+}
+
+data model_snapshot_native_glm_bytes: Nat = acquisition_disk_required_bytes(r: model_snapshot_native_glm_requirement)
 
 data model_snapshot_fleet_seed: SeedSelection = select_snapshot_seed(required_bytes: model_snapshot_native_glm_bytes)
 
