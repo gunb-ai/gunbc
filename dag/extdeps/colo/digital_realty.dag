@@ -67,7 +67,7 @@ data digital_realty_ewr11: ColoFacilityRow = ColoFacilityRow {
   },
   municipality: "Piscataway",
   region_code: "NJ",
-  facility_note: "Operator page (read 2026-09-08): 207,500 square feet across three stories, marketed as versatile and scalable colocation environments. The page states no critical IT load and no carrier list. Part of the operator's Piscataway campus alongside EWR12; a third building, EWR19, is named in campus material and has no readable operator page (see digital_realty_ewr19_obligation).",
+  facility_note: "Operator page (read 2026-09-08): 207,500 square feet across three stories, marketed as versatile and scalable colocation environments. The page states no critical IT load and no carrier list. Part of the operator's Piscataway campus alongside EWR12; a third building, EWR19, is named in campus material and has no readable operator page, for which see the annotation above digital_realty_facilities.",
 }
 
 data digital_realty_ewr11_density: CabinetDensityClaim = DensityUnread {
@@ -106,8 +106,8 @@ data digital_realty_ewr12_retail_grain: RetailGrainStanding = SingleCabinetOffer
 
 // A THIRD BUILDING ON THIS CAMPUS THAT CONTRIBUTES NO ROW. Digital Realty campus material names
 // EWR19 alongside the two buildings above. The operator page under the EWR19 path on the same URL
-// pattern that serves EWR11 and EWR12 returned HTTP 404 on 2026-09-08, so no address, size, density
-// or grain is readable and no row is written from the campus material alone. This operator's
+// pattern that serves EWR11 and EWR12 returned HTTP 404 on 2026-09-08, and again on 2026-09-09 when it was re-tested with no user-agent and with a full browser user-agent - 404 at 7,121 bytes on both, so this is the page's own answer rather than an artefact of how the request was addressed. No address, size, density
+// or grain is therefore readable, and no row is written from the campus material alone. This operator's
 // Piscataway campus is therefore modelled at two buildings of three, and the missing one needs a
 // live page or a spec sheet rather than an inference from its siblings.
 data digital_realty_facilities: List<ColoFacilityRow> = [digital_realty_ewr10, digital_realty_ewr20, digital_realty_ewr11, digital_realty_ewr12]

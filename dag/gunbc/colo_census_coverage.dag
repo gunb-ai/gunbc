@@ -178,32 +178,39 @@ data hudson_valley: RegionCoverage = RegionCoverage {
   },
 }
 
-// DECLARED FRONTIER: THE UNREAD ARMS ARE DOWNSTREAM FACTS CURRENTLY LIVING UPSTREAM, AND THIS
-// MODULE IS WHERE THEY BELONG. DESIGN section 3 rules that observations this repository produces are
-// receipts in the observing layer and that missing observations are coverage obligations downstream,
-// never Unobserved properties authored inside an upstream module - a rule this repository has already
-// applied once, in #10671, whose title is "Rehome the cable-leg observation out of the SFF
-// specification". The colo census does the opposite today: DensityUnread, RetailGrainUnread and
-// AddressUnread sit inside extdeps.colo.<operator> across ten files and five lanes.
+// DECLARED FRONTIER: THE UNREAD AND QUOTE-ONLY ARMS ARE DOWNSTREAM FACTS CURRENTLY LIVING UPSTREAM,
+// AND THIS MODULE IS THE DESTINATION. DESIGN section 3 rules that observations this repository
+// produces are receipts in the observing layer, and that missing observations are coverage
+// obligations downstream, never Unobserved properties authored inside an upstream module - a rule
+// this repository has already applied once, in #10671, whose title is "Rehome the cable-leg
+// observation out of the SFF specification". The colo census does the opposite today.
 //
-// THE FOLLOW-UP IS A SPLIT, NOT A MOVE, because each of those arms fuses two facts in one string.
-// Take an obligation reading "No cabinet pricing published on the pages read 2026-08-18; a written
-// quote for the reference load is required." Clause one is an OBSERVATION - we read these pages on
-// that date and they carried no figure - and clause two is a COVERAGE OBLIGATION - we still owe a
-// quote. Both are ours and both move here, but they have different lifetimes: a quote arriving
-// discharges the obligation while the observation stays true forever. Fused in one sentence neither
-// can be updated without rewriting the other, which is the prose-carrying-typed-facts shape section
-// 4c exists to prevent.
+// THE POPULATION IS NOT STATED HERE ON PURPOSE. An earlier draft of this annotation carried a file
+// and lane count, which was this lane's own estimate written down as though it were a measurement -
+// the transcribed-number move section 6 forbids, and it was wrong when somebody re-derived it. The
+// follow-up sizes itself by re-deriving the arm population over the merged corpus, which is the only
+// count that will be true when it runs.
 //
-// So the destination must carry TWO TYPED FIELDS - what was read, when, and what it did not contain;
-// and what we still owe, with what discharges it - not one relocated string. Upstream keeps only the
-// READ arms, DensityMarketedMax and DensityMarketedAirOnly, which are genuinely facts about what the
-// operator publishes.
+// WHERE THE SPLIT POINTS, AND IT IS NOT A NEW TYPE. The distinction that matters is WE READ IT AND IT
+// SAID NOTHING versus WE FAILED TO READ IT - different facts, and only the first is about the
+// operator at all. std.citation already models exactly that: CitationRetrievalObservation, with
+// HttpAccessRefused carrying the status. Minting an observation-plus-obligation pair here instead
+// would be a third answer to a question that already has an authority, which is the section 3 fork
+// this census has already made and retracted once tonight.
 //
-// The trigger is the split landing here, and it is deliberately census-wide in one motion: doing one
-// lane at a time would leave two shapes inside one carrier, which is worse than one uniform wrong
-// shape. Operator ruling, 2026-09-09, on escalation from this lane: land the rows first because the
-// rows are the expensive part, then follow with the shape.
+// WHY IT IS WORTH DOING, AND IT IS NOT TIDINESS: a fused string makes a FALSE OBSERVATION EXPENSIVE
+// TO RETRACT. One census row recorded that an operator refused a direct fetch when the truth was a
+// request sent without a user-agent; the obligation that observation generated was already discharged
+// once the fetch was fixed, and correcting either half meant rewriting the other. Every recorded
+// operator refusal in this census has so far needed re-testing, and a false obstacle stops the
+// inquiry that would have found the real defect.
+//
+// The trigger is that split landing here, census-wide in one motion - one lane at a time would leave
+// two shapes inside one carrier, which is worse than one uniform wrong shape - and it depends on the
+// std.citation consumption landing first. The arms themselves carry this frontier where an author of
+// a new row will meet it, in extdeps.colo.types; this annotation is the destination half, and the two
+// are one statement rather than two authorities. Operator ruling, 2026-09-09, on escalation from this
+// lane: land the rows first because the rows are the expensive part, then follow with the shape.
 
 // THIS ROSTER IS INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It
 // carries the regions a lane surveyed, including ones surveyed and found empty; it does not carry a
