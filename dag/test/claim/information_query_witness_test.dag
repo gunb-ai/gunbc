@@ -159,30 +159,36 @@ test fn w_mismatched_digest_is_not_admissible() -> Bool {
 // A RETRIEVAL THAT NEVER HAPPENED IS NOT INSUFFICIENT EVIDENCE, IT IS NO EVIDENCE. The unreachable
 // arm carries no representation, so there is no fact to record; the module must reach
 // InformationEvidenceUnavailable rather than fabricate a receipt for bytes nobody observed.
+//
+// THIS MATCHES THE ARM, NOT ADMISSIBILITY. Asking only whether the result is inadmissible cannot
+// see the difference this witness exists to protect: EvidenceInsufficient is inadmissible too, so a
+// wrong join that invented a receipt and routed the refusal through information_evidence_insufficient
+// would have stayed green. Refusing the Inferred arm outright is what makes fabrication go red.
 test fn w_unreachable_retrieval_is_not_admissible() -> Bool {
   match fixture_digest(hex: fixture_expected_hex) {
     Absent => false
     Present { value: expected } =>
-      !information_evidence_is_admissible(
-        evidence: information_evidence_from_verification(
-          fact_id: "information-query-witness-fact" as RecordedFactId,
-          outcome: verify_citation_representation(
-            target: fixture_target(expected: expected),
-            observation: CitationUnreachable {
-              request: CitationRetrievalRequest { locator: fixture_locator() },
-              observed_at: 1788825000000,
-              cause: ConnectionRefused,
-            },
-          ),
-          scope: TimeInvariant,
-          direction: EvidenceSupports,
-          authority: fixture_authority(),
-          provenance: fixture_provenance(),
-          freshness_basis: "unused on this path" as NonEmptyStr,
-          fidelity_losses: [],
-          independence: SoleRetrieval,
+      match information_evidence_from_verification(
+        fact_id: "information-query-witness-fact" as RecordedFactId,
+        outcome: verify_citation_representation(
+          target: fixture_target(expected: expected),
+          observation: CitationUnreachable {
+            request: CitationRetrievalRequest { locator: fixture_locator() },
+            observed_at: 1788825000000,
+            cause: ConnectionRefused,
+          },
         ),
-      )
+        scope: TimeInvariant,
+        direction: EvidenceSupports,
+        authority: fixture_authority(),
+        provenance: fixture_provenance(),
+        freshness_basis: "unused on this path" as NonEmptyStr,
+        fidelity_losses: [],
+        independence: SoleRetrieval,
+      ) {
+        InformationEvidenceUnavailable { cause: _ } => true
+        InformationEvidenceInferred { inference: _ } => false
+      }
   }
 }
 
