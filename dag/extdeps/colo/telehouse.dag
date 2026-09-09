@@ -70,7 +70,7 @@ data telehouse_teleport: ColoFacilityRow = ColoFacilityRow {
 data telehouse_teleport_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 20000) },
   claim_wording: "Up to 20kW per cabinet maximum capacity",
-  citation: "telehouse.com New York Teleport page, read 2026-09-08",
+  citation: "telehouse.com New York Teleport page; raw fetch 2026-09-09 HTTP 200, 164583 bytes, claim_wording occurs verbatim.",
 }
 
 data telehouse_teleport_retail_grain: RetailGrainStanding = CageOrSuiteMinimum {
