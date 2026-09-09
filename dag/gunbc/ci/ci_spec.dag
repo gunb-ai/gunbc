@@ -2190,11 +2190,38 @@ fn ci_heal_author_commit_package_lines() -> List<String> {
 // ledgers emits at least one judged line per ledger artifact, so an empty file means nothing was
 // judged. The denominator is zero, which is precisely the state that must never be mistaken for a
 // clean numerator.
+// THE HEAL COMMIT NAMES THE ACCOUNT THAT ACTUALLY PUSHES IT. The identity it used before,
+// gunbc-ci-auto-heal@users.noreply.github.com, belongs to no GitHub account, so every heal commit
+// renders with a null author. The pusher is github-actions[bot], because the push carries the
+// Actions job credential; the metadata said something else entirely. The numeric prefix is what
+// binds the address: GitHub attributes a noreply address to an account by that id, so 41898282 IS
+// the binding and a name-only change attributes nothing.
+//
+// WHAT THIS DOES NOT DO, stated because an earlier revision of this comment claimed the opposite
+// and the claim was disproven by measurement taken in the same investigation. It does NOT establish
+// contributor standing. This repository is squash-only (merge_commit false, rebase false), and a
+// squash attributes the result to the PULL REQUEST author, so branch authorship reaches main under
+// no circumstances: 416 heal commits exist in the repository and ZERO have ever landed on main.
+// The earlier text said the next merged heal commit would be attributed to github-actions[bot] and
+// would retire its first-time standing. No heal commit is ever merged, so that mechanism does not
+// exist. It is recorded rather than deleted because the commit message was corrected while this
+// authority was not, and prose corrected in one place and left standing in another is how a
+// refuted claim keeps being read as current.
+//
+// IT ALSO DOES NOT ESTABLISH THAT CONTRIBUTOR STANDING IS THE REASON THE RUN NEEDS APPROVAL, and
+// that is a second, independent gap. In every population measured here the actor and the
+// triggering credential are perfectly correlated -- github-actions[bot] means GITHUB_TOKEN, and
+// gunbai-bot[bot] means an App installation token -- so the measurement cannot separate them.
+// GitHub documents a rule that does not mention standing at all: a pull_request opened, synchronize
+// or reopened run CAUSED BY GITHUB_TOKEN is created in an approval-required state. That rule
+// describes the heal shape exactly, and if it is the operative cause then no amount of standing
+// releases these runs. Which cause is operative is decided by a separate synchronisation
+// experiment, not by this change and not by this comment.
 fn ci_heal_shell_lines() -> List<String> {
   concat(
     [
-      "git config user.name \"gunbc-ci-auto-heal\"",
-      "git config user.email \"gunbc-ci-auto-heal@users.noreply.github.com\""
+      "git config user.name \"github-actions[bot]\"",
+      "git config user.email \"41898282+github-actions[bot]@users.noreply.github.com\""
     ],
     concat(
       ci_heal_author_commit_drift_lines(),
