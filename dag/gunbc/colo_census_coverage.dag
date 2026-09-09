@@ -143,15 +143,31 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // disposing of what replaced it.
 //
 // WHY IT IS NOT REPAIRED IN THIS CHANGE. The right home is the carrier - a presence-shaped accessor
-// beside the two direction-committed ones it already exposes, cabinet_density_air_established and
-// cabinet_density_air_ceiling, neither of which can answer "was anything published" without also
-// committing to a direction and a medium. That accessor cannot be written today: gunbc#10885 REPLACES
-// THE ARMS this predicate matches on - DensityMarketedMax and DensityMarketedAirOnly dissolve into
-// one DensityPublished carrying a list of figures - so an accessor authored now would be a match over
-// a coproduct that is being deleted, and would have to be rewritten by the same lane in the same
-// week. TRIGGER: gunbc#10885 landing, at which point the presence accessor lands in the carrier with
-// the new arms and this module calls it instead of matching. Recorded here rather than in a PR
-// thread, because the next reader of this function needs to know it is owed a home.
+// that answers "was anything published" without also committing to a direction and a medium, which
+// none of the carrier's direction-committed accessors can do. It cannot be written against today's
+// arms, because the arms this predicate matches on are being replaced wholesale: DensityMarketedMax
+// and DensityMarketedAirOnly dissolve into one DensityPublished carrying a non-empty list of
+// figures, so an accessor authored now would match over a coproduct scheduled for deletion.
+//
+// TRIGGER, RESTATED AFTER READING DESIGN SECTION 4b(3) AGAINST IT - THE FIRST WORDING WAS THE EXACT
+// DEFECT THAT RULE DESCRIBES. It read "gunbc#10885 landing". That named an ARTIFACT rather than a
+// CAPABILITY, and section 4b(3) says in capitals that a trigger naming less than the capability it
+// restores "will be satisfied while the capability stays dead". Both halves of that failed here, and
+// checking rather than assuming is what found it:
+//
+//   - #10885 is CLOSED, superseded by #10888. A trigger naming a dead pull request can never be
+//     satisfied by anything, so the obligation had no route to retirement at all.
+//   - #10888 does NOT carry a presence accessor. Its carrier exposes figure lookup, wording coverage
+//     and ceiling refusal, and no route answering mere publication. So had the trigger been repointed
+//     at #10888 - the obvious repair, and the one I was about to make - it would have fired on that
+//     merge and retired this obligation while the accessor still did not exist.
+//
+// SO THE TRIGGER IS THE CAPABILITY: a route on extdeps.colo.types that answers whether a claim
+// carries any published figure, medium-agnostic and direction-agnostic, callable without
+// destructuring. When that route exists this module calls it and this function is deleted. Landing
+// #10888 is necessary for it and is not it. Recorded here rather than in a PR thread, because the
+// next reader of this function needs to know it is owed a home, and needs the trigger to be one
+// that can actually be checked.
 fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
   match d {
     DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => true,
