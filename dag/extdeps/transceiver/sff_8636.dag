@@ -154,34 +154,19 @@ fn sff8636_nominal_rate_from_byte140(code: Nat) -> Sff8636NominalRate {
 // ================= BYTE 222: THE FIELD THE ESCAPE POINTS AT =================
 //
 // SFF-8636 puts the extended nominal signalling rate in byte 222, in units of 250 MBd, and byte 140
-// at FFh is the pointer to it. Reading it is what turns an escape from a declared gap into a rate,
-// so the observation is carried rather than assumed: a leg whose byte 222 was never read is a
-// different fact from one whose byte 222 says nothing, and both differ from a resolved rate.
-type Sff8636ExtendedRateObservation
-  = ExtendedRateNotObserved
-  | ExtendedRateObserved { code: Nat }
-
-// RESOLUTION IS A FUNCTION OF BOTH BYTES AND REFUSES TO INVENT THE MISSING ONE. An unread byte 222
-// leaves the escape standing -- it does NOT fall back to multiplying byte 140 out, which is the
-// fabrication this module already names. A byte 222 of 00h is the specification's "not specified"
-// and resolves to Unspecified, not to zero baud.
-fn sff8636_resolve_nominal_rate(
-  primary: Sff8636NominalRate,
-  extended: Sff8636ExtendedRateObservation,
-) -> Sff8636NominalRate {
-  match primary {
-    NominalRateDirect { rate: r } => NominalRateDirect { rate: r }
-    NominalRateUnspecified => NominalRateUnspecified
-    NominalRateEscaped =>
-      match extended {
-        ExtendedRateNotObserved => NominalRateEscaped
-        ExtendedRateObserved { code: c } =>
-          if c == 0 {
-            NominalRateUnspecified
-          } else {
-            NominalRateDirect { rate: symbol_rate(c * 250000000) }
-          }
-      }
+// at FFh is the pointer to it. This is a DECODER and nothing else: it says what a byte means, and it
+// says nothing about whether this fleet read it. WHETHER a byte was observed is a receipt in the
+// observing layer, which is why the observation sum lives beside the secondary-compliance one in
+// product.cable_leg_observation and not here -- the law is stated in this module's own header and an
+// earlier head of this change broke it anyway.
+//
+// 00h IS A SENTINEL HERE TOO. The specification gives it "not specified", so it decodes to
+// Unspecified rather than to zero baud, for the same reason byte 140's 00h does.
+fn sff8636_nominal_rate_from_byte222(code: Nat) -> Sff8636NominalRate {
+  if code == 0 {
+    NominalRateUnspecified
+  } else {
+    NominalRateDirect { rate: symbol_rate(code * 250000000) }
   }
 }
 

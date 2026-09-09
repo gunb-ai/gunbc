@@ -7,10 +7,11 @@ import extdeps.mikrotik.crs812 { crs812_qsfp56_dd_ports, crs812_lane_interface }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2 }
 import extdeps.transceiver.sff_8636 {
   transceiver_identifier_from_byte, sff8636_encoding_from_byte,
-  sff8636_nominal_rate_from_byte140, ExtendedRateObserved,
+  sff8636_nominal_rate_from_byte140,
 }
 import product.cable_leg_observation {
   CableLegObservation, SecondaryObserved, cable_leg_observation,
+  ExtendedRateObserved,
 }
 import product.cable_plant_converge {
   CablePlant, cable_plant, CableLegReading, LegReadingTaken, CablePlantConvergence,

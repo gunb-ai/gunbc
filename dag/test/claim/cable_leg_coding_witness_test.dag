@@ -10,7 +10,6 @@ import extdeps.ethernet.link_mode {
   ieee_25gbase_cr, ieee_50gbase_cr2, ieee_100gbase_cr4, ieee_100gbase_cr2,
 }
 import extdeps.transceiver.sff_8636 {
-  ExtendedRateNotObserved,
   NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
   ComplianceUnderstood, ComplianceUnspecified, ComplianceCodeUnmodelled,
   sff8636_nominal_rate_from_byte140, sff8636_interpret_extended_compliance,
@@ -28,6 +27,9 @@ import product.cable_leg_observation {
   GapEncodingUnspecified, GapEncodingNotUnderstood,
   cable_leg_observation, assess_cable_leg, cable_leg_consistency,
   cable_leg_unread_fields, cable_leg_interpretation_gaps,
+  ExtendedRateObserved, ExtendedRateNotObserved,
+  CableLegField, ExtendedRateField, SecondaryComplianceField,
+  cable_leg_signalling_rate,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -99,7 +101,7 @@ data delivered_fs_leg: CableLegObservation = cable_leg_observation(
   secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
-  extended_rate: ExtendedRateNotObserved)
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 fn is_insufficient(f: CableLegFinding) -> Bool {
   match f {
@@ -177,7 +179,7 @@ data leg_with_unmodelled_code: CableLegObservation = cable_leg_observation(
   secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
-  extended_rate: ExtendedRateNotObserved)
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 test fn an_unmodelled_code_is_not_understood_rather_than_attesting_nothing() -> Bool {
   code_not_understood(f: assess_cable_leg(
@@ -294,7 +296,7 @@ data secondary_unspecified_leg: CableLegObservation = cable_leg_observation(
   secondary_compliance: SecondaryObserved { code: 0 },
   encoding: sff8636_encoding_from_byte(code: 8),
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
-  extended_rate: ExtendedRateNotObserved)
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 test fn reading_an_unspecified_secondary_does_not_make_the_profile_decidable() -> Bool {
   consistency_gap_is_compliance_unspecified(c: cable_leg_consistency(obs: secondary_unspecified_leg))
@@ -317,7 +319,7 @@ data fully_understood_leg: CableLegObservation = cable_leg_observation(
   secondary_compliance: SecondaryObserved { code: 64 },
   encoding: sff8636_encoding_from_byte(code: 8),
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
-  extended_rate: ExtendedRateNotObserved)
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 test fn a_fully_read_profile_is_undecidable_only_for_interface_scope() -> Bool {
   consistency_cause_is_scope(c: cable_leg_consistency(obs: fully_understood_leg))
@@ -344,7 +346,7 @@ data encoding_unspecified_leg: CableLegObservation = cable_leg_observation(
   secondary_compliance: SecondaryObserved { code: 64 },
   encoding: sff8636_encoding_from_byte(code: 0),
   nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
-  extended_rate: ExtendedRateNotObserved)
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 test fn an_unspecified_encoding_is_named_rather_than_blamed_on_interface_scope() -> Bool {
   consistency_gap_is_encoding_unspecified(c: cable_leg_consistency(
@@ -378,6 +380,46 @@ test fn an_ordinary_byte140_is_read_as_a_symbol_rate() -> Bool {
   match sff8636_nominal_rate_from_byte140(code: 254) {
     NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 25400000000
     NominalRateEscaped => false
+    NominalRateUnspecified => false
+  }
+}
+
+
+// AN ESCAPE NOBODY FOLLOWED IS AN UNREAD FIELD, and this is the fixture that keeps that arm honest.
+// Every other leg in this file now carries the byte 222 that was actually read off the fleet on
+// 2026-09-08, so without this one `ExtendedRateNotObserved` would be a variant nothing exercises --
+// the dangling declaration DESIGN section 3c names -- and the coverage census could stop reporting
+// it without any witness noticing.
+data escape_never_followed_leg: CableLegObservation = cable_leg_observation(
+  identifier: transceiver_identifier_from_byte(code: 17),
+  primary_compliance_code: 64,
+  secondary_compliance: SecondaryObserved { code: 0 },
+  encoding: sff8636_encoding_from_byte(code: 8),
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateNotObserved)
+
+test fn an_unfollowed_escape_is_reported_as_an_unread_field() -> Bool {
+  match cable_leg_unread_fields(obs: escape_never_followed_leg).first() {
+    Present { value: f } =>
+      match f {
+        ExtendedRateField => true
+        SecondaryComplianceField => false
+        PrimaryComplianceField => false
+        EncodingField => false
+        NominalRateField => false
+      }
+    Absent => false
+  }
+}
+
+// AND IT STAYS ESCAPED RATHER THAN RESOLVING TO A GUESS. This is the discriminating input for the
+// fabrication the whole subject exists to catch: multiplying byte 140's FFh out would produce 25500
+// here, which is what `ethtool` prints and what an earlier head of this work recorded as a
+// measurement. Resolution must decline instead.
+test fn an_unfollowed_escape_does_not_resolve_to_a_rate() -> Bool {
+  match cable_leg_signalling_rate(obs: escape_never_followed_leg) {
+    NominalRateEscaped => true
+    NominalRateDirect { rate: r } => false
     NominalRateUnspecified => false
   }
 }
