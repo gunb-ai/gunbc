@@ -291,6 +291,35 @@ import v2.std.collection { List }
 // --entry <any of the three test files> [witness] lines for the recompute side, and this run's
 // [floor-shared-fill] ledger, which must show the fill landing at preparation with
 // disposition=Stored and the seven former interrupted claims serving hits.
+// THE TWO FAMILY-CRATE EMITTED PAIRS EARN THEIR ROWS ON THE RUN THE DOOR-SPECIMEN STORE
+// UNMASKED. Required-floor run 34315228217 (PR #10692 head da5c00c301) refused
+// v2.test.long.emit_host_native_only_verdict's emit_host_native_only_loop_holds as
+// COMPLETED-OVER-COST-REQUIREMENT at cost=504ms CEILING against limit_ms=500 — and the run's own
+// cost receipt names the whole exposed population: all twelve native-only family arms (the six
+// match/loop/fold claims at 462-503ms cpu, the six complement/meet/join claims at 458-487ms)
+// sitting within one runner-swing of the line, while the file's next-nearest claim stands at
+// 388ms. The recompute instrument is claim_batch's gross [witness] receipt over the entry file
+// plus one probe per producer: each claim re-ran its family's full pure pipeline inline —
+// primary trees, member assembly, emit_family, the native key — measured at 186ms
+// (mlf_family_primary_emitted) and 142ms (logic_family_primary_emitted) of each ~174-247ms local
+// claim on this host, against the lane's 458-503ms for the same work. The sharing census is the
+// call-site graph itself: six claims per family funnel through one member-independent pipeline,
+// and the two per-arm helper spellings in the verdict module are dissolved into the families'
+// own homes with these rows (DESIGN §2/§3 — one pipeline per family, one authority). The share
+// point is the deepest PORTABLE stage: the member list carries InferredTrees (the facts
+// PartialFunction is origin-bound), so the served value is the emitted crate source plus its
+// native key — EmittedFamilyCrate { source: Medium<String>, native_key: ContentHash }, declared
+// once in v2.compiler.emit_module rather than once per family — small, fully portable (no
+// Closure/OriginBoundNode at any depth), so a serve is an Rc hand-over against a ~142-186ms
+// recompute. WARM, NEVER CLAIM-FORCED, by the same ceiling arithmetic as the rows above: a
+// 142-186ms fill on this host is a ~370-485ms fill at the lane's observed ratio (458-503ms of
+// lane cpu for 174-247ms of local work), and the claim still owes its cached native run after
+// the fill — an in-fold fill of this size dies mid-flight on the lane exactly as
+// prepare_grammar's did. Re-derive rather than trust: claim_batch --entry
+// src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag [witness] lines for
+// the claim side, one-claim probe entries over the two producers for the pipeline side, and
+// this run's [floor-shared-fill] ledger, which must show both fills landing at preparation with
+// disposition=Stored and the twelve former ceiling-band claims serving hits.
 // THE TWO STAGE0-BOUNDARY EMISSIONS ARE THE SAME SHAPE AS produced_add_module_source ABOVE: a
 // nullary producer of a small, closure-free emitted source. v2.test.long.stage0_production_target
 // asserts that the stage0 target profile emits a boundary-compatible declaration and that the base
@@ -310,6 +339,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body",
   "v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_specimen_resolved",
+  "v2.test.execution.emit_on_demand_match_loop_fold_family_witness.mlf_family_primary_emitted",
+  "v2.test.execution.emit_on_demand_family_crate_witness.logic_family_primary_emitted",
   "v2.test.long.stage0_production_target.stage0_boundary_profile_emitted_source",
   "v2.test.long.stage0_production_target.stage0_boundary_base_emitted_source"
 ]
