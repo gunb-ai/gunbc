@@ -15,6 +15,7 @@ import extdeps.colo.types {
   DensityScreen, ScreenHolds, ScreenUndetermined, ScreenNeedsEvidence,
   density_wording_covers, density_ceiling_refuses, density_claim_contains_figure,
   figure_wording_is_verified, density_claim_wording_is_verified,
+  density_claim_figures, figure_is_unspecified,
   quantity_ceiling,
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
@@ -504,4 +505,25 @@ test fn w_occupancy_verification_and_utility_are_three_facts() -> Bool {
     && !density_claim_wording_is_verified(d: iron_mountain_nje1_density)
     && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
     && density_claim_wording_is_verified(d: databank_lga4_density)
+}
+
+// A FIGURE THE SCREEN CANNOT REACH IS STILL A READING THE CENSUS MUST COUNT, and Iron Mountain is the
+// row that holds both halves at once. Its single figure is CoolingMediumUnspecified, so no air or
+// liquid request returns it and no request for unspecified is answerable either - and it is
+// nonetheless a verbatim-sourced published reading that a coverage roster has to see. The inventory
+// route returns it; the screening route does not; and asserting BOTH in one witness is what stops a
+// later author "fixing" the second by making unspecified requestable.
+//
+// THE SECOND CONJUNCT IS THE ONE THAT WOULD CATCH THAT FIX. If `medium_matches` ever answered true for
+// an unspecified request, this goes red - the same defect `w_requesting_an_unspecified_medium_answers_nothing`
+// guards, asserted here from the inventory side so neither route can be changed alone.
+//
+// The DataBank conjunct is the positive control on the count: two figures in, two figures out, so an
+// inventory route that silently returned only the head would fail here and nowhere else.
+test fn w_an_unscreenable_figure_is_still_inventoried() -> Bool {
+  density_claim_figures(d: iron_mountain_nje1_density).length() == 1
+    && !has_figure_for(d: iron_mountain_nje1_density, requested: CoolingMediumUnspecified)
+    && all(density_claim_figures(d: iron_mountain_nje1_density), f => figure_is_unspecified(f: f))
+    && density_claim_figures(d: databank_lga4_density).length() == 2
+    && density_claim_figures(d: iron_mountain_wpa1_density).length() == 0
 }

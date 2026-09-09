@@ -654,3 +654,44 @@ fn density_claim_wording_is_verified(d: CabinetDensityClaim) -> Bool {
     DensityUnread { obligation } => false,
   }
 }
+
+// INVENTORY IS NOT SCREENING, AND WITHOUT THIS ROUTE FOUR OF FIVE READ ROWS IN ONE LANE WOULD HAVE
+// BEEN UNREACHABLE. `density_figure_for_medium` deliberately answers NOTHING for a request of
+// CoolingMediumUnspecified: an unlabelled figure must never satisfy an air or liquid requirement, and
+// making the request askable would restore that defect through the query side after it was closed on
+// the figure side. That is right for the SCREENING question and it is the wrong shape for the census
+// question, which is not "does this cover 20 kW of air" but "what did this operator publish".
+//
+// A census lane reading New York found the gap before the rebase rather than during it: four of its
+// five read rows are CoolingMediumUnspecified, and with only a medium-keyed accessor those verbatim
+// readings would sit in the corpus with no total route returning them - a dangling set created by the
+// CARRIER rather than by an author, which is the worse kind because no author can fix it.
+//
+// SO THE TWO QUESTIONS GET TWO ROUTES, WHICH IS THE SAME MOVE THIS FILE HAS MADE AT EVERY OTHER SEAM.
+// A ceiling and a reading are different types; occupancy and retrieval are different functions;
+// inventory and screening are different folds. Giving inventory its own route does not weaken the
+// screen, because the screen still cannot be asked with an unspecified medium - the routes answer
+// different questions rather than one question two ways, which is what would have been the fork.
+//
+// TOTAL, AND EMPTY FOR AN UNREAD CLAIM RATHER THAN REFUSING: a claim nobody read published no
+// figures, which is a true statement about its inventory. It is `density_claim_contains_figure` that
+// separates unread from read, and a caller wanting that distinction asks for it.
+fn density_claim_figures(d: CabinetDensityClaim) -> List<PublishedDensityFigure> {
+  match d {
+    DensityPublished { figures } => density_figures_all(figures: figures),
+    DensityUnread { obligation } => [],
+  }
+}
+
+// THE THIRD MEDIUM PREDICATE, WHICH EXISTS SO A CENSUS CAN COUNT WHAT IT CANNOT SCREEN. An unlabelled
+// figure is a real reading and a real coverage fact - it is the single most common shape in this
+// corpus - and a lane reporting "N facilities publish a density, of which M name no cooling medium"
+// is asking a question no screening accessor can answer. Without this, each lane would fold its own
+// medium match and the coordinate would be re-spelled once per census.
+fn figure_is_unspecified(f: PublishedDensityFigure) -> Bool {
+  match f.medium {
+    AirCoolingPublished => false,
+    LiquidCoolingPublished => false,
+    CoolingMediumUnspecified => true,
+  }
+}
