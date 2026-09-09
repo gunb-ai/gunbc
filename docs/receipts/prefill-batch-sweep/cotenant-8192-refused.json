@@ -1,0 +1,23 @@
+{
+  "arm": "8192",
+  "prefill_tokens": 16384,
+  "prefill_wall_ms": 16579.2,
+  "decode_alone": {
+    "n": 62,
+    "median_ms": 38.3,
+    "p95_ms": 39.2,
+    "max_ms": 1161.6
+  },
+  "decode_during_prefill": {
+    "n": 7,
+    "median_ms": 49.6,
+    "p95_ms": 8219.9,
+    "max_ms": 8219.9
+  },
+  "attribution": {
+    "own_prompt_tokens": 16448,
+    "engine_booked_prompt_tokens": 311543,
+    "max_running_observed": 3.0
+  },
+  "refused": "foreign work observed at the polling grain: max_running=3.0 (mine is 2), engine booked 311543 prompt tokens against my 16448. This window cannot be attributed to one victim and one prefill."
+}

@@ -18,6 +18,7 @@ import gunbc.namespace_structural_observation_bridge_seed_growth { namespace_str
 import gunbc.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
 import gunbc.namespace_wave_admission { namespace_wave_admission_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
+import gunbc.regen_digest_spelling_seed_growth { regen_digest_spelling_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
@@ -68,6 +69,7 @@ import gunbc.frame_independent_symbol_seed_growth { frame_independent_symbol_see
 import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
 import gunbc.listing_completeness_seed_growth { listing_completeness_seed_growth_justification }
 import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_justification }
+import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
 import gunbc.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
@@ -237,6 +239,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     parsed_import_statement_bridge_seed_growth_justification,
     namespace_wave_admission_seed_growth_justification,
     qualified_pipe_callee_seed_growth_justification,
+    regen_digest_spelling_seed_growth_justification,
     target_invocation_seed_growth_justification,
     bootstrap_operation_seed_growth_justification,
     cli_dispatch_host_boundary_seed_growth_justification,
@@ -247,7 +250,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     cli_wire_host_seed_growth_justification,
     filesystem_create_new_seed_growth_justification,
     required_lane_judgment_seed_growth_justification,
-    param_binder_seed_growth_justification
+    param_binder_seed_growth_justification,
+    live_tree_stamp_detector_seed_growth_justification
   ]
 }
 
