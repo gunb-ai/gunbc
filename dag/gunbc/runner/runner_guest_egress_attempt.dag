@@ -120,6 +120,15 @@ data cpu_bound_failure: CpuBoundFailure = CpuBoundRefusedWithErrno {
   root_subtree: "cpu memory pids -- the controller is delegated, and weight control is not bandwidth control",
 }
 
+fn cpu_max_write_was_refused() -> Bool {
+  match cpu_bound_failure {
+    CpuBoundAppliedNow { value: _ } => false
+    CpuBoundRefusedWithErrno { errno: _, path_shape: _, root_subtree: _ } => true
+  }
+}
+
+data cpu_bound_write_refused: Bool = cpu_max_write_was_refused()
+
 // ── what stopped the egress, at the grain observed ──────────────────────────────────────────────
 
 // THE DHCP CLIENT REPORTED SUCCESS AND APPLIED NOTHING, TWICE, FOR TWO DIFFERENT REASONS -- and the

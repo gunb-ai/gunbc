@@ -3,9 +3,7 @@ module gunbc.runner.runner_cpu_bandwidth_receipt
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { ByteSize }
-import gunbc.runner.runner_guest_egress_attempt {
-  cpu_bound_failure, CpuBoundAppliedNow, CpuBoundRefusedWithErrno,
-}
+import gunbc.runner.runner_guest_egress_attempt { cpu_bound_write_refused }
 import gunbc.runner.runner_cgroup_placement_receipt {
   placement_verdict, PlacementBidirectional, PlacementForwardOnly,
   PlacementReverseOnly, PlacementNotEstablished,
@@ -36,16 +34,8 @@ data cause_established: NonEmptyStr = "CONFIG_CFS_BANDWIDTH was unset, so cpu.ma
 
 // THE CAUSE AND THE PLACEMENT RECEIPT ARE IMPORTED, not restated from annotation. The 88 MiB
 // memory.current figure this module used to carry as prose is placement_accounting's field; writing
-// it here a second time was a meaning fork of one observation.
-fn cpu_max_write_was_refused_before_this_rebuild() -> Bool {
-  match cpu_bound_failure {
-    CpuBoundAppliedNow { value: _ } => false
-    CpuBoundRefusedWithErrno { errno: _, path_shape: _, root_subtree: _ } => true
-  }
-}
-
-data cpu_max_write_previously_refused: Bool = cpu_max_write_was_refused_before_this_rebuild()
-
+// it here a second time was a meaning fork of one observation. cpu_bound_write_refused is the same
+// refusal this rebuild closes -- folded once, next to cpu_bound_failure, not again here.
 fn placement_was_bidirectional() -> Bool {
   match placement_verdict {
     PlacementBidirectional { cgroup_path: _, pid: _ } => true
@@ -60,12 +50,6 @@ data placement_established_from_both_ends: Bool = placement_was_bidirectional()
 data memory_current_at_placement: ByteSize = placement_accounting.memory_current
 
 data memory_max_at_placement: ByteSize = placement_accounting.memory_max
-
-data cites_cpu_bound_failure: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.runner.runner_guest_egress_attempt" as NonEmptyStr,
-  decl_name: "cpu_bound_failure" as NonEmptyStr,
-  field: WholeDeclaration,
-}
 
 data cites_placement_verdict: DeclarationRef = DeclarationRef {
   module_path: "gunbc.runner.runner_cgroup_placement_receipt" as NonEmptyStr,
@@ -82,7 +66,7 @@ data cites_placement_accounting: DeclarationRef = DeclarationRef {
 // ── what the run shows ─────────────────────────────────────────────────────────────────────────
 
 type CpuBoundStanding
-  = CpuBoundInterfacePresent { value: NonEmptyStr, what_this_does_not_show: NonEmptyStr }
+  = CpuBoundInterfacePresent { value: NonEmptyStr, what_this_does_not_show: NonEmptyStr, closed_a_prior_refusal: Bool }
   | CpuBoundEnforcementObserved { evidence: NonEmptyStr }
   | CpuBoundAbsent { errno: NonEmptyStr }
 
@@ -93,6 +77,7 @@ type CpuBoundStanding
 data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
   value: "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf",
   what_this_does_not_show: "that a process exceeding it is actually throttled. No load was applied, so cpu.stat's throttled_usec and nr_throttled were never going to move, and nothing here distinguishes an enforced bound from a stored number",
+  closed_a_prior_refusal: cpu_bound_write_refused,
 }
 
 // THE NEXT RUNG IS ONE CONTROLLED LOAD, and it is named so this does not sit at the interface tier

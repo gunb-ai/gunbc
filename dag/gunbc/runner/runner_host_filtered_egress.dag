@@ -9,7 +9,7 @@ import gunbc.runner_microvm_network {
 }
 import gunbc.runner.runner_guest_egress_attempt {
   egress_outcome, GuestEgressEstablished, GuestEgressNotEstablished,
-  cpu_bound_failure, CpuBoundAppliedNow, CpuBoundRefusedWithErrno,
+  cpu_bound_write_refused,
 }
 import gunbc.runner.runner_guest_network_receipt { guest_reachability }
 
@@ -65,14 +65,7 @@ fn bridged_attempt_left_guest_without_egress() -> Bool {
 
 data bridged_topology_rejected_because_it_failed: Bool = bridged_attempt_left_guest_without_egress()
 
-fn cfs_bandwidth_was_the_missing_cpu_max_cause() -> Bool {
-  match cpu_bound_failure {
-    CpuBoundAppliedNow { value: _ } => false
-    CpuBoundRefusedWithErrno { errno: _, path_shape: _, root_subtree: _ } => true
-  }
-}
-
-data kernel_rebuild_owes_cfs_bandwidth: Bool = cfs_bandwidth_was_the_missing_cpu_max_cause()
+data kernel_rebuild_owes_cfs_bandwidth: Bool = cpu_bound_write_refused
 
 fn host_reached_the_guest_on_the_point_to_point_tap() -> Bool {
   guest_reachability.transmitted == guest_reachability.received
