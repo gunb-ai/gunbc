@@ -1710,13 +1710,13 @@ fn cp_probe_located() -> ProviderPathStanding {
   ProviderPathLocated {
     operator: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_provider"),
     jurisdiction: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
-    evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_offer_for"),
+    evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_path_evidence"),
   }
 }
 
 fn cp_probe_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
-    authority: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_posture"),
+    authority: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_posture_authority"),
     revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-posture-r1")),
   }
 }
@@ -1733,14 +1733,14 @@ fn cp_probe_admission(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, W
       RouteScopeSanction {
         route: probe_route(),
         posture: cp_probe_posture(),
-        customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
-        data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
-        requires_agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
+        customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_customer_profile"),
+        data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_data_handling_profile"),
+        requires_agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_agreement_v1"),
       },
     ],
     facts: ProviderRouteFacts {
       route: probe_route(),
-      contract_terms: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_offer_id"),
+      contract_terms: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_contract_terms"),
       data_paths: ProviderDataPathClosure {
         execution: cp_probe_located(),
         durable_storage: cp_probe_located(),
@@ -1751,11 +1751,11 @@ fn cp_probe_admission(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, W
         support_access: cp_probe_located(),
         administrative_access: cp_probe_located(),
         spill: ProviderPathAbsent {
-          evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+          evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_no_spill"),
         },
       },
       downstream: NoDownstreamProviders {
-        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_no_downstream"),
       },
       observed_at: "2026-08-27T00:00:00Z",
       facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-facts-r1")),
@@ -1764,21 +1764,21 @@ fn cp_probe_admission(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, W
     scope: ProviderUseScope {
       demand: cp_probe_demand_id(key: "demand-floor-1"),
       work: work,
-      customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
-      data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_slot"),
-      agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
+      customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_customer_profile"),
+      data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_data_handling_profile"),
+      agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_agreement_v1"),
       prohibited_use_disposition: DispositionCleared {
-        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_prohibited_use_cleared"),
       },
       sanctions_disposition: DispositionCleared {
-        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_sanctions_cleared"),
       },
       export_disposition: DispositionCleared {
-        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_account"),
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_export_cleared"),
       },
     },
     offer: cp_probe_offer_id(key: "offer-1"),
-    decision_receipt: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "cp_probe_roster"),
+    decision_receipt: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_decision_receipt"),
   )
 }
 
@@ -2004,6 +2004,35 @@ func fci1_live_release_with_receipt(root: NonEmptyStr, path: String) -> ProcessE
 data probe_provider: NonEmptyStr = "gunbc-owned-fleet"
 data probe_service: NonEmptyStr = "gunbc-fleet-cells"
 data probe_region: NonEmptyStr = "gunbc-fleet-site"
+
+// THE COMPLIANCE SUBJECTS THIS PROBE CITES, DECLARED SO EACH CITATION NAMES ITS OWN FACT. Review
+// 62873 is right that the previous spelling defeated the point of citing symbols: customer profile
+// and all three cleared dispositions pointed at cp_probe_account, a money-account builder; the
+// data-handling profile and the spill and downstream evidence pointed at cp_probe_slot; the
+// required agreement and the decision receipt pointed at cp_probe_roster, a candidate-roster
+// builder. Every one of those resolves, so the citation gate was satisfied by spelling while the
+// permit carried a fully populated ProviderUseEvidence in which no field named the fact it claimed
+// to record -- validation passing over a realization that lies, which is the shape section 5 names.
+//
+// A citation is only worth more than a string because the NAME is the fact. Pointing eight
+// different obligations at three unrelated builders makes the evidence unreadable in the one
+// direction it exists for: asking later what this permit was actually granted against.
+//
+// These are the probe's own subjects, declared here rather than imported from
+// test.claim.fabric.provider_use_fixture for the reason stated above -- a production instrument
+// reaching into test.claim is the layer inversion section 3 forbids.
+data probe_posture_authority: NonEmptyStr = "probe-posture-authority"
+data probe_customer_profile: NonEmptyStr = "probe-customer-profile"
+data probe_data_handling_profile: NonEmptyStr = "probe-data-handling-profile"
+data probe_agreement_v1: NonEmptyStr = "probe-agreement-v1"
+data probe_contract_terms: NonEmptyStr = "probe-contract-terms"
+data probe_decision_receipt: NonEmptyStr = "probe-decision-receipt"
+data probe_path_evidence: NonEmptyStr = "probe-path-evidence"
+data probe_no_spill: NonEmptyStr = "probe-no-spill"
+data probe_no_downstream: NonEmptyStr = "probe-no-downstream"
+data probe_prohibited_use_cleared: NonEmptyStr = "probe-prohibited-use-cleared"
+data probe_sanctions_cleared: NonEmptyStr = "probe-sanctions-cleared"
+data probe_export_cleared: NonEmptyStr = "probe-export-cleared"
 
 // One fixture route for this witness. provider, service and region are CITED rather than spelled,
 // so an offer and a sanction agree by declaration identity and not by matching strings.
