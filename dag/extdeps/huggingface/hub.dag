@@ -1,0 +1,185 @@
+module extdeps.huggingface.hub
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https, uri_wire }
+
+// THE HUGGING FACE HUB, as its own extdeps authority: an independently governed upstream whose cache
+// layout, addressing scheme and CLI this repository consumes but does not define.
+//
+// WHY THIS MODULE DID NOT EXIST UNTIL NOW, WHICH IS THE INTERESTING PART. The fleet has been serving
+// weights out of the Hub's cache since 2026-09-03 -- gunbc.spark.pair_serving_realization binds
+// /home/briansrls/.cache/huggingface/hub into the container at /weights -- and the ONLY piece of the
+// Hub ever modelled was a private helper in that module reconstructing the `models--org--name`
+// folder name. One upstream convention, spelled once, inside a consumer, with no citation. That is
+// the nickname failure at its most ordinary: the convention is the Hub's, the consumer was answering
+// for it, and nothing said where it came from.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "huggingface.co/docs/huggingface_hub/en/guides/manage-cache",
+  }
+}
+
+// ── ADDRESSING ─────────────────────────────────────────────────────────────────────────────────
+
+type HubRepoKind = HubModelRepo | HubDatasetRepo | HubSpaceRepo
+
+// THE CACHE FOLDER PREFIX IS PER REPO KIND, cited to the layout document, which shows all three
+// side by side (`models--`, `datasets--`, `spaces--`) sharing one root. Carrying the kind rather
+// than hardcoding `models--` is not speculative generality: the prefix is the only thing that
+// distinguishes a model repo's cache directory from a dataset repo's of the same name, so a helper
+// that omitted it would collide two distinct upstream subjects on one path.
+fn hub_repo_kind_cache_prefix(kind: HubRepoKind) -> NonEmptyStr {
+  match kind {
+    HubModelRepo => "models" as NonEmptyStr
+    HubDatasetRepo => "datasets" as NonEmptyStr
+    HubSpaceRepo => "spaces" as NonEmptyStr
+  }
+}
+
+// `path` IS THE `namespace/name` SPELLING AS THE HUB ADDRESSES IT, AND IT IS ONE FIELD RATHER THAN A
+// PAIR. A repo without a namespace is spelled as its bare name -- the layout document's own
+// `models--bert-base-cased` example -- so splitting it would force every caller to decide what an
+// absent namespace means, and the Hub has already decided.
+type HubRepoId {
+  kind: HubRepoKind
+  path: NonEmptyStr
+}
+
+// THE CACHE DIRECTORY NAME, and this is the row that replaces the private helper in
+// pair_serving_realization. The Hub's rule is that the repo kind and the repo path are joined by
+// `--`, with every `/` inside the path also becoming `--`.
+fn hub_repo_cache_directory_name(repo: HubRepoId) -> NonEmptyStr {
+  join([
+    hub_repo_kind_cache_prefix(kind: repo.kind) as String,
+    "--",
+    join(split(repo.path as String, "/"), "--"),
+  ], "") as NonEmptyStr
+}
+
+// THE DEFAULT CACHE ROOT AND THE TWO VARIABLES THAT MOVE IT, cited rather than assumed. The document
+// names `HF_HOME` and `HF_HUB_CACHE`, and they are not interchangeable: `HF_HUB_CACHE` names the hub
+// cache directly, while `HF_HOME` names the parent whose `hub` subdirectory is the cache. A consumer
+// that set one expecting the other's meaning would write a `hub/hub` path or miss the subdirectory
+// entirely, so both are carried with their own semantics rather than as one "cache dir override".
+data hub_default_cache_root: NonEmptyStr = "~/.cache/huggingface/hub" as NonEmptyStr
+data hub_cache_root_env_var: NonEmptyStr = "HF_HUB_CACHE" as NonEmptyStr
+data hub_home_env_var: NonEmptyStr = "HF_HOME" as NonEmptyStr
+data hub_home_cache_subdirectory: NonEmptyStr = "hub" as NonEmptyStr
+
+// ── THE CACHE SKELETON ─────────────────────────────────────────────────────────────────────────
+//
+// EVERY REPO FOLDER HAS THE SAME SHAPE, and the distinction that matters to a consumer is that
+// SNAPSHOTS ARE NOT WHERE THE BYTES LIVE. `snapshots/<commit>/<path>` is a SYMLINK into
+// `blobs/<hash>`, so a snapshot directory is a view and its apparent size is not its cost, two
+// revisions sharing a file share one blob, and anything that copies a snapshot without dereferencing
+// gets a tree of dangling links. The blob's filename is the file's hash.
+data hub_repo_blobs_subdirectory: NonEmptyStr = "blobs" as NonEmptyStr
+data hub_repo_refs_subdirectory: NonEmptyStr = "refs" as NonEmptyStr
+data hub_repo_snapshots_subdirectory: NonEmptyStr = "snapshots" as NonEmptyStr
+data hub_snapshot_entries_are_symlinks_into_blobs: Bool = true
+
+fn hub_repo_cache_directory(cache_root: NonEmptyStr, repo: HubRepoId) -> NonEmptyStr {
+  join([cache_root as String, "/", hub_repo_cache_directory_name(repo: repo) as String], "") as NonEmptyStr
+}
+
+fn hub_snapshot_directory(cache_root: NonEmptyStr, repo: HubRepoId, revision: NonEmptyStr) -> NonEmptyStr {
+  join([
+    hub_repo_cache_directory(cache_root: cache_root, repo: repo) as String,
+    "/", hub_repo_snapshots_subdirectory as String,
+    "/", revision as String,
+  ], "") as NonEmptyStr
+}
+
+// A REVISION IS AN IMMUTABLE COMMIT AND A BRANCH NAME IS NOT. `refs/<branch>` holds the commit the
+// branch pointed at when it was last fetched, and the document is explicit that re-fetching updates
+// it -- so a branch name resolves to different bytes over time while a commit hash never does. A
+// desired row that pinned `main` would be pinning nothing, which is why every consumer of this
+// module is asked for a resolved commit.
+data hub_branch_name_is_not_a_content_address: Bool = true
+
+// ── FETCHING ───────────────────────────────────────────────────────────────────────────────────
+//
+// THE PER-FILE RESOLVE URL, which is the transport a caller uses when it wants ONE file addressed by
+// its own digest and verified locally. This is the shape the deleted Ollama materializer had, and it
+// is the stronger of the two available guarantees -- but it needs a per-file digest manifest, which
+// for a many-shard model repository is an observation rather than something an author can write.
+fn hub_resolve_url(repo: HubRepoId, revision: NonEmptyStr, path_in_repo: NonEmptyStr) -> NonEmptyStr {
+  uri_wire(uri: Uri {
+    scheme: Https,
+    locator: join([
+      "huggingface.co/", repo.path as String,
+      "/resolve/", revision as String,
+      "/", path_in_repo as String,
+    ], "") as NonEmptyStr,
+  })
+}
+
+// THE TREE API, which is where a per-file digest manifest would be OBSERVED from. It is declared so
+// the path to the stronger guarantee is named rather than left as a gap someone has to rediscover;
+// no row in this repository consumes it yet.
+fn hub_repo_tree_api_url(repo: HubRepoId, revision: NonEmptyStr) -> NonEmptyStr {
+  uri_wire(uri: Uri {
+    scheme: Https,
+    locator: join([
+      "huggingface.co/api/models/", repo.path as String,
+      "/tree/", revision as String, "?recursive=1",
+    ], "") as NonEmptyStr,
+  })
+}
+
+// THE CLI, which is the transport that can actually move a multi-hundred-gigabyte repository, and
+// the reason the revision-keyed acquisition arm exists at all. `hf` is the current spelling;
+// `huggingface-cli` is the older one for the same tool.
+data hub_cli_program: NonEmptyStr = "hf" as NonEmptyStr
+data hub_cli_legacy_program: NonEmptyStr = "huggingface-cli" as NonEmptyStr
+data hub_token_env_var: NonEmptyStr = "HF_TOKEN" as NonEmptyStr
+
+fn hub_download_argv(repo: HubRepoId, revision: NonEmptyStr) -> List<String> {
+  [
+    hub_cli_program as String, "download", repo.path as String,
+    "--revision", revision as String,
+  ]
+}
+
+// THE VERIFY OPERATION, AND IT IS WHAT MAKES A REVISION-KEYED ACQUISITION MORE THAN A DIRECTORY
+// PROBE. `hf cache verify <repo> --revision <rev>` checks the cached files against the Hub's own
+// checksums and reports how many it verified. Without it the only available answer to "is this
+// snapshot good" is "the directory exists", which an interrupted download satisfies; with it, the
+// weaker key still gets a real integrity check, performed by the authority that owns the checksums.
+//
+// IT IS STILL WEAKER THAN A LOCAL DIGEST COMPARISON, and the difference is worth stating rather than
+// eliding: this asks UPSTREAM what the bytes should be at verification time, so it is a check
+// against the Hub's current answer for that commit rather than against a digest frozen in this
+// repository. A commit is immutable, so the two agree in every ordinary case -- but only one of them
+// is an oracle this repository holds.
+fn hub_cache_verify_argv(repo: HubRepoId, revision: NonEmptyStr) -> List<String> {
+  [
+    hub_cli_program as String, "cache", "verify", repo.path as String,
+    "--revision", revision as String,
+  ]
+}
+
+// AN INTERRUPTED DOWNLOAD LEAVES `.incomplete` BLOBS, and they are invisible to the ordinary listing
+// -- `hf cache ls` only hints at them and `hf cache rm` never touches them; `hf cache prune` is what
+// removes them. Carried because a partial fetch that leaves a snapshot directory in place is exactly
+// the state a presence probe reads as success.
+data hub_incomplete_blob_suffix: NonEmptyStr = ".incomplete" as NonEmptyStr
+
+fn hub_cache_prune_argv() -> List<String> {
+  [hub_cli_program as String, "cache", "prune", "--yes"]
+}
+
+// UPSTREAM DETECTS AN INCOMPLETE SNAPSHOT AND RAISES RATHER THAN RETURNING A PARTIAL FOLDER, which
+// the document records as a deliberate change from earlier behaviour: "before this, an incomplete
+// snapshot was returned silently, which could leave you working with missing files without knowing
+// it." That is the same fabricated-plausible-output failure this repository names, fixed upstream,
+// and it is cited here because a consumer is entitled to rely on it.
+data hub_snapshot_download_refuses_incomplete_snapshots: Bool = true
+
+// SYMLINKS CAN BE DISABLED, in which case files are copied into `snapshots/` directly and the blob
+// sharing above does not happen. A consumer sizing disk against a shared-blob assumption is wrong by
+// a factor of the revision count when this is set.
+data hub_disable_symlinks_env_var: NonEmptyStr = "HF_HUB_DISABLE_SYMLINKS" as NonEmptyStr
