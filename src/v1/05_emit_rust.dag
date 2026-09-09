@@ -12552,8 +12552,16 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
   is_fm && empty_fillable && cons_fillable
 }
 
+// THE TAIL IS A STRUCTURAL SKIP, NEVER A COPY. `im::Vector::skip` is O(log n) — it shares the
+// RRB tree — while `iter().skip(1).cloned().collect()` materializes the whole tail: every
+// cons-match in every emitted program paid O(n) per step, so every fold over a FreeMonoid was
+// quadratic. Measured on the required-v2-native lane's first run (2026-09-09): the self-hosted
+// lexer, which tails the remaining source per character and per rule attempt, parsed a 22KB
+// file in 23.3s against 70ms for 899B (333x time for 25x size), projecting a multi-hour
+// whole-corpus context fold — the lane's dominant term, ahead of the cargo build the envelope
+// had priced as dominant. DESIGN section 6 prices a copied accumulator as always-fixed.
 fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
-  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ") }
+  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new(__fm.skip(1)); ") }
 }
 
 fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {

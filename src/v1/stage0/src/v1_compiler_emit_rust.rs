@@ -28248,7 +28248,7 @@ pub fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
     } else {
         v1_rt::concat(
             v1_rt::concat("let ".to_string(), tail_bind.clone()),
-            ": Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ".to_string(),
+            ": Rc<Vec<_>> = Rc::new(__fm.skip(1)); ".to_string(),
         )
     }
 }
