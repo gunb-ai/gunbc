@@ -56,7 +56,9 @@ data capacity_probe_script_shell_emit_dissolution: DissolutionCondition = unboun
 
 data observed_engine_revision_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the live probe observes the engine's vLLM source revision as VllmSourceRevision (repository plus full git object), not /version and not the container image digest (extdeps.vllm.server), and group_report passes that Present value into readings_from_fields instead of none. SUFFICIENT FOR: ProbeReadingsReady is reachable from fabric_capacity_standing, so admit_kv_layout, capacity_floor_standing and admission_posture run on the live path and ExitSuccess is authorable. Until then none is the honest observation, not a stamp of vllm_source_revision_read." as NonEmptyStr)
 
-// TWELVE LINES, FIXED ORDER, "-" FOR ANYTHING THIS HOST CANNOT ANSWER.
+// ONE ROSTER, BOTH ENDS. The far side prints one line per slot, in this list's order; decode looks
+// slots up by name, so inserting a command cannot silently rebind unit_sha to the container id.
+// "-" means the host could not answer.
 //
 // The two launch figures are taken from the LAST matching line rather than the first: the log
 // accumulates across restarts, and the engine serving now is the one that printed last.
@@ -66,6 +68,83 @@ data observed_engine_revision_frontier: DissolutionCondition = unbound_dissoluti
 // so a `--format` template or a shell function body ends the enclosing declaration early and the
 // module refuses to parse. Every field is therefore assigned, defaulted and printed in three plain
 // commands, and the two docker templates are replaced by `-q` and a sed capture.
+type ProbeFieldName
+  = Invocation
+  | UnitSha
+  | Container
+  | ImageSha
+  | StartedAt
+  | PoolLine
+  | ConcurrencyLine
+  | AllocatorBlocks
+  | BlockSize
+  | MaxModelLen
+  | Running
+  | Waiting
+
+type CapacityProbeSlot {
+  name: ProbeFieldName
+  command: String
+  missing: String
+}
+
+fn probe_field_key(n: ProbeFieldName) -> String {
+  match n {
+    Invocation => "invocation"
+    UnitSha => "unit_sha"
+    Container => "container"
+    ImageSha => "image_sha"
+    StartedAt => "started_at"
+    PoolLine => "pool_line"
+    ConcurrencyLine => "concurrency_line"
+    AllocatorBlocks => "allocator_blocks"
+    BlockSize => "block_size"
+    MaxModelLen => "max_model_len"
+    Running => "running"
+    Waiting => "waiting"
+  }
+}
+
+fn capacity_probe_slots() -> List<CapacityProbeSlot> {
+  [
+    CapacityProbeSlot { name: Invocation, command: "systemctl show $u -p InvocationID --value", missing: "the systemd invocation was not found" },
+    CapacityProbeSlot { name: UnitSha, command: "systemctl cat $u | sha256sum | cut -d' ' -f1", missing: "the unit text digest was not found" },
+    CapacityProbeSlot { name: Container, command: "docker ps -q --filter name=$c | head -1", missing: "the container id was not found" },
+    CapacityProbeSlot { name: ImageSha, command: "docker inspect $c | sed -n 's/.*\"Image\": \"sha256:\\([0-9a-f]*\\)\".*/\\1/p' | head -1", missing: "the container image digest was not found" },
+    CapacityProbeSlot { name: StartedAt, command: "date -d \"$(systemctl show $u -p ExecMainStartTimestamp --value)\" +%s", missing: "the unit start instant did not parse as epoch seconds" },
+    CapacityProbeSlot { name: PoolLine, command: join(["grep -a '", vllm_startup_line_prefix(line: GpuKvCacheSize) as String, "' \"$log\" | tail -1"], ""), missing: "the engine's GPU KV cache size line was not found in the launch log" },
+    CapacityProbeSlot { name: ConcurrencyLine, command: join(["grep -a '", vllm_startup_line_prefix(line: MaximumConcurrency) as String, "' \"$log\" | tail -1"], ""), missing: "the engine's maximum concurrency line was not found in the launch log" },
+    CapacityProbeSlot { name: AllocatorBlocks, command: "printf '%s' \"$m\" | grep -o 'num_gpu_blocks=\"[0-9]*\"' | head -1 | tr -dc '0-9'", missing: "num_gpu_blocks was not present in the engine's cache-config metric" },
+    CapacityProbeSlot { name: BlockSize, command: "printf '%s' \"$m\" | grep -o 'block_size=\"[0-9]*\"' | head -1 | tr -dc '0-9'", missing: "block_size was not present in the engine's cache-config metric" },
+    CapacityProbeSlot { name: MaxModelLen, command: "curl -s --max-time 8 http://127.0.0.1:30000/v1/models | grep -o 'max_model_len\":[0-9]*' | tr -dc '0-9'", missing: "max_model_len was not readable from /v1/models" },
+    CapacityProbeSlot { name: Running, command: "printf '%s' \"$m\" | grep '^vllm:num_requests_running' | head -1 | sed 's/.*. //; s/[.].*//'", missing: "num_requests_running was not present in the engine's metrics" },
+    CapacityProbeSlot { name: Waiting, command: "printf '%s' \"$m\" | grep '^vllm:num_requests_waiting.engine' | head -1 | sed 's/.*. //; s/[.].*//'", missing: "num_requests_waiting was not present in the engine's metrics" },
+  ]
+}
+
+type SlotScan {
+  n: Nat
+  hit: Nat?
+}
+
+fn slot_index(want: ProbeFieldName) -> Nat? {
+  fold(capacity_probe_slots(), init: SlotScan { n: 0, hit: none }, f: (acc, slot) =>
+    match acc.hit {
+      Present { value: _ } => acc
+      Absent =>
+        if probe_field_key(n: slot.name) == probe_field_key(n: want) {
+          SlotScan { n: acc.n + 1, hit: Present { value: acc.n } }
+        } else {
+          SlotScan { n: acc.n + 1, hit: none }
+        }
+    }).hit
+}
+
+fn slot_missing(name: ProbeFieldName) -> String {
+  fold(capacity_probe_slots(), init: join(["the probe roster does not contain ", probe_field_key(n: name)], ""), f: (acc, slot) =>
+    if probe_field_key(n: slot.name) == probe_field_key(n: name) { slot.missing } else { acc })
+}
+
 fn emit_field(command: String) -> String {
   join(["v=$(", command, " 2>/dev/null); [ -n \"$v\" ] || v=-; printf '%s\\n' \"$v\"\n"], "")
 }
@@ -74,20 +153,7 @@ fn capacity_probe_script() -> String {
   join(concat([
     join(["set -u\nu=", spark_pair_head_unit_name as String, "\nlog=", spark_pair_head_log_path as String, "\nc=", spark_pair_container_name as String, "\n"], ""),
     "m=$(curl -s --max-time 8 http://127.0.0.1:30000/metrics)\n",
-  ], map([
-    "systemctl show $u -p InvocationID --value",
-    "systemctl cat $u | sha256sum | cut -d' ' -f1",
-    "docker ps -q --filter name=$c | head -1",
-    "docker inspect $c | sed -n 's/.*\"Image\": \"sha256:\\([0-9a-f]*\\)\".*/\\1/p' | head -1",
-    "date -d \"$(systemctl show $u -p ExecMainStartTimestamp --value)\" +%s",
-    join(["grep -a '", vllm_startup_line_prefix(line: GpuKvCacheSize) as String, "' \"$log\" | tail -1"], ""),
-    join(["grep -a '", vllm_startup_line_prefix(line: MaximumConcurrency) as String, "' \"$log\" | tail -1"], ""),
-    "printf '%s' \"$m\" | grep -o 'num_gpu_blocks=\"[0-9]*\"' | head -1 | tr -dc '0-9'",
-    "printf '%s' \"$m\" | grep -o 'block_size=\"[0-9]*\"' | head -1 | tr -dc '0-9'",
-    "curl -s --max-time 8 http://127.0.0.1:30000/v1/models | grep -o 'max_model_len\":[0-9]*' | tr -dc '0-9'",
-    "printf '%s' \"$m\" | grep '^vllm:num_requests_running' | head -1 | sed 's/.*. //; s/[.].*//'",
-    "printf '%s' \"$m\" | grep '^vllm:num_requests_waiting.engine' | head -1 | sed 's/.*. //; s/[.].*//'",
-  ], c => emit_field(command: c))), "")
+  ], map(capacity_probe_slots(), s => emit_field(command: s.command))), "")
 }
 
 type CapacityProbeFields {
@@ -113,16 +179,104 @@ fn field_at(lines: List<String>, n: Nat) -> String {
   trim(s: lines.skip(n: n).first())
 }
 
-fn int_at(lines: List<String>, n: Nat) -> Int? {
-  parse_int(s: field_at(lines: lines, n: n))
+fn field_named(lines: List<String>, name: ProbeFieldName) -> String? {
+  match slot_index(want: name) {
+    Absent => none
+    Present { value: n } => Present { value: field_at(lines: lines, n: n) }
+  }
 }
 
-fn captured_line_at(lines: List<String>, n: Nat) -> String? {
-  let s = field_at(lines: lines, n: n)
-  if s == "-" || s == "" {
-    none
+fn int_named(lines: List<String>, name: ProbeFieldName) -> Int? {
+  match field_named(lines: lines, name: name) {
+    Absent => none
+    Present { value: s } => parse_int(s: s)
+  }
+}
+
+fn captured_named(lines: List<String>, name: ProbeFieldName) -> String? {
+  match field_named(lines: lines, name: name) {
+    Absent => none
+    Present { value: s } =>
+      if s == "-" || s == "" {
+        none
+      } else {
+        Present { value: s }
+      }
+  }
+}
+
+fn refuse_slot(name: ProbeFieldName) -> CapacityProbeRead {
+  ProbeUnreadable { detail: slot_missing(name: name) }
+}
+
+fn decode_probe(stdout: String) -> CapacityProbeRead {
+  let lines = split(s: trim(s: stdout), delimiter: "\n")
+  let expected = list_length(items: capacity_probe_slots())
+  if list_length(items: lines) < expected {
+    ProbeUnreadable { detail: join(["the probe returned ", to_string(list_length(items: lines)), " lines, not the ", to_string(expected), " the script emits"], "") }
   } else {
-    Present { value: s }
+    match int_named(lines: lines, name: StartedAt) {
+      Absent => refuse_slot(name: StartedAt)
+      Present { value: started } =>
+        match captured_named(lines: lines, name: PoolLine) {
+          Absent => refuse_slot(name: PoolLine)
+          Present { value: pool_line } =>
+            match captured_named(lines: lines, name: ConcurrencyLine) {
+              Absent => refuse_slot(name: ConcurrencyLine)
+              Present { value: conc_line } =>
+                match int_named(lines: lines, name: AllocatorBlocks) {
+                  Absent => refuse_slot(name: AllocatorBlocks)
+                  Present { value: blocks } =>
+                    match int_named(lines: lines, name: BlockSize) {
+                      Absent => refuse_slot(name: BlockSize)
+                      Present { value: bs } =>
+                        match int_named(lines: lines, name: MaxModelLen) {
+                          Absent => refuse_slot(name: MaxModelLen)
+                          Present { value: ctx } =>
+                            match int_named(lines: lines, name: Running) {
+                              Absent => refuse_slot(name: Running)
+                              Present { value: running } =>
+                                match int_named(lines: lines, name: Waiting) {
+                                  Absent => refuse_slot(name: Waiting)
+                                  Present { value: waiting } =>
+                                    match field_named(lines: lines, name: Invocation) {
+                                      Absent => refuse_slot(name: Invocation)
+                                      Present { value: invocation } =>
+                                        match field_named(lines: lines, name: UnitSha) {
+                                          Absent => refuse_slot(name: UnitSha)
+                                          Present { value: unit_sha } =>
+                                            match field_named(lines: lines, name: Container) {
+                                              Absent => refuse_slot(name: Container)
+                                              Present { value: container } =>
+                                                match field_named(lines: lines, name: ImageSha) {
+                                                  Absent => refuse_slot(name: ImageSha)
+                                                  Present { value: image_sha } =>
+                                                    ProbeFields { fields: CapacityProbeFields {
+                                                      invocation: invocation,
+                                                      unit_sha: unit_sha,
+                                                      container: container,
+                                                      image_sha: image_sha,
+                                                      started_at: started,
+                                                      pool_line: pool_line,
+                                                      concurrency_line: conc_line,
+                                                      allocator_blocks: allocator_block_count(count: blocks),
+                                                      block_size: token_count(count: bs),
+                                                      max_model_len: token_count(count: ctx),
+                                                      running: running,
+                                                      waiting: waiting,
+                                                    } }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
   }
 }
 
@@ -153,60 +307,6 @@ fn hundredths_from_maximum_concurrency_line(line: String) -> Int? {
       } else {
         parse_int(s: replace(s: replace(s: trim(s: field_at(lines: segs, n: list_length(items: segs) - 1)), from: "x", to: ""), from: ".", to: ""))
       }
-    }
-  }
-}
-
-fn decode_probe(stdout: String) -> CapacityProbeRead {
-  let lines = split(s: trim(s: stdout), delimiter: "\n")
-  if list_length(items: lines) < 12 {
-    ProbeUnreadable { detail: join(["the probe returned ", to_string(list_length(items: lines)), " lines, not the 12 the script emits"], "") }
-  } else {
-    match int_at(lines: lines, n: 4) {
-      Absent => ProbeUnreadable { detail: "the unit start instant did not parse as epoch seconds" }
-      Present { value: started } =>
-        match captured_line_at(lines: lines, n: 5) {
-          Absent => ProbeUnreadable { detail: "the engine's GPU KV cache size line was not found in the launch log" }
-          Present { value: pool_line } =>
-            match captured_line_at(lines: lines, n: 6) {
-              Absent => ProbeUnreadable { detail: "the engine's maximum concurrency line was not found in the launch log" }
-              Present { value: conc_line } =>
-                match int_at(lines: lines, n: 7) {
-                  Absent => ProbeUnreadable { detail: "num_gpu_blocks was not present in the engine's cache-config metric" }
-                  Present { value: blocks } =>
-                    match int_at(lines: lines, n: 8) {
-                      Absent => ProbeUnreadable { detail: "block_size was not present in the engine's cache-config metric" }
-                      Present { value: bs } =>
-                        match int_at(lines: lines, n: 9) {
-                          Absent => ProbeUnreadable { detail: "max_model_len was not readable from /v1/models" }
-                          Present { value: ctx } =>
-                            match int_at(lines: lines, n: 10) {
-                              Absent => ProbeUnreadable { detail: "num_requests_running was not present in the engine's metrics" }
-                              Present { value: running } =>
-                                match int_at(lines: lines, n: 11) {
-                                  Absent => ProbeUnreadable { detail: "num_requests_waiting was not present in the engine's metrics" }
-                                  Present { value: waiting } =>
-                                    ProbeFields { fields: CapacityProbeFields {
-                                      invocation: field_at(lines: lines, n: 0),
-                                      unit_sha: field_at(lines: lines, n: 1),
-                                      container: field_at(lines: lines, n: 2),
-                                      image_sha: field_at(lines: lines, n: 3),
-                                      started_at: started,
-                                      pool_line: pool_line,
-                                      concurrency_line: conc_line,
-                                      allocator_blocks: allocator_block_count(count: blocks),
-                                      block_size: token_count(count: bs),
-                                      max_model_len: token_count(count: ctx),
-                                      running: running,
-                                      waiting: waiting,
-                                    } }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
   }
 }
