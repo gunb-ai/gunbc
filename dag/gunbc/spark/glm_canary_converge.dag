@@ -2,14 +2,21 @@ module gunbc.spark.glm_canary_converge
 
 import std.types { String, Bool, List, NonEmptyStr, Secret }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value, ByteSize, byte_size, byte_size_count, basis_point_count }
+import std.measure { TokenCount, token_count, token_count_value, byte_size_count, basis_point_count }
+import extdeps.vllm.engine_args {
+  VllmMemoryRequest, VllmPrefixCachingRequest, PrefixCachingOmitted,
+  vllm_memory_request_argv, vllm_prefix_caching_argv,
+}
 import extdeps.vllm.runtime_defaults {
   defaults_source_revision, vllm_runtime_defaults_for,
-  VllmMemoryRequest, ResolvedVllmMemoryPolicy,
+  ResolvedVllmMemoryPolicy,
   KvBytesMode, AutoProfiledMode, MemoryResolutionRefused,
-  VllmResolutionOrigin, ExplicitArgument, RuntimeDefault,
+  VllmResolutionOrigin, ExplicitArgument,
+  ExpectedFromClaimedSourceRevision, PredictedForBoundImage,
+  PrefixCachePartitionPolicy, PartitionUnestablished,
   resolve_vllm_memory_policy,
 }
+import extdeps.nvidia.management_library { gb10_torch_device_memory }
 import std.algebra { trim }
 import product.placement_supply { HostIdentity }
 import extdeps.zhipu.glm_5_3_flash {
@@ -103,6 +110,9 @@ type GlmCanaryArm {
   max_num_seqs: SeqBound
   max_num_batched_tokens: BatchedTokenPolicy
   speculation: SpeculationPolicy
+  memory_request: VllmMemoryRequest
+  prefix_caching_request: VllmPrefixCachingRequest
+  prefix_cache_partition: PrefixCachePartitionPolicy
   port: Nat
   container_name: NonEmptyStr
 }
@@ -127,6 +137,18 @@ type SpeculationPolicy
   = SpeculationDisabled { basis: NonEmptyStr }
   | SpeculationMtp { draft_tokens: Nat, basis: NonEmptyStr }
 
+// BOTH MEMORY FLAGS ARE OMITTED, AND `memory_request` IS NOW THE ONE PLACE THAT SAYS SO. It was said
+// twice: in the argv the container is launched from, by their absence, and again in a separate
+// `glm_canary_memory_request` row that the receipt resolved and printed. Nothing joined the two, so
+// the receipt could report a policy the launch did not request. The argv is rendered FROM this field
+// and the effective value is resolved FROM this field, which is what makes them agree structurally
+// rather than by my having written the same thing in two places.
+//
+// `PartitionUnestablished` IS THE MEASURED STATE OF THIS FLEET, NOT A STUB. Requesters reach this
+// engine directly with no gateway assigning an identity, so there is no tenant or trust domain to
+// name. Prefix caching resolves to ENABLED here, which is a sharing consequence nobody chose;
+// recording the partition as unestablished is what lets the tenancy slice find it rather than infer
+// it.
 data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
   checkpoint: Glm53Exl3_205,
   runtime: Gitcommit90Sm121Exl3,
@@ -145,6 +167,12 @@ data glm_canary_arm: GlmCanaryArm = GlmCanaryArm {
   speculation: SpeculationDisabled {
     basis: "first boot removes a second execution variable: the goal is model/runtime/harness compatibility, not headline throughput. The runtime registers Glm5NextMTPModel, so MTP speculation is available once the base arm is established" as NonEmptyStr,
   },
+  memory_request: VllmMemoryRequest {
+    utilization: none,
+    kv_cache_bytes: none,
+  },
+  prefix_caching_request: PrefixCachingOmitted,
+  prefix_cache_partition: PartitionUnestablished,
   port: 30001,
   container_name: "glm-canary" as NonEmptyStr,
 }
@@ -333,7 +361,11 @@ fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
               "--max-model-len", to_string(token_count_value(t: arm.max_model_len)),
               "--max-num-seqs", to_string(glm_canary_seq_bound(b: arm.max_num_seqs)),
             ],
-            glm_canary_batched_token_argv(p: arm.max_num_batched_tokens),
+            concat(
+              glm_canary_batched_token_argv(p: arm.max_num_batched_tokens),
+              concat(
+                vllm_memory_request_argv(r: arm.memory_request),
+                vllm_prefix_caching_argv(r: arm.prefix_caching_request))),
           ),
           concat(
             [
@@ -754,29 +786,33 @@ fn glm_canary_receipt_body(at: String, executor: String, path: SparkReachPath, v
 
 // ── THE EFFECTIVE MEMORY POLICY OF A LAUNCH THAT NAMES NEITHER FLAG ────────────────────────────
 //
-// THE CANARY'S REQUEST IS BOTH-OMITTED, AND THAT IS A FACT ABOUT ITS ARGV RATHER THAN A GAP IN THIS
-// MODEL. Its serve line carries no --gpu-memory-utilization and no --kv-cache-memory; the request
-// below says exactly that, and the resolution against the runtime's claimed revision is what turns it
-// into the 0.92 the engine reported. Until this existed the fleet had one route with a modelled 82%
-// and one with a figure nothing here could name.
+// THE CANARY'S REQUEST IS BOTH-OMITTED, AND THAT IS A FACT ABOUT ITS ARGV. Its serve line carries no
+// --gpu-memory-utilization and no --kv-cache-memory; `glm_canary_arm.memory_request` says exactly
+// that, the argv is rendered from it, and the resolution against the runtime's claimed revision is
+// what turns it into the 0.92 the engine reported. Until this existed the fleet had one route with a
+// modelled 82% and one with a figure nothing here could name.
 //
-// THE DEVICE TOTAL IS THE MEASURED BYTE COUNT, not the 121.69 GiB projection. `free -g` on a member
-// reported 121 GiB and the engine's own line reports 121.69; the exact figure is what the envelope
-// derivation needs, because a GiB rendering cannot distinguish the byte the ceiling rounds up.
-data glm_canary_device_total_bytes: ByteSize = byte_size(count: 130662027264)
-
-data glm_canary_memory_request: VllmMemoryRequest = VllmMemoryRequest {
-  utilization: none,
-  kv_cache_bytes: none,
-}
+// A STANDALONE `glm_canary_memory_request` ROW STOOD HERE AND WAS THE PARALLEL AUTHORITY. It said
+// "both omitted" beside an argv renderer that independently emitted no memory flags -- two
+// declarations of one launch's memory, agreeing only because I wrote them to agree. It is deleted
+// rather than moved: the arm carries the request, and every reader takes it from there.
+//
+// A DEVICE-MEMORY LITERAL ALSO STOOD HERE AND ITS JUSTIFICATION COULD NOT SUPPORT IT. It declared
+// 130,662,027,264 bytes, argued from `free -g` reporting 121 GiB and the engine line reporting
+// 121.69 GiB. Main already carries `extdeps.nvidia.management_library gb10_torch_device_memory` at
+// 130,663,231,488 -- the two disagree by 1,204,224 bytes, which no rounded GiB rendering can
+// adjudicate in either direction, so the prose beside the literal was evidence for neither it nor its
+// rival. The canary consumes the device authority instead. That observation is not yet bound to this
+// host's boot and residency epoch, which is the residency program's subject and not this row's to
+// pre-empt.
 
 fn glm_canary_resolved_memory(arm: GlmCanaryArm) -> ResolvedVllmMemoryPolicy {
   match serving_runtime_row(r: arm.runtime) {
     Absent => MemoryResolutionRefused { cause: "this arm has no runtime row, so no revision governs its omitted memory flags" as NonEmptyStr }
     Present { value: rrow } =>
       resolve_vllm_memory_policy(
-        request: glm_canary_memory_request,
-        device_total: glm_canary_device_total_bytes,
+        request: arm.memory_request,
+        device_total: gb10_torch_device_memory,
         defaults: vllm_runtime_defaults_for(revision: defaults_source_revision(r: rrow.claimed_defaults_revision)),
       )
   }
@@ -799,11 +835,25 @@ fn glm_canary_memory_policy_text(arm: GlmCanaryArm) -> String {
   }
 }
 
+// THE TWO CLAUSES THIS USED TO PRINT CONTRADICTED EACH OTHER. It read "runtime default at revision X,
+// image/source equivalence unestablished" -- and if the equivalence is unestablished then "runtime
+// default" is precisely what has NOT been established. What the repository holds is a fact about
+// SOURCE at the revision this image's publisher claims; what it does not hold is that this image's
+// effective default is that value. The sentence now says the weaker thing it can actually support,
+// because a reader who takes the stronger reading will size a future launch from it.
 fn glm_canary_origin_text(o: VllmResolutionOrigin) -> String {
   match o {
     ExplicitArgument { field: _ } => "explicitly requested by this arm"
-    RuntimeDefault { source_revision: r, field: _ } =>
-      join(["runtime default at revision ", r.full_revision as String, ", image/source equivalence unestablished"], "")
+    ExpectedFromClaimedSourceRevision { source_revision: r, field: _ } =>
+      join([
+        "expected from upstream SOURCE at revision ", r.full_revision as String,
+        ", which this image's publisher claims to be built from; this image has not been compared to that source, so this is not an established effective value for it",
+      ], "")
+    PredictedForBoundImage { image_digest: d, source_revision: r, binding_evidence: e, field: _ } =>
+      join([
+        "predicted for image ", d as String, " bound to revision ", r.full_revision as String,
+        " by ", e as String,
+      ], "")
   }
 }
 

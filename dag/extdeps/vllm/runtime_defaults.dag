@@ -4,6 +4,10 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.measure { BasisPoint, basis_point, basis_point_count, basis_point_unity_count, ByteSize, byte_size, byte_size_count }
 import std.nat { Nat }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+import extdeps.nvidia.management_library { DeviceMemoryObservation, device_memory_observed_bytes, device_memory_note }
+import extdeps.vllm.engine_args {
+  VllmMemoryRequest, VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -115,8 +119,12 @@ fn defaults_kv_cache_memory_bytes(r: ModelledVllmDefaultsRevision) -> ByteSize? 
   }
 }
 
-// THE DEFAULT THAT IS A TENANCY FACT. Both runtimes enable prefix caching when the flag is omitted, so
-// a launch that says nothing shares a cache domain across whatever requesters reach it.
+// WHAT THIS BOOLEAN ESTABLISHES, AND THE LARGER CLAIM IT USED TO CARRY. It says one thing: at these
+// revisions, an omitted flag leaves prefix caching ENABLED. It was described here as a tenancy fact,
+// which it is not -- enablement names no tenant, no cache-sharing domain, no per-request salt, no
+// managed ingress and nobody who may bypass one. Those are the facts a tenancy claim needs, and a
+// Boolean that cannot express any of them cannot assert them. The partition question has its own type
+// below and its own honest starting value.
 fn defaults_prefix_caching(r: ModelledVllmDefaultsRevision) -> Bool {
   match r {
     Vllm487ecf187 => true
@@ -171,10 +179,12 @@ fn vllm_revision_eq(a: VllmSourceRevision, b: VllmSourceRevision) -> Bool {
 // for. Gated construction belongs where a value's ORIGIN must be controlled, as TransportScript and
 // ArgvCommand control what may become a running process. A memory request is the opposite: it is
 // authored at each launch site, and it is the RESOLUTION that must be trustworthy, not the request.
-type VllmMemoryRequest {
-  utilization: BasisPoint?
-  kv_cache_bytes: ByteSize?
-}
+//
+// AND THE REQUEST NOW LIVES IN `extdeps.vllm.engine_args`, WHICH IS THE FIELD THE ARGV IS RENDERED
+// FROM. It was declared here, beside the resolver, while `VllmEngineArgs` separately carried a
+// mandatory integral `gpu_memory_utilization` -- so the shape describing what a launch requests and
+// the shape the launch is actually built from were two declarations, and only the second reached a
+// running engine. This module RESOLVES a request; it does not own what a launch may ask for.
 
 // ── WHERE AN EFFECTIVE VALUE CAME FROM ─────────────────────────────────────────────────────────
 //
@@ -199,9 +209,29 @@ fn vllm_config_field_declaration(f: VllmConfigField) -> NonEmptyStr {
   }
 }
 
+// AND `RuntimeDefault` COLLAPSED THE VERY DISTINCTION THIS MODULE'S OWN HEADER DRAWS. That header
+// separates three things -- what upstream SOURCE declares at a revision, what a particular IMAGE is
+// predicted to do once bound to that source, and what a launch was OBSERVED to actually do -- and then
+// a single `RuntimeDefault` arm answered for the first while its consumer rendered it as the runtime's
+// effective result. `VllmImageSourceBinding` was declared for exactly this join and no resolution path
+// consumed it.
+//
+// SO THE PREDICTION ARMS ARE TWO, AND THEY AUTHORIZE DIFFERENT SENTENCES. From a CLAIMED source
+// revision alone, the honest sentence is "at the revision this image's publisher claims, upstream
+// source declares X" -- a fact about source, conditional on an unverified claim. With the image bound
+// to that source, it becomes "this image is predicted to do X", and the binding evidence travels with
+// it so a reader can weigh it. Neither is an observation: an effective value read back from a launch
+// that already ran is a different origin entirely, and it does not live in this type, because this
+// type answers for values this module RESOLVED rather than values a launch REPORTED.
 type VllmResolutionOrigin
   = ExplicitArgument { field: VllmConfigField }
-  | RuntimeDefault { source_revision: VllmSourceRevision, field: VllmConfigField }
+  | ExpectedFromClaimedSourceRevision { source_revision: VllmSourceRevision, field: VllmConfigField }
+  | PredictedForBoundImage {
+      image_digest: NonEmptyStr
+      source_revision: VllmSourceRevision
+      binding_evidence: NonEmptyStr
+      field: VllmConfigField
+    }
 
 // ── THE RESOLVED POLICY ────────────────────────────────────────────────────────────────────────
 //
@@ -246,28 +276,95 @@ fn ceil_div(numerator: Nat, denominator: Nat) -> Nat {
   (numerator + denominator - 1) / denominator
 }
 
+// VALIDATION RUNS BEFORE CAUSALITY SELECTION, AND THAT ORDER IS THE FINDING. The resolver used to
+// pick the causal arm first, so an out-of-range utilization sitting beside explicit KV bytes was never
+// examined -- the KV arm won and the invalid fraction rode along in `noncausal_utilization` as though
+// being ignored made it well-formed. Upstream does not work that way: its configuration validation
+// sees the field whether or not the field decides sizing, so a launch carrying 150% utilization is
+// refused by the engine even when KV bytes would have superseded it. Noncausal is not the same as
+// unvalidated, and answering positively for a request the engine would reject is the fabricated
+// plausible output DESIGN section 5 forbids.
+fn vllm_memory_request_defect(request: VllmMemoryRequest) -> NonEmptyStr? {
+  match request.utilization {
+    Absent => none
+    Present { value: f } =>
+      if basis_point_count(bp: f) == 0 {
+        Present { value: "gpu_memory_utilization is zero, which reserves no memory and cannot serve; upstream requires the fraction to be greater than zero" as NonEmptyStr }
+      } else {
+        if basis_point_count(bp: f) > basis_point_unity_count() {
+          Present { value: join([
+            "gpu_memory_utilization is ", to_string(basis_point_count(bp: f)),
+            " basis points, which claims more than the whole device; upstream requires the fraction to be no greater than one",
+          ], "") as NonEmptyStr }
+        } else {
+          none
+        }
+      }
+  }
+}
+
 fn resolve_vllm_memory_policy(
+  request: VllmMemoryRequest,
+  device_total: DeviceMemoryObservation,
+  defaults: VllmDefaultsResolution,
+) -> ResolvedVllmMemoryPolicy {
+  match vllm_memory_request_defect(request: request) {
+    Present { value: defect } => MemoryResolutionRefused { cause: defect }
+    Absent =>
+      match device_memory_observed_bytes(o: device_total) {
+        Absent =>
+          MemoryResolutionRefused {
+            cause: join([
+              "the device total is not an observation this resolver may use: ",
+              device_memory_note(o: device_total) as String,
+              ". An envelope derived from an unread device would be arithmetic on a number nobody measured",
+            ], "") as NonEmptyStr,
+          }
+        Present { value: total } =>
+          resolve_validated_memory_request(request: request, device_total: byte_size(count: total), defaults: defaults)
+      }
+  }
+}
+
+// ZERO EXPLICIT KV BYTES IS NOT EXPLICIT KV MODE, BECAUSE UPSTREAM'S TEST IS TRUTHINESS RATHER THAN
+// PRESENCE. The engine writes `if kv_cache_memory_bytes := ...`, so a supplied zero is falsy and falls
+// through to the profiling path -- it does NOT configure a zero-byte cache. Modelling presence as the
+// discriminator made `--kv-cache-memory=0` resolve to a KV mode with a zero-byte cache, which is a
+// state the engine never enters. The exact upstream behaviour is modelled here rather than the shape
+// the option's type suggests.
+fn resolve_validated_memory_request(
   request: VllmMemoryRequest,
   device_total: ByteSize,
   defaults: VllmDefaultsResolution,
 ) -> ResolvedVllmMemoryPolicy {
   match request.kv_cache_bytes {
     Present { value: b } =>
-      KvBytesMode {
-        bytes_per_rank: b,
-        origin: ExplicitArgument { field: KvCacheMemoryBytesField },
-        noncausal_utilization: request.utilization,
+      if byte_size_count(b: b) == 0 {
+        resolve_memory_request_without_kv_bytes(request: request, device_total: device_total, defaults: defaults)
+      } else {
+        KvBytesMode {
+          bytes_per_rank: b,
+          origin: ExplicitArgument { field: KvCacheMemoryBytesField },
+          noncausal_utilization: request.utilization,
+        }
       }
-    Absent =>
-      match request.utilization {
-        Present { value: f } =>
-          AutoProfiledMode {
-            utilization: f,
-            origin: ExplicitArgument { field: GpuMemoryUtilizationField },
-            requested_envelope_bytes: vllm_requested_envelope_bytes(device_total: device_total, utilization: f),
-          }
-        Absent => resolve_omitted_memory_request(device_total: device_total, defaults: defaults)
+    Absent => resolve_memory_request_without_kv_bytes(request: request, device_total: device_total, defaults: defaults)
+  }
+}
+
+fn resolve_memory_request_without_kv_bytes(
+  request: VllmMemoryRequest,
+  device_total: ByteSize,
+  defaults: VllmDefaultsResolution,
+) -> ResolvedVllmMemoryPolicy {
+  match request.utilization {
+    Present { value: f } =>
+      AutoProfiledMode {
+        utilization: f,
+        origin: ExplicitArgument { field: GpuMemoryUtilizationField },
+        requested_envelope_bytes: vllm_requested_envelope_bytes(device_total: device_total, utilization: f),
       }
+    Absent => resolve_omitted_memory_request(device_total: device_total, defaults: defaults)
   }
 }
 
@@ -290,13 +387,13 @@ fn resolve_omitted_memory_request(device_total: ByteSize, defaults: VllmDefaults
         Present { value: b } =>
           KvBytesMode {
             bytes_per_rank: b,
-            origin: RuntimeDefault { source_revision: defaults_source_revision(r: rev), field: KvCacheMemoryBytesField },
+            origin: ExpectedFromClaimedSourceRevision { source_revision: defaults_source_revision(r: rev), field: KvCacheMemoryBytesField },
             noncausal_utilization: none,
           }
         Absent =>
           AutoProfiledMode {
             utilization: defaults_gpu_utilization(r: rev),
-            origin: RuntimeDefault { source_revision: defaults_source_revision(r: rev), field: GpuMemoryUtilizationField },
+            origin: ExpectedFromClaimedSourceRevision { source_revision: defaults_source_revision(r: rev), field: GpuMemoryUtilizationField },
             requested_envelope_bytes: vllm_requested_envelope_bytes(
               device_total: device_total,
               utilization: defaults_gpu_utilization(r: rev),
@@ -306,17 +403,29 @@ fn resolve_omitted_memory_request(device_total: ByteSize, defaults: VllmDefaults
   }
 }
 
-// ── PREFIX CACHING, THE SAME LAW ON A FIELD WHOSE DEFAULT IS A TENANCY FACT ────────────────────
+// ── PREFIX CACHING: THE DEFAULT IS ENABLEMENT, THE PARTITION IS A SEPARATE FACT ────────────────
 //
-// THIS FIELD DEFAULTS TO ON, AND THAT DEFAULT IS A SHARING DECISION NOBODY ON THIS FLEET MADE. The
-// canary omits it and therefore enables it; with unattributed callers reaching the engine directly,
-// the resolved value describes a cache domain shared across requesters whose partition is
-// unestablished. Modelling it here does not fix that -- it makes the omission legible so a tenancy
-// policy has something to disagree with.
-type VllmPrefixCachingRequest
-  = PrefixCachingOmitted
-  | PrefixCachingExplicit { enabled: Bool }
+// THIS FIELD DEFAULTS TO ON, AND THAT IS THE WHOLE OF WHAT THIS SECTION RESOLVES. The canary omits the
+// flag and therefore enables prefix caching. What that does NOT establish is who shares the resulting
+// cache with whom -- and this section previously read as though it did, calling enablement a tenancy
+// fact and describing "a cache domain shared across requesters". Enablement is a property of one
+// engine's configuration; sharing is a property of who may reach it and under what identity, which
+// nothing in this module observes.
+//
+// SO THE PARTITION IS ITS OWN TYPE, STARTING AT UNESTABLISHED, which is the honest value for a fleet
+// whose ingress is unattributed. It is deliberately not a Boolean beside the enablement flag: the
+// interesting states are not on/off but WHICH population shares, and a Boolean would force a later
+// tenancy slice either to overload it or to fork it.
+type PrefixCachePartitionPolicy
+  = PartitionUnestablished
+  | SharedWithinTenant { tenant: NonEmptyStr }
+  | SharedWithinTrustDomain { domain: NonEmptyStr }
+  | CrossTenantReuseDisabled
 
+// THE TYPE IS HERE AND THE FLEET'S VALUE IS NOT. Which population shares a cache on THIS fleet is a
+// deployment policy, and a policy row in extdeps is the layer inversion DESIGN section 3 names --
+// extdeps owns the shape upstream's behaviour takes, never what this repository decided about it. The
+// canary declares its own partition beside the launch it governs.
 type ResolvedVllmPrefixCaching
   = PrefixCachingResolved { enabled: Bool, origin: VllmResolutionOrigin }
   | PrefixCachingUnresolvable { cause: NonEmptyStr }
@@ -341,7 +450,7 @@ fn resolve_vllm_prefix_caching(
         VllmDefaultsKnown { revision: rev } =>
           PrefixCachingResolved {
             enabled: defaults_prefix_caching(r: rev),
-            origin: RuntimeDefault { source_revision: defaults_source_revision(r: rev), field: EnablePrefixCachingField },
+            origin: ExpectedFromClaimedSourceRevision { source_revision: defaults_source_revision(r: rev), field: EnablePrefixCachingField },
           }
       }
   }

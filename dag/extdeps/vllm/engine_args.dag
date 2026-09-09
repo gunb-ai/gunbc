@@ -2,7 +2,7 @@ module extdeps.vllm.engine_args
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, Percent }
+import std.measure { TokenCount, Percent, BasisPoint, basis_point_count, ByteSize, byte_size_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -42,10 +42,96 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // 128 GB pool and everything else -- kernel, driver, Ray, vLLM's own CPU side, NCCL buffers -- lives
 // in what is left. The flag is identical; its consequence is not, and the difference is a property
 // of the HOST's memory kind rather than of this argument. That join is policy and lives in gunbc.
-type VllmMemoryUtilization sole_constructor { fraction: Percent }
+// ── WHAT THE LAUNCH REQUESTS ABOUT MEMORY, INCLUDING WHAT IT DECLINES TO SAY ───────────────────
+//
+// `VllmMemoryUtilization { fraction: Percent }` STOOD HERE AND COULD NOT SPELL EITHER OF THE TWO
+// STATES THIS FLEET ACTUALLY LAUNCHES IN. It was mandatory and integral, so a launch that OMITS
+// `--gpu-memory-utilization` -- which is what the GLM canary does -- had no representation at all,
+// and the omission had to be recorded somewhere else. It was: a parallel `glm_canary_memory_request`
+// carrier said "both omitted" while THIS field, the one the argv is rendered from, still had to name a
+// fraction. Two carriers describing one launch's memory, with nothing making them agree, is the fork
+// DESIGN section 3 forbids -- and the receipt printed the second while the engine ran the first.
+//
+// THE INTEGRAL PERCENT WAS THE SECOND DEFECT. The engine's own guidance on this fleet names 0.9112 and
+// 0.9288; a Percent cannot carry either, so the type could not express the values upstream prints even
+// when a launch does state one.
+//
+// SO THE REQUEST IS THE FIELD, AND OMISSION IS ONE OF ITS VALUES. Rendering argv, resolving the
+// effective value, and identifying the execution profile now read the SAME declaration, which is what
+// makes disagreement between them unwritable rather than merely unobserved.
+type VllmMemoryRequest {
+  utilization: BasisPoint?
+  kv_cache_bytes: ByteSize?
+}
 
-fn vllm_memory_utilization(fraction: Percent) -> VllmMemoryUtilization {
-  VllmMemoryUtilization { fraction: fraction }
+// PREFIX CACHING IS THE SAME SHAPE: omitted is a real state with a real consequence, and a Boolean
+// would have collapsed "this launch said nothing" into "this launch said false".
+type VllmPrefixCachingRequest
+  = PrefixCachingOmitted
+  | PrefixCachingExplicit { enabled: Bool }
+
+// ── THE FLAGS THESE REQUESTS RENDER TO, ONCE, FOR EVERY ROUTE ─────────────────────────────────
+//
+// THE RENDERING LIVES WITH THE ARGUMENT AND NOT AT EACH LAUNCH SITE. Two serving routes build vLLM
+// command lines in this repository, and before this they spelled these flags independently -- the
+// pair route emitted a hardcoded `--enable-prefix-caching` string, and the canary emitted nothing.
+// Two spellings of one upstream flag is the nicknaming DESIGN section 3 forbids at the wire layer,
+// and it is also how the pair route came to render a flag its request did not carry.
+//
+// AN OMITTED FIELD RENDERS NOTHING, which is what makes omission expressible end to end: the argv,
+// the resolved effective value and the profile identity all read the same field, so a launch that
+// says nothing cannot acquire a flag on its way to a container.
+fn vllm_memory_request_argv(r: VllmMemoryRequest) -> List<String> {
+  concat(
+    match r.utilization {
+      Absent => []
+      Present { value: bp } => ["--gpu-memory-utilization", vllm_basis_point_fraction_wire(bp: bp)]
+    },
+    match r.kv_cache_bytes {
+      Absent => []
+      Present { value: b } => ["--kv-cache-memory", to_string(byte_size_count(b: b))]
+    })
+}
+
+// THE FRACTION IS RENDERED AT BASIS-POINT PRECISION, because that is the precision the request
+// carries. Rendering 9112 as `0.91` would emit a launch line that does not match the value this
+// repository resolved against -- the disagreement this whole shape exists to make unwritable.
+//
+// AND TRAILING ZEROS ARE TRIMMED, WHICH IS NOT COSMETIC. A zero-padded `0.8200` is numerically the
+// `0.82` the pair route has always sent, but it is not the same BYTES -- and the running engine's
+// observed launch line (gunbc.spark.pair_serving_observed) carries `0.82`. Convergence compares
+// rendered argv against running argv, so padding would have manufactured a drift against a healthy
+// server and asked for a restart to fix a difference nobody made. The minimal decimal renders 8200 as
+// `0.82` and 9112 as `0.9112`: existing lines keep their bytes, and the new precision costs nothing
+// until something asks for it.
+fn vllm_basis_point_fraction_wire(bp: BasisPoint) -> String {
+  let n = basis_point_count(bp: bp)
+  let frac = n % 10000
+  if frac == 0 { join([to_string(n / 10000), ".0"], "") }
+  else { join([to_string(n / 10000), ".", vllm_trim_fraction(text: vllm_pad_four(n: frac))], "") }
+}
+
+fn vllm_pad_four(n: Nat) -> String {
+  if n >= 1000 { to_string(n) }
+  else if n >= 100 { join(["0", to_string(n)], "") }
+  else if n >= 10 { join(["00", to_string(n)], "") }
+  else { join(["000", to_string(n)], "") }
+}
+
+fn vllm_trim_fraction(text: String) -> String {
+  if text.length() > 1 && text.ends_with(suffix: "0") {
+    vllm_trim_fraction(text: text.substring(start: 0, end: text.length() - 1))
+  } else {
+    text
+  }
+}
+
+fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
+  match r {
+    PrefixCachingOmitted => []
+    PrefixCachingExplicit { enabled: e } =>
+      if e { ["--enable-prefix-caching"] } else { ["--no-enable-prefix-caching"] }
+  }
 }
 
 // THE KV CACHE DTYPE AS REQUESTED, WHICH IS NOT THE DTYPE AS RESOLVED. Passing `fp8` for a
@@ -100,7 +186,8 @@ type VllmPrefillSchedulingPolicy {
 type VllmEngineArgs {
   prefill_scheduling: VllmPrefillSchedulingPolicy?
   tensor_parallel_size: Nat
-  gpu_memory_utilization: VllmMemoryUtilization
+  memory_request: VllmMemoryRequest
+  prefix_caching_request: VllmPrefixCachingRequest
   max_model_len: TokenCount
   max_num_seqs: Nat
   kv_cache_dtype: VllmKvCacheDtypeRequest
