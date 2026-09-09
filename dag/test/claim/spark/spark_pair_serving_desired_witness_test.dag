@@ -2,14 +2,15 @@ module test.claim.spark.spark_pair_serving_desired_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { token_count_value, percent_count }
+import std.measure { token_count_value }
 import product.placement_supply { host_identity_eq }
 import extdeps.network.ipv4 { ipv4_address_eq }
 import v2.std.optional { Present, Absent }
-import std.measure { token_count, percent }
+import std.measure { token_count, basis_point }
 import extdeps.vllm.engine_args {
   vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire,
-  VllmEngineArgs, vllm_memory_utilization, KvFp8DsMla, ExecutorRay,
+  VllmEngineArgs, VllmMemoryRequest, PrefixCachingExplicit, vllm_memory_request_key,
+  KvFp8DsMla, ExecutorRay,
 }
 import extdeps.deepseek.deepseek_v4 { deepseek_v4_context_length }
 import gunbc.spark.pair_serving_realization { spark_pair_vllm_serve_argv }
@@ -58,7 +59,11 @@ test fn an_unrequested_prefill_policy_renders_no_batch_flag() -> Bool {
     s: w_serve_line(args: VllmEngineArgs {
       prefill_scheduling: none,
       tensor_parallel_size: 4,
-      gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
+      memory_request: VllmMemoryRequest {
+        utilization: Present { value: basis_point(count: 8200) },
+        kv_cache_bytes: none,
+      },
+      prefix_caching_request: PrefixCachingExplicit { enabled: true },
       max_model_len: token_count(count: 1048576),
       max_num_seqs: 32,
       kv_cache_dtype: KvFp8DsMla,
@@ -80,7 +85,7 @@ test fn an_unrequested_prefill_policy_renders_no_batch_flag() -> Bool {
 test fn the_group_engine_tuple_carries_this_models_layout_and_window() -> Bool {
   let a = spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32)
   a.tensor_parallel_size == 4
-    && percent_count(p: a.gpu_memory_utilization.fraction) == 82
+    && (vllm_memory_request_key(r: a.memory_request) == "util:0.82/kvbytes:omitted")
     && token_count_value(t: a.max_model_len) == token_count_value(t: deepseek_v4_context_length)
     && (vllm_kv_cache_dtype_wire(request: a.kv_cache_dtype) as String) == "fp8_ds_mla"
     && (vllm_distributed_executor_backend_wire(backend: a.distributed_executor_backend) as String) == "ray"
