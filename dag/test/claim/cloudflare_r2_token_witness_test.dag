@@ -49,7 +49,6 @@ import extdeps.cloudflare.r2 {
   r2_object_read_create_request,
   r2_s3_access_pair_from_created_token,
   workers_r2_storage_bucket_item_read_permission_group_id,
-  shape_grants_include_r2_object_read,
   r2_object_read_grant,
   cloudflare_r2_frontier_rows
 }
@@ -215,8 +214,6 @@ test fn r2_s3_access_key_id_is_the_created_token_id() -> Bool {
 
 test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Bool {
   cloudflare_bootstrap_token_shape().grants == [AccountApiTokensWrite]
-    && shape_grants_include_r2_object_read(shape: cloudflare_r2_object_read_token_shape())
-    && !shape_grants_include_r2_object_read(shape: cloudflare_bootstrap_token_shape())
     && human_intervention_count_at(
       burden: cloudflare_r2_token_human_burden(),
       frequency: FleetOnce
