@@ -136,27 +136,27 @@ data tierpoint_valley_forge_density: CabinetDensityClaim = DensityUnread {
 // itemises cabinets will quote one, where a cage-minimum seller will not.
 data tierpoint_philadelphia_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "Cabinets and cages available",
-  citation: "tierpoint.com Philadelphia data center page, read 2026-09-08",
+  citation: "tierpoint.com Philadelphia data center page, read 2026-09-08. WORDING UNVERIFIED AS PAGE TEXT: a raw re-fetch on 2026-09-09 returned HTTP 403 with a 4,544-byte interstitial for every tierpoint.com facility path, so this phrase rests on a single summarizing read.",
 }
 
 data tierpoint_allentown_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "Cabinets and cages available",
-  citation: "tierpoint.com Allentown TekPark data center page, read 2026-09-08",
+  citation: "tierpoint.com Allentown TekPark data center page, read 2026-09-08. WORDING UNVERIFIED AS PAGE TEXT: the raw re-fetch on 2026-09-09 returned HTTP 403 (4,544-byte interstitial) for every tierpoint.com facility path.",
 }
 
 data tierpoint_bethlehem_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "cabinets and cages available",
-  citation: "tierpoint.com Bethlehem data center page, read 2026-09-08",
+  citation: "tierpoint.com Bethlehem data center page, read 2026-09-08. WORDING UNVERIFIED AS PAGE TEXT: the raw re-fetch on 2026-09-09 returned HTTP 403 (4,544-byte interstitial) for every tierpoint.com facility path.",
 }
 
 data tierpoint_lehigh_valley_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "Cabinets and cages available",
-  citation: "tierpoint.com Lehigh Valley data center page, read 2026-09-08",
+  citation: "tierpoint.com Lehigh Valley data center page, read 2026-09-08. WORDING UNVERIFIED AS PAGE TEXT: the raw re-fetch on 2026-09-09 returned HTTP 403 (4,544-byte interstitial) for every tierpoint.com facility path.",
 }
 
 data tierpoint_valley_forge_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "Cabinets and cages available",
-  citation: "tierpoint.com Valley Forge data center page, read 2026-09-08",
+  citation: "tierpoint.com Valley Forge data center page, read 2026-09-08. WORDING UNVERIFIED AS PAGE TEXT: the raw re-fetch on 2026-09-09 returned HTTP 403 (4,544-byte interstitial) for every tierpoint.com facility path.",
 }
 
 data tierpoint_retail_rates: RetailRateStanding = RatesQuoteOnly {

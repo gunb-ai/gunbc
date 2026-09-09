@@ -49,7 +49,7 @@ data five_9s_allentown: ColoFacilityRow = ColoFacilityRow {
 }
 
 data five_9s_allentown_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's portfolio page read 2026-09-08 states facility megawatts and no per-cabinet figure at all. 11.1 MW is a building fact; dividing it by any assumed cabinet count would fabricate a density. Read a facility spec sheet or obtain a quote.",
+  obligation: "The operator's portfolio page read 2026-09-08 states facility megawatts and no per-cabinet figure at all. 11.1 MW is a building fact; dividing it by any assumed cabinet count would fabricate a density. Raw-byte confirmed 2026-09-09 (HTTP 200, 51,327 bytes): every 'kw' occurrence in the served HTML is inside an image asset URL, not a power figure. Read a facility spec sheet or obtain a quote.",
 }
 
 data five_9s_allentown_retail_grain: RetailGrainStanding = RetailGrainUnread {

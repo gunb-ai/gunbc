@@ -57,10 +57,10 @@ data netrality_retail_rates: RetailRateStanding = RatesQuoteOnly {
 data netrality_401_n_broad_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 30000) },
   claim_wording: "Cabinet density up to 30kW",
-  citation: "netrality.com Philadelphia colocation page, read 2026-09-08. The page says kW, so this is REAL power and takes the PublishedRealPower arm; had it said kVA no conversion would have been possible. No liquid-cooled figure is stated, so the air-only arm carries it, and 'up to' makes this a marketed ceiling rather than a per-cabinet commitment.",
+  citation: "netrality.com Philadelphia colocation page, read 2026-09-08 and RE-READ AS RAW BYTES 2026-09-09 (curl, HTTP 200, 757,846 bytes): the string 'Cabinet density up to 30kW' occurs verbatim in the served HTML, so this wording is the operator's and not a summary of it. The page says kW, so this is REAL power and takes the PublishedRealPower arm; had it said kVA no conversion would have been possible. No liquid-cooled figure is stated, so the air-only arm carries it, and 'up to' makes this a marketed ceiling rather than a per-cabinet commitment.",
 }
 
 data netrality_401_n_broad_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "single cabinets, cages, private suites, and dedicated floor",
-  citation: "netrality.com Philadelphia colocation page, read 2026-09-08",
+  citation: "netrality.com Philadelphia colocation page, read 2026-09-08; the wording occurs verbatim in the raw served HTML re-fetched 2026-09-09 (HTTP 200, 757,846 bytes).",
 }
