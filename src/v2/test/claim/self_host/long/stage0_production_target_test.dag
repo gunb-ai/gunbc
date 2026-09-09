@@ -1,0 +1,151 @@
+module v2.test.long.stage0_production_target
+
+import v2.compiler.infer { infer, InferredTree }
+import v2.compiler.self_host.candidate_generation {
+  generate_rust_module_emission_candidate
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_specimen_resolved
+}
+import v2.compiler.self_host.stage0_production_target {
+  stage0_production_target_model
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRef }
+import v2.compiler.source_authority_read {
+  source_ref_for_observed_storage_path,
+  source_root_ingest_from_source_refs
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import std.algebra { Cons, Empty }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THE STAGE0 CRATE REQUIRES OF A MODULE EMITTED INTO IT.
+//
+// The committed mirror of a stage0 module is `pub` and carries i64, because the crate's other
+// modules call across module boundaries and the crate's ABI is i64. The Rust language model
+// alone produces neither: the .dag source spells no visibility, and the base Rust target
+// realizes the language's Int as i32. v2.compiler.self_host.stage0_production_target is the
+// profile that selects both AT THIS BOUNDARY, and these claims are what make the selections
+// load-bearing rather than decorative.
+//
+// The two negative arms are discriminating controls, one per capability class, not one generic
+// malformed-output check: the visibility control observes the base target emitting an item with
+// no `pub` (which the crate's real consumer of gunbc_rust_decl_type_overlay could not resolve
+// across the module boundary), and the carrier control observes the base target emitting i32 at
+// the exact position the stage0 ABI requires i64. Each fails for its own reason, so a regression
+// in one cannot be masked by the other. They also pin that the profile did not globally relabel
+// the base target: the direct-door fixtures stay organized around an i32, visibility-free Rust
+// realization.
+//
+// THE SPECIMEN IS THE DOOR'S, DELIBERATELY, AND THE PER-CLAIM BUDGET IS WHY. Emission needs a
+// resolved module; assembling one costs 878ms measured on this host, which is three times the
+// floor's 500ms per-claim ceiling spent recomputing a pure function of one file's content.
+// direct_rust_door_specimen_resolved is the already-warm-enrolled nullary producer of exactly
+// that value (v2.workflow.floor_pure_producer_share), forced during strict preparation outside
+// every per-claim budget, so these claims pay infer and emit only. Adding a second producer for
+// a specimen of the same shape would have been the duplication that roster exists to end
+// (DESIGN section 2). What the door's specimen cannot carry is the READ, which is a different
+// fact and is claimed separately below over a committed file.
+fn stage0_boundary_emitted_source_for(target: TargetModel) -> String {
+  match direct_rust_door_specimen_resolved() {
+    Rejected { diagnostics: _ } => stage0_boundary_emit_refused
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => stage0_boundary_emit_refused
+        Accepted { value: inferred, diagnostics: _ } =>
+          match generate_rust_module_emission_candidate(inferred: inferred, target: target) {
+            Rejected { diagnostics: _ } => stage0_boundary_emit_refused
+            Accepted { value: candidate, diagnostics: _ } => candidate.source.carried
+          }
+      }
+  }
+}
+
+// A refusal cannot be confused with a real emission: the sentinel is not Rust and matches no
+// expectation below, so every arm reds on a route that stopped rather than reading a stage's
+// silence as agreement.
+data stage0_boundary_emit_refused: String = "stage0-boundary-emit-refused"
+
+data stage0_boundary_expected_source: String = "pub fn add(x: i64, y: i64) -> i64 { x + y }"
+
+data stage0_boundary_base_target_source: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
+
+// THE TWO EMISSIONS ARE NULLARY PRODUCERS, one per target, and both are warm-enrolled in
+// v2.workflow.floor_pure_producer_share. Three claims read two emissions -- the base target's is
+// read twice, by the visibility control and the carrier control -- and an emission is infer plus
+// emit over the shared specimen, measured at ~713-805ms per claim against the floor's 500ms
+// per-claim ceiling. Sharing moves each emission to one preparation-time evaluation and leaves
+// every claim a string comparison, which is what the roster exists to do (its produced_add_module
+// row shares exactly this shape of value: a small, closure-free emitted source).
+fn stage0_boundary_profile_emitted_source() -> String {
+  stage0_boundary_emitted_source_for(target: stage0_production_target_model())
+}
+
+fn stage0_boundary_base_emitted_source() -> String {
+  stage0_boundary_emitted_source_for(target: rust_target_model())
+}
+
+test fn stage0_production_target_emits_boundary_compatible_source_holds() -> Bool {
+  stage0_boundary_profile_emitted_source() == stage0_boundary_expected_source
+}
+
+test fn stage0_visibility_selection_is_load_bearing_holds() -> Bool {
+  stage0_boundary_base_emitted_source() != stage0_boundary_expected_source
+}
+
+test fn stage0_base_target_stays_private_and_i32_holds() -> Bool {
+  stage0_boundary_base_emitted_source() == stage0_boundary_base_target_source
+}
+
+// THE READ, CLAIMED SEPARATELY BECAUSE IT IS A SEPARATE FACT. A module reaching the production
+// composition from the repository arrives through source_ref_for_observed_storage_path and
+// source_root_ingest_from_source_refs, which verify content identity against the ref's hash
+// before minting a witness; the door's own specimen carries its module source inline
+// (direct_rust_door_dag_module_source), so no enrolled claim exercised that route over a
+// committed file. It is measured at 0ms, so it costs the floor nothing to keep.
+//
+// The assertion is a CONTAINMENT rather than a whole-text golden on purpose: pinning every byte
+// of a committed file would make an edit to its explanatory prose a test failure, which is a
+// change detector rather than a check (DESIGN section 5). What must hold is that the bytes the
+// ingest carries are the bytes on disk, and the declaration line is the discriminating part of
+// them.
+data stage0_boundary_probe_path: String = "src/v2/compiler/self_host/stage0_boundary_add_probe.dag"
+
+data stage0_boundary_probe_declaration: String = "fn probe_add(x: Int, y: Int) -> Int { x + y }"
+
+fn stage0_boundary_probe_ref() -> SourceRef {
+  source_ref_for_observed_storage_path(path: stage0_boundary_probe_path)
+}
+
+fn stage0_boundary_read_source() -> String {
+  match source_root_ingest_from_source_refs(
+    refs: Cons { head: stage0_boundary_probe_ref(), tail: Empty }
+  ) {
+    Rejected { diagnostics: _ } => stage0_boundary_emit_refused
+    Accepted { value: ingest, diagnostics: _ } =>
+      match ingest {
+        Empty => stage0_boundary_emit_refused
+        Cons { head: read, tail: _ } => read.source.carried
+      }
+  }
+}
+
+// Substring scan via the ambient split: a marker is contained when splitting on it yields more
+// than one piece (the idiom test.claim.emit_copy_qualification_witness already uses).
+fn stage0_boundary_read_contains(marker: String) -> Bool {
+  (split(s: stage0_boundary_read_source(), delimiter: marker) |> count) > 1
+}
+
+test fn stage0_boundary_committed_module_reads_through_the_storage_route_holds() -> Bool {
+  stage0_boundary_read_contains(marker: stage0_boundary_probe_declaration)
+}
+
+test fn stage0_boundary_read_does_not_fabricate_content_holds() -> Bool {
+  stage0_boundary_read_contains(marker: "fn probe_add(x: Int) -> Int {") == false
+}

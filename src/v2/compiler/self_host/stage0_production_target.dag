@@ -1,7 +1,7 @@
 module v2.compiler.self_host.stage0_production_target
 
 import v2.extdeps.languages.rust {
-  rust_binding_spellings_for_int,
+  rust_binding_spellings,
   rust_produced_decl_render_rows,
   rust_production_lex_rules_with,
   rust_target_model,
@@ -18,7 +18,8 @@ import v2.std.compilers.target_model {
   TargetModel
 }
 import v2.std.algebra { list_append }
-import v2.std.collection { List }
+import v2.std.collection { List, Map, map_insert }
+import v2.std.node { Symbol }
 import v2.std.text { String }
 
 // THE STAGE0 EMISSION BOUNDARY, AS A TARGET PROFILE.
@@ -38,9 +39,11 @@ import v2.std.text { String }
 //
 //   INTEGER CARRIER. The language's `Int` is unbounded; a Rust realization picks a primitive.
 //   The committed stage0 ABI is i64 and the direct-door fixtures are organized around i32.
-//   Relabelling the fixture target to i64 would erase the distinction rather than model it,
-//   so the carrier is a parameter of rust_binding_spellings_for_int and this profile selects
-//   i64 for this boundary only.
+//   Relabelling the fixture target to i64 would erase the distinction rather than model it, so
+//   this profile OVERLAYS the one key it changes onto the Rust map instead of re-spelling the
+//   map or re-parameterizing it. The overlay is what keeps the base map byte-identical, which
+//   matters beyond tidiness: every claim that already shares one evaluation of rust_target_model
+//   keeps sharing exactly that evaluation, so selecting a carrier here charges no other witness.
 //
 // Everything else -- the bundle, the produced-declaration render schema, the runtime row, the
 // authority source text -- is taken from rust_target_model unchanged, so this profile cannot
@@ -89,6 +92,13 @@ fn stage0_production_decl_support(base: ProducedDeclSupport) -> ProducedDeclSupp
   }
 }
 
+// The Rust map with one key replaced. A second map authored here would be a fork of a spelling
+// authority (DESIGN section 3): every other spelling this boundary needs is Rust's own and must
+// keep tracking it.
+fn stage0_production_binding_spellings() -> Map<Symbol, String> {
+  map_insert(rust_binding_spellings(), ^dag_binding_type_int, stage0_production_int_spelling)
+}
+
 fn stage0_production_lex() -> LexRules {
   ModeledLexRules {
     root: rust_production_lex_rules_with(extra: [rust_visibility_public_lex_rule()])
@@ -101,9 +111,7 @@ fn stage0_production_target_model() -> TargetModel {
     produced_decl_support: stage0_production_decl_support(base: base.produced_decl_support),
     bundle: base.bundle,
     lex: stage0_production_lex(),
-    binding_spellings: rust_binding_spellings_for_int(
-      int_spelling: stage0_production_int_spelling
-    ),
+    binding_spellings: stage0_production_binding_spellings(),
     token_class_emit_transforms: base.token_class_emit_transforms,
     authority_source_text: base.authority_source_text,
     runtime_row: base.runtime_row

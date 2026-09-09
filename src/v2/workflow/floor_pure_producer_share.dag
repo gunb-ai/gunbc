@@ -291,6 +291,17 @@ import v2.std.collection { List }
 // --entry <any of the three test files> [witness] lines for the recompute side, and this run's
 // [floor-shared-fill] ledger, which must show the fill landing at preparation with
 // disposition=Stored and the seven former interrupted claims serving hits.
+// THE TWO STAGE0-BOUNDARY EMISSIONS ARE THE SAME SHAPE AS produced_add_module_source ABOVE: a
+// nullary producer of a small, closure-free emitted source. v2.test.long.stage0_production_target
+// asserts that the stage0 target profile emits a boundary-compatible declaration and that the base
+// target does not, which is three claims reading two emissions (the base emission is read by both
+// controls). An emission is infer plus emit over the door's already-shared resolved specimen, and
+// claim_batch's [witness] receipt measures each claim at 713-834ms locally against the 500ms
+// per-claim ceiling -- structurally over on any runner, and over for the same reason the rows above
+// were: three claims recomputing a pure function of one program's content. Shared, each claim is a
+// string comparison and the two emissions are evaluated once at preparation. WARM, NEVER
+// CLAIM-FORCED, by the same arithmetic as every row above: a ~700ms fill cannot complete inside a
+// 500ms claim, so a claim-forced fill dies mid-flight and restarts per claim.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
@@ -298,7 +309,9 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.long.emit_host_produced_module_equals_eval.produced_add_module_source",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body",
-  "v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_specimen_resolved"
+  "v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_specimen_resolved",
+  "v2.test.long.stage0_production_target.stage0_boundary_profile_emitted_source",
+  "v2.test.long.stage0_production_target.stage0_boundary_base_emitted_source"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
