@@ -10,6 +10,7 @@ import extdeps.colo.types {
   cabinet_density_air_established, cabinet_density_air_ceiling,
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
+  CitationVerification, VerifiedInPageBytes, RenderedCaptureOnly, VerificationUnattempted,
 }
 import extdeps.colo.databank {
   databank_lga4_density, databank_lga4_retail_grain,
@@ -151,6 +152,34 @@ test fn w_density_and_grain_are_separate_facts() -> Bool {
 test fn w_absent_ceiling_refuses_nothing_and_a_real_one_does() -> Bool {
   !ceiling_refuses_at(d: iron_mountain_wpa1_density, required: 999999)
     && ceiling_refuses_at(d: telehouse_chelsea_density, required: 999999)
+}
+
+// THE VERIFICATION GRADE IS A MATCH, NOT A CITATION SENTENCE. Review 62794 / operator 2026-09-09:
+// Iron Mountain NJE-1 and Telehouse Chelsea used to inhabit the same arm, distinguished only in
+// prose, and a reviewer could not tell them apart. These four rows are the discriminating matrix.
+fn wording_verified_in_bytes(d: CabinetDensityClaim) -> Bool {
+  match d {
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation, verification } =>
+      match verification {
+        VerifiedInPageBytes { fetched_on, byte_count, element_note } => true,
+        RenderedCaptureOnly { obstacle } => false,
+        VerificationUnattempted { obligation } => false,
+      },
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation, verification } =>
+      match verification {
+        VerifiedInPageBytes { fetched_on, byte_count, element_note } => true,
+        RenderedCaptureOnly { obstacle } => false,
+        VerificationUnattempted { obligation } => false,
+      },
+    DensityUnread { obligation } => false,
+  }
+}
+
+test fn w_verification_grade_is_a_match_not_a_comment() -> Bool {
+  wording_verified_in_bytes(d: telehouse_chelsea_density)
+    && wording_verified_in_bytes(d: telehouse_teleport_density)
+    && wording_verified_in_bytes(d: databank_lga4_density)
+    && !wording_verified_in_bytes(d: iron_mountain_nje1_density)
 }
 
 // THE FIVE-BOROUGH UNREAD ROWS THIS PR ADDED. Review 62809: a DensityUnread / SingleCabinetOffered

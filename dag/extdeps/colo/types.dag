@@ -1,6 +1,6 @@
 module extdeps.colo.types
 
-import std.types { NonEmptyStr, List, Bool }
+import std.types { NonEmptyStr, List, Bool, Int }
 import v2.std.optional { Optional, Present, Absent }
 import std.nat { Nat }
 import std.measure {
@@ -143,17 +143,30 @@ type CabinetPowerFigure
   = PublishedRealPower { power: Watt }
   | PublishedApparentPower { power: VoltAmpere }
 
+// HOW THE CLAIM_WORDING WAS CONFIRMED, AND IT IS A TYPED ARM RATHER THAN A SENTENCE IN THE CITATION.
+// Review 62794 / operator 2026-09-09: a row whose wording is unverified as page text took the same
+// type as a byte-verified one, so a match could not tell them apart and a reviewer read five
+// unverified sellers as confirmed. The grade is knowledge only the fetching lane holds, so it is
+// captured here rather than reconstructed later. Spelling prescribed on the carrier ruling; the
+// type lands with the first consuming PR because #10866 has not yet added it.
+type CitationVerification
+  = VerifiedInPageBytes { fetched_on: NonEmptyStr, byte_count: Int, element_note: NonEmptyStr }
+  | RenderedCaptureOnly { obstacle: NonEmptyStr }
+  | VerificationUnattempted { obligation: NonEmptyStr }
+
 type CabinetDensityClaim
   = DensityMarketedMax {
       air_cooled: CabinetPowerFigure
       liquid_cooled: CabinetPowerFigure
       claim_wording: NonEmptyStr
       citation: NonEmptyStr
+      verification: CitationVerification
     }
   | DensityMarketedAirOnly {
       air_cooled: CabinetPowerFigure
       claim_wording: NonEmptyStr
       citation: NonEmptyStr
+      verification: CitationVerification
     }
   | DensityUnread {
       obligation: NonEmptyStr
@@ -172,8 +185,8 @@ type CabinetDensityClaim
 // needs one must refuse.
 fn cabinet_density_air_established(d: CabinetDensityClaim) -> Watt? {
   match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation, verification } => cabinet_power_established(f: air_cooled),
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation, verification } => cabinet_power_established(f: air_cooled),
     DensityUnread { obligation } => Absent,
   }
 }
@@ -207,8 +220,8 @@ type CabinetPowerCeiling = CeilingAt { at_most: Watt }
 
 fn cabinet_density_air_ceiling(d: CabinetDensityClaim) -> CabinetPowerCeiling? {
   match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation, verification } => Present { value: cabinet_power_ceiling(f: air_cooled) },
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation, verification } => Present { value: cabinet_power_ceiling(f: air_cooled) },
     DensityUnread { obligation } => Absent,
   }
 }
