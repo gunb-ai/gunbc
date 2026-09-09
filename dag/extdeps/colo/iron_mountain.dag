@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressUnread, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityPublished, PublishedDensityFigure, DensityUnread, CabinetPowerFigure, PublishedRealPower,
+  NonEmptyDensityFigures, FigureVerificationStanding, WordingSummarized,
   CoolingMediumStanding, CoolingMediumUnspecified,
   PublishedPowerQuantity, MarketedAtMost,
   RetailGrainStanding, SingleCabinetOffered,
@@ -54,14 +55,19 @@ data iron_mountain_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // made colocation look physically incapable of holding a 650 W-per-node fleet. It is not: this
 // operator markets an order of magnitude more per rack, at a grain that includes single cabinets.
 data iron_mountain_nje1_density: CabinetDensityClaim = DensityPublished {
-  figures: [
-    PublishedDensityFigure {
+  figures: NonEmptyDensityFigures {
+    head: PublishedDensityFigure {
       medium: CoolingMediumUnspecified,
       quantity: MarketedAtMost { upper: PublishedRealPower { power: watt(count: 30000) } },
+      wording: "high-density up to 30 kW/rack",
+      citation: "ironmountain.com NJE-1 solution guide, read 2026-09-08",
+      verification: WordingSummarized {
+        retrieval: "The 2026-09-08 read went THROUGH A SUMMARIZING FETCH TOOL, so the sentence in `wording` may be that tool's prose rather than the operator's. A raw fetch on 2026-09-09 to confirm it verbatim was BLOCKED - HTTP 429 behind a Vercel Security Checkpoint, 32 KB of interstitial and no facility content - so the block is recorded as the reading rather than the silence being mistaken for absence. The FIGURE of 30 kW per rack has one source and it is a tool known to paraphrase. The same page reported 25.6 MW facility capacity, 830,000 square feet, Tier III and a PUE as low as 1.2, all under the same caveat. No liquid-cooling density was reported and NO COOLING MEDIUM WAS NAMED for this figure, hence CoolingMediumUnspecified rather than an inferred air arm.",
+        discharge: "A raw fetch that clears the checkpoint, an operator spec sheet, or a quote - any of which would carry the operator's own words and let this row become WordingVerbatim.",
+      },
     },
-  ],
-  claim_wording: "high-density up to 30 kW/rack",
-  citation: "ironmountain.com NJE-1 solution guide, read 2026-09-08 THROUGH A SUMMARIZING FETCH TOOL, and the wording above is therefore UNVERIFIED AS PAGE TEXT. A raw fetch on 2026-09-09 to confirm it verbatim was BLOCKED - HTTP 429 behind a Vercel Security Checkpoint, 32 KB of interstitial and no facility content - so the block is recorded here as the reading rather than the silence being mistaken for absence. What this means precisely: the FIGURE of 30 kW per rack has one source and it is a tool that is known to paraphrase, and the sentence in claim_wording may be that tool's prose rather than the operator's. It is retained because a summarizing read is still a read and the row would otherwise lose a real observation; it is flagged because claim_wording exists so a later reader can re-derive the number from the operator's own words, and an unverified wording there reads exactly like a verified one. DISCHARGE BY: a raw fetch that clears the checkpoint, an operator spec sheet, or a quote. The same page reported 25.6 MW facility capacity, 830,000 square feet, Tier III and a PUE as low as 1.2, all under the same caveat. No liquid-cooling density was reported, hence the air-only arm.",
+    tail: [],
+  },
 }
 
 data iron_mountain_nje1_retail_grain: RetailGrainStanding = SingleCabinetOffered {

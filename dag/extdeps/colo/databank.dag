@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityPublished, PublishedDensityFigure, CabinetPowerFigure, PublishedRealPower,
+  NonEmptyDensityFigures, FigureVerificationStanding, WordingVerbatim,
   CoolingMediumStanding, AirCoolingPublished, LiquidCoolingPublished,
   PublishedPowerQuantity, CapabilityAtLeast,
   RetailGrainStanding, SingleCabinetOffered,
@@ -58,18 +59,28 @@ data databank_lga4_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // sale is the census's central finding, and it is a reason to obtain quotes rather than a reason
 // to believe a quote will be affordable: nothing here says what 35 kW costs.
 data databank_lga4_density: CabinetDensityClaim = DensityPublished {
-  figures: [
-    PublishedDensityFigure {
+  figures: NonEmptyDensityFigures {
+    head: PublishedDensityFigure {
       medium: AirCoolingPublished,
       quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 35000) } },
+      wording: "35kW+ Cab Density Air",
+      citation: "databank.com Orangeburg campus LGA4 page, spec table, raw fetch 2026-09-09 (HTTP 200)",
+      verification: WordingVerbatim {
+        retrieval: "Raw fetch of the LGA4 facility page on 2026-09-09 returned HTTP 200 and the wording above is the literal spec-table cell. The plus sign is the operator's own, which is what makes this a marketed floor on a maximum rather than an exact ceiling.",
+      },
     },
-    PublishedDensityFigure {
-      medium: LiquidCoolingPublished,
-      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 100000) } },
-    },
-  ],
-  claim_wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liq",
-  citation: "databank.com Orangeburg campus LGA4 page, raw fetch 2026-09-09 (HTTP 200). THE WORDING ABOVE IS NOW THE LITERAL SPEC-TABLE CELLS AND WAS NOT BEFORE. The first cut read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool, not text on the page. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the WORDING did not, which is the general shape silent-heron-303 found across the census. The plus signs are the operator's own, so these are marketed floors on a maximum rather than exact ceilings; the integers are the stated numerals."
+    tail: [
+      PublishedDensityFigure {
+        medium: LiquidCoolingPublished,
+        quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 100000) } },
+        wording: "100kW+ Cab Density Liq",
+        citation: "databank.com Orangeburg campus LGA4 page, spec table, raw fetch 2026-09-09 (HTTP 200)",
+        verification: WordingVerbatim {
+          retrieval: "Same raw fetch and same spec table as the air cell, and a SEPARATE cell in it. The first cut of this row read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool and not text on the page - and stored it once above both figures. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the fused WORDING did not, which is why wording now sits on the figure it establishes.",
+        },
+      },
+    ],
+  },
 }
 
 data databank_lga4_retail_grain: RetailGrainStanding = SingleCabinetOffered {
