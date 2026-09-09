@@ -3,7 +3,8 @@ module extdeps.clock
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { EpochMs, Timestamp }
+import std.types { EpochMs, EpochSecs, Timestamp }
+import std.nat { Nat }
 import v2.std.optional { Present }
 
 
@@ -13,6 +14,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/date.html"
   }
 }
+
+// feature:offset-nat-carrier — dissolve-on: when the shell transport supports
+// Measure<Time, One, Nat> (Second) interpolation, convert TimestampOffset to
+// accept offset: Second and unwrap to Nat only in the transport binder.
+// Meanwhile the operation accepts offset: Nat — still a bare scalar, but at
+// least the Nat refinement (Int where non_negative) encodes the sign constraint
+// that Int lacked, and the parameter name names the unit as a second-best signal.
 
 service Clock {
   operation Now {
@@ -47,6 +55,28 @@ service Clock {
       nonzero => String "date command failed"
     }
   }
+
+  operation TimestampOffset {
+    input { timestamp: Timestamp, offset: Nat }
+    output { result: Timestamp from "stdout" }
+    readonly
+    transport shell { argv: ["date", "-u", "-d", "{timestamp} -{offset} seconds", "+%Y-%m-%dT%H:%M:%SZ"] }
+    exit {
+      0 => Unit
+      nonzero => String "date offset failed"
+    }
+  }
+
+  operation TimestampToUnixSecs {
+    input { timestamp: Timestamp }
+    output { unix_secs: String from "stdout" }
+    readonly
+    transport shell { argv: ["date", "-u", "-d", "{timestamp}", "+%s"] }
+    exit {
+      0 => Unit
+      nonzero => String "date conversion failed"
+    }
+  }
 }
 
 // UnixMillis exists because a throttle needs to ANSWER `has 20 hours passed`, and answering it from Clock.Now is not possible without a date parser: Timestamp is `String` in std.types, so Clock.Now's apparent typing is an alias over rendered ISO-8601 text, not a magnitude. UnixSecs was no better for a different reason — it declared its output as String, so the one operation in the tree that produces a number produced it as text and every consumer would have owned the decode. The output is therefore EpochMs (std.types, `Int where range(min: 0)`), which is the existing magnitude carrier for exactly this quantity, so no new time type is minted.
@@ -71,6 +101,32 @@ fn clock_unix_millis_read() -> ClockUnixMillisRead {
         }
       } else {
         ClockUnixMillisObserved { millis: n }
+      }
+  }
+}
+// SAME OUTPUT-SHAPE DISCIPLINE AS clock_unix_millis_read: the operation's
+// output stays String, and this typed wrapper parses it with proper refusal.
+// Uses EpochSecs (std.types), the same pattern clock_unix_millis_read uses
+// with EpochMs — including the negative check, because parse_int admits a
+// leading minus while date +%s returns a non-negative integer.
+type ClockTimestampRead
+  = ClockTimestampObserved { epoch_secs: EpochSecs }
+  | ClockTimestampRefused { detail: String }
+
+fn clock_timestamp_to_unix_secs(timestamp: Timestamp) -> ClockTimestampRead {
+  let result = Clock.TimestampToUnixSecs(timestamp: timestamp)
+  match parse_int(s: trim(result.unix_secs)) {
+    Absent =>
+      ClockTimestampRefused {
+        detail: concat("clock timestamp conversion is not an integer: ", result.unix_secs)
+      }
+    Present { value: n } =>
+      if n < 0 {
+        ClockTimestampRefused {
+          detail: concat("clock timestamp conversion is negative: ", result.unix_secs)
+        }
+      } else {
+        ClockTimestampObserved { epoch_secs: n }
       }
   }
 }

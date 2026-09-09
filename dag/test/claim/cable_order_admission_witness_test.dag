@@ -7,7 +7,8 @@ import extdeps.transceiver.sff_8636 {
   transceiver_identifier_from_byte, sff8636_encoding_from_byte,
 }
 import product.cable_leg_observation {
-  CableLegObservation, SecondaryNotObserved, cable_leg_observation,
+  CableLegObservation, SecondaryNotObserved, SecondaryObserved, cable_leg_observation,
+  ExtendedRateObserved,
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -78,13 +79,16 @@ test fn a_claim_for_a_different_mode_refuses() -> Bool {
 
 // ---------------- gate 2: receipt reconciliation ----------------
 
-// The delivered leg, as read. Byte 116 unread, primary 0x0B, PAM4 encoding, escape rate byte.
+// The delivered leg, as read on 2026-09-08. Primary 0x0B, secondary 00h, PAM4 encoding, byte 140 at
+// the FFh escape resolving through byte 222 = 6Ah. What makes the receipt diverge from the admitted
+// claim is the CODING, not a missing reading: nothing here attests 100GBASE-CR2.
 data delivered_leg: CableLegObservation = cable_leg_observation(
   identifier: transceiver_identifier_from_byte(code: 17),
   primary_compliance_code: 11,
-  secondary_compliance: SecondaryNotObserved,
+  secondary_compliance: SecondaryObserved { code: 0 },
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 data admitted_purchase: CableOrderAdmission = admit_cable_order(
   evidence: LegCodingVendorAsserted { asserted_mode: ieee_100gbase_cr2, citation: fs_listing },
@@ -135,7 +139,8 @@ data correctly_coded_leg: CableLegObservation = cable_leg_observation(
   primary_compliance_code: 11,
   secondary_compliance: SecondaryNotObserved,
   encoding: sff8636_encoding_from_byte(code: 8),
-  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255))
+  nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+  extended_rate: ExtendedRateObserved { code: 106 })
 
 // The CR4 requirement is one 0x0B genuinely attests, so this exercises the honouring path against
 // the same decoder the divergence path uses.

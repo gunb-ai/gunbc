@@ -1,0 +1,56 @@
+module gunbc.derived_row_roster_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the host fold that derives gunbc.recurring_failure_mode.roster
+// from sibling row files. gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note
+// makes unenumerated hand growth in src/v1 a stop-line. The PR body pointing at
+// gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall is the right dissolution
+// CONTENT and is not a substitute for enumerating the added items (DESIGN §5: a dissolution
+// condition does not authorize creating the debt).
+//
+// THE POPULATION IS THE ADDED HAND ITEMS, not a count. Inline test modules are scopes: WholeDeclaration
+// on the module does not cover members (item_declaration_ref_in folds enclosing_module into each
+// member). Test items are in: there is no production-only exemption.
+//
+// cli_run.rs and claim_executor.rs were MODIFIED (the parse-sweep call site and the join rider
+// already existed). Those are ExistingSeedItemModified, not netted against the additions below.
+// JoinFindingKind gained two variants on an existing enum: same disposition.
+data derived_row_roster_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROSTER_BASENAME", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROW_MODULE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROSTER_MODULE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROW_DIR_REL", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "is_recurring_failure_mode_row_dir", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ensure_if_row_dir", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ensure_if_row_dir_or_panic", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ensure_derived_recurring_failure_mode_roster", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "write_atomically", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "row_stems", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "render_roster", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "the_roster_module_is_the_row_module_plus_the_roster_stem", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "is_derived_roster_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "roster_root_prefix", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "roster_from_path_listing", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "absent_is_not_an_empty_list_render_of_no_names_is_a_present_empty_literal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "row_dir_is_the_modeled_module_home_not_a_bare_folder_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "a_base_tree_with_no_row_files_has_no_roster_module_rather_than_an_empty_one", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "the_base_side_is_the_base_listing_not_the_head_directory", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "a_derived_roster_path_is_recognised_under_any_sweep_root", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join", decl_name: "join_recurring_failure_mode_files_to_roster", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join", decl_name: "join_row_files_to_roster_members", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join", decl_name: "file_roster_join_tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join.file_roster_join_tests", decl_name: "scratch_dir", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join.file_roster_join_tests", decl_name: "short_roster_refuses_the_file_that_exists", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join.file_roster_join_tests", decl_name: "roster_member_without_a_file_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.rostered_row_join.file_roster_join_tests", decl_name: "equal_file_and_roster_sets_are_silent", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST RATHER THAN .dag: the substrate has no directory enumeration sufficient to BIND each sibling `.dag` as a typed RecurringFailureMode value. Membership discovery exists (`v2.std.decl_index` `data_decl_type_facts`); value binding does not. Until that grounding lands, a checkout with no committed roster has no module for the three importers (`gunbc.design_ledgers`, `gunbc.ledger_row_coherence`, `test.claim.generated_artifact_merge_driver_real_execution_witness`) and the required parse join reports RosterModuleAbsent on the intended steady state. The host fold lists sibling files, writes gitignored roster.dag atomically, and refuses a shortened list. That is a §7 seed realization of a missing capability, not a scaffold: dissolution is grounded in gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall (declaration-value binding), not in a sentence in the Rust module.\n\nThe file-versus-roster join arms are the other half of the same host: a skip in the writer must still refuse. They execute inside run_rostered_row_join on the required parse path (witnesses lane). file_roster_join_tests are the off-path REDs for those arms; they are enumerated because test items are still hand Rust.\n\nWHY ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE. Removing the silent-drop constructor from the failure-mode ledger is an instrument tax every self-host lane was paying (merge hotspot). No new language behavior, no escape hatch, no emitted public surface.\n\nTHE BASE SIDE OF THE DERIVED ROSTER (gunbc#10856, three production items and three test items). is_derived_roster_path, roster_root_prefix and roster_from_path_listing exist because a DERIVED artifact has no base side in a diff and must not be inherited from the head. roster.dag is gitignored and written on the read path, so it can never appear in `git diff --name-status`, and namespace_wave_admission`s baseline -- reconstructed by carrying forward every head record the diff did not touch -- was therefore standing the HEAD`s generated roster up as the BASE`s. That made an ordinary row append read as a name resolving into a pool rather than an authored reference, because the roster`s two sides were the same bytes. They live HERE rather than beside their caller for the reason this module exists: roster_from_path_listing renders through render_roster, the same function the writer uses, so the roster`s bytes keep ONE authority whether the question is asked of a directory or of a base tree listing. They carry the same trigger as the rest of this population -- with declaration-value binding the derivation has no name-list at all, on either side, and these delete with the writer.\n\nRe-derive this list with tools.seed_growth_change_population rather than maintaining a count.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "THE SUBJECT IS THESE DECLARATIONS, and they retire with declaration introspection sufficient to BIND a discovered data declaration as a typed value of its declared type — the same capability named by gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall — at which point the host fold and the file-join arms DELETE because there is no authored or derived name-list to omit a row from. A differently named hand writer is not dissolution: it is this obligation under a new key. Registering roster.dag on gunbc.generated_artifact does not discharge this: that would restore heal/drift rewrite of a gitignored file. data_decl_type_facts already exists and does not discharge a trigger that names BINDING.",
+  current_boundary: "v1_compiler.cli_run.derived_row_roster is reached from run_required_wave_admission (is_derived_roster_path, roster_root_prefix and roster_from_path_listing, which is the phase`s base side and the only consumer of those three), collect_dag_files_result, collect_dag_files_tolerant (write errors ignored), main.rs collect_dag_files, compiler_tests collect_dag_recursive, and run_dag_parse_sweep (the loud required-CI writer). join_row_files_to_roster_members is reached only from join_recurring_failure_mode_files_to_roster inside run_rostered_row_join. The derived file is gitignored and is not a gunbc.generated_artifact. Docs gate main agrees only DesignRungDropsArtifact."
+}

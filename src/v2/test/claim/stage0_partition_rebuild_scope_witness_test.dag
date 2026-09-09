@@ -19,12 +19,16 @@ import gunbc.stage0_partition_rebuild_scope {
   PartitionRebuildDecision,
   PartitionRebuildScopeDerived,
   RebuildScopeRefused,
+  ReleaseScopeEmpty,
   SharedCompilerBuildInputChanged,
   WholeCompilerRebuildRequired,
   rebuild_scope_excluded_packages,
   stage0_partition_rebuild_is_actuatable,
   stage0_partition_rebuild_decision,
   stage0_partition_rebuild_decision_today,
+  stage0_partition_rebuild_excluded_today,
+  stage0_partition_rebuild_packages_today,
+  stage0_partition_rebuild_release_scope_empty_today,
   stage0_next_pass_executable_assembly
 }
 
@@ -72,6 +76,7 @@ fn witness_closure_of(changed: List<String>) -> List<String> {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: c, executable_assembly: _ } => c
     WholeCompilerRebuildRequired { cause: _ } => []
     RebuildScopeRefused { cause: _ } => []
+    ReleaseScopeEmpty { changed_mirrors: _ } => []
   }
 }
 
@@ -97,6 +102,7 @@ test fn witness_leaf_edit_compiles_owner_and_downstream_holds() -> Bool {
             })
     WholeCompilerRebuildRequired { cause: _ } => false
     RebuildScopeRefused { cause: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -135,6 +141,7 @@ test fn witness_partition_generation_edit_requires_whole_rebuild_holds() -> Bool
     WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: _ } } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
     RebuildScopeRefused { cause: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -144,6 +151,7 @@ test fn witness_shared_build_input_edit_requires_whole_rebuild_holds() -> Bool {
     WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: _ } } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
     RebuildScopeRefused { cause: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -185,6 +193,7 @@ test fn witness_unowned_mirror_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -206,6 +215,7 @@ test fn witness_compiler_tests_rust_rebuild_owner_is_v1_infer_holds() -> Bool {
         && witness_has(items: closure, item: "v1-compiler")
     WholeCompilerRebuildRequired { cause: _ } => false
     RebuildScopeRefused { cause: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -270,6 +280,7 @@ test fn witness_duplicate_owner_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -290,6 +301,7 @@ test fn witness_unlocatable_changed_path_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -313,6 +325,7 @@ test fn witness_empty_changed_set_is_nothing_to_rebuild_holds() -> Bool {
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -333,6 +346,7 @@ test fn witness_unreached_executable_package_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -358,6 +372,7 @@ test fn witness_today_derives_scope_with_assembled_executable_holds() -> Bool {
             })
     WholeCompilerRebuildRequired { cause: _ } => false
     RebuildScopeRefused { cause: _ } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
   }
 }
 
@@ -396,4 +411,60 @@ test fn witness_next_pass_executable_assembly_is_assembled_holds() -> Bool {
       (p == "v1-compiler") && (b == "claim_executor")
     ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } => false
   }
+}
+
+// CONTROL 7 -- THE RELEASE-EXCLUDED CLASS, AND ITS BOUNDARY. compiler_tests.rs is emitted by
+// v1.compiler.emit_rust emit_compiler_tests_module with every item behind #[cfg(test)], so its
+// bytes contribute nothing to the release executable: its precise rebuild scope is the empty
+// set, answered as ReleaseScopeEmpty rather than refused. (The outer `mod compiler_tests;` IS
+// ungated, so the shell crate still recompiles on the fingerprint -- the claim is about the
+// executable bytes, and the 2026-09-08 convergence stage-2 receipt shows input seed digest ==
+// output seed digest with this file as the only installed surface.) THE BOUNDARY IS CONTROL 4
+// ABOVE: cli_run.rs is unowned and NOT on the release-excluded roster, and it still refuses
+// MirrorHasNoOwningPackage -- the roster names its members, so "unowned" and "excluded by
+// construction" can never collapse into one arm. Measured live 2026-09-08: a regen round whose
+// generation-2 drift was compiler_tests.rs alone (the PointwisePower inhabitant-row removal
+// rewrote the derived coercion assertions) refused its stage-2 rebuild MirrorHasNoOwningPackage
+// before this arm existed.
+test fn witness_release_excluded_mirror_scope_is_empty_holds() -> Bool {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: ["compiler_tests.rs"], unlocatable: []) {
+    ReleaseScopeEmpty { changed_mirrors: ms } => (count(ms) == 1) && witness_has(items: ms, item: "compiler_tests.rs")
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
+// The actuation shape of the empty scope: actuatable (the verification build still runs), no
+// package may compile, and EVERY package is excluded -- so one compiled crate is a located
+// refusal, not an unnoticed widening.
+test fn witness_release_excluded_scope_actuation_shape_holds() -> Bool {
+  let decision = stage0_partition_rebuild_decision_today(changed_mirrors: ["compiler_tests.rs"], unlocatable: [])
+  stage0_partition_rebuild_is_actuatable(decision: decision)
+    && (count(stage0_partition_rebuild_packages_today(changed_mirrors: ["compiler_tests.rs"], unlocatable: [])) == 0)
+    && (count(stage0_partition_rebuild_excluded_today(changed_mirrors: ["compiler_tests.rs"], unlocatable: [])) == count(generated_partition_crate_rows))
+}
+
+// A mixed change set scopes on its release-visible members alone: the excluded mirror rides the
+// install without adding a package and without refusing.
+test fn witness_mixed_change_set_scopes_on_release_visible_mirrors_holds() -> Bool {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: ["compiler_tests.rs", "std_effects.rs"], unlocatable: []) {
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: c, executable_assembly: _ } =>
+      (count(o) == 1)
+        && witness_has(items: o, item: "v1-stage0-std-surface")
+        && witness_has(items: c, item: "v1-stage0-std-surface")
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
+// THE HOST-FACING PROJECTION, pinned by name because required_regen_host.rs calls exactly
+// stage0_partition_rebuild_release_scope_empty_today to admit an empty package closure as the
+// verification-build answer rather than refuse it. Both arms are asserted: the excluded-only
+// set answers true, and a release-visible change answers false -- a constant-true projection
+// would silently discharge the host's empty-closure guard for every decision.
+test fn witness_release_scope_empty_query_answers_both_arms_hold() -> Bool {
+  stage0_partition_rebuild_release_scope_empty_today(changed_mirrors: ["compiler_tests.rs"], unlocatable: [])
+    && !stage0_partition_rebuild_release_scope_empty_today(changed_mirrors: ["std_effects.rs"], unlocatable: [])
 }

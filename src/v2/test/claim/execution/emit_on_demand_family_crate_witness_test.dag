@@ -13,7 +13,7 @@ import extdeps.realization.emit_on_demand_host {
   native_cache_workspace_root, emit_on_demand_evict_native_cache,
 }
 import extdeps.communication.medium { Medium }
-import v2.compiler.emit_module { EmitFamilyMember, emit_family }
+import v2.compiler.emit_module { EmitFamilyMember, EmittedFamilyCrate, emit_family }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_emit_host_cached_with_run_args,
@@ -165,6 +165,34 @@ fn family_crate_native_key(members: List<EmitFamilyMember>) -> ContentHash {
     target_language: "rust",
     grain: NativeArtifact
   )
+}
+
+// THE PRIMARY FAMILY CRATE, EMITTED ONCE OUTSIDE THE CLAIM FOLD. Every native-only verdict claim
+// for this family (v2.test.long.emit_host_native_only_verdict's six complement/meet/join arms)
+// begins with the same pure walk — the member list, emit_family, the native key — and the
+// required floor measured all six within one runner-swing of the 500ms per-claim ceiling (run
+// 34315228217: 458-487ms cpu against limit_ms=500). The members are not portable (InferredTree's
+// facts PartialFunction), so the share point is the deepest portable stage: the emitted crate
+// source plus its native key. Nullary and warm-enrolled in
+// `v2.workflow.floor_pure_producer_share` (floor_cross_claim_pure_producers_warm), which carries
+// the measured recompute/sharing/serve case; the required floor forces it during strict
+// preparation, outside every per-claim budget, and each claim pays only the cached native run.
+fn logic_family_primary_emitted() -> Outcome<EmittedFamilyCrate> {
+  let members = family_crate_members()
+  match emit_family(
+    members: members,
+    transport_target: rust_logic_family_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      Accepted {
+        value: EmittedFamilyCrate {
+          source: source,
+          native_key: family_crate_native_key(members: members)
+        },
+        diagnostics: None
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
 }
 
 fn family_crate_fixture_inputs() -> Inputs {

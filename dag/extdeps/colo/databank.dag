@@ -1,0 +1,108 @@
+module extdeps.colo.databank
+
+import std.types { NonEmptyStr }
+import std.measure { watt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityMarketedMax, DensityUnread, CabinetPowerFigure, PublishedRealPower,
+  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.databank.com/data-centers/new-york-city/orangeburg-campus/lga4/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.databank",
+      decl_name: "databank_lga4_orangeburg",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// DATABANK WAS ABSENT FROM THE 2026-08-18 CENSUS ENTIRELY, and its absence hid two things at
+// once. It is a multi-site operator in this metro, so a missing operator is several missing
+// candidates rather than one. And its Orangeburg campus is in NEW YORK - the census as it stood
+// carried twenty-three New Jersey facilities and seven Pennsylvania ones and not a single New
+// York site, which had been read as a consequence of the Equinix refusal. It was not: the Equinix
+// campus that ruling names is itself in Secaucus, New Jersey. New York was never refused. It was
+// never surveyed, and this row is the first one.
+data databank_lga4_orangeburg: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank LGA4 Orangeburg",
+  address: AddressListed {
+    street: "2000 Corporate Dr., Orangeburg, NY 10962",
+    citation: "databank.com Orangeburg campus LGA4 page, read 2026-09-08",
+  },
+  municipality: "Orangeburg",
+  region_code: "NY",
+  facility_note: "10 MW critical IT load with N+1 redundancy, marketed for high-density deployments including liquid cooling. Rockland County, north of the Hudson waterfront - the distance axis has no measured route for it and the census's planning estimates were drawn from Jersey City, so this candidate owes a route reading before it can be ranked against the Secaucus corridor.",
+}
+
+// THE DENSEST CABINET CLAIM IN THE CENSUS BY AN ORDER OF MAGNITUDE. Read against a fleet drawing
+// 650 W per 1U node, a 35 kW air-cooled cabinet is not a constraint at all - it would hold the
+// entire twenty-one node fleet twice over on air alone, where the densest PRICED product modelled
+// in this metro holds three. That gap between what is marketed and what is published for retail
+// sale is the census's central finding, and it is a reason to obtain quotes rather than a reason
+// to believe a quote will be affordable: nothing here says what 35 kW costs.
+data databank_lga4_density: CabinetDensityClaim = DensityMarketedMax {
+  air_cooled: PublishedRealPower { power: watt(count: 35000) },
+  liquid_cooled: PublishedRealPower { power: watt(count: 100000) },
+  claim_wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liq",
+  citation: "databank.com Orangeburg campus LGA4 page, raw fetch 2026-09-09 (HTTP 200). THE WORDING ABOVE IS NOW THE LITERAL SPEC-TABLE CELLS AND WAS NOT BEFORE. The first cut read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool, not text on the page. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the WORDING did not, which is the general shape silent-heron-303 found across the census. The plus signs are the operator's own, so these are marketed floors on a maximum rather than exact ceilings; the integers are the stated numerals."
+}
+
+data databank_lga4_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets & Cages Colocation",
+  citation: "databank.com Orangeburg campus LGA4 page, read 2026-09-08",
+}
+
+data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "databank.com sales",
+  obligation: "No cabinet or power pricing is published on the facility pages read 2026-09-08. A quote is required, and the density claim above is what makes the quote worth requesting.",
+}
+
+// A SECOND SITE THIS OPERATOR RUNS IN NEW JERSEY, NAMED BUT NOT MODELLED. A review relayed into
+// this session cited an 85 kW-per-cabinet deployment at a Piscataway campus for a university HPC
+// tenant. Two fetches of the campus and facility pages under the paths that claim implies both
+// returned 404 on 2026-09-08, so no address, capacity or density is carried for it. A tailored
+// deployment for one named tenant would in any case be a different fact from a marketed cabinet
+// maximum, and would need its own arm rather than being read as retail density.
+data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator contributes exactly one modelled facility despite operating several in this metro, which understates it."
+
+// THE SAME OPERATOR IN PENNSYLVANIA, ADDED BY THE PHILADELPHIA AND LEHIGH VALLEY LANE. DataBank
+// sells from 401 North Broad, the Philadelphia carrier hotel Netrality owns - so this census now
+// carries that one building three times under three sellers (Netrality's own retail, this suite,
+// and LightWave Networks), each citing its own operator. The contrast with LGA4 above is the
+// finding: the same operator markets 35 kW+ air-cooled cabinets in Orangeburg and publishes no
+// density at all for its Philadelphia suite, so an operator-level density claim is not a thing
+// that exists. Density is a per-facility reading or it is unread.
+data databank_phl1_philadelphia: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank PHL1 Downtown Philadelphia",
+  address: AddressListed {
+    street: "401 North Broad Street, Suite 240, Philadelphia, PA 19108",
+    citation: "databank.com Philadelphia data centers page, read 2026-09-08",
+  },
+  municipality: "Philadelphia",
+  region_code: "PA",
+  facility_note: "0.34 MW critical IT load across 7,760 IT square feet with 22 onsite carriers (read 2026-09-08) - by critical load the smallest facility in this census, a suite inside the region's premier carrier hotel rather than a building. Its value is interconnection, not capacity: 0.34 MW is under a tenth of what the same operator's LGA4 carries.",
+}
+
+data databank_phl1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "databank.com Philadelphia page, read 2026-09-08, states critical IT load, IT square footage and carrier count, and NO per-cabinet density. Raw-byte confirmed 2026-09-09 under a subject control (HTTP 200, full browser user-agent): 'Philadelphia' occurs 26 times, so the instrument reached this facility's surface, and 'kW', 'kVA' and even 'cabinet' occur zero times. The operator's 35 kW+ claim belongs to the Orangeburg campus and may not be carried to this suite - a 0.34 MW suite and a 10 MW campus are different plant. Request a PHL1 spec sheet or a quote.",
+}
+
+data databank_phl1_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The Philadelphia page read 2026-09-08 describes interconnection and location and does not itemise cabinets, cages or suites for this site. The spec-strip wording carried on the LGA4 row above is that page's, not this one's - and that strip is exactly the template whose adjacent cells four independent readers fused into invented sentences, so nothing is carried across from it. Confirm the smallest sellable unit at PHL1 with sales.",
+}

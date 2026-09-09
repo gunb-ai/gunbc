@@ -1,0 +1,390 @@
+module gunbc.spark.model_snapshot_acquisition
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address, ipv4_address_eq }
+import extdeps.huggingface.hub {
+  HubRepoId, HubModelRepo, hub_repo_cache_directory_name, hub_cli_program,
+  hub_repo_cache_directory, hub_snapshot_directory, hub_download_argv, hub_cache_verify_argv,
+  hub_default_cache_root,
+}
+import gunbc.artifact_acquisition {
+  AcquisitionKey, UpstreamRevision, AcquisitionSource, AcquisitionSubject,
+  AcquisitionOutcome, AcquisitionRefused, AcquisitionRefusal, NoSourceDeclared,
+  acquisition_refusal_text, acquisition_succeeded,
+}
+
+// MODEL WEIGHT ACQUISITION FOR THE SPARK SERVING GROUPS: which snapshot a group must hold, and the
+// modelled way to bring it there.
+//
+// WHAT THIS REPLACES IS NOTHING, WHICH IS THE POINT. Until this module, no desired row materialised a
+// vLLM group's weights. gunbc.spark.pair_serving_realization binds the operator's Hub cache into the
+// container read-only and assumes what is inside it; group B's weights arrived on 2026-09-05 by a
+// hand-run copy over the fabric rail. gunbc.rung_drop spark_serving_local_artifact_not_reproducible
+// has carried that gap since 2026-09-02 and was re-anchored to this exact population on 2026-09-06.
+// The Ollama-era materializer that DID fetch and verify was deleted with its tree.
+//
+// WHY IT WAS INVISIBLE FOR SO LONG: DeepSeek's weights were already on the disks, so the missing
+// capability cost nothing until a second model was selected. A gap whose only symptom is "you cannot
+// change anything" is one nobody trips over until they try to.
+
+// ── THE DESIRED SNAPSHOT ───────────────────────────────────────────────────────────────────────
+//
+// A REVISION IS REQUIRED AND A BRANCH NAME IS NOT ACCEPTED. `main` resolves to different bytes over
+// time -- extdeps.huggingface.hub states this as hub_branch_name_is_not_a_content_address -- so a row
+// naming a branch would pin nothing while looking like a pin. The GLM repository's own lastModified
+// was the same day this row was written, which is the fact rather than a hypothetical.
+type ModelSnapshotDesired
+  = ModelSnapshotPinned {
+      identity: NonEmptyStr
+      repo: HubRepoId
+      revision: NonEmptyStr
+      placement: SnapshotPlacement
+      revision_provenance: NonEmptyStr
+    }
+  | ModelSnapshotUnpinned { identity: NonEmptyStr, repo: HubRepoId, cause: NonEmptyStr }
+
+// THE DEEPSEEK SNAPSHOT, whose revision this repository has held all along in two places that never
+// knew about each other: gunbc.spark.pair_serving_observed first_pair_model_snapshot read it off the
+// disk, and extdeps.deepseek.deepseek_v4 deepseek_v4_encoder_revision cites the same commit as the
+// pinned revision of the encoder file. They agree, which is why this is a pin and not a guess.
+data deepseek_v4_flash_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
+  identity: "deepseek-v4-flash" as NonEmptyStr,
+  repo: HubRepoId { kind: HubModelRepo, path: "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr },
+  revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+  revision_provenance: "read off the first pair's hub cache on 2026-09-03 (gunbc.spark.pair_serving_observed first_pair_model_snapshot) and independently cited as the encoder revision in extdeps.deepseek.deepseek_v4; the two agree" as NonEmptyStr,
+}
+
+// THE DEEPSEEK SERVING IDENTITY AND PARSER, carried beside its snapshot so the production route has
+// ONE authority for what it serves rather than reading fields off a process-list observation. The
+// alias is the router's, not the Hub repo's -- a served-model name is a deployment's choice of label
+// and is deliberately not derived from the checkpoint path.
+data deepseek_v4_flash_served_model_name: NonEmptyStr = "deepseek-v4-flash:iq3s-split" as NonEmptyStr
+data deepseek_v4_flash_tool_call_parser: NonEmptyStr = "deepseek_v4" as NonEmptyStr
+
+// THE GLM SNAPSHOT, RESOLVED RATHER THAN ASSUMED. The revision is the commit the Hub's model API
+// reported for this repository, read on 2026-09-07; the instrument is named because the figure is an
+// observation and a later reader must be able to re-take it rather than trust this line.
+//
+// THE REPOSITORY WAS MODIFIED THE SAME DAY, which is the argument for the pin stated as evidence:
+// the API's lastModified was 2026-09-07T12:13:47Z, so `main` for this repository is demonstrably
+// moving, and a desired row naming the branch would have selected different weights on different
+// days without anything changing in this corpus.
+data glm_5_3_flash_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
+  identity: "glm-5.3-flash" as NonEmptyStr,
+  repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
+  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+  revision_provenance: "resolved from the Hub model API for zai-org/GLM-5.3-Flash on 2026-09-07; the same response reported lastModified 2026-09-07T12:13:47Z, so the branch was moving when this was taken" as NonEmptyStr,
+}
+
+fn model_snapshot_identity(snapshot: ModelSnapshotDesired) -> NonEmptyStr {
+  match snapshot {
+    ModelSnapshotPinned { identity: i, repo: _, revision: _, placement: _, revision_provenance: _ } => i
+    ModelSnapshotUnpinned { identity: i, repo: _, cause: _ } => i
+  }
+}
+
+// ── WHERE THE BYTES LIVE IS ITS OWN AXIS ───────────────────────────────────────────────────────
+//
+// THE FORK BETWEEN HUB CACHE AND local_dir IS FALSE, AND EXECUTION PROVED IT. This module hardwired
+// every subject to the Hub cache layout and computed the install path as
+// `models--org--name/snapshots/<revision>`. The first modelled run against a real host then reported
+// the snapshot ABSENT and moved to fetch it -- while 80 GiB of exactly that revision sat on the same
+// disk, serving a live engine, under a `local_dir` the community recipe uses.
+//
+// PLACEMENT IS NOT IDENTITY. The checkpoint is identified by repository plus exact revision, and that
+// identity is unchanged by where a host keeps it. Placement decides SIX derived things -- install
+// path, download command, verification command, rail-replication source and destination, container
+// mount, and the model path the engine is launched with -- and all six must come from ONE value, or
+// they disagree exactly the way the model and the running engine disagreed.
+type SnapshotPlacement
+  = HubCachePlacement { cache_root: NonEmptyStr }
+  | LocalDirectoryPlacement { host_path: NonEmptyStr }
+
+// THE INSTALL PATH, DERIVED PER PLACEMENT. The Hub arm keeps the revision in the path because that
+// cache holds many revisions side by side and shares blobs between them; a local directory holds ONE
+// checkout, so the revision is verified rather than encoded in the path.
+fn snapshot_install_path(placement: SnapshotPlacement, repo: HubRepoId, revision: NonEmptyStr) -> NonEmptyStr {
+  match placement {
+    HubCachePlacement { cache_root: root } =>
+      join([
+        root as String, "/", hub_repo_cache_directory_name(repo: repo) as String,
+        "/snapshots/", revision as String,
+      ], "") as NonEmptyStr
+    LocalDirectoryPlacement { host_path: p } => p
+  }
+}
+
+// THE DOWNLOAD COMMAND, DERIVED PER PLACEMENT. `hf download --local-dir` is upstream's own supported
+// form and keeps its metadata beside the tree so a later run is incremental rather than a re-fetch.
+fn snapshot_download_argv_for(placement: SnapshotPlacement, repo: HubRepoId, revision: NonEmptyStr) -> List<String> {
+  let base = [hub_cli_program as String, "download", repo.path as String, "--revision", revision as String]
+  match placement {
+    HubCachePlacement { cache_root: _ } => base
+    LocalDirectoryPlacement { host_path: p } => concat(base, ["--local-dir", p as String])
+  }
+}
+
+// THE VERIFY COMMAND, DERIVED PER PLACEMENT, AND `--fail-on-missing-files` IS LOAD-BEARING. Without
+// it an interrupted transfer that left a populated-but-incomplete tree can pass, which is the same
+// partial-reads-as-complete failure a bare directory test admits -- the defect this module already
+// replaced once.
+fn snapshot_verify_argv_for(placement: SnapshotPlacement, repo: HubRepoId, revision: NonEmptyStr) -> List<String> {
+  let base = [
+    hub_cli_program as String, "cache", "verify", repo.path as String,
+    "--revision", revision as String, "--fail-on-missing-files",
+  ]
+  match placement {
+    HubCachePlacement { cache_root: _ } => base
+    LocalDirectoryPlacement { host_path: p } => concat(base, ["--local-dir", p as String])
+  }
+}
+
+// ── THE ACQUISITION SUBJECT ────────────────────────────────────────────────────────────────────
+//
+// THE KEY IS UpstreamRevision AND NOT A CONTENT DIGEST, and the combinator makes that a declared
+// weakening rather than a silent one (gunbc.artifact_acquisition
+// acquisition_key_is_locally_verifiable answers false for it). A repository of shards has no single
+// digest for this repository to compare against, so integrity is delegated to the transport.
+//
+// THE DELEGATION IS NOT BLIND, WHICH IS WHAT MAKES THIS ARM WORTH HAVING. The Hub ships
+// `hf cache verify <repo> --revision <rev>`, which checks every cached file against the Hub's own
+// checksums, so the weaker key still gets a real per-file integrity check -- performed by the
+// authority that owns the checksums, against a commit that is immutable. What it is NOT is a check
+// against a digest frozen in this corpus, and extdeps.huggingface.hub says so on the operation
+// itself rather than leaving a reader to infer equivalence.
+//
+// THE STRONGER FORM IS REACHABLE AND NAMED. hub_repo_tree_api_url is the observation that would
+// produce a per-file digest manifest, at which point each shard becomes its own
+// ContentDigestSha256 subject over the same combinator and nothing here changes shape. It is not
+// built, because a manifest of that size is an observation and not something an author writes, and
+// authoring it by hand is exactly the fabrication this repository refuses.
+data model_snapshot_hub_source_identity: NonEmptyStr = "huggingface-hub-cli" as NonEmptyStr
+
+// ── THE TWO TRANSPORTS, AND WHY THE FLEET NEEDS BOTH ───────────────────────────────────────────
+//
+// THE MEASUREMENT THAT DECIDES THIS, taken 2026-09-08 on the serving group, because the answer is
+// not a preference and is not close. Every Spark carries two 50,000 Mb/s fabric legs
+// (`enp1s0f1np1`, `enP2p1s0f1np1`) -- and reaches the internet over WIRELESS: `ip route get 1.1.1.1`
+// answers `via 192.168.1.1 dev wlP9s9` on every host checked.
+//
+// SO A FAN-OUT ACQUISITION WOULD PULL THE MODEL ONCE PER HOST OVER ONE SHARED RADIO. The snapshot is
+// 330 GB of safetensors across 62 shards; eight members fetching independently is ~2.6 TB over the
+// wireless link, while the 100 Gb/s fabric those same machines are cabled into sits idle. It is also
+// the link the control plane and the harness use, so saturating it for hours is its own outage.
+//
+// THE SHAPE IS THEREFORE FETCH-ONCE-THEN-REPLICATE, which is what the operator did by hand on
+// 2026-09-05 -- over the rail, for exactly this reason. This module models that decision rather than
+// re-deriving it per apply.
+//
+// IT IS TWO HANDLERS ON ONE INTERFACE SHAPE, NOT TWO ACQUISITION PATHS (DESIGN section 3). The
+// combinator already walks an ORDERED source list with per-source identity and typed per-source
+// refusals, so a replica's sources are literally [rail-peer, hub]: try the fast local path, fall back
+// to upstream, and let the fold say which answered. Nothing about the algorithm changes.
+type ModelSnapshotRole
+  = SnapshotSeed
+  | SnapshotReplicaOf { peer_rail_address: Ipv4Address }
+
+// THE SEED IS ONE MEMBER OF THE WHOLE FLEET, NOT ONE PER GROUP, AND THAT IS A MEASURED CORRECTION.
+//
+// AN EARLIER REVISION OF THIS MODULE MADE EACH GROUP'S HEAD A SEED, on the assumption that the two
+// fabric groups are two separate L2 domains -- gunbc.spark.fabric_switch_observed does split them by
+// CAGE, and a cage is a real physical distinction. But a cage is a switch-port grouping, not a
+// broadcast domain, and nothing had checked whether it partitions the rail.
+//
+// IT DOES NOT. Measured 2026-09-08: every Spark sits on ONE flat 192.168.110.0/24 -- group A's head
+// spark-3bd5 at .110.14, group B's head spark-0c75 at .110.17 -- and A's neighbour table holds
+// .11 .12 .13 .15 .16 .17 .18, all eight members. A ping from A to B's rail address answers 0% loss
+// at 0.164 ms average. Cross-group replication is therefore ordinary L2, not a route that needs
+// building.
+//
+// SO A PER-GROUP SEED WOULD HAVE FETCHED 330 GB TWICE OVER THE WIRELESS LINK for no reason, which is
+// precisely the cost the rail transport exists to avoid, halved instead of removed. One seed, seven
+// replicas.
+//
+// WHICH MEMBER SEEDS IS AN ATTRIBUTABLE CHOICE, and it is group B's head: measured the same day, it
+// runs NO container (group B is not serving), it holds the most free space of any member at 3340 GB,
+// and group B is the group that must come up first because group A is currently the fleet's only
+// serving capacity. Seeding from an idle member keeps the 330 GB download off the box that is
+// answering requests.
+data model_snapshot_fleet_seed_rail_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 17)
+
+// A MEMBER'S ROLE IS DECIDED BY ITS OWN RAIL ADDRESS AGAINST THE SEED'S, so the seed is named once
+// and no caller re-derives who it is. A member whose rail address is unresolved cannot be compared,
+// and becomes a seed -- falling back to the working upstream path rather than replicating from a
+// peer it cannot address.
+fn model_snapshot_role_for(member_rail: Ipv4Address?) -> ModelSnapshotRole {
+  match member_rail {
+    Absent => SnapshotSeed
+    Present { value: a } =>
+      if ipv4_address_eq(a: a, b: model_snapshot_fleet_seed_rail_address) {
+        SnapshotSeed
+      } else {
+        SnapshotReplicaOf { peer_rail_address: model_snapshot_fleet_seed_rail_address }
+      }
+  }
+}
+// THE RAIL SOURCE OBEYS THE PLACEMENT, AND IT PREVIOUSLY DISCARDED IT. This bound `placement: _` and
+// then rebuilt a Hub-cache path by hand -- cache_root, repo directory, `/snapshots/`, revision -- so
+// every snapshot was replicated as though it lived in the Hub cache. The canary checkpoint does not:
+// its placement is a LocalDirectoryPlacement at an operator-chosen path, and rsync would have been
+// pointed at a Hub-cache directory that does not exist for it, on BOTH ends. Nothing would have
+// refused, because rsync against a missing source is an ordinary error and the fold would have read
+// it as this source failing rather than as the path being invented.
+//
+// THE DEEPER FAULT WAS THE SECOND SPELLING, and fixing only the discarded field would have left it.
+// `snapshot_install_path` already answers "where does this snapshot live" from the placement, and the
+// replicate argv answered it AGAIN, differently, for one of the two placements only -- so the two
+// could not have disagreed for the Hub case and could not have agreed for any other. The path is now
+// asked for once and used on both ends of the transfer, which is what makes the placement reach the
+// wire rather than merely being present in the type.
+fn model_snapshot_rail_source(peer: Ipv4Address, snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> AcquisitionSource? {
+  match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => none
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
+      Present { value: AcquisitionSource {
+        identity: join(["fabric-rail-peer ", render_ipv4_address(addr: peer) as String], "") as NonEmptyStr,
+        locator: SourceArgv { argv: model_snapshot_rail_replicate_argv(
+          peer: peer,
+          path: snapshot_install_path(placement: pl, repo: r, revision: rev),
+        ) },
+      } }
+  }
+}
+
+// THE REPLICATE COMMAND. It copies the repo cache directory for exactly one revision, over the rail
+// address, dereferencing symlinks -- the Hub cache stores `snapshots/<rev>/<file>` as links into
+// `blobs/<hash>`, so a copy that preserved links would land a tree of dangling pointers on a host
+// whose blobs directory is empty. `--partial --inplace` so an interrupted 330 GB transfer resumes
+// rather than restarting.
+// THE SAME PATH ON BOTH ENDS, BECAUSE PLACEMENT IS A PROPERTY OF THE SNAPSHOT AND NOT OF THE HOST.
+// Every peer on the rail resolves the same placement to the same location, so the replicate is that
+// one path fetched from the peer into itself -- and there is no second construction here that could
+// drift from the one the installer, the verifier and the launch line all read.
+fn model_snapshot_rail_replicate_argv(peer: Ipv4Address, path: NonEmptyStr) -> List<String> {
+  [
+    "rsync", "-a", "--copy-links", "--partial", "--inplace",
+    join([render_ipv4_address(addr: peer) as String, ":", path as String, "/"], ""),
+    join([path as String, "/"], ""),
+  ]
+}
+
+// A MEMBER'S ORDERED SOURCES. The seed has one; a replica has the rail first and the hub behind it,
+// so a member whose peer is unreachable still converges -- slowly, over the radio, which is the
+// correct degradation because it is a fallback to a WORKING path rather than a widening of the
+// answer. The fold reports which source answered, so a run that quietly fell back to the hub is
+// visible in the receipt rather than inferred from its duration.
+fn model_snapshot_sources_for(role: ModelSnapshotRole, snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> List<AcquisitionSource> {
+  let hub = match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => [] as List<AcquisitionSource>
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
+      [AcquisitionSource {
+        identity: model_snapshot_hub_source_identity,
+        locator: SourceArgv { argv: snapshot_download_argv_for(placement: pl, repo: r, revision: rev) },
+      }]
+  }
+  match role {
+    SnapshotSeed => hub
+    SnapshotReplicaOf { peer_rail_address: peer } =>
+      match model_snapshot_rail_source(peer: peer, snapshot: snapshot, cache_root: cache_root) {
+        Absent => hub
+        Present { value: rail } => concat([rail], hub)
+      }
+  }
+}
+
+fn model_snapshot_subject_for(role: ModelSnapshotRole, snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> AcquisitionSubject? {
+  match model_snapshot_subject(snapshot: snapshot, cache_root: cache_root) {
+    Absent => none
+    Present { value: base } => Present { value: AcquisitionSubject {
+      identity: base.identity,
+      key: base.key,
+      install_path: base.install_path,
+      staging_path: base.staging_path,
+      parent_directory: base.parent_directory,
+      sources: model_snapshot_sources_for(role: role, snapshot: snapshot, cache_root: cache_root),
+    } }
+  }
+}
+
+fn model_snapshot_subject(snapshot: ModelSnapshotDesired, cache_root: NonEmptyStr) -> AcquisitionSubject? {
+  match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => none
+    ModelSnapshotPinned { identity: i, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
+      Present { value: AcquisitionSubject {
+        identity: i,
+        key: UpstreamRevision { revision: rev },
+        install_path: snapshot_install_path(placement: pl, repo: r, revision: rev),
+        staging_path: none,
+        parent_directory: snapshot_parent_directory(placement: pl, repo: r),
+        sources: [AcquisitionSource {
+          identity: model_snapshot_hub_source_identity,
+          locator: SourceArgv { argv: snapshot_download_argv_for(placement: pl, repo: r, revision: rev) },
+        }],
+      } }
+  }
+}
+
+// THE PARENT THAT MUST EXIST BEFORE A TRANSFER, per placement. For the Hub cache it is the repo
+// folder that holds `snapshots/` and `blobs/`; for a local directory it is that directory itself.
+fn snapshot_parent_directory(placement: SnapshotPlacement, repo: HubRepoId) -> NonEmptyStr {
+  match placement {
+    HubCachePlacement { cache_root: root } =>
+      join([root as String, "/", hub_repo_cache_directory_name(repo: repo) as String], "") as NonEmptyStr
+    LocalDirectoryPlacement { host_path: p } => p
+  }
+}
+
+// THE VERIFY COMMAND FOR A PINNED SNAPSHOT, projected so an apply path and a witness read the same
+// argv rather than each spelling it.
+// THE COMPLETION CHECK, AND IT IS NOT A DIRECTORY TEST. `hf download` creates the snapshot directory
+// early and fills it, so a transfer interrupted at 200 of 330 GB leaves that directory PRESENT with
+// shards missing -- and a `[ -d ... ]` probe then reports the weights as installed and lets an engine
+// launch on a partial checkpoint. That is the partial-download-reads-as-success failure this
+// repository names, and the staging discussion in gunbc.artifact_acquisition warns about it in the
+// general case.
+//
+// `hf cache verify` IS THE ANSWER AND IT WAS ALREADY MODELLED. extdeps.huggingface.hub carries it
+// precisely so a revision-keyed acquisition gets a real per-file integrity check rather than a
+// presence test; the first revision of this module modelled it and then failed to use it, checking
+// the directory instead. It compares every cached file for the revision against the Hub's own
+// checksums, so a missing or truncated shard fails rather than passing as a populated folder.
+fn model_snapshot_completion_check_argv(snapshot: ModelSnapshotDesired) -> List<String> {
+  model_snapshot_verify_argv(snapshot: snapshot)
+}
+
+fn model_snapshot_verify_argv(snapshot: ModelSnapshotDesired) -> List<String> {
+  match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => []
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
+      snapshot_verify_argv_for(placement: pl, repo: r, revision: rev)
+  }
+}
+
+fn model_snapshot_download_argv(snapshot: ModelSnapshotDesired) -> List<String> {
+  match snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => []
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
+      snapshot_download_argv_for(placement: pl, repo: r, revision: rev)
+  }
+}
+
+// THE FLEET'S CACHE ROOT. It is the operator's own hub cache, which is what the container already
+// binds read-only at /weights, and it is carried here rather than re-spelled at the realization so
+// the acquisition and the mount cannot drift apart.
+data spark_hub_cache_root: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
+
+fn model_snapshot_install_path(snapshot: ModelSnapshotDesired) -> NonEmptyStr? {
+  match model_snapshot_subject(snapshot: snapshot, cache_root: spark_hub_cache_root) {
+    Absent => none
+    Present { value: s } => Present { value: s.install_path }
+  }
+}
+
+// AN UNPINNED SNAPSHOT REFUSES BEFORE ANY TRANSPORT IS ATTEMPTED, and the refusal is the
+// combinator's own NoSourceDeclared rather than a message invented here -- nothing was tried, which
+// is a different state from every source having failed.
+fn model_snapshot_unpinned_refusal(snapshot: ModelSnapshotDesired) -> AcquisitionOutcome {
+  AcquisitionRefused { cause: NoSourceDeclared { identity: model_snapshot_identity(snapshot: snapshot) } }
+}

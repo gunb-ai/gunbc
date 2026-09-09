@@ -107,6 +107,7 @@ import gunbc.roadmap_status {
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -854,6 +855,12 @@ test fn witness_projected_dependency_edges_include_closing_contract_projection()
       }
     ClosingContractTaskEdgesProjectionRefused { detail: _ } => false
   }
+}
+
+test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Bool {
+  node_has_carrier_path(path: "dag/gunbc/host/host_converge.dag")
+    && !node_has_carrier_path(path: "docs/plans/host-converge-inventory.md")
+    && string_length(s: filesystem_read(path: "dag/gunbc/host/host_converge.dag").content) > 0
 }
 
 test fn witness_projected_dependency_edges_include_active_edges() -> Bool {

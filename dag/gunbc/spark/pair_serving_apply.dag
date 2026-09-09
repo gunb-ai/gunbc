@@ -27,6 +27,8 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_runtime_build_dir, exec_word_is_plain,
 }
 import gunbc.spark.pair_serving_observed { first_pair_container_runtime }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotRole, model_snapshot_role_for }
+import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 
 // THE FIRST APPLY OF THE RENDERED PAIR, OVER THE ADMINISTRATOR'S PASSWORD SESSION. Each host gets
 // one privileged script made only of the realization's typed argv, quoted word by word: create the
@@ -64,6 +66,29 @@ fn unit_render_text(u: SparkPairUnitRender) -> String? {
     SparkPairUnitRendered { unit_name: _, text: t } => Present { value: t }
     SparkPairUnitRenderRefused { unit_name: _, cause: _ } => none
   }
+}
+
+// ── MATERIALIZE THE WEIGHTS BEFORE THE ENGINE IS ASKED TO LOAD THEM ────────────────────────────
+//
+// THE MATERIALIZE STEP IS NOT RENDERED INTO THIS SCRIPT, AND THAT IS THE POINT. A first cut emitted
+// the acquisition as shell here -- `docker exec ... || echo materialize-source-failed`, an ordered
+// walk written as a shell `if`, and a `[ -d <snapshot_dir> ]` completion test. That re-implemented,
+// in shell, every step gunbc.artifact_acquisition already owns, so the combinator extracted to end a
+// three-way fork acquired a fourth spelling of itself in the change that introduced it. It also got
+// the completion test WRONG: `hf download` creates the snapshot directory early, so an interrupted
+// 330 GB transfer leaves it present with shards missing and the test reports the weights installed.
+//
+// IT RUNS AS THE TYPED FOLD INSTEAD, in gunbc.spark.model_snapshot_materialize, whose handler binds
+// the combinator's three slots to remote executions against one host. The fold runs locally; every
+// effect lands on the Spark. This module keeps what it is for -- rendering and applying the unit --
+// and the acquisition is sequenced ahead of it by the caller rather than embedded in its script.
+
+// A MEMBER'S ROLE IS ITS OWN, NOT ITS GROUP'S. The fleet seeds from ONE member across both groups
+// (they share a single rail /24, measured), so this asks the acquisition authority what this host is
+// rather than deciding from head-versus-worker. A host whose rail address is unresolved is handled
+// there, by falling back to upstream rather than replicating from an address nobody resolved.
+fn spark_pair_member_role(host: HostIdentity) -> ModelSnapshotRole {
+  model_snapshot_role_for(member_rail: fabric_rail_address(host: host))
 }
 
 // The privileged script for one host of the pair. THE RESTART IS CONDITIONAL: the unit is bounced

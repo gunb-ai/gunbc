@@ -1,7 +1,7 @@
 module v2.compiler.program_assembly
 
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import v2.extdeps.languages.dag { dag_grammar, qualified_name_from_module_node }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
@@ -138,6 +138,19 @@ fn program_assembly_fold_step(
 // name-derivation failure mode is now the same refusal the authority raises.
 
 data program_assembly_prepare_once_note: String = "prepare_grammar is hoisted ABOVE fold_list here so the grammar is well-formed-checked, validated (5 checks), and FIRST/nullable-analyzed ONCE per assembly — then parse_module_prepared reuses the PreparedGrammar for every module in the ingest. A door call over a K-module import closure therefore validates once, not K times (the recompute-per-module cost this dissolves). Empty-ingest is guarded so it never pays the one-time prepare for zero modules. Fail-closed: an invalid grammar fails the whole assembly (ProgramAssemblyFoldFailed) before any module is parsed, carrying the validation diagnostic — never a per-module silent skip."
+
+// THE ONE PREPARED `.dag` GRAMMAR, FORCED ONCE OUTSIDE THE CLAIM FOLD. Every assembly of `.dag`
+// source pays `prepare_grammar(grammar: lm.grammar)` with `lm.grammar` content-identical to
+// `dag_grammar()` before its fold can start, and `prepare_grammar` is the cross-claim pure tier's
+// built-in admitted arm, so one fill serves every claim — if it ever lands. The fill costs more
+// than one claim's CPU budget, so an in-fold first touch dies mid-flight (FillBudgetExceeded) and is
+// abandoned un-stored, and the next claim starts it over. Enrolled in
+// `floor_cross_claim_pure_producers_warm` (v2.workflow.floor_pure_producer_share) so the required
+// floor evaluates this nullary producer during strict preparation — outside every per-claim
+// budget — and the inner `prepare_grammar` fill lands in the tier before any claim runs.
+fn dag_prepared_grammar() -> Outcome<PreparedGrammar> {
+  prepare_grammar(grammar: dag_grammar())
+}
 
 fn program_assembly_fold_ingest(
   ingest: SourceRootIngest,

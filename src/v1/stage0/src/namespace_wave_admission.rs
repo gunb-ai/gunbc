@@ -1597,8 +1597,172 @@ pub struct TransitionAdmission {
 /// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
 /// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
 /// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
-
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+///
+/// THE gunbc#10688 ROWS DISSOLVE HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. The two `call_semantics_target` re-home rows reported CONSUMED on required run
+/// 34262728404 (PR #10856), which is the roster-touching change their trigger named.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, on each row's
+/// own (module, in_declaration, spelling, target) tuple against main. On main,
+/// `src/v1/00_core.dag` opens `module v1.std.core` and declares
+/// `fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity`;
+/// `src/v1/05_emit_rust.dag` DECLARES no such function and imports the spelling, and both named
+/// declarations still spell it -- `emit_rust_expr_call` and `emit_rust_tco_non_self_call` each
+/// call `call_semantics_target(cs: cs)`. So base and head bind the spelling to the same declarer,
+/// no run can produce either `TargetChanged` delta, and CONSUMED is the correct reading rather
+/// than an author error.
+///
+/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
+/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
+/// touch. Adjudicate that deletion by joining each row against main on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+///
+/// SIXTH DISSOLUTION (2026-09-08). #10688 merged; both rows report consumed. This change touches
+/// the roster (base-side reconstruction of the gitignored failure-mode fold), so the deletion is
+/// owed here.
+///
+/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch.
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE: a required run reported
+/// both as already satisfied at the base -- consumed by its own merge.
+///
+/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
+/// `cumulative_metric_read_as_per_event`, is added as its own file under
+/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
+/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
+/// the head side that name newly resolves into the class's own module, which is
+/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
+/// the membership rule the directory IS, not by anyone rebinding an existing name.
+///
+/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
+/// one file per class precisely so that two lanes appending different classes never rewrite one
+/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
+/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
+/// is the same motion whether it was intended or accidental, and only the author can say which.
+///
+/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
+/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
+/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
+/// trusting this sentence.
+/// THE gunbc#10813 ROW DISSOLVES HERE (2026-09-08), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
+/// NAMED, AND THE DEFECT IT WAS ADMITTING IS REPAIRED IN THE SAME CHANGE. Two separate facts, and
+/// the row would go on either one alone.
+///
+/// FIRST, THE TRIGGER FIRED. gunbc#10813 is on main, so the class file
+/// `dag/gunbc/recurring_failure_mode/cumulative_metric_read_as_per_event.dag` and the roster naming
+/// it are present on BOTH sides. Adjudicated by the join the row demanded rather than by its
+/// sentence: on main that file opens
+/// `module gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event` and the roster names
+/// the spelling, so base and head resolve it into the same module, no run can produce the delta,
+/// and CONSUMED is the correct reading. Its label goes with it, leaving the roster an EMPTY
+/// enumeration.
+///
+/// SECOND, AND THIS IS WHY NO SUCCESSOR ROW REPLACES IT: the delta that row admitted was not the
+/// ledger's growth shape. It was an artifact of the BASELINE, repaired by this same change.
+/// `run_required_wave_admission` rebuilt the base index by carrying forward every head record the
+/// diff did not touch; `dag/gunbc/recurring_failure_mode/roster.dag` is gitignored and written on
+/// the read path, so it can never appear in `git diff --name-status`, and the HEAD's generated
+/// roster was therefore carried in as the BASE's. Both symptoms follow: the binding key existed on
+/// both sides so it read `base {} -> head {row}`, and the authorship discriminator compared the
+/// roster's base and head source, which were THE SAME BYTES, so an ordinary append read as not
+/// locally authored and classified `NewPoolCoincidenceResolution`. With the roster's base side
+/// DERIVED from the base tree's row membership, the roster module's source genuinely differs across
+/// the sides and an append classifies `AuthoredReferenceResolution`, which is auto-admitted.
+///
+/// THE EVIDENCE IS EXECUTED, NOT ARGUED: the required run on this change's own previous head
+/// (34271585163) added a failure-mode class with NO admission row for it and reported
+/// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
+/// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
+/// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
+///
+/// STRUCTURAL-TEXT AND LOGIC AUTHORITY REQUALIFICATION (2026-09-09, gunbc#10692). No ordinal is
+/// claimed, for the reason the entries above give. Five binding sites on the v2 self-host branch
+/// stop spelling two type names into the ambient kernel set and name the authority module
+/// instead, which is `TargetChanged` and is not auto-admitted: `EmitSpellingEscape.from/to`,
+/// `apply_emit_spelling_escapes.spelling` and `integer_string_to_decimal_digits_step.s` requalify
+/// `String` to `v2.std.text`; `py_bool_grounding` and `ts_bool_grounding` requalify their
+/// `BooleanAlgebra` parameter `Bool` to `v2.std.logic`.
+///
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check. The three
+/// `String` sites carry STRUCTURAL text — `v2.std.text.String` is `FreeMonoid<Char>`, and the
+/// chars(String) <- Variant cluster repair (this branch) restored structural reads end-to-end, so
+/// the carriers' types name the structural authority rather than the kernel homonym; the
+/// qualification is also load-bearing for native emission, whose host-String arm keys on
+/// declaration provenance (this branch, `is_host_text_carrier_type`), so an unqualified spelling
+/// would render the host carrier while value-position consumers render the structure. The two
+/// `Bool` sites bind a value whose own declaration already carries the qualified parameter:
+/// `v2.std.logic` declares `type Bool = True | False` and `bool_boolean_algebra:
+/// BooleanAlgebra<Bool>` resolves that spelling to its OWN module's declaration, so a grounding
+/// row annotated `BooleanAlgebra<Bool>` with the kernel reading stated a type its value does not
+/// inhabit. This is the gunbc#9907 namespace-lane requalification reaching five sites the XL-N
+/// closure repair touched.
+///
+/// ONE CHANGE CLASS. Nothing is requalified at the leaf: every spelling is identical on both
+/// sides, and what moved is the declaration behind it — from the ambient kernel type set
+/// (`<kernel>`) to the explicitly named authority module. No membership edge is added or removed
+/// by these five sites (the requalification is by qualified path or an import the module already
+/// carried), which is why the run reports exactly five binding rows and nothing else.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10692 merges. Main then binds
+/// each spelling to the named target, base and head agree, no run can produce these deltas, and
+/// all five report CONSUMED rather than stale — coming due on this roster's next touch.
+/// Adjudicate that deletion by joining each row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
+/// a trigger sentence is not evidence that the trigger fired.
+const V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL: &str =
+    "gunbc#10692 structural-text/logic authority requalification 2026-09-09";
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.extdeps.languages.python",
+            in_declaration: "py_bool_grounding",
+            spelling: "Bool",
+            target: "v2.std.logic",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.extdeps.languages.typescript",
+            in_declaration: "ts_bool_grounding",
+            spelling: "Bool",
+            target: "v2.std.logic",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.target_model",
+            in_declaration: "EmitSpellingEscape",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.target_model",
+            in_declaration: "apply_emit_spelling_escapes",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.integer",
+            in_declaration: "integer_string_to_decimal_digits_step",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -2134,9 +2298,9 @@ fn admission_consumed_at_base(
 /// symbol: DESIGN's state-space conflation.
 ///
 /// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
-/// consults authorship (`membership_supported`), which admitted the membership edge of the very
-/// change this arm refused. So `authored_here` is passed in, not re-derived: see
-/// `locally_authored_claim_added`.
+/// consults authorship (`membership_declared`, over `membership_bound_through`), which admitted
+/// the membership edge of the very change this arm refused. So `authored_here` is passed in, not
+/// re-derived: see `locally_authored_claim_added`.
 fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
@@ -2570,8 +2734,17 @@ pub fn run_required_wave_admission(
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
+    // A DERIVED ARTIFACT IS NEVER IN THE DIFF, SO IT MUST NOT BE INHERITED FROM THE HEAD.
+    // The baseline is reconstructed by carrying every head record the diff did not touch and
+    // re-reading the rest from the base tree. `roster.dag` is gitignored and written on the read
+    // path, so the diff can never name it — and carrying it made the HEAD's roster stand as the
+    // BASE's. Its base side is not read from git either (the tree does not carry it); it is
+    // DERIVED from the base tree's row membership, below, by the same renderer the writer uses.
     let mut base_index = DeclarationIndex::default();
     for record in index_records(head_index) {
+        if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
+            continue;
+        }
         if !head_parsed.iter().any(|c| *c == &record.rel_path) {
             crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
         }
@@ -2605,6 +2778,32 @@ pub fn run_required_wave_admission(
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         };
         match base_records(rel, &content) {
+            Ok(records) => {
+                for record in records {
+                    crate::cli_run::declaration_index::index_insert(&mut base_index, record);
+                }
+            }
+            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+        }
+    }
+
+    // THE DERIVED ROSTER'S BASE SIDE, from the base tree's row membership. `base_paths` is the
+    // authoritative listing already in hand, so this asks the same question the writer asks of a
+    // directory. A base tree carrying no row files under that root has no roster module at all,
+    // and `roster_from_path_listing` answers `None` rather than fabricating a present empty list.
+    let base_path_refs: Vec<&str> = base_paths.iter().map(|p| p.as_str()).collect();
+    for record in index_records(head_index) {
+        let Some(root) = crate::cli_run::derived_row_roster::roster_root_prefix(&record.rel_path)
+        else {
+            continue;
+        };
+        let Some(content) = crate::cli_run::derived_row_roster::roster_from_path_listing(
+            base_path_refs.iter().copied(),
+            root,
+        ) else {
+            continue;
+        };
+        match base_records(&record.rel_path, &content) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);

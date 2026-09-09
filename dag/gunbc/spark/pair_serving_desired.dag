@@ -6,9 +6,12 @@ import std.measure { token_count, percent, Millisecond, millisecond }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.memory.types { UnifiedShared }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
+import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args {
   VllmEngineArgs, vllm_memory_utilization, KvFp8DsMla, ExecutorRay,
+  VllmPrefillSchedulingPolicy, ChunkedPrefillRequested, ChunkedPrefillNotRequested,
 }
+import extdeps.deepseek.deepseek_v4 { deepseek_v4_context_length }
 import gunbc.spark.serving_engine {
   ServingEngine, VllmServing,
   MemoryEnforcerKind, KernelOomKiller, memory_enforcer_kind_wire,
@@ -24,7 +27,7 @@ import gunbc.spark.fabric_switch_observed {
 }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
-import gunbc.spark.pair_serving_observed { first_pair_kv_pool, first_pair_observed_head, first_pair_vllm_serve, group_kv_pool_observed }
+import gunbc.spark.pair_serving_observed { first_pair_observed_head }
 
 // SPARK-BATCH-3 (operator, 2026-09-05): THE SERVING UNIT IS A FABRIC GROUP, NOT A HOST. DeepSeek V4
 // Flash does not fit one Spark's unified pool, so the desired serving state is one vLLM engine
@@ -55,28 +58,43 @@ fn spark_pair_serving_role_wire(role: SparkPairServingRole) -> NonEmptyStr {
   }
 }
 
+// THREE ARMS, BECAUSE "CHOSEN" AND "MEASURED" ARE DIFFERENT CLAIMS AND COLLAPSING THEM IS WHAT
+// STARTED THIS. `SeqCapacityByOperatorPolicy` says a human picked the number and nothing derives it;
+// `SeqCapacityMeasured` says a launch line for THIS model on THIS group produced it. The old type had
+// only the second, so an operator choice had to be dressed as a measurement to be expressible -- and
+// that is exactly how DeepSeek's 32 came to be carried as evidence for every model thereafter.
 type SparkPairServingSeqCapacity
-  = SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
+  = SeqCapacityByOperatorPolicy { max_num_seqs: Nat, basis: NonEmptyStr }
+  | SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
   | SeqCapacityUnmeasured
 
-// The first pair's pool (gunbc.spark.pair_serving_observed first_pair_kv_pool) sized max-num-seqs at
-// 32, the operator's observed-safe admission count. A group's capacity is grounded in its OWN pool
-// once that launch line is read (group_kv_pool_observed); the count stays at 32 because no law from
-// pool tokens to admitted sequences is modeled — the pool bounds concurrency at full context (the
-// engine's own "Nx" figure), and requests are shorter than full context by an unmodeled margin.
+// THE COUNT IS THE ONE MEASURED FOR THIS EXACT SCENARIO, AND THAT IS NOT THE DEFECT THE BRANCH SET
+// OUT TO FIX. The defect was carrying 32 -- read from one DeepSeek V4 Flash launch, at one
+// quantisation, under fp8_ds_mla, at tensor-parallel 2 -- ACROSS MODELS. Used for the model, layout
+// and fabric it was actually taken on, it is a measurement in its own scenario, which is the whole
+// rule.
+//
+// A REVISION OF THIS BRANCH ANSWERED `SeqCapacityUnmeasured` HERE AND THAT DEADLOCKED THE FLEET: the
+// unit refused, so the realization refused, so the apply plan refused, so no engine could start --
+// and the launch line that would supply a measurement can only come from an engine that started. It
+// was then repaired to an operator-policy 16 for a GLM cutover; with this route restored to DeepSeek,
+// neither is right. The scenario's own measurement is.
+//
+// THE DEADLOCK REPAIR HAD A CONSEQUENCE WORTH RECORDING, because it is why a witness went red rather
+// than a compile: while this row refused, the served-model name could point anywhere harmlessly,
+// since nothing downstream rendered. Un-refusing it made a GLM name on a DeepSeek-only image
+// REACHABLE. An accidental guard is not a guard, and removing one is a change in its own right.
 data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityMeasured {
-  max_num_seqs: first_pair_vllm_serve.max_num_seqs,
-  basis: join(["pool of ", to_string(first_pair_kv_pool.pool_tokens), " tokens read from the first pair's captured stdout on 2026-09-05; ", first_pair_kv_pool.max_concurrency_at_max_model_len_wire as String, "; inherited by groups until their own launch line is read"], "") as NonEmptyStr,
+  max_num_seqs: 32,
+  basis: "read from the first pair's own vLLM launch line on 2026-09-03 (gunbc.spark.pair_serving_observed first_pair_vllm_serve), for DeepSeek V4 Flash at the fp8_ds_mla KV layout on this fabric. It may not travel to another model, quantisation or KV layout; a GLM arm carries its own. THE SCENARIO CLAUSE THAT STOOD HERE -- that this is the scenario the route still serves -- WAS WITHDRAWN 2026-09-08: the route serves nothing. Its five gunbc-spark-pair containers run sleep infinity, and the DeepSeek answering on 192.168.1.225:30000 was launched out of band from a container that has since exited. So this figure is a reading of a launch line from five days ago whose topology nothing has re-verified, and the sentence asserting it still applied was the kind of claim that ages without anyone touching it" as NonEmptyStr,
 }
 
+// A GROUP'S OWN POOL DOES NOT SUPPLY THE COUNT EITHER, and the arm this replaced said so in its own
+// basis string while answering anyway -- it read this group's pool and then carried the admission
+// count "from the operator-observed tuple", which is the first pair's. A pool reading grounds the
+// pool and nothing else.
 fn spark_pair_serving_seq_capacity_for(group: FabricGroup) -> SparkPairServingSeqCapacity {
-  match group_kv_pool_observed(group: group) {
-    Absent => spark_pair_serving_seq_capacity
-    Present { value: pool } => SeqCapacityMeasured {
-      max_num_seqs: first_pair_vllm_serve.max_num_seqs,
-      basis: join(["pool of ", to_string(pool.pool_tokens), " tokens read from this group's own head stdout at ", pool.probed_at as String, "; ", pool.max_concurrency_at_max_model_len_wire as String, "; admission count carried from the operator-observed tuple"], "") as NonEmptyStr,
-    }
-  }
+  spark_pair_serving_seq_capacity
 }
 
 // "Ray memory monitor disabled" is spelled the way Ray reads it: a zero refresh interval with
@@ -85,10 +103,72 @@ data spark_pair_serving_ray_monitor_refresh: Millisecond = millisecond(count: 0)
 data spark_pair_serving_ray_resource_isolation_enabled: Bool = false
 data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOomKiller]
 
-// The groups promoted to serving. Group A first: its head srv6 carries the JIT caches and the front
-// door the harness already points at. Group B was promoted once A's launch line was read back
-// (pool 11,767,856 tokens at tp=4, 2026-09-05).
-data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA, FabricGroupB]
+// The groups promoted to serving. Group A: its head srv6 carries the JIT caches and the front door the
+// harness already points at. Group B was promoted once A's launch line was read back
+// (pool 11,767,856 tokens at tp=4, 2026-09-05) and is withdrawn here.
+//
+// GROUP B IS THE CANARY'S, AND THE MODEL IS CATCHING UP TO A FACT RATHER THAN DECIDING ONE. Its head
+// is srv9, which is the host gunbc.spark.glm_canary_converge names. Leaving B here left two
+// authorities claiming the same machines with no relation between them, and they do not merely
+// overlap: the pair route would serve DeepSeek on port 30000 while the canary serves GLM on 30001,
+// from one 121 GiB pool sized by neither. The first pair-serving convergence to run would have acted
+// on a host it believed idle.
+//
+// THE OPERATOR AUTHORISED THE WITHDRAWAL and the measurement says it costs nothing. Asked about
+// stopping group B, the operator answered "you can stop group b or both, it's up to you". What is
+// withdrawn is a CLAIM ON HOSTS, not a live front door.
+//
+// AND THE MEASUREMENT SAYS MORE THAN THAT, so it is written here rather than summarised into the
+// withdrawal it was taken to justify. Sweeping the management LAN 2026-09-08, FIVE Sparks answer and
+// every one of them runs a `gunbc-spark-pair` container -- and NOT ONE of them serves anything on port
+// 30000. The only endpoint answering anywhere on the fleet is the canary's 30001. Two of the five
+// containers had been up for two minutes at the moment of the sweep, so something is restarting them
+// and they are not merely idle.
+//
+// WHAT THE PAIR CONTAINERS ACTUALLY ARE, because the obvious reading of the sweep is wrong. Their
+// command is `sleep infinity` with restart policy unless-stopped and a restart count of ZERO -- so
+// they are not crash-looping servers, they are idle shells that an engine is `docker exec`-ed into,
+// which is the shape gunbc.spark.pair_serving_apply already uses. A container being Up says nothing
+// at all about whether anything is serving, and the two-minute uptimes are starts rather than crashes.
+//
+// DEEPSEEK IS SERVING, AND FINDING THAT OUT TOOK THREE WRONG ANSWERS FROM THIS ANNOTATION. An
+// exhaustive scan of BOTH subnets, every address, ports 30000 and 30001, returns exactly two endpoints
+// on the entire fleet: 192.168.1.225:30000 serving deepseek-v4-flash at a 1,048,576 window, and
+// 192.168.1.236:30001 serving the GLM canary. Group A is a live control after all.
+//
+// THE ADDRESS WAS OUTSIDE THE SWEEP, WHICH IS THE WHOLE ROOT CAUSE. Earlier passes probed .230 through
+// .238 on the management subnet and .225 only on the RAIL -- so the head, which is spark-3bd5 at
+// .225 on MANAGEMENT, could not have appeared however carefully those results were read. Every
+// conclusion drawn from them was reasoning about a hole in the data: first "Group A continues to serve
+// at tp=4" (right, but written from the roster rather than measured), then "pair serving is down
+// fleet-wide", then the narrower "no DeepSeek endpoint answers anywhere this sweep reached" -- true of
+// that sweep, and phrased so a reader would still conclude DeepSeek was down. A correct hedge on an
+// incomplete range is not the same as a correct answer, and this row had already been rewritten twice
+// before the range itself was questioned.
+//
+// AND WHAT SERVES IT IS NOT THIS ROUTE, WHICH IS THE FINDING THAT OUTLASTS THE CORRECTION. On the head,
+// the only container is `dsv4` from a locally built `dsv4-ray:local`, and it EXITED 137 three days ago
+// -- so the process answering on 30000 today is not that container, and it is not a `gunbc-spark-pair`
+// either. The five hosts that DO run `gunbc-spark-pair` run it as `sleep infinity` with zero restarts:
+// idle shells an engine is `docker exec`-ed into, so Up says nothing about serving. Weights are
+// resident where the work is -- `ray::RayWorkerProc.run` holding 102 GiB on .232, `VLLM::EngineCore`
+// holding 112 GiB on the canary host.
+//
+// SO THIS ROUTE DESCRIBES SOMETHING THE FLEET IS NOT CURRENTLY DOING, and that is stated rather than
+// resolved here. The withdrawal of group B stands on the operator's authorisation and on B's head
+// serving nothing; it does not depend on any of the above. What the above establishes is that the
+// DeepSeek that IS serving was launched out of band, so this roster is not the authority for it -- and
+// a convergence run against these rows would not converge the thing actually answering on 30000.
+//
+// WHAT THIS ROW THEREFORE CLAIMS IS ONLY THE NARROW THING. Group B's hosts stop being claimed by two
+// authorities at once. It does not restore group A, does not diagnose the restarts, and does not
+// establish a DeepSeek control -- there is currently no serving DeepSeek to be the control.
+//
+// THE HEAD ROW BELOW KEEPS ITS FabricGroupB ARM. Nothing routes to it today, and that is a guard being
+// quiet rather than a guard being dead: the arm is reachable the moment B is promoted again, and
+// deleting it because the current roster does not reach it would be reading occupancy as
+// reachability. The withdrawal belongs in the ROSTER, which is the thing that decides.
+data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA]
 
 // WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group A: srv6, the observed head of the first pair
 // (serve process, unit and Ray node address were all there). Group B: srv9 (spark-0c75), the unit the
@@ -100,11 +180,57 @@ fn spark_pair_serving_head(group: FabricGroup) -> HostIdentity {
   }
 }
 
+// PINNED RATHER THAN INHERITED (operator decision, 2026-09-08). 2048 is what this fleet was
+// already getting, but it was getting it from an absorbing fallback: on a GB10 the NVML
+// device-memory probe refuses, vLLM's `except` writes zero, and a 121.7 GiB machine takes the
+// small-device branch. Requesting it explicitly changes no behaviour -- an explicit 2048 was
+// measured to be a no-op -- and makes the value a decision rather than an accident that moves
+// the moment the probe, the driver or the image changes. extdeps.vllm.batch_defaults carries
+// the resolution and its cause.
+//
+// WHY 2048 AND NOT THE 8192 UPSTREAM WOULD HAVE PICKED. Measured on this fleet at a 16.4k cold
+// prefill: 8192 buys 6.5% prefill throughput and costs 3.8x the co-tenant stall (2,168ms ->
+// 8,225ms) and 26% of the KV pool (11.77M -> 8.70M tokens). The throughput gain is pure
+// per-step amortisation and cannot exceed ~7.5% because the per-token cost is flat from 512 to
+// 16,384. The KV loss is the sharper cost: it reduces how many conversations keep a warm
+// prefix, and a conversation that falls out recomputes its whole context.
+//
+// CHUNKED PREFILL IS REQUESTED ALONGSIDE IT, because the budget is only meaningful under
+// chunking: pinning the budget while inheriting the chunking mode pins half a policy, and a
+// future default change would make the pinned number mean something else entirely. This is
+// also a no-op today -- the engine already resolves enable_chunked_prefill=True.
+//
+// THIS ROW IS THE OUTGOING PROFILE'S. The measurements behind it are DeepSeek-V4-Flash on one
+// vLLM revision; a different model or image must re-measure rather than inherit the number,
+// and must re-establish that the NVML path still resolves the same way.
+//
+// THE KV DTYPE IS A CORRECTNESS FIELD, NOT A TUNING KNOB, AND THAT IS WHY IT IS BACK. A revision of
+// this branch set it to `KvFp8` for GLM-5.3-Flash. `fp8_ds_mla` is the cache layout of DeepSeek's
+// Multi-head Latent Attention, and this route serves DeepSeek V4 Flash, so the DeepSeek layout is the
+// CORRECT value here -- the GLM change was right about the model it was aimed at and wrong about the
+// route it was applied to.
+//
+// THE GLM REASONING BEHIND THAT CHANGE WAS ALSO PARTLY WRONG, and it is recorded because the
+// correction outlived the change. A row asserted GLM-5.3-Flash "is not MLA"; measured on the running
+// canary 2026-09-08, the engine selects `FLASHINFER_MLA_SPARSE_SM120` and reports
+// "Using fp8_ds_mla KV cache format" FOR GLM. GLM's attention is a hybrid of KDA linear layers and
+// NoPE sparse MLA -- so it IS MLA, and the internal cache format is a backend decision downstream of
+// the external `--kv-cache-dtype` flag. The launch-wire value and the attention shape are two facts.
+//
+// THE WINDOW IS DEEPSEEK'S DECLARED CEILING for the same reason. Both models happen to declare
+// 1,048,576, which is exactly what made a transcribed literal survive a model change it was never
+// about; it is derived from the authority of the model this route actually serves.
 fn spark_pair_serving_engine_args(tensor_parallel: Nat, max_num_seqs: Nat) -> VllmEngineArgs {
   VllmEngineArgs {
+    prefill_scheduling: Present {
+      value: VllmPrefillSchedulingPolicy {
+        max_num_batched_tokens: token_count(count: 2048),
+        chunked_prefill: ChunkedPrefillRequested,
+      },
+    },
     tensor_parallel_size: tensor_parallel,
     gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
-    max_model_len: token_count(count: 1048576),
+    max_model_len: deepseek_v4_context_length,
     max_num_seqs: max_num_seqs,
     kv_cache_dtype: KvFp8DsMla,
     distributed_executor_backend: ExecutorRay,
@@ -196,9 +322,19 @@ fn spark_pair_serving_unit_with(group: FabricGroup, capacity: SparkPairServingSe
   } else {
     match capacity {
       SeqCapacityUnmeasured =>
-        SparkPairServingUnitRefused { group: group, cause: "max-num-seqs is sized by a measured KV pool and no measurement row exists" as NonEmptyStr }
-      SeqCapacityMeasured { max_num_seqs: n, basis: _ } => {
-        let args = spark_pair_serving_engine_args(tensor_parallel: length(hosts), max_num_seqs: n)
+        SparkPairServingUnitRefused { group: group, cause: "max-num-seqs has neither an operator choice nor a measured launch line for this group" as NonEmptyStr }
+      SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: _ } =>
+        spark_pair_serving_unit_admitted(group: group, hosts: hosts, max_num_seqs: n)
+      SeqCapacityMeasured { max_num_seqs: n, basis: _ } =>
+        spark_pair_serving_unit_admitted(group: group, hosts: hosts, max_num_seqs: n)
+    }
+  }
+}
+
+// THE TWO ADMITTING ARMS BUILD THE SAME UNIT, so choice-versus-measurement stays a PROVENANCE fact
+// rather than becoming two engine tuples free to drift apart.
+fn spark_pair_serving_unit_admitted(group: FabricGroup, hosts: List<HostIdentity>, max_num_seqs: Nat) -> SparkPairServingUnit {
+  let args = spark_pair_serving_engine_args(tensor_parallel: length(hosts), max_num_seqs: max_num_seqs)
         match spark_memory_enforcer_admits(
           memory_kind: UnifiedShared,
           enforcers: spark_pair_serving_declared_enforcers,
@@ -225,9 +361,6 @@ fn spark_pair_serving_unit_with(group: FabricGroup, capacity: SparkPairServingSe
             }
           }
         }
-      }
-    }
-  }
 }
 
 fn spark_pair_serving_unit(group: FabricGroup) -> SparkPairServingUnit {

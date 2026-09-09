@@ -1,0 +1,174 @@
+module extdeps.vllm.batch_defaults
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.nvidia.management_library {
+  DeviceMemoryObservation,
+  NvmlDeviceMemoryObserved,
+  NvmlDeviceMemoryUnsupportedOnUnifiedMemory,
+  TorchDeviceMemoryObserved,
+  DeviceMemoryUnread,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/main/vllm/engine/arg_utils.py"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.batch_defaults",
+      decl_name: "UpstreamBatchDefaultResolution",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── HOW UPSTREAM PICKS max_num_batched_tokens WHEN THE FLAG IS ABSENT ─────────────────────────
+//
+// WHY THIS IS MODELLED RATHER THAN ASSUMED. Omitting `--max-num-batched-tokens` does not mean the
+// launch declined to choose a batch budget; it means UPSTREAM chose one, from facts the launch
+// never states. This deployment ran for weeks believing the absent flag meant "no chunking below
+// some large bound", then believing it meant 8192, and the value was 2048 the whole time.
+//
+// THE RESOLUTION, as `EngineArgs.get_batch_defaults` implements it at the pinned revision:
+//
+//     try:
+//         device_memory = current_platform.get_device_total_memory()
+//         device_name   = current_platform.get_device_name().lower()
+//     except Exception:
+//         # This is only used to set default_max_num_batched_tokens
+//         device_memory = 0
+//         device_name   = ""
+//
+//     if device_memory >= 70 * GiB and "a100" not in device_name:
+//         {LLM_CLASS: 16384, OPENAI_API_SERVER: 8192}
+//     else:
+//         {LLM_CLASS:  8192, OPENAI_API_SERVER: 2048}
+//
+// THE `except` IS AN ABSORBING FALLBACK AND IT IS THE WHOLE DEFECT. The capability probe fails, the
+// failure is caught, and a conservative substitute is written into the variable that then governs
+// production scheduling for the life of the engine. Nothing refuses, nothing is counted, and the
+// comment records that the author judged the substitution harmless because of where the value goes.
+// It is DESIGN section 5's pattern exactly: a failure arm that WIDENS instead of refusing, and the
+// widening is invisible precisely because the resulting value is plausible.
+//
+// The measured cost on this fleet: a 121.7 GiB machine was classified as a small device and served
+// a 1,048,576-token context model on a 2048-token prefill budget, which is the largest single
+// determinant of co-tenant interactive latency (gunbc.spark.prefill_batch_sweep).
+type VllmUsageContext
+  = LlmClass
+  | OpenAiApiServer
+
+fn vllm_usage_context_wire(c: VllmUsageContext) -> NonEmptyStr {
+  match c {
+    LlmClass => "LLM_CLASS" as NonEmptyStr
+    OpenAiApiServer => "OPENAI_API_SERVER" as NonEmptyStr
+  }
+}
+
+// WHY A DEVICE CLASS AND NOT A BOOLEAN. `LargeMemoryDevice` and `SmallMemoryDevice` are what the
+// upstream branch actually distinguishes; the third arm is what it CANNOT distinguish and silently
+// folds into the second, which is the bug given a name.
+type UpstreamDeviceClass
+  = LargeMemoryDevice { bytes: Nat }
+  | SmallMemoryDevice { bytes: Nat }
+  | ClassifiedSmallByAbsorbedRefusal { device_name: NonEmptyStr, actual_bytes_per_other_authority: Nat }
+
+// The classification upstream performs, made explicit. The third arm has no byte count from the
+// authority upstream consulted -- it carries the count from the authority that DID answer, so the
+// gap between what was assumed and what is true is readable at the row.
+fn upstream_device_class(o: DeviceMemoryObservation) -> UpstreamDeviceClass {
+  match o {
+    NvmlDeviceMemoryObserved { bytes: b } =>
+      if b >= 75161927680 { LargeMemoryDevice { bytes: b } } else { SmallMemoryDevice { bytes: b } }
+    TorchDeviceMemoryObserved { bytes: b } =>
+      if b >= 75161927680 { LargeMemoryDevice { bytes: b } } else { SmallMemoryDevice { bytes: b } }
+    NvmlDeviceMemoryUnsupportedOnUnifiedMemory { device_name: n, error: _ } =>
+      ClassifiedSmallByAbsorbedRefusal { device_name: n, actual_bytes_per_other_authority: 130663231488 }
+    DeviceMemoryUnread { because: _ } =>
+      ClassifiedSmallByAbsorbedRefusal { device_name: "unread" as NonEmptyStr, actual_bytes_per_other_authority: 0 }
+  }
+}
+
+fn large_device_default(ctx: VllmUsageContext) -> Nat {
+  match ctx {
+    LlmClass => 16384
+    OpenAiApiServer => 8192
+  }
+}
+
+fn small_device_default(ctx: VllmUsageContext) -> Nat {
+  match ctx {
+    LlmClass => 8192
+    OpenAiApiServer => 2048
+  }
+}
+
+// THE THIRD ARM SHARES THE SECOND'S NUMBERS AND IS NOT THE SAME FACT, which is the whole reason it
+// is a separate constructor: a device classified small because it IS small and a device classified
+// small because its probe was absorbed produce identical behaviour and have different fixes.
+fn upstream_default_batched_tokens(cls: UpstreamDeviceClass, ctx: VllmUsageContext) -> Nat {
+  match cls {
+    LargeMemoryDevice { bytes: _ } => large_device_default(ctx: ctx)
+    SmallMemoryDevice { bytes: _ } => small_device_default(ctx: ctx)
+    ClassifiedSmallByAbsorbedRefusal { device_name: _, actual_bytes_per_other_authority: _ } =>
+      small_device_default(ctx: ctx)
+  }
+}
+
+// ── THE RESOLUTION THIS FLEET GOT, CARRIED WITH ITS CAUSE ─────────────────────────────────────
+//
+// The cause is a field rather than prose because the SAME NUMBER arrived by two entirely different
+// routes in two different weeks' analyses, and only the cause distinguishes them: 2048 selected
+// because a device is genuinely small is an ordinary default, and 2048 selected because a capability
+// probe was refused and absorbed is a defect that will move the moment the probe or the hardware
+// changes.
+type UpstreamBatchDefaultSelectionCause
+  = SelectedFromObservedDeviceMemory { bytes: Nat }
+  | SelectedFromAbsorbedProbeRefusal { probe: NonEmptyStr, absorbed_to: NonEmptyStr }
+  | SelectedByExplicitFlag
+
+type UpstreamBatchDefaultResolution sole_constructor {
+  selected_max_num_batched_tokens: Nat
+  usage_context: VllmUsageContext
+  cause: UpstreamBatchDefaultSelectionCause
+  established_against: VllmSourceRevision
+  note: NonEmptyStr
+}
+
+data spark_gb10_batch_default_resolution: UpstreamBatchDefaultResolution = UpstreamBatchDefaultResolution {
+  selected_max_num_batched_tokens: 2048,
+  usage_context: OpenAiApiServer,
+  cause: SelectedFromAbsorbedProbeRefusal {
+    probe: "nvmlDeviceGetMemoryInfo via current_platform.get_device_total_memory()" as NonEmptyStr,
+    absorbed_to: "device_memory = 0 by a bare `except Exception`, which fails the >= 70 GiB test and takes the small-device branch" as NonEmptyStr,
+  },
+  established_against: vllm_source_revision_read,
+  note: "re-derived by EXECUTING EngineArgs.get_batch_defaults(world_size=4) inside the serving container on the group A head 2026-09-07, which returned 8192 for the LLM_CLASS context and 2048 for OPENAI_API_SERVER; independently read back from the running engine, whose banner logs compile_ranges_endpoints [2048] and whose _set_compile_ranges sets that endpoint FROM scheduler_config.max_num_batched_tokens" as NonEmptyStr,
+}
+
+// ── THE READBACK, WHICH IS A DIFFERENT FACT FROM THE DERIVATION ───────────────────────────────
+//
+// A re-derivation says what the resolution WOULD select given inputs; a readback says what the
+// engine that is actually serving DID select. They agreed here, and they are kept apart because an
+// out-of-band launch, a patched image or a changed default would separate them, and the derivation
+// would keep agreeing with itself.
+type EffectiveBatchBudgetStanding
+  = EffectiveBatchBudgetReadFromEngine { tokens: Nat, source: NonEmptyStr }
+  | EffectiveBatchBudgetDerivedOnly { tokens: Nat, from: NonEmptyStr }
+  | EffectiveBatchBudgetUnread { because: NonEmptyStr }
+
+data spark_group_a_effective_batch_budget: EffectiveBatchBudgetStanding = EffectiveBatchBudgetReadFromEngine {
+  tokens: 2048,
+  source: "the running engine's own startup banner: 'compile_ranges_endpoints': [2048]. vllm/config/vllm.py::_set_compile_ranges states the binding -- `compile_range_end = self.scheduler_config.max_num_batched_tokens` -- so the endpoint IS the budget rather than a quantity resembling it. Read on the group A head 2026-09-07 and again on the group B head, both [2048]" as NonEmptyStr,
+}

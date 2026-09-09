@@ -322,9 +322,9 @@ import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_arti
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
 import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_reconcile,
-  InstallMediaFetchAlreadyPresent,
-  InstallMediaFetchFetched,
-  InstallMediaFetchRefused,
+}
+import gunbc.artifact_acquisition {
+  AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster {
   install_media_remaster_reconcile,
@@ -3279,7 +3279,7 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
 
 fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match install_media_fetch_reconcile(artifact: srv3_ubuntu_install_media_artifact) {
-    InstallMediaFetchAlreadyPresent { path: p } =>
+    AcquisitionAlreadyPresent { identity: _, install_path: p } =>
       reconcile_grounded(
         apply_effect: intent,
         show_read: ReadObserved { value: p as String },
@@ -3290,19 +3290,19 @@ fn realize_install_media_fetch_in_process(intent: HostEffectIntent) -> Reconcili
           }
         }
       )
-    InstallMediaFetchFetched { path: p, mirror_url: u } =>
+    AcquisitionFetched { identity: _, install_path: p, source: origin } =>
       reconcile_grounded(
         apply_effect: intent,
         show_read: ReadObserved { value: p as String },
         grounding: Grounds {
           evidence: ConvergePlanApplied {
             exit_code: 0,
-            stdout: concat(concat("install-media-fetch: fetched from ", u as String), concat(" to ", p as String)),
+            stdout: concat(concat("install-media-fetch: fetched from ", origin.identity as String), concat(" to ", p as String)),
           }
         }
       )
-    InstallMediaFetchRefused { reason: why } =>
-      NotConverged { reason: concat("install-media-fetch: ", why as String), applied: intent }
+    AcquisitionRefused { cause: why } =>
+      NotConverged { reason: concat("install-media-fetch: ", acquisition_refusal_text(cause: why)), applied: intent }
   }
 }
 

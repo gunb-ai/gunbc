@@ -12,6 +12,7 @@ type GeneratedArtifact
   = WitnessFloorYamlArtifact
   | FleetConvergeYamlArtifact
   | FleetDesiredAdmissionYamlArtifact
+  | BootstrapPrLauncherYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
   | RoadmapArtifact
@@ -26,6 +27,7 @@ type GeneratedArtifact
   | Stage0CrateLayoutGeneratedRsArtifact
   | Stage0CratePartitionGeneratedDagArtifact
   | Stage0ExecutableAssemblyGeneratedDagArtifact
+  | SeedRetentionFrontierGeneratedRsArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
   | EvaluationBudgetConsequenceGeneratedRsArtifact
   | FileTransportRealizationGeneratedRsArtifact
@@ -38,7 +40,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, BootstrapPrLauncherYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -61,21 +63,22 @@ type CommitPolicy
 // merge driver. This axis answers only who pays to derive the merged authorities after that driver
 // has done its job.
 //
-// The design ledgers are the exceptional pair because their authority is the small, authored
-// roster append while their projection is unbounded (docs/design-failure-modes.md is 436 KiB at
-// this ruling). Requiring every lane to run the whole-tree regenerator before it can finish an
-// otherwise mechanical merge puts that large shared projection on every lane's critical path.
-// heal-generated-artifacts already checks out the pushed branch head, derives every committed
-// artifact from that head's authorities, commits the result, and dispatches a revalidation bound
-// to the healed SHA. So for this pair heal IS the route, not one of two: this arm is what the
-// selector returns and what the emitted recipe instructs, and no value in this module means "either
-// actuator". THAT EXCLUSIVITY IS THE MODELED POLICY AND IS ASSERTED IN BOTH DIRECTIONS by
+// The rung-drop ledger remains the exceptional committed projection whose authority is a
+// small authored append while the projection is unbounded. Requiring every lane to run the
+// whole-tree regenerator before it can finish an otherwise mechanical merge puts that shared
+// projection on every lane's critical path. heal-generated-artifacts already checks out the
+// pushed branch head, derives every committed artifact from that head's authorities, commits
+// the result, and dispatches a revalidation bound to the healed SHA. So for that artifact heal
+// IS the route, not one of two: this arm is what the selector returns and what the emitted recipe
+// instructs, and no value in this module means "either actuator". THAT EXCLUSIVITY IS THE MODELED
+// POLICY AND IS ASSERTED IN BOTH DIRECTIONS by
 // gunbc.test.claim.generated_artifact_assessment_witness_test
-// `only_design_ledgers_delegate_concurrent_regeneration_to_heal`, so admitting an author-side ledger
-// route is a semantic widening that reds that claim -- not a permission this rationale may grant.
-// It would also buy nothing the cost argument above asked for: mandatory heal already keeps the
-// regenerator off every lane's critical path. A lane that demonstrates mandatory heal is
-// unacceptable is the evidence that would reopen this; absent it the arm has no producer.
+// `only_design_ledgers_delegate_concurrent_regeneration_to_heal`.
+//
+// The failure-mode ledger is no longer in this pair: its committed projection was the merge
+// hotspot, so it is NotCommitted (generated on demand) and its membership list is derived from
+// the row directory rather than hand-appended. Independent failure-mode appends do not share
+// a committed merge region.
 //
 // THE PROVISIONAL BYTES ARE THE BASE-SIDE PROJECTION, NEVER THE DRIVER-LEFT WORKTREE BYTES. This
 // sentence previously said ours, which is the action gunbc.generated_artifact_merge_driver measured
@@ -103,7 +106,6 @@ type ConcurrentDivergenceRepair
 
 fn concurrent_divergence_repair(a: GeneratedArtifact) -> ConcurrentDivergenceRepair {
   match a {
-    DesignFailureModesArtifact => HealRegeneratesAfterProvisionalMerge
     DesignRungDropsArtifact => HealRegeneratesAfterProvisionalMerge
     _ => AuthorRegeneratesBeforeMerge
   }
@@ -163,6 +165,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     WitnessFloorYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "witnesses.yml" }
     FleetConvergeYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-converge.yml" }
     FleetDesiredAdmissionYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-desired.yml" }
+    BootstrapPrLauncherYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "bootstrap-pr-launcher.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
     RoadmapArtifact => ArtifactLocation { directory: ".", name: "ROADMAP.md" }
@@ -183,6 +186,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
     Stage0ExecutableAssemblyGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_executable_assembly_generated.dag" }
+    SeedRetentionFrontierGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_seed_retention_frontier_generated.rs" }
     V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
     EvaluationBudgetConsequenceGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "evaluation_budget_consequence_generated.rs" }
     FileTransportRealizationGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "gunbc_file_transport_generated.rs" }
@@ -239,9 +243,10 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     WitnessFloorYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetConvergeYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    BootstrapPrLauncherYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
-    DesignFailureModesArtifact => CommitRequired { consumer: ProjectDocumentation }
+    DesignFailureModesArtifact => NotCommitted
     DesignRungDropsArtifact => CommitRequired { consumer: ProjectDocumentation }
     PlanArtifact { plan } =>
       match plan.projection {
@@ -254,6 +259,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0ExecutableAssemblyGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
+    SeedRetentionFrontierGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     EvaluationBudgetConsequenceGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     FileTransportRealizationGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
@@ -291,6 +297,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     WitnessFloorYamlArtifact => match b { WitnessFloorYamlArtifact => true  _ => false }
     FleetConvergeYamlArtifact => match b { FleetConvergeYamlArtifact => true  _ => false }
     FleetDesiredAdmissionYamlArtifact => match b { FleetDesiredAdmissionYamlArtifact => true  _ => false }
+    BootstrapPrLauncherYamlArtifact => match b { BootstrapPrLauncherYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
@@ -306,6 +313,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
     Stage0ExecutableAssemblyGeneratedDagArtifact => match b { Stage0ExecutableAssemblyGeneratedDagArtifact => true  _ => false }
+    SeedRetentionFrontierGeneratedRsArtifact => match b { SeedRetentionFrontierGeneratedRsArtifact => true  _ => false }
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
     EvaluationBudgetConsequenceGeneratedRsArtifact => match b { EvaluationBudgetConsequenceGeneratedRsArtifact => true  _ => false }
     FileTransportRealizationGeneratedRsArtifact => match b { FileTransportRealizationGeneratedRsArtifact => true  _ => false }

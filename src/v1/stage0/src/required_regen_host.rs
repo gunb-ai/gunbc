@@ -27,6 +27,8 @@ use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::Instant;
 
+#[path = "bootstrap_seed_retention_frontier_generated.rs"]
+mod bootstrap_seed_retention_frontier_generated;
 #[path = "bootstrap_stage0_crate_layout_generated.rs"]
 mod bootstrap_stage0_crate_layout_generated;
 use super::workspace_root;
@@ -41,6 +43,7 @@ use crate::v1_compiler_compile::{
 };
 use crate::v1_compiler_emit_rust::rust_module_emit_path;
 use crate::v1_rt;
+use bootstrap_seed_retention_frontier_generated::SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES;
 use bootstrap_stage0_crate_layout_generated::{
     EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES, HAND_MAINTAINED_STAGE0_DIRS,
     HAND_MAINTAINED_STAGE0_FILES,
@@ -730,9 +733,12 @@ pub fn run_required_regen_fixed_point(
     }
     let emitted_basenames = generated_basenames_from_emit(&emitted)?;
     let hand_dir_shadows = hand_maintained_dir_shadows(&workspace.join("src/v1/stage0/src"))?;
-    if let Some(reason) =
-        validate_compared_populations(&committed_basenames, &emitted_basenames, &hand_dir_shadows)
-    {
+    if let Some(reason) = validate_compared_populations(
+        &committed_basenames,
+        &emitted_basenames,
+        &hand_dir_shadows,
+        SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+    ) {
         return Err(reason);
     }
     let pass2 = tree_digest_from_map(&formatter, &emitted, &committed_basenames)?;
@@ -940,9 +946,12 @@ fn adjudicate_generated_surface(
     // join that finds a surface the emitter produces and the tree does not carry, and a mirror
     // the tree carries and the emitter no longer produces. It reads no bytes, so there is
     // nothing here for a selection to save and everything for one to hide.
-    if let Some(reason) =
-        validate_compared_populations(&committed, emitted_basenames, &hand_dir_shadows)
-    {
+    if let Some(reason) = validate_compared_populations(
+        &committed,
+        emitted_basenames,
+        &hand_dir_shadows,
+        SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+    ) {
         return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
     }
     // BYTE ADJUDICATION IS SCOPED. This is the expensive half — a read, a normalization and a
@@ -1415,6 +1424,7 @@ fn validate_compared_populations(
     committed: &[String],
     emitted: &[String],
     hand_dir_shadows: &BTreeMap<String, Vec<String>>,
+    seed_retained_top_level_src: &[&str],
 ) -> Option<String> {
     if committed.is_empty() {
         return Some("refusal: committed generated population is empty".to_string());
@@ -1438,9 +1448,20 @@ fn validate_compared_populations(
             None => emitted_not_committed.push(name.clone()),
         }
     }
+    // A committed basename the emitter no longer produces is CommittedMirrorNoLongerEmitted
+    // unless the seed-retention frontier already names it: then it is retained, not lost.
+    //
+    // RUNG, HONESTLY: this skip excludes a presented retained basename. HAND_MAINTAINED_STAGE0_FILES
+    // currently agrees with it for std_logic.rs by coincidence (#10712 listed the file as
+    // hand-maintained), so committed_generated_basenames never presents std_logic.rs to this loop
+    // on main or at 0a811fc -- the class is not reachable on the merge path. Discrimination is
+    // the off-path #[test] pair below (rust_unit_tests_off_the_merge_path). Do not author a
+    // reaching fixture to make the live walk present a retained file; that would manufacture a
+    // subject. The nonempty frontier witness is not evidence for this join.
+    let seed_retained: BTreeSet<&str> = seed_retained_top_level_src.iter().copied().collect();
     let mut committed_not_emitted = Vec::new();
     for name in committed {
-        if !emitted_set.contains(name.as_str()) {
+        if !emitted_set.contains(name.as_str()) && !seed_retained.contains(name.as_str()) {
             committed_not_emitted.push(name.clone());
         }
     }
@@ -1763,19 +1784,15 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn digest_label(bytes: &[u8]) -> String {
-    format!("fnv1a64:{}", v1_rt::bytes_identity_hash(bytes))
-}
-
 fn authority_digest_from_sources(sources: &[(String, String)]) -> Result<String, String> {
     let mut payload = String::new();
     for (path, content) in sources {
         payload.push_str(path);
         payload.push('\0');
-        payload.push_str(&digest_label(content.as_bytes()));
+        payload.push_str(&bytes_digest(content.as_bytes()));
         payload.push('\n');
     }
-    Ok(digest_label(payload.as_bytes()))
+    Ok(bytes_digest(payload.as_bytes()))
 }
 
 fn tree_digest_for_basenames(
@@ -1798,10 +1815,10 @@ fn tree_digest_for_basenames(
             .map_err(|e| format!("normalize {label} {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
-        payload.push_str(&digest_label(norm.as_bytes()));
+        payload.push_str(&bytes_digest(norm.as_bytes()));
         payload.push('\n');
     }
-    Ok(digest_label(payload.as_bytes()))
+    Ok(bytes_digest(payload.as_bytes()))
 }
 
 fn tree_digest_from_map(
@@ -1820,10 +1837,10 @@ fn tree_digest_from_map(
             .map_err(|e| format!("normalize candidate {name}: {e}"))?;
         payload.push_str(name);
         payload.push('\0');
-        payload.push_str(&digest_label(norm.as_bytes()));
+        payload.push_str(&bytes_digest(norm.as_bytes()));
         payload.push('\n');
     }
-    Ok(digest_label(payload.as_bytes()))
+    Ok(bytes_digest(payload.as_bytes()))
 }
 
 /// Maximum rustfmt passes taken while seeking the formatter's fixed point. Exceeding it is a
@@ -2861,16 +2878,110 @@ mod tests {
 
     #[test]
     fn empty_emit_population_refuses_before_agreement() {
-        let reason = validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new())
-            .expect("expected refusal");
+        let reason =
+            validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new(), &[])
+                .expect("expected refusal");
         assert!(reason.contains("zero generated surfaces"));
     }
 
     #[test]
     fn empty_committed_population_refuses_before_agreement() {
-        let reason = validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new())
-            .expect("expected refusal");
+        let reason =
+            validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new(), &[])
+                .expect("expected refusal");
         assert!(reason.contains("committed generated population is empty"));
+    }
+
+    #[test]
+    fn seed_retained_committed_not_emitted_is_not_that_refusal() {
+        let reason = validate_compared_populations(
+            &["retained.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            &["retained.rs"],
+        );
+        assert!(
+            reason.is_none(),
+            "a frontier-rostered basename that left emit is retained, not CommittedMirrorNoLongerEmitted: {reason:?}"
+        );
+    }
+
+    #[test]
+    fn unrostered_committed_not_emitted_still_refuses() {
+        let reason = validate_compared_populations(
+            &["lost.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            &["retained.rs"],
+        )
+        .expect("expected refusal");
+        assert!(
+            reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
+            "an unrostered drop must still refuse: {reason}"
+        );
+        assert!(
+            !reason.contains("retained.rs"),
+            "the planted retained name must not appear: {reason}"
+        );
+    }
+
+    // OFF-PATH DISCRIMINATION, not merge-path reachability. These plant `std_logic.rs` in the
+    // committed-not-emitted slot of `validate_compared_populations` itself because the live walk
+    // never does: HAND_MAINTAINED_STAGE0_FILES already subtracts it (and layout-only hosts). A
+    // no-drift round never enters the arm anyway (#10795). The tests sit under
+    // rust_unit_tests_off_the_merge_path. The live projected roster is the join surface;
+    // `generated_stage0_filenames` is not consulted (it would also drop required_regen_host.rs).
+    #[test]
+    fn live_frontier_projection_is_not_the_crate_layout_filename_union() {
+        assert!(
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES.contains(&"std_logic.rs"),
+            "the generated join surface must carry the deliberately retained oracle"
+        );
+        assert!(
+            HAND_MAINTAINED_STAGE0_FILES.contains(&"target_invocation_host.rs"),
+            "the cheap list includes layout-only hosts"
+        );
+        assert!(
+            !SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES.contains(&"target_invocation_host.rs"),
+            "joining the cheap list would over-exclude this class; the frontier must not"
+        );
+    }
+
+    #[test]
+    fn std_logic_committed_not_emitted_is_retained_by_live_frontier_join() {
+        let reason = validate_compared_populations(
+            &["std_logic.rs".to_string(), "still.rs".to_string()],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+        );
+        assert!(
+            reason.is_none(),
+            "std_logic.rs is SeedRetainedIntrinsic on the frontier; committed-not-emitted must not fire: {reason:?}"
+        );
+    }
+
+    #[test]
+    fn unrostered_drop_still_refuses_beside_std_logic() {
+        let reason = validate_compared_populations(
+            &[
+                "std_logic.rs".to_string(),
+                "lost.rs".to_string(),
+                "still.rs".to_string(),
+            ],
+            &["still.rs".to_string()],
+            &BTreeMap::new(),
+            SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
+        )
+        .expect("expected refusal");
+        assert!(
+            reason.contains("committed mirror is no longer emitted") && reason.contains("lost.rs"),
+            "the unrostered drop must still reach the refusal: {reason}"
+        );
+        assert!(
+            !reason.contains("std_logic.rs"),
+            "the retained oracle must not be named in the refusal: {reason}"
+        );
     }
 
     #[test]
@@ -3852,12 +3963,18 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
 /// that file, Linux reports the running image as `<path> (deleted)`; digesting the path itself
 /// compares "installed there now" against "installed there before the build" -- the refusal's
 /// question.
-fn current_exe_digest() -> Result<String, String> {
+fn current_exe_on_disk() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let shown = exe.to_string_lossy().into_owned();
-    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
+    Ok(PathBuf::from(
+        shown.strip_suffix(" (deleted)").unwrap_or(&shown),
+    ))
+}
+
+fn current_exe_digest() -> Result<String, String> {
+    let on_disk = current_exe_on_disk()?;
     let bytes = fs::read(&on_disk).map_err(|e| format!("read {}: {e}", on_disk.display()))?;
-    Ok(v1_rt::bytes_identity_hash(&bytes))
+    Ok(bytes_digest(&bytes))
 }
 
 fn git_tree_dirty(workspace: &Path) -> Result<bool, String> {
@@ -4079,6 +4196,10 @@ struct PartitionRebuildActuation {
     package_closure: Vec<String>,
     excluded_packages: Vec<String>,
     decision_line: String,
+    /// The model's ReleaseScopeEmpty arm: every changed mirror is excluded from the release
+    /// build by construction (e.g. a `#[cfg(test)]`-gated module), so the correct package
+    /// closure IS the empty set and the build runs purely as verification of that claim.
+    release_scope_empty: bool,
 }
 
 type ModelValue = crate::v1_interpreter::Value;
@@ -4160,11 +4281,21 @@ fn partition_rebuild_actuation(
         ))
         }
     };
+    let release_scope_empty = match call("stage0_partition_rebuild_release_scope_empty_today")? {
+        ModelValue::Bool(value) => value,
+        other => {
+            return Err(format!(
+                "refusal: stage0_partition_rebuild_release_scope_empty_today returned {} instead of Bool",
+                other.type_label_public()
+            ))
+        }
+    };
     Ok(PartitionRebuildActuation {
         actuatable,
         package_closure,
         excluded_packages,
         decision_line,
+        release_scope_empty,
     })
 }
 
@@ -4178,7 +4309,7 @@ fn partitioned_rebuild_from_installed(
             actuation.decision_line
         ));
     }
-    if actuation.package_closure.is_empty() {
+    if actuation.package_closure.is_empty() && !actuation.release_scope_empty {
         return Err(format!(
             "StageSeedBuildRefused: actuation admitted an empty package closure -- {}",
             actuation.decision_line
@@ -4202,7 +4333,7 @@ fn partitioned_rebuild_from_installed(
 fn next_pass_executable_digest(workspace: &Path) -> Result<String, String> {
     let executable = workspace.join("target/release/claim_executor");
     fs::read(&executable)
-        .map(|bytes| v1_rt::bytes_identity_hash(&bytes))
+        .map(|bytes| bytes_digest(&bytes))
         .map_err(|e| {
             format!(
                 "StageOutputExecutableUnbound: read {}: {e}",
@@ -4269,20 +4400,8 @@ fn run_built_seed_regen(
             )
         })?;
     }
-    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    let shown = exe.to_string_lossy().into_owned();
-    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
-    // The executable-digest authority is the BARE identity hash: `current_exe_digest`,
-    // `next_pass_executable_digest`, and every receipt field (`producer_seed_digest`,
-    // `output_seed_digest`) carry `v1_rt::bytes_identity_hash` with no algorithm tag, and the
-    // .dag admission (`regen_admit_candidate_generation`) string-compares that family. This
-    // check admitted the bare form against `path_digest`'s `fnv1a64:`-prefixed form from its
-    // birth in #9771, so no staged install+rebuild+re-emit round could ever pass it -- the
-    // refusal below fired on every non-trivial convergence, with the two strings differing only
-    // by the tag. Read the same authority here; `path_digest` stays for artifact surfaces.
-    let observed_executable_digest = fs::read(&on_disk)
-        .map(|bytes| v1_rt::bytes_identity_hash(&bytes))
-        .map_err(|e| format!("read {} for digest: {e}", on_disk.display()))?;
+    let on_disk = current_exe_on_disk()?;
+    let observed_executable_digest = current_exe_digest()?;
     if observed_executable_digest != admitted_executable_digest {
         return Err(format!(
             "CandidateGeneratedByDifferentSeed: stage admitted executable {} but next generation would run {} at {}",
@@ -5819,11 +5938,15 @@ pub fn run_regen_round_cost(
         .iter()
         .map(|stage| stage.build_compiled_crates)
         .sum();
+    // The receipt field is named in the model's vocabulary: a "mirror" is the basename the
+    // partition rows and rosters key on. The stages carry projected PATHS, so project through
+    // the single bridge -- feeding paths to the decision model rendered a spurious
+    // MirrorHasNoOwningPackage line on every drifted round's receipt.
     let installed_mirrors = transaction_receipt
         .stages
         .iter()
         .flat_map(|stage| stage.surfaces.iter())
-        .map(|surface| surface.projected_path.clone())
+        .map(|surface| emit_path_basename(&surface.projected_path).to_string())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -8143,5 +8266,56 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
         .expect("emitter edit answers");
         assert_eq!(emitter.arm, "WholePopulation", "{}", emitter.line);
         assert!(emitter.members.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod seed_executable_digest_spelling_tests {
+    use super::*;
+
+    /// Every producer of a seed-executable digest must render ONE spelling, over one file.
+    ///
+    /// The two sides of `run_built_seed_regen`'s `!=` are a stage's `output_seed_digest`, which
+    /// comes from `next_pass_executable_digest`, and the observed side, which comes from
+    /// `current_exe_digest`. Before this control the first rendered bare via
+    /// `v1_rt::bytes_identity_hash` and the second carried `bytes_digest`'s `fnv1a64:` prefix, so
+    /// the comparison could never hold and generation 2 refused with two spellings of one value
+    /// printed side by side. The convergence tests above cannot see this: they INJECT the
+    /// seed-digest producer as a literal (`|| Ok("seed-2".to_string())`), so no real renderer runs
+    /// in them.
+    ///
+    /// This drives all three producers over ONE set of bytes, which is what makes the comparison
+    /// in `run_built_seed_regen` hold by construction rather than by luck: whatever the file is,
+    /// the admitted side and the observed side render it the same way.
+    #[test]
+    fn every_seed_executable_digest_producer_renders_one_spelling() {
+        // The producer that renders the ADMITTED side, exercised over a workspace whose
+        // `target/release/claim_executor` this test controls the bytes of.
+        let staged =
+            std::env::temp_dir().join(format!("regen-digest-spelling-{}", std::process::id()));
+        let release = staged.join("target/release");
+        fs::create_dir_all(&release).expect("staged workspace");
+        let executable = release.join("claim_executor");
+        let payload = b"not an executable; the digest does not care, and neither does the defect";
+        fs::write(&executable, payload).expect("staged executable");
+
+        let admitted = next_pass_executable_digest(&staged).expect("admitted side renders");
+        let observed = path_digest(&executable).expect("observed side renders");
+
+        // THE COMPARISON THE DEFECT LIVED IN, over one file, with both real renderers.
+        assert_eq!(admitted, observed);
+        assert_eq!(admitted, bytes_digest(payload));
+
+        fs::remove_dir_all(&staged).ok();
+
+        // And the third producer, over the running binary, renders the same way.
+        let on_disk = current_exe_on_disk().expect("current exe resolves");
+        let bytes = fs::read(&on_disk).expect("current exe readable");
+        assert_eq!(current_exe_digest().unwrap(), bytes_digest(&bytes));
+        assert_eq!(path_digest(&on_disk).unwrap(), bytes_digest(&bytes));
+
+        // The rendering is the prefixed one, so a digest read back from a receipt is
+        // self-describing rather than a bare integer whose family must be guessed.
+        assert!(current_exe_digest().unwrap().starts_with("fnv1a64:"));
     }
 }

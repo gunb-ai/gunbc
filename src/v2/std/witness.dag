@@ -15,6 +15,18 @@ fn witness_from_optional<T>(opt: Optional<T>, absent: Diagnostic) -> Witness<T> 
   }
 }
 
+// A bare `Violates { .. }` construction nested inside a struct literal, fold seed, or call
+// argument gives the v1 emitter no Witness-headed type to read its carrier from (the enclosing
+// expression's type is what reaches the constructor, never the argument position's), so those
+// sites emitted a located refusal. Constructing through this fn puts the variant in a
+// Witness-headed position -- the same shape witness_from_optional already emits -- and lets the
+// carrier unify at the call instead. Dissolves into bare constructions once inference records
+// per-call type-argument substitutions (the __applied_type_args channel named as the next-rung
+// trigger in src/v1/05_emit_rust.dag's rust_witness_carrier_from_witness_headed_type_node note).
+fn witness_violates<C>(diagnostic: Diagnostic) -> Witness<C> {
+  Violates { diagnostic: diagnostic }
+}
+
 type StructuralPropertyWitness {
   property: Symbol
   evidence: Node

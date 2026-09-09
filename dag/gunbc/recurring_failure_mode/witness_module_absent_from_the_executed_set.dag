@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.witness_module_absent_from_the_executed_set
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data witness_module_absent_from_the_executed_set: RecurringFailureMode = RecurringFailureMode {
+  identity: "witness_module_absent_from_the_executed_set" as NonEmptyStr,
+
+  receipts: [
+    "**a witness module that discriminates correctly is absent from the runner's executed set** (THE CHECK IS RIGHT, ITS ARMS ARE ENROLLED, AND ITS SUBJECT IS REAL -- the only missing thing is membership in the population the required run actually schedules, so every signal a reader consults says covered and none of them is the one that decides. ",
+
+    "THE INVALID STATE is a claim module present on disk, correct, and named in no schedule the required lane reads. The harm is that a green verdict is cited as coverage for the class that module owns. A floor verdict names what it EXECUTED; it cannot name what it never saw, and the reader supplies the missing quantifier without noticing. ",
+
+    "RUNG FOUND AT: 2 on paper and BELOW THE LADDER in fact. The mechanism exists and would fire; DESIGN.md section 4b(2) makes rung 2 conditional on that mechanism EXECUTING and STAYING ENROLLED, so an unenrolled wall holds no rung at all. This is the inert-lens tier the design document names: the machinery exists and nothing gates on it. ",
+
+    "SPECIMEN, gunbc#10688. Three hand-authored consumers still read `item_registry` by bare leaf after the registry was re-keyed on declaration identity, so the whole-graph read missed every time and every row silently took the unexpanded local entry. `test.claim.resolved_rust_fn_service_chain_consumer_witness` CATCHES THIS -- rebuilding with the fix reverted turns its shallow arm red -- and it was green across the whole branch, because the module appears nowhere in `src/v2/workflow/` and therefore never enters the executed set. `verdict=FloorClean` over 3551 claims was silent about it, and a cross-module claim added in the same PR inherited the dormancy: `planned` stayed 3551. ",
+
+    "THE DISTINGUISHING FACT, and the reason this is its own row rather than an instance of a narrow-subject check: THE WITNESS AND THE CLASS ARE BOTH PRESENT AND CORRECT. Nothing about the check is wrong. A reader who opens the file finds discriminating arms, a red control and an accurate name; a reader who greps the corpus finds the class covered; a reader who reads the floor verdict finds it clean. The defect is a JOIN that nobody performs -- claim modules on disk against claim modules scheduled -- and it is invisible from either side alone. Compare [[discriminating_arm_built_but_never_enrolled]], where the file itself withholds the arm, and [[a_written_row_is_not_a_firing_mechanism]]. ",
+
+    "THE CHEAP DETECTOR is a set difference the runner could compute for free: claim modules discovered on disk MINUS claim modules the required lanes schedule, printed with the verdict. Any non-empty remainder is a population the green does not speak for. The floor already prints `outside_this_runs_universe`, so the shape exists; what is missing is that a module absent from every schedule never reaches that accounting at all -- it is outside the universe of the thing that reports being outside the universe. ",
+
+    "RECOGNITION RULE: before citing a green run as coverage for a class, ask which SCHEDULE named the claim, not which file declares it. A claim's existence and a claim's execution are two facts, and only the second is what a verdict reports. ",
+
+    "FOURTH INDEPENDENT INSTANCE OF ONE SHAPE IN A SINGLE NIGHT, which is the argument that this is a class and not a coincidence: a check whose FORM is right and whose POPULATION is narrower than its name implies. The others, found by three other lanes: regen asking the filesystem a question `seed_retention_frontier` owns; doc_reachability asserting duplicate-key rather than slug-to-file; heal reporting SUCCESS on a head where build was red, because heal does not install that population. Each was individually reasonable and none was written down as a population claim, which is exactly why four of them could stand at once.)",
+  ],
+
+  evidence: [],
+}
