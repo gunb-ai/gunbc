@@ -60,8 +60,11 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutRep
 // anyone touching either end, while the recipe to re-derive them had been deleted to make room.
 
 // ONE OBSERVATION, AT THE GRAIN IT WAS TAKEN AND NO WIDER. Under claim_batch on a BuildBuddy
-// runner the directory-grain walk EXECUTES, COMPLETES AND PASSES at 6-7 seconds -- it is not
-// interrupted there. That establishes executability and says NOTHING about the required floor,
+// runner the directory-grain walk EXECUTES, COMPLETES AND PASSES -- it is not interrupted there,
+// and it costs far more than the per-claim line, which is why the observation is about
+// executability rather than about budget. Re-derive the cost by running that claim under
+// claim_batch rather than reading a figure here. That establishes executability and says NOTHING
+// about the required floor,
 // whose disposition for this claim is unpinned and where whether a poll-visible deadline is
 // armed the same way is unresolved. AND `interrupted_before_verdict` IS A DISPOSITION SHARED
 // ACROSS UNRELATED SUBJECTS, NOT A NAME FOR THIS POPULATION: the same cause appears on main-tip
@@ -90,10 +93,14 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutRep
 // red is not theirs -- a red on your own PR looks like yours. That is the deferred-cost shape
 // DESIGN §1 names: the principal paying is not the one who caused it.
 //
-// So this row's `interrupted_before_verdict` cause is recorded
-// as UNVERIFIED PENDING REQUIRED-FLOOR INSTRUMENTATION: not "cannot finish", and equally not
-// "finishes over budget on the floor", because the run that would license the second sentence
-// has not been taken.
+// THAT UNCERTAINTY IS RESOLVED AND THIS PARAGRAPH RECORDS ONLY HOW IT WAS RESOLVED. An earlier
+// cut said the `interrupted_before_verdict` cause was UNVERIFIED PENDING REQUIRED-FLOOR
+// INSTRUMENTATION, on the ground that no run licensing a floor-grain statement had been taken.
+// The instrumentation did not have to be built: every completed witnesses run already publishes
+// required-floor-claim-cost, so the run had been taken and its receipt was sitting unread. The
+// field below is the authority for what that harvest establishes; this annotation does not restate
+// it, and the reason the error is kept here rather than deleted is that reasoning about a subject
+// an artifact answers directly is the recurring shape this row keeps producing.
 data determinism_transitive_reachability: RungDrop = RungDrop {
   identity: "determinism_transitive_reachability" as NonEmptyStr,
 
