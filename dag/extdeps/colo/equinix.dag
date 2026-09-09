@@ -148,14 +148,32 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // refuses and a wrong ceiling admits a wrong answer confidently. The figure is also APPARENT power -
 // kW = kVA x power factor, none published - so 2kVA does not establish 2kW either.
 //
-// THE FIGURES ARE THEREFORE CARRIED IN PROSE AND THAT IS A KNOWN DEFECT, NOT A DESIGN. Review 62872
-// is right that a read numeric fact living in a NonEmptyStr is DESIGN section 2's anemic
-// decomposition, and that types.dag already carries the exact quantity - PublishedApparentPower over
-// VoltAmpere. The repair is an arm, DensityMinimumCommitted, on CabinetDensityClaim, which is the
-// same growth that file already made once for kVA-versus-kW. It is not taken here because the same
-// figure shape appears across several lanes' operators and the carrier owner has ruled that shape
-// changes land as ONE census-wide motion; adding the arm for Equinix alone would leave two shapes in
-// one carrier, which is the state that ruling exists to prevent. Escalated, not deferred silently.
+// THE FIGURES ARE THEREFORE CARRIED IN PROSE AND THAT IS A KNOWN DEFECT WITH A NAMED REPLACEMENT
+// ALREADY BUILT. Review 62872 is right that a read numeric fact living in a NonEmptyStr is DESIGN
+// section 2's anemic decomposition: types.dag already carries the quantity as PublishedApparentPower
+// over VoltAmpere, and these seven readings are unreachable by any fold, including density_claim_is_read.
+//
+// THE REPLACEMENT IS gunbc#10885, AND IT IS NOT THE SHAPE THIS ANNOTATION FIRST NAMED. I recommended a
+// DensityMinimumCommitted arm on CabinetDensityClaim. The carrier owner declined that shape and was
+// right to: a fourth arm for a floor needs a fifth for an interval, a sixth for an average, and a
+// seventh the first time an operator publishes a floor for air beside a cap for liquid - the
+// quantifier forked once per combination, which is the re-invention section 2 forbids. The direction
+// of a published figure is ORTHOGONAL to its unit and to its cooling medium, so it becomes one type
+// applied at every figure site, PublishedPowerQuantity, with CapabilityAtLeast carrying exactly what
+// these seven rows have read. DensityMarketedMax and DensityMarketedAirOnly keep their names and
+// their meaning narrows to which COOLINGS were published, never which direction.
+//
+// TWO PROPERTIES OF THAT DESIGN BEAR ON THESE ROWS. The one this module needed is preserved and
+// enforced by execution rather than by this paragraph: cabinet_density_air_ceiling returns Absent for
+// CapabilityAtLeast, so these figures can be carried at full precision and still contribute nothing
+// to a ceiling. The one neither this module nor its escalation had is that A FLOOR ADMITS - a 2 kVA
+// minimum admits a 2 kVA requirement and refuses nothing, which is a real screen and is precisely
+// what a prose obligation could never supply. Sending a floor to Absent would have been harmless and
+// useless; that is a better answer than the one asked for.
+//
+// WHEN #10885 LANDS these seven rows move from DensityUnread to CapabilityAtLeast carrying the
+// wording they already hold, and the resolve step below stays owed, because a floor is genuinely not
+// a maximum and the maximum is still unread.
 
 data equinix_ny1_density: CabinetDensityClaim = DensityUnread {
   obligation: "The operator's own NY1 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny1, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY1 occurs 19 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"2kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY1 (165 Halsey Street, Newark)."
