@@ -240,8 +240,21 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
         super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, NATIVE_COMPILE_ENTRY)
             .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
     let closure_identity = emitted_closure_identity(&crate_dir)?;
+    // THE BUILD'S PEAK MUST NOT STACK ON THE EMISSION'S RETAINED ARENA. The emission's resolved
+    // graph died inside `compile_entry_emission` and the emitted file texts die with `run` here,
+    // but glibc retains the freed arena — and the cargo build below needs gigabytes beside this
+    // process. Measured: the lane's first run held ~15GiB RSS into the build and was SIGKILLed
+    // (rc=137, no diagnostic). Drop, trim, and report in the same motion — the floor runner's
+    // full-inventory release is the pattern, and a trim that cannot release live memory doubles
+    // as the measurement that nothing here is still held.
+    drop(run);
+    let rss_before_kb = super::current_rss_bytes().map(|b| b / 1024);
+    let trim_reclaimed_kb = super::trim_retained_heap();
+    let rss_after_kb = super::current_rss_bytes().map(|b| b / 1024);
     eprintln!(
-        "required-ci: v2-native emitted {written} files into {} (closure {closure_identity}); cargo build",
+        "required-ci: v2-native emitted {written} files into {} (closure {closure_identity}); \
+         emission arena released (rss_kb_before={rss_before_kb:?} trim_reclaimed_kb={trim_reclaimed_kb:?} \
+         rss_kb_after={rss_after_kb:?}); cargo build",
         crate_dir.display()
     );
     let verdict = super::emitted_closure_compile_host::run_cargo(
@@ -720,6 +733,11 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         "required-ci: v2-native universe derived — {} v2.test.* identities",
         universe.len()
     );
+    // The derivation's interpreter context and the full inventory's source bytes died with the
+    // call above; return the retained arena before the emission peaks beside it (same release
+    // discipline as the emission-to-build handoff below).
+    let derivation_trim_kb = super::trim_retained_heap();
+    eprintln!("required-ci: v2-native derivation arena released (trim_reclaimed_kb={derivation_trim_kb:?})");
 
     // 2. PREPARATION. The seed emits the compiler closure once, in-process; cargo builds the
     // emitted crate; the receipt records all three identities.
