@@ -217,12 +217,12 @@ data three_sixty_five_staten_island_teleport: ColoFacilityRow = ColoFacilityRow 
 }
 
 data three_sixty_five_nyc_density_unread: CabinetDensityClaim = DensityUnread {
-  obligation: "The facilities-network map read 2026-09-08 is an address roster. Company caged-colocation pages name a high-density power tier at 6 kW-plus, which is a product tier not a per-site marketed maximum, so it is not copied onto these rows. Per-site density stays unread until a site cut sheet states a cabinet ceiling.",
+  obligation: "Operator page-sitemap has no New York City facility URL. The surfaces that exist: facilities-network roster (both UAs HTTP 200, 178955 bytes) names the sites (subject controls e.g. 60 Hudson=3, 325 Hudson=1, 375 Pearl=1, 7 Teleport=1) and has RAW kW=0 - that is an index, so the zero is not a per-site density reading. caged-colocation/ (both UAs HTTP 200, 256736 bytes) is a product page: subject tokens New York=0 and Hudson=0; it names a high-density tier '6kW+' when cabinet draw is higher - product language, excluded from these site rows. Per-site density stays unread until a site cut sheet states a cabinet ceiling.",
 }
 
 data three_sixty_five_nyc_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "cabinets, racks, custom cages, and suites; high-density power (6kW+)",
-  citation: "365datacenters.com caged-colocation page, read 2026-09-08",
+  citation: "365datacenters.com/caged-colocation/ from the operator page-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 256736 bytes. Subject tokens New York=0 Hudson=0 - company product page, not a NYC facility surface. Wording is the product list on that page, not a per-site cut sheet.",
 }
 
 data three_sixty_five_facilities: List<ColoFacilityRow> = [

@@ -43,11 +43,11 @@ data sabey_375_pearl: ColoFacilityRow = ColoFacilityRow {
 }
 
 data sabey_375_pearl_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The 375 Pearl page read 2026-09-08 publishes building power (18 MW ramping to 40 MW) and N+2 feeder capacity, not a marketed kilowatts-per-cabinet ceiling. Reading campus megawatts as cabinet density is refused.",
+  obligation: "sabey.com/real-estate/375-pearl-manhattan from the operator realEstate sitemap. Raw fetch 2026-09-09: no User-Agent HTTP 403, 5344 bytes (interstitial); full Chrome User-Agent HTTP 200, 128437 bytes. Subject control in RAW 200 body: 375 Pearl=22. Token cabinet=0. Excluded kW: inside 'cost per kWh', not a cabinet ceiling. Building MW is not cabinet density.",
 }
 
 data sabey_375_pearl_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "sabey.com 375 Pearl Manhattan page, read 2026-09-08, names colocation beside powered shell and build-to-suit and does not name a single-cabinet unit. A quote must confirm the smallest sellable grain.",
+  obligation: "Same 2026-09-09 full-UA 200 body (128437 bytes, subject 375 Pearl=22): RAW cabinet=0 and cage=0. The page names colocation beside powered shell and build-to-suit. A quote must confirm the smallest sellable grain.",
 }
 
 data sabey_retail_rates: RetailRateStanding = RatesQuoteOnly {

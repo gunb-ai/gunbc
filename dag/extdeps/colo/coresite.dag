@@ -43,7 +43,7 @@ data coresite_ny1: ColoFacilityRow = ColoFacilityRow {
 }
 
 data coresite_ny1_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The NY1 page read 2026-09-08 lists cabinets and cages, AC and DC power, and that liquid cooling is offered, but no marketed kilowatts per cabinet. Do not invent a density from building square footage.",
+  obligation: "coresite.com/data-center/ny1-new-york-ny from the operator sitemap. Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 225984 bytes. Subject control in RAW bytes: NY1=109. Token kW=0 and kVA=0. Lists cabinets and cages, AC and DC power, and that liquid cooling is offered. Do not invent a density from building square footage.",
 }
 
 data coresite_ny1_retail_grain: RetailGrainStanding = SingleCabinetOffered {

@@ -45,7 +45,7 @@ data dataverge_brooklyn: ColoFacilityRow = ColoFacilityRow {
 }
 
 data dataverge_brooklyn_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The Brooklyn page read 2026-09-08 publishes raised-floor area, N+1/2N distribution and 1.75 MW generator backup, not a marketed kilowatts-per-cabinet ceiling.",
+  obligation: "dataverge.com interconnected-data-center-brooklyn page. Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 532481 bytes. Subject control in RAW bytes: Industry City=9 (not the borough token Brooklyn). No RAW substring kW. The case-insensitive kw hit is ISO country code KW (Kuwait) in embedded JSON, excluded. Publishes raised-floor area, N+1/2N distribution and 1.75 MW generator backup, not a marketed kilowatts-per-cabinet ceiling.",
 }
 
 data dataverge_brooklyn_retail_grain: RetailGrainStanding = SingleCabinetOffered {

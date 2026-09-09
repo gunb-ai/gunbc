@@ -81,7 +81,7 @@ data equinix_ny9: ColoFacilityRow = ColoFacilityRow {
 }
 
 data equinix_ny9_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The NY9 spec table read 2026-09-08 states a Minimum Cabinet Density of 2 kVA, which is a floor not a marketed maximum, and states no air-cooled or liquid-cooled cabinet ceiling. Do not read 2 kVA as density. A quote or a later spec that names a maximum is required.",
+  obligation: "equinix.com NY9 page. Raw fetch 2026-09-09: no User-Agent HTTP 403, 494 bytes; full Chrome User-Agent HTTP 200, 276964 bytes. Subject control in RAW 200 body: NY9=13. Spec table Minimum Cabinet Density 2kVA (RAW kVA=1) is a floor not a marketed maximum. Excluded kW: the one RAW substring kW sits inside a base64 blob, not a density sentence. Do not read 2 kVA as density. A quote or a later spec that names a maximum is required.",
 }
 
 data equinix_ny9_retail_grain: RetailGrainStanding = SingleCabinetOffered {

@@ -248,8 +248,6 @@ data nyc_single_cabinet_grains: List<RetailGrainStanding> = [
   digital_realty_jfk13_retail_grain,
   coresite_ny1_retail_grain,
   dataverge_brooklyn_retail_grain,
-  databank_lga1_retail_grain,
-  databank_lga2_retail_grain,
   equinix_ny9_retail_grain,
   h5_nyc_325_hudson_retail_grain,
   three_sixty_five_nyc_retail_grain,
@@ -259,6 +257,8 @@ data nyc_unread_grains: List<RetailGrainStanding> = [
   sabey_375_pearl_retail_grain,
   colocation_america_nydc1_retail_grain,
   colocation_america_nydc2_retail_grain,
+  databank_lga1_retail_grain,
+  databank_lga2_retail_grain,
 ]
 
 fn unread_density_is_silent(d: CabinetDensityClaim) -> Bool {

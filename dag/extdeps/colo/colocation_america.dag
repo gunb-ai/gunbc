@@ -55,11 +55,11 @@ data colocation_america_nydc1: ColoFacilityRow = ColoFacilityRow {
 }
 
 data colocation_america_nydc1_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The New York page read 2026-09-08 lists the 60 Hudson suite and a phone number, not a per-cabinet kilowatt claim.",
+  obligation: "colocationamerica.com/data-center-locations/new-york from the operator page-sitemap. Raw fetch 2026-09-09: no User-Agent HTTP 403, 5506 bytes; full Chrome User-Agent HTTP 200, 182447 bytes. Subject control in RAW 200 body: NYDC1=4 and 60 Hudson=8 (not the site token New York). Token cabinet=0. No RAW substring kW. Case-insensitive kw hits are inside the minified Tidio id tudkwjyu, excluded. Not a per-cabinet kilowatt claim.",
 }
 
 data colocation_america_nydc1_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "The New York page read 2026-09-08 does not restate the 1U-through-cabinet grain published on the operator's New Jersey navigation; confirm the grain sold in this suite before treating it as a small reversible footprint.",
+  obligation: "Same 2026-09-09 full-UA 200 body (182447 bytes, subject NYDC1=4 / 60 Hudson=8): RAW cabinet=0 and cage=0. The New York location page does not restate the 1U-through-cabinet grain on the operator's New Jersey navigation and product pages. Confirm the grain sold in this suite before treating it as a small reversible footprint.",
 }
 
 data colocation_america_nydc2: ColoFacilityRow = ColoFacilityRow {
@@ -75,11 +75,11 @@ data colocation_america_nydc2: ColoFacilityRow = ColoFacilityRow {
 }
 
 data colocation_america_nydc2_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The New York page read 2026-09-08 lists the 16th-floor suite, not a per-cabinet density.",
+  obligation: "Same New York location fetch as NYDC1 (full UA HTTP 200, 182447 bytes). Subject control NYDC2=4. Lists the 16th-floor suite at 111 8th, not a per-cabinet density. No RAW substring kW (Tidio tudkwjyu excluded).",
 }
 
 data colocation_america_nydc2_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "Same as NYDC1: the New York page does not publish the retail unit grain for this suite.",
+  obligation: "Same as NYDC1: RAW cabinet=0 on the New York location page with subject control NYDC2=4.",
 }
 
 data colocation_america_retail_rates: RetailRateStanding = RatesQuoteOnly {
