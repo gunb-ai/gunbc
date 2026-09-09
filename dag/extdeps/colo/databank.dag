@@ -8,7 +8,6 @@ import extdeps.colo.types {
   CabinetDensityClaim, DensityMarketedMax, DensityUnread,
   PublishedRealPower,
   RetailGrainStanding, SingleCabinetOffered,
-  CitationVerification, VerifiedInPageBytes,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -68,12 +67,7 @@ data databank_lga4_density: CabinetDensityClaim = DensityMarketedMax {
   air_cooled: PublishedRealPower { power: watt(count: 35000) },
   liquid_cooled: PublishedRealPower { power: watt(count: 100000) },
   claim_wording: "35kW+ Cab Density Air",
-  citation: "databank.com Orangeburg campus LGA4 page, raw fetch 2026-09-09 HTTP 200, 113793 bytes. The air cell is one <li> with the numeral in <strong>; the adjacent <li> is '100kW+ Cab Density Liquid' (full word Liquid, not Liq) - two items, so a slash-joined sentence is not page text. Plus signs are the operator's; these are marketed floors on a maximum.",
-  verification: VerifiedInPageBytes {
-    fetched_on: "2026-09-09",
-    byte_count: 113793,
-    element_note: "two adjacent <li>: <strong>35kW+</strong> Cab Density Air and <strong>100kW+</strong> Cab Density Liquid; claim_wording is the air cell only",
-  },
+  citation: "databank.com Orangeburg campus LGA4 page, raw fetch 2026-09-09 HTTP 200, 113793 bytes. Air cell is one <li> with the numeral in <strong>; the adjacent <li> is '100kW+ Cab Density Liquid' (full word Liquid) - two items. Plus signs are the operator's.",
 }
 
 data databank_lga4_retail_grain: RetailGrainStanding = SingleCabinetOffered {

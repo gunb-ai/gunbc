@@ -7,7 +7,6 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressUnread, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityMarketedAirOnly, DensityUnread, CabinetPowerFigure, PublishedRealPower,
   RetailGrainStanding, SingleCabinetOffered,
-  CitationVerification, RenderedCaptureOnly,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -55,10 +54,7 @@ data iron_mountain_retail_rates: RetailRateStanding = RatesQuoteOnly {
 data iron_mountain_nje1_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 30000) },
   claim_wording: "high-density up to 30 kW/rack",
-  citation: "ironmountain.com NJE-1 solution guide, read 2026-09-08 through a summarizing fetch. Raw fetch 2026-09-09 HTTP 429 Vercel Security Checkpoint, 32 KB interstitial, no facility content.",
-  verification: RenderedCaptureOnly {
-    obstacle: "HTTP 429 Vercel Security Checkpoint; 32 KB interstitial; no operator facility bytes. Figure retained from the summarizing read; wording unverified as page text.",
-  },
+  citation: "ironmountain.com NJE-1 solution guide, read 2026-09-08 through a summarizing fetch. Raw fetch 2026-09-09 HTTP 429 Vercel Security Checkpoint, 32 KB interstitial, no facility content. Figure retained; wording unverified as page text.",
 }
 
 data iron_mountain_nje1_retail_grain: RetailGrainStanding = SingleCabinetOffered {
