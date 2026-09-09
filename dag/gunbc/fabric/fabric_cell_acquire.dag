@@ -16,6 +16,7 @@ import extdeps.systemd {
   MemorySwapMax,
   TasksMax,
   CPUWeight,
+  CPUQuota,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fabric_cell_converge {
@@ -197,6 +198,7 @@ type FabricCellBoundaryReading
       memory_swap_max: String
       tasks_max: String
       cpu_weight: String
+      cpu_quota_per_sec: String
     }
   | BoundaryReadRefused { cause: String }
 
