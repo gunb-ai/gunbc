@@ -110,6 +110,7 @@ test fn an_unobserved_revision_refuses_rather_than_stamping_the_modelled_constan
         f: f,
         observed_revision: none,
         observed_hash_block_size: Absent,
+        observed_max_num_batched_tokens: Absent,
         observed_launch: Absent,
         source_capture_digest: w_capture(),
       ) {
@@ -127,6 +128,7 @@ test fn a_supplied_revision_without_hash_block_size_refuses_rather_than_copying_
         f: f,
         observed_revision: Present { value: w_foreign_revision() },
         observed_hash_block_size: Absent,
+        observed_max_num_batched_tokens: Absent,
         observed_launch: Absent,
         source_capture_digest: w_capture(),
       ) {
@@ -144,6 +146,7 @@ test fn a_layout_without_a_launch_is_not_evidence() -> Bool {
         f: f,
         observed_revision: Present { value: w_foreign_revision() },
         observed_hash_block_size: Present { value: token_count(count: 32) },
+        observed_max_num_batched_tokens: Absent,
         observed_launch: Absent,
         source_capture_digest: w_capture(),
       ) {
@@ -164,6 +167,7 @@ test fn a_supplied_revision_is_the_one_the_readings_carry() -> Bool {
             f: f,
             observed_revision: Present { value: w_foreign_revision() },
             observed_hash_block_size: Present { value: token_count(count: 32) },
+            observed_max_num_batched_tokens: Present { value: token_count(count: 8192) },
             observed_launch: Present { value: launch },
             source_capture_digest: w_capture(),
           ) {

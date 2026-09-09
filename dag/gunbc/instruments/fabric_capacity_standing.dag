@@ -399,12 +399,13 @@ fn reported_from_fields(pool: VllmObservedKvPool, f: CapacityProbeFields, revisi
 // HASH BLOCK SIZE IS THE SAME KIND OF FACT. cache-config block_size is the scheduler minimum;
 // hash_block_size is a separately named field on ResolvedKvLayout. Stamping the neighbour is
 // fabrication. The caller supplies the observation, or this fold refuses.
-fn layout_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision, hash_block_size: TokenCount) -> ResolvedKvLayout {
+fn layout_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision, hash_block_size: TokenCount, max_num_batched_tokens: TokenCount) -> ResolvedKvLayout {
   resolved_kv_layout(
     allocator_blocks: f.allocator_blocks,
     scheduler_block_size: f.block_size,
     hash_block_size: hash_block_size,
     max_model_len: f.max_model_len,
+    max_num_batched_tokens: max_num_batched_tokens,
     groups: [],
     established_at_revision: revision,
   )
@@ -438,6 +439,7 @@ fn readings_from_fields(
   f: CapacityProbeFields,
   observed_revision: VllmSourceRevision?,
   observed_hash_block_size: TokenCount?,
+  observed_max_num_batched_tokens: TokenCount?,
   observed_launch: VllmServingLaunch?,
   source_capture_digest: ContentHash,
 ) -> ProbeReadings {
@@ -450,6 +452,9 @@ fn readings_from_fields(
           match observed_launch {
             Absent => ProbeReadingsRefused { cause: "a layout is evidence only when it is bound to a launch, so readings_from_fields will not mint a free ResolvedKvLayout" as NonEmptyStr }
             Present { value: launch } =>
+          match observed_max_num_batched_tokens {
+            Absent => ProbeReadingsRefused { cause: "the probe did not observe max_num_batched_tokens, so it will not stamp max_model_len onto that field" as NonEmptyStr }
+            Present { value: batched } =>
               match pool_from_fields(f: f, revision: revision) {
                 Absent => ProbeReadingsRefused { cause: "the captured KV-cache-size reading was refused by its own carrier" as NonEmptyStr }
                 Present { value: pool } =>
@@ -461,13 +466,14 @@ fn readings_from_fields(
                         reported: reported,
                         receipt: admit_kv_layout(
                           launch: launch,
-                          layout: layout_from_fields(f: f, revision: revision, hash_block_size: hash_bs),
+                          layout: layout_from_fields(f: f, revision: revision, hash_block_size: hash_bs, max_num_batched_tokens: batched),
                           reported: reported,
                           source_capture_digest: source_capture_digest,
                         ),
                       }
                   }
               }
+          }
           }
       }
   }

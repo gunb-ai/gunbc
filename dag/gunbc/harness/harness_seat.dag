@@ -824,3 +824,7 @@ fn harness_seat_release_wire(r: HarnessSeatRelease) -> String {
     HarnessSeatReleaseRefused { detail: d } => join(["release refused: ", d], "")
   }
 }
+
+fn harness_now_epoch() -> EpochSecs? {
+  now_epoch_seconds()
+}

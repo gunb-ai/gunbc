@@ -27,11 +27,8 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_runtime_build_dir, exec_word_is_plain,
 }
 import gunbc.spark.pair_serving_observed { first_pair_container_runtime }
-<<<<<<< HEAD
 import gunbc.spark.model_snapshot_acquisition { ModelSnapshotRole, model_snapshot_role_for }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
-=======
->>>>>>> 1d8d5b41e1 (Consume pair realization names and measure carriers on the capacity probe.)
 import gunbc.spark.pair_serving_launch_receipt {
   ServingStanding, serving_standing, serving_standing_wire,
 }
