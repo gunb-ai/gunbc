@@ -160,11 +160,18 @@ fn coverage_density_read_count(c: RegionCoverage) -> Int? {
 // THE COUNTS ARE GONE AND THE ROWS ARE HERE INSTEAD, which is review 62780's finding fixed at the
 // root: 28 and 1 were hand-transcribed measurements of the repo's own live corpus, and DESIGN
 // section 6 says a measurement is cited by naming the producer that re-derives it. Deriving them
-// immediately proved the point - the corridor holds TWENTY-SIX facility rows, where 28 had been
-// typed. Two separate errors: 17 pre-existing rows were added as 18, and Colocation America NJDC2
-// was carried as a facility until the operator's own pages, read on 2026-09-09, turned out to name
-// no Secaucus site at all. The second is the one worth noting - it was found AFTER the count became
-// derived, and the fold absorbed it with no number to edit.
+// immediately proved the point - 28 had been typed where the rows said 27, because 17 pre-existing
+// rows were added as 18.
+//
+// THE COUNT THEN MOVED TWICE MORE AND NO NUMBER WAS EVER EDITED, which is the property being bought
+// and it is worth recording honestly INCLUDING the move that was my fault. It went 27 -> 26 when
+// Colocation America NJDC2 was demoted on a reading that the operator named no Secaucus site, and
+// 26 -> 27 when that demotion was RETRACTED: the operator names it in a heading of its own, and the
+// zero had come from a tag-stripper that destroyed the page it read. So the fold caught one real
+// miscount and then faithfully carried one of my bad readings for as long as the bad row existed.
+// That is the correct behaviour and the honest summary of it: a derivation is exactly as good as its
+// rows, and its value is that a wrong row is the ONLY thing that has to be fixed - there was never a
+// second number sitting somewhere going stale while the roster changed under it.
 //
 // THE WITNESS WAS GREEN BESIDE THAT ERROR FOR AS LONG AS IT EXISTED. It asserted that read
 // densities never exceed facilities, and 1 <= 28 is exactly as true as 1 <= 27. Choosing a relation

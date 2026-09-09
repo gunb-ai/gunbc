@@ -268,8 +268,8 @@ test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bo
 }
 
 // THE CORRIDOR'S CENTRAL FINDING, MADE MACHINE-CHECKABLE RATHER THAN ASSERTED IN A PR COMMENT.
-// The survey's headline is that the density axis CANNOT screen this corridor - 26 facilities, one
-// readable density - while the grain axis can: the corridor will sell one cabinet, it just will not
+// The survey's headline is that the density axis CANNOT screen this corridor - one readable density
+// across the whole of it - while the grain axis can: the corridor will sell one cabinet, it just will not
 // say in public what that cabinet may draw. Stated in prose that is a claim nobody can re-derive.
 // Stated as this pairing it is a property of named rows, and DESIGN section 6 asks for exactly that
 // direction - name the producer that re-derives a measurement rather than transcribing its output.
