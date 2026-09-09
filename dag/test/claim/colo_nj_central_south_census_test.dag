@@ -3,7 +3,7 @@ module test.claim.colo_nj_central_south_census
 import std.types { Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types { CabinetDensityClaim, RetailGrainStanding }
-import test.claim.colo_census_witness_support {
+import test.claim.colo_cabinet_density_witness {
   established_watts, ceiling_refuses_at, has_ceiling, grain_admits_single_cabinet,
 }
 import extdeps.colo.njfx { njfx_wall_density, njfx_wall_retail_grain }

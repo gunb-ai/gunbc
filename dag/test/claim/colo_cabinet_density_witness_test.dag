@@ -4,9 +4,6 @@ import std.types { Bool, Int }
 import std.measure { Watt, watt, watt_count, volt_ampere }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import test.claim.colo_census_witness_support {
-  established_watts, ceiling_refuses_at, has_ceiling, grain_admits_single_cabinet,
-}
 import extdeps.colo.types {
   CabinetDensityClaim, DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
   CabinetPowerFigure, PublishedRealPower, PublishedApparentPower,
@@ -25,6 +22,48 @@ import gunbc.colo_census_coverage {
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FOUR HELPERS EVERY COLO CENSUS WITNESS USES, DECLARED ONCE HERE AND IMPORTED BY THE OTHERS.
+// They were briefly moved to a separate support module to satisfy a duplication finding; that motion
+// rebound ten call sites in this file from a local declaration to an imported one, which the
+// namespace wave wall correctly refused as ten TargetChanged bindings. The duplication finding is
+// satisfied either way - what matters is that ONE module declares them - and leaving them where they
+// were already bound costs no admission, so this is the cheaper of two correct shapes.
+//
+// The sentinel Int these return is why they are not carrier operations: the carrier deliberately
+// returns Watt? and CabinetPowerCeiling? so that absence is unconstructible as a number, and this is
+// the one place that shape is traded for comparability. The convention that must never fork is in
+// the false arm - not refused means UNDETERMINED, never admitted.
+
+fn established_watts(d: CabinetDensityClaim) -> Int {
+  match cabinet_density_air_established(d: d) {
+    Present { value } => watt_count(w: value),
+    Absent => 0 - 1,
+  }
+}
+
+fn ceiling_refuses_at(d: CabinetDensityClaim, required: Int) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => ceiling_refuses(c: value, required: watt(count: required)),
+    Absent => false,
+  }
+}
+
+fn has_ceiling(d: CabinetDensityClaim) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => true,
+    Absent => false,
+  }
+}
+
+fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
+  match g {
+    SingleCabinetOffered { wording, citation } => true,
+    CageOrSuiteMinimum { wording, citation } => false,
+    RetailGrainUnread { obligation } => false,
+  }
+}
+
 
 // THE CARRIER'S CONSUMER. Review 62722 found the first cut of this module dangling: a type, two
 // functions and six data rows that nothing read, with the controls living only in a scratch probe
