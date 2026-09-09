@@ -47,6 +47,20 @@ import std.claim_evidence {
 // THE OPERATIVE RULE: material obtained through run_command or a vendor's private browsing may
 // inspire an information need, but cannot construct admissible evidence. The fact is reacquired
 // here or it does not count.
+//
+// DECLARED FRONTIER, AND THE CONDITION THAT ENDS IT. Nothing in the tree consumes this module yet:
+// it is admissible under DESIGN 3c only as a frontier, and only because the trigger is stated here
+// on the carrier rather than in a PR body or a commit message, neither of which a reader of this
+// module can see. THE CAPABILITY THIS WAITS ON is the harness admitting a tool that routes a stated
+// information need through this retrieval path -- not any particular pull request, which would be
+// an artifact standing where a capability belongs (DESIGN 4b(3)). Until that capability exists the
+// evidence join is exercised only by its witnesses.
+//
+// THE DISSOLUTION CONDITION: if that capability does not land, this module is DELETED, not left
+// standing. An unconsumed model is redundant work under DESIGN 2 -- it costs authoring, review and
+// maintenance and displaces nothing -- and keeping it because it is well shaped is the experimental
+// residue DESIGN 6 names. The request surface that once sat beside this (InformationNeed,
+// InformationQueryRequest) was deleted on exactly this ground; what remains is held to it too.
 
 // Freshness is a property of the CLAIM the evidence is offered for, not of the document. A
 // time-invariant proposition is not stale because the page is old; a current-state proposition is
