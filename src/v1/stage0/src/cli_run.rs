@@ -90,6 +90,7 @@ mod census_heads;
 pub mod declaration_index;
 pub mod derived_row_roster;
 mod required_floor_runner;
+mod native_lane_runner;
 pub mod rostered_row_join;
 mod serve_budget_refusal;
 pub(crate) use required_floor_runner::*;
@@ -97,6 +98,7 @@ pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
     run_claim_measured, run_required_floor,
 };
+pub use native_lane_runner::run_required_v2_native;
 mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;

@@ -88,7 +88,9 @@ const PROBE_ROOT_DIR_NAME: &str = "gunbc-emit-compile";
 ///
 /// Deriving the name per entry makes each probe crate its own package, so fingerprints cannot
 /// alias; dependencies are separate packages and stay warm.
-fn probe_package_name(entry: &str) -> String {
+/// `pub(crate)` so the v2-native lane's harness names the built binary by the same package name
+/// the manifest writer gave the crate — one derivation, never a second slug beside it.
+pub(crate) fn probe_package_name(entry: &str) -> String {
     let slug: String = entry
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
@@ -584,7 +586,11 @@ fn probe_crate_dir(probe_root: &Path, entry: &str) -> PathBuf {
 }
 
 /// Write the emitted Rust files plus a manifest, and return the crate directory.
-fn write_probe_crate(
+///
+/// `pub(crate)` for the required-v2-native lane's harness (cli_run::native_lane_runner), which
+/// prepares the emitted-native compiler through this same writer rather than growing a second
+/// one beside it (DESIGN §2 — the note on `write_probe_crate_files` is the argument).
+pub(crate) fn write_probe_crate(
     run: &CompileRun,
     probe_root: &Path,
     entry: &str,
@@ -697,7 +703,9 @@ fn attributed_diagnostic(
 ///
 /// Phases within one required run are sequential in one process, so nothing else holds cargo's
 /// lock on that directory.
-fn run_cargo(crate_dir: &Path, workspace: &Path, attribution_symbol: &str) -> CargoVerdict {
+/// `pub(crate)` for the same consumer as `write_probe_crate`: the v2-native lane builds the
+/// emitted compiler crate through this same cargo invocation.
+pub(crate) fn run_cargo(crate_dir: &Path, workspace: &Path, attribution_symbol: &str) -> CargoVerdict {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let mut command = std::process::Command::new(&cargo);
     command

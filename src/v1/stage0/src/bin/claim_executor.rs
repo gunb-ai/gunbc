@@ -1054,6 +1054,25 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("floor");
         }
 
+        // THE NATIVE ROUTE PHASE. The harness derives the v2.test.* universe with the floor's
+        // own discovery producer, prepares the emitted-native compiler through the emit-compile
+        // machinery, runs the universe plus controls through that binary by explicit path with
+        // the old route withdrawn, and hands the minted receipt to the admission authority —
+        // the phase greens exactly when gunbc.witness_v2_native_route admits it.
+        if required_ci_phase_selected(RequiredCiPhase::V2Native, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase v2-native (emitted-native compiler executes the derived v2.test.* universe)"
+            );
+            match v1_compiler::cli_run::run_required_v2_native(&source_roots) {
+                Ok(()) => {}
+                Err(e) => {
+                    eprintln!("required-ci: v2-native refused: {e}");
+                    phase_failures.push(format!("v2-native refused: {e}"));
+                }
+            }
+            ran.push("v2-native");
+        }
+
         // COUNTER-KEY CENSUS (dashboard node adhoc-af8a3fe8-13d): this is the
         // phase population. The required-floor aggregate below counts claim outcomes, so the
         // formerly shared `failed` key gave one spelling two meanings in one process's output.
@@ -1549,6 +1568,7 @@ fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
 enum RequiredCiLane {
     Build,
     Witnesses,
+    V2Native,
 }
 
 impl RequiredCiLane {
@@ -1556,6 +1576,7 @@ impl RequiredCiLane {
         match self {
             RequiredCiLane::Build => "build",
             RequiredCiLane::Witnesses => "witnesses",
+            RequiredCiLane::V2Native => "v2-native",
         }
     }
 
@@ -1566,8 +1587,9 @@ impl RequiredCiLane {
         match value {
             "build" => Ok(RequiredCiLane::Build),
             "witnesses" => Ok(RequiredCiLane::Witnesses),
+            "v2-native" => Ok(RequiredCiLane::V2Native),
             other => Err(format!(
-                "unknown --required-lane: {other} (expected build | witnesses)"
+                "unknown --required-lane: {other} (expected build | witnesses | v2-native)"
             )),
         }
     }
@@ -1580,6 +1602,7 @@ enum RequiredCiPhase {
     GeneratedArtifact,
     RegenFixedPoint,
     Floor,
+    V2Native,
 }
 
 impl RequiredCiPhase {
@@ -1590,6 +1613,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
+            RequiredCiPhase::V2Native => "v2-native",
         }
     }
 
@@ -1615,21 +1639,29 @@ impl RequiredCiPhase {
             // measurement to reference and nothing to compare.
             RequiredCiPhase::RegenFixedPoint => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
+            // THE NATIVE ROUTE IS ITS OWN LANE, NOT A FLOOR RIDER: the lane's no-fallback
+            // control withdraws the old compiler/interpreter route's CLI for the spawn window,
+            // and the floor lane's own execution IS that route -- the two cannot share a job
+            // (lane authority: gunbc.witness_v2_native_route).
+            RequiredCiPhase::V2Native => RequiredCiLane::V2Native,
         }
     }
 }
 
-// THE REQUIRED GATE IS FIVE PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
+// THE REQUIRED GATE IS SIX PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
 // generated-artifact returned after its declared exposure produced a real stale projection on
 // main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
 // identities would preserve the independently-green outcomes this composition removes. The other
-// three removed phases remain outside required CI and inside the declared drop.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+// three removed phases remain outside required CI and inside the declared drop. The sixth,
+// v2-native, is the 2026-09-09 operator-authorized native-route lane: the emitted-native
+// compiler executes the derived v2.test.* universe (gunbc.witness_v2_native_route).
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::Floor,
+    RequiredCiPhase::V2Native,
 ];
 
 /// The `.dag` coproduct this enum realizes, and the declaration whose variants it must equal.
@@ -1641,12 +1673,13 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
     "ParsePhase",
     "NamespaceWaveAdmissionPhase",
     "GeneratedArtifactPhase",
     "RegenFixedPointPhase",
     "FloorPhase",
+    "V2NativePhase",
 ];
 
 /// Refuse if the host phase enum and the `.dag` phase roster disagree — the same both-directions
