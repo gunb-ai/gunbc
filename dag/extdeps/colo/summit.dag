@@ -1,9 +1,8 @@
 module extdeps.colo.summit
 
 import std.types { NonEmptyStr }
-import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower, RetailGrainStanding, SingleCabinetOffered }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -48,18 +47,30 @@ data summit_retail_rates: RetailRateStanding = RatesQuoteOnly {
   obligation: "No pricing is published on any page read 2026-08-18, and the page markets suites and custom deployments rather than per-cabinet retail. The quote must establish whether a small reversible footprint (2U to one cabinet) is sold at all, and who the contracting operator at 1 Enterprise Avenue N is.",
 }
 
-// A READ DENSITY, AND THE ONLY ONE IN THIS CORRIDOR THAT ARRIVES ATTACHED TO A PRODUCT. The
-// operator's colocation product page markets a High-Density Cabinet at 12 kW delivered as two
-// 208V/50A A+B redundant feeds in a 42U cabinet. That is a per-cabinet figure on the operator's own
-// page, so it is READ - with two honesty marks kept beside it. It is an OPERATOR-LEVEL product
-// claim: the Secaucus facility page read the same day states no density, so whether the 12 kW
-// cabinet is orderable at 1 Enterprise Avenue N specifically is a quote question. And 12 kW is the
-// PRODUCT figure, not a hall maximum; a request for more is a different conversation.
-data summit_high_density_cabinet: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 12000) },
-  claim_wording: "High-Density Colo: 42U rack space, 12 kW of 2x 208V/50A A+B redundant power",
-  citation: "summithq.com services/data-center-services/colocation page, read 2026-09-08 and re-read under a verbatim-only prompt 2026-09-09, which reproduced the figure and surfaced the Standard package beside it at 42U and 5 kW of 208V/30A A+B. Operator PRODUCT page, not the Secaucus facility page - summithq.com's Secaucus page, read the same day, states no per-cabinet figure. Note the page's own unit is a 42U RACK: the word cabinet appears on it only in the biometrics add-on, so the two are treated as one unit here on the page's own packaging and not on an assumed equivalence. A raw fetch could not be used to confirm the string a third way - summithq.com answers curl with a Cloudflare 403 - so this reading rests on the rendered page alone.",
+// THE DENSITY I REPORTED HERE IS WITHDRAWN, AND THE RAW BYTES ARE WHAT WITHDREW IT. Two rendered
+// reads of the operator's colocation product page gave me "12 kW of 2x 208V/50A A+B redundant
+// power in a 42U configuration" and I recorded it as this corridor's second read density. Fetching
+// the same URL as bytes on 2026-09-09 - which is what the fleet-wide verification rule asks for -
+// reproduced that string exactly AND showed what sits immediately above it: a promotional block
+// headed "Limited Time: Chicago-Area Facility". The 5 kW Standard and 12 kW High-Density packages
+// are inside that block, under its "Valid for new customers only" terms.
+//
+// So the figure is real, published, and about a facility in another metro. Reading it as a Secaucus
+// cabinet density would be the peer-facility inference this carrier exists to make unwritable - the
+// same error as carrying Hivelocity's Orangeburg 20 kW to Newark, arrived at by a subtler route,
+// because here the two facilities share one operator and one page rather than two pages. A
+// rendered capture cannot show you the banner a figure sits under; only the byte order can.
+data summit_secaucus_density: CabinetDensityClaim = DensityUnread {
+  obligation: "summithq.com publishes exactly two per-cabinet kW figures - \"42U rack space 5 kW of 208V/30A A+B redundant power\" at 1,600 USD a month and \"42U rack space 12 kW of 2x 208V/50A A+B redundant power\" at 3,600 USD a month, both confirmed in raw bytes 2026-09-09 - and both sit inside a promotional block headed \"Limited Time: Chicago-Area Facility\". Neither is stated for Secaucus, and summithq.com's Secaucus facility page read 2026-09-08 states no per-cabinet figure at all. Resolve by asking whether the High-Density package is orderable at 1 Enterprise Avenue N and at what price; if it is, this becomes the corridor's first PRICED dense cabinet and the answer matters more than any other quote in this census.",
 }
+
+// AND THE PRICED PACKAGES ARE RECORDED WITHOUT BEING CLAIMED FOR THIS CORRIDOR. They are the
+// densest priced colocation product this census has seen anywhere - 12 kW in one 42U cabinet, where
+// the densest priced product previously modelled in the metro is InterServer's 2,500 W across 20U -
+// so the reading is worth keeping even though the facility it applies to is out of region. It is
+// deliberately NOT a RetailPlanRow: a plan row here would assert this operator sells that plan at
+// its modelled facility, which is the thing the banner says it does not.
+data summit_chicago_area_package_note: NonEmptyStr = "Read from raw bytes 2026-09-09 under the banner \"Limited Time: Chicago-Area Facility\": Standard Colo Package, 1,600 USD a month, 42U rack space, 5 kW of 208V/30A A+B redundant power, 100 Mbps unmetered bandwidth, 1 carrier cross-connect, 2 managed PDUs, free 1 hr/month basic remote hands, free setup and installation. High-Density Colo Package, 3,600 USD a month, same specification but 12 kW of 2x 208V/50A A+B redundant power. Both marked valid for new customers only. Whoever models the Chicago metro owns these as plan rows; they are held here as a note because this module's facility is Secaucus and no page ties these prices to it."
 
 // AND THIS SUPERSEDES THE 2026-08-18 READING OF THE GRAIN. The facility page's suites-and-custom
 // wording, which the facility note above records, made this operator look cage-or-suite only. The
@@ -67,6 +78,6 @@ data summit_high_density_cabinet: CabinetDensityClaim = DensityMarketedAirOnly {
 // makes Summit retail-grain relevant after all. Two surfaces of one operator disagreed in emphasis;
 // the one that names orderable units wins, and the disagreement is why both are cited.
 data summit_retail_grain: RetailGrainStanding = SingleCabinetOffered {
-  wording: "1/4, 1/3, 1/2, or full 42U configurations to match your current density and room to grow",
-  citation: "summithq.com services/data-center-services/colocation page, read 2026-09-08. The same operator's Secaucus facility page, read the same day, markets \"Private suites and custom deployments\" and names no cabinet grain; the product page is the one that enumerates orderable units.",
+  wording: "High-Density Cabinets: 1/4, 1/3, 1/2, or full 42U configurations to match your current density and room to grow",
+  citation: "summithq.com services/data-center-services/colocation page, confirmed in raw bytes 2026-09-09. Unlike the priced packages, this sentence is in the page's Flexible Solutions section and carries no facility banner, so it reads as an operator-level grain rather than one metro's promotion. The same operator's Secaucus facility page, read 2026-09-08, markets \"Private suites and custom deployments\" and names no cabinet grain; the product page is the one that enumerates orderable units.",
 }
