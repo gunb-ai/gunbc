@@ -1,20 +1,28 @@
 module stage0_boundary_add_probe
 
-// THE DISK-BACKED SPECIMEN for the stage0 emission boundary's target profile.
+// THE COMMITTED SPECIMEN FOR THE STORAGE-READ SEAM, AND ONLY THAT SEAM.
 //
-// It is a file, not an inline string, because the fact under test is the whole route a real
-// corpus module takes: source_ref_for_observed_storage_path reads THIS path off the tree,
-// source_root_ingest_from_source_refs verifies its content hash, assembly and inference run over
-// what was read, and the production single-declaration composition emits it. The direct door's
-// own specimen carries its module source inline (direct_rust_door_fixture
-// direct_rust_door_dag_module_source), so no enrolled claim exercised the disk-backed seam; a
-// profile whose whole purpose is to make an emission land in an existing crate must be measured
-// over the route that crate's modules actually arrive by.
+// What this file is read by is v2.test.long.stage0_production_target's two read claims: the path
+// reaches source_ref_for_observed_storage_path, source_root_ingest_from_source_refs verifies the
+// bytes against the ref's content hash, and the claims assert that the source the ingest carries
+// contains this declaration and does not contain a declaration it never held. The door's own
+// specimen carries its module source inline (direct_rust_door_fixture
+// direct_rust_door_dag_module_source), so nothing else in the corpus exercises that route over a
+// file actually on disk.
 //
-// The declaration is deliberately the shape the door already emits, so the claim over it
-// isolates the two BOUNDARY selections (visibility, integer carrier) from every value-expression
-// question. What this specimen is NOT is the acceptance subject for the production flip: that is
-// the real corpus module gunbc.rust_decl_type_overlay, and it does not emit yet
-// (v2.compiler.self_host.stage0_production_target's measured remainder).
+// IT IS NOT INGESTED, ASSEMBLED, INFERRED OR EMITTED BY ANY CLAIM, and this sentence is here
+// because an earlier revision of it said otherwise. That revision was true when written -- the
+// three emission claims did run the full disk-to-emit walk over this file -- and stopped being
+// true when those claims moved onto the door's warm-shared resolved specimen to fit the floor's
+// per-claim ceiling. An annotation describing a route no claim executes is the
+// specification-without-execution DESIGN section 5 names, so the two facts are now separate on
+// purpose: the READ is claimed here over a real file, and the two stage0 target-profile
+// SELECTIONS are claimed over the shared specimen. Neither claim covers the other, and the file
+// carries the fact it is actually the subject of.
+//
+// The declaration is deliberately the shape the production composition admits (one arrow), so
+// that if a future change wants the composed route back it can take this file whole. What this
+// specimen is NOT is the acceptance subject for the production flip: that is the real corpus
+// module gunbc.rust_decl_type_overlay, and it does not emit yet.
 
 fn probe_add(x: Int, y: Int) -> Int { x + y }
