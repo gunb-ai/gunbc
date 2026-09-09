@@ -40,6 +40,15 @@ import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 // goal-typed parameter to read, the desired side is unconstructible in its argument, and DESIGN
 // section 4b rung four replaces the sentence that used to ask authors to be careful.
 //
+// WHAT THIS DOES NOT CLOSE, stated so the rung is not read as higher than it is. The PARAMETER route
+// is structurally impossible: there is no goal-typed argument for an observer to read. The CAPTURE
+// route is not closed -- a binding may pass a lambda that closes over the goal lexically and shapes
+// the read by it, and no type here can see that. So the honest rung for goal-blindness is
+// structural against the parameter and MITIGATED BY REVIEW against capture, and
+// test.claim.goal_assessment_witness holds that residual as an executing fact rather than a worry.
+// NEXT-RUNG TRIGGER: a lens over the `Node` tree refusing an `observe` argument whose free variables
+// include the goal bound at the same call site.
+//
 // WHAT THIS MODULE DELIBERATELY DOES NOT CARRY, stated so its absence reads as a boundary and not
 // an oversight. There is no `reconcile_once`: no planner, no admission, no actuator, and no
 // post-actuation re-observation. Those are the effectful half of the same protocol, and the reason

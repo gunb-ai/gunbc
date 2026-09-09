@@ -39,13 +39,6 @@ fn fixture_assess(_: FixtureSubject, goal: FixtureGoal, _: FixtureObserved) -> G
   assess_by_deviations(evidence: FixtureEvidence { field: "unchanged" }, deviations: [])
 }
 
-// AN ASSESSOR THAT REPORTS WHAT IT WAS ASKED FOR, used by the goal-blindness control below: the
-// evidence echoes the goal, so two different goals over the same request are distinguishable in the
-// ASSESSMENT while the OBSERVATION stays identical.
-fn fixture_assess_echoing_goal(_: FixtureSubject, goal: FixtureGoal, _: FixtureObserved) -> GoalAssessment<FixtureEvidence, FixtureDeviation, FixtureUnknownFact, FixtureAssessRefusal> {
-  assess_by_deviations(evidence: FixtureEvidence { field: goal.want }, deviations: [])
-}
-
 // DISCRIMINATING RED for the layer guard. An unreadable subject must never reach the assessor. The
 // refusal the assessor would answer with is a DIFFERENT type from the one the observer answers
 // with, so a root that assessed an unobserved subject could not even return this arm -- and the
@@ -124,40 +117,51 @@ test fn an_unknown_outranks_deviations_and_still_carries_them() -> Bool {
   }
 }
 
-// THE CONTROL FOR THE MODULE'S CENTRAL CLAIM: the observer is GOAL-BLIND. Two different goals over
-// the SAME subject and the SAME observation request must produce the same observation, and differ
-// only in the assessment. `fixture_observe` has no parameter of type FixtureGoal, so this is
-// structural rather than a promise -- but a structural guarantee with no executing control is a
-// sentence, and this module's first cut is precisely how a sentence like that came to be false.
+// WHAT THE TYPE ACTUALLY CLOSES, AND WHAT IT DOES NOT.
 //
-// The assessor here ECHOES the goal, so if an observation were ever shaped by the desire the two
-// observations would diverge and this control goes red.
-test fn two_goals_over_one_request_produce_one_observation() -> Bool {
+// The check that stood here asserted that two goals over one request produce one observation, and it
+// was PERMANENTLY GREEN BY CONSTRUCTION: both calls passed the same `fixture_observe`, which has no
+// `FixtureGoal` parameter, so the equality could not go red for any authorable input. DESIGN section
+// 4b asks whether a check's RED is authorable BEFORE the check is written; this one's was not, which
+// makes it worse than absent because it would have been cited as coverage for the module's central
+// claim. It is deleted rather than repaired.
+//
+// THE RED THAT *IS* AUTHORABLE IS THIS ONE. `inspect_goal` stops a goal reaching the observer as a
+// PARAMETER. It does not stop a binding closing over one lexically: a lambda can capture a goal and
+// shape the read by it, and the resulting observation differs per captured goal. That is the
+// residual route, and this control holds it as a measured fact rather than a worry -- it goes red if
+// capture ever stops being expressible, at which point the guarantee has climbed and this witness is
+// what says so.
+//
+// SO THE HONEST RUNG IS: the parameter route is structurally impossible; the capture route is
+// mitigated by review only. NEXT-RUNG TRIGGER: a lens over the `Node` tree refusing an `observe`
+// argument whose free variables include the goal bound at the same call site.
+fn goal_shaped_observe(want: String, subject: FixtureSubject, readable: Bool) -> ObservationAttempt<FixtureObserved, FixtureObserveRefusal> {
+  if readable {
+    ObservationEstablished { observed: FixtureObserved { value: want } }
+  } else {
+    ObservationRefused { cause: FixtureUnreadable { detail: "fixture read refusal" } }
+  }
+}
+
+test fn a_captured_goal_still_shapes_the_observation_which_the_type_does_not_close() -> Bool {
   match inspect_goal(
     subject: FixtureSubject { key: "fixture" },
     goal: FixtureGoal { want: "alpha" },
     request: true,
-    observe: fixture_observe,
-    assess: fixture_assess_echoing_goal,
+    observe: (s, r) => goal_shaped_observe(want: "alpha", subject: s, readable: r),
+    assess: fixture_assess,
   ) {
-    GoalInspected { subject: _, goal: _, request: _, observed: o1, assessment: a1 } =>
+    GoalInspected { subject: _, goal: _, request: _, observed: o1, assessment: _ } =>
       match inspect_goal(
         subject: FixtureSubject { key: "fixture" },
         goal: FixtureGoal { want: "beta" },
         request: true,
-        observe: fixture_observe,
-        assess: fixture_assess_echoing_goal,
+        observe: (s, r) => goal_shaped_observe(want: "beta", subject: s, readable: r),
+        assess: fixture_assess,
       ) {
-        GoalInspected { subject: _, goal: _, request: _, observed: o2, assessment: a2 } =>
-          o1.value == o2.value
-            && match a1 {
-                 GoalSatisfied { evidence: e1 } =>
-                   match a2 {
-                     GoalSatisfied { evidence: e2 } => e1.field == "alpha" && e2.field == "beta"
-                     _ => false
-                   }
-                 _ => false
-               }
+        GoalInspected { subject: _, goal: _, request: _, observed: o2, assessment: _ } =>
+          o1.value == "alpha" && o2.value == "beta" && o1.value != o2.value
         _ => false
       }
     _ => false

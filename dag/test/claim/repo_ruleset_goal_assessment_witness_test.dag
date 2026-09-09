@@ -36,18 +36,15 @@ import gunbc.repo_ruleset {
   render_unknowns,
   ruleset_assess,
   desired_repo_ruleset_goal,
-  RepositoryRulesetConvergenceSubject,
   gunbc_passing_ci_ruleset_id,
 }
 import gunbc.repository { gunbc_repository }
+import extdeps.github.github { Repository }
 
 // THE SUBJECT THESE CLAIMS ARE ABOUT. It is the production one rather than a fixture: the assessor
 // now receives the subject, and a witness that handed it a different repository would be asserting
 // over a subject no production path assesses.
-data witness_subject: RepositoryRulesetConvergenceSubject = RepositoryRulesetConvergenceSubject {
-  repository: gunbc_repository,
-  ruleset_id: gunbc_passing_ci_ruleset_id,
-}
+data witness_subject: Repository = gunbc_repository
 
 // The observation is fixed on every field the claims below do not vary, so a verdict can never be
 // borrowed from another arm. `name` is the desired one and rule_types are the declared list, so

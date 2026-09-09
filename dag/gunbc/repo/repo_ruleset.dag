@@ -1107,8 +1107,13 @@ fn converged_evidence_of(
   }
 }
 
-type RepositoryRulesetConvergenceSubject {
-  repository: Repository
+// THE SUBJECT IS THE REPOSITORY; THE REQUEST IS WHICH RULESET TO READ. These were one fused record
+// until the recut, and fusing them is what let the first version of this binding pass the SAME value
+// as both subject and request -- a "request" that repeated the subject verbatim, carrying nothing
+// about the read and making std.goal_assessment's claim (a refusal says which read was attempted)
+// vacuous for this binding while the receipt still reported one. Split, each argument answers its
+// own question and neither can stand in for the other.
+type RulesetReadRequest sole_constructor {
   ruleset_id: Int
 }
 
@@ -1222,7 +1227,7 @@ fn observation_unknowns(observation: RulesetObservation) -> List<RulesetUnknown>
 // Deviations and unknowns go to the mint together and the mint decides the arm: unknowns outrank
 // deviations, and the deviations survive into GoalIndeterminate rather than being dropped.
 fn ruleset_assess(
-  subject: RepositoryRulesetConvergenceSubject,
+  subject: Repository,
   goal: RepositoryRulesetGoal,
   observed: RulesetObservation,
 ) -> GoalAssessment<RepoRulesetConvergedEvidence, RulesetDivergence, RulesetUnknown, Never> {
@@ -1263,12 +1268,13 @@ fn merge_queue_desire_unknowns(
 // THE OBSERVER, WHICH DOES NOT RECEIVE THE GOAL. It takes the subject and reads; nothing about the
 // desired ruleset reaches it, so it cannot narrow what it looks at to what the desire mentions.
 fn observe_repo_ruleset_attempt(
-  subject: RepositoryRulesetConvergenceSubject,
+  subject: Repository,
+  request: RulesetReadRequest,
 ) -> ObservationAttempt<RulesetObservation, RulesetReadRefusal> {
   let observed = observe_repo_ruleset(
-    owner: subject.repository.owner,
-    repo: subject.repository.name,
-    ruleset_id: subject.ruleset_id,
+    owner: subject.owner,
+    repo: subject.name,
+    ruleset_id: request.ruleset_id,
   )
   match observed {
     RulesetUnreadable { cause: cause } => ObservationRefused { cause: cause }
@@ -1328,15 +1334,9 @@ fn render_unknowns(us: List<RulesetUnknown>) -> String {
 // note came to be here.
 func verify() -> ProcessExit {
   match inspect_goal(
-    subject: RepositoryRulesetConvergenceSubject {
-      repository: gunbc_repository,
-      ruleset_id: gunbc_passing_ci_ruleset_id,
-    },
+    subject: gunbc_repository,
     goal: desired_repo_ruleset_goal(),
-    request: RepositoryRulesetConvergenceSubject {
-      repository: gunbc_repository,
-      ruleset_id: gunbc_passing_ci_ruleset_id,
-    },
+    request: RulesetReadRequest { ruleset_id: gunbc_passing_ci_ruleset_id },
     observe: observe_repo_ruleset_attempt,
     assess: ruleset_assess,
   ) {
