@@ -177,6 +177,24 @@ type CabinetPowerFigure
 // So the arm exists and NO OPERATION CONSUMES IT. That is the whole design: the quantity is
 // representable, countable and citable, and there is no function into which it can be fed to
 // produce a bound. Representability is not permission.
+// THE INTERVAL ARM SITS ONE RUNG BELOW THE REST OF THIS TYPE AND THE GAP IS DECLARED RATHER THAN
+// LEFT TO BE FOUND. The other three arms are structurally impossible to misuse: there is no
+// constructor that puts a floor where a cap belongs, because the arms ARE the distinction.
+// MarketedInterval carries two figures and nothing prevents `lower` exceeding `upper` - an inverted
+// interval whose `quantity_ceiling` would sit BELOW its `quantity_admits`, so the same requirement
+// could be both covered by the published wording and above the published bound. Rung: mitigatable,
+// since no live row constructs one and the sole instance is the carrier's own fixture.
+//
+// CEILING: structurally impossible, and it is genuinely reachable rather than aspirational - the
+// invalid state is an ordering between two fields of one constructor, which is decidable from the
+// values at hand and needs no external fact. NEXT-RUNG TRIGGER: a refusing constructor for this arm,
+// which requires the capability to make a variant's direct literal unconstructible outside its
+// module - the SAME field-visibility capability CabinetPowerCeiling's residue note already names as
+// its trigger. Two classes, one capability; neither climbs before it lands.
+//
+// A validator is deliberately NOT the answer here. Checking the ordering after construction is the
+// validation-beside-construction shape DESIGN section 5 warns about, and it would be satisfiable by
+// editing the check while the literal still lies - so it would buy a rung on paper and none in fact.
 type PublishedPowerQuantity
   = CapabilityAtLeast { lower: CabinetPowerFigure }
   | MarketedAtMost { upper: CabinetPowerFigure }
