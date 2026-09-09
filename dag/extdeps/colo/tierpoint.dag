@@ -2,7 +2,11 @@ module extdeps.colo.tierpoint
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -82,4 +86,51 @@ data tierpoint_pennsylvania_facilities: List<ColoFacilityRow> = [
 data tierpoint_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "tierpoint.com sales",
   obligation: "Spec sheets are published; cabinet pricing is not (read 2026-08-18).",
+}
+
+// WESTCHESTER COUNTY: THE OPERATOR ALREADY IN THIS CENSUS WAS ALREADY IN NEW YORK. The module
+// carried four Pennsylvania rows and named its Pennsylvania page as its authority; the operator's
+// New York page (read 2026-09-08) lists a two-building Hawthorne campus 35 miles north of
+// Manhattan, on the site the market still calls Xand. Two buildings, sold as cabinets and cages,
+// which makes this the retail-grain anchor of Westchester County.
+data tierpoint_hawthorne_hwt: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "TierPoint",
+  facility_label: "TierPoint Hawthorne HWT (11 Skyline)",
+  address: AddressListed {
+    street: "11 Skyline Drive, Hawthorne, NY 10532",
+    citation: "tierpoint.com New York Hawthorne page, read 2026-09-08",
+  },
+  municipality: "Hawthorne",
+  region_code: "NY",
+  facility_note: "Westchester County. Operator page (read 2026-09-08): 46,000+ total square feet with 28,000+ square feet of raised floor. Private DWDM fiber rings to the operator's Connecticut, Massachusetts and Pennsylvania sites, with direct points of presence at 60 Hudson Street and 111 8th Avenue in Manhattan - so a Hawthorne cabinet is one operator-owned hop from the two carrier hotels this census already models around. Campus shared with Westchester Medical Center and New York Medical College.",
+}
+
+data tierpoint_hawthorne_hw2: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "TierPoint",
+  facility_label: "TierPoint Hawthorne HW2 (17 Skyline)",
+  address: AddressListed {
+    street: "17 Skyline Drive, Hawthorne, NY 10532",
+    citation: "tierpoint.com New York Hawthorne page, read 2026-09-08",
+  },
+  municipality: "Hawthorne",
+  region_code: "NY",
+  facility_note: "Westchester County, the second building of the same campus. Operator page (read 2026-09-08): 172,000+ total square feet with 28,000+ square feet of raised floor - the same raised-floor figure as HWT inside four times the building, the balance being office and disaster-recovery space rather than data hall.",
+}
+
+data tierpoint_new_york_facilities: List<ColoFacilityRow> = [
+  tierpoint_hawthorne_hwt,
+  tierpoint_hawthorne_hw2,
+]
+
+// A SPEC SHEET EXISTS AND STILL DID NOT YIELD A DENSITY. The operator publishes a per-facility
+// PDF spec sheet for Hawthorne; the fetch on 2026-09-08 returned a 312 KB PDF whose extractable
+// content was branding metadata rather than the specification table, so no figure was read from
+// it and none is carried. That is a fetch failure recorded as one, not a fact about the facility.
+data tierpoint_hawthorne_density: CabinetDensityClaim = DensityUnread {
+  obligation: "No kW-per-cabinet figure appears on tierpoint.com's Hawthorne page (read 2026-09-08), and the linked Hawthorne HWT spec-sheet PDF at web.tierpoint.com did not yield readable specification text on the same date. Retry the PDF by another route or ask sales for the per-cabinet allocation at both buildings - they may differ, and one campus row would then be two densities.",
+}
+
+data tierpoint_hawthorne_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets and cages available",
+  citation: "tierpoint.com New York Hawthorne page, read 2026-09-08 THROUGH A RENDERING FETCH, against both 11 Skyline and 17 Skyline. A raw re-fetch on 2026-09-09 to confirm the wording verbatim was refused - tierpoint.com answers HTTP 403 to a plain client with a 4.5 KB block page - so this string is a rendered reading and has NOT been checked against the page's own bytes, unlike every density figure in this expansion. The square footages in the two facility rows above come from the same rendered read.",
 }

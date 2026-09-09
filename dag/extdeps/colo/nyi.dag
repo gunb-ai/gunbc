@@ -1,0 +1,65 @@
+module extdeps.colo.nyi
+
+import std.types { NonEmptyStr }
+import std.measure { watt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
+  RetailGrainStanding, RetailGrainUnread,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nyi.net/solutions/colocation-data-centers/new-york/long-island/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.nyi",
+      decl_name: "nyi_long_island",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// NYI SELLS AT AN ADDRESS ANOTHER OPERATOR IN THIS CENSUS ALSO SELLS AT. The Long Island page
+// carries 1025 Old Country Road, Westbury - the building Long Island Interconnect operates under
+// extdeps.colo.long_island_interconnect - and repeats the same 3 kW-per-cabinet cooling wording
+// verbatim. Directory writeups describe NYI's Long Island presence as a partnership rather than
+// an owned facility. Which entity the colocation contract is actually with, and whether the
+// products differ between the two surfaces, is a quote question this module cannot answer, and
+// it is exactly the question the Summit / Evocative pair in Secaucus already forced once.
+data nyi_long_island: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "NYI",
+  facility_label: "NYI Long Island (1025 Old Country Road)",
+  address: AddressListed {
+    street: "1025 Old Country Road, Westbury, NY 11590",
+    citation: "nyi.net Long Island data centers page, read 2026-09-08",
+  },
+  municipality: "Westbury",
+  region_code: "NY",
+  facility_note: "Nassau County. NYI's own page states generator-backed AC, UPS AC, DC, N+1/2N and 99.982% availability for the site. It is the same street address as the Long Island Interconnect row; both are carried because the operator is the upstream authority each row cites, not the building.",
+}
+
+data nyi_long_island_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 3000) },
+  claim_wording: "Cooling level average is 3kW per cabinet; plans to support higher kW per cabinet are established for an adjacent campus property owned by building",
+  citation: "nyi.net Long Island page, re-read from raw HTML 2026-09-09. THE FIRST READ OF THIS ROW CALLED THIS WORDING IDENTICAL TO THE LONG ISLAND INTERCONNECT PAGE AND IT IS NOT. The FIGURE is identical and the first clause is word-for-word, but the second clause differs: this operator writes 'an adjacent campus property owned by building', where Long Island Interconnect writes 'adjacent future expansion space'. Two surfaces sharing a sentence stem is what one expects of one building described by two sellers; the divergence is where they stop agreeing, and it was invisible until both pages were read as raw text rather than through a summarising fetch. The reading is still one fact about one building, so a consumer counting dense candidates must not count this row and the Long Island Interconnect row as two. SCOPE CHECKED IN BYTE ORDER: the nearest heading above the figure is the page's Long Island section, which matters more here than elsewhere because THIS OPERATOR RUNS SITES IN OTHER METROS and a figure lifted from a sibling section would be the wrong-subject error rather than a wrong-wording one. ELEMENT BOUNDARY, and it is the reason the two pages could look identical: this operator's sentence is ONE <li> assembled from THREE <span dir=ltr role=presentation> fragments, so the string exists only after tag-stripping and a contiguous raw grep for it finds nothing. The last fragment ends mid-phrase at 'owned by building' - that truncation is the page's own, not a clip made here.",
+}
+
+data nyi_long_island_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The NYI Long Island page names no product grain - it describes power, cooling and availability but does not say whether a single cabinet is sold, or only cages and suites. The Long Island Interconnect page for the same address does say cabinets; that is a reading of a DIFFERENT operator's surface and may not be transferred here. Read nyi.net's colocation product pages or ask.",
+}
+
+data nyi_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "nyi.net contact form",
+  obligation: "No price is published on the Long Island page read 2026-09-08. The quote must first establish who the contracting party at 1025 Old Country Road is - NYI or Long Island Interconnect - because the two surfaces market the same building.",
+}

@@ -1,0 +1,69 @@
+module extdeps.colo.critical_systems_realty
+
+import std.types { NonEmptyStr }
+import std.measure { watt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
+  RetailGrainStanding, RetailGrainUnread,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.1547realty.com/data-center/orangeburg-new-york-orny1/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.critical_systems_realty",
+      decl_name: "csr_orny1_orangeburg",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE SECOND ORANGEBURG CAMPUS, and the census had zero before this week. Rockland County now
+// carries two independent multi-megawatt operators a mile apart - this one and DataBank's LGA3 and
+// LGA4 under extdeps.colo.databank - which changes the shape of the New York question: it is no
+// longer whether dense capacity exists north of the Hudson, but which of two campuses will sell a
+// single dense cabinet.
+data csr_orny1_orangeburg: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "fifteenfortyseven Critical Systems Realty",
+  facility_label: "1547 ORNY1 Orangeburg",
+  address: AddressListed {
+    street: "1 Ramland Road, Orangeburg, NY 10962",
+    citation: "1547realty.com ORNY1 page, read 2026-09-08, corroborated by the operator's own Orangeburg market writeup on the same site",
+  },
+  municipality: "Orangeburg",
+  region_code: "NY",
+  facility_note: "Rockland County, 23-acre campus of 232,000 square feet with a stated 24 MW provisioned in an N+2 scheme and 12 MW on site, N+1 and 2N power availability, and a second building in phase-1 expansion adding a stated 230,000 square feet, 30 MW and a 60 MW generator. The operator markets lowest-cost power in the region and a sales-tax abatement. It is also the landlord of record for at least one retail reseller in the building: the Orangeburg site that ColoHouse marketed at 1 Ramland Road is now redirected to Hivelocity (extdeps.colo.hivelocity), so a retail cabinet here may contract with a tenant rather than with 1547.",
+}
+
+// A READ DENSITY, AND A WEAK ONE - read the wording, not the number. Ten kilowatts is a floor with
+// a plus sign attached, and the page does not say whether it is an air figure or includes a liquid
+// path; the arm records what was published and the citation records what was not. Against
+// DataBank's 35 kW air claim four miles away this is the same county and a third of the density,
+// which is the sort of spread that only becomes visible once density is a typed field rather than
+// a sentence in a facility note.
+data csr_orny1_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 10000) },
+  claim_wording: "High density 10KW + per cabinets",
+  citation: "1547realty.com ORNY1 page, read 2026-09-08 and CONFIRMED VERBATIM AGAINST RAW HTML 2026-09-09 - the string above is the page's own bytes, as is the 24 MW figure in the facility note. THE PAGE DOES NOT STATE A COOLING MEDIUM: the figure is recorded on the air arm because an unqualified per-cabinet claim is what an ordinary air deployment would be quoted against, and no liquid figure is published to carry. If a quote reveals the 10 kW assumes a liquid path, this row is wrong in the direction that matters and must move. SCOPE CHECKED IN BYTE ORDER: the headings preceding the string are this page's own Orangeburg NY / ORNY1 title, Location Features and Power - no promotion, no other metro. ELEMENT BOUNDARY: the markup is a single <li>High density 10KW + per cabinets</li> in the same list as <li>24 MW provisioned in an N+2 scheme</li> - one authored item, no emphasis tag inside it and nothing joined.",
+}
+
+data csr_orny1_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The ORNY1 page markets colocation and turnkey data center solutions and speaks of 'per cabinets' in its density claim, but never says whether one cabinet is a sellable unit or whether the minimum is a cage, a hall or a build-to-suit. For a landlord-shaped operator at 24 MW this is the decisive question and it must not be inferred from the word cabinet appearing in a density sentence.",
+}
+
+data csr_orny1_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "1547realty.com contact form",
+  obligation: "No pricing is published on any 1547 page read 2026-09-08. Ask for the single-cabinet monthly at the 10 kW density, and ask whether that contract is with 1547 or with a reseller tenant in the same building.",
+}

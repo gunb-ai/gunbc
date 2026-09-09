@@ -2,7 +2,11 @@ module extdeps.colo.three_sixty_five
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, RetailGrainUnread,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -85,4 +89,28 @@ data three_sixty_five_facilities: List<ColoFacilityRow> = [
 data three_sixty_five_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "365datacenters.com sales",
   obligation: "Company overview lists rack-unit, quarter and half cabinet products but publishes no prices (read 2026-08-18); quotes required per site.",
+}
+
+// LONG ISLAND: THE OPERATOR'S SUFFOLK COUNTY SITE. The module's four rows were New Jersey and
+// Philadelphia; the operator also runs a Commack, NY facility marketed as its Long Island data
+// center (read 2026-09-08). It is the largest purpose-built colocation hall found on Long Island
+// in this survey by published power.
+data three_sixty_five_commack: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 Commack (Long Island)",
+  address: AddressListed {
+    street: "500 Commack Road, Commack, NY 11725",
+    citation: "365datacenters.com Long Island data center page, read 2026-09-08",
+  },
+  municipality: "Commack",
+  region_code: "NY",
+  facility_note: "Suffolk County, roughly 40 miles from New York City by the operator's own wording. Operator page (read 2026-09-08): 26,200 square feet with two pods totalling 24,000 square feet, 6 MW of available utility and generator capacity with 3 MW immediately available in the primary pods, two Tier III 3.0 MW continuous-runtime diesel generators in N+1, 2N redundant cooling, 125 hours of on-site fuel at full load, PUE as low as 1.22 on free cooling, and FK-5-1-12 clean-agent fire suppression.",
+}
+
+data three_sixty_five_commack_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The Commack page publishes facility-level megawatts and pod square footage but no kW-per-cabinet figure (read 2026-09-08). Six megawatts across 24,000 square feet says nothing about what one cabinet may draw, and this census does not divide the one by the other. Ask for the per-cabinet allocation in the primary pods.",
+}
+
+data three_sixty_five_commack_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The Commack page names colocation but no product grain (read 2026-09-08). The operator's company overview - cited in three_sixty_five_note and read 2026-08-18 - lists rack-unit, quarter and half cabinet products across the company; whether the Commack hall sells at that grain is a per-site question and is not inferred here from the corporate product list.",
 }

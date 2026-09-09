@@ -60,6 +60,8 @@ data databank_lga4_density: CabinetDensityClaim = DensityMarketedMax {
   liquid_cooled: PublishedRealPower { power: watt(count: 100000) },
   claim_wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liq",
   citation: "databank.com Orangeburg campus LGA4 page, raw fetch 2026-09-09 (HTTP 200). THE WORDING ABOVE IS NOW THE LITERAL SPEC-TABLE CELLS AND WAS NOT BEFORE. The first cut read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool, not text on the page. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the WORDING did not, which is the general shape silent-heron-303 found across the census. The plus signs are the operator's own, so these are marketed floors on a maximum rather than exact ceilings; the integers are the stated numerals."
+  claim_wording: "35kW+ air-cooled, 100kW+ liquid-cooled",
+  citation: "databank.com Orangeburg campus LGA4 page, read 2026-09-08. The figures carry a plus sign in the operator's own wording, so they are marketed floors on a maximum rather than exact ceilings; the integers here are the stated numerals and the wording is retained beside them.",
 }
 
 data databank_lga4_retail_grain: RetailGrainStanding = SingleCabinetOffered {
@@ -79,3 +81,31 @@ data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // deployment for one named tenant would in any case be a different fact from a marketed cabinet
 // maximum, and would need its own arm rather than being read as retail density.
 data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator contributes exactly one modelled facility despite operating several in this metro, which understates it."
+
+// THE OTHER BUILDING ON THE SAME CAMPUS, and it is the larger one. LGA4 was modelled first because
+// it was the row that broke the census's New York blindness; LGA3 is the operational sibling at the
+// same street address, and the campus reads as one site in directories while the operator prices
+// two facilities. Both are carried, because a cabinet is bought in a building.
+data databank_lga3_orangeburg: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank LGA3 Orangeburg",
+  address: AddressListed {
+    street: "2000 Corporate Dr., Orangeburg, NY 10962",
+    citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08",
+  },
+  municipality: "Orangeburg",
+  region_code: "NY",
+  facility_note: "Rockland County, the first building of the Orangeburg campus: 20 MW critical IT load across 110,000 IT square feet, against LGA4's 10 MW. Same campus, same address, same density claim, twice the load - so a quote that fails on capacity at one building has not failed at the campus.",
+}
+
+data databank_lga3_density: CabinetDensityClaim = DensityMarketedMax {
+  air_cooled: PublishedRealPower { power: watt(count: 35000) },
+  liquid_cooled: PublishedRealPower { power: watt(count: 100000) },
+  claim_wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liquid",
+  citation: "databank.com Orangeburg campus LGA3 page, confirmed against raw HTML 2026-09-09. THE TWO FIGURES ARE SEPARATE SPEC CELLS, NOT ONE SENTENCE: the page emits '35kW+ Cab Density Air' and '100kW+ Cab Density Liquid' as adjacent cells, and the slash here is this row's separator rather than the operator's punctuation. Recorded that way because a wording field whose job is to let a later reader re-derive the number is worthless if it holds a sentence the operator never wrote. Identical figures to LGA4, and this is a SECOND facility carrying the claim rather than a second reading of the same one - the two buildings are separately marketed with separate critical loads. SCOPE CHECKED IN BYTE ORDER: the nearest heading above the two cells is the page's own LGA3 Orangeburg, New York City title, and the page carries no promotional block; the figures are this facility's and not a banner's. ELEMENT BOUNDARY, which is what settles the fusion rather than the sentence: the markup is <li><strong>35kW+</strong> Cab Density Air</li> and <li><strong>100kW+</strong> Cab Density Liquid</li> - TWO list items, each with its numeral in its own <strong>. Joining them is invention. Note the numeral emphasis also means a contiguous raw-byte grep for the full string FAILS on a true row, so the wording above was matched against tag-stripped text while ownership was decided on the markup.",
+}
+
+data databank_lga3_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets & Cages Colocation",
+  citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08",
+}

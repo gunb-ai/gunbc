@@ -1,0 +1,65 @@
+module extdeps.colo.vastnet
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.vastnet.net/services/colo/cabinet.shtml"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.vastnet",
+      decl_name: "vastnet_melville",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE OPERATOR PUBLISHES A CABINET SPEC TABLE AND STILL YIELDS NO DENSITY, which is the clearest
+// specimen in this expansion of why the density arm is separate from the power arm. Its table
+// gives amps per cabinet with no voltage anywhere on the page, and the census already refuses to
+// multiply an amp reading by an assumed voltage (see PowerAllocation.FeedAmpsVoltsUnstated in
+// extdeps.colo.types). An operator can publish more than its neighbours and still publish nothing
+// a kilowatt comparison can consume.
+//
+// FETCH NOTE, because it changes what a later reader should try: vastnet.net serves plain HTTP
+// only. An HTTPS fetch of the site is refused at connect (ECONNREFUSED on port 443); the readings
+// below were taken over HTTP on 2026-09-08.
+data vastnet_melville: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Vastnet",
+  facility_label: "Vastnet Melville",
+  address: AddressUnread {
+    obligation: "The operator's own contact page publishes only a mailing address - a post office box in Melville, NY 11747 - and no street address for the data center (read 2026-09-08). Directory listings give 680 Walt Whitman Road, Melville; that is a directory's claim, not the operator's, and is recorded here as the thing to confirm rather than carried as the address.",
+  },
+  municipality: "Melville",
+  region_code: "NY",
+  facility_note: "Suffolk County. The operator states it has run this site since 1996 and operates exactly two data centers, Melville and Denver. Its own pages describe per-cabinet UPS rather than hall-level UPS only, a Kohler generator in a separate generator building, and floodstop water detection. A costing remark on the same page is worth carrying because it prices a fact the rest of the census never states: the operator says an on-site generator adds roughly 200 dollars a month to the price of a cabinet.",
+}
+
+data vastnet_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The cabinet page publishes power per cabinet as 15 A (one-third), 15 A (half) and 20 A (full) with NO voltage stated anywhere on the page (read 2026-09-08). Amps without volts is not a kilowatt figure and this census does not assume one. Obtain the voltage and the continuous-load derating in writing; at 120 V a 20 A feed derates to roughly 1.9 kW continuous, which would make this the least dense cabinet in the census, and at 208 V it is roughly 3.3 kW - the difference decides the candidate, so guessing it would decide it wrongly.",
+}
+
+data vastnet_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Server Colocation, Cabinet Colocation, Cage Colocation - with three cabinet sizes published as 1/3 Cabinet (24 inch vertical space), 1/2 Cabinet (38 inch), Full Cabinet (70 inch)",
+  citation: "vastnet.net cabinet colocation page, read 2026-09-08 over HTTP. The sizes are published in INCHES of vertical space rather than rack units; no U count appears on the page, and none is inferred here.",
+}
+
+data vastnet_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "vastnet.net cabinet page, which places 'Contact Us!' in the price cell of all three tiers",
+  obligation: "The cabinet comparison table publishes vertical space, included IPv4 count (four per tier), amperage and uplink speed (100 Mbit for the two partial tiers, 1 Gbit for the full cabinet) but no price in any tier (read 2026-09-08). Every input to a cost comparison is published here EXCEPT the cost and the voltage.",
+}
