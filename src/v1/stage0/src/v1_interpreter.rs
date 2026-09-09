@@ -5196,7 +5196,12 @@ fn call_function(
         d.set(v);
         v
     });
-    let result = call_function_guarded(ctx, fn_node, args, env, depth);
+    let result = call_function_guarded(ctx, fn_node, args, env, depth).map_err(|e| match e {
+        InterpError::TypeError { msg } if msg.matches(" <- ").count() < 12 => InterpError::TypeError {
+            msg: format!("{} <- {}", msg, fn_node.name),
+        },
+        other => other,
+    });
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
     result
 }
@@ -9826,6 +9831,22 @@ fn cast_identity_result(
     if !source_name.is_empty() && source_name == target_name {
         return Some(val.clone());
     }
+    // `Nat as Int`, and ONLY that declared relation. std.coercion grounds the numeric tower
+    // construction-side -- a Nat IS an Int -- so this cast re-types a wrapper over a value that
+    // already carries the target's runtime form. Before this arm it typechecked and then died at
+    // evaluation with "cannot cast Int to Int", which is how the first live seat placement failed
+    // while every fixture stayed green.
+    //
+    // KEYED ON THE DECLARED SOURCE, NEVER ON THE RUNTIME SHAPE. Admitting any Int-carrying value
+    // for an Int target would widen every branded integer -- a Percent, a port, a generation --
+    // into Int on the strength of its representation, which is the erasure this substrate exists
+    // to prevent. The reverse direction stays refused: an Int is not a Nat without non-negativity,
+    // and std_measure documents that refusal as load-bearing.
+    if source_name == "Nat" && target_name == "Int" {
+        if let Value::Int(n) = val {
+            return Some(Value::Int(*n));
+        }
+    }
     if let Value::Str(s) = val {
         let kernel = cast_target_underlying_kernel(ctx, target_node);
         if kernel == "String" {
@@ -9903,6 +9924,77 @@ mod cast_identity_empty_kernel_tests {
         let val = Value::Str(RcStr::from("payload"));
         let result = cast_identity_result(&val, &ctx, "", string_target, "");
         assert_eq!(result, Some(Value::Str(RcStr::from("payload"))));
+    }
+}
+
+#[cfg(test)]
+mod nat_to_int_grounded_identity_tests {
+    //! Controls for the `Nat as Int` arm of `cast_identity_result`. The positive case is the one
+    //! the live seat placement needs; the negatives are what keep the arm from becoming a
+    //! representation-shaped widening of every integer-backed brand.
+    use im::{vector as im_vec, HashMap};
+    use std::rc::Rc;
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_expr_error_node, no_span, ExprErrorKind, Node};
+
+    use super::{cast_identity_result, ExecutionMode, InterpContext, Value};
+
+    fn test_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn int_target(name: &str) -> Rc<Node> {
+        let seed = make_expr_error_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            ExprErrorKind::InternalExprError,
+            "unused".to_string(),
+            no_span(),
+        );
+        Rc::new(Node { name: name.to_string(), ..(*seed).clone() })
+    }
+
+    #[test]
+    fn a_nat_source_casts_to_int_and_nothing_else_does() {
+        let ctx = test_ctx();
+        let one = Value::Int(1);
+
+        // POSITIVE: the declared relation returns the value.
+        assert_eq!(
+            cast_identity_result(&one, &ctx, "Nat", int_target("Int"), "Int"),
+            Some(Value::Int(1)),
+            "Nat as Int is the grounded identity the substrate declares"
+        );
+
+        // NEGATIVE, and the one that matters: an unrelated integer-backed brand is NOT widened
+        // just because its runtime value is an Int. Deleting the source-name guard greens this.
+        assert_eq!(
+            cast_identity_result(&one, &ctx, "Percent", int_target("Int"), "Int"),
+            None,
+            "an integer-shaped brand may not reach Int on its representation alone"
+        );
+
+        // NEGATIVE: the reverse direction stays refused -- an Int is not a Nat without
+        // non-negativity, and std_measure documents that refusal as load-bearing.
+        assert_eq!(
+            cast_identity_result(&one, &ctx, "Int", int_target("Nat"), "Nat"),
+            None,
+            "Int as Nat is not this arm's relation"
+        );
+
+        // NEGATIVE: a non-Int value under the declared relation does not slip through.
+        assert_eq!(
+            cast_identity_result(&Value::Bool(true), &ctx, "Nat", int_target("Int"), "Int"),
+            None,
+            "the arm re-types a value that already carries Int's runtime form, nothing else"
+        );
     }
 }
 
