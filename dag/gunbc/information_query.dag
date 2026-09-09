@@ -46,8 +46,6 @@ import std.claim_evidence {
 // inspire an information need, but cannot construct admissible evidence. The fact is reacquired
 // here or it does not count.
 
-data information_query_canonical_path_note: NonEmptyStr = "canonical evidence path, not sole network path: run_command can still fetch bytes, and those bytes carry no provenance, receipt, digest, selector or claim relation, so they may inspire an information need and may not construct evidence" as NonEmptyStr
-
 // WHAT THE MODEL ASKS FOR IS A NEED, NOT A QUERY STRING. The caller states what it must know and
 // why. It does NOT choose the search provider, the number of sources, a credibility threshold,
 // whether first-party evidence suffices, the retry count, or whether a snippet counts as a fact --
@@ -160,7 +158,6 @@ fn information_evidence_from_verification(
   authority: ExternalAuthority,
   provenance: EvidenceProvenance,
   freshness_basis: NonEmptyStr,
-  byte_domain: RepresentationByteDomain,
   fidelity_losses: List<NonEmptyStr>,
   independence: InformationEvidenceProbeIndependence,
 ) -> InformationEvidence {
@@ -178,7 +175,7 @@ fn information_evidence_from_verification(
             basis: freshness_basis,
           },
           fidelity: EvidenceFidelity {
-            boundary: byte_domain,
+            boundary: receipt.target.expected_pin.subject.byte_domain,
             losses: fidelity_losses,
           },
           probe_independence: independence,
