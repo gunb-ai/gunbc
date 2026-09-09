@@ -22,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.digital_realty",
-      decl_name: "digital_realty_ewr10",
+      decl_name: "digital_realty_facilities",
       field: WholeDeclaration
     }
   },

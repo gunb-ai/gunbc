@@ -22,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.h5",
-      decl_name: "h5_secaucus",
+      decl_name: "h5_facilities",
       field: WholeDeclaration
     }
   },

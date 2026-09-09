@@ -1,6 +1,6 @@
 module test.claim.colo_cabinet_density_witness
 
-import std.types { Bool, Int }
+import std.types { Bool, Int, List }
 import std.measure { Watt, watt, watt_count }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -11,13 +11,34 @@ import extdeps.colo.types {
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
 }
-import extdeps.colo.databank { databank_lga4_density, databank_lga4_retail_grain }
+import extdeps.colo.databank {
+  databank_lga4_density, databank_lga4_retail_grain,
+  databank_lga1_density, databank_lga1_retail_grain,
+  databank_lga2_density, databank_lga2_retail_grain,
+}
 import extdeps.colo.iron_mountain {
   iron_mountain_nje1_density, iron_mountain_wpa1_density, iron_mountain_nje1_retail_grain,
 }
 import extdeps.colo.telehouse {
   telehouse_chelsea_density, telehouse_chelsea_retail_grain,
   telehouse_teleport_density, telehouse_teleport_retail_grain,
+}
+import extdeps.colo.digital_realty {
+  digital_realty_jfk10_density, digital_realty_jfk10_retail_grain,
+  digital_realty_jfk12_density, digital_realty_jfk12_retail_grain,
+  digital_realty_jfk13_density, digital_realty_jfk13_retail_grain,
+}
+import extdeps.colo.coresite { coresite_ny1_density, coresite_ny1_retail_grain }
+import extdeps.colo.dataverge { dataverge_brooklyn_density, dataverge_brooklyn_retail_grain }
+import extdeps.colo.equinix { equinix_ny9_density, equinix_ny9_retail_grain }
+import extdeps.colo.h5 { h5_nyc_325_hudson_density, h5_nyc_325_hudson_retail_grain }
+import extdeps.colo.sabey { sabey_375_pearl_density, sabey_375_pearl_retail_grain }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_nyc_density_unread, three_sixty_five_nyc_retail_grain,
+}
+import extdeps.colo.colocation_america {
+  colocation_america_nydc1_density, colocation_america_nydc1_retail_grain,
+  colocation_america_nydc2_density, colocation_america_nydc2_retail_grain,
 }
 import gunbc.colo_census_coverage {
   RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
@@ -130,6 +151,58 @@ test fn w_density_and_grain_are_separate_facts() -> Bool {
 test fn w_absent_ceiling_refuses_nothing_and_a_real_one_does() -> Bool {
   !ceiling_refuses_at(d: iron_mountain_wpa1_density, required: 999999)
     && ceiling_refuses_at(d: telehouse_chelsea_density, required: 999999)
+}
+
+// THE FIVE-BOROUGH UNREAD ROWS THIS PR ADDED. Review 62809: a DensityUnread / SingleCabinetOffered
+// / RetailGrainUnread row that nothing reads is dangling regardless of how carefully the obligation
+// is worded. One fold over each arm, not one test per site: the unread arm is one fact, and WPA-1
+// already discriminates it; these lists are the consumption that keeps the NYC instances enrolled.
+data nyc_unread_densities: List<CabinetDensityClaim> = [
+  digital_realty_jfk10_density,
+  digital_realty_jfk12_density,
+  digital_realty_jfk13_density,
+  coresite_ny1_density,
+  dataverge_brooklyn_density,
+  databank_lga1_density,
+  databank_lga2_density,
+  equinix_ny9_density,
+  h5_nyc_325_hudson_density,
+  sabey_375_pearl_density,
+  three_sixty_five_nyc_density_unread,
+  colocation_america_nydc1_density,
+  colocation_america_nydc2_density,
+]
+
+data nyc_single_cabinet_grains: List<RetailGrainStanding> = [
+  digital_realty_jfk10_retail_grain,
+  digital_realty_jfk12_retail_grain,
+  digital_realty_jfk13_retail_grain,
+  coresite_ny1_retail_grain,
+  dataverge_brooklyn_retail_grain,
+  databank_lga1_retail_grain,
+  databank_lga2_retail_grain,
+  equinix_ny9_retail_grain,
+  h5_nyc_325_hudson_retail_grain,
+  three_sixty_five_nyc_retail_grain,
+]
+
+data nyc_unread_grains: List<RetailGrainStanding> = [
+  sabey_375_pearl_retail_grain,
+  colocation_america_nydc1_retail_grain,
+  colocation_america_nydc2_retail_grain,
+]
+
+fn unread_density_is_silent(d: CabinetDensityClaim) -> Bool {
+  established_watts(d: d) == 0 - 1 && !has_ceiling(d: d)
+}
+
+test fn w_nyc_unread_densities_establish_and_bound_nothing() -> Bool {
+  all(nyc_unread_densities, d => unread_density_is_silent(d: d))
+}
+
+test fn w_nyc_published_grains_match_their_arms() -> Bool {
+  all(nyc_single_cabinet_grains, g => grain_admits_single_cabinet(g: g))
+    && all(nyc_unread_grains, g => !grain_admits_single_cabinet(g: g))
 }
 
 // THE COVERAGE CARRIER'S CONSUMER, ENROLLED FOR THE SAME REASON AS THE ONES ABOVE. Review 62758

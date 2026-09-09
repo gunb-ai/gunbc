@@ -22,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.colocation_america",
-      decl_name: "colocation_america_njdc1",
+      decl_name: "colocation_america_facilities",
       field: WholeDeclaration
     }
   },
