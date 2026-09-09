@@ -201,7 +201,7 @@ data three_sixty_five_brooklyn_vanderbilt: ColoFacilityRow = ColoFacilityRow {
   },
   municipality: "Brooklyn",
   region_code: "NY",
-  facility_note: "The operator's second independently cited Brooklyn POP beside DataVerge Industry City. Zip and suite were not on the map listing.",
+  facility_note: "Brooklyn POP listed on the operator's facilities-network map read 2026-09-08. Zip and suite were not on the map listing.",
 }
 
 data three_sixty_five_staten_island_teleport: ColoFacilityRow = ColoFacilityRow {
