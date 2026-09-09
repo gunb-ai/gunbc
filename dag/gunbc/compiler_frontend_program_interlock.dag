@@ -317,10 +317,17 @@ type NamespaceDeltaDisposition
 // The partition the operator ruled is therefore recorded HERE, where it cannot
 // be mistaken for an executing mechanism: the wall AUTO-ADMITS a same-declaration
 // -identity rebind, a removal of genuinely unused subject membership, an
-// explicitly evaluated zero delta, and an authored-reference resolution. Every
-// other disposition -- a changed target, new ambiguity, new unresolvedness, new
-// pool-coincidence resolution, unexplained subject motion, and NotEvaluated --
-// REFUSES unless an exact operator-authored transition admission names it.
+// explicitly evaluated zero delta, an authored-reference resolution, and a
+// derived-generator-input resolution. Every other disposition -- a changed
+// target, new ambiguity, new unresolvedness, new pool-coincidence resolution,
+// unexplained subject motion, and NotEvaluated -- REFUSES unless an exact
+// operator-authored transition admission names it.
+//
+// THE FIFTH MEMBER ARRIVED WITH THE 2026-09-08 SPLIT BELOW, and it is recorded
+// in this sentence rather than only beside the arm that added it: this paragraph
+// is where the partition is stated, so a new auto-admitted disposition recorded
+// only at its own declaration would leave one authority answering the same
+// question twice.
 //
 // AuthoredReferenceResolution WAS SPLIT OUT OF NewPoolCoincidenceResolution on
 // 2026-08-27, by operator ruling relayed through swift-badger-524, after the
