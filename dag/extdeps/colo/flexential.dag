@@ -1,0 +1,65 @@
+module extdeps.colo.flexential
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressUnread,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, RetailGrainUnread,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.flexential.com/data-centers/pa/allentown/data-center"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.flexential",
+      decl_name: "flexential_allentown",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A ROW WHOSE ENTIRE CONTENT IS A REFUSED FETCH, WHICH IS STILL A READING. Two attempts on
+// 2026-09-08 - the Allentown data-center page and its parent path - both returned HTTP 403 to this
+// session. Nothing about this facility is therefore first-hand, and the row carries obligations in
+// every field rather than the square footage and watts-per-square-foot a search summary offered.
+// Watts per square foot would not have been a cabinet density in any case: it is a floor-loading
+// average over a room, and a cabinet is not a room. The alternative to this row is silence, which
+// would read as 'no Flexential in the Lehigh Valley' - a stronger and less true claim than 'the
+// operator publishes here and this census could not open the page'.
+data flexential_allentown: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Flexential",
+  facility_label: "Flexential Allentown",
+  address: AddressUnread {
+    obligation: "flexential.com/data-centers/pa/allentown/data-center and its parent path both returned HTTP 403 on 2026-09-08; no address was read first-hand. Secondary listings additionally report that the operator no longer lists this facility, which would make the site's very existence as a Flexential product the first thing to confirm. Retry the fetch from a client the site admits, or ask sales.",
+  },
+  municipality: "Allentown",
+  region_code: "PA",
+  facility_note: "Carried as an unresolved coverage obligation in the Lehigh Valley rather than as a confirmed facility: every fetch of the operator's own page was refused on 2026-09-08, so no square footage, power, grain or status is first-hand here.",
+}
+
+data flexential_allentown_density: CabinetDensityClaim = DensityUnread {
+  obligation: "No page was successfully read (HTTP 403, 2026-09-08). A search summary quoted '150+ watts per square foot' for this site; that is a room-average power intensity, NOT a per-cabinet density, and it is recorded here as the thing not to convert rather than as a reading.",
+}
+
+// NO RETAIL-RATE STANDING IS CARRIED FOR THIS OPERATOR, DELIBERATELY. Every other module in this
+// census declares one, and the shape of that type is RatesPublished or RatesQuoteOnly - both
+// affirmative readings, with no unread arm. Taking RatesQuoteOnly here would have been a positive
+// typed claim about an operator whose every page refused this session (HTTP 403, 2026-09-08 and
+// 2026-09-09), inferred from what the rest of the market does rather than read; DESIGN section 5
+// forbids exactly that substitution, and a reviewer caught it standing in the first cut of this
+// file. Absence of the row is the honest state until either the page opens or the carrier grows an
+// unread arm, and the obligation to resolve it is recorded on the address row above.
+data flexential_allentown_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "No page was successfully read (HTTP 403, 2026-09-08), so nothing is known first-hand about the smallest unit sold at this site.",
+}

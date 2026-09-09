@@ -11,9 +11,26 @@ import extdeps.colo.types {
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
 }
-import extdeps.colo.databank { databank_lga4_density, databank_lga4_retail_grain }
+import extdeps.colo.databank {
+  databank_lga4_density, databank_lga4_retail_grain,
+  databank_phl1_density, databank_phl1_retail_grain,
+}
 import extdeps.colo.iron_mountain {
   iron_mountain_nje1_density, iron_mountain_wpa1_density, iron_mountain_nje1_retail_grain,
+}
+import extdeps.colo.netrality { netrality_401_n_broad_density, netrality_401_n_broad_retail_grain }
+import extdeps.colo.tierpoint {
+  tierpoint_philadelphia_density, tierpoint_lehigh_valley_density,
+  tierpoint_philadelphia_retail_grain, tierpoint_lehigh_valley_retail_grain,
+}
+import extdeps.colo.h5 { h5_philadelphia_density, h5_philadelphia_retail_grain }
+import extdeps.colo.lightwave_networks { lightwave_philadelphia_density, lightwave_philadelphia_retail_grain }
+import extdeps.colo.flexential { flexential_allentown_density, flexential_allentown_retail_grain }
+import extdeps.colo.five_9s_digital { five_9s_allentown_density, five_9s_allentown_retail_grain }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_philadelphia_density,
+  three_sixty_five_philadelphia_university_city_density,
+  three_sixty_five_philadelphia_retail_grain,
 }
 import gunbc.colo_census_coverage {
   RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
@@ -212,4 +229,67 @@ fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
 test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bool {
   all(census_regions, c => density_reads_never_exceed_facilities(c: c))
     && facility_count_or_sentinel(c: nj_hudson_bergen_essex_corridor) > 0
+}
+
+// THE PENNSYLVANIA LANE'S ROWS, EXECUTED RATHER THAN MERELY DECLARED. Review 62794 found the
+// Philadelphia and Lehigh Valley rows dangling under DESIGN section 3c: twelve density claims and
+// their grain standings that no fold read. These four tests are that consumer, and they are
+// written as the region's own findings so a change to any row moves a test rather than only a
+// citation string.
+
+// THE ONE READ DENSITY IN EASTERN PENNSYLVANIA. Netrality publishes 30 kW at 401 North Broad, and
+// it is the only per-cabinet figure any operator publishes in this region. If this stops
+// establishing 30,000 W the region has no readable density at all.
+test fn w_philadelphia_has_exactly_one_established_density() -> Bool {
+  established_watts(d: netrality_401_n_broad_density) == 30000
+    && bound_watts(d: netrality_401_n_broad_density) == 30000
+}
+
+// THE REGION'S CHARACTERISTIC RESULT: PLANT PUBLISHED, CABINET NOT. Every other Pennsylvania row
+// establishes nothing on either axis, and it is the sentinel that makes that visible. Each of these
+// pages states facility megawatts, UPS modules or generator counts; none states a cabinet. If any
+// of them ever answers a number, somebody has divided a building by an assumed cabinet count.
+test fn w_every_other_pennsylvania_density_establishes_nothing() -> Bool {
+  established_watts(d: tierpoint_philadelphia_density) == 0 - 1
+    && established_watts(d: tierpoint_lehigh_valley_density) == 0 - 1
+    && established_watts(d: h5_philadelphia_density) == 0 - 1
+    && established_watts(d: databank_phl1_density) == 0 - 1
+    && established_watts(d: lightwave_philadelphia_density) == 0 - 1
+    && established_watts(d: flexential_allentown_density) == 0 - 1
+    && established_watts(d: five_9s_allentown_density) == 0 - 1
+    && established_watts(d: three_sixty_five_philadelphia_density) == 0 - 1
+    && established_watts(d: three_sixty_five_philadelphia_university_city_density) == 0 - 1
+}
+
+// AN UNREAD DENSITY BOUNDS NOTHING EITHER, which is the half a consumer is likeliest to get wrong:
+// an upper bound sounds like the safe direction to guess in, and there is no bound to be had from a
+// page that published no figure.
+test fn w_unread_pennsylvania_densities_bound_nothing() -> Bool {
+  bound_watts(d: h5_philadelphia_density) == 0 - 1
+    && bound_watts(d: five_9s_allentown_density) == 0 - 1
+}
+
+// GRAIN AND DENSITY MOVE INDEPENDENTLY ACROSS THIS REGION, which is what makes the region worth
+// quoting at all. TierPoint sells single cabinets at five sites and publishes no density anywhere;
+// DataBank's Philadelphia suite publishes neither; Netrality publishes both. A consumer that reads
+// grain off density, in either direction, breaks here.
+fn grain_withholds_single_cabinet(g: RetailGrainStanding) -> Bool {
+  match g {
+    SingleCabinetOffered { wording, citation } => false,
+    CageOrSuiteMinimum { wording, citation } => true,
+    RetailGrainUnread { obligation } => true,
+  }
+}
+
+test fn w_pennsylvania_grain_is_independent_of_density() -> Bool {
+  grain_admits_single_cabinet(g: netrality_401_n_broad_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_philadelphia_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_lehigh_valley_retail_grain)
+    && grain_admits_single_cabinet(g: h5_philadelphia_retail_grain)
+    && established_watts(d: tierpoint_philadelphia_density) == 0 - 1
+    && grain_withholds_single_cabinet(g: databank_phl1_retail_grain)
+    && grain_withholds_single_cabinet(g: lightwave_philadelphia_retail_grain)
+    && grain_withholds_single_cabinet(g: flexential_allentown_retail_grain)
+    && grain_withholds_single_cabinet(g: five_9s_allentown_retail_grain)
+    && grain_withholds_single_cabinet(g: three_sixty_five_philadelphia_retail_grain)
 }

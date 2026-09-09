@@ -47,8 +47,8 @@ data h5_philadelphia: ColoFacilityRow = ColoFacilityRow {
   operator_label: "H5 Data Centers",
   facility_label: "H5 Philadelphia (1500 Spring Garden, 5th floor)",
   address: AddressListed {
-    street: "1500 Spring Garden Street, 5th Floor, Philadelphia, PA 19130",
-    citation: "datacenterhawk H5 profile for 1500 Spring Garden, read 2026-08-18",
+    street: "1500 Spring Garden St., Suite 520, Philadelphia, PA 19130",
+    citation: "h5datacenters.com Philadelphia data center page, read 2026-09-08. The 2026-08-18 sweep carried this address from a directory profile as '5th Floor'; the operator's own page states Suite 520, and the operator is the authority for its own address.",
   },
   municipality: "Philadelphia",
   region_code: "PA",
@@ -94,4 +94,14 @@ data h5_secaucus_density: CabinetDensityClaim = DensityUnread {
 
 data h5_secaucus_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "Neither H5 page read 2026-09-08 states whether space is sold as individual cabinets, cages or suites. A directory profile claims individual cabinets are offered; confirm with the operator before treating this site as reachable at cabinet grain, because H5's stated motion elsewhere in its portfolio is wholesale.",
+// THE PHILADELPHIA FLOOR PUBLISHES ITS PLANT AND NOT ITS CABINET. 72,000 square feet and 7.5 MW of
+// generator backup are stated by the operator; a per-cabinet figure is not, and the megawatts are
+// a building fact that says nothing about what one cabinet may draw.
+data h5_philadelphia_density: CabinetDensityClaim = DensityUnread {
+  obligation: "h5datacenters.com Philadelphia page, read 2026-09-08, states 72,000 SF and 7.5 MW generator backup and NO per-cabinet or per-rack density. The absence is raw-byte confirmed: a curl fetch on 2026-09-09 (HTTP 200, 68,972 bytes) contains ZERO case-insensitive occurrences of 'kw' anywhere in the served HTML. Request the facility spec sheet or a quote naming the cabinet draw.",
+}
+
+data h5_philadelphia_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Customers can license cages and cabinets",
+  citation: "h5datacenters.com Philadelphia data center page, read 2026-09-08; the phrase occurs verbatim in the raw served HTML re-fetched 2026-09-09 (HTTP 200, 68,972 bytes), inside one <p> under the h1 'Philadelphia Data Center Overview' with no promotional banner above it.",
 }

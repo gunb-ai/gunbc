@@ -1,0 +1,63 @@
+module extdeps.colo.lightwave_networks
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, RetailGrainUnread,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.lightwavenetworks.com/datacenters/pennsylvania/philadelphia/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.lightwave_networks",
+      decl_name: "lightwave_philadelphia",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// AN OPERATOR INSIDE ANOTHER OPERATOR'S BUILDING, WHICH IS WHY IT GETS ITS OWN MODULE. LightWave
+// sells retail colocation from floor space it occupies at 401 North Broad, the building Netrality
+// owns and also sells from directly. Both rows are real and neither is a duplicate: the operator
+// is the upstream authority a row cites, not the building, so 401 North Broad now appears three
+// times in this census under three independently governed sellers (Netrality, DataBank PHL1,
+// LightWave). This is also the reason the Netrality density reading may NOT be carried across to
+// this row - what the building can cool says nothing about what this seller commits to per
+// cabinet, and copying it would be exactly the inference the density carrier exists to refuse.
+data lightwave_philadelphia: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "LightWave Networks",
+  facility_label: "LightWave Networks Philadelphia (401 North Broad)",
+  address: AddressListed {
+    street: "401 North Broad Street, Philadelphia, PA 19108",
+    citation: "lightwavenetworks.com Philadelphia data center page, read 2026-09-08, which names the '401 North Broad Street Data Center' as its Philadelphia facility.",
+  },
+  municipality: "Philadelphia",
+  region_code: "PA",
+  facility_note: "Retail colocation and hosting seller occupying space in the 401 North Broad carrier hotel. The operator's page (read 2026-09-08) states BUILDING infrastructure only - 40,000 kW utility capacity, 1,200 kVA UPS at 2N, 4,000 kW of generator at N+1, 3,600 tons of condenser water - which are facts about the building's plant and are not a per-cabinet commitment.",
+}
+
+data lightwave_philadelphia_density: CabinetDensityClaim = DensityUnread {
+  obligation: "Two of this operator's own pages were read on 2026-09-08 - the Philadelphia data center page and the Philadelphia colocation service page - and NEITHER states a per-cabinet or per-rack kW or amp figure. The 40,000 kW utility capacity on the first page is a building-level number and must not be read as density. Raw-byte confirmed 2026-09-09 (HTTP 200, 75,267 bytes): all three 'kW' occurrences in the served HTML are the 40,000 kW utility and 4,000 kW generator figures, both plant. Obtain a quote or a cabinet spec sheet before any density is attributed to this seller.",
+}
+
+data lightwave_philadelphia_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The operator's own Philadelphia pages read 2026-09-08 say 'colocation' without itemising cabinet products. A search summary quoted half and full cabinets in shared cages for this seller, but that wording was not found on either page that was actually opened, so it is not carried. Read the colocation product page or request the cabinet product list.",
+}
+
+data lightwave_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "lightwavenetworks.com sales, 844.722.COLO",
+  obligation: "No cabinet, power or bandwidth pricing appears on either Philadelphia page read 2026-09-08; the pages direct the reader to contact sales.",
+}
