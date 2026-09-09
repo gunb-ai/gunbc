@@ -58,6 +58,16 @@ data netrality_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // same figure Iron Mountain NJE-1 markets across the river. Read against a fleet drawing 650 W per
 // node, one such cabinet holds the whole fleet with room over, so the constraint moves off density
 // entirely and onto what a 30 kW cabinet costs - which this operator does not publish.
+// THE MEDIUM CHANGED IN THE CARRIER MIGRATION AND THE PAGE DID NOT. This row carried the air-only arm,
+// and its citation used to state the reason in the evidence payload itself: that no liquid-cooled
+// figure was stated, so the air-only arm carried it. That sentence is DELETED rather than merely
+// contradicted here, because a reader or renderer quoting the citation would otherwise still be told
+// the retracted inference. That inference is the defect the medium coordinate exists to remove - ABSENCE OF A
+// LIQUID FIGURE DOES NOT ESTABLISH AIR-COOLED CAPABILITY, and it fails in the admitting direction, so a
+// 30 kW electrical claim would have satisfied a requirement for a 30 kW AIR-COOLED cabinet on evidence
+// that never mentioned cooling. The page says "Cabinet density up to 30kW" and names no medium; the row
+// now says the same. Nothing about the reading changed - the figure, the wording, the byte-level
+// verification and the "up to" ceiling are all exactly as read. Only the inference is gone.
 data netrality_401_n_broad_density: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
@@ -72,17 +82,6 @@ data netrality_401_n_broad_density: CabinetDensityClaim = DensityPublished {
     tail: [],
   },
 }
-
-// THE MEDIUM CHANGED IN THE CARRIER MIGRATION AND THE PAGE DID NOT. This row carried the air-only arm,
-// and its citation used to state the reason in the evidence payload itself: that no liquid-cooled
-// figure was stated, so the air-only arm carried it. That sentence is DELETED rather than merely
-// contradicted here, because a reader or renderer quoting the citation would otherwise still be told
-// the retracted inference. That inference is the defect the medium coordinate exists to remove - ABSENCE OF A
-// LIQUID FIGURE DOES NOT ESTABLISH AIR-COOLED CAPABILITY, and it fails in the admitting direction, so a
-// 30 kW electrical claim would have satisfied a requirement for a 30 kW AIR-COOLED cabinet on evidence
-// that never mentioned cooling. The page says "Cabinet density up to 30kW" and names no medium; the row
-// now says the same. Nothing about the reading changed - the figure, the wording, the byte-level
-// verification and the "up to" ceiling are all exactly as read. Only the inference is gone.
 
 data netrality_401_n_broad_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "single cabinets, cages, private suites, and dedicated floor",

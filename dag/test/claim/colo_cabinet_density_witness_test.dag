@@ -687,23 +687,6 @@ test fn w_the_same_lookup_answers_liquid_without_air_borrowing_it() -> Bool {
 // named no cooling at all - the medium defect restored through the query side after being closed on
 // the figure side. Unspecified is a fact about what the PAGE said, never a medium anything can be
 // deployed into, so it satisfies no request including its own.
-// THE WITNESS THAT USED TO STAND HERE DISSOLVED WHEN ITS CLASS CLIMBED, AND THE NOTE IS THE RECEIPT.
-// `w_requesting_an_unspecified_medium_answers_nothing` asserted that asking for the unspecified medium
-// returned no figure and bounded nothing. It guarded a real defect: a lookup written as plain equality
-// over one three-arm coordinate would have matched Iron Mountain's unlabelled figure and handed back a
-// 30 kW cap for a question that named no cooling at all.
-//
-// The request type is now `CoolingMedium`, which has two constructors, and the invalid request cannot
-// be written - not here, not in a fixture, not anywhere a caller could reach. DESIGN section 4b is
-// explicit that a check whose RED is not authorable is not a weak wall but a decoration: permanently
-// green by construction, carrying no information, and worse than absent because it would be cited as
-// coverage. The class moved from mechanically preventable to structurally impossible, and the
-// production machinery that enforced it - the rejecting arm inside `medium_matches` - went with it.
-//
-// The half that IS still authorable is kept, one witness down: a figure whose PAGE named no medium
-// answers no air and no liquid request. That is a fact about the publication rather than about the
-// request, it stays fully expressible, and it is the arm a future author could actually break.
-
 // MODEL OCCUPANCY IS NOT SCREEN UTILITY, AND IRON MOUNTAIN IS THE ROW THAT PROVES THEY DIVERGE. Its
 // page publishes a real figure, so the inventory route is NON-EMPTY - and because the page
 // named no medium, every screen over it is undetermined. A census keyed on the ceiling accessor
@@ -756,6 +739,23 @@ test fn w_occupancy_verification_and_utility_are_three_facts() -> Bool {
     && density_claim_figures(d: iron_mountain_nje1_density).length() > 0
     && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCooling)
 }
+
+// THE WITNESS THAT USED TO STAND HERE DISSOLVED WHEN ITS CLASS CLIMBED, AND THE NOTE IS THE RECEIPT.
+// `w_requesting_an_unspecified_medium_answers_nothing` asserted that asking for the unspecified medium
+// returned no figure and bounded nothing. It guarded a real defect: a lookup written as plain equality
+// over one three-arm coordinate would have matched Iron Mountain's unlabelled figure and handed back a
+// 30 kW cap for a question that named no cooling at all.
+//
+// The request type is now `CoolingMedium`, which has two constructors, and the invalid request cannot
+// be written - not here, not in a fixture, not anywhere a caller could reach. DESIGN section 4b is
+// explicit that a check whose RED is not authorable is not a weak wall but a decoration: permanently
+// green by construction, carrying no information, and worse than absent because it would be cited as
+// coverage. The class moved from mechanically preventable to structurally impossible, and the
+// production machinery that enforced it - the rejecting arm inside `medium_matches` - went with it.
+//
+// The half that IS still authorable is kept, in this witness: a figure whose PAGE named no medium
+// answers no air and no liquid request. That is a fact about the publication rather than about the
+// request, it stays fully expressible, and it is the arm a future author could actually break.
 
 // A FIGURE THE SCREEN CANNOT REACH IS STILL A READING THE CENSUS MUST COUNT, and Iron Mountain is the
 // row that holds both halves at once. Its single figure is CoolingMediumUnspecified, so no air or

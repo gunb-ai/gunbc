@@ -353,19 +353,6 @@ type CabinetDensityClaim
 // same defence, and the crossing at `watt(count: volt_ampere_count(...))` is the constructor of the
 // confusable value.
 //
-// THE CEILING CARRIER IS GONE, AND ITS DELETION IS THE POINT RATHER THAN A TIDY-UP. It read
-// `CeilingAt { at_most: Watt }` and its one operation asked whether a requirement EXCEEDS WHAT THE
-// CABINET CAN POSSIBLY DRAW. Nothing in this census can establish that. The only quantities that fed
-// it were a marketed maximum and an interval's upper end - product statements about what an operator
-// advertises, not measurements of what a cabinet is wired for - so the type took soft evidence and
-// handed back a hard physical claim. That is the admitting failure wearing a refusal's clothes: the
-// overclaim is invisible at the call site and every later consumer inherits it.
-//
-// What replaced it is a RELATION rather than a property: `OutsidePublishedMaximum` says the
-// requirement sits outside what the page published, which is exactly what the page supports and
-// nothing more. The comparison it needs is two lines and lives at the one arm that needs it, so the
-// carrier bought nothing except a place for the overclaim to live.
-
 // A LOOKUP THAT PICKS IS A LOOKUP THAT WIDENS, AND THE FIRST CUT SHIPPED ONE KNOWINGLY. `air_figure`
 // filtered to air and took `.first()`, so a claim carrying TWO air figures - "up to 30 kW" in one
 // cell and "35kW+" in another - answered with whichever an author happened to type first, and the
@@ -536,6 +523,19 @@ fn marketed_apparent_interval(lower: VoltAmpere, upper: VoltAmpere) -> Published
     },
   )
 }
+
+// THE CEILING CARRIER IS GONE, AND ITS DELETION IS THE POINT RATHER THAN A TIDY-UP. It read
+// `CeilingAt { at_most: Watt }` and its one operation asked whether a requirement EXCEEDS WHAT THE
+// CABINET CAN POSSIBLY DRAW. Nothing in this census can establish that. The only quantities that fed
+// it were a marketed maximum and an interval's upper end - product statements about what an operator
+// advertises, not measurements of what a cabinet is wired for - so the type took soft evidence and
+// handed back a hard physical claim. That is the admitting failure wearing a refusal's clothes: the
+// overclaim is invisible at the call site and every later consumer inherits it.
+//
+// What replaced it is a RELATION rather than a property: `OutsidePublishedMaximum` says the
+// requirement sits outside what the page published, which is exactly what the page supports and
+// nothing more. The comparison it needs is two lines and lives at the one arm that needs it, so the
+// carrier bought nothing except a place for the overclaim to live.
 
 // WHETHER A REQUIREMENT SITS ABOVE WHAT A SINGLE-ENDED FIGURE PUBLISHED. The apparent-power crossing
 // is the conservative one and goes the opposite way from `figure_covers`: real power never exceeds
