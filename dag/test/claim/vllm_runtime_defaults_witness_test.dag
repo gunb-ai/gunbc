@@ -2,6 +2,7 @@ module test.claim.vllm_runtime_defaults
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
+import std.nat { Nat }
 import std.measure { basis_point, basis_point_count, byte_size, byte_size_count }
 import extdeps.vllm.server { vllm_source_revision }
 import extdeps.vllm.runtime_defaults {
@@ -23,7 +24,7 @@ import extdeps.vllm.runtime_defaults {
 // THE DEVICE TOTAL IS THE ONE MEASURED ON A SPARK, in exact bytes rather than the 121.69 GiB
 // projection any log prints. 130_662_027_264 bytes is 121.69 GiB, and using the byte figure here is
 // the same discipline the module states: the GiB value is a rendering, the bytes are the authority.
-data w_spark_total_bytes_count = 130662027264
+data w_spark_total_bytes_count: Nat = 130662027264
 
 // ── THE OMISSION THE GLM CANARY ACTUALLY MAKES ─────────────────────────────────────────────────
 //
