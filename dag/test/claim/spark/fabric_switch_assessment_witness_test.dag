@@ -281,16 +281,31 @@ test fn a_lane_the_readings_omit_entirely_is_still_an_unknown() -> Bool {
   }
 }
 
-// THE FLEET'S OWN SWITCH, TODAY. The cable plant does not converge, so the switch's intent is
-// undecided -- and an undecided intent is now an ASSESSMENT refusal carrying the CABLE cause, not an
-// observation refusal. The lanes read exactly as well without a decided intent; what is missing is
-// the desired side to compare them against. This is the whole point of deriving the intent: one
-// fault, one report, and no second matcher that could disagree with the first.
+// THE FLEET'S OWN SWITCH, TODAY. The plant cannot answer, so the switch's intent is undecided --
+// and an undecided intent is an ASSESSMENT refusal carrying the plant's cause, not an observation
+// refusal. The lanes read exactly as well without a decided intent; what is missing is the desired
+// side to compare them against. This is the whole point of deriving the intent: one fault, one
+// report, and no second matcher that could disagree with the first.
 //
-// This witness holds a RED state of the real fleet. It goes green by the cables being recoded, and
-// when that happens it becomes the regression control that the switch still refuses to ASSESS while
-// its intent is undecided -- it does not retire.
-test fn the_fleet_switch_cannot_be_assessed_because_its_cables_are_uncoded() -> Bool {
+// THE PLANT'S REASON IS NOT A CODING DIVERGENCE, AND THIS WITNESS ASSERTS THE PROPAGATION RATHER
+// THAN THE CAUSE. #10869 corrected the story on main and the correction survives this recut: six of
+// the eight legs have never been dumped, so the plant's answer is dominated by legs nobody read, not
+// by the coding of the legs that WERE read. An earlier name for this witness -- and the one this
+// branch had written -- said the switch could not be assessed "because its cables are uncoded",
+// which is true of the coding story and false of the fleet's actual state. What this holds is that
+// ONE plant answer reaches the switch subject intact, whichever answer the plant is producing.
+//
+// UNDER THIS CUT THAT ANSWER IS INDETERMINATE RATHER THAN REFUSED, which is the recut working: the
+// unread legs are member-level unknowns now, so the plant reports them ALONGSIDE whatever coding
+// divergence it proved instead of refusing the whole observation on the first one. The switch still
+// cannot pick a speed from an indeterminate plant, so the propagation this witness asserts is
+// unchanged while the fidelity beneath it went up.
+//
+// This witness holds a RED state of the real fleet. It goes green when the plant can converge --
+// which needs both the remaining six legs read AND their coding fixed -- and then becomes the
+// regression control that the switch still refuses to ASSESS while its intent is undecided. It does
+// not retire.
+test fn the_fleet_switch_cannot_be_assessed_while_its_plant_cannot_answer() -> Bool {
   match fabric_switch_inspection() {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
