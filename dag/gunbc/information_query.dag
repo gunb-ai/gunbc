@@ -1,0 +1,227 @@
+module gunbc.information_query
+
+import std.types { String, NonEmptyStr, List, Bool, EpochMs }
+import std.nat { Nat }
+import extdeps.uri { Uri }
+import extdeps.external_authority { ExternalAuthority }
+import std.citation {
+  CitationRetrievalRequest,
+  CitationRetrievalObservation,
+  CitationVerificationOutcome,
+  CitationRepresentationVerified,
+  CitationRepresentationMismatch,
+  CitationRepresentationIdentityIncomparable,
+  CitationRepresentationObservationMissing,
+  CitationVerificationRefused,
+  CitationVerificationRefusalCause,
+  CitationVerificationReceipt,
+  CitationSelector,
+  RepresentationByteDomain,
+}
+import std.claim_evidence {
+  RecordedFact,
+  RecordedFactId,
+  InferenceRuleId,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceDirection,
+  EvidenceLink,
+  EvidenceInsufficiency,
+  EvidenceInference,
+  EvidenceApplicable,
+  EvidenceInsufficient,
+}
+
+// THE CANONICAL EVIDENCE PATH, AND DELIBERATELY NOT THE ONLY NETWORK PATH. The harness worker's one
+// tool is a general shell command, so an agent can already reach the internet with curl. What those
+// bytes lack is not visibility but STANDING: no typed provenance, no retrieval receipt, no digest,
+// no selector, no relation to any claim. This module does not and cannot stop the shell from
+// fetching; it decides what may become admissible evidence. Stating the weaker claim is DESIGN 4b
+// rung honesty -- the stronger one (ordinary commands physically cannot reach the network) becomes
+// true only when the harness runs under default-deny egress with the retrieval realization holding
+// the only grant, and claiming it before that wall executes would be inflation.
+//
+// THE OPERATIVE RULE: material obtained through run_command or a vendor's private browsing may
+// inspire an information need, but cannot construct admissible evidence. The fact is reacquired
+// here or it does not count.
+
+data information_query_canonical_path_note: NonEmptyStr = "canonical evidence path, not sole network path: run_command can still fetch bytes, and those bytes carry no provenance, receipt, digest, selector or claim relation, so they may inspire an information need and may not construct evidence" as NonEmptyStr
+
+// WHAT THE MODEL ASKS FOR IS A NEED, NOT A QUERY STRING. The caller states what it must know and
+// why. It does NOT choose the search provider, the number of sources, a credibility threshold,
+// whether first-party evidence suffices, the retry count, or whether a snippet counts as a fact --
+// every one of those is workflow policy, and handing them to the model is how ad-hoc research
+// becomes unauditable. EvaluateClaim carries needed_for because sufficiency is claim-relative:
+// there is no answer to "is this source good" that is not "good FOR what".
+
+type InformationNeed
+  = ExploreQuestion { question: NonEmptyStr }
+  | EvaluateClaim { claim: NonEmptyStr, needed_for: NonEmptyStr }
+
+// Freshness is a property of the CLAIM the evidence is offered for, not of the document. A
+// time-invariant proposition is not stale because the page is old; a current-state proposition is
+// stale the moment it is observed. This inhabits EvidenceFreshness's conclusion parameter.
+
+type InformationTemporalScope
+  = Current
+  | TimeInvariant
+  | AsOf { instant: EpochMs }
+  | During { start: EpochMs, end: EpochMs }
+
+type InformationQueryRequest {
+  need: InformationNeed
+  temporal_scope: InformationTemporalScope
+}
+
+// A SEARCH LEAD IS NAVIGATION AND CAN NEVER SUPPORT A CLAIM. A snippet is a query-dependent
+// projection chosen by a ranking provider: it is not the cited source representation, it was
+// selected to look relevant to the query rather than to be faithful to the document, and its
+// provider is not an authority on the subject. The constraint is structural rather than advisory --
+// nothing in this module maps a SearchLead to evidence, and the ONE thing a lead can become is a
+// retrieval request (below). To offer a lead as evidence an author would have to retrieve it first,
+// which is the entire point.
+
+type SearchLead {
+  provider: NonEmptyStr
+  observed_at: EpochMs
+  rank: Nat
+  locator: Uri
+  title: String
+  snippet: String
+}
+
+// The only exit from a lead: navigate to it. There is deliberately no lead-to-fact and no
+// lead-to-excerpt.
+fn search_lead_retrieval_request(lead: SearchLead) -> CitationRetrievalRequest {
+  CitationRetrievalRequest { locator: lead.locator }
+}
+
+// THE DOMAIN'S FACT IS THE VERIFIED RECEIPT ITSELF. std.citation already carries what was requested,
+// what was observed, the digest reconciliation and the selector; restating any of that here would be
+// the second representation DESIGN section 3 forbids, so the recorded fact IS the receipt. That is
+// also what makes the fidelity boundary honest below: the receipt names which byte domain was
+// hashed, so an excerpt taken from extracted text cannot silently claim the authority of raw bytes.
+
+type InformationFact = CitationVerificationReceipt<CitationSelector>
+
+type InformationEvidenceProbeIndependence
+  = SoleRetrieval
+  | IndependentOfLead { basis: NonEmptyStr }
+
+type InformationInference = EvidenceInference<InformationFact, InformationTemporalScope, ExternalAuthority, RepresentationByteDomain, InformationEvidenceProbeIndependence>
+
+// A THIRD STATE, BECAUSE INSUFFICIENCY STILL REQUIRES A FACT. std.claim_evidence's
+// EvidenceInsufficiency carries a RecordedFact<F>: it models "we have this fact and it is not
+// enough". A verification REFUSED before reconciliation -- unreachable host, access refused, rate
+// limited, a locator that does not match the pin -- produced no representation at all, so there is
+// no fact to record and no receipt to carry. Forcing it into the insufficient arm would require
+// fabricating a receipt for bytes nobody observed, which is precisely the fabricated-plausible-output
+// failure DESIGN section 5 forbids, committed by the module whose purpose is to prevent it. So the
+// absence gets its own arm and carries the refusal cause std.citation already typed. This is the
+// distinction between "we looked and it was not enough" and "we could not look".
+type InformationEvidence
+  = InformationEvidenceInferred { inference: InformationInference }
+  | InformationEvidenceUnavailable { cause: CitationVerificationRefusalCause }
+
+data information_query_inference_rule: InferenceRuleId = "retrieved-representation-verified-against-expected-pin" as InferenceRuleId
+
+fn information_evidence_insufficient(
+  fact_id: RecordedFactId,
+  receipt: InformationFact,
+  scope: InformationTemporalScope,
+  independence: InformationEvidenceProbeIndependence,
+  reason: NonEmptyStr,
+) -> InformationEvidence {
+  InformationEvidenceInferred { inference: EvidenceInsufficient {
+    insufficiency: EvidenceInsufficiency {
+      fact: RecordedFact { id: fact_id, value: receipt },
+      claim: scope,
+      inference_rule: information_query_inference_rule,
+      probe_independence: independence,
+      reason: reason,
+    },
+  } }
+}
+
+// THE JOIN. std.citation answers "did we retrieve the representation we meant to"; std.claim_evidence
+// answers "does this bear on the claim, and enough". This is the one function that connects them, and
+// it is where the boundary is enforced: ONLY a verified representation can become an EvidenceLink.
+// Every other verification outcome -- digest mismatch, incomparable identity, missing observation,
+// or an outright refusal -- becomes a typed insufficiency carrying its cause, never a weaker link.
+// A mismatch in particular must not degrade to "evidence with a caveat": that is the absorbing
+// fallback DESIGN section 5 names, and it is the exact shape by which unverified material acquires
+// the standing of verified material.
+fn information_evidence_from_verification(
+  fact_id: RecordedFactId,
+  outcome: CitationVerificationOutcome<CitationSelector>,
+  scope: InformationTemporalScope,
+  direction: EvidenceDirection,
+  authority: ExternalAuthority,
+  provenance: EvidenceProvenance,
+  freshness_basis: NonEmptyStr,
+  byte_domain: RepresentationByteDomain,
+  fidelity_losses: List<NonEmptyStr>,
+  independence: InformationEvidenceProbeIndependence,
+) -> InformationEvidence {
+  match outcome {
+    CitationRepresentationVerified { receipt } =>
+      InformationEvidenceInferred { inference: EvidenceApplicable {
+        link: EvidenceLink {
+          fact: RecordedFact { id: fact_id, value: receipt },
+          direction: direction,
+          inference_rule: information_query_inference_rule,
+          authority: authority,
+          provenance: provenance,
+          freshness: EvidenceFreshness {
+            maximum_conclusion: scope,
+            basis: freshness_basis,
+          },
+          fidelity: EvidenceFidelity {
+            boundary: byte_domain,
+            losses: fidelity_losses,
+          },
+          probe_independence: independence,
+        },
+      } }
+    CitationRepresentationMismatch { receipt } =>
+      information_evidence_insufficient(
+        fact_id: fact_id,
+        receipt: receipt,
+        scope: scope,
+        independence: independence,
+        reason: "retrieved representation does not reconcile with the expected pin: the bytes examined are not the bytes cited" as NonEmptyStr,
+      )
+    CitationRepresentationIdentityIncomparable { receipt } =>
+      information_evidence_insufficient(
+        fact_id: fact_id,
+        receipt: receipt,
+        scope: scope,
+        independence: independence,
+        reason: "expected and observed representation identities are not comparable, so reconciliation was never performed" as NonEmptyStr,
+      )
+    CitationRepresentationObservationMissing { receipt } =>
+      information_evidence_insufficient(
+        fact_id: fact_id,
+        receipt: receipt,
+        scope: scope,
+        independence: independence,
+        reason: "no representation observation accompanies the citation target" as NonEmptyStr,
+      )
+    CitationVerificationRefused { cause } =>
+      InformationEvidenceUnavailable { cause: cause }
+  }
+}
+
+// The admissibility question the decision fold asks. It is deliberately a total function over all
+// three states and has exactly one true arm: nothing but a verified representation is admissible.
+fn information_evidence_is_admissible(evidence: InformationEvidence) -> Bool {
+  match evidence {
+    InformationEvidenceInferred { inference } =>
+      match inference {
+        EvidenceApplicable { link: _ } => true
+        EvidenceInsufficient { insufficiency: _ } => false
+      }
+    InformationEvidenceUnavailable { cause: _ } => false
+  }
+}
