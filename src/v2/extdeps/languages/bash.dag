@@ -723,7 +723,7 @@ fn bash_posix_single_quote_transform(prefix: String) -> TokenClassEmitTransform 
     open: posix_single_quote_delimiter,
     close: posix_single_quote_delimiter,
     escapes: [
-      EmitSpellingEscape { from: posix_single_quote_delimiter, to: posix_single_quote_escape_encoding }
+      EmitSpellingEscape { from: chars(s: posix_single_quote_delimiter), to: chars(s: posix_single_quote_escape_encoding) }
     ]
   }
 }

@@ -2,7 +2,12 @@ module extdeps.colo.netrality
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+import std.measure { watt }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityMarketedAirOnly, PublishedRealPower,
+  RetailGrainStanding, SingleCabinetOffered,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -41,4 +46,21 @@ data netrality_401_n_broad: ColoFacilityRow = ColoFacilityRow {
 data netrality_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "netrality.com sales",
   obligation: "No published cabinet pricing on pages read 2026-08-18.",
+}
+
+// THE DENSEST READ CABINET IN PENNSYLVANIA IN THIS CENSUS, AND THE ONLY ONE IN PHILADELPHIA. The
+// 2026-08-18 sweep carried this facility with no density at all; the operator publishes one, and
+// it is 30 kW - twelve times the 2.5 kW that every PRICED plan in the census tops out at, and the
+// same figure Iron Mountain NJE-1 markets across the river. Read against a fleet drawing 650 W per
+// node, one such cabinet holds the whole fleet with room over, so the constraint moves off density
+// entirely and onto what a 30 kW cabinet costs - which this operator does not publish.
+data netrality_401_n_broad_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 30000) },
+  claim_wording: "Cabinet density up to 30kW",
+  citation: "netrality.com Philadelphia colocation page, read 2026-09-08 and RE-READ AS RAW BYTES 2026-09-09 (curl, HTTP 200, 757,846 bytes) under a subject control: 'Philadelphia' occurs 57 times and 'cabinet' 20 times, so the instrument reached this facility's own surface, and 'kW' occurs exactly once - this cell. WORDING: 'Cabinet density up to 30kW' occurs verbatim as ONE contiguous <p> inside ONE <li>, so it is an authored cell rather than adjacent cells fused, and nothing is truncated off it. SCOPE: the nearest headings above it in byte order are '401 N Broad' and 'Philadelphia Colocation Specifications', and the served bytes contain NO promotional or limited-time banner anywhere before it, so the figure belongs to this facility and not to another metro's offer. The page says kW, so this is REAL power and takes the PublishedRealPower arm; had it said kVA no conversion would have been possible. No liquid-cooled figure is stated, so the air-only arm carries it, and 'up to' makes this a marketed ceiling rather than a per-cabinet commitment.",
+}
+
+data netrality_401_n_broad_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "single cabinets, cages, private suites, and dedicated floor",
+  citation: "netrality.com Philadelphia colocation page, read 2026-09-08; the wording occurs verbatim in the raw served HTML re-fetched 2026-09-09 (HTTP 200, 757,846 bytes), as one contiguous <p> in one <li> of the same 'Philadelphia Colocation Specifications' list that carries the density cell.",
 }

@@ -119,15 +119,11 @@ test fn the_live_sequence_count_is_measured_in_the_scenario_it_serves() -> Bool 
 // THE GROUPS ARE LAUNCHABLE, which is the property an over-corrected revision of this branch
 // destroyed by answering Unmeasured: the unit refused, the realization refused, the apply plan
 // refused, and no engine could ever start to produce the launch line a measurement needs.
-test fn the_promoted_groups_are_launchable() -> Bool {
-  (match spark_pair_serving_unit(group: FabricGroupA) {
-     SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true
-     SparkPairServingUnitRefused { group: _, cause: _ } => false
-   })
-    && (match spark_pair_serving_unit(group: FabricGroupB) {
-          SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true
-          SparkPairServingUnitRefused { group: _, cause: _ } => false
-        })
+test fn the_promoted_group_is_launchable() -> Bool {
+  match spark_pair_serving_unit(group: FabricGroupA) {
+    SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true
+    SparkPairServingUnitRefused { group: _, cause: _ } => false
+  }
 }
 
 // GROUP A IS srv6 AT THE HEAD WITH srv5, srv7 AND srv8 AS WORKERS, EVERY RANK AT ITS RAIL ADDRESS,
@@ -145,18 +141,22 @@ test fn group_a_is_four_ranks_headed_by_srv6_at_their_rail_addresses() -> Bool {
   }
 }
 
-// BOTH GROUPS ARE PROMOTED: group B resolves as srv9 head with three workers, and the desired host
-// projection carries exactly the ready units' hosts — all eight fabric hosts.
-test fn both_groups_are_promoted_and_every_fabric_host_reaches_the_desired_hosts() -> Bool {
-  (match spark_pair_serving_unit(group: FabricGroupB) {
-     SparkPairServingUnitRefused { group: _, cause: _ } => false
-     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: ws } =>
-       length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv9)
-   })
-    && length(spark_pair_serving_groups) == 2
-    && length(spark_pair_serving_desired_hosts()) == 8
+// EACH GROUP HAS EXACTLY ONE OWNER, AND THIS WITNESS ASSERTED BOTH BELONGED TO DEEPSEEK PRODUCTION.
+// It required two promoted groups and all eight fabric hosts in the desired projection, which was
+// true when written and stopped being true when group B was withdrawn for the GLM canary. A roster
+// witness that outlives the roster it describes is the same defect as an annotation that outlives its
+// declaration: it keeps asserting a fact nobody holds any more, and it is CI rather than a reader that
+// finds out.
+//
+// THE OWNERSHIP IT NOW ASSERTS: group A is DeepSeek production and reaches the desired hosts; group B
+// is NOT in that projection, because it is reserved for the canary. That group B still RESOLVES to a
+// ready unit when asked directly is a separate fact and deliberately left alone -- the unit function
+// is total, and its arm being reachable is not the same as the roster claiming it.
+test fn group_a_is_the_only_promoted_group_and_group_b_is_not_in_the_projection() -> Bool {
+  length(spark_pair_serving_groups) == 1
+    && length(spark_pair_serving_desired_hosts()) == 4
     && any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv6))
-    && any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv9))
+    && !any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv9))
 }
 
 test fn the_group_b_wire_names_srv9_at_its_rail_address() -> Bool {

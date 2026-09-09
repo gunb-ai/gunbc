@@ -5,6 +5,7 @@ import std.types { String }
 import gunbc.spark.model_snapshot_materialize {
   sentinel_command_line, read_instrument,
   InstrumentReading, InstrumentDidNotRun, InstrumentVerified, InstrumentRejectedTheSubject,
+  InstrumentContradictedItself,
   verify_ok_sentinel, verify_failed_sentinel,
 }
 
@@ -22,8 +23,10 @@ import gunbc.spark.model_snapshot_materialize {
 //
 // WHAT IS ENROLLED HERE IS THE PURE HALF, and it is enrolled rather than retired because DESIGN section
 // 4b(4) says a climb deletes the lower-rung production machinery and KEEPS its discriminating evidence.
-// The wet half -- that `hf cache verify` against a missing directory really does exit non-zero -- is not
-// expressible hermetically and is not asserted here.
+// The wet half is asserted in test.claim.spark_snapshot_verify_wrapper_local_wet, which drives real
+// processes through an admitted production bridge. An earlier version of this sentence said that half
+// was "not expressible hermetically" and could not be written at all; that was false, and the route it
+// claimed did not exist is composed of two admitted builders.
 
 // ── THE DECODER SEPARATES THREE STATES, AND THE MIDDLE ONE IS THE POINT ────────────────────────────
 //
@@ -31,23 +34,62 @@ import gunbc.spark.model_snapshot_materialize {
 // three different facts with three different remedies. Collapsing the third into either of the others is
 // how an unreachable host or a failed container start came to read as a verdict about the bytes.
 
+// THE READING TAKES BOTH TERMS, AND THESE CALLS PASSED ONLY ONE UNTIL THE SIGNATURE CHANGED. The wet
+// file's call sites were updated when the classifier began requiring the exit status; this file's were
+// not, and it went unnoticed because nothing had resolved this entry since. A signature change is a
+// census obligation over every caller, not over the callers one happens to be editing.
 test fn verify_ok_sentinel_reads_as_verified() -> Bool {
-  read_instrument(stdout: concat("Verified 24 file(s). All checksums match.\n", verify_ok_sentinel as String)) == InstrumentVerified
+  read_instrument(exit_code: 0, stdout: concat("Verified 24 file(s). All checksums match.\n", verify_ok_sentinel as String)) == InstrumentVerified
 }
 
 test fn verify_failed_sentinel_reads_as_rejected() -> Bool {
-  read_instrument(stdout: concat("Some files are missing.\n", verify_failed_sentinel as String)) == InstrumentRejectedTheSubject
+  read_instrument(exit_code: 1, stdout: concat("Some files are missing.\n", verify_failed_sentinel as String)) == InstrumentRejectedTheSubject
 }
 
-// SILENCE IS NOT CONSENT. Output carrying neither sentinel means the wrapper never reached its own echo,
-// so nothing was learned; answering Verified here would be the fabricated plausible output DESIGN
-// section 5 forbids, and answering Rejected would blame bytes nothing examined.
+// ── THE CONTRADICTIONS, ASSERTED HERMETICALLY AS WELL AS WET ───────────────────────────────────────
+//
+// The wet controls prove the SHELL produces these pairs; these prove the CLASSIFIER answers them
+// correctly given the pair, with no process involved. Both are wanted: a hermetic-only assertion could
+// be satisfied by a classifier nobody ever fed real output, and a wet-only one runs on a lane whose
+// execution this branch is still establishing.
+test fn an_ok_marker_with_a_nonzero_status_is_a_contradiction() -> Bool {
+  w_is_contradiction(r: read_instrument(exit_code: 4, stdout: verify_ok_sentinel as String))
+}
+
+test fn a_failed_marker_with_a_zero_status_is_a_contradiction() -> Bool {
+  w_is_contradiction(r: read_instrument(exit_code: 0, stdout: verify_failed_sentinel as String))
+}
+
+// BOTH SENTINELS AT ONCE IS ALSO UNESTABLISHED, and it is reachable: a verify command whose own output
+// contains the failure marker, wrapped by a run that then succeeds, prints both.
+test fn both_sentinels_together_are_a_contradiction() -> Bool {
+  w_is_contradiction(r: read_instrument(
+    exit_code: 0,
+    stdout: concat(concat(verify_failed_sentinel as String, "\n"), verify_ok_sentinel as String),
+  ))
+}
+
+fn w_is_contradiction(r: InstrumentReading) -> Bool {
+  match r {
+    InstrumentContradictedItself { detail: _ } => true
+    InstrumentVerified => false
+    InstrumentRejectedTheSubject => false
+    InstrumentDidNotRun => false
+  }
+}
+
+// SILENCE IS NOT CONSENT, WHATEVER THE STATUS SAYS. Output carrying neither sentinel means the wrapper
+// never reached its own echo, so nothing was learned; answering Verified would be the fabricated
+// plausible output DESIGN section 5 forbids, and answering Rejected would blame bytes nothing
+// examined. A
+// nonzero exit here is a failure of the WRAPPER or the container, not a verdict about the bytes, so it
+// must not read as a rejection.
 test fn absent_sentinel_reads_as_did_not_run() -> Bool {
-  read_instrument(stdout: "docker: Error response from daemon: permission denied\n") == InstrumentDidNotRun
+  read_instrument(exit_code: 126, stdout: "docker: Error response from daemon: permission denied\n") == InstrumentDidNotRun
 }
 
 test fn empty_output_reads_as_did_not_run() -> Bool {
-  read_instrument(stdout: "") == InstrumentDidNotRun
+  read_instrument(exit_code: 0, stdout: "") == InstrumentDidNotRun
 }
 
 // ── THE WRAPPER PRESERVES THE COMMAND'S OWN EXIT STATUS ────────────────────────────────────────────

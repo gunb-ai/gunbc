@@ -31,6 +31,17 @@ fn w_first() -> SparkPairRealization? { first(spark_pair_realizations()) }
 // unit is a fact about the renderer, not about today's fleet state, so it is asserted against a
 // fixture that supplies both missing facts explicitly. That separation is the point: one test says
 // the live roster refuses, the others say what the renderer produces when it does not.
+// THE FIXTURE'S REPO IS DEEPSEEK'S, AND IT NAMED GLM WHILE THIS WITNESS ASSERTED NO GLM APPEARS. The
+// rendered unit derives its model path from this snapshot, so a GLM repo put the string "GLM" into the
+// very text the assertions require to be absent -- and the commit that corrected those assertions
+// added an annotation calling this "the DeepSeek-shaped pair route" without changing the repo sitting
+// beside it. The prose and the data disagreed, which is the defect that commit existed to fix,
+// committed inside the fix.
+//
+// THE UNPINNED FIXTURE BELOW KEEPS ITS GLM REPO DELIBERATELY: that test asserts a refusal for a
+// missing revision and never inspects rendered text, so the repo it names is immaterial to what it
+// establishes -- and changing it would suggest the repo mattered there.
+//
 // THE FIXTURE DECLARES ITS PLACEMENT BECAUSE THE SNAPSHOT NOW HAS ONE, and a fixture that omitted it
 // would not compile -- which is the type doing its job. The Hub-cache placement is the right one here:
 // this fixture stands for the DeepSeek-shaped pair route, whose weights genuinely live in the Hub cache
@@ -38,7 +49,7 @@ fn w_first() -> SparkPairRealization? { first(spark_pair_realizations()) }
 // the local-directory placement belongs to the canary arm instead.
 data w_fixture_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
   identity: "fixture-model" as NonEmptyStr,
-  repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
+  repo: HubRepoId { kind: HubModelRepo, path: "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr },
   revision: "fixture0000000000000000000000000000000000" as NonEmptyStr,
   revision_provenance: "controlled fixture: this witness asserts renderer shape, never a resolved revision" as NonEmptyStr,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },

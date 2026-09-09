@@ -18,9 +18,10 @@ import v2.extdeps.languages.go {
 import v2.extdeps.languages.python {
   python_int_inhabitant_node,
   python_emitted_add_fn_node,
+  python_source_text,
   python_target_model
 }
-import v2.test.manual.ingest_bridge { ingest_cross_language_compile_refuses_underived_holds }
+import v2.test.manual.ingest_bridge { ingest_cross_language_compile_accepts_holds }
 import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 import v2.std.inhabitant_neutralization {
@@ -134,7 +135,13 @@ test fn inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_h
   }
 }
 
-fn inhabitant_neutralization_go_int64_to_ts_emit_refuses_underived_holds() -> Bool {
+// FLIPPED 2026-09-07 per DESIGN 4b(4): was `..._emit_refuses_underived_holds`, asserting emit
+// refused headed by infer_grounding_not_derived while the typescript number inhabitant sat on the
+// grounding frontier. The language-general declared-inhabitant membership derivation grounded it,
+// so the neutralized go-int64 tree now emits the canonical typescript add fn byte-identical to
+// ts_source_text. Stands as the permanent regression control for that neutralize-then-emit round
+// trip; the grounding-gate refusal class stays covered by the synthetic translate-level controls.
+fn inhabitant_neutralization_go_int64_to_ts_emit_round_trip_holds() -> Bool {
   match neutralize_core_for_target(
     core: go_int64_falsifier_emitted_add_fn_node(),
     target: ts_target_model()
@@ -143,9 +150,8 @@ fn inhabitant_neutralization_go_int64_to_ts_emit_refuses_underived_holds() -> Bo
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: ts_target_model()) {
-            Rejected { diagnostics: d } =>
-              d.head.reason == ^infer_grounding_not_derived
-            Accepted { value: _, diagnostics: _ } => false
+            Accepted { value: source, diagnostics: _ } => source.carried == ts_source_text
+            Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -171,10 +177,16 @@ test fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
     && inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds()
     && inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds()
     && inhabitant_neutralization_neutralize_python_to_go_holds()
-    && inhabitant_neutralization_go_int64_to_ts_emit_refuses_underived_holds()
+    && inhabitant_neutralization_go_int64_to_ts_emit_round_trip_holds()
 }
 
-test fn inhabitant_neutralization_emit_after_neutralize_refuses_underived_holds() -> Bool {
+// FLIPPED 2026-09-07 per DESIGN 4b(4): was `..._emit_after_neutralize_refuses_underived_holds`,
+// asserting emit refused headed by infer_grounding_not_derived while the typescript number
+// inhabitant sat on the grounding frontier. The language-general declared-inhabitant membership
+// derivation grounded it, so the neutralized python tree now emits the canonical typescript add fn
+// byte-identical to ts_source_text. Permanent regression control for the neutralize-then-emit
+// round trip; the grounding-gate refusal class stays covered by the synthetic translate controls.
+test fn inhabitant_neutralization_emit_after_neutralize_round_trip_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: ts_target_model()
@@ -183,9 +195,8 @@ test fn inhabitant_neutralization_emit_after_neutralize_refuses_underived_holds(
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: ts_target_model()) {
-            Rejected { diagnostics: d } =>
-              d.head.reason == ^infer_grounding_not_derived
-            Accepted { value: _, diagnostics: _ } => false
+            Accepted { value: source, diagnostics: _ } => source.carried == ts_source_text
+            Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -204,11 +215,24 @@ fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
   }
 }
 
-fn inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds() -> Bool {
-  ingest_cross_language_compile_refuses_underived_holds()
+// The same-language ingest compile this guard watches flipped from frontier refusal
+// (infer_grounding_not_derived) to clean acceptance on 2026-09-06, under the declared-inhabitant
+// membership derivation (v2.compiler.infer infer_node_declared_in_language_inhabitants, widened to
+// the closed ingest set on 2026-09-07) -- an infer-lane change, not a neutralization one, which is
+// exactly the distinction this guard exists to draw.
+fn inhabitant_neutralization_same_language_cross_language_compile_accepts_holds() -> Bool {
+  ingest_cross_language_compile_accepts_holds()
 }
 
-fn inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds() -> Bool {
+// FLIPPED 2026-09-07 per DESIGN 4b(4): was `..._same_flavor_python_emit_refuses_underived_holds`,
+// asserting emit refused headed by infer_grounding_not_derived while the python int inhabitant sat
+// on the grounding frontier. The language-general declared-inhabitant membership derivation
+// grounded it, so the same-language (python→python) neutralize-then-emit now round-trips to the
+// canonical python source byte-identical to python_source_text. Permanent regression control for
+// that acceptance; the fail-closed half of this guard is carried by
+// inhabitant_neutralization_raw_emit_still_fails_closed (which still refuses, now at
+// NoTargetCandidate on the un-neutralized cross-target emit).
+fn inhabitant_neutralization_same_flavor_python_emit_round_trip_holds() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: python_target_model()
@@ -217,9 +241,8 @@ fn inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds() -
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: python_target_model()) {
-            Rejected { diagnostics: d } =>
-              d.head.reason == ^infer_grounding_not_derived
-            Accepted { value: _, diagnostics: _ } => false
+            Accepted { value: source, diagnostics: _ } => source.carried == python_source_text
+            Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -228,8 +251,8 @@ fn inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds() -
 }
 
 test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
-  inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds()
-    && inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds()
+  inhabitant_neutralization_same_language_cross_language_compile_accepts_holds()
+    && inhabitant_neutralization_same_flavor_python_emit_round_trip_holds()
     && inhabitant_neutralization_raw_emit_still_fails_closed()
 }
 

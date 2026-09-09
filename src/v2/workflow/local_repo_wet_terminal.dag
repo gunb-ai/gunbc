@@ -233,6 +233,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark_snapshot_verify_wrapper_local_wet", function: "an_ok_marker_with_a_nonzero_status_is_a_contradiction_by_real_execution" },
+      entry: "dag/test/claim/spark/spark_snapshot_verify_wrapper_local_wet_test.dag",
+      function: "an_ok_marker_with_a_nonzero_status_is_a_contradiction_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark_snapshot_verify_wrapper_local_wet", function: "a_failed_marker_with_a_zero_status_is_a_contradiction_by_real_execution" },
+      entry: "dag/test/claim/spark/spark_snapshot_verify_wrapper_local_wet_test.dag",
+      function: "a_failed_marker_with_a_zero_status_is_a_contradiction_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_names_a_row_that_went_dark_by_real_execution" },
       entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag",
       function: "row_extractor_names_a_row_that_went_dark_by_real_execution",

@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.mechanism_outlives_the_population_it_was_built_for
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data mechanism_outlives_the_population_it_was_built_for: RecurringFailureMode = RecurringFailureMode {
+  identity: "mechanism_outlives_the_population_it_was_built_for" as NonEmptyStr,
+
+  receipts: [
+    "**a mechanism lands for a population a root fix has already removed** (INVALID STATE: a change that CLASSIFIES or HANDLES an observed failure signature merges after another change eliminated that signature at its root, so a live mechanism asserts a present-tense population that no longer exists. Nothing in the declaration is false -- the population was real when it was observed -- and the mechanism is correct, complete, tested and reviewed. Only the WORLD changed, in another change, between observation and merge). ",
+
+    "**THE HARM IS THAT CORRECTNESS REVIEW CANNOT SEE IT, NOT THAT WORK WAS WASTED.** A row reading `we shipped something unnecessary` understates this by an order. The mechanism is reviewed, approved, and thereafter CITED AS COVERAGE OF A CLASS IT NEVER SEES: on the specimen it was an auto-admission arm inside a REQUIRED gate, so it could not go red, could not be falsified by any run, and would have been named as the reason that class of change is admitted. Section 5's populationless arm is the terminal state -- a widening that no execution can ever contradict, which is strictly worse than an absent one, because absence is visible and this is not. ",
+
+    "**THE MECHANISM IS BASE STALENESS, AND IT IS THE CAUSE RATHER THAN THE CONTEXT.** The observation that motivates such a change is a CI artifact, and a required run's evidence is pinned at push against the base as it then was. Every reader who reasons from that artifact -- author and reviewers alike -- is answering a question about a tree the root fix has already moved past. Such evidence can answer `is this mechanism correct` with full rigour and CANNOT answer `is this mechanism still needed`, because the population it reports was measured before the fix. Nothing joins the artifact to the later change, so no participant is negligent and the defect still lands. ",
+
+    "**THE SPECIMEN IS THIS PROJECT'S OWN WALL, gunbc#10871.** An auto-admission arm was authored to classify a `0 -> 1` binding delta on a derived roster. gunbc#10856 had already fixed the ROOT that manufactured that delta -- a baseline reconstruction inherited the head's bytes for a generated file the diff can never name, so an ordinary append read as not locally authored -- and it merged at 2026-09-08T18:51:35-04:00. The arm merged at 23:19:18, four and a half hours later, classifying a symptom that no longer occurred. It was reviewed FOUR times and approved; every reviewer, and the manager, and the author reasoned from CI bound to a base predating the root fix. It was reverted at gunbc#10889. ",
+
+    "RECOGNITION RULE, AND THE MECHANICAL TELL IS THE WHOLE OF IT: after landing, grep the required gate's own log for the symbol you added; ZERO FIRINGS IS THE FINDING. It is executable, it costs one grep, and it is the thing none of the four reviews did. Two supporting tells, both available before merge: the motivating artifact's base is not an ancestor of current main; and the mechanism's only executing consumers are the fixtures shipped with it, which reads as full coverage and is the same reading either way, since a fixture cannot distinguish a live population from an empty one. ",
+
+    "DISTINGUISHING FACTS, AND THE NEIGHBOUR IT IS NOT. This is NOT `declared_frontier_outlives_the_firing_of_its_own_trigger`. That class is a declaration that ANNOUNCED IT WAS WAITING -- admitted under section 3c with a named later consumer, detectable by re-reading the trigger beside the declaration and asking whether the corpus already has the capability it names. This class is a mechanism that announced IT WAS ALREADY NEEDED. It carries no frontier and no trigger to re-read, so it is not detectable from the declaration at all. Same family, opposite tense, and the rules must stay separate: widening either to cover both blunts the rule that fires. ",
+
+    "CEILING, HONESTLY BELOW WHERE IT LOOKS. Deciding `is this mechanism still needed` in general is asking whether a population is empty, which is not decidable from the declaration, so structural impossibility is NOT the ceiling and claiming it would be inflation. What IS decidable is the tell: a landed symbol with zero firings in the gate's own executed log over a window. That is a lens over an executed artifact -- rung 2 at best. It sits at rung 1 today, mitigation, because nothing runs it: the tell was performed by hand on the specimen and no enrolled check performs it. The next-rung trigger is that lens existing and executing on the merge path, and NOT the weaker artifact of someone remembering to grep. ",
+  ],
+
+  evidence: [],
+}
