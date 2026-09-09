@@ -3,7 +3,7 @@ module test.claim.vllm_runtime_defaults
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { basis_point, basis_point_count, byte_size, byte_size_count }
+import std.measure { BasisPoint, basis_point, basis_point_count, byte_size, byte_size_count }
 import extdeps.vllm.server { vllm_source_revision }
 import extdeps.vllm.runtime_defaults {
   ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627,
@@ -154,16 +154,64 @@ test fn the_two_revisions_agree_on_utilisation_by_comparison_not_by_sharing() ->
     == basis_point_count(bp: defaults_gpu_utilization(r: Vllm1967a5627))
 }
 
-// ── THE ENVELOPE IS DERIVED FROM ITS INPUTS ────────────────────────────────────────────────────
+// ── THE ENVELOPE IS DERIVED FROM ITS INPUTS, AND IT CEILS ──────────────────────────────────────
 //
 // 111.95 GiB is not a stored fact. This asserts the product, in bytes, against the two figures that
 // produce it -- so a future edit that stored the envelope beside them would have to disagree with
 // arithmetic to pass.
-test fn the_requested_envelope_is_the_product_of_device_total_and_fraction() -> Bool {
+//
+// THE EXPECTED VALUE CHANGED BY ONE BYTE AND THE FIRST VERSION OF THIS WITNESS WAS WRONG. It asserted
+// 120,209,065,082, the TRUNCATED product, and it passed -- because the implementation truncated too
+// and the value was checked with the same truncating operator. Upstream computes
+// `math.ceil(total * utilization)`, and 130,662,027,264 x 9200 / 10000 is 120,209,065,082.88, so the
+// correct answer is 120,209,065,083.
+//
+// AND THE ENGINE'S LOG CANNOT ARBITRATE THIS. Both values render as 111.95 GiB, so the "verified
+// against the reported envelope" check that accompanied the original witness could not have detected
+// the defect at all. A rounded projection is not an oracle for the byte it rounds away.
+test fn the_requested_envelope_ceils_as_upstream_does() -> Bool {
   byte_size_count(b: vllm_requested_envelope_bytes(
     device_total: byte_size(count: w_spark_total_bytes_count),
     utilization: basis_point(count: 9200),
-  )) == 120209065082
+  )) == 120209065083
+}
+
+// THE DISCRIMINATOR FOR THE ROUNDING ITSELF, on a case small enough that the two answers are not one
+// byte apart in a twelve-digit number. 7 x 0.92 = 6.44: truncation says 6, ceiling says 7. A
+// truncating implementation passes every large-value witness above by a margin invisible in GiB and
+// fails this one outright.
+test fn a_non_divisible_product_rounds_up_not_down() -> Bool {
+  byte_size_count(b: vllm_requested_envelope_bytes(
+    device_total: byte_size(count: 7),
+    utilization: basis_point(count: 9200),
+  )) == 7
+}
+
+// ── BOTH ARGUMENTS EXPLICIT: THE REQUEST UPSTREAM ACCEPTS ──────────────────────────────────────
+//
+// KV bytes win and the fraction is RETAINED as noncausal, so an observed argv carrying both survives
+// ingestion. A model that dropped the ignored argument could not reproduce the launch it came from.
+test fn both_explicit_arguments_resolve_to_kv_bytes_with_the_fraction_retained() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryRequest {
+      utilization: Present { value: basis_point(count: 8200) },
+      kv_cache_bytes: Present { value: byte_size(count: 26572776960) },
+    },
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ) {
+    AutoProfiledMode { utilization: _, origin: _, requested_envelope_bytes: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+    KvBytesMode { bytes_per_rank: b, origin: _, noncausal_utilization: nc } =>
+      byte_size_count(b: b) == 26572776960 && w_retained_fraction_is(nc: nc, expected: 8200)
+  }
+}
+
+fn w_retained_fraction_is(nc: BasisPoint?, expected: Nat) -> Bool {
+  match nc {
+    Absent => false
+    Present { value: f } => basis_point_count(bp: f) == expected
+  }
 }
 
 // AND IT MOVES WITH THE FRACTION, without which the row above passes against a constant.
