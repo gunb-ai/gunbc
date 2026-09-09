@@ -8,7 +8,7 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityPublished, DensityUnread, PublishedDensityFigure, CabinetPowerFigure, PublishedRealPower,
   FigureVerificationStanding, WordingVerbatim,
-  CoolingMediumStanding, AirCoolingPublished, LiquidCoolingPublished,
+  CoolingMediumStanding, CoolingMediumPublished, CoolingMedium, AirCooling, LiquidCooling,
   PublishedPowerQuantity, CapabilityAtLeast,
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
@@ -62,7 +62,7 @@ data databank_lga4_orangeburg: ColoFacilityRow = ColoFacilityRow {
 data databank_lga4_density: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
-      medium: AirCoolingPublished,
+      medium: CoolingMediumPublished { medium: AirCooling },
       quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 35000) } },
       wording: "35kW+ Cab Density Air",
       citation: "databank.com Orangeburg campus LGA4 page, spec table, raw fetch 2026-09-09 (HTTP 200)",
@@ -72,7 +72,7 @@ data databank_lga4_density: CabinetDensityClaim = DensityPublished {
     },
     tail: [
       PublishedDensityFigure {
-        medium: LiquidCoolingPublished,
+        medium: CoolingMediumPublished { medium: LiquidCooling },
         quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 100000) } },
         wording: "100kW+ Cab Density Liq",
         citation: "databank.com Orangeburg campus LGA4 page, spec table, raw fetch 2026-09-09 (HTTP 200)",

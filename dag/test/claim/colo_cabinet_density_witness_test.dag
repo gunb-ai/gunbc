@@ -2,24 +2,28 @@ module test.claim.colo_cabinet_density_witness
 
 import std.types { Bool, Int }
 import std.algebra { FreeSemigroup }
+import v2.std.algebra { non_empty_to_list }
 import std.measure { Watt, watt, watt_count, volt_ampere }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types {
   CabinetDensityClaim, DensityPublished, PublishedDensityFigure, DensityUnread,
-  CoolingMediumStanding, AirCoolingPublished, LiquidCoolingPublished, CoolingMediumUnspecified,
+  CoolingMediumStanding, CoolingMediumPublished, CoolingMediumUnspecified,
+  CoolingMedium, AirCooling, LiquidCooling,
   CabinetPowerFigure, PublishedRealPower, PublishedApparentPower,
   PublishedPowerQuantity, MarketedAtMost, CapabilityAtLeast, PublishedAverage,
-  MarketedRealInterval, MarketedApparentInterval,
-  FigureVerificationStanding, WordingVerbatim,
-  DensityFigureLookup, FigureFound, FigureAbsent, FigureDuplicated, density_figure_for_medium,
-  DensityScreen, ScreenHolds, ScreenUndetermined, ScreenNeedsEvidence,
-  density_wording_covers, density_ceiling_refuses,
+  MarketedRealInterval, MarketedApparentInterval, QuantityUnreadable,
+  marketed_real_interval, marketed_apparent_interval,
+  FigureVerificationStanding, WordingVerbatim, WordingSummarized,
+  DensityFigureLookup, FigureFound, RequestedMediumAbsent, ClaimUnread, FigureDuplicated,
+  density_figure_for_medium,
+  PublishedRequirementStanding, CoveredByPublishedFloor, WithinPublishedRange,
+  OutsidePublishedMaximum, NonBoundingPublication, PublishedQuantityUnreadable,
+  RequirementMediumAbsent, RequirementClaimUnread, RequirementFigureContested,
+  published_requirement_standing,
   ClaimWordingStanding, ClaimWordingVerified, ClaimWordingSummarized, ClaimWordingUnread,
   claim_wording_standing,
-  density_claim_figures, medium_eq,
-  quantity_ceiling,
-  CabinetPowerCeiling, CeilingAt, ceiling_refuses,
+  density_claim_figures, medium_standing_eq,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
 }
 import extdeps.colo.databank {
@@ -80,46 +84,169 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // correct reading for every witness below EXCEPT the duplication one, which asks for the arm itself
 // through `needs_evidence` rather than through these. Flattening in the carrier is what the review
 // found; flattening in a caller that has just been shown the arm is a caller's choice.
-fn refuses_at(d: CabinetDensityClaim, requested: CoolingMediumStanding, required: Int) -> Bool {
-  match density_ceiling_refuses(d: d, requested: requested, required: watt(count: required)) {
-    ScreenHolds => true,
-    ScreenUndetermined => false,
-    ScreenNeedsEvidence { contested_medium } => false,
+fn outside_maximum(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
+    OutsidePublishedMaximum { figure } => true,
+    CoveredByPublishedFloor { figure } => false,
+    WithinPublishedRange { figure } => false,
+    NonBoundingPublication { figure } => false,
+    PublishedQuantityUnreadable { figure, reason } => false,
+    RequirementMediumAbsent { requested: r } => false,
+    RequirementClaimUnread { obligation } => false,
+    RequirementFigureContested { contested } => false,
   }
 }
 
-fn covers_at(d: CabinetDensityClaim, requested: CoolingMediumStanding, required: Int) -> Bool {
-  match density_wording_covers(d: d, requested: requested, required: watt(count: required)) {
-    ScreenHolds => true,
-    ScreenUndetermined => false,
-    ScreenNeedsEvidence { contested_medium } => false,
+fn covered_by_floor(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
+    CoveredByPublishedFloor { figure } => true,
+    WithinPublishedRange { figure } => false,
+    OutsidePublishedMaximum { figure } => false,
+    NonBoundingPublication { figure } => false,
+    PublishedQuantityUnreadable { figure, reason } => false,
+    RequirementMediumAbsent { requested: r } => false,
+    RequirementClaimUnread { obligation } => false,
+    RequirementFigureContested { contested } => false,
   }
 }
 
-fn needs_evidence(d: CabinetDensityClaim, requested: CoolingMediumStanding, required: Int) -> Bool {
-  match density_wording_covers(d: d, requested: requested, required: watt(count: required)) {
-    ScreenHolds => false,
-    ScreenUndetermined => false,
-    ScreenNeedsEvidence { contested_medium } => true,
+fn within_range(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
+    WithinPublishedRange { figure } => true,
+    CoveredByPublishedFloor { figure } => false,
+    OutsidePublishedMaximum { figure } => false,
+    NonBoundingPublication { figure } => false,
+    PublishedQuantityUnreadable { figure, reason } => false,
+    RequirementMediumAbsent { requested: r } => false,
+    RequirementClaimUnread { obligation } => false,
+    RequirementFigureContested { contested } => false,
   }
 }
 
-fn has_figure_for(d: CabinetDensityClaim, requested: CoolingMediumStanding) -> Bool {
+fn non_bounding(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
+    NonBoundingPublication { figure } => true,
+    CoveredByPublishedFloor { figure } => false,
+    WithinPublishedRange { figure } => false,
+    OutsidePublishedMaximum { figure } => false,
+    PublishedQuantityUnreadable { figure, reason } => false,
+    RequirementMediumAbsent { requested: r } => false,
+    RequirementClaimUnread { obligation } => false,
+    RequirementFigureContested { contested } => false,
+  }
+}
+
+fn medium_absent(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
+    RequirementMediumAbsent { requested: r } => true,
+    CoveredByPublishedFloor { figure } => false,
+    WithinPublishedRange { figure } => false,
+    OutsidePublishedMaximum { figure } => false,
+    NonBoundingPublication { figure } => false,
+    PublishedQuantityUnreadable { figure, reason } => false,
+    RequirementClaimUnread { obligation } => false,
+    RequirementFigureContested { contested } => false,
+  }
+}
+
+fn claim_unread(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
+    RequirementClaimUnread { obligation } => true,
+    CoveredByPublishedFloor { figure } => false,
+    WithinPublishedRange { figure } => false,
+    OutsidePublishedMaximum { figure } => false,
+    NonBoundingPublication { figure } => false,
+    PublishedQuantityUnreadable { figure, reason } => false,
+    RequirementMediumAbsent { requested: r } => false,
+    RequirementFigureContested { contested } => false,
+  }
+}
+
+fn needs_evidence(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
+    RequirementFigureContested { contested } => true,
+    CoveredByPublishedFloor { figure } => false,
+    WithinPublishedRange { figure } => false,
+    OutsidePublishedMaximum { figure } => false,
+    NonBoundingPublication { figure } => false,
+    PublishedQuantityUnreadable { figure, reason } => false,
+    RequirementMediumAbsent { requested: r } => false,
+    RequirementClaimUnread { obligation } => false,
+  }
+}
+
+fn has_figure_for(d: CabinetDensityClaim, requested: CoolingMedium) -> Bool {
   match density_figure_for_medium(d: d, requested: requested) {
     FigureFound { figure } => true,
-    FigureAbsent { absent_medium } => false,
-    FigureDuplicated { duplicated_medium } => false,
+    RequestedMediumAbsent { requested: r } => false,
+    ClaimUnread { obligation } => false,
+    FigureDuplicated { duplicated } => false,
   }
 }
 
-fn has_ceiling_for(d: CabinetDensityClaim, requested: CoolingMediumStanding) -> Bool {
-  match density_figure_for_medium(d: d, requested: requested) {
-    FigureFound { figure } => match quantity_ceiling(q: figure.quantity) {
-      Present { value } => true,
-      Absent => false,
-    },
-    FigureAbsent { absent_medium } => false,
-    FigureDuplicated { duplicated_medium } => false,
+// WHETHER THE PUBLICATION BOUNDS FROM ABOVE AT ALL, asked by handing the relation a requirement no
+// published cabinet figure in this corpus reaches. It replaces a `has_ceiling_for` that read the
+// quantity's ceiling directly: there is no ceiling to read any more, because a marketed maximum no
+// longer becomes one. What a caller can still ask is whether this publication would place ANY
+// requirement outside its published range, and that is this.
+fn bounds_above(d: CabinetDensityClaim, requested: CoolingMedium) -> Bool {
+  outside_maximum(d: d, requested: requested, required: 99999999)
+}
+
+// SUPPORT FROM BELOW, ACROSS BOTH ARMS THAT CAN GIVE IT. Used ONLY in negative position, where it is
+// strictly stronger than either arm alone: asserting that neither a floor nor a range supports a
+// requirement rules out both, while every positive assertion names its exact arm so the two can never
+// be satisfied by each other.
+fn supports_from_below(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  covered_by_floor(d: d, requested: requested, required: required)
+    || within_range(d: d, requested: requested, required: required)
+}
+
+// VERIFICATION READ AT THE SCREEN BOUNDARY, WHICH IS THE ONLY PLACE THE LOSS WAS OBSERVABLE. The
+// standing carries the figure on every arm that has one, so a caller reaches the verification grade of
+// the exact reading it is about to act on. Before that, a summarized-wording figure and a raw-byte
+// verbatim figure produced identical answers and nothing downstream could tell them apart. The four
+// evidence-gap arms answer false because there is no reading to grade, which is a different fact from
+// an unverified one and is why they are not fused here either.
+fn standing_is_verbatim(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
+    CoveredByPublishedFloor { figure } => figure_is_verbatim(f: figure),
+    WithinPublishedRange { figure } => figure_is_verbatim(f: figure),
+    OutsidePublishedMaximum { figure } => figure_is_verbatim(f: figure),
+    NonBoundingPublication { figure } => figure_is_verbatim(f: figure),
+    PublishedQuantityUnreadable { figure, reason } => figure_is_verbatim(f: figure),
+    RequirementMediumAbsent { requested: r } => false,
+    RequirementClaimUnread { obligation } => false,
+    RequirementFigureContested { contested } => false,
+  }
+}
+
+fn quantity_is_unreadable(d: CabinetDensityClaim, requested: CoolingMedium, required: Int) -> Bool {
+  match published_requirement_standing(d: d, requested: requested, required: watt(count: required)) {
+    PublishedQuantityUnreadable { figure, reason } => true,
+    CoveredByPublishedFloor { figure } => false,
+    WithinPublishedRange { figure } => false,
+    OutsidePublishedMaximum { figure } => false,
+    NonBoundingPublication { figure } => false,
+    RequirementMediumAbsent { requested: r } => false,
+    RequirementClaimUnread { obligation } => false,
+    RequirementFigureContested { contested } => false,
+  }
+}
+
+// THE SIZE OF THE REMEDY POPULATION, WHICH IS THE ONLY THING THAT SEES A FIRST-WINS NARROWING.
+fn unverified_count(d: CabinetDensityClaim) -> Int {
+  match claim_wording_standing(d: d) {
+    ClaimWordingVerified => 0,
+    ClaimWordingUnread => 0,
+    ClaimWordingSummarized { unverified } => non_empty_to_list(xs: unverified).length(),
+  }
+}
+
+fn figure_is_verbatim(f: PublishedDensityFigure) -> Bool {
+  match f.verification {
+    WordingVerbatim { retrieval } => true,
+    WordingSummarized { retrieval, discharge } => false,
   }
 }
 
@@ -149,10 +276,10 @@ data medium_unspecified_interval_fixture: CabinetDensityClaim = DensityPublished
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
       medium: CoolingMediumUnspecified,
-      quantity: MarketedApparentInterval {
+      quantity: marketed_apparent_interval(
         lower: volt_ampere(count: 3500),
         upper: volt_ampere(count: 5000),
-      },
+      ),
       wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
       citation: "witness fixture reproducing the Telehouse Chelsea publication shape verbatim, INCLUDING that it names no cooling medium; the live rows are carried by the operator's own module",
       verification: WordingVerbatim {
@@ -170,11 +297,11 @@ data medium_unspecified_interval_fixture: CabinetDensityClaim = DensityPublished
 data apparent_power_fixture: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
-      medium: AirCoolingPublished,
-      quantity: MarketedApparentInterval {
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: marketed_apparent_interval(
         lower: volt_ampere(count: 3500),
         upper: volt_ampere(count: 5000),
-      },
+      ),
       wording: "witness fixture: an apparent-power interval the operator labelled air",
       citation: "witness fixture isolating the apparent-to-real crossing from the medium coordinate; no live row publishes an air-labelled kVA interval, which is why this is constructed rather than cited",
       verification: WordingVerbatim {
@@ -194,7 +321,7 @@ data apparent_power_fixture: CabinetDensityClaim = DensityPublished {
 data air_labelled_cap_fixture: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
-      medium: AirCoolingPublished,
+      medium: CoolingMediumPublished { medium: AirCooling },
       quantity: MarketedAtMost { upper: PublishedRealPower { power: watt(count: 30000) } },
       wording: "witness fixture: a cap the operator labelled air",
       citation: "witness fixture reproducing the shape of an air-labelled marketed maximum; no live row on main publishes one, which is itself the observation",
@@ -216,7 +343,7 @@ data air_labelled_cap_fixture: CabinetDensityClaim = DensityPublished {
 data duplicated_air_fixture: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
-      medium: AirCoolingPublished,
+      medium: CoolingMediumPublished { medium: AirCooling },
       quantity: MarketedAtMost { upper: PublishedRealPower { power: watt(count: 30000) } },
       wording: "witness fixture, first cell: up to 30 kW per rack",
       citation: "witness fixture reproducing a self-contradicting page; no live row publishes two air figures",
@@ -226,7 +353,7 @@ data duplicated_air_fixture: CabinetDensityClaim = DensityPublished {
     },
     tail: [
       PublishedDensityFigure {
-        medium: AirCoolingPublished,
+        medium: CoolingMediumPublished { medium: AirCooling },
         quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 35000) } },
         wording: "witness fixture, second cell: 35kW+ air",
         citation: "witness fixture reproducing a self-contradicting page; no live row publishes two air figures",
@@ -252,8 +379,8 @@ data duplicated_air_fixture: CabinetDensityClaim = DensityPublished {
 data real_interval_fixture: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
-      medium: AirCoolingPublished,
-      quantity: MarketedRealInterval { lower: watt(count: 2000), upper: watt(count: 16000) },
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: marketed_real_interval(lower: watt(count: 2000), upper: watt(count: 16000)),
       wording: "witness fixture: a real-power interval the operator labelled air",
       citation: "witness fixture reproducing NJFX Wall's two-ended publication shape in real power; no live row is both an interval and air-labelled, which is why this is constructed rather than cited",
       verification: WordingVerbatim {
@@ -276,7 +403,7 @@ data real_interval_fixture: CabinetDensityClaim = DensityPublished {
 data published_average_fixture: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
-      medium: AirCoolingPublished,
+      medium: CoolingMediumPublished { medium: AirCooling },
       quantity: PublishedAverage { average: PublishedRealPower { power: watt(count: 3000) } },
       wording: "witness fixture: cooling level average is 3kW per cabinet",
       citation: "witness fixture reproducing the average publication shape a lane read and could not file; air-labelled so it REACHES the screen and can be shown to answer nothing once there",
@@ -293,9 +420,9 @@ data published_average_fixture: CabinetDensityClaim = DensityPublished {
 // does not refuse 29999 W. Not-refused is undetermined, never admitted, which is why the second
 // conjunct is negated rather than read as a fit.
 test fn w_a_published_cap_bounds_from_above() -> Bool {
-  has_ceiling_for(d: air_labelled_cap_fixture, requested: AirCoolingPublished)
-    && refuses_at(d: air_labelled_cap_fixture, requested: AirCoolingPublished, required: 30001)
-    && !refuses_at(d: air_labelled_cap_fixture, requested: AirCoolingPublished, required: 29999)
+  bounds_above(d: air_labelled_cap_fixture, requested: AirCooling)
+    && outside_maximum(d: air_labelled_cap_fixture, requested: AirCooling, required: 30001)
+    && !outside_maximum(d: air_labelled_cap_fixture, requested: AirCooling, required: 29999)
 }
 
 // THE DISCRIMINATING RED FOR THE QUANTIFIER SPLIT, ON THE LIVE ROW THAT MOTIVATED IT. DataBank
@@ -307,8 +434,8 @@ test fn w_a_published_cap_bounds_from_above() -> Bool {
 // every other seam. The 999999 W conjunct is what separates absent-ceiling from generous-ceiling:
 // an absent ceiling refuses nothing at all, including the absurd.
 test fn w_a_marketed_floor_yields_no_ceiling() -> Bool {
-  !has_ceiling_for(d: databank_lga4_density, requested: AirCoolingPublished)
-    && !refuses_at(d: databank_lga4_density, requested: AirCoolingPublished, required: 999999)
+  !bounds_above(d: databank_lga4_density, requested: AirCooling)
+    && !outside_maximum(d: databank_lga4_density, requested: AirCooling, required: 999999)
 }
 
 // A RANGE CEILINGS AT ITS CAP AND DISCARDS ITS FLOOR, AND THE FLOOR CONJUNCT IS WHY THIS WITNESS
@@ -318,9 +445,9 @@ test fn w_a_marketed_floor_yields_no_ceiling() -> Bool {
 // the second conjunct is the one that catches it. kW <= kVA carries the crossing, so 5001 W is
 // refused on published evidence alone without any power factor being assumed.
 test fn w_an_interval_bounds_at_its_upper_end_not_its_lower() -> Bool {
-  refuses_at(d: apparent_power_fixture, requested: AirCoolingPublished, required: 5001)
-    && !refuses_at(d: apparent_power_fixture, requested: AirCoolingPublished, required: 3501)
-    && !refuses_at(d: apparent_power_fixture, requested: AirCoolingPublished, required: 4999)
+  outside_maximum(d: apparent_power_fixture, requested: AirCooling, required: 5001)
+    && !outside_maximum(d: apparent_power_fixture, requested: AirCooling, required: 3501)
+    && !outside_maximum(d: apparent_power_fixture, requested: AirCooling, required: 4999)
 }
 
 // AN UNREAD CLAIM YIELDS NOTHING ON EITHER AXIS. The earlier accessor answered 0 here - a
@@ -328,8 +455,8 @@ test fn w_an_interval_bounds_at_its_upper_end_not_its_lower() -> Bool {
 // the zero unconstructible. WPA-1 is the live row: a review asserted 20 kW cabinets there, the
 // page states no density at all, and the row records the absence rather than the assertion.
 test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
-  !has_ceiling_for(d: iron_mountain_wpa1_density, requested: AirCoolingPublished)
-    && !refuses_at(d: iron_mountain_wpa1_density, requested: AirCoolingPublished, required: 999999)
+  !bounds_above(d: iron_mountain_wpa1_density, requested: AirCooling)
+    && !outside_maximum(d: iron_mountain_wpa1_density, requested: AirCooling, required: 999999)
 }
 
 // A READ DENSITY AND A SELLABLE GRAIN ARE INDEPENDENT FACTS. A cabinet marketed at 30 kW that the
@@ -346,8 +473,8 @@ fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
 test fn w_density_and_grain_are_separate_facts() -> Bool {
   grain_admits_single_cabinet(g: databank_lga4_retail_grain)
     && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
-    && has_ceiling_for(d: air_labelled_cap_fixture, requested: AirCoolingPublished)
-    && !has_ceiling_for(d: databank_lga4_density, requested: AirCoolingPublished)
+    && bounds_above(d: air_labelled_cap_fixture, requested: AirCooling)
+    && !bounds_above(d: databank_lga4_density, requested: AirCooling)
 }
 
 // AN UNREAD DENSITY REFUSES NOTHING, WHICH IS THE ARM THAT KEEPS THE CEILING FROM BEING A FREE
@@ -356,8 +483,8 @@ test fn w_density_and_grain_are_separate_facts() -> Bool {
 // impossible requirement, and an absent one refuses nothing at all. Reading a bare false as "fits"
 // would admit every unread cabinet in the census.
 test fn w_absent_ceiling_refuses_nothing_and_a_real_one_does() -> Bool {
-  !refuses_at(d: iron_mountain_wpa1_density, requested: AirCoolingPublished, required: 999999)
-    && refuses_at(d: apparent_power_fixture, requested: AirCoolingPublished, required: 999999)
+  !outside_maximum(d: iron_mountain_wpa1_density, requested: AirCooling, required: 999999)
+    && outside_maximum(d: apparent_power_fixture, requested: AirCooling, required: 999999)
 }
 
 // THE COVERAGE CARRIER'S CONSUMER, ENROLLED FOR THE SAME REASON AS THE ONES ABOVE. Review 62758
@@ -456,10 +583,10 @@ test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bo
 // the right numerals while the meaning had inverted; a cap that admits is the state this asserts
 // cannot exist.
 test fn w_a_marketed_floor_admits_below_itself_and_a_cap_admits_nothing() -> Bool {
-  covers_at(d: databank_lga4_density, requested: AirCoolingPublished, required: 27300)
-    && !covers_at(d: databank_lga4_density, requested: AirCoolingPublished, required: 35001)
-    && !covers_at(d: air_labelled_cap_fixture, requested: AirCoolingPublished, required: 27300)
-    && !covers_at(d: iron_mountain_wpa1_density, requested: AirCoolingPublished, required: 1)
+  covered_by_floor(d: databank_lga4_density, requested: AirCooling, required: 27300)
+    && !supports_from_below(d: databank_lga4_density, requested: AirCooling, required: 35001)
+    && !supports_from_below(d: air_labelled_cap_fixture, requested: AirCooling, required: 27300)
+    && !supports_from_below(d: iron_mountain_wpa1_density, requested: AirCooling, required: 1)
 }
 
 // AN APPARENT-POWER FLOOR ADMITS NOTHING, WHICH IS THE CROSSING REFUSED IN THE DIRECTION THE
@@ -468,8 +595,8 @@ test fn w_a_marketed_floor_admits_below_itself_and_a_cap_admits_nothing() -> Boo
 // in watts, so admitting on it would be one power factor more generous than the operator's own
 // sentence. The fixture's lower end is 3.5 kVA and 1 W is not admitted by it.
 test fn w_an_apparent_power_lower_end_admits_nothing() -> Bool {
-  !covers_at(d: apparent_power_fixture, requested: AirCoolingPublished, required: 1)
-    && refuses_at(d: apparent_power_fixture, requested: AirCoolingPublished, required: 5001)
+  !supports_from_below(d: apparent_power_fixture, requested: AirCooling, required: 1)
+    && outside_maximum(d: apparent_power_fixture, requested: AirCooling, required: 5001)
 }
 
 // THE DISCRIMINATING RED FOR THE MEDIUM AXIS, on the live row that motivated it. Iron Mountain's
@@ -496,10 +623,10 @@ test fn w_an_apparent_power_lower_end_admits_nothing() -> Bool {
 // level down: collapsing distinct causes into one answer is what makes the specific one invisible,
 // whether the collapse is in the type or in the assertion.
 test fn w_an_unspecified_medium_does_not_answer_an_air_question() -> Bool {
-  !has_figure_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
-    && !has_ceiling_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
-    && !covers_at(d: iron_mountain_nje1_density, requested: AirCoolingPublished, required: 1)
-    && has_figure_for(d: databank_lga4_density, requested: AirCoolingPublished)
+  !has_figure_for(d: iron_mountain_nje1_density, requested: AirCooling)
+    && !bounds_above(d: iron_mountain_nje1_density, requested: AirCooling)
+    && !supports_from_below(d: iron_mountain_nje1_density, requested: AirCooling, required: 1)
+    && has_figure_for(d: databank_lga4_density, requested: AirCooling)
 }
 
 // A LIQUID FIGURE IS NOT AN AIR FIGURE EITHER, and DataBank is the row that can tell the difference
@@ -508,8 +635,8 @@ test fn w_an_unspecified_medium_does_not_answer_an_air_question() -> Bool {
 // consumer would screen against 100 kW of liquid capacity for an air-cooled cabinet. The admitting
 // direction is where that shows: 40 kW is above the air floor and below the liquid one.
 test fn w_air_selection_does_not_return_the_liquid_figure() -> Bool {
-  covers_at(d: databank_lga4_density, requested: AirCoolingPublished, required: 35000)
-    && !covers_at(d: databank_lga4_density, requested: AirCoolingPublished, required: 40000)
+  covered_by_floor(d: databank_lga4_density, requested: AirCooling, required: 35000)
+    && !supports_from_below(d: databank_lga4_density, requested: AirCooling, required: 40000)
 }
 
 // THE MEDIUM CONTROL ON THE FIXTURE THAT MOTIVATED IT. Telehouse's real wording names no medium, so
@@ -518,9 +645,9 @@ test fn w_air_selection_does_not_return_the_liquid_figure() -> Bool {
 // carrying the IDENTICAL interval still bounds. Two fixtures differing in exactly one coordinate is
 // the only way to show the coordinate is what is being read.
 test fn w_an_unlabelled_interval_answers_nothing_while_its_air_twin_bounds() -> Bool {
-  !has_ceiling_for(d: medium_unspecified_interval_fixture, requested: AirCoolingPublished)
-    && !covers_at(d: medium_unspecified_interval_fixture, requested: AirCoolingPublished, required: 1)
-    && refuses_at(d: apparent_power_fixture, requested: AirCoolingPublished, required: 5001)
+  !bounds_above(d: medium_unspecified_interval_fixture, requested: AirCooling)
+    && !supports_from_below(d: medium_unspecified_interval_fixture, requested: AirCooling, required: 1)
+    && outside_maximum(d: apparent_power_fixture, requested: AirCooling, required: 5001)
 }
 
 // THE DISCRIMINATING RED FOR THE DUPLICATION REFUSAL, AND THE REASON IT ASKS FOR THE ARM RATHER THAN
@@ -536,10 +663,10 @@ test fn w_an_unlabelled_interval_answers_nothing_while_its_air_twin_bounds() -> 
 // produce an answer. The fourth conjunct is what stops the fix being a blanket silencing of air: the
 // single-figure air fixture still ceilings.
 test fn w_two_air_figures_refuse_rather_than_pick() -> Bool {
-  needs_evidence(d: duplicated_air_fixture, requested: AirCoolingPublished, required: 1)
-    && !covers_at(d: duplicated_air_fixture, requested: AirCoolingPublished, required: 1)
-    && !refuses_at(d: duplicated_air_fixture, requested: AirCoolingPublished, required: 999999)
-    && has_ceiling_for(d: air_labelled_cap_fixture, requested: AirCoolingPublished)
+  needs_evidence(d: duplicated_air_fixture, requested: AirCooling, required: 1)
+    && !supports_from_below(d: duplicated_air_fixture, requested: AirCooling, required: 1)
+    && !outside_maximum(d: duplicated_air_fixture, requested: AirCooling, required: 999999)
+    && bounds_above(d: air_labelled_cap_fixture, requested: AirCooling)
 }
 
 // ONE LOOKUP ANSWERS LIQUID TOO, WHICH IS THE WHOLE POINT OF THE MEDIUM BECOMING A PARAMETER.
@@ -548,10 +675,10 @@ test fn w_two_air_figures_refuse_rather_than_pick() -> Bool {
 // ONE THAT MATTERS - air must NOT answer with the liquid figure, and a lookup that ignored the
 // requested medium would pass the first two conjuncts and fail only here.
 test fn w_the_same_lookup_answers_liquid_without_air_borrowing_it() -> Bool {
-  covers_at(d: databank_lga4_density, requested: LiquidCoolingPublished, required: 100000)
-    && !covers_at(d: databank_lga4_density, requested: LiquidCoolingPublished, required: 100001)
-    && !covers_at(d: databank_lga4_density, requested: AirCoolingPublished, required: 100000)
-    && !has_figure_for(d: air_labelled_cap_fixture, requested: LiquidCoolingPublished)
+  covered_by_floor(d: databank_lga4_density, requested: LiquidCooling, required: 100000)
+    && !supports_from_below(d: databank_lga4_density, requested: LiquidCooling, required: 100001)
+    && !supports_from_below(d: databank_lga4_density, requested: AirCooling, required: 100000)
+    && !has_figure_for(d: air_labelled_cap_fixture, requested: LiquidCooling)
 }
 
 // REQUESTING AN UNSPECIFIED MEDIUM ANSWERS NOTHING, AND THE SUBJECT IS THE ROW MOST LIKELY TO MAKE IT
@@ -560,11 +687,22 @@ test fn w_the_same_lookup_answers_liquid_without_air_borrowing_it() -> Bool {
 // named no cooling at all - the medium defect restored through the query side after being closed on
 // the figure side. Unspecified is a fact about what the PAGE said, never a medium anything can be
 // deployed into, so it satisfies no request including its own.
-test fn w_requesting_an_unspecified_medium_answers_nothing() -> Bool {
-  !has_figure_for(d: iron_mountain_nje1_density, requested: CoolingMediumUnspecified)
-    && !refuses_at(d: iron_mountain_nje1_density, requested: CoolingMediumUnspecified, required: 999999)
-    && has_figure_for(d: databank_lga4_density, requested: AirCoolingPublished)
-}
+// THE WITNESS THAT USED TO STAND HERE DISSOLVED WHEN ITS CLASS CLIMBED, AND THE NOTE IS THE RECEIPT.
+// `w_requesting_an_unspecified_medium_answers_nothing` asserted that asking for the unspecified medium
+// returned no figure and bounded nothing. It guarded a real defect: a lookup written as plain equality
+// over one three-arm coordinate would have matched Iron Mountain's unlabelled figure and handed back a
+// 30 kW cap for a question that named no cooling at all.
+//
+// The request type is now `CoolingMedium`, which has two constructors, and the invalid request cannot
+// be written - not here, not in a fixture, not anywhere a caller could reach. DESIGN section 4b is
+// explicit that a check whose RED is not authorable is not a weak wall but a decoration: permanently
+// green by construction, carrying no information, and worse than absent because it would be cited as
+// coverage. The class moved from mechanically preventable to structurally impossible, and the
+// production machinery that enforced it - the rejecting arm inside `medium_matches` - went with it.
+//
+// The half that IS still authorable is kept, one witness down: a figure whose PAGE named no medium
+// answers no air and no liquid request. That is a fact about the publication rather than about the
+// request, it stays fully expressible, and it is the arm a future author could actually break.
 
 // MODEL OCCUPANCY IS NOT SCREEN UTILITY, AND IRON MOUNTAIN IS THE ROW THAT PROVES THEY DIVERGE. Its
 // page publishes a real figure, so the inventory route is NON-EMPTY - and because the page
@@ -577,7 +715,7 @@ test fn w_requesting_an_unspecified_medium_answers_nothing() -> Bool {
 // arms rather than the two list lengths it used to.
 test fn w_model_occupancy_is_not_screen_utility() -> Bool {
   density_claim_figures(d: iron_mountain_nje1_density).length() > 0
-    && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
+    && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCooling)
     && density_claim_figures(d: iron_mountain_wpa1_density).length() == 0
 }
 
@@ -593,7 +731,7 @@ test fn w_model_occupancy_is_not_screen_utility() -> Bool {
 fn wording_standing_is(d: CabinetDensityClaim, expect_verified: Bool, expect_summarized: Bool) -> Bool {
   match claim_wording_standing(d: d) {
     ClaimWordingVerified => expect_verified,
-    ClaimWordingSummarized { discharge } => expect_summarized,
+    ClaimWordingSummarized { unverified } => expect_summarized,
     ClaimWordingUnread => !expect_verified && !expect_summarized,
   }
 }
@@ -616,7 +754,7 @@ test fn w_occupancy_verification_and_utility_are_three_facts() -> Bool {
     && wording_standing_is(d: iron_mountain_nje1_density, expect_verified: false, expect_summarized: true)
     && wording_standing_is(d: iron_mountain_wpa1_density, expect_verified: false, expect_summarized: false)
     && density_claim_figures(d: iron_mountain_nje1_density).length() > 0
-    && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
+    && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCooling)
 }
 
 // A FIGURE THE SCREEN CANNOT REACH IS STILL A READING THE CENSUS MUST COUNT, and Iron Mountain is the
@@ -634,8 +772,9 @@ test fn w_occupancy_verification_and_utility_are_three_facts() -> Bool {
 // inventory route that silently returned only the head would fail here and nowhere else.
 test fn w_an_unscreenable_figure_is_still_inventoried() -> Bool {
   density_claim_figures(d: iron_mountain_nje1_density).length() == 1
-    && !has_figure_for(d: iron_mountain_nje1_density, requested: CoolingMediumUnspecified)
-    && all(density_claim_figures(d: iron_mountain_nje1_density), f => medium_eq(a: f.medium, b: CoolingMediumUnspecified))
+    && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCooling)
+    && !has_figure_for(d: iron_mountain_nje1_density, requested: LiquidCooling)
+    && all(density_claim_figures(d: iron_mountain_nje1_density), f => medium_standing_eq(a: f.medium, b: CoolingMediumUnspecified))
     && density_claim_figures(d: databank_lga4_density).length() == 2
     && density_claim_figures(d: iron_mountain_wpa1_density).length() == 0
 }
@@ -655,10 +794,10 @@ test fn w_an_unscreenable_figure_is_still_inventoried() -> Bool {
 // covers NOTHING, so the pair shows the split is doing work rather than being a rename: identical
 // structure, different dimension, opposite answer on the admitting side.
 test fn w_a_real_interval_covers_from_its_lower_end_only() -> Bool {
-  covers_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 2000)
-    && covers_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 1999)
-    && !covers_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 2001)
-    && !covers_at(d: apparent_power_fixture, requested: AirCoolingPublished, required: 1)
+  within_range(d: real_interval_fixture, requested: AirCooling, required: 2000)
+    && within_range(d: real_interval_fixture, requested: AirCooling, required: 1999)
+    && !supports_from_below(d: real_interval_fixture, requested: AirCooling, required: 2001)
+    && !supports_from_below(d: apparent_power_fixture, requested: AirCooling, required: 1)
 }
 
 // THE SAME FIXTURE BOUNDS FROM ABOVE AT ITS UPPER END, the other half of the interval's contract and
@@ -667,9 +806,9 @@ test fn w_a_real_interval_covers_from_its_lower_end_only() -> Bool {
 // admitted. A carrier that ceilinged at the LOWER end would refuse 2001 W and look entirely reasonable
 // doing it, so that conjunct is the one that catches the transposition.
 test fn w_a_real_interval_bounds_from_above_at_its_upper_end() -> Bool {
-  refuses_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 16001)
-    && !refuses_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 15999)
-    && !refuses_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 2001)
+  outside_maximum(d: real_interval_fixture, requested: AirCooling, required: 16001)
+    && !outside_maximum(d: real_interval_fixture, requested: AirCooling, required: 15999)
+    && !outside_maximum(d: real_interval_fixture, requested: AirCooling, required: 2001)
 }
 
 // AN AVERAGE BOUNDS NOTHING IN EITHER DIRECTION, EXECUTED RATHER THAN ASSERTED IN PROSE. The carrier's
@@ -683,10 +822,10 @@ test fn w_a_real_interval_bounds_from_above_at_its_upper_end() -> Bool {
 //
 // The fourth conjunct keeps this from being satisfiable by breaking the air path generally.
 test fn w_a_published_average_supports_no_bound_in_either_direction() -> Bool {
-  !covers_at(d: published_average_fixture, requested: AirCoolingPublished, required: 1)
-    && !covers_at(d: published_average_fixture, requested: AirCoolingPublished, required: 3000)
-    && !refuses_at(d: published_average_fixture, requested: AirCoolingPublished, required: 999999)
-    && has_ceiling_for(d: air_labelled_cap_fixture, requested: AirCoolingPublished)}
+  !supports_from_below(d: published_average_fixture, requested: AirCooling, required: 1)
+    && !supports_from_below(d: published_average_fixture, requested: AirCooling, required: 3000)
+    && !outside_maximum(d: published_average_fixture, requested: AirCooling, required: 999999)
+    && bounds_above(d: air_labelled_cap_fixture, requested: AirCooling)}
 
 // ============================================================================================
 // PENNSYLVANIA, RE-KEYED ONTO THE CARRIER RATHER THAN TRANSLATED CALL-FOR-CALL. These five witnesses
@@ -720,11 +859,12 @@ test fn w_a_published_average_supports_no_bound_in_either_direction() -> Bool {
 // THE THIRD CONJUNCT IS WHY THAT IS A SCREEN LOSS AND NOT A DATA LOSS. The figure is still inventoried,
 // verbatim-sourced and countable by a coverage roster; only the medium-keyed question has no answer.
 test fn w_philadelphia_publishes_one_ceiling_reachable_at_no_medium() -> Bool {
-  !has_figure_for(d: netrality_401_n_broad_density, requested: AirCoolingPublished)
-    && !has_figure_for(d: netrality_401_n_broad_density, requested: CoolingMediumUnspecified)
-    && !has_ceiling_for(d: netrality_401_n_broad_density, requested: CoolingMediumUnspecified)
+  !has_figure_for(d: netrality_401_n_broad_density, requested: AirCooling)
+    && !has_figure_for(d: netrality_401_n_broad_density, requested: LiquidCooling)
+    && !bounds_above(d: netrality_401_n_broad_density, requested: AirCooling)
+    && !bounds_above(d: netrality_401_n_broad_density, requested: LiquidCooling)
     && density_claim_figures(d: netrality_401_n_broad_density).length() == 1
-    && all(density_claim_figures(d: netrality_401_n_broad_density), f => medium_eq(a: f.medium, b: CoolingMediumUnspecified))
+    && all(density_claim_figures(d: netrality_401_n_broad_density), f => medium_standing_eq(a: f.medium, b: CoolingMediumUnspecified))
 }
 
 // EVERY OTHER PENNSYLVANIA ROW PUBLISHED NOTHING, ASSERTED AS EMPTY INVENTORY RATHER THAN AS A
@@ -752,9 +892,62 @@ test fn w_every_other_pennsylvania_density_published_nothing() -> Bool {
 // which is what separates it from a generous one. Asked on the medium the pages do not state, so a
 // carrier that answered unspecified requests would red here too.
 test fn w_unread_pennsylvania_densities_have_no_ceiling() -> Bool {
-  !refuses_at(d: h5_philadelphia_density, requested: CoolingMediumUnspecified, required: 1000000)
-    && !refuses_at(d: five_9s_allentown_density, requested: AirCoolingPublished, required: 1000000)
-    && !has_figure_for(d: h5_philadelphia_density, requested: CoolingMediumUnspecified)
+  !outside_maximum(d: h5_philadelphia_density, requested: AirCooling, required: 1000000)
+    && !outside_maximum(d: five_9s_allentown_density, requested: AirCooling, required: 1000000)
+    && claim_unread(d: h5_philadelphia_density, requested: AirCooling, required: 1000000)
+    && !has_figure_for(d: h5_philadelphia_density, requested: AirCooling)
+}
+
+// A REVERSED RANGE, WHICH IS THE ONLY WAY TO REACH QuantityUnreadable AND THEREFORE THE POSITIVE
+// CONTROL ON THE INTERVAL WALL. `marketed_real_interval` is the sole route to the real-interval arm,
+// its payload is std.interval's sole_constructor carrier, and a reversed pair cannot become one - so
+// this fixture is what proves the mint refuses rather than silently swapping the endpoints into
+// order. A swap would be the absorbing fallback: a plausible 2 kW-16 kW range where the page said
+// something this carrier cannot read.
+data reversed_interval_fixture: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: marketed_real_interval(lower: watt(count: 16000), upper: watt(count: 2000)),
+      wording: "witness fixture: endpoints in the wrong order",
+      citation: "witness fixture. No operator publishes a reversed range; this exists to prove the mint refuses one, which is not observable from any live row",
+      verification: WordingVerbatim {
+        retrieval: "Fixture, verbatim by construction.",
+      },
+    },
+    tail: [],
+  },
+}
+
+// TWO SUMMARIZED FIGURES, WHICH IS THE ONLY SHAPE THAT DISTINGUISHES "ALL THE REMEDIES" FROM "THE
+// FIRST ONE". With one summarized figure both answers agree, so a claim carrying two is the
+// discriminating input for the verification fold - and no live row has two, because the census has
+// not yet read an operator publishing separate air and liquid figures under a summarizing tool.
+data two_summarized_figures_fixture: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 20000) } },
+      wording: "witness fixture: air figure read through a summarizing tool",
+      citation: "witness fixture for the verification fold; both figures are summarized so the fold has two remedies to return",
+      verification: WordingSummarized {
+        retrieval: "Fixture: summarized retrieval, air figure.",
+        discharge: "Re-fetch the air specification page as raw bytes.",
+      },
+    },
+    tail: [
+      PublishedDensityFigure {
+        medium: CoolingMediumPublished { medium: LiquidCooling },
+        quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 80000) } },
+        wording: "witness fixture: liquid figure read through a summarizing tool",
+        citation: "witness fixture for the verification fold; the SECOND remedy, which a first-wins fold would never surface",
+        verification: WordingSummarized {
+          retrieval: "Fixture: summarized retrieval, liquid figure.",
+          discharge: "Request the liquid-cooling addendum from the operator.",
+        },
+      },
+    ],
+  },
 }
 
 // GRAIN AND DENSITY MOVE INDEPENDENTLY ACROSS THIS REGION, which is what makes it worth quoting at
@@ -785,4 +978,88 @@ test fn w_pennsylvania_grain_is_independent_of_density() -> Bool {
 test fn w_the_pennsylvania_survey_is_a_recorded_measurement() -> Bool {
   facility_count_or_sentinel(c: pa_philadelphia_and_lehigh_valley) > 0
     && density_reads_never_exceed_facilities(c: pa_philadelphia_and_lehigh_valley)
+}
+
+// ============================================================================================
+// THE FOUR CAPABILITIES THE HEAD REVIEW ASKED FOR, EACH WITH THE INPUT THAT DISCRIMINATES IT.
+// ============================================================================================
+
+// A REVERSED RANGE REFUSES AT THE MINT AND REACHES A CONSUMER AS AN UNREADABLE QUANTITY. This is the
+// positive control on consuming std.interval rather than re-declaring endpoint pairs: the reversed
+// figure is neither covered nor outside nor merely non-bounding, it is the arm that says the page's
+// numbers formed no range. THE SECOND AND THIRD CONJUNCTS ARE WHAT MAKE IT A WALL RATHER THAN A
+// LABEL - an unreadable quantity must never admit and must never refuse, in either direction, at any
+// requirement. A mint that silently swapped the endpoints would make the first conjunct red and the
+// well-ordered twin below still green, so the two cannot be satisfied by one another.
+test fn w_a_reversed_range_is_unreadable_and_bounds_in_neither_direction() -> Bool {
+  quantity_is_unreadable(d: reversed_interval_fixture, requested: AirCooling, required: 5000)
+    && !supports_from_below(d: reversed_interval_fixture, requested: AirCooling, required: 1)
+    && !bounds_above(d: reversed_interval_fixture, requested: AirCooling)
+    && within_range(d: real_interval_fixture, requested: AirCooling, required: 2000)
+}
+
+// AN UNREAD CLAIM AND A PUBLISHED CLAIM SILENT ON THE MEDIUM ARE DIFFERENT ANSWERS. They were one
+// arm until this change: `FigureAbsent` was returned both when nobody had read the operator's page
+// and when a read page simply had no figure for the medium asked about. The second carries a remedy
+// the first does not - the row names WHAT MUST BE READ - and fusing them discarded that obligation at
+// the first seam it crossed. A census that cannot tell "we looked and the page is silent on liquid"
+// from "nobody has looked" cannot rank its own remaining work.
+//
+// DataBank LGA4 published air and liquid, so asking it for liquid finds a figure; Iron Mountain's
+// WPA-1 is DensityUnread; and Iron Mountain's NJE-1 is published but names no medium, which is the
+// row that separates the two failure arms with nothing else varying.
+test fn w_an_unread_claim_is_not_a_silent_one() -> Bool {
+  claim_unread(d: iron_mountain_wpa1_density, requested: AirCooling, required: 5000)
+    && !medium_absent(d: iron_mountain_wpa1_density, requested: AirCooling, required: 5000)
+    && medium_absent(d: iron_mountain_nje1_density, requested: AirCooling, required: 5000)
+    && !claim_unread(d: iron_mountain_nje1_density, requested: AirCooling, required: 5000)
+    && has_figure_for(d: databank_lga4_density, requested: LiquidCooling)
+}
+
+// MARKETING EXCLUDES AND NEVER ADMITS, AND THE TWO ANSWERS NO LONGER SHARE A NAME. An earlier cut
+// returned one bare affirmative from both questions, so "the published floor covers 27.3 kW" and "the
+// requirement is outside the published maximum" were THE SAME VALUE; once stored, the proposition was
+// gone and reading an exclusion as coverage admitted a cabinet the page had ruled out.
+//
+// The arms are disjoint at figures that answer BOTH questions on live rows rather than contrived
+// ones: DataBank's air floor covers 27.3 kW and never excludes, and the air-labelled cap fixture
+// excludes above 30 kW and covers NOTHING - not even 1 W, because "up to 30kW" is a product statement
+// and not a guarantee that any cabinet is available at it.
+test fn w_a_marketed_maximum_excludes_and_covers_nothing() -> Bool {
+  outside_maximum(d: air_labelled_cap_fixture, requested: AirCooling, required: 30001)
+    && !supports_from_below(d: air_labelled_cap_fixture, requested: AirCooling, required: 1)
+    && covered_by_floor(d: databank_lga4_density, requested: AirCooling, required: 27300)
+    && !outside_maximum(d: databank_lga4_density, requested: AirCooling, required: 27300)
+}
+
+// VERIFICATION SURVIVES THE SCREEN BOUNDARY, WHICH IS WHERE IT USED TO BE DISCARDED. The standing
+// carries the figure, so a caller reaches the verification grade of the exact reading it is acting
+// on. Before this, a summarized-wording figure and a raw-byte-verbatim figure produced identical
+// answers at identical requirements and nothing downstream could tell them apart.
+//
+// THE TWO SUBJECTS ARE MATCHED ON EVERYTHING BUT VERIFICATION. Both are air-labelled published
+// claims that answer the same requirement in the same arm; only the verification standing differs,
+// so a boundary that dropped it would make these two conjuncts agree.
+test fn w_verification_standing_survives_the_screen() -> Bool {
+  covered_by_floor(d: databank_lga4_density, requested: AirCooling, required: 27300)
+    && standing_is_verbatim(d: databank_lga4_density, requested: AirCooling, required: 27300)
+    && covered_by_floor(d: two_summarized_figures_fixture, requested: AirCooling, required: 15000)
+    && !standing_is_verbatim(d: two_summarized_figures_fixture, requested: AirCooling, required: 15000)
+}
+
+// EVERY UNVERIFIED FIGURE IS RETURNED, NOT THE FIRST. One summarized member settles the VERDICT, and
+// an earlier fold used that to justify returning one remedy. The verdict is not the whole answer: a
+// claim with two summarized figures has two retrieval routes to run, and handing back one tells a
+// reader how to verify one figure while leaving the population it belongs to unstated - the missing
+// work invisible rather than pending.
+//
+// THE COUNT IS THE CONJUNCT THAT DISCRIMINATES. A first-wins fold returns a one-element population on
+// this fixture and every other assertion here still passes, so length is the only thing that can see
+// the narrowing. Iron Mountain has exactly one summarized figure, which is why it CANNOT serve as
+// this control and is asserted separately as the one-remedy case.
+test fn w_the_verification_fold_returns_every_remedy() -> Bool {
+  unverified_count(d: two_summarized_figures_fixture) == 2
+    && unverified_count(d: iron_mountain_nje1_density) == 1
+    && unverified_count(d: databank_lga4_density) == 0
+    && wording_standing_is(d: two_summarized_figures_fixture, expect_verified: false, expect_summarized: true)
 }
