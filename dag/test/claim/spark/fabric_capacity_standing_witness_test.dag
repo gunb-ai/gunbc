@@ -4,13 +4,11 @@ import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import std.measure { concurrent_request_hundredths_count, token_count, token_count_value }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
-import extdeps.vllm.log_lines { vllm_startup_line_prefix, GpuKvCacheSize, MaximumConcurrency }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_log_path, spark_pair_head_unit_name }
 import gunbc.instruments.fabric_capacity_standing {
   CapacityProbeRead, ProbeFields, ProbeUnreadable, decode_probe,
   ProbeReadings, ProbeReadingsReady, ProbeReadingsRefused, readings_from_fields,
   tokens_from_gpu_kv_cache_size_line, hundredths_from_maximum_concurrency_line,
-  capacity_probe_script, capacity_probe_slots,
+  capacity_probe_slots,
   ProbeFieldName, Invocation, UnitSha, Container, ImageSha, StartedAt, PoolLine, ConcurrencyLine,
   AllocatorBlocks, BlockSize, MaxModelLen, Running, Waiting,
 }
@@ -132,16 +130,5 @@ test fn a_synthesized_or_bare_integer_is_not_a_startup_line() -> Bool {
           Present { value: n } => n == 1122
           Absent => false
         })
-}
-
-test fn the_probe_script_greps_the_declared_startup_prefixes_and_emits_the_line() -> Bool {
-  let script = capacity_probe_script()
-  string_contains(s: script, pattern: vllm_startup_line_prefix(line: GpuKvCacheSize) as String)
-    && string_contains(s: script, pattern: vllm_startup_line_prefix(line: MaximumConcurrency) as String)
-    && string_contains(s: script, pattern: spark_pair_head_unit_name as String)
-    && string_contains(s: script, pattern: spark_pair_container_name as String)
-    && string_contains(s: script, pattern: spark_pair_head_log_path as String)
-    && !string_contains(s: script, pattern: "s/.*size: //")
-    && !string_contains(s: script, pattern: "s/.*request: //")
 }
 

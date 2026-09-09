@@ -1,78 +1,42 @@
 module gunbc.instruments.fabric_capacity_standing
 
-import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.types { String, Bool, Int, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.algebra { trim }
-import std.measure { TokenCount, token_count, token_count_value, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count, allocator_block_count_value }
+import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest, Fnv1a64, content_hash_atom }
-import extdeps.ssh.session
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_log_path, spark_pair_head_unit_name }
-import gunbc.spark.managed_access_apply { spark_managed_login }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.log_lines { vllm_startup_reading, vllm_startup_line_prefix, GpuKvCacheSize, MaximumConcurrency, VllmStartupLine }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
 import extdeps.vllm.kv_layout { ResolvedKvLayout, resolved_kv_layout, VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity }
-import gunbc.spark.vllm_kv_layout_observe {
-  VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutUnreadable, KvLayoutInconsistent, admit_kv_layout, receipt_wire,
-}
-import gunbc.spark.pair_serving_capacity_floor {
-  spark_pair_serving_minimum_cold_sessions,
-  CapacityFloorStanding, MeetsFloor, BelowFloor, FloorUnestablished, capacity_floor_standing,
-  AdmissionPosture, Admitting, Withdrawn, admission_posture,
-}
 
-// ── WHAT THIS DEPLOYMENT'S CAPACITY ACTUALLY IS, ASKED OF THE LIVE ENGINES ────────────────────
-//
-// Every capacity claim in this repository has so far been green by typecheck. This asks the fleet.
+// ── WHETHER THIS DEPLOYMENT'S CAPACITY CAN BE ESTABLISHED ────────────────────────────────────
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/fabric_capacity_standing.dag --function fabric_capacity_standing
 //
-// WHAT IT IS FOR. The expected answer today is that capacity is refused on every group, because
-// the probe does not observe a vLLM source revision and will not stamp the modelled one, because it
-// does not observe hash_block_size and will not stamp the scheduler block_size onto that field, and
-// because even those two supplied would find empty groups. That is the point rather than a disappointment:
-// knowing mechanically that we cannot establish capacity is worth more than reading a dashboard
-// number that says 99% and means something else. The instrument earns its keep the day the answer
-// changes without anyone intending it to.
+// WHAT IT IS FOR. Capacity is refused on every group today: this instrument does not ship a
+// remote bash inventory program (docs/plans/scaffold-admission-doctrine.md: out-of-band
+// actuation has no ordinary scaffold arm), and readings_from_fields still refuses an unobserved
+// revision and an unobserved hash_block_size rather than stamping neighbours.
 //
-// ONE ROUND TRIP PER GROUP. The head curls its own metrics and greps its own launch log. The two
-// startup figures travel as the LAST matching LINE, not as a sed-extracted integer -- the carrier
-// they inhabit exists so the only inhabitant is one the engine printed. The grep prefixes are
-// interpolated from extdeps.vllm.log_lines vllm_startup_line_prefix; they are not a second spelling
-// of the upstream surface. A field the far side cannot produce is a literal "-", which refuses
-// here and never arrives as a zero.
+// Decode still names a field roster so a captured line-list (when a modeled host-effect later
+// produces one) cannot silently rebind slots.
 
-data capacity_probe_script_brace_workaround_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a heads-only (or full) module index whose brace matching is token-aware. SUFFICIENT FOR: a --format template or a shell function body to inhabit a .dag string without flattening (gunbc.recurring_failure_mode.heads_only_index_counts_braces_inside_string_literals). Until then this script is flattened because the reader cannot tell a string from structure. Token-aware matching does not emit this program as typed argv." as NonEmptyStr)
+data observed_engine_revision_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a modeled host-effect inventory observes the engine's vLLM source revision as VllmSourceRevision (repository plus full git object), not /version and not the container image digest (extdeps.vllm.server), and the live entry passes that Present value into readings_from_fields instead of none. SUFFICIENT FOR: the revision refuse arm is no longer the live path's first stop. ProbeReadingsReady still also needs observed_hash_block_size_frontier. Until then none is the honest observation, not a stamp of vllm_source_revision_read." as NonEmptyStr)
 
-data capacity_probe_script_shell_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) realizes this remote inventory probe as typed orchestration intent (or typed host-effect argv) and group_report ships that realization rather than stdin_payload: capacity_probe_script(). SUFFICIENT FOR: emit_field and capacity_probe_script delete together; ExecPortableWordsWithStdin no longer carries a hand-assembled 12-field bash program. The which-prefix decision is already this module's: vllm_startup_line_prefix is interpolated into the payload. Until then this is the marked shell-as-string fact for transport and field order, not for the upstream log surface." as NonEmptyStr)
+data observed_hash_block_size_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a modeled host-effect inventory observes hash_block_size as its own TokenCount from the engine (not cache-config block_size, which is the scheduler minimum) and the live entry passes that Present into readings_from_fields. SUFFICIENT FOR: layout_from_fields stamps the observed hash size, and a scheduler size that happens to equal it is coincidence rather than a second name for the same reading. Until then none is the honest observation." as NonEmptyStr)
 
-data observed_engine_revision_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the live probe observes the engine's vLLM source revision as VllmSourceRevision (repository plus full git object), not /version and not the container image digest (extdeps.vllm.server), and group_report passes that Present value into readings_from_fields instead of none. SUFFICIENT FOR: the revision refuse arm is no longer the live path's first stop. ProbeReadingsReady still also needs observed_hash_block_size_frontier. Until then none is the honest observation, not a stamp of vllm_source_revision_read." as NonEmptyStr)
+data live_inventory_host_effect_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) or another modeled host-effect realizes remote inventory as typed argv/orchestration, and fabric_capacity_standing group_report consumes that realization. SUFFICIENT FOR: a live line-list reaches decode_probe from the entry point. Until then the entry refuses without ssh+bash -s." as NonEmptyStr)
 
-data observed_hash_block_size_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the live probe observes hash_block_size as its own TokenCount from the engine (not cache-config block_size, which is the scheduler minimum). group_report passes that Present into readings_from_fields. SUFFICIENT FOR: layout_from_fields stamps the observed hash size, and a scheduler size that happens to equal it is coincidence rather than a second name for the same reading. Until then none is the honest observation." as NonEmptyStr)
-
-// ONE ROSTER, BOTH ENDS. The far side prints one line per slot, in this list's order; decode looks
-// slots up by name, so inserting a command cannot silently rebind unit_sha to the container id.
-// That names the SLOT, not the captured bytes: a value that contains a newline still splits into
-// extra lines, so decode refuses unless the line count equals the roster length. "-" means the
-// host could not answer.
-//
-// The two launch figures are taken from the LAST matching line rather than the first: the log
-// accumulates across restarts, and the engine serving now is the one that printed last.
-//
-// NO BRACE APPEARS IN THIS SCRIPT, and that is a constraint of the reader rather than of shell. The
-// heads-only pass that indexes modules counts braces without knowing it is inside a string literal,
-// so a `--format` template or a shell function body ends the enclosing declaration early and the
-// module refuses to parse. Every field is therefore assigned, defaulted and printed in three plain
-// commands, and the two docker templates are replaced by `-q` and a sed capture.
+// ONE ROSTER, DECODE END. Decode looks slots up by name, so inserting a field cannot silently
+// rebind unit_sha to the container id. That names the SLOT, not the captured bytes: a value that
+// contains a newline still splits into extra lines, so decode refuses unless the line count equals
+// the roster length. "-" means the producer could not answer.
 type ProbeFieldName
   = Invocation
   | UnitSha
@@ -89,7 +53,6 @@ type ProbeFieldName
 
 type CapacityProbeSlot {
   name: ProbeFieldName
-  command: String
   missing: String
 }
 
@@ -112,18 +75,18 @@ fn probe_field_key(n: ProbeFieldName) -> String {
 
 fn capacity_probe_slots() -> List<CapacityProbeSlot> {
   [
-    CapacityProbeSlot { name: Invocation, command: "systemctl show $u -p InvocationID --value", missing: "the systemd invocation was not found" },
-    CapacityProbeSlot { name: UnitSha, command: "systemctl cat $u | sha256sum | cut -d' ' -f1", missing: "the unit text digest was not found" },
-    CapacityProbeSlot { name: Container, command: "docker ps -q --filter name=$c | head -1", missing: "the container id was not found" },
-    CapacityProbeSlot { name: ImageSha, command: "docker inspect $c | sed -n 's/.*\"Image\": \"sha256:\\([0-9a-f]*\\)\".*/\\1/p' | head -1", missing: "the container image digest was not found" },
-    CapacityProbeSlot { name: StartedAt, command: "date -d \"$(systemctl show $u -p ExecMainStartTimestamp --value)\" +%s", missing: "the unit start instant did not parse as epoch seconds" },
-    CapacityProbeSlot { name: PoolLine, command: join(["grep -a '", vllm_startup_line_prefix(line: GpuKvCacheSize) as String, "' \"$log\" | tail -1"], ""), missing: "the engine's GPU KV cache size line was not found in the launch log" },
-    CapacityProbeSlot { name: ConcurrencyLine, command: join(["grep -a '", vllm_startup_line_prefix(line: MaximumConcurrency) as String, "' \"$log\" | tail -1"], ""), missing: "the engine's maximum concurrency line was not found in the launch log" },
-    CapacityProbeSlot { name: AllocatorBlocks, command: "printf '%s' \"$m\" | grep -o 'num_gpu_blocks=\"[0-9]*\"' | head -1 | tr -dc '0-9'", missing: "num_gpu_blocks was not present in the engine's cache-config metric" },
-    CapacityProbeSlot { name: BlockSize, command: "printf '%s' \"$m\" | grep -o 'block_size=\"[0-9]*\"' | head -1 | tr -dc '0-9'", missing: "block_size was not present in the engine's cache-config metric" },
-    CapacityProbeSlot { name: MaxModelLen, command: "curl -s --max-time 8 http://127.0.0.1:30000/v1/models | grep -o 'max_model_len\":[0-9]*' | tr -dc '0-9'", missing: "max_model_len was not readable from /v1/models" },
-    CapacityProbeSlot { name: Running, command: "printf '%s' \"$m\" | grep '^vllm:num_requests_running' | head -1 | sed 's/.*. //; s/[.].*//'", missing: "num_requests_running was not present in the engine's metrics" },
-    CapacityProbeSlot { name: Waiting, command: "printf '%s' \"$m\" | grep '^vllm:num_requests_waiting.engine' | head -1 | sed 's/.*. //; s/[.].*//'", missing: "num_requests_waiting was not present in the engine's metrics" },
+    CapacityProbeSlot { name: Invocation, missing: "the systemd invocation was not found" },
+    CapacityProbeSlot { name: UnitSha, missing: "the unit text digest was not found" },
+    CapacityProbeSlot { name: Container, missing: "the container id was not found" },
+    CapacityProbeSlot { name: ImageSha, missing: "the container image digest was not found" },
+    CapacityProbeSlot { name: StartedAt, missing: "the unit start instant did not parse as epoch seconds" },
+    CapacityProbeSlot { name: PoolLine, missing: "the engine's GPU KV cache size line was not found in the launch log" },
+    CapacityProbeSlot { name: ConcurrencyLine, missing: "the engine's maximum concurrency line was not found in the launch log" },
+    CapacityProbeSlot { name: AllocatorBlocks, missing: "num_gpu_blocks was not present in the engine's cache-config metric" },
+    CapacityProbeSlot { name: BlockSize, missing: "block_size was not present in the engine's cache-config metric" },
+    CapacityProbeSlot { name: MaxModelLen, missing: "max_model_len was not readable from /v1/models" },
+    CapacityProbeSlot { name: Running, missing: "num_requests_running was not present in the engine's metrics" },
+    CapacityProbeSlot { name: Waiting, missing: "num_requests_waiting was not present in the engine's metrics" },
   ]
 }
 
@@ -148,17 +111,6 @@ fn slot_index(want: ProbeFieldName) -> Nat? {
 fn slot_missing(name: ProbeFieldName) -> String {
   fold(capacity_probe_slots(), init: join(["the probe roster does not contain ", probe_field_key(n: name)], ""), f: (acc, slot) =>
     if probe_field_key(n: slot.name) == probe_field_key(n: name) { slot.missing } else { acc })
-}
-
-fn emit_field(command: String) -> String {
-  join(["v=$(", command, " 2>/dev/null); [ -n \"$v\" ] || v=-; printf '%s\\n' \"$v\"\n"], "")
-}
-
-fn capacity_probe_script() -> String {
-  join(concat([
-    join(["set -u\nu=", spark_pair_head_unit_name as String, "\nlog=", spark_pair_head_log_path as String, "\nc=", spark_pair_container_name as String, "\n"], ""),
-    "m=$(curl -s --max-time 8 http://127.0.0.1:30000/metrics)\n",
-  ], map(capacity_probe_slots(), s => emit_field(command: s.command))), "")
 }
 
 type CapacityProbeFields {
@@ -218,7 +170,7 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
   let lines = split(s: trim(s: stdout), delimiter: "\n")
   let expected = list_length(items: capacity_probe_slots())
   if list_length(items: lines) != expected {
-    ProbeUnreadable { detail: join(["the probe returned ", to_string(list_length(items: lines)), " lines, not the ", to_string(expected), " the script emits"], "") }
+    ProbeUnreadable { detail: join(["the probe returned ", to_string(list_length(items: lines)), " lines, not the ", to_string(expected), " the roster names"], "") }
   } else {
     match int_named(lines: lines, name: StartedAt) {
       Absent => refuse_slot(name: StartedAt)
@@ -316,43 +268,11 @@ fn hundredths_from_maximum_concurrency_line(line: String) -> Int? {
   }
 }
 
-// ── THE LAUNCH IDENTITY, WHICH REFUSES RATHER THAN SUBSTITUTING ───────────────────────────────
-//
-// A digest that does not parse as 64 lower-hex is not a digest, and an incarnation assembled around
-// a placeholder would join to anything. There is no fallback arm here on purpose.
-type LaunchRead
-  = LaunchIdentified { launch: VllmServingLaunch }
-  | LaunchUnidentified { detail: String }
-
-fn launch_from_fields(group: FabricGroup, head: HostIdentity, f: CapacityProbeFields) -> LaunchRead {
-  match sha256_hex_digest(hex: f.image_sha) {
-    Absent => LaunchUnidentified { detail: join(["the container image digest did not read as a sha256: ", f.image_sha], "") }
-    Present { value: image } =>
-      match sha256_hex_digest(hex: f.unit_sha) {
-        Absent => LaunchUnidentified { detail: join(["the unit text digest did not read as a sha256: ", f.unit_sha], "") }
-        Present { value: unit } =>
-          if f.invocation == "-" || f.container == "-" {
-            LaunchUnidentified { detail: "the systemd invocation or the container id was unavailable, so this launch cannot be named" }
-          } else {
-            LaunchIdentified { launch: vllm_serving_launch(
-              group: group,
-              head: head,
-              systemd_invocation: f.invocation as NonEmptyStr,
-              container_id: f.container as NonEmptyStr,
-              executable_digest: Sha256Hash(image),
-              unit_digest: Sha256Hash(unit),
-              started_at: f.started_at,
-            ) }
-          }
-      }
-  }
-}
-
 // THE REVISION IS OBSERVED, NOT STAMPED. The first cut filled observed_at_revision and
 // established_at_revision from vllm_source_revision_read, the constant naming the revision the
 // LAWS were read from. That is the exact defect extdeps.vllm.log_lines already closed: every
 // reading asserted it had been taken at the modelled revision, so revision_is_modelled could
-// not say no. This probe does not observe a vLLM source revision (the container image digest is
+// not say no. This fold does not observe a vLLM source revision (the container image digest is
 // launch identity, not that fact; /version is a self-report and is not that fact). Until a caller
 // supplies one, the readings refuse.
 type ProbeReadings
@@ -434,30 +354,9 @@ fn readings_from_fields(f: CapacityProbeFields, observed_revision: VllmSourceRev
   }
 }
 
-fn standing_wire(s: CapacityFloorStanding) -> String {
-  match s {
-    MeetsFloor { required_blocks: r, available_blocks: a } =>
-      join(["meets floor (", to_string(allocator_block_count_value(c: r)), " required of ", to_string(allocator_block_count_value(c: a)), " blocks)"], "")
-    BelowFloor { required_blocks: r, available_blocks: a } =>
-      join(["BELOW FLOOR (", to_string(allocator_block_count_value(c: r)), " required, ", to_string(allocator_block_count_value(c: a)), " available)"], "")
-    FloorUnestablished { cause: c } => join(["UNESTABLISHED: ", c as String], "")
-  }
-}
-
-fn posture_wire(p: AdmissionPosture) -> String {
-  match p {
-    Admitting { available_blocks: a } => join(["admitting (", to_string(allocator_block_count_value(c: a)), " blocks)"], "")
-    Withdrawn { cause: c } => join(["WITHDRAWN: ", c as String], "")
-  }
-}
-
-// ONE PROBE PER GROUP, AND THE VERDICT TRAVELS WITH THE TEXT.
-//
-// The first cut returned a String and decided admittance by searching it for "posture: admitting".
-// That was wrong twice over: it re-ran group_report to ask the question, so every group was probed
-// over ssh TWICE per invocation — a duplicated side effect, visible in the run as two identical
-// remote executions — and it recovered a decision from prose that the fold already knew. The
-// standing carries both, so the effect happens once and the verdict is read rather than parsed.
+// ONE VERDICT PER GROUP. Live inventory is not taken over ssh+bash: that actuator was a
+// scaffold, and ProbeReadingsReady is unreachable without observed revision and hash_block_size
+// anyway. The entry still fails closed so the refusal is produced by execution, not by typecheck.
 type GroupStanding {
   text: String
   admitting: Bool
@@ -468,72 +367,12 @@ fn refused_standing(text: String) -> GroupStanding {
 }
 
 fn group_report(group: FabricGroup) -> GroupStanding {
-  let name = fabric_group_wire(g: group) as String
-  let head = spark_pair_serving_head(group: group)
-  match host_lan_address(host: head) {
-    Absent => refused_standing(text: join([name, ": no LAN endpoint row for its head, so it was not probed"], ""))
-    Present { value: address } => {
-      let result = ssh.Session.ExecPortableWordsWithStdin(
-        client_args: [
-          "-o", "BatchMode=yes",
-          "-o", "ConnectTimeout=10",
-          join([spark_managed_login, "@", address as String], ""),
-          "bash", "-s",
-        ],
-        stdin_payload: capacity_probe_script(),
-      )
-      if !result.success {
-        refused_standing(text: join([name, ": the probe did not run on ", address as String, ": ", trim(s: result.stderr)], ""))
-      } else {
-        match decode_probe(stdout: result.stdout) {
-          ProbeUnreadable { detail: d } => refused_standing(text: join([name, ": ", d], ""))
-          ProbeFields { fields: f } =>
-            match launch_from_fields(group: group, head: head, f: f) {
-              LaunchUnidentified { detail: d } => refused_standing(text: join([name, ": the launch could not be identified, so nothing is joined to it -- ", d], ""))
-              LaunchIdentified { launch: launch } =>
-                match readings_from_fields(f: f, observed_revision: none, observed_hash_block_size: none) {
-                  ProbeReadingsRefused { cause: c } => refused_standing(text: join([
-                    name, " @ ", address as String, " invocation=", f.invocation, "\n",
-                    "    engine: ", to_string(f.running), " running, ", to_string(f.waiting), " waiting; inventory ",
-                    to_string(allocator_block_count_value(c: f.allocator_blocks)), " blocks of ", to_string(token_count_value(t: f.block_size)), "\n",
-                    "    printed: ", f.pool_line, " / ", f.concurrency_line, "\n",
-                    "    receipt: refused -- ", c as String,
-                  ], ""))
-                  ProbeReadingsReady { pool: _, reported: reported, layout: layout } => {
-                    let receipt = admit_kv_layout(
-                      launch: launch,
-                      layout: layout,
-                      reported: reported,
-                      source_capture_digest: Fnv1a64(content_hash_atom(value: result.stdout as NonEmptyStr)),
-                    )
-                    let floor = capacity_floor_standing(receipt: receipt, floor: spark_pair_serving_minimum_cold_sessions)
-                    let posture = admission_posture(standing: floor)
-                    GroupStanding {
-                      admitting: match posture { Admitting { available_blocks: _ } => true  Withdrawn { cause: _ } => false },
-                      text: join([
-                      name, " @ ", address as String, " invocation=", f.invocation, "\n",
-                      "    engine: ", to_string(f.running), " running, ", to_string(f.waiting), " waiting; inventory ",
-                      to_string(allocator_block_count_value(c: f.allocator_blocks)), " blocks of ", to_string(token_count_value(t: f.block_size)), "\n",
-                      "    printed: ", f.pool_line, " / ", f.concurrency_line, "\n",
-                      "    receipt: ", receipt_wire(r: receipt), "\n",
-                      "    floor:   ", standing_wire(s: floor), "\n",
-                      "    posture: ", posture_wire(p: posture),
-                    ], ""),
-                    }
-                  }
-                }
-            }
-        }
-      }
-    }
-  }
+  refused_standing(text: join([
+    fabric_group_wire(g: group) as String,
+    ": live inventory is not probed; a hand-assembled remote bash program is not an admitted actuator, and readings_from_fields is not reached with a stamped revision or hash_block_size",
+  ], ""))
 }
 
-
-// THE EXIT CODE IS THE VERDICT. Today this exits non-zero on both groups: the probe does not
-// observe a vLLM source revision or hash_block_size, so it refuses to stamp either, and even both
-// supplied would still find empty groups. That is a true statement about the deployment produced by
-// executing against it, which is the thing none of the surrounding model could claim on its own.
 fn fabric_capacity_standing() -> ProcessExit {
   let standings = map(spark_pair_serving_groups, g => group_report(group: g))
   if all(standings, st => st.admitting) {
