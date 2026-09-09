@@ -108,7 +108,7 @@ pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 5] = [
     EnrolledRowType {
         variant: "RecurringFailureModeRows",
         type_name: "RecurringFailureMode",
-        roster_module: crate::cli_run::derived_row_roster::ROSTER_MODULE,
+        roster_module: super::derived_row_roster::ROSTER_MODULE,
         roster_declaration: "recurring_failure_mode_roster",
     },
     EnrolledRowType {

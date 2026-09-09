@@ -1,0 +1,203 @@
+module gunbc.spark.vllm_kv_layout_observe
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.content_hash { ContentHash, serialize_content_hash }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure {
+  TokenCount, token_count_value, ConcurrentRequestHundredths, concurrent_request_hundredths_count,
+  AllocatorBlockCount, allocator_block_count_value,
+}
+import gunbc.spark.vllm_serving_launch {
+  VllmServingLaunch, LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction,
+  same_launch, join_is_admissible, launch_join_wire, launch_wire,
+  DigestAgreement, DigestsAgree, DigestsDiffer, DigestsIncomparable, digests_agree,
+}
+import extdeps.vllm.kv_layout {
+  ResolvedKvLayout, VllmReportedCapacity,
+  LayoutReproduction, LayoutReproducesReported, LayoutContradictsReported, LayoutReproductionUnavailable,
+  layout_reproduces_reported,
+  PrintedLinesAgreement, PrintedLinesAgree, PrintedLinesDisagree, PrintedLinesUncheckable, printed_lines_agree,
+  AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
+}
+
+// ── THE ACQUISITION BOUNDARY: A LAYOUT IS EVIDENCE ONLY WHEN IT IS BOUND TO A LAUNCH ───────────
+//
+// WHY THIS IS NOT A ROW IN gunbc.spark.vllm_observed. That module is a historical, route-local
+// investigation from 2026-09-03 whose cross-route joins were never established; its rows are a
+// record of what was seen once. Making it the live seating authority would promote a historical
+// fixture into current state, and the first stale row would then be authorizing admissions. Current
+// admission consumes a receipt bound to the CURRENTLY ACTIVE launch, which is a different
+// subject with a different lifetime, so it gets a different module.
+//
+// WHAT A RECEIPT HAS TO CARRY BEYOND THE NUMBERS. The launch, because a reading of one launch
+// is not evidence about its successor; and the digest of the captured text it was parsed from,
+// because a number authored beside a claim about where it came from is not the same as a number
+// traceable to bytes someone can re-read.
+//
+// THE ADMISSION IS NOT A CHOICE THE CALLER MAKES. KvLayoutObserved has no free constructor: it is
+// reachable only through the fold below, and only when the group layout independently reproduces the
+// per-request cost the engine printed. Every other outcome is a named refusal. This is the
+// difference between a receipt and a record: a record says what was seen, a receipt says what was
+// established.
+
+type VllmKvLayoutReceipt
+  = KvLayoutObserved {
+      launch: VllmServingLaunch,
+      layout: ResolvedKvLayout,
+      reported: VllmReportedCapacity,
+      blocks_per_max_request: AllocatorBlockCount,
+      source_capture_digest: ContentHash,
+    }
+  | KvLayoutUnreadable { launch: VllmServingLaunch, cause: NonEmptyStr }
+  | KvLayoutInconsistent { launch: VllmServingLaunch, cause: NonEmptyStr }
+
+// THE REPORTED FIGURES ARE CARRIED AS THE UPSTREAM CARRIER, not re-spelled as two fields beside it.
+// An earlier shape of this type listed reported_equivalent_tokens and reported_max_concurrency
+// alongside the layout, which is the same pair of numbers in a second place -- and the pair is
+// exactly what the reproduction check reads, so a receipt whose copies drifted from its carrier
+// would check one and report the other.
+
+// ── ADMISSION ──────────────────────────────────────────────────────────────────────────────────
+//
+// The order is deliberate: the cheapest refusal that is definitely fatal comes first, so a receipt
+// never reports a downstream disagreement that an upstream one already explains.
+//
+//   1. the printed lines must be mutually consistent -- if the pool line and the concurrency line
+//      disagree, the capture is garbled and nothing derived from it means anything;
+//   2. the group layout must reproduce the printed per-request cost -- the one non-circular check,
+//      and the one that is unavailable until the engine emits group metadata.
+//
+// TODAY EVERY REAL CAPTURE LANDS ON (2) AS UNREADABLE, because `groups` is empty and the derived
+// route does not exist. That is the honest state and not a bug in this fold: an absent second
+// opinion is not agreement, and it is not established disagreement either.
+fn admit_kv_layout(
+  launch: VllmServingLaunch,
+  layout: ResolvedKvLayout,
+  reported: VllmReportedCapacity,
+  source_capture_digest: ContentHash,
+) -> VllmKvLayoutReceipt {
+  match printed_lines_agree(layout: layout, reported: reported) {
+    PrintedLinesUncheckable { cause: c } => KvLayoutUnreadable { launch: launch, cause: c }
+    PrintedLinesDisagree { implied: i, reported: r } =>
+      KvLayoutInconsistent {
+        launch: launch,
+        cause: join([
+          "the captured startup lines disagree with each other: the pool line implies a concurrency of ",
+          to_string(concurrent_request_hundredths_count(c: i)), " hundredths while the concurrency line reports ", to_string(concurrent_request_hundredths_count(c: r)),
+        ], "") as NonEmptyStr,
+      }
+    PrintedLinesAgree =>
+      match layout_reproduces_reported(layout: layout, reported: reported) {
+        LayoutReproductionUnavailable { cause: c } =>
+          KvLayoutUnreadable {
+            launch: launch,
+            cause: join(["the layout cannot be checked against the engine's own arithmetic: ", c as String], "") as NonEmptyStr,
+          }
+        LayoutContradictsReported { predicted: p, reported: r } =>
+          KvLayoutInconsistent {
+            launch: launch,
+            cause: join([
+              "the group layout and the printed lines describe different engines: the groups predict a concurrency of ",
+              to_string(concurrent_request_hundredths_count(c: p)), " hundredths while the engine printed ", to_string(concurrent_request_hundredths_count(c: r)),
+            ], "") as NonEmptyStr,
+          }
+        LayoutReproducesReported { blocks_per_max_request: b } =>
+          KvLayoutObserved {
+            launch: launch,
+            layout: layout,
+            reported: reported,
+            blocks_per_max_request: b,
+            source_capture_digest: source_capture_digest,
+          }
+      }
+  }
+}
+
+// ── WHAT A RECEIPT AUTHORIZES, AND FOR WHICH LAUNCH ────────────────────────────────────────────
+//
+// A receipt is not a standing fact about a group. It is a fact about ONE launch, and the only
+// question a seat lease may ask of it is: does this receipt describe the engine I am about to send
+// a request to? Anything that answers that question by comparing groups or hosts has reintroduced
+// the co-location test gunbc.spark.vllm_serving_launch exists to displace.
+type SeatingAuthority
+  = SeatingAuthorized { blocks_available: AllocatorBlockCount, blocks_per_request: AllocatorBlockCount }
+  | SeatingRefused { cause: NonEmptyStr }
+
+data seating_authority_harness_lease_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the harness seat-bind (gunbc.harness.harness_seat harness_bind_seat, or the lease fold that replaces it) calls seating_authority_for with the live receipt and the serving launch before granting a seat. SUFFICIENT FOR: a seat cannot be granted against a receipt whose launch is not the engine that will serve the request." as NonEmptyStr)
+
+fn seating_authority_for(
+  receipt: VllmKvLayoutReceipt,
+  serving: VllmServingLaunch,
+  sequence_budget: TokenCount,
+) -> SeatingAuthority {
+  match receipt {
+    KvLayoutUnreadable { launch: _, cause: c } =>
+      SeatingRefused { cause: join(["the layout capture was unreadable, so no capacity is established: ", c as String], "") as NonEmptyStr }
+    KvLayoutInconsistent { launch: _, cause: c } =>
+      SeatingRefused { cause: join(["the layout is inconsistent, so no capacity is established: ", c as String], "") as NonEmptyStr }
+    KvLayoutObserved { launch: observed, layout: layout, reported: _, blocks_per_max_request: _, source_capture_digest: _ } => {
+      let join_verdict = same_launch(a: observed, b: serving)
+      if !join_is_admissible(j: join_verdict) {
+        SeatingRefused {
+          cause: join([
+            "the receipt describes ", launch_wire(i: observed), " but the request would be served by ",
+            launch_wire(i: serving), ": ", launch_join_wire(j: join_verdict),
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        match cold_admission_blocks(layout: layout, sequence_budget: sequence_budget) {
+          AdmissionCostUnestablished { cause: c } => SeatingRefused { cause: c }
+          AdmissionCostBlocks { blocks: cost } =>
+            SeatingAuthorized { blocks_available: layout.allocator_blocks, blocks_per_request: cost }
+        }
+      }
+    }
+  }
+}
+
+fn receipt_wire(r: VllmKvLayoutReceipt) -> String {
+  match r {
+    KvLayoutObserved { launch: i, layout: _, reported: _, blocks_per_max_request: b, source_capture_digest: d } =>
+      join(["observed ", launch_wire(i: i), ": ", to_string(allocator_block_count_value(c: b)), " blocks per full-context request, capture ", serialize_content_hash(hash: d) as String], "")
+    KvLayoutUnreadable { launch: i, cause: c } =>
+      join(["unreadable ", launch_wire(i: i), ": ", c as String], "")
+    KvLayoutInconsistent { launch: i, cause: c } =>
+      join(["inconsistent ", launch_wire(i: i), ": ", c as String], "")
+  }
+}
+
+// TWO RECEIPTS ARE THE SAME EVIDENCE ONLY WHEN THEY NAME ONE LAUNCH AND THE SAME CAPTURE BYTES.
+// The digest is not decoration: a number authored beside a claim about where it came from is not
+// the same as a number traceable to bytes someone can re-read. A later fold that keeps one Observed
+// receipt per launch must refuse to collapse two captures of that launch into one row.
+type CaptureJoin
+  = SameCapture
+  | DifferentCapture
+  | CaptureIncomparable { cause: NonEmptyStr }
+  | CaptureNotEstablished { cause: NonEmptyStr }
+
+data same_capture_live_join_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.instruments.fabric_capacity_standing group_report (or the pair-serving apply that replaces a live receipt) joins a newly admitted Observed receipt to the previously kept one through same_capture before treating them as one evidence. SUFFICIENT FOR: two captures of one launch cannot silently overwrite each other." as NonEmptyStr)
+
+fn same_capture(a: VllmKvLayoutReceipt, b: VllmKvLayoutReceipt) -> CaptureJoin {
+  match a {
+    KvLayoutObserved { launch: ia, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: da } =>
+      match b {
+        KvLayoutObserved { launch: ib, layout: _, reported: _, blocks_per_max_request: _, source_capture_digest: db } =>
+          match same_launch(a: ia, b: ib) {
+            SameLaunch =>
+              match digests_agree(left: da, right: db) {
+                DigestsAgree => SameCapture
+                DigestsDiffer => DifferentCapture
+                DigestsIncomparable =>
+                  CaptureIncomparable { cause: "the capture digest families are incomparable, so the two observers cannot be joined at all" as NonEmptyStr }
+              }
+            DifferentLaunch { left: _, right: _ } =>
+              CaptureNotEstablished { cause: "the receipts describe different launches, so their captures are not one evidence" as NonEmptyStr }
+            LaunchContradiction { invocation: _, field: _ } =>
+              CaptureNotEstablished { cause: "the receipts contradict each other about one launch, so their captures are not one evidence" as NonEmptyStr }
+          }
+        _ => CaptureNotEstablished { cause: "the other receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
+      }
+    _ => CaptureNotEstablished { cause: "this receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
+  }
+}

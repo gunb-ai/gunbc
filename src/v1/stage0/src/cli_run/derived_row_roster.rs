@@ -32,47 +32,41 @@ use std::path::Path;
 pub const ROSTER_BASENAME: &str = "roster.dag";
 /// Module path of the row files; `ROW_DIR_REL` is this spelling with `/` for `.`.
 pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
-pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
-
-/// Module path of the DERIVED roster: `ROW_MODULE` plus the `ROSTER_BASENAME` stem.
+/// Module path of the DERIVED roster itself: `ROW_MODULE` plus the `ROSTER_BASENAME` stem.
 ///
 /// ONE SPELLING, BECAUSE `rostered_row_join` LOOKS THIS MODULE UP BY NAME. `ENROLLED_ROW_TYPES`
 /// carries the roster's module identity and `run_rostered_row_join` resolves it with
-/// `index_get(index, enrolled.roster_module)`. `render_roster` WRITES that module header. Those
-/// two are the only speller pair that must agree, and before this const they agreed only by hand.
+/// `index_get(index, enrolled.roster_module)`, against the module header `render_roster` WRITES.
+/// Those two are the speller pair that must agree (DESIGN section 3).
 ///
-/// A DIVERGENCE HERE FAILS CLOSED, which is why this is single authority (DESIGN section 3) and
-/// not a safety fix: the lookup misses, and the miss is the typed, located `RosterModuleAbsent`
-/// finding -- "the roster module is absent from the index, so no membership can be read and every
-/// declared row of that type is unanswered". The run goes red and says exactly what is wrong. The
-/// cost of two spellings is a confusing refusal naming a module that appears to exist, not a
-/// silent one.
+/// A DIVERGENCE FAILS CLOSED: the lookup misses and raises the typed, located
+/// `RosterModuleAbsent` finding, and the run goes red naming the module. The cost of a second
+/// spelling is a confusing refusal about a module that appears to exist, not a silent one.
 ///
-/// NOT THE WAVE. `run_required_wave_admission` finds this file by PATH -- `is_derived_roster_path`
-/// and `roster_root_prefix`, both composed from `ROW_DIR_REL` and `ROSTER_BASENAME` -- and never
-/// reads this constant. An earlier draft of this comment claimed the wave found it by module
-/// identity and would silently inherit the HEAD baseline on a miss. Both halves were false, and
-/// the false version was the stated reason for the change.
+/// NOT THE NAMESPACE WAVE. `run_required_wave_admission` finds this file by PATH --
+/// `is_derived_roster_path` and `roster_root_prefix`, both composed from `ROW_DIR_REL` and
+/// `ROSTER_BASENAME` -- and never reads this constant. An earlier version of this comment said
+/// the const was consumed by "the namespace wave's base reconstruction"; that is false, and the
+/// note stays so the next reader does not re-derive it from the diff.
 ///
-/// It cannot be `concat!` of the parts because `ROW_MODULE` is a `const` and not a literal token,
+/// It cannot be `concat!` of its parts because `ROW_MODULE` is a `const` and not a literal token,
 /// so the composition is ASSERTED by `the_roster_module_is_the_row_module_plus_the_roster_stem`
 /// rather than constructed.
 ///
-/// THAT ASSERTION IS NOT A WALL, AND THE RUNG HERE IS 1 -- MITIGATION. The test is `#[cfg(test)]`
+/// THAT ASSERTION IS NOT A WALL, AND THE RUNG IS 1 -- MITIGATION. The test is `#[cfg(test)]`
 /// under `repo_self_test_command`, which no CI step runs: the 2026-09-04 runner-capacity ruling
-/// deleted the `rust-unit-tests` job, and its loss stands as `gunbc.rung_drop`
+/// deleted the `rust-unit-tests` job and its loss stands as `gunbc.rung_drop`
 /// `rust_unit_tests_off_the_merge_path`. The required clippy lane COMPILES this test and executes
 /// it never -- DESIGN "Building & checks": "the test targets are compiled by the clippy step and
 /// run by nobody" -- and a rename of either part still typechecks, so nothing on the acceptance
-/// path goes red for it. The evidence is local diligence, and calling it a wall would be rung
-/// inflation on the very class this constant exists to prevent.
+/// path goes red for it.
 ///
-/// Next-rung trigger: the parts composable in a const context (a `const`-evaluable concatenation,
-/// or `ROW_MODULE` and `ROSTER_BASENAME` as literal tokens `concat!` can join), which makes a
-/// second spelling unconstructible rather than merely assert-checked -- rung 4, not 2, because it
-/// removes the constructor instead of adding an executing check. Restoring an executing unit-test
-/// lane would reach rung 2 and is the weaker of the two.
+/// Next-rung trigger: the parts composable in a const context, which makes a second spelling
+/// unconstructible rather than assert-checked -- rung 4, not 2, because it removes the
+/// constructor instead of adding an executing check. Restoring an executing unit-test lane
+/// reaches only rung 2 and is the weaker of the two.
 pub const ROSTER_MODULE: &str = "gunbc.recurring_failure_mode.roster";
+pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
 /// Is `rel` the DERIVED roster itself, under any sweep root?
 ///
@@ -213,7 +207,7 @@ fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
     Ok(names)
 }
 
-fn render_roster(names: &[String]) -> String {
+pub fn render_roster(names: &[String]) -> String {
     let mut out = format!(
         "module {ROSTER_MODULE}\n\
          \n\
@@ -222,12 +216,12 @@ fn render_roster(names: &[String]) -> String {
          // declaration name. An append is a new file in this directory, never an edit here.\n\
          \n\
          import std.types {{ List }}\n\
-         import {ROW_MODULE} {{ RecurringFailureMode }}\n",
+         import {ROW_MODULE} {{ RecurringFailureMode }}\n"
     );
     for name in names {
         out.push_str("import ");
         out.push_str(ROW_MODULE);
-        out.push('.');
+        out.push_str(".");
         out.push_str(name);
         out.push_str(" { ");
         out.push_str(name);
@@ -248,9 +242,9 @@ mod tests {
     #[test]
     fn the_roster_module_is_the_row_module_plus_the_roster_stem() {
         // THE COMPOSITION THE CONST CANNOT EXPRESS. `ROSTER_MODULE` is a literal because
-        // `concat!` takes literal tokens and `ROW_MODULE` is a const; this asserts the
-        // relation the literal stands for, so renaming either part reds here instead of
-        // silently giving the wave a name it will fail to find.
+        // `concat!` takes literal tokens and `ROW_MODULE` is a const; this asserts the relation
+        // the literal stands for, so renaming either part reds here rather than silently
+        // handing the row join a name it will fail to resolve.
         assert_eq!(
             super::ROSTER_MODULE,
             format!(
@@ -266,6 +260,10 @@ mod tests {
     fn absent_is_not_an_empty_list_render_of_no_names_is_a_present_empty_literal() {
         let body = super::render_roster(&[]);
         assert!(
+            // THE LITERAL IS THE POINT: an oracle built from `ROSTER_MODULE` would assert
+            // `render_roster` against the same const `render_roster` renders from, so it could
+            // not fail on a wrong module name -- `measure() == measure()` (DESIGN section 5).
+            // This spelling is an INDEPENDENT referent and must stay hand-written.
             body.contains("module gunbc.recurring_failure_mode.roster"),
             "absence of members is a present module with an empty list, not a missing module"
         );

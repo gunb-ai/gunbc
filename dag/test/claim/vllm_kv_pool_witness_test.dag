@@ -3,6 +3,7 @@ module test.claim.vllm_kv_pool_witness_test
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { TokenCount, Percent, token_count, percent }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.log_lines {
   VllmStartupReading, vllm_startup_reading,
   VllmStartupLine, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
@@ -66,7 +67,8 @@ test fn w_the_three_startup_prefixes_are_distinct() -> Bool {
 fn kv_size_reading() -> VllmStartupReading {
   vllm_startup_reading(
     line: GpuKvCacheSize,
-    captured_text: "GPU KV cache size: 3,330,000 tokens" as NonEmptyStr)
+    captured_text: "GPU KV cache size: 3,330,000 tokens" as NonEmptyStr,
+    observed_at_revision: vllm_source_revision_read)
 }
 
 fn admitted_pool(a: VllmKvPoolAdmission) -> VllmObservedKvPool? {
@@ -109,7 +111,8 @@ test fn w_the_concurrency_line_refuses_rather_than_becoming_a_pool() -> Bool {
       tokens: token_count(count: 3330000),
       reading: vllm_startup_reading(
         line: MaximumConcurrency,
-        captured_text: "Maximum concurrency for 262,144 tokens per request: 9.81x" as NonEmptyStr)),
+        captured_text: "Maximum concurrency for 262,144 tokens per request: 9.81x" as NonEmptyStr,
+        observed_at_revision: vllm_source_revision_read)),
     wanted: vllm_startup_line_prefix(line: MaximumConcurrency))
 }
 
@@ -121,7 +124,8 @@ test fn w_the_resolved_format_line_refuses_rather_than_becoming_a_pool() -> Bool
       tokens: token_count(count: 3330000),
       reading: vllm_startup_reading(
         line: ResolvedKvCacheFormat,
-        captured_text: "Using DeepSeek's fp8_ds_mla KV cache format" as NonEmptyStr)),
+        captured_text: "Using DeepSeek's fp8_ds_mla KV cache format" as NonEmptyStr,
+        observed_at_revision: vllm_source_revision_read)),
     wanted: vllm_startup_line_prefix(line: ResolvedKvCacheFormat))
 }
 
