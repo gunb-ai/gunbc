@@ -359,6 +359,23 @@ data desired_merge_queue: MergeQueueDesire = MergeQueueUnsigned {
   awaiting: unbound_dissolution(description: "DISSOLVE-ON: the operator rules on enabling the merge queue for gunb-ai/gunbc. The ruling replaces this arm with MergeQueueSignedOff carrying the ruling text, at which point gunbc_merge_queue_proposal becomes signed desired state and a live ruleset without the rule is a divergence this module REPORTS -- there is no repair, because there is no writer. Until then the proposal is declared and diffed and never written, and a live merge_queue rule this projection cannot express is reported as a divergence rather than repaired. AND SIGNING THIS ROW ACTUATES NOTHING, because this module actuates nothing: it binds std.goal_assessment inspect_goal and has no writer at all. Under the credential available to this repository the bypass-actor roster additionally returns BypassRosterUnavailable on every live read -- GitHub omits bypass_actors both when the roster is empty and when the reader may not see it -- so every assessment reaches GoalIndeterminate today for a reason that has nothing to do with this ruling, and carries the proved drift beside it. Discharging that needs a credential whose ruleset GET returns bypass_actors; a retry does not, because the observation is a property of the credential and not of the moment. See ruleset_unknowns."),
 }
 
+// THE DECLARED GOAL AS ONE VALUE. The desired side used to be reached by nullary calls from inside
+// the comparison folds, which is how a goal travels without being a parameter: the fold and its
+// caller could not disagree only because they both called the same function, and nothing in the
+// shape said the assessment was ABOUT this goal. std.goal_assessment hands the goal to the assessor
+// now, so the value it compares against is the value its result reports.
+type RepositoryRulesetGoal sole_constructor {
+  policy: MergeQueuePolicy?
+  rules: List<RulesetRuleWire>
+}
+
+fn desired_repo_ruleset_goal() -> RepositoryRulesetGoal {
+  RepositoryRulesetGoal {
+    policy: desired_merge_queue_policy(),
+    rules: desired_ruleset_rules(),
+  }
+}
+
 fn desired_merge_queue_policy() -> MergeQueuePolicy? {
   match desired_merge_queue {
     MergeQueueUnsigned { proposal: _, awaiting: _ } => none
@@ -886,12 +903,12 @@ fn merge_queue_setting_drifts(
 // module exists to stop being invisible -- so it is reported, with the two fields that decide what
 // guarantee the live queue actually provides. It is deliberately NOT repaired: the remedy for an
 // undeclared queue is a ruling, not a delete.
-fn merge_queue_divergences(observed: MergeQueueStanding) -> List<RulesetDivergence> {
+fn merge_queue_divergences(policy: MergeQueuePolicy?, observed: MergeQueueStanding) -> List<RulesetDivergence> {
   match observed {
     MultipleMergeQueueRules { count: n } => [MergeQueueRuleAmbiguous { count: n }]
     MergeQueueParametersIncomplete { missing: ms } => [MergeQueueParametersUnreadable { missing: ms }]
     NoMergeQueueRule =>
-      match desired_merge_queue_policy() {
+      match policy {
         Absent => []
         Present { value: _ } => [MergeQueueRuleAbsent]
       }
@@ -904,7 +921,7 @@ fn merge_queue_divergences(observed: MergeQueueStanding) -> List<RulesetDivergen
       min_entries_to_merge: nm,
       min_entries_to_merge_wait: w,
     } =>
-      match desired_merge_queue_policy() {
+      match policy {
         Absent => [MergeQueueUndeclared {
           grouping_strategy: merge_queue_grouping_strategy_wire_label(g: g),
           merge_method: merge_queue_merge_method_wire_label(m: m),
@@ -932,6 +949,7 @@ fn name_divergences(observed: String) -> List<RulesetDivergence> {
 }
 
 fn observed_ruleset_divergences(
+  goal: RepositoryRulesetGoal,
   name: String,
   enforcement: RulesetEnforcement,
   target: RulesetTarget,
@@ -951,7 +969,7 @@ fn observed_ruleset_divergences(
       rule_presence_divergences(observed: rule_types),
       rule_unexpected_divergences(observed: rule_types),
       standing_divergences(standing: standing),
-      merge_queue_divergences(observed: merge_queue),
+      merge_queue_divergences(policy: goal.policy, observed: merge_queue),
     ],
     init: name_divergences(observed: name),
     f: fn(acc, more) { append(acc, items: more) },
@@ -998,7 +1016,7 @@ fn render_divergences(ds: List<RulesetDivergence>) -> String {
   join(map(ds, d => render_divergence(d: d)), "; ")
 }
 
-fn observation_divergences(observation: RulesetObservation) -> List<RulesetDivergence> {
+fn observation_divergences(goal: RepositoryRulesetGoal, observation: RulesetObservation) -> List<RulesetDivergence> {
   match observation {
     RulesetUnreadable { cause: _ } => []
     RulesetObserved {
@@ -1014,6 +1032,7 @@ fn observation_divergences(observation: RulesetObservation) -> List<RulesetDiver
       bypass_roster: br,
     } => append(
       observed_ruleset_divergences(
+        goal: goal,
         name: n,
         enforcement: e,
         target: t,
@@ -1203,17 +1222,16 @@ fn observation_unknowns(observation: RulesetObservation) -> List<RulesetUnknown>
 // Deviations and unknowns go to the mint together and the mint decides the arm: unknowns outrank
 // deviations, and the deviations survive into GoalIndeterminate rather than being dropped.
 fn ruleset_assess(
+  subject: RepositoryRulesetConvergenceSubject,
+  goal: RepositoryRulesetGoal,
   observed: RulesetObservation,
 ) -> GoalAssessment<RepoRulesetConvergedEvidence, RulesetDivergence, RulesetUnknown, Never> {
   assess_by_deviations_and_unknowns(
     evidence: converged_evidence_of(writes: 0, removals: 0, observation: observed),
-    deviations: observation_divergences(observation: observed),
+    deviations: observation_divergences(goal: goal, observation: observed),
     unknowns: append(
       observation_unknowns(observation: observed),
-      items: merge_queue_desire_unknowns(
-        policy: desired_merge_queue_policy(),
-        rules: desired_ruleset_rules(),
-      ),
+      items: merge_queue_desire_unknowns(policy: goal.policy, rules: goal.rules),
     ),
   )
 }
@@ -1246,7 +1264,6 @@ fn merge_queue_desire_unknowns(
 // desired ruleset reaches it, so it cannot narrow what it looks at to what the desire mentions.
 fn observe_repo_ruleset_attempt(
   subject: RepositoryRulesetConvergenceSubject,
-  _: Bool,
 ) -> ObservationAttempt<RulesetObservation, RulesetReadRefusal> {
   let observed = observe_repo_ruleset(
     owner: subject.repository.owner,
@@ -1315,20 +1332,26 @@ func verify() -> ProcessExit {
       repository: gunbc_repository,
       ruleset_id: gunbc_passing_ci_ruleset_id,
     },
-    scope: false,
+    goal: desired_repo_ruleset_goal(),
+    request: RepositoryRulesetConvergenceSubject {
+      repository: gunbc_repository,
+      ruleset_id: gunbc_passing_ci_ruleset_id,
+    },
     observe: observe_repo_ruleset_attempt,
     assess: ruleset_assess,
   ) {
-    GoalInspected { subject: _, observed: _, assessment: GoalSatisfied { evidence: _ } } => ExitSuccess
-    GoalObservationRefused { subject: _, cause: cause } =>
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: GoalSatisfied { evidence: _ } } => ExitSuccess
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: cause } =>
       exit_failure(reason: concat("repo ruleset verify refused: ", render_read_refusal(cause: cause)))
-    GoalInspected { subject: _, observed: _, assessment: GoalDiverged { deviations: ds } } =>
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: GoalDiverged { deviations: ds } } =>
       exit_failure(reason: concat(
         "repo ruleset verify refused: the live ruleset has drifted from the desired projection -- ",
         render_divergences(ds: non_empty_to_list(xs: ds)),
       ))
     GoalInspected {
       subject: _,
+      goal: _,
+      request: _,
       observed: _,
       assessment: GoalIndeterminate { known_deviations: ds, unknowns: us },
     } =>
@@ -1340,7 +1363,7 @@ func verify() -> ProcessExit {
         ],
         "",
       ))
-    GoalInspected { subject: _, observed: _, assessment: GoalAssessmentRefused { cause: _ } } =>
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: GoalAssessmentRefused { cause: _ } } =>
       exit_failure(reason: "repo ruleset verify refused: unreachable assessment refusal")
   }
 }

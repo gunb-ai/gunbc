@@ -19,6 +19,10 @@ type FixtureUnknownFact { field: String }
 // discriminating: a root that reached the assessor on an unobserved subject could not return the
 // observer's refusal at all.
 type FixtureObserveRefusal = FixtureUnreadable { detail: String }
+
+// THE GOAL IS ITS OWN TYPE, which is what makes the goal-blindness claim testable: `fixture_observe`
+// has no parameter of this type, so it cannot read the desire even by accident.
+type FixtureGoal sole_constructor { want: String }
 type FixtureAssessRefusal = FixtureAssessorShouldNotRun { detail: String }
 
 fn fixture_observe(_: FixtureSubject, readable: Bool) -> ObservationAttempt<FixtureObserved, FixtureObserveRefusal> {
@@ -31,8 +35,15 @@ fn fixture_observe(_: FixtureSubject, readable: Bool) -> ObservationAttempt<Fixt
 
 // The assessor answers AGREEMENT through the mint rather than by writing the arm, so this fixture
 // exercises the same construction every real binding uses.
-fn fixture_assess(_: FixtureObserved) -> GoalAssessment<FixtureEvidence, FixtureDeviation, FixtureUnknownFact, FixtureAssessRefusal> {
+fn fixture_assess(_: FixtureSubject, goal: FixtureGoal, _: FixtureObserved) -> GoalAssessment<FixtureEvidence, FixtureDeviation, FixtureUnknownFact, FixtureAssessRefusal> {
   assess_by_deviations(evidence: FixtureEvidence { field: "unchanged" }, deviations: [])
+}
+
+// AN ASSESSOR THAT REPORTS WHAT IT WAS ASKED FOR, used by the goal-blindness control below: the
+// evidence echoes the goal, so two different goals over the same request are distinguishable in the
+// ASSESSMENT while the OBSERVATION stays identical.
+fn fixture_assess_echoing_goal(_: FixtureSubject, goal: FixtureGoal, _: FixtureObserved) -> GoalAssessment<FixtureEvidence, FixtureDeviation, FixtureUnknownFact, FixtureAssessRefusal> {
+  assess_by_deviations(evidence: FixtureEvidence { field: goal.want }, deviations: [])
 }
 
 // DISCRIMINATING RED for the layer guard. An unreadable subject must never reach the assessor. The
@@ -43,11 +54,12 @@ fn fixture_assess(_: FixtureObserved) -> GoalAssessment<FixtureEvidence, Fixture
 test fn unreadable_subject_refuses_before_the_assessor_runs() -> Bool {
   match inspect_goal(
     subject: FixtureSubject { key: "fixture" },
-    scope: false,
+    goal: FixtureGoal { want: "unchanged" },
+    request: false,
     observe: fixture_observe,
     assess: fixture_assess,
   ) {
-    GoalObservationRefused { subject: s, cause: FixtureUnreadable { detail: _ } } => s.key == "fixture"
+    GoalObservationRefused { subject: s, goal: _, request: _, cause: FixtureUnreadable { detail: _ } } => s.key == "fixture"
     _ => false
   }
 }
@@ -58,11 +70,12 @@ test fn unreadable_subject_refuses_before_the_assessor_runs() -> Bool {
 test fn readable_subject_in_agreement_is_satisfied() -> Bool {
   match inspect_goal(
     subject: FixtureSubject { key: "fixture" },
-    scope: true,
+    goal: FixtureGoal { want: "unchanged" },
+    request: true,
     observe: fixture_observe,
     assess: fixture_assess,
   ) {
-    GoalInspected { subject: _, observed: _, assessment: GoalSatisfied { evidence: e } } => e.field == "unchanged"
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: GoalSatisfied { evidence: e } } => e.field == "unchanged"
     _ => false
   }
 }
@@ -107,6 +120,46 @@ test fn an_unknown_outranks_deviations_and_still_carries_them() -> Bool {
   ) {
     GoalIndeterminate { known_deviations: ds, unknowns: us } =>
       length(ds) == 2 && us.head.field == "bypass_roster"
+    _ => false
+  }
+}
+
+// THE CONTROL FOR THE MODULE'S CENTRAL CLAIM: the observer is GOAL-BLIND. Two different goals over
+// the SAME subject and the SAME observation request must produce the same observation, and differ
+// only in the assessment. `fixture_observe` has no parameter of type FixtureGoal, so this is
+// structural rather than a promise -- but a structural guarantee with no executing control is a
+// sentence, and this module's first cut is precisely how a sentence like that came to be false.
+//
+// The assessor here ECHOES the goal, so if an observation were ever shaped by the desire the two
+// observations would diverge and this control goes red.
+test fn two_goals_over_one_request_produce_one_observation() -> Bool {
+  match inspect_goal(
+    subject: FixtureSubject { key: "fixture" },
+    goal: FixtureGoal { want: "alpha" },
+    request: true,
+    observe: fixture_observe,
+    assess: fixture_assess_echoing_goal,
+  ) {
+    GoalInspected { subject: _, goal: _, request: _, observed: o1, assessment: a1 } =>
+      match inspect_goal(
+        subject: FixtureSubject { key: "fixture" },
+        goal: FixtureGoal { want: "beta" },
+        request: true,
+        observe: fixture_observe,
+        assess: fixture_assess_echoing_goal,
+      ) {
+        GoalInspected { subject: _, goal: _, request: _, observed: o2, assessment: a2 } =>
+          o1.value == o2.value
+            && match a1 {
+                 GoalSatisfied { evidence: e1 } =>
+                   match a2 {
+                     GoalSatisfied { evidence: e2 } => e1.field == "alpha" && e2.field == "beta"
+                     _ => false
+                   }
+                 _ => false
+               }
+        _ => false
+      }
     _ => false
   }
 }

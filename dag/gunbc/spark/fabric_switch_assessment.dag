@@ -1,4 +1,4 @@
-module gunbc.spark.fabric_switch_converge
+module gunbc.spark.fabric_switch_assessment
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
@@ -8,7 +8,8 @@ import std.goal_assessment {
   GoalAssessment,
   GoalInspection,
   inspect_goal,
-  assess_by_deviations,
+  assess_by_deviations_and_unknowns,
+  GoalAssessmentRefused,
 }
 import v2.std.cardinality { Never }
 import gunbc.spark.fabric_switch_desired {
@@ -20,11 +21,11 @@ import gunbc.spark.fabric_switch_desired {
 
 // THE SWITCH AS A CONVERGENCE SUBJECT, WHICH IS A DIFFERENT SUBJECT FROM THE CABLE PLANT.
 //
-// `product.cable_plant_converge` answers whether the CABLES can carry the required mode.
+// `product.cable_plant_assessment` answers whether the CABLES can carry the required mode.
 // This module answers whether the SWITCH is configured the way the cable plant's answer says it
 // must be. They are two subjects, so they are two bindings of the one `std.goal_assessment`
 // authority rather than one widened handler -- adding the switch adds a binding here and does not
-// touch the convergence authority, which is the property that authority was shaped for.
+// touch the assessment authority, which is the property that authority was shaped for.
 //
 // THE DESIRED SIDE IS DERIVED AND CAN REFUSE. `fabric_switch_intent()` is undecided whenever the
 // cable plant is, so this module's observe stage inherits that refusal rather than re-deciding it.
@@ -49,18 +50,18 @@ type Crs812LaneReading
       enabled: Bool
     }
 
-type Crs812ConvergenceSubject sole_constructor {
+type Crs812SwitchSubject sole_constructor {
   switch: NonEmptyStr
   intent: Crs812SwitchIntent
   readings: List<Crs812LaneReading>
 }
 
-fn crs812_convergence_subject(
+fn crs812_switch_subject(
   switch: NonEmptyStr,
   intent: Crs812SwitchIntent,
   readings: List<Crs812LaneReading>,
-) -> Crs812ConvergenceSubject {
-  Crs812ConvergenceSubject { switch: switch, intent: intent, readings: readings }
+) -> Crs812SwitchSubject {
+  Crs812SwitchSubject { switch: switch, intent: intent, readings: readings }
 }
 
 type ObservedLane sole_constructor {
@@ -70,8 +71,21 @@ type ObservedLane sole_constructor {
   enabled: Bool
 }
 
+// THE SNAPSHOT IS WHAT WAS READ, AND NOTHING ELSE. It deliberately does NOT carry an "unread" list:
+// that would make the denominator a fact the OBSERVATION supplies, so a lane omitted from the
+// readings entirely would vanish from both the input and the population it was supposed to be
+// measured against. The expected roster is the GOAL's -- `SwitchIntent.lanes` already is it -- and
+// the assessment joins the two. A caller therefore cannot shrink the denominator by forgetting to
+// author an absence, only by editing the intent, which is the declaration a reviewer reads.
 type Crs812SwitchObserved sole_constructor {
   lanes: List<ObservedLane>
+}
+
+// One row per lane nobody read. It is a distinct type rather than a bare interface name because it
+// inhabits the UnknownFact position of the assessment, where a reader must be able to tell it from
+// a deviation without consulting which list it arrived in.
+type Crs812LaneUnknown sole_constructor {
+  interface: NonEmptyStr
 }
 
 // ONE DIVERGENCE ROW PER LANE, AND THE CAUSE IS A CLOSED VOCABULARY. A lane can disagree with its
@@ -89,10 +103,19 @@ type Crs812LaneDivergence sole_constructor {
   cause: LaneDivergenceCause
 }
 
-type Crs812SwitchRefusal
+// THESE ARE ILL-FORMED QUESTIONS, NOT FAILED READS, and moving them is the second repair. An
+// undecided intent is not an inability to observe the switch -- the lanes read exactly as well
+// without one -- it means there is no desired side to compare against, so it belongs to the
+// assessment. `SwitchLaneNeverRead` is gone entirely: it is now a member-level unknown rather than
+// a whole-subject refusal.
+//
+// `SwitchIntentNamesNoLanes` is the empty-DENOMINATOR refusal, and it asks about the INTENT rather
+// than the readings. A switch nobody read is not empty -- it is unknown, one unknown per expected
+// lane. Only an intent that declares no lanes leaves nothing to assess, and an assessment over that
+// would certify agreement across a population nobody declared.
+type Crs812SwitchAssessRefusal
   = SwitchIntentUndecidedHere { cause: DesiredSpeedUndecidedCause }
-  | SwitchLaneNeverRead { interface: NonEmptyStr }
-  | SwitchHoldsNoLanes { switch: NonEmptyStr }
+  | SwitchIntentNamesNoLanes
 
 type Crs812SwitchReceipt sole_constructor {
   lanes_read: Nat
@@ -184,16 +207,14 @@ fn lane_divergences(intent: Crs812SwitchIntent, lane: ObservedLane) -> List<Crs8
   }
 }
 
-fn switch_unread_interfaces(subject: Crs812ConvergenceSubject) -> List<NonEmptyStr> {
-  flat_map(subject.readings, r =>
-    match r {
-      LaneNeverRead { interface: n } => [n]
-      LaneReadingTaken { interface: n, speed: s, fec: f, enabled: e } => []
-    })
-}
-
-fn switch_read_lanes(subject: Crs812ConvergenceSubject) -> List<ObservedLane> {
-  flat_map(subject.readings, r =>
+// THE PARTITION TAKES THE READINGS, NOT THE SUBJECT, which carries the intent: a fold that received
+// the subject could branch on the desired state while claiming to report the observed one.
+//
+// THERE IS NO LONGER AN "UNREAD" PARTITION BESIDE THIS ONE. It existed to carry `LaneNeverRead` into
+// the snapshot, and it made the denominator observation-supplied; `switch_unknowns` derives the same
+// facts from the intent's roster instead, which also covers a lane the readings omit entirely.
+fn switch_read_lanes(readings: List<Crs812LaneReading>) -> List<ObservedLane> {
+  flat_map(readings, r =>
     match r {
       LaneReadingTaken { interface: n, speed: s, fec: f, enabled: e } =>
         [ObservedLane { interface: n, speed: s, fec: f, enabled: e }]
@@ -201,39 +222,61 @@ fn switch_read_lanes(subject: Crs812ConvergenceSubject) -> List<ObservedLane> {
     })
 }
 
-// ================= THE FOUR HANDLER STAGES =================
+// ================= THE TWO STAGES =================
 //
-// UNDECIDED INTENT FIRST, THEN UNREAD, THEN EMPTY -- in that order, because each later question is
-// meaningless without the earlier one. Comparing readings against an undecided intent would produce
-// divergences whose desired side does not exist, and reporting on the lanes that happened to answer
-// makes an uncaptured switch indistinguishable from a correctly configured one.
+// TWO, NOT FOUR. The heading this replaces counted the stages of the handler record #10814 deleted,
+// and it outlived the thing it described by one release. An unbound actuation stage and an
+// unchanged-receipt stage are not stages of this module; observation and assessment are.
+//
+// THE OBSERVER RECEIVES THE READINGS AND NOTHING ELSE, so it cannot consult the intent to decide
+// what to report -- the guarantee std.goal_assessment used to state in prose and now carries in the
+// shape of this argument list.
+//
+// IT ALSO CANNOT REFUSE. There is no RouterOS transport here: the readings are declared corpus data,
+// so every call yields the snapshot it was handed, and a lane nobody captured is an unread MEMBER of
+// that snapshot rather than a failure to obtain one. `Never` in the refusal position says exactly
+// that, and it is honest rather than optimistic -- when a transport lands, a read that genuinely
+// fails becomes a real inhabitant here and the assessor keeps its meaning unchanged.
 fn observe_fabric_switch_attempt(
-  subject: Crs812ConvergenceSubject,
-  _: Bool,
-) -> ObservationAttempt<Crs812SwitchObserved, Crs812SwitchRefusal> {
-  match subject.intent {
-    SwitchIntentUndecided { cause: c } => ObservationRefused { cause: SwitchIntentUndecidedHere { cause: c } }
-    SwitchIntent {
-      identity: id, board_name: b, management_interface: m, bridge: br, lanes: ls,
-    } =>
-      match switch_unread_interfaces(subject: subject).first() {
-        Present { value: n } => ObservationRefused { cause: SwitchLaneNeverRead { interface: n } }
-        Absent => {
-          let lanes = switch_read_lanes(subject: subject)
-          match lanes.first() {
-            Absent => ObservationRefused { cause: SwitchHoldsNoLanes { switch: subject.switch } }
-            Present { value: l } => ObservationEstablished { observed: Crs812SwitchObserved { lanes: lanes } }
-          }
-        }
-      }
+  switch: NonEmptyStr,
+  readings: List<Crs812LaneReading>,
+) -> ObservationAttempt<Crs812SwitchObserved, Never> {
+  ObservationEstablished {
+    observed: Crs812SwitchObserved { lanes: switch_read_lanes(readings: readings) },
   }
 }
 
 fn switch_divergences(
-  subject: Crs812ConvergenceSubject,
+  intent: Crs812SwitchIntent,
   observed: Crs812SwitchObserved,
 ) -> List<Crs812LaneDivergence> {
-  flat_map(observed.lanes, l => lane_divergences(intent: subject.intent, lane: l))
+  flat_map(observed.lanes, l => lane_divergences(intent: intent, lane: l))
+}
+
+// THE EXPECTATION-DRIVEN JOIN. One unknown per lane the INTENT names that the snapshot does not
+// carry -- whether the reading said `LaneNeverRead` or was never supplied at all. This is the
+// difference between a denominator the goal declares and one the observation happens to mention.
+fn observed_lane_interfaces(observed: Crs812SwitchObserved) -> List<NonEmptyStr> {
+  map(observed.lanes, l => l.interface)
+}
+
+fn interface_absent_from(read: List<NonEmptyStr>, needle: NonEmptyStr) -> Bool {
+  list_length(items: flat_map(read, n => if n == needle { [n] } else { [] })) == 0
+}
+
+fn switch_unknowns(
+  lanes: List<Crs812LaneIntent>,
+  observed: Crs812SwitchObserved,
+) -> List<Crs812LaneUnknown> {
+  flat_map(lanes, i =>
+    if interface_absent_from(
+      read: observed_lane_interfaces(observed: observed),
+      needle: lane_intent_interface(i: i),
+    ) {
+      [Crs812LaneUnknown { interface: lane_intent_interface(i: i) }]
+    } else {
+      []
+    })
 }
 
 // THERE IS NO ACTUATION STAGE, AND ITS ABSENCE SAYS MORE THAN ITS REFUSAL DID. Writing a RouterOS
@@ -246,28 +289,50 @@ fn switch_divergences(
 // carried as a VALUE, and the weaker copy was the arm a reader reached first.
 //
 // WHEN A TRANSPORT IS MODELLED it is a new stage over this assessment, not an arm reinstated here.
+// THE ANSWERS OVER AN ESTABLISHED SNAPSHOT, and the refusal is now about the GOAL rather than the
+// snapshot. An intent naming no lanes at all is a malformed question -- there is no population to
+// assess -- and that is the ONLY refusal here. An intent that names lanes none of which were read is
+// NOT that: it is a fully unknown assessment, which is indeterminate and reports one unknown per
+// expected lane. The cut before this one called the second case `SwitchHoldsNoLanes` and refused,
+// which reported a declared roster as an absent one.
 fn assess_fabric_switch(
-  subject: Crs812ConvergenceSubject,
+  switch: NonEmptyStr,
+  goal: Crs812SwitchIntent,
   observed: Crs812SwitchObserved,
-) -> GoalAssessment<Crs812SwitchReceipt, Crs812LaneDivergence, Never, Never> {
-  assess_by_deviations(
-    evidence: fabric_switch_agreement_receipt(observed: observed),
-    deviations: switch_divergences(subject: subject, observed: observed),
-  )
+) -> GoalAssessment<Crs812SwitchReceipt, Crs812LaneDivergence, Crs812LaneUnknown, Crs812SwitchAssessRefusal> {
+  match goal {
+    SwitchIntentUndecided { cause: c } =>
+      GoalAssessmentRefused { cause: SwitchIntentUndecidedHere { cause: c } }
+    SwitchIntent {
+      identity: id, board_name: b, management_interface: m, bridge: br, lanes: ls,
+    } =>
+      match ls.first() {
+        Absent => GoalAssessmentRefused { cause: SwitchIntentNamesNoLanes }
+        Present { value: l } => assess_by_deviations_and_unknowns(
+          evidence: fabric_switch_agreement_receipt(observed: observed),
+          deviations: switch_divergences(intent: goal, observed: observed),
+          unknowns: switch_unknowns(lanes: ls, observed: observed),
+        )
+      }
+  }
 }
 
 fn fabric_switch_agreement_receipt(observed: Crs812SwitchObserved) -> Crs812SwitchReceipt {
   Crs812SwitchReceipt { lanes_read: list_length(items: observed.lanes) }
 }
 
-type Crs812SwitchInspection = GoalInspection<Crs812ConvergenceSubject, Crs812SwitchObserved, Crs812SwitchReceipt, Crs812LaneDivergence, Never, Crs812SwitchRefusal, Never>
+type Crs812SwitchInspection = GoalInspection<NonEmptyStr, Crs812SwitchIntent, List<Crs812LaneReading>, Crs812SwitchObserved, Crs812SwitchReceipt, Crs812LaneDivergence, Crs812LaneUnknown, Never, Crs812SwitchAssessRefusal>
 
-fn inspect_fabric_switch(subject: Crs812ConvergenceSubject) -> Crs812SwitchInspection {
+// THE THREE FACTS ARE HANDED OVER SEPARATELY. `Crs812SwitchSubject` remains the corpus row that
+// DECLARES them together, which is what a data row is for; it is destructured here so that no stage
+// receives more than its own question needs.
+fn inspect_fabric_switch(subject: Crs812SwitchSubject) -> Crs812SwitchInspection {
   inspect_goal(
-    subject: subject,
-    scope: true,
+    subject: subject.switch,
+    goal: subject.intent,
+    request: subject.readings,
     observe: observe_fabric_switch_attempt,
-    assess: o => assess_fabric_switch(subject: subject, observed: o),
+    assess: assess_fabric_switch,
   )
 }
 
@@ -287,14 +352,14 @@ fn fabric_switch_intent_interfaces() -> List<NonEmptyStr> {
   }
 }
 
-fn fabric_switch_subject() -> Crs812ConvergenceSubject {
-  crs812_convergence_subject(
+fn fabric_switch_subject() -> Crs812SwitchSubject {
+  crs812_switch_subject(
     switch: "gunbc-fabric-switch" as NonEmptyStr,
     intent: fabric_switch_intent(),
     readings: map(fabric_switch_intent_interfaces(), n => LaneNeverRead { interface: n }),
   )
 }
 
-fn fabric_switch_convergence() -> Crs812SwitchInspection {
+fn fabric_switch_inspection() -> Crs812SwitchInspection {
   inspect_fabric_switch(subject: fabric_switch_subject())
 }

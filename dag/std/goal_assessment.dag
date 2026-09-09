@@ -26,11 +26,19 @@ import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 // the monoid's other identity, and its own grounding note withholds that alias precisely so one
 // name never resolves to two declarations (DESIGN section 3).
 //
-// THREE: THE ASSESSOR DOES NOT RECEIVE THE GOAL BY WAY OF THE OBSERVER. `observe` takes the
-// subject and the scope and nothing else. An observer handed the desired state can omit what the
-// caller did not ask about, and an observation shaped by what someone hoped to find cannot falsify
-// the hope -- it is the fabricated-plausible-output failure moved one stage earlier, where nothing
-// downstream can detect it. The assessor is the only stage that knows the goal.
+// THREE: THE OBSERVER CANNOT SEE THE GOAL, AND THIS IS A SHAPE RATHER THAN A CONVENTION. An
+// observer handed the desired state can omit what the caller did not ask about, and an observation
+// shaped by what someone hoped to find cannot falsify the hope -- it is the fabricated-plausible-
+// output failure moved one stage earlier, where nothing downstream can detect it.
+//
+// THE FIRST CUT STATED THIS SENTENCE WHILE THE TYPE ADMITTED ITS OPPOSITE. `observe` took
+// `(Subject, Scope)`, and a subject is exactly where a goal travels: gunbc.spark.fabric_switch
+// bound an observer that matched on `subject.intent`, so the desired mode selected which lanes were
+// read -- with the module's own note claiming the separation held. A guarantee carried only by
+// prose is one binding away from being false, and it was false in two of the three bindings that
+// existed. So the observer now receives an `ObservationRequest` and NOTHING ELSE: it has no
+// goal-typed parameter to read, the desired side is unconstructible in its argument, and DESIGN
+// section 4b rung four replaces the sentence that used to ask authors to be careful.
 //
 // WHAT THIS MODULE DELIBERATELY DOES NOT CARRY, stated so its absence reads as a boundary and not
 // an oversight. There is no `reconcile_once`: no planner, no admission, no actuator, and no
@@ -132,13 +140,27 @@ type GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>
 // same, and a replacement that dropped it would have erased a distinction rather than completed a
 // migration: a refusal that does not say WHAT it is about is a diagnostic missing its located half
 // (DESIGN section 5), and the refused arm is exactly where a reader has least context to supply it.
-type GoalInspection<Subject, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal>
+//
+// THE GOAL AND THE REQUEST ARE CARRIED BESIDE THE SUBJECT, for the reason the subject is carried: a
+// result that does not say WHAT WAS WANTED, and WHAT WAS ACTUALLY READ TO FIND OUT, is only
+// partly located. Carrying the goal also lets a consumer report the comparison without reaching
+// back to whatever declared the desire, which is where a stale goal gets substituted for the
+// assessed one. Carrying the request is what makes a refusal say which read was attempted rather
+// than only which subject it concerned.
+type GoalInspection<Subject, Goal, ObservationRequest, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal>
   = GoalInspected {
       subject: Subject,
+      goal: Goal,
+      request: ObservationRequest,
       observed: Observed,
       assessment: GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
     }
-  | GoalObservationRefused { subject: Subject, cause: ObserveRefusal }
+  | GoalObservationRefused {
+      subject: Subject,
+      goal: Goal,
+      request: ObservationRequest,
+      cause: ObserveRefusal,
+    }
 
 // THE ROOT. Unobservable is guarded first and the assessor is never reached, for the same reason
 // the shape this replaces guarded it first: an unreadable subject has no deviations to invent, and
@@ -148,21 +170,40 @@ type GoalInspection<Subject, Observed, Evidence, Deviation, UnknownFact, Observe
 // nothing here -- there is no dispatch over it and no second implementation selected at runtime --
 // while it cost every binding a named type alias and every witness a data row to reach the very
 // functions it already had.
-fn inspect_goal<Subject, Scope, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal>(
+//
+// THE THREE INPUTS ARE THREE FACTS. `subject` is WHO is being asked about; `goal` is WHAT WAS
+// WANTED; `request` is WHAT TO READ. The first cut fused the second and third into the subject,
+// which is how a goal reached an observer while the note above said it could not.
+//
+// THE OBSERVER IS GOAL-BLIND, NOT SUBJECT-BLIND, and the difference is the whole reason it receives
+// two arguments rather than one. Handing it only the request would make `subject` a LABEL ON THE
+// RESULT rather than the thing observed: the receipt could name subject A while the request read
+// subject B, and nothing in the shape would object. The observer needs the subject precisely
+// because it is what it must go and read. What it must not receive is the DESIRE, because an
+// observation shaped by the hope cannot falsify it.
+//
+// THE ASSESSOR RECEIVES THE SUBJECT FOR THE SAME REASON: a refusal cause that has to name what it
+// could not assess should not have to be handed the identity through a closure.
+fn inspect_goal<Subject, Goal, ObservationRequest, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal>(
   subject: Subject,
-  scope: Scope,
-  observe: fn(Subject, Scope) -> ObservationAttempt<Observed, ObserveRefusal>,
-  assess: fn(Observed) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
-) -> GoalInspection<Subject, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal> {
-  match observe(subject, scope) {
+  goal: Goal,
+  request: ObservationRequest,
+  observe: fn(Subject, ObservationRequest) -> ObservationAttempt<Observed, ObserveRefusal>,
+  assess: fn(Subject, Goal, Observed) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
+) -> GoalInspection<Subject, Goal, ObservationRequest, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal> {
+  match observe(subject, request) {
     ObservationRefused { cause: cause } => GoalObservationRefused {
       subject: subject,
+      goal: goal,
+      request: request,
       cause: cause,
     }
     ObservationEstablished { observed: observed } => GoalInspected {
       subject: subject,
+      goal: goal,
+      request: request,
       observed: observed,
-      assessment: assess(observed),
+      assessment: assess(subject, goal, observed),
     }
   }
 }

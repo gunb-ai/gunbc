@@ -12,7 +12,7 @@ import extdeps.transceiver.sff_8636 {
 import product.cable_leg_observation {
   CableLegObservation, SecondaryNotObserved, cable_leg_observation,
 }
-import product.cable_plant_converge {
+import product.cable_plant_assessment {
   CablePlant, cable_plant, CableLegReading, LegReadingTaken, CablePlantInspection,
   inspect_cable_plant,
 }
@@ -170,6 +170,6 @@ data fabric_cable_plant: CablePlant = cable_plant(
     observation: fabric_leg_cable_observed.coding,
   }))
 
-fn fabric_cable_plant_convergence() -> CablePlantInspection {
+fn fabric_cable_plant_inspection() -> CablePlantInspection {
   inspect_cable_plant(subject: fabric_cable_plant)
 }
