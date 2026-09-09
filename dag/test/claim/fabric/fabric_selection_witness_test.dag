@@ -1006,6 +1006,8 @@ test fn w_an_unadmitted_offer_is_indistinguishable_from_no_offer() -> Bool {
   selected_key(s: t_select(
     candidates: t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
   )) == selected_key(s: t_select(candidates: []))
+}
+
 // ── THE EQUAL-COST TIE POLICY, WHICH WAS ROSTER ORDER AND IS NOW NAMED ────────────────────────
 //
 // These fixtures are two IDENTICAL owned offers differing only in their key, which is the shape a
@@ -1261,6 +1263,7 @@ test fn a_collision_refuses_in_every_roster_order() -> Bool {
 fn t_offer_under(principal: NonEmptyStr, key: OfferKey) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
     id: FabricIdentity { principal: principal, key: key },
+    route: fixture_route(),
     executor: principal,
     shape: t_shape(threads: hardware_thread_count(count: 64)),
     capabilities: t_caps(),
