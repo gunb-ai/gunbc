@@ -180,8 +180,9 @@ test fn h_two_walks_one_frame_same_pool() -> Bool {
 // WRITTEN AND COMMITTED BEFORE THE REPAIR WAS MEASURED, so that what comes back is read against a
 // stated expectation rather than fitted to one. The repair changes three sites in one family --
 // building or rescanning an intermediate proportional to the whole input on every step -- and it
-// changes them as ONE change because three distributions over a 1.379x spread cannot separate
-// three effects.
+// changes them as ONE change because the run-to-run spread on this machine population -- read from
+// the same arms' repeated runs, not from a figure written here -- is wider than any one of the three
+// effects, so three distributions over it cannot separate them.
 //
 // WHAT THE REPAIR TOUCHES, AND WHICH ARM PRICES EACH:
 //   callees_from_node   materialize-then-filter  ->  extract during one fold        p, and o-minus-p
@@ -204,7 +205,9 @@ test fn h_two_walks_one_frame_same_pool() -> Bool {
 // somewhere else is a discovery, not a residue.
 //
 // THE DIRECTORY-GRAIN ACCEPTANCE IS SEPARATE AND IS NOT THESE ARMS. These run on a machine
-// population roughly 1.8x away from the one that enforces, so no arm here can accept the change.
+// population that is measurably slower than the one that enforces -- the ratio is re-derived by
+// running one arm here and reading the same claim's row from a completed CI cost artifact, never by
+// reading a factor from this line -- so no arm here can accept the change.
 // Acceptance is the retained CI cost artifact over COMPLETED rows only, read by header name, and
 // the question asked of it is whether the TOP of the after-distribution clears the line with
 // margin -- never whether a run went green.
@@ -278,8 +281,9 @@ test fn m_two_pools_retained_one_pool_walked() -> Bool {
 // measured below the walk and was refuted as the cost. But the floor's closure is EMPTY, so
 // decls_in_modules returns nothing for every callee and the walk follows NO edges at all: it drains
 // its seeds and stops. A walk that follows no edges cannot be pool-proportional, which means the
-// term this drop's trigger names is not even exercised at the floor's grain -- and whatever costs
-// 200ms there is a DIFFERENT construct from the one the directory arms measure. Aiming the repair
+// term this drop's trigger names is not even exercised at the floor's grain -- and whatever the time
+// at that grain is spent on, it is a DIFFERENT construct from the one the directory arms measure.
+// Run arm n to see what it costs; the figure is not written here because nothing here re-derives it. Aiming the repair
 // from the directory arms would fix a real defect that this claim does not pay.
 test fn n_floor_walk_only() -> Bool {
   length(xs: call_reachable_decls(
@@ -290,13 +294,14 @@ test fn n_floor_walk_only() -> Bool {
   )) > 0
 }
 
-// o ISOLATES THE FOURTH CANDIDATE, AND IT EXISTS BECAUSE THE ARITHMETIC DID NOT ADD UP. The walk at
-// floor grain costs about 134ms over 78 seeds while following NO edges. Costing the three list
-// shapes at their worst -- decl_in_list scanning `reached`, list_snoc_item copying it, and
-// list_append copying the remaining seeds -- gives roughly nine thousand element operations, so
-// 134ms implies about fifteen microseconds per element touch. That is at the top of defensible for
-// an interpreted list operation rather than comfortably inside it, which is the signal that a term
-// has not been named.
+// o ISOLATES THE FOURTH CANDIDATE, AND IT EXISTS BECAUSE THE ARITHMETIC DID NOT ADD UP. Run arm n
+// and price the three list shapes at their worst against it -- decl_in_list scanning `reached`,
+// list_snoc_item copying it, and list_append copying the remaining seeds, over the seed count that
+// arm reports. The implied cost per element touch comes out at the TOP of defensible for an
+// interpreted list operation rather than comfortably inside it, which is the signal that a term has
+// not been named. The figures are deliberately not written here: this whole comparison is a ratio
+// between two things the arms themselves report, so a reader who does not re-run it has no business
+// quoting it, and a reader who does re-run it does not need the old numbers.
 //
 // THE UNNAMED TERM IS NOT A LIST SHAPE. call_reachable_decls_go calls callees_from_node on every
 // newly reached seed, and that MATERIALIZES THE WHOLE SUBTREE of the declaration's output node via
