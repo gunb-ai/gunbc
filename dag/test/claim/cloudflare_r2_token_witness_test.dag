@@ -24,6 +24,12 @@ import extdeps.cloudflare.account_api_tokens {
   AccountTokenApiMintAdmitted,
   AccountTokenApiMintRefusedHumanDashboardOnly,
   AccountTokenApiMintRefusedGrantPolicyMismatch,
+  AccountTokenApiMintRefusedLifetimeMismatch,
+  CloudflareAccountTokenShape,
+  AccountOwnedApiToken,
+  OptionalTokenExpiry,
+  NoExpiryUntilRevoked,
+  AccountApiTokensSurface,
   CreateAccountTokenRequest,
   AccountTokenPolicy,
   PermissionGroupRef,
@@ -45,6 +51,7 @@ import extdeps.cloudflare.r2 {
   r2_s3_access_pair_from_created_token,
   workers_r2_storage_bucket_item_read_permission_group_id,
   shape_grants_include_r2_object_read,
+  r2_object_read_grant,
   cloudflare_r2_frontier_rows
 }
 import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed, frontier_subject_eq }
@@ -105,7 +112,9 @@ test fn create_response_folds_wire_status_fail_closed() -> Bool {
       id: "ed17574386854bf78a67040be0a770b0",
       name: "readonly token",
       status: "active",
-      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret
+      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret,
+      expires_on: none,
+      not_before: none
     }
   )
   let refused = created_account_token_from_create_response(
@@ -113,17 +122,38 @@ test fn create_response_folds_wire_status_fail_closed() -> Bool {
       id: "ed17574386854bf78a67040be0a770b0",
       name: "readonly token",
       status: "nope",
-      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret
+      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret,
+      expires_on: none,
+      not_before: none
     }
   )
   match admitted {
-    Present { value: t } => t.status == TokenActive
+    Present { value: t } => t.status == TokenActive && t.expires_on == none && t.not_before == none
     none => false
   }
     && match refused {
       none => true
       Present { value: _ } => false
     }
+}
+
+test fn create_response_preserves_wire_expiry() -> Bool {
+  let admitted = created_account_token_from_create_response(
+    response: CreatedAccountTokenCreateResponse {
+      id: "ed17574386854bf78a67040be0a770b0",
+      name: "readonly token",
+      status: "active",
+      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret,
+      expires_on: Present { value: "2027-01-01T00:00:00Z" },
+      not_before: Present { value: "2026-09-01T00:00:00Z" }
+    }
+  )
+  match admitted {
+    Present { value: t } =>
+      t.expires_on == Present { value: "2027-01-01T00:00:00Z" }
+        && t.not_before == Present { value: "2026-09-01T00:00:00Z" }
+    none => false
+  }
 }
 
 test fn r2_endpoints_and_iam_resource_names_follow_the_r2_token_docs() -> Bool {
@@ -217,6 +247,7 @@ test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
         )
     AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
     AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+    AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
   }
     && match admit_account_token_api_mint(
       shape: cloudflare_bootstrap_token_shape(),
@@ -231,6 +262,7 @@ test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
         s.acquisition == HumanDashboardAcquired
       AccountTokenApiMintAdmitted { shape: _, request: _ } => false
       AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+      AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
     }
 }
 
@@ -248,6 +280,7 @@ test fn api_mint_refuses_when_create_policies_omit_the_shape_grant() -> Bool {
       s.acquisition == CreatedViaAccountTokensApi && (req.policies |> count) == 0
     AccountTokenApiMintAdmitted { shape: _, request: _ } => false
     AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+    AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
   }
 }
 
@@ -279,7 +312,75 @@ test fn api_mint_refuses_when_create_policies_cite_a_different_permission_group(
       )
     AccountTokenApiMintAdmitted { shape: _, request: _ } => false
     AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+    AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
   }
+}
+
+test fn api_mint_refuses_when_request_expiry_disagrees_with_shape_lifetime() -> Bool {
+  let policy = r2_object_read_token_policy(
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "my-bucket"
+  )
+  let timed = CloudflareAccountTokenShape {
+    kind: AccountOwnedApiToken,
+    grants: [r2_object_read_grant()],
+    acquisition: CreatedViaAccountTokensApi,
+    lifetime: OptionalTokenExpiry { expires_on: "2027-01-01T00:00:00Z" },
+    revocation: AccountApiTokensSurface
+  }
+  match admit_account_token_api_mint(
+    shape: timed,
+    request: r2_object_read_create_request(
+      name: "r2-read",
+      account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+      jurisdiction: R2JurisdictionDefault,
+      bucket_name: "my-bucket"
+    )
+  ) {
+    AccountTokenApiMintRefusedLifetimeMismatch { shape: s, request: req } =>
+      match s.lifetime {
+        OptionalTokenExpiry { expires_on: t } => t == "2027-01-01T00:00:00Z" && req.expires_on == none
+        NoExpiryUntilRevoked => false
+      }
+    AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+    AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+    AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+  }
+    && match admit_account_token_api_mint(
+      shape: timed,
+      request: CreateAccountTokenRequest {
+        name: "r2-read",
+        policies: [policy],
+        not_before: none,
+        expires_on: Present { value: "2027-01-01T00:00:00Z" }
+      }
+    ) {
+      AccountTokenApiMintAdmitted { shape: s, request: req } =>
+        req.expires_on == Present { value: "2027-01-01T00:00:00Z" }
+          && match s.lifetime {
+            OptionalTokenExpiry { expires_on: t } => t == "2027-01-01T00:00:00Z"
+            NoExpiryUntilRevoked => false
+          }
+      AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
+      AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+      AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+    }
+    && match admit_account_token_api_mint(
+      shape: cloudflare_r2_object_read_token_shape(),
+      request: CreateAccountTokenRequest {
+        name: "r2-read",
+        policies: [policy],
+        not_before: none,
+        expires_on: Present { value: "2027-01-01T00:00:00Z" }
+      }
+    ) {
+      AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: req } =>
+        req.expires_on == Present { value: "2027-01-01T00:00:00Z" }
+      AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+      AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+      AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+    }
 }
 
 fn census_contains_frontier_subject(row: FrontierRow) -> Bool {

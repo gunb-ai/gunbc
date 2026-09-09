@@ -237,6 +237,8 @@ type CreatedAccountTokenCreateResponse {
   name: String
   status: String
   value: Secret
+  expires_on: Timestamp?
+  not_before: Timestamp?
 }
 
 fn created_account_token_from_create_response(
@@ -250,8 +252,8 @@ fn created_account_token_from_create_response(
           name: response.name,
           status: status,
           value: response.value,
-          expires_on: none,
-          not_before: none
+          expires_on: response.expires_on,
+          not_before: response.not_before
         }
       }
     none => none
@@ -356,6 +358,20 @@ fn mint_grant_policy_permission_groups_agree(
   )
 }
 
+fn mint_lifetime_agrees(
+  shape: CloudflareAccountTokenShape,
+  request: CreateAccountTokenRequest
+) -> Bool {
+  match shape.lifetime {
+    NoExpiryUntilRevoked => request.expires_on == none
+    OptionalTokenExpiry { expires_on: t } =>
+      match request.expires_on {
+        Present { value: e } => e == t
+        none => false
+      }
+  }
+}
+
 type AccountTokenApiMintStanding
   = AccountTokenApiMintAdmitted {
       shape: CloudflareAccountTokenShape
@@ -366,6 +382,10 @@ type AccountTokenApiMintStanding
       shape: CloudflareAccountTokenShape
       request: CreateAccountTokenRequest
     }
+  | AccountTokenApiMintRefusedLifetimeMismatch {
+      shape: CloudflareAccountTokenShape
+      request: CreateAccountTokenRequest
+    }
 
 fn admit_account_token_api_mint(
   shape: CloudflareAccountTokenShape,
@@ -373,10 +393,14 @@ fn admit_account_token_api_mint(
 ) -> AccountTokenApiMintStanding {
   match account_token_mint_route(shape: shape) {
     AccountTokensCreateApi =>
-      if mint_grant_policy_permission_groups_agree(shape: shape, request: request) {
-        AccountTokenApiMintAdmitted { shape: shape, request: request }
-      } else {
+      if !mint_grant_policy_permission_groups_agree(shape: shape, request: request) {
         AccountTokenApiMintRefusedGrantPolicyMismatch { shape: shape, request: request }
+      } else {
+        if !mint_lifetime_agrees(shape: shape, request: request) {
+          AccountTokenApiMintRefusedLifetimeMismatch { shape: shape, request: request }
+        } else {
+          AccountTokenApiMintAdmitted { shape: shape, request: request }
+        }
       }
     HumanDashboardOnly =>
       AccountTokenApiMintRefusedHumanDashboardOnly { shape: shape }
@@ -417,17 +441,26 @@ service cloudflare.AccountTokens {
       account_id: String
       name: String
       policies: List<AccountTokenPolicy>
+      not_before: Timestamp?
+      expires_on: Timestamp?
     }
     output {
       id: NonEmptyStr from "result.id"
       value: Secret from "result.value"
       name: String from "result.name"
       status: String from "result.status"
+      expires_on: Timestamp? from "result.expires_on"
+      not_before: Timestamp? from "result.not_before"
     }
     transport rest {
       method: POST,
       path: "/accounts/\{account_id\}/tokens",
-      body: { name: name, policies: account_token_policies_create_wire(policies: policies) }
+      body: {
+        name: name,
+        policies: account_token_policies_create_wire(policies: policies),
+        not_before: not_before,
+        expires_on: expires_on
+      }
     }
     response {
       200 => CreatedAccountTokenCreateResponse
