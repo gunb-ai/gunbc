@@ -24,7 +24,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.telehouse",
-      decl_name: "telehouse_chelsea",
+      decl_name: "telehouse_facilities",
       field: WholeDeclaration
     }
   },
