@@ -37,6 +37,8 @@ import extdeps.tmux {
 }
 import extdeps.llm.cli {
   shape_claude_invoke_argv,
+  ProviderAccountDefaultModel,
+  ProviderModelPinned,
   shape_codex_exec_argv,
   CodexExecSpec,
   CodexWorkspaceWrite,
@@ -50,10 +52,19 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_publication_dir_for_instance,
   dispatch_attempt_state_path_for_instance,
   dispatch_actuator_selection,
+  dispatch_actuator_vendor_selection,
   dispatch_actuator_selection_for_provider,
+  DispatchActuatorSelection,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
+  dispatch_provider_inner_argv,
+  DispatchProviderInnerArgv,
+  DispatchProviderInnerArgvReady,
+  CursorProviderSpawnUnwired,
+  CodexProviderExecutableAbsent,
+  GunbcHarnessSpawnNeedsInstance,
   ClaudeCodeProvider,
+  CodexDispatchProvider,
   dispatch_tmux_session_name,
   dispatch_tmux_session_prefix,
   dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
@@ -227,6 +238,7 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
 test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
+    model: ProviderAccountDefaultModel,
     session_uuid: "uuid-1",
     node_id: roadmap_dispatch_actuator_nid(s: "node-1"),
     brief: "brief body",
@@ -250,6 +262,7 @@ test fn witness_git_worktree_argv_is_execfile_safe() -> Bool {
 test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
   let claude = claude_spawn_argv(
     effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
     session_uuid: "uuid-2",
     node_id: roadmap_dispatch_actuator_nid(s: "node-2"),
     brief: "brief",
@@ -322,7 +335,7 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
     node_sizing: Unsized,
   ) {
     DispatchActuatorSelectionRefused { reason: _ } => true
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
   }
 }
 
@@ -343,6 +356,7 @@ test fn witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt() -> Bo
 test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
   let argv = codex_spawn_argv(
     effort: ReasoningHigh,
+    model: ProviderAccountDefaultModel,
     worktree_path: "/opt/gunbc/dispatch-worktrees/codex-node",
     brief: "brief body",
   )
@@ -606,6 +620,7 @@ test fn witness_not_ready_node_refused() -> Bool {
     attempt_key: "feedfacefeedface",
     process_fingerprint: dispatch_codex_process_fingerprint,
     effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
   ) {
     DispatchRefused { reason: r } => string_contains(s: r as String, pattern: "not in ready frontier")
     _ => false
@@ -623,8 +638,9 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
     attempt_key: "feedfacefeedface",
     process_fingerprint: dispatch_codex_process_fingerprint,
     effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
   ) {
-    DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, reasoning_effort: e } =>
+    DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, reasoning_effort: e, model: _ } =>
       s == "gunbc-dispatch-ready-node"
         && string_contains(s: w, pattern: "ready-node-afeedfacefeedface")
         && b == "dispatch/ready-node-afeedfacefeedface"
@@ -646,6 +662,7 @@ test fn witness_live_lease_refused() -> Bool {
     attempt_key: "feedfacefeedface",
     process_fingerprint: dispatch_codex_process_fingerprint,
     effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
   ) {
     DispatchRefused { reason: r } =>
       string_contains(s: r as String, pattern: "name occupied")
@@ -696,25 +713,43 @@ test fn witness_live_sessions_panel_rows() -> Bool {
   }
 }
 
+// ITS SUBJECT IS THE VENDOR PATH, WHICH IS WHAT IT ALWAYS TESTED. Both selection clauses called
+// dispatch_actuator_selection, and DCH-3 (2026-09-02) repointed that at the harness -- a different
+// executor with a different refusal vocabulary -- while the assertions kept naming
+// dispatch_selection_standing_ineligible_reason, which only the VENDOR path can produce. So the
+// witness was asserting a value its subject could no longer return, on a route the hermetic floor
+// could not execute, and both defects were invisible because nothing had changed this file since.
+//
+// dispatch_actuator_vendor_selection is the function that still holds the semantics this witness was
+// written for, and it is hermetic: neither gunbc.provider_standing nor gunbc.dispatch_selection
+// performs I/O, and srv1_live_dashboard_instance is pure construction. One selection is resolved and
+// then CARRIED into the classifier, so both clauses judge the same specimen -- previously they made
+// two independent live reads that could disagree.
+//
+// The assertions are deliberately NOT weakened to "refuses for any reason". That would have made the
+// witness pass while losing the only thing it discriminates: that the STANDING-INELIGIBLE cause is
+// what propagates. A check weakened until it greens is the escape hatch DESIGN section 5 forbids.
 test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   let entry = fixture_projection_standing_refusal_tmux_entry()
   let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
-  match dispatch_actuator_selection(node_sizing: Unsized) {
+  let selection = dispatch_actuator_vendor_selection(node_sizing: Unsized)
+  match selection {
     DispatchActuatorSelectionRefused { reason } =>
       reason == dispatch_selection_standing_ineligible_reason
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
   }
-    && count(dispatch_live_sessions_from_entries(entries: [entry])) == 0
+    && count(dispatch_live_sessions_from_entries(entries: [entry], selection: selection)) == 0
     && match classify_dispatch_request(
       node: node,
       ready: ready,
       tmux_entries: [entry],
       attempt_key: "feedfacefeedface",
+      selection: selection,
     ) {
       DispatchRefused { reason: r } => r == dispatch_selection_standing_ineligible_reason
-      DispatchPermitted { session_name: _, worktree_path: _, branch_name: _, brief: _, reasoning_effort: _ } => false
+      DispatchPermitted { session_name: _, worktree_path: _, branch_name: _, brief: _, reasoning_effort: _, model: _ } => false
     }
 }
 
@@ -785,6 +820,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
     settings_json: "{}",
     append_system_prompt: "brief",
     start_prompt: "go",
+    model: ProviderAccountDefaultModel,
     permission_args: ["--dangerously-skip-permissions"],
   )
   let claude_args_default = shape_claude_invoke_argv(
@@ -794,6 +830,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
     settings_json: "{}",
     append_system_prompt: "brief",
     start_prompt: "go",
+    model: ProviderAccountDefaultModel,
     permission_args: [],
   )
   let codex_args = shape_codex_exec_argv(
@@ -801,6 +838,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
     cwd: "/opt/gunbc/dispatch-worktrees/bound-node",
     prompt: "brief",
     reasoning_effort: ReasoningHigh,
+    model: ProviderAccountDefaultModel,
     spec: CodexExecSpec {
       sandbox: CodexWorkspaceWrite,
       approval: CodexApprovalNever,
@@ -820,6 +858,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
 test fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
+    model: ProviderAccountDefaultModel,
     session_uuid: "uuid-policy",
     node_id: roadmap_dispatch_actuator_nid(s: "node-policy"),
     brief: "brief",
@@ -936,4 +975,121 @@ test fn the_prepared_publication_directory_is_inside_the_attempt_directory() -> 
   )
   publication_dir == join([attempt_dir, "/publication"], "")
     && publication_dir != attempt_dir
+}
+
+
+// THE DISCRIMINATING RED FOR THE DROPPED MODEL. Before extdeps.llm.cli ProviderModelSelection there
+// was no parameter for a model on either vendor argv row, so a model resolved by
+// gunbc.dispatch_selection reached the launched process nowhere: these four witnesses are red on
+// that tree by construction, because the call does not typecheck without the field and the pattern
+// is absent from the wire with it defaulted.
+//
+// THE PIN IS A VENDOR IDENTIFIER, AND THAT IS THE WHOLE SCOPE OF THIS AXIS. An earlier revision
+// pinned glm-5.3-flash here and called it the live case. It is not: GLM is served by the LOCAL
+// harness backend, whose model is the single constant gunbc.harness.harness_wire
+// harness_engine_model, and nothing on that path travels through --model at all -- swapping the
+// harness engine is an edit to that constant, not a selection this carrier makes. Worse, the value
+// was pinned into a CLAUDE argv, where `claude --model glm-5.3-flash` is rejected by Anthropic at
+// run time. The two CLIs can only be pointed at a local endpoint through provider-endpoint routing
+// that this corpus does not carry, so this axis selects among VENDOR models and the specimen says
+// so. Driving local models through the vendor CLIs is a separate capability, named here as absent
+// rather than implied by a witness value.
+//
+// The two default-arm witnesses are the POSITIVE CONTROL in the other direction: they are the
+// reason the account-default arm may pass no flag at all rather than a sentinel identifier, and
+// they go red if a later edit makes the default arm spell a model the provider would have to
+// reject at run time.
+
+data witness_pinned_dispatch_model: NonEmptyStr = "claude-opus-4-1-20250805" as NonEmptyStr
+
+test fn witness_pinned_model_reaches_claude_argv() -> Bool {
+  let argv = claude_spawn_argv(
+    effort: ReasoningHigh,
+    model: ProviderModelPinned { model: witness_pinned_dispatch_model },
+    session_uuid: "uuid-pin",
+    node_id: roadmap_dispatch_actuator_nid(s: "node-pin"),
+    brief: "brief",
+  )
+  string_contains(
+    s: join(argv, separator: "\0"),
+    pattern: concat("\0--model\0", witness_pinned_dispatch_model as String),
+  )
+}
+
+test fn witness_claude_account_default_passes_no_model_flag() -> Bool {
+  let argv = claude_spawn_argv(
+    effort: ReasoningHigh,
+    model: ProviderAccountDefaultModel,
+    session_uuid: "uuid-default",
+    node_id: roadmap_dispatch_actuator_nid(s: "node-default"),
+    brief: "brief",
+  )
+  !string_contains(s: join(argv, separator: "\0"), pattern: "--model")
+}
+
+test fn witness_pinned_model_reaches_codex_argv() -> Bool {
+  let argv = codex_spawn_argv(
+    effort: ReasoningHigh,
+    model: ProviderModelPinned { model: witness_pinned_dispatch_model },
+    worktree_path: "/opt/gunbc/dispatch-worktrees/codex-pin",
+    brief: "brief",
+  )
+  string_contains(
+    s: join(argv, separator: "\0"),
+    pattern: concat("\0--model\0", witness_pinned_dispatch_model as String),
+  )
+}
+
+test fn witness_codex_account_default_passes_no_model_flag() -> Bool {
+  let argv = codex_spawn_argv(
+    effort: ReasoningHigh,
+    model: ProviderAccountDefaultModel,
+    worktree_path: "/opt/gunbc/dispatch-worktrees/codex-default",
+    brief: "brief",
+  )
+  !string_contains(s: join(argv, separator: "\0"), pattern: "--model")
+}
+
+// THE ACTUATOR ARM, not just the argv row. dispatch_provider_inner_argv is the fold the spawn plan
+// routes both vendor providers through, and it is where the model was dropped a second time: the
+// function carried effort and process fingerprint from the receipt and nothing for the model. This
+// witness fails if a future edit re-drops the field between the fold and either argv row, which
+// compilation alone would not catch once the parameter exists and could be ignored.
+
+fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
+  match inner {
+    DispatchProviderInnerArgvReady { argv } => join(argv, separator: "\0")
+    CursorProviderSpawnUnwired { reason: r } => r as String
+    CodexProviderExecutableAbsent { reason: r } => r as String
+    GunbcHarnessSpawnNeedsInstance { reason: r } => r as String
+  }
+}
+
+test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool {
+  let pinned = ProviderModelPinned { model: witness_pinned_dispatch_model }
+  let expected = concat("\0--model\0", witness_pinned_dispatch_model as String)
+  let claude_wire = witness_inner_argv_wire(
+    inner: dispatch_provider_inner_argv(
+      provider: ClaudeCodeProvider,
+      effort: ReasoningHigh,
+      model: pinned,
+      session_uuid: "uuid-inner",
+      node_id: roadmap_dispatch_actuator_nid(s: "node-inner"),
+      worktree_path: "/opt/gunbc/dispatch-worktrees/node-inner",
+      brief: "brief",
+    ),
+  )
+  let codex_wire = witness_inner_argv_wire(
+    inner: dispatch_provider_inner_argv(
+      provider: CodexDispatchProvider,
+      effort: ReasoningHigh,
+      model: pinned,
+      session_uuid: "uuid-inner",
+      node_id: roadmap_dispatch_actuator_nid(s: "node-inner"),
+      worktree_path: "/opt/gunbc/dispatch-worktrees/node-inner",
+      brief: "brief",
+    ),
+  )
+  string_contains(s: claude_wire, pattern: expected)
+    && string_contains(s: codex_wire, pattern: expected)
 }

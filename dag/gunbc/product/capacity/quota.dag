@@ -7,6 +7,7 @@ import extdeps.api_rate_limit { UpstreamRateLimit, rate_limit_period_seconds, up
 import extdeps.accounting.appropriation_period { AppropriationPeriod }
 import product.capacity.pool { Pool, LapseAtPeriodEnd, pool_of }
 import product.capacity.event_chain { PartitionId }
+import product.capacity.lease { FencedResource }
 
 // AN UPSTREAM'S REQUEST LIMIT IS A LAPSING POOL, and this is the one place the derivation lives:
 // ceiling = the published request count, law = lapse at the end of the published period. The
@@ -27,5 +28,6 @@ fn quota_root_pool(limit: UpstreamRateLimit) -> Pool<Count, One> {
     identity: quota_partition(limit: limit) as String as NonEmptyStr,
     ceiling: Measure { count: limit.requests },
     replenishment: LapseAtPeriodEnd { period: AppropriationPeriod { period_seconds: rate_limit_period_seconds(p: limit.period), anchor: 0 } },
+    release_law: FencedResource,
   )
 }

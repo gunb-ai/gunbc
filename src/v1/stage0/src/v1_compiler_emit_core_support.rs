@@ -4,6 +4,7 @@
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
+pub use crate::v1_compiler_infer_items::leaf_owner_modules_from_registry;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::UniqueAccum;
 pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};

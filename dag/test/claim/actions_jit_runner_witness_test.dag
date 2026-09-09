@@ -4,15 +4,20 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_jit_runner {
   JitConfigMintOutcome, JitConfigMinted, JitConfigMintRefused,
+  JitConfigMintNotFound, JitConfigMintConflict, JitConfigMintValidationFailed,
   jit_config_mint_outcome, org_generate_jitconfig_path,
+  jit_config_not_found_status, jit_config_conflict_status, jit_config_validation_failed_status,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn minted_is_refusal(o: JitConfigMintOutcome) -> Bool {
+fn mint_did_not_succeed(o: JitConfigMintOutcome) -> Bool {
   match o {
     JitConfigMinted { config: _, runner_id: _ } => false
     JitConfigMintRefused { status: _, reason: _ } => true
+    JitConfigMintNotFound { reason: _ } => true
+    JitConfigMintConflict { reason: _ } => true
+    JitConfigMintValidationFailed { reason: _ } => true
   }
 }
 
@@ -22,18 +27,49 @@ fn minted_is_refusal(o: JitConfigMintOutcome) -> Bool {
 // ladder entirely. Both a non-201 AND the empty 201 must refuse, so the positive control below is
 // what keeps this from being satisfied by a function that refuses everything.
 test fn a_201_with_an_empty_config_is_a_refusal_not_a_credential() -> Bool {
-  minted_is_refusal(o: jit_config_mint_outcome(
+  mint_did_not_succeed(o: jit_config_mint_outcome(
     status: 201, encoded: "", runner_id: 7, error_body: ""
   ))
 }
 
-test fn a_non_created_status_is_a_refusal() -> Bool {
-  minted_is_refusal(o: jit_config_mint_outcome(
+test fn a_forbidden_status_is_a_generic_refusal() -> Bool {
+  match jit_config_mint_outcome(
     status: 403, encoded: "", runner_id: 0, error_body: "Resource not accessible by integration"
-  ))
-    && minted_is_refusal(o: jit_config_mint_outcome(
-         status: 422, encoded: "ignored-because-the-status-refused", runner_id: 0, error_body: "already exists"
-       ))
+  ) {
+    JitConfigMintRefused { status: s, reason: r } =>
+      s == 403 && r == "Resource not accessible by integration"
+    _ => false
+  }
+}
+
+test fn a_404_is_not_found_not_a_generic_refusal() -> Bool {
+  match jit_config_mint_outcome(
+    status: jit_config_not_found_status, encoded: "", runner_id: 0, error_body: "not found"
+  ) {
+    JitConfigMintNotFound { reason: r } => r == "not found"
+    _ => false
+  }
+}
+
+test fn a_409_is_conflict_not_validation_or_generic_refusal() -> Bool {
+  match jit_config_mint_outcome(
+    status: jit_config_conflict_status, encoded: "", runner_id: 0, error_body: "already exists"
+  ) {
+    JitConfigMintConflict { reason: r } => r == "already exists"
+    _ => false
+  }
+}
+
+test fn a_422_is_validation_failed_not_conflict() -> Bool {
+  match jit_config_mint_outcome(
+    status: jit_config_validation_failed_status,
+    encoded: "ignored-because-the-status-refused",
+    runner_id: 0,
+    error_body: "validation failed",
+  ) {
+    JitConfigMintValidationFailed { reason: r } => r == "validation failed"
+    _ => false
+  }
 }
 
 // POSITIVE CONTROL. Without it every assertion above is satisfied by a function that refuses
@@ -42,7 +78,7 @@ test fn a_created_status_with_a_body_mints() -> Bool {
   match jit_config_mint_outcome(status: 201, encoded: "eyJib2R5Ijoib3BhcXVlIn0=", runner_id: 4242, error_body: "") {
     JitConfigMinted { config: c, runner_id: id } =>
       id == 4242 && (c.encoded as String) == "eyJib2R5Ijoib3BhcXVlIn0="
-    JitConfigMintRefused { status: _, reason: _ } => false
+    _ => false
   }
 }
 

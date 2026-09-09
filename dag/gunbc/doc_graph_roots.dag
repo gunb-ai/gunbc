@@ -10,7 +10,7 @@ import std.decl_ref {
   citation_is_outside_index,
 }
 import gunbc.ci_layer_roots { compile_clean_source_roots }
-import gunbc.plan { Plan, plan_path, plan_doc_path, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, plan_path, plan_doc_path, PlanRetirement, PlanRetiresWhen, plan_projects_committed_markdown }
 import gunbc.plan_registry { all_plans }
 import v2.lens.doc_reachability { doc_graph_clean_holds, doc_graph_orphan_clean_holds }
 import v2.std.algebra { filter, list_flat_map }
@@ -54,7 +54,7 @@ import std.keyed_roster {
 // outlived its migration).
 
 fn plan_doc_graph_roots() -> List<String> {
-  map(all_plans, p => plan_path(p: p))
+  map(filter(all_plans, p => plan_projects_committed_markdown(p: p)), p => plan_path(p: p))
 }
 
 type DocHome
@@ -723,16 +723,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.rational", decl_name: "Rational", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject FieldOfFractions describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "host-converge-inventory",
-    primary_work: DeclarationRef { module_path: "gunbc.host_converge", decl_name: "HostConverge", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "gunbc.host_converge", decl_name: "ConvergeKnob", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.host_converge", decl_name: "ConvergeTarget", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject HostConverge describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1634,6 +1624,15 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "v2.compiler.infer", decl_name: "node_grounding_frontier_note", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the root partition this document coordinates is confirmed, its roots are owned, and the emitted Rust compiles for at least one module — at which point the wall it describes is history and the document deletes with this bind. Registered at subject grain: the bound declarations are the three carriers whose movement would make this document's framing false — the Band A readiness note that routes the blocker to the namespace cut, the inference frontier note whose counted-not-refused status is the correction this document records, and the direct-door dissolution note that says emission is already reached. It is a shared coordination surface for two sessions rather than an authority, which is why every claim in it names its measurement and the unconfirmed hypotheses are labelled as such; a coordination narrative that outlived its lanes would be the parallel-ledger shape DESIGN section 6 warns about.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "microvm-launch-displacement-analysis",
+    primary_work: DeclarationRef { module_path: "gunbc.fabric_ci_program", decl_name: "fabric_ci_gates", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.runner.runner_host_image_store", decl_name: "host_image_store", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the measurement this document exists to scope is taken and its answer is acted on: the host boot script that starts every production micro-VM on Mt. Collins acquires an authoring home, at which point the central finding -- that one home is modeled and the other is outside the corpus entirely -- is false and the document deletes with this bind. Registered at subject grain: the bound declarations are the two carriers whose movement would make its framing wrong -- FCI-3, whose exit predicate the receipted zero-byte-credential launch violates and whose displacement this document prices, and the host image store, whose resilient:false standing is what makes the unauthored actuation a single-copy risk rather than merely an untidy one. It is deliberately bound to NEITHER the FCI-2 module NOR the failure-mode row this analysis continues, because both are authored on the unmerged #10674 and a bind to a symbol that does not resolve is the citation defect this document was already corrected for once. When #10674 lands, the failure-mode row is the natural third work to add here.") },
   },
 ]
 

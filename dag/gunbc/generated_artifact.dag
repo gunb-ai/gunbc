@@ -26,6 +26,7 @@ type GeneratedArtifact
   | Stage0CrateLayoutGeneratedRsArtifact
   | Stage0CratePartitionGeneratedDagArtifact
   | Stage0ExecutableAssemblyGeneratedDagArtifact
+  | SeedRetentionFrontierGeneratedRsArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
   | EvaluationBudgetConsequenceGeneratedRsArtifact
   | FileTransportRealizationGeneratedRsArtifact
@@ -38,7 +39,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -183,6 +184,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
     Stage0ExecutableAssemblyGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_executable_assembly_generated.dag" }
+    SeedRetentionFrontierGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_seed_retention_frontier_generated.rs" }
     V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
     EvaluationBudgetConsequenceGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "evaluation_budget_consequence_generated.rs" }
     FileTransportRealizationGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "gunbc_file_transport_generated.rs" }
@@ -254,6 +256,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0ExecutableAssemblyGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
+    SeedRetentionFrontierGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     EvaluationBudgetConsequenceGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     FileTransportRealizationGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
@@ -306,6 +309,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
     Stage0ExecutableAssemblyGeneratedDagArtifact => match b { Stage0ExecutableAssemblyGeneratedDagArtifact => true  _ => false }
+    SeedRetentionFrontierGeneratedRsArtifact => match b { SeedRetentionFrontierGeneratedRsArtifact => true  _ => false }
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
     EvaluationBudgetConsequenceGeneratedRsArtifact => match b { EvaluationBudgetConsequenceGeneratedRsArtifact => true  _ => false }
     FileTransportRealizationGeneratedRsArtifact => match b { FileTransportRealizationGeneratedRsArtifact => true  _ => false }

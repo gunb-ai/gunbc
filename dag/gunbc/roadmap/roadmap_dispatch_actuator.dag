@@ -74,6 +74,8 @@ import extdeps.tmux {
   parse_tmux_attempt_panes_output,
 }
 import extdeps.llm.cli {
+  ProviderModelSelection,
+  ProviderModelPinned,
   shape_claude_invoke_argv,
   claude_cli_program,
   codex_cli_program,
@@ -112,6 +114,7 @@ import gunbc.dispatch_selection {
   resolve_dispatch_selection,
   provider_inventory_for_instance,
   resolved_process_fingerprint,
+  resolved_model_selection,
   dispatch_claude_process_fingerprint,
   dispatch_cursor_process_fingerprint,
   srv1_live_dashboard_instance,
@@ -263,10 +266,25 @@ fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> DispatchProvi
   }
 }
 
+// THE MODEL IS A REQUIRED FIELD OF THIS ARM, and that is the whole wall for the second spawn route.
+// review 62268 found the first cut of this change threaded a model into the argv rows but not into
+// this carrier, so gunbc.roadmap_belt_actuate belt_resolved_spawn_plan -- the OTHER caller of
+// dispatch_spawn_commands_for_resolved_instance -- had no model to supply; CI agreed, refusing at
+// belt_resolved_spawn_plan with `missing required argument model`. Passing
+// ProviderAccountDefaultModel there to make it compile would have been the absorbing fallback
+// DESIGN section 5 names: a silent widen that reports the account default for a selection that
+// resolved something else, which is precisely the class this change exists to close.
+//
+// Because the field is required and has no default, no construction of this arm can omit a model:
+// the belt route and the dispatch route both carry one or neither compiles. That is why there is no
+// belt-path witness for the drop -- the RED is not authorable, so a check here would be the
+// permanently-green decoration section 4b warns against rather than a wall. The argv-grain red
+// stays enrolled below, where the forbidden state IS writable.
 type DispatchActuatorSelection
   = DispatchActuatorSelectionOk {
       provider: DispatchCliProvider
       effort: ReasoningEffort
+      model: ProviderModelSelection
       process_fingerprint: NonEmptyStr
     }
   | DispatchActuatorSelectionRefused { reason: NonEmptyStr }
@@ -293,12 +311,22 @@ type DispatchActuatorSelection
 // type whose other consumers still require the field.
 data harness_selection_process_fingerprint: NonEmptyStr = "gunbc" as NonEmptyStr
 
+// THE SAME FIELD CARRIES TWO MEANINGS, AND ONLY ONE OF THEM IS AN INSTRUCTION. On the three vendor
+// arms, model is what will be SENT to the process: it becomes --model on the argv or it is the
+// account default and no flag is passed. Here it is a REPORT -- what the observed roster says this
+// backend is serving -- and nothing transmits it, because the harness worker is this repository's own
+// binary talking to a fixed local engine, not a CLI that takes a model argument. The pin is honest
+// because the roster really did observe that identity; it must not become a reason to add a --model
+// to the harness spawn, which would be inventing a knob the executor does not have. When the harness
+// grows per-group model identity, that identity replaces the single constant this reports, and the
+// transmission question is still answered by the executor, not by this field.
 fn dispatch_harness_selection() -> DispatchActuatorSelection {
   match harness_observe_roster() {
-    HarnessRosterServing { model: _, serving: _, declined: _ } =>
+    HarnessRosterServing { model: serving_model, serving: _, declined: _ } =>
       DispatchActuatorSelectionOk {
         provider: GunbcHarnessProvider,
         effort: ReasoningMedium,
+        model: ProviderModelPinned { model: serving_model as NonEmptyStr },
         process_fingerprint: harness_selection_process_fingerprint,
       }
     HarnessRosterNoneServing { model: m, declined } =>
@@ -324,6 +352,7 @@ fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuat
       DispatchActuatorSelectionOk {
         provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
         effort: receipt.applied_effort,
+        model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
@@ -360,6 +389,7 @@ fn dispatch_actuator_selection_for_provider(
       DispatchActuatorSelectionOk {
         provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
         effort: receipt.applied_effort,
+        model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
@@ -482,6 +512,12 @@ type DispatchLeasePlan
   | DrainStaleThenSpawn
   | RefuseForeignSession
 
+// THE PERMIT CARRIES THE MODEL BESIDE THE EFFORT. It carried effort alone, which is the same drop
+// this change closes everywhere else: a permit that names one provider control and not the other is
+// the shape the next author copies, and it is harmless today only because nothing in production
+// consumes this gate. Adding the field now costs one line and removes the trap; the alternative --
+// deleting the gate as the unconsumed surface it is -- is a separate section 3c question, and
+// leaving a known-incomplete shape standing while that is decided is the worse of the two.
 type DispatchRequestGate
   = DispatchPermitted {
       session_name: String
@@ -489,6 +525,7 @@ type DispatchRequestGate
       branch_name: String
       brief: String
       reasoning_effort: ReasoningEffort
+      model: ProviderModelSelection
     }
   | DispatchRefused { reason: NonEmptyStr }
 
@@ -563,7 +600,7 @@ fn dispatch_provider_instance_for_kind(
 // vendor row into every session observation downstream.
 fn dispatch_provider_instance() -> ProviderInstance? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
       match dispatch_cli_to_provider_kind(provider: provider) {
         DispatchProviderKindIs { kind: k } =>
           Present { value: dispatch_provider_instance_for_kind(kind: k) }
@@ -598,7 +635,7 @@ fn dispatch_worker_observation() -> WorkerObservation? {
 
 fn dispatch_applied_effort() -> ReasoningEffort? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider: _, effort, model: _, process_fingerprint: _ } =>
       Present { value: effort }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
@@ -609,7 +646,7 @@ fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEm
     provider: provider,
     node_sizing: Unsized,
   ) {
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
       Present { value: process_fingerprint }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
@@ -1439,9 +1476,19 @@ fn dispatch_tmux_session_scope_for_process_fingerprint(
   }
 }
 
-fn dispatch_tmux_session_scope(node_id: RoadmapNodeId) -> TmuxSessionScope? {
-  match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
+// THE SELECTION IS CARRIED HERE TOO, for the reason classify_dispatch_request states above: a
+// projection that performs its own live selection cannot be witnessed hermetically, and this one
+// sits under the live-sessions fold, so the standing-refusal specimen reached http.Client.Get
+// through THREE independent routes rather than one. Threading the resolved selection through the
+// fold makes all three judge the SAME specimen, which is also the more correct shape -- the previous
+// code made one live read per entry per clause, so a roster that changed mid-fold could return rows
+// for one entry and not another with nothing recording that they disagreed.
+fn dispatch_tmux_session_scope(
+  node_id: RoadmapNodeId,
+  selection: DispatchActuatorSelection,
+) -> TmuxSessionScope? {
+  match selection {
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
       Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
           node_id: node_id,
@@ -1616,6 +1663,7 @@ fn git_worktree_add_detached_argv_for_instance(
 
 fn claude_spawn_argv(
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   session_uuid: String,
   node_id: RoadmapNodeId,
   brief: String,
@@ -1624,6 +1672,7 @@ fn claude_spawn_argv(
     session_id: session_uuid,
     node_id: node_id,
     effort: effort,
+    model: model,
     settings_json: claude_skip_permission_settings_json,
     append_system_prompt: brief,
     start_prompt: dispatch_claude_start_prompt,
@@ -1633,6 +1682,7 @@ fn claude_spawn_argv(
 
 fn codex_spawn_argv(
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   worktree_path: String,
   brief: String,
 ) -> List<String> {
@@ -1641,43 +1691,12 @@ fn codex_spawn_argv(
     cwd: worktree_path,
     prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
     reasoning_effort: effort,
+    model: model,
     spec: dispatch_codex_exec_spec,
   )
 }
 
-// `dashboard_instance_provider_executable` answers `FilePath?` -- the committed lock placement may
-// not be realized on a host, which is exactly what
-// `dashboard_instance_provider_executable_refusal_detail` exists to say -- and the argv builder below
-// reached it with `as String`, which does not eliminate the absence: an unrealized placement spawned
-// a process whose program argument was the literal text `Absent`. The compiler now refuses that
-// cast. The absent arm carries the existing refusal detail, so the spawn fails naming the host and
-// the unrealized placement rather than naming a program nobody wrote.
-fn codex_spawn_program_for_instance(instance: HostDashboardInstance) -> String {
-  match dashboard_instance_provider_executable(instance: instance) {
-    Present { value: executable } => executable as String
-    Absent => dashboard_instance_provider_executable_refusal_detail(instance: instance)
-  }
-}
 
-fn codex_spawn_argv_for_instance(
-  instance: HostDashboardInstance,
-  effort: ReasoningEffort,
-  worktree_path: String,
-  brief: String,
-) -> List<String> {
-  shape_codex_exec_argv_for_programs(
-    env_program: dispatch_capability_program(
-      environment: instance.execution_environment,
-      cap: EnvironmentBindingCapability,
-    ),
-    program: codex_spawn_program_for_instance(instance: instance),
-    codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
-    cwd: worktree_path,
-    prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
-    reasoning_effort: effort,
-    spec: dispatch_codex_exec_spec,
-  )
-}
 
 data gunbc_harness_needs_instance_reason: NonEmptyStr = "the gunbc harness worker resolves its modules from the CONTROLLER's repo_root, which only a dashboard instance names; this instance-less spawn path cannot supply one and refuses rather than guessing a checkout" as NonEmptyStr
 
@@ -1738,6 +1757,7 @@ data gunbc_harness_worker_function: String = "harness_worker_cli"
 fn dispatch_provider_inner_argv(
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   session_uuid: String,
   node_id: RoadmapNodeId,
   worktree_path: String,
@@ -1750,6 +1770,7 @@ fn dispatch_provider_inner_argv(
           [env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"],
           claude_spawn_argv(
             effort: effort,
+            model: model,
             session_uuid: session_uuid,
             node_id: node_id,
             brief: brief,
@@ -1760,6 +1781,7 @@ fn dispatch_provider_inner_argv(
       DispatchProviderInnerArgvReady {
         argv: codex_spawn_argv(
           effort: effort,
+          model: model,
           worktree_path: worktree_path,
           brief: brief,
         ),
@@ -1775,6 +1797,7 @@ fn dispatch_provider_inner_argv_for_instance(
   instance: HostDashboardInstance,
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   session_uuid: String,
   node_id: RoadmapNodeId,
   attempt_key: String,
@@ -1794,6 +1817,7 @@ fn dispatch_provider_inner_argv_for_instance(
           ],
           claude_spawn_argv(
             effort: effort,
+            model: model,
             session_uuid: session_uuid,
             node_id: node_id,
             brief: brief,
@@ -1818,6 +1842,7 @@ fn dispatch_provider_inner_argv_for_instance(
               cwd: worktree_path,
               prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
               reasoning_effort: effort,
+              model: model,
               spec: dispatch_codex_exec_spec,
             ),
           }
@@ -2457,6 +2482,7 @@ fn dispatch_spawn_commands_for_inventory(
     DispatchSelectionResolved { receipt } => {
       let provider = provider_kind_to_dispatch_cli(kind: receipt.provider_kind)
       let effort = receipt.applied_effort
+      let model = resolved_model_selection(resolved: receipt.resolved_selection)
       match provider {
         CursorDispatchProvider =>
           DispatchSpawnRefused {
@@ -2471,6 +2497,7 @@ fn dispatch_spawn_commands_for_inventory(
             attempt_key: attempt_key,
             provider: provider,
             effort: effort,
+            model: model,
             origin: FreshFromBase,
           )
       }
@@ -2507,6 +2534,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
   attempt_key: String,
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
   origin: AttemptOrigin,
 ) -> DispatchSpawnPlan {
   let fields = dispatch_brief_fields_for_environment(
@@ -2528,6 +2556,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     instance: instance,
     provider: provider,
     effort: effort,
+    model: model,
     session_uuid: session_uuid,
     node_id: node.node,
     attempt_key: attempt_key,
@@ -2747,6 +2776,7 @@ fn dispatch_permitted_from_selection(
   node: RoadmapNode,
   attempt_key: String,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
 ) -> DispatchRequestGate {
   DispatchPermitted {
     session_name: dispatch_tmux_session_name(node_id: node.node),
@@ -2754,6 +2784,7 @@ fn dispatch_permitted_from_selection(
     branch_name: dispatch_branch_name(node_id: node.node, attempt_key: attempt_key),
     brief: filled_dispatch_brief_for_node(node: node),
     reasoning_effort: effort,
+    model: model,
   }
 }
 
@@ -2764,6 +2795,7 @@ fn classify_dispatch_request_for_process_fingerprint(
   attempt_key: String,
   process_fingerprint: NonEmptyStr,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
 ) -> DispatchRequestGate {
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
@@ -2786,17 +2818,35 @@ fn classify_dispatch_request_for_process_fingerprint(
             node: node,
             attempt_key: attempt_key,
             effort: effort,
+            model: model,
           )
       }
     }
   }
 }
 
+// THE SELECTION IS A PARAMETER, NOT AN EFFECT THIS CLASSIFIER PERFORMS. It used to call
+// dispatch_actuator_selection itself, and since DCH-3 pointed that at the harness the call reached
+// harness_observe_roster -> http.Client.Get, an operation with no mock_response. A classifier that
+// performs I/O cannot be witnessed hermetically BY CONSTRUCTION, and that is exactly what happened:
+// witness_projection_standing_refusal_specimen_holds could not reach its subject on the floor, and
+// nothing noticed for six days because the changed-witness lane enrols only witnesses in CHANGED
+// files and nothing had touched that file since.
+//
+// Carrying the selection rather than re-deriving it is the same move this module now makes for the
+// model and already made for effort and the process fingerprint (DESIGN 2: carry, rewire or share
+// the first value). It costs the caller nothing -- the one production shape already has a selection
+// in hand -- and it makes the refusal-propagation arm testable with a constructed refusal instead of
+// a live roster read. The alternative considered and rejected was giving http.Client.Get a
+// fail-closed mock_response like its bounded siblings: one line, but it flips every Get consumer
+// under the floor from "cannot run" to "runs and refuses", a corpus-wide change of meaning that this
+// witness's repair has no business making.
 fn classify_dispatch_request(
   node: RoadmapNode,
   ready: List<RoadmapNode>,
   tmux_entries: List<TmuxLsEntry>,
   attempt_key: String,
+  selection: DispatchActuatorSelection,
 ) -> DispatchRequestGate {
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
@@ -2804,10 +2854,10 @@ fn classify_dispatch_request(
     if !node_repo_supported(node: node) {
       DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
     } else {
-      match dispatch_actuator_selection(node_sizing: node.sizing) {
+      match selection {
         DispatchActuatorSelectionRefused { reason } =>
           DispatchRefused { reason: reason }
-        DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint } =>
+        DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
           classify_dispatch_request_for_process_fingerprint(
             node: node,
             ready: ready,
@@ -2815,6 +2865,7 @@ fn classify_dispatch_request(
             attempt_key: attempt_key,
             process_fingerprint: process_fingerprint,
             effort: effort,
+            model: model,
           )
       }
     }
@@ -2924,9 +2975,12 @@ fn dispatch_session_cleanup_for_live_session(sess: DispatchLiveSession) -> Dispa
   }
 }
 
-fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession? {
+fn dispatch_live_session_for_entry(
+  entry: TmuxLsEntry,
+  selection: DispatchActuatorSelection,
+) -> DispatchLiveSession? {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId) {
+  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId, selection: selection) {
     Present { value: scope } => live_session_row(entry: entry, scope: scope)
     Absent => none
   }
@@ -2935,8 +2989,9 @@ fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession? {
 fn append_present_live_session(
   acc: List<DispatchLiveSession>,
   entry: TmuxLsEntry,
+  selection: DispatchActuatorSelection,
 ) -> List<DispatchLiveSession> {
-  match dispatch_live_session_for_entry(entry: entry) {
+  match dispatch_live_session_for_entry(entry: entry, selection: selection) {
     Present { value: row } => concat(acc, [row])
     Absent => acc
   }
@@ -2944,11 +2999,12 @@ fn append_present_live_session(
 
 fn dispatch_live_sessions_from_entries(
   entries: List<TmuxLsEntry>,
+  selection: DispatchActuatorSelection,
 ) -> List<DispatchLiveSession> {
   fold(
     filter_dispatch_tmux_sessions(entries: entries),
     init: [],
-    f: fn(acc, e) { append_present_live_session(acc: acc, entry: e) },
+    f: fn(acc, e) { append_present_live_session(acc: acc, entry: e, selection: selection) },
   )
 }
 
@@ -3358,9 +3414,10 @@ fn append_present_live_session_with_process(
   entry: TmuxLsEntry,
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
+  selection: DispatchActuatorSelection,
 ) -> List<DispatchLiveSession> {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
-  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId) {
+  match dispatch_tmux_session_scope(node_id: node_id as RoadmapNodeId, selection: selection) {
     Present { value: scope } =>
       match live_session_row_with_process(
         entry: entry,
@@ -3382,6 +3439,7 @@ fn dispatch_live_sessions_with_process(
   entries: List<TmuxLsEntry>,
   panes: List<TmuxAttemptPaneEntry>,
   pane_observation_refusal: String,
+  selection: DispatchActuatorSelection,
 ) -> List<DispatchLiveSession> {
   fold(
     filter_dispatch_tmux_sessions(entries: entries),
@@ -3392,6 +3450,7 @@ fn dispatch_live_sessions_with_process(
         entry: entry,
         panes: panes,
         pane_observation_refusal: pane_observation_refusal,
+        selection: selection,
       )
     },
   )
