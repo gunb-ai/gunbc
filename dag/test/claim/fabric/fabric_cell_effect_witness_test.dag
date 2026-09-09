@@ -97,7 +97,7 @@ test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool 
         && fold(es, init: false, f: (acc, e) => acc || (match e {
           FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
             (u as String) == fabric_cell_slice_name(slot: srv3_fabric_slot())
-              && list_length(items: ds) == 5
+              && list_length(items: ds) == 6
           FabricCellDirectoryEnsure { path: _, owner: _ } => false
         }))
     CellPlanRefused { refusals: _ } => false

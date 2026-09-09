@@ -9,9 +9,15 @@ import extdeps.systemd.unit_file {
   slice_memory_swap_max,
   slice_tasks_max,
   slice_cpu_weight,
+  slice_cpu_quota,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_desired,
+  RunnerSlotCpuQuota,
+  CpuQuotaResolved,
+  CpuQuotaRefused,
+}
 import gunbc.membership_reconcile {
   MemberAction,
   MemberAdded,
@@ -91,8 +97,9 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // cannot occur -- permanently red by staleness, the mirror of the permanently-green decoration
 // DESIGN 4b forbids.
 //
-// FIVE DIRECTIVES, ZERO LITERALS. Every magnitude comes from gunbc_runner_slot_desired -- the same
-// row fabric_cell_resource_boundary_state_digest renders into the desired member digest -- so the
+// FIVE BASE DIRECTIVES PLUS THE QUOTA WHEN THE SURVEY RESOLVED, ZERO LITERALS. Every magnitude comes
+// from gunbc_runner_slot_desired -- the same row fabric_cell_resource_boundary_state_digest renders
+// into the desired member digest, quota included via systemd_cpu_quota_per_sec_of_threads -- so the
 // directives this effect applies and the digest reconcile compares are two projections of one
 // authority and cannot disagree by drift.
 //
@@ -103,13 +110,24 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // representation of an artifact nothing constructs.
 fn fabric_cell_slice_desired_directives() -> List<SystemdSliceDirective> {
   let desired = gunbc_runner_slot_desired()
-  [
+  let base = [
     slice_memory_max(bytes: desired.memory_max),
     slice_memory_high(bytes: desired.memory_high),
     slice_memory_swap_max(bytes: desired.memory_swap_max),
     slice_tasks_max(count: desired.tasks_max),
     slice_cpu_weight(weight: desired.cpu_weight),
   ]
+  concat(base, fabric_cell_slice_quota_directives(quota: desired.cpu_quota))
+}
+
+// THE QUOTA DIRECTIVE IS EMITTED ONLY WHEN THE SURVEY RESOLVED. A refused survey emits five
+// directives and does not write CPUQuota; substituting a number would put a ceiling on a slice whose
+// entitlement is unknown.
+fn fabric_cell_slice_quota_directives(quota: RunnerSlotCpuQuota) -> List<SystemdSliceDirective> {
+  match quota {
+    CpuQuotaResolved { threads: t } => [slice_cpu_quota(threads: t)]
+    CpuQuotaRefused { cause: _ } => [] as List<SystemdSliceDirective>
+  }
 }
 
 fn fabric_cell_slice_ensure(slot: RunnerSlotIdentity) -> FabricCellEffect {

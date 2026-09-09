@@ -14,10 +14,19 @@ import extdeps.systemd {
   MemoryLimitAbsent,
   parse_systemd_memory_limit_show,
   systemd_memory_limit_wire_label,
+  SystemdCpuQuotaPerSec,
+  CpuQuotaUnbounded,
+  CpuQuotaPerSec,
+  CpuQuotaAbsent,
+  CpuQuotaUndecodable,
+  parse_systemd_cpu_quota_per_sec_show,
+  systemd_cpu_quota_per_sec_identity,
+  systemd_cpu_quota_per_sec_of_threads,
+  systemd_cpu_quota_per_sec_magnitude_identity,
 }
-import std.measure { byte_size, byte_size_count }
+import std.measure { byte_size, byte_size_count, microsecond_count, hardware_thread_count }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -48,8 +57,85 @@ test fn witness_memory_limit_bytes_roundtrip() -> Bool {
   let cap = gunbc_ci_runner_cgroup_memory_cap
   let raw = to_string(byte_size_count(b: cap))
   match parse_systemd_memory_limit_show(raw: raw) {
-    MemoryLimitBytes { bytes: b } =>
-      systemd_memory_limit_wire_label(lim: MemoryLimitBytes { bytes: b }) == raw
     _ => false
+  }
+}
+
+fn quota_reads_usec(raw: String, usec: Int) -> Bool {
+  match parse_systemd_cpu_quota_per_sec_show(raw: raw) {
+    CpuQuotaPerSec { usec: u } => microsecond_count(m: u) == usec
+    CpuQuotaUnbounded => false
+    CpuQuotaAbsent => false
+    CpuQuotaUndecodable { raw: _ } => false
+  }
+}
+
+fn quota_is_undecodable(raw: String) -> Bool {
+  match parse_systemd_cpu_quota_per_sec_show(raw: raw) {
+    CpuQuotaUndecodable { raw: r } => r == raw
+    CpuQuotaPerSec { usec: _ } => false
+    CpuQuotaUnbounded => false
+    CpuQuotaAbsent => false
+  }
+}
+
+test fn the_simple_readback_forms_decode_to_their_magnitudes() -> Bool {
+  quota_reads_usec(raw: "100ms", usec: 100000)
+    && quota_reads_usec(raw: "250ms", usec: 250000)
+    && quota_reads_usec(raw: "500ms", usec: 500000)
+    && quota_reads_usec(raw: "1s", usec: 1000000)
+    && quota_reads_usec(raw: "6s", usec: 6000000)
+    && quota_reads_usec(raw: "12s", usec: 12000000)
+    && quota_reads_usec(raw: "59s", usec: 59000000)
+}
+
+test fn the_compound_readback_forms_decode_to_their_magnitudes() -> Bool {
+  quota_reads_usec(raw: "1min", usec: 60000000)
+    && quota_reads_usec(raw: "2min", usec: 120000000)
+    && quota_reads_usec(raw: "1min 30s", usec: 90000000)
+    && quota_reads_usec(raw: "1min 500ms", usec: 60500000)
+}
+
+test fn one_minute_and_sixty_seconds_are_the_same_quota() -> Bool {
+  quota_reads_usec(raw: "1min", usec: 60000000) && quota_reads_usec(raw: "60s", usec: 60000000)
+}
+
+test fn absence_unbounded_and_undecodable_stay_three_answers() -> Bool {
+  match parse_systemd_cpu_quota_per_sec_show(raw: "") {
+    CpuQuotaAbsent => true
+    CpuQuotaUnbounded => false
+    CpuQuotaPerSec { usec: _ } => false
+    CpuQuotaUndecodable { raw: _ } => false
+  }
+    && match parse_systemd_cpu_quota_per_sec_show(raw: "infinity") {
+      CpuQuotaUnbounded => true
+      CpuQuotaAbsent => false
+      CpuQuotaPerSec { usec: _ } => false
+      CpuQuotaUndecodable { raw: _ } => false
+    }
+    && quota_is_undecodable(raw: "1.500000s")
+    && quota_is_undecodable(raw: "wat")
+}
+
+test fn the_fractional_second_spelling_refuses_with_its_text() -> Bool {
+  quota_is_undecodable(raw: "1.500000s")
+    && quota_is_undecodable(raw: "2.500000s")
+    && quota_is_undecodable(raw: "33.330000s")
+}
+
+test fn the_desired_threads_and_the_observed_span_share_one_identity() -> Bool {
+  let desired = systemd_cpu_quota_per_sec_magnitude_identity(
+    usec: systemd_cpu_quota_per_sec_of_threads(threads: hardware_thread_count(count: 6)),
+  )
+  match systemd_cpu_quota_per_sec_identity(q: parse_systemd_cpu_quota_per_sec_show(raw: "6s")) {
+    Absent => false
+    Present { value: observed } => desired == observed && desired == "6000000"
+  }
+}
+
+test fn an_undecodable_reading_yields_no_identity() -> Bool {
+  match systemd_cpu_quota_per_sec_identity(q: parse_systemd_cpu_quota_per_sec_show(raw: "1.500000s")) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
