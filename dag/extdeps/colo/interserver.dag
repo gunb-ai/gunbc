@@ -1,6 +1,6 @@
 module extdeps.colo.interserver
 
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr }
 import std.nat { Nat }
 import std.measure { MoneyPerMonth, money_amount_micro, watt, bandwidth, rack_unit }
 import extdeps.currency.currency { Usd }
@@ -9,7 +9,7 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressListed,
   RetailPlanRow, PowerAllocation, AllocatedWatts, FeedAmps,
   TransitAllocation, UnmeteredPort, Ipv4Allocation, Ipv4Usable,
-  SetupCharge, SetupWaived, RetailRateStanding, RatesPublished,
+  SetupCharge, SetupUnread, RetailRateStanding, RatesPublished,
   CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered,
 }
 
@@ -19,7 +19,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.interserver.net/colocation/"
+    locator: "www.interserver.net/colo/"
   }
 }
 
@@ -35,7 +35,25 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data interserver_source_grade_note: NonEmptyStr = "SOURCE GRADE IS SECONDARY AND SAYS SO. Two direct fetches of interserver.net on 2026-08-18 were refused by the vendor's own intrusion-prevention layer (an HTTP 403 naming a known false-positive string, from two distinct client routes), so every plan figure below is read from the whtop.com plan tracker rows for interserver.net, which carry an added date and a last-updated date of 2026-05-17. The tracker is a price-tracking aggregator, not the vendor; a direct read or a written quote upgrades these rows and may contradict them. The 2026-05-17 update REPRICED the shared-rack tiers upward from the long-standing 400 and 750 dollar figures still circulating in search snippets, and DISCONTINUED the published full-cabinet plan - a stale-snippet trap recorded here so the next reader does not re-import the dead prices."
+// THE 403 WAS A WRONG PATH, NOT A BLOCK, AND THIS MODULE'S WHOLE SOURCE GRADE TURNED ON IT.
+// Every plan figure here was read from the whtop.com price tracker because two passes recorded
+// interserver.net as refusing direct fetches with HTTP 403. Re-measured 2026-09-09: the 403 is
+// PATH-SCOPED and user-agent-invariant. www.interserver.net/colocation/ answers 403 at 509 bytes
+// with curl's default agent, with a bare Mozilla/5.0, and with a full Chrome agent alike - while
+// www.interserver.net/ answers 200 at 36,848 bytes with the DEFAULT curl agent. A site that serves
+// its homepage to bare curl is not blocking readers. The operator's own sitemap.xml names the real
+// paths, /colo/ and /secaucus-new-jersey-colocation.html, and both answer 200 at 59,427 and 60,916
+// bytes. So this operator never refused this census; a fabricated path did, and a fabricated path
+// that 403s rather than 404s is the trap, because 403 reads as a decision by the far end.
+//
+// THE AGGREGATOR ROWS SURVIVED THE UPGRADE, WHICH IS NOT THE USUAL OUTCOME. All three tracked
+// tiers - 250 W over 1U at 100 USD, 1,500 W quarter at 705 USD with a /29 and 1 Gbps, 2,500 W half
+// at 1,445 USD with a /30 plus /28 and 5 Gbps - appear on the operator's own Secaucus page with the
+// same figures, so the plan rows below are now operator-grade rather than tracker-grade. ONE FIELD
+// WENT THE OTHER WAY: the tracker's free-setup claim appears nowhere in the operator's bytes, so
+// setup is now Unread on these rows. An upgrade of source grade is not an upgrade of every field,
+// and carrying the stronger citation over a field the stronger source does not state would launder
+// the tracker's assertion into the operator's mouth.
 
 data interserver_secaucus: ColoFacilityRow = ColoFacilityRow {
   operator_label: "InterServer",
@@ -56,12 +74,21 @@ data interserver_single_server_1u_plan: RetailPlanRow = RetailPlanRow {
   transit: UnmeteredPort { port_speed: bandwidth(count: 1000000000) },
   ipv4: Ipv4Usable { usable_addresses: 1, block_note: "1 VLAN IP (/30) per the tracked plan row" },
   monthly: MoneyPerMonth { amount: money_amount_micro(count: 100000000), currency: Usd },
-  setup: SetupWaived,
-  term_note: "month-to-month per plan description",
-  citation: "whtop.com/plans/interserver.net/38201, plan updated 2026-05-17, read 2026-08-18",
+  setup: SetupUnread { obligation: "The whtop.com tracker row read 2026-08-18 said free setup; the operator's own pages read 2026-09-09 state no setup charge either way, so the waiver is a tracker assertion and is not carried at operator grade. Confirm in writing with the order." },
+  term_note: "Month-to-month billing for common footprints, from single servers through cabinets",
+  citation: "the operator's own Secaucus colocation page www.interserver.net/secaucus-new-jersey-colocation.html, fetched 2026-09-09 (HTTP 200, 60,916 bytes) and read from raw HTML after tag-stripping, which emits this tier as \"Secaucus 1U starter ... $100 /month ... Space 1U Space, Power 250W, IP space 1 VLAN IP (/30), Bandwidth 1 Gbps Unmetered\". Every figure matches the whtop.com/plans/interserver.net/38201 tracker row read 2026-08-18 that this row previously depended on, so the tracker is now corroboration rather than the authority. The term_note wording is the operator's own sentence, not the tracker's paraphrase.",
 }
 
-data interserver_per_u_power_ceiling_note: NonEmptyStr = "The 1U tier's 250 W allocation is the only published per-U power figure in this census, and it prices per-U space at 100 USD per 250 W - which means NO published per-U product from this operator admits a dense 2U node drawing 650-700 W. A pilot-scale placement of one such node is either the 10U quarter tier (1,500 W, 705 USD) or a custom-quoted 2U allocation; any per-U planning rate for a high-draw node is an assumption until such a quote exists. Recorded because a componentized per-U-plus-per-watt planning rate circulating in planning material cannot be derived from the published tier pair (solving the quarter and half rows for a linear per-U plus per-watt decomposition yields a NEGATIVE per-watt coefficient, so the tiers do not price that way)."
+// THE PUBLISHED TIERS DO NOT PRICE AS PER-U PLUS PER-WATT, AND A PLANNING RATE THAT ASSUMES THEY
+// DO IS UNDERIVABLE FROM THEM.
+// The 1U tier's 250 W allocation is the only published per-U power figure in this census, and it p
+// rices per-U space at 100 USD per 250 W - which means NO published per-U product from this operat
+// or admits a dense 2U node drawing 650-700 W. A pilot-scale placement of one such node is either 
+// the 10U quarter tier (1,500 W, 705 USD) or a custom-quoted 2U allocation; any per-U planning rat
+// e for a high-draw node is an assumption until such a quote exists. Recorded because a componenti
+// zed per-U-plus-per-watt planning rate circulating in planning material cannot be derived from th
+// e published tier pair (solving the quarter and half rows for a linear per-U plus per-watt decomp
+// osition yields a NEGATIVE per-watt coefficient, so the tiers do not price that way).
 
 data interserver_quarter_rack_plan: RetailPlanRow = RetailPlanRow {
   plan_label: "Secaucus 1/4 shared rack (10U)",
@@ -70,9 +97,9 @@ data interserver_quarter_rack_plan: RetailPlanRow = RetailPlanRow {
   transit: UnmeteredPort { port_speed: bandwidth(count: 1000000000) },
   ipv4: Ipv4Usable { usable_addresses: 5, block_note: "/29 VLAN per the tracked plan row" },
   monthly: MoneyPerMonth { amount: money_amount_micro(count: 705000000), currency: Usd },
-  setup: SetupWaived,
-  term_note: "month-to-month per plan description",
-  citation: "whtop.com/plans/interserver.net/60480, plan updated 2026-05-17, read 2026-08-18",
+  setup: SetupUnread { obligation: "Free setup is a whtop.com tracker assertion read 2026-08-18 and is not stated on the operator's own pages read 2026-09-09. Confirm with the order." },
+  term_note: "Month-to-month billing for common footprints, from single servers through cabinets",
+  citation: "the operator's own Secaucus colocation page www.interserver.net/secaucus-new-jersey-colocation.html, fetched 2026-09-09 (HTTP 200, 60,916 bytes) and read from raw HTML after tag-stripping, which emits \"Secaucus quarter rack, Managed small-rack footprint, $705 /month, Region Secaucus / NYC Metro, Space Quarter Rack, Power 1500W, IP space 5 VLAN IPs (/29), Bandwidth 1 Gbps Unmetered\". Price, wattage, IP block and port all match the whtop.com/plans/interserver.net/60480 row read 2026-08-18. THE 10U RACK-UNIT COUNT IS NOT ON THE OPERATOR PAGE, which says only Quarter Rack; the 10U is carried from the tracker row for the same named footprint and is the one field here still at tracker grade.",
 }
 
 data interserver_half_rack_plan: RetailPlanRow = RetailPlanRow {
@@ -82,25 +109,55 @@ data interserver_half_rack_plan: RetailPlanRow = RetailPlanRow {
   transit: UnmeteredPort { port_speed: bandwidth(count: 5000000000) },
   ipv4: Ipv4Usable { usable_addresses: 14, block_note: "/30 plus /28 per the tracked plan row" },
   monthly: MoneyPerMonth { amount: money_amount_micro(count: 1445000000), currency: Usd },
-  setup: SetupWaived,
-  term_note: "month-to-month per plan description",
-  citation: "whtop.com/plans/interserver.net/60481, plan updated 2026-05-17, read 2026-08-18",
+  setup: SetupUnread { obligation: "Free setup is a whtop.com tracker assertion read 2026-08-18 and is not stated on the operator's own pages read 2026-09-09. Confirm with the order." },
+  term_note: "Month-to-month billing for common footprints, from single servers through cabinets",
+  citation: "the operator's own Secaucus colocation page www.interserver.net/secaucus-new-jersey-colocation.html, fetched 2026-09-09 (HTTP 200, 60,916 bytes) and read from raw HTML after tag-stripping, which emits \"Secaucus half rack, More cabinet room for growth, $1445 /month, Region Secaucus / NYC Metro, Space Half Rack, Power 2500W, IP space /30 + /28 IP Space\" at 5 Gbps. All figures match the whtop.com/plans/interserver.net/60481 row read 2026-08-18. As with the quarter tier, the 20U count is the tracker's and not the operator's.",
 }
 
-data interserver_published_plans: List<RetailPlanRow> = [
-  interserver_single_server_1u_plan,
-  interserver_quarter_rack_plan,
-  interserver_half_rack_plan,
-]
+// A FOURTH SECAUCUS SKU THE TRACKER NEVER CARRIED, and the reason the aggregator dependency was
+// costing more than source grade. The operator's general colocation page prices a SECOND quarter
+// rack at the same 1,500 W with a materially different network: a /27 beside the /30 and 5 Gbps on
+// a 10 Gbps port, at 940 USD. It is not a repricing of the 705 USD quarter and must not be read as
+// one - same space, same power, different transit and IP, different product. A census that had only
+// the tracker could not see this tier at all, so the missing SKU is what the wrong path cost.
+data interserver_quarter_rack_high_transit_plan: RetailPlanRow = RetailPlanRow {
+  plan_label: "Secaucus quarter rack, 5 Gbps on a 10 Gbps port",
+  rack_units: rack_unit(count: 10),
+  power: AllocatedWatts { allocation: watt(count: 1500) },
+  transit: UnmeteredPort { port_speed: bandwidth(count: 5000000000) },
+  ipv4: Ipv4Usable { usable_addresses: 30, block_note: "/30 plus /27 per the operator's own listing; the usable count is the /27's 30 addresses" },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 940000000), currency: Usd },
+  setup: SetupUnread { obligation: "No setup charge is stated on the operator's page for this tier. Confirm with the order." },
+  term_note: "Month-to-month billing for common footprints, from single servers through cabinets",
+  citation: "the operator's own colocation page www.interserver.net/colo/, fetched 2026-09-09 (HTTP 200, 59,427 bytes) and read from raw HTML after tag-stripping, which emits \"Quarter rack in NYC, Small cluster with room to grow, $940 /month, Region Secaucus / NYC Metro, Space Quarter Rack, Power 1500W, IP space /30 + /27 IP Space, Bandwidth 5 Gbps on a 10 Gbps Port\". The 10U count is carried from the tracker row for this operator's quarter footprint and is not on the page.",
+}
 
-data interserver_full_cabinet_withdrawal_note: NonEmptyStr = "The tracked full-cabinet plan (48U, 20 A at 208 V stated as 16 A usable, 1 Gbps unmetered, five IPv4, 1,200 dollars a month, free setup) is marked discontinued as of 2026-05-17 on whtop.com/plans/interserver.net/38204. Recorded as history rather than as a live plan: a full cabinet from this operator is quote-only as of the capture date, and the withdrawal of the cheapest full-cabinet tier while the shared tiers repriced upward is itself a market observation about power economics in this metro."
+// THE FOUR PLAN ROWS ABOVE HAVE NO EXECUTING CONSUMER, AND SAYING SO IS THE POINT (DESIGN 3c).
+// A List<RetailPlanRow> gathering them stood here and was deleted: nothing read it, so it was a
+// second authority over four adjacent declarations that bought nothing, which is the same dangling
+// list a review removed from extdeps.colo.lumen on this branch. Deleting the list does not discharge
+// the obligation, it just stops restating it. The named consumer is the census coverage fold in
+// gunbc.colo_census_coverage, which today folds facility rows and density claims and carries no
+// plan axis; the trigger is that fold gaining the capability to count PRICED candidates, which is a
+// different question from how many facilities exist and how many publish a density. Until then these
+// rows are read by people, not by programs, and this module does not pretend otherwise.
+//
+// The tracked full-cabinet plan (48U, 20 A at 208 V stated as 16 A usable, 1 Gbps unmetered, five 
+// IPv4, 1,200 dollars a month, free setup) is marked discontinued as of 2026-05-17 on whtop.com/pl
+// ans/interserver.net/38204. Recorded as history rather than as a live plan: a full cabinet from t
+// his operator is quote-only as of the capture date, and the withdrawal of the cheapest full-cabin
+// et tier while the shared tiers repriced upward is itself a market observation about power econom
+// ics in this metro.
+// CORROBORATED AT THE OPERATOR 2026-09-09: its own colocation page answers its own FAQ question
+// "Can I still get a full rack from InterServer?" with "Yes" followed by a quote route, and no full
+// cabinet appears among the priced examples on either page. Withdrawn from PUBLICATION, not from sale.
 
 data interserver_retail_rates: RetailRateStanding = RatesPublished {
-  plans_note: "Quarter and half shared-rack tiers published with prices, power allocations, transit and IP counts; full cabinet withdrawn from publication 2026-05-17 and presumed quote-only.",
+  plans_note: "Four Secaucus tiers are published by the operator itself with prices, power allocations, transit and IP counts: a 1U starter, two quarter racks differing only in transit and IP, and a half rack. The full cabinet is named as available on both pages with no price and no wattage, so it is quote-only. This is the only operator in the corridor census that publishes retail colocation pricing on its own site.",
 }
 
 // A SECOND SECAUCUS FACILITY FROM THIS OPERATOR, from its own registry entry rather than its site,
-// which still refuses direct fetches. TEB4 is a separate building from TEB2 - a different street
+// which is the only source read for it. TEB4 is a separate building from TEB2 - a different street
 // number on the same parkway - and the published plan rows above are for TEB2 only, so nothing
 // about TEB4's power, transit or price may be read off them.
 data interserver_teb4_secaucus: ColoFacilityRow = ColoFacilityRow {
@@ -121,10 +178,10 @@ data interserver_teb4_secaucus: ColoFacilityRow = ColoFacilityRow {
 // product, and reading it as this operator's cabinet density would both understate the building and
 // fabricate a figure the operator never published.
 data interserver_cabinet_density: CabinetDensityClaim = DensityUnread {
-  obligation: "interserver.net refused a direct fetch with HTTP 403 again on 2026-09-08, from a third client route and thirteen months after the same refusal was recorded for the 2026-08-18 pass, so no operator page has ever been read for this census. No per-cabinet kW maximum appears in the tracked plan rows either. The published allocations - 250 W over 1U, 1,500 W over 10U, 2,500 W over 20U - are tier allocations and are NOT a cabinet density. Resolve by quote, which is in any case required since the full-cabinet plan was withdrawn 2026-05-17.",
+  obligation: "STILL UNREAD, BUT NOW AT BYTE GRADE AGAINST THE OPERATOR'S OWN PAGES RATHER THAN AGAINST A REFUSAL THAT WAS NEVER THEIRS. Both operator colocation pages were fetched 2026-09-09 (HTTP 200; 59,427 and 60,916 bytes) and tag-stripped, and the string kW appears NOWHERE in either. No per-cabinet maximum is published. The tempting inference is now sharper and must still be refused: the largest footprint this operator prices with a wattage is a HALF rack at 2,500 W, and a full cabinet is named as available on both pages with NO wattage and NO price. Doubling 2,500 W to call the cabinet 5 kW would be a fabricated density derived from a fractional-tier ALLOCATION, which is what a tier sells, not what a cabinet may draw. The published allocations - 250 W over 1U, 1,500 W over a quarter, 2,500 W over a half - are allocations and are not a density. One further published fact bears on the quote: the page states power scales in 50 watt increments, so this operator sells power as a separately priced axis, and the question to ask is not what the cabinet's ceiling is but what it costs to reach it. Resolve by quoting a full cabinet, which is quote-only in any case.",
 }
 
 data interserver_retail_grain: RetailGrainStanding = SingleCabinetOffered {
-  wording: "single server (1U), 1/4 shared rack (10U) and 1/2 shared rack (20U) sold as published month-to-month plans",
-  citation: "whtop.com tracked plan rows for interserver.net, read 2026-08-18, carried forward here; the grain is established by the existence of the priced 1U and fractional-rack tiers rather than by a minimum-footprint sentence. Secondary source, and finer than cabinet grain.",
+  wording: "Single server through full rack colocation",
+  citation: "the operator's own colocation page www.interserver.net/colo/, fetched 2026-09-09 (HTTP 200, 59,427 bytes) and read from raw HTML after tag-stripping. THIS REPLACES A CONSTRUCTED WORDING. The previous citation carried no operator sentence at all and established the grain by inference from the existence of priced fractional tiers on a tracker; that inference was sound but it was an inference, and the operator states the grain outright in its own page heading. The finer grain is stated too, in the operator's own words: \"Bring in one 1U server, a quarter rack, or a full cabinet and keep the same buying path as the deployment grows\". So this operator sells FINER than a cabinet, and the arm is SingleCabinetOffered because a cabinet is offered, not because a cabinet is the minimum.",
 }
