@@ -287,6 +287,30 @@ fn cabinet_density_air_ceiling(d: CabinetDensityClaim) -> CabinetPowerCeiling? {
 // selects only figures the operator actually labelled air; CoolingMediumUnspecified and
 // LiquidCoolingPublished both fall through to Absent, so a claim whose page never mentioned cooling
 // can no longer satisfy an air-cooled requirement by sitting in an arm named for one.
+// A SECOND AIR FIGURE IS SILENTLY DISCARDED HERE AND THAT IS AN ABSORBING FALLBACK, DECLARED RATHER
+// THAN LEFT FOR A REVIEWER. `List<PublishedDensityFigure>` does not stop a claim carrying TWO figures
+// labelled air - say a page stating "up to 30 kW" in one cell and "35kW+" in another - and `.first()`
+// then answers with whichever was authored first, with no signal that a contradiction existed. That
+// is DESIGN section 5's rule inverted: the arm WIDENS to an arbitrary pick where it should refuse,
+// and absorption destroys the only evidence that the row needs a human.
+//
+// It is not the same defect as the medium confusion this function exists to fix - that one answered
+// an air question from an unlabelled page, this one answers it from a contradicted page - but it is
+// the same family, and shipping the fix for one while leaving the other unstated would be the
+// annotation-asserting-coverage shape filed twice tonight.
+//
+// RUNG: mitigatable. No live row constructs two figures of one medium, and DataBank's two figures are
+// air and liquid. CEILING: structurally impossible, and reachable by CONSTRUCTION rather than by a
+// check - a record with one optional slot per medium makes a duplicate air figure unconstructible,
+// where the list plus a validator would be satisfiable by editing the validator while the literal
+// still lies. That candidate is named rather than taken because the list shape is already committed
+// to three lanes and swapping it now costs them a second migration for a state no row occupies.
+// NEXT-RUNG TRIGGER: the first row that needs two figures of one medium, or the medium-slot record
+// landing in the same motion as identity closure, whichever comes first - both are decided in
+// gunbc.colo_census_coverage's lane and neither should be taken unilaterally here.
+//
+// The honest reading of the current arm: it answers for a WELL-FORMED claim and picks arbitrarily for
+// a malformed one, and nothing yet makes malformed unwritable.
 fn air_figure(figures: List<PublishedDensityFigure>) -> PublishedDensityFigure? {
   let air = figures |> filter(f => figure_is_air(f: f))
   air.first()
