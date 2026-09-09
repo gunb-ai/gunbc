@@ -271,6 +271,19 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
   HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable }
 }
 
+// NO CANDIDATE IS PRODUCED FROM A BOUND OFFER ANY MORE, AND THE MISSING PIECE IS ADMISSION RATHER
+// THAN BINDING. A CandidateOffer now seals a ProviderUsePermit, so bind_candidate needs a
+// ProviderUseAdmission over the offer's route -- and producing one through admit_provider_use
+// requires a ProviderUseScope carrying a customer profile, a data-handling profile, an agreement
+// and three cleared dispositions. Those are compliance claims about us; there is no producer for
+// them, and writing plausible ones so the call typechecks is the fail-open this wall exists to
+// close. So the SparkOfferBound arm reports what is missing and seats nobody.
+//
+// That arm is unreachable today for a second, independent reason -- spark_serving_route_standing
+// refuses above it -- and the two are deliberately separate: landing a region observer alone must
+// not silently resume seating through a path nothing admitted.
+//
+// Restoration trigger: a provider-use admission producer for the spark serving route.
 fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, address: String, launch: VllmEndpointProcessLaunch, now: EpochSecs) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
@@ -285,18 +298,6 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, address: S
   ) {
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why as String), retryable: false)
-    // NO CANDIDATE IS PRODUCED HERE ANY MORE, AND THE MISSING PIECE IS ADMISSION RATHER THAN
-    // BINDING. A CandidateOffer now seals a ProviderUsePermit, so bind_candidate needs a
-    // ProviderUseAdmission over this route -- and producing one through admit_provider_use
-    // requires a ProviderUseScope carrying a customer profile, a data-handling profile, an
-    // agreement and three cleared dispositions. Those are compliance claims about us; there is
-    // no producer for them and writing plausible ones here is the fail-open this wall exists to
-    // close. So the arm reports what is missing and seats nobody.
-    //
-    // It is unreachable today for a second, independent reason -- spark_serving_route_standing
-    // refuses above -- and that is deliberate: the two obligations are separate, so fixing the
-    // region observer alone must not silently resume seating through an unadmitted path.
-    // Restoration trigger: a provider-use admission producer for the spark serving route.
     SparkOfferBound { bound: _ } =>
       harness_no_candidate(
         acc: acc,
