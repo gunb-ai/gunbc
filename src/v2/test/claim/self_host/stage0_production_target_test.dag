@@ -29,15 +29,22 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // The committed mirror of a stage0 module is `pub` and carries i64, because the crate's other
 // modules call across module boundaries and the crate's ABI is i64. The Rust language model
-// alone produces neither: the .dag source spells no visibility, and the base Rust target
-// realizes the language's Int as i32. v2.compiler.self_host.stage0_production_target is the
+// alone produces neither: the .dag source spells no visibility, and the base Rust target spells
+// the language's Int as i32 on this route.
+//
+// WHAT THE SECOND CLASS CLAIMS IS THE SPELLING, NOT THE REPRESENTATION. The produced-declaration
+// type-reference route renders ^dag_binding_type_int through binding_spellings and never consults
+// rust_target_atom_realization_catalog, so what these claims establish is that the stage0 profile
+// overrides the spelling that route emits. They do NOT establish that Rust's realization of the
+// language's Int is selected as i64 -- the catalog owns that proposition and did not produce this
+// result. Stating it the stronger way would credit an authority that never ran. v2.compiler.self_host.stage0_production_target is the
 // profile that selects both AT THIS BOUNDARY, and these claims are what make the selections
 // load-bearing rather than decorative.
 //
 // The two negative arms are discriminating controls, one per capability class, not one generic
 // malformed-output check: the visibility control observes the base target emitting an item with
 // no `pub` (which the crate's real consumer of gunbc_rust_decl_type_overlay could not resolve
-// across the module boundary), and the carrier control observes the base target emitting i32 at
+// across the module boundary), and the spelling control observes the base target emitting i32 at
 // the exact position the stage0 ABI requires i64. Each fails for its own reason, so a regression
 // in one cannot be masked by the other. They also pin that the profile did not globally relabel
 // the base target: the direct-door fixtures stay organized around an i32, visibility-free Rust
@@ -89,7 +96,7 @@ data stage0_boundary_visibility_keyword: String = "pub "
 
 // THE TWO EMISSIONS ARE NULLARY PRODUCERS, one per target, and both are warm-enrolled in
 // v2.workflow.floor_pure_producer_share. Three claims read two emissions -- the base target's is
-// read twice, by the visibility control and the carrier control -- and an emission is infer plus
+// read twice, by the visibility control and the spelling control -- and an emission is infer plus
 // emit over the shared specimen, which unshared costs each claim more than the floor's per-claim
 // ceiling. The measurement and the ceiling arithmetic are argued once, at the enrolment row in
 // v2.workflow.floor_pure_producer_share, and are deliberately not restated here: a figure copied
@@ -135,7 +142,7 @@ test fn stage0_production_target_emits_boundary_compatible_source_holds() -> Boo
 }
 
 // THE VISIBILITY CONTROL, ASKING ABOUT VISIBILITY. Its predecessor asked only that the base
-// emission differ from the profile's expected text, which the carrier control's equality already
+// emission differ from the profile's expected text, which the spelling control's equality already
 // implies and which a refusal satisfies for free. It now requires a produced emission and asks
 // the one thing this capability class is about: the base target, which selects no visibility,
 // emits no visibility keyword. The profile's side of the same fact is the positive claim above,

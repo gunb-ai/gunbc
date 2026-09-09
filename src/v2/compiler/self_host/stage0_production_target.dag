@@ -37,13 +37,26 @@ import v2.std.text { String }
 //   in general must not: a private item is correct at a boundary with no external consumer.
 //   So the keyword is a Rust row (rust_visibility_public_lex_rule) and its SELECTION is here.
 //
-//   INTEGER CARRIER. The language's `Int` is unbounded; a Rust realization picks a primitive.
-//   The committed stage0 ABI is i64 and the direct-door fixtures are organized around i32.
-//   Relabelling the fixture target to i64 would erase the distinction rather than model it, so
-//   this profile OVERLAYS the one key it changes onto the Rust map instead of re-spelling the
-//   map or re-parameterizing it. The overlay is what keeps the base map byte-identical, which
-//   matters beyond tidiness: every claim that already shares one evaluation of rust_target_model
-//   keeps sharing exactly that evaluation, so selecting a carrier here charges no other witness.
+//   INTEGER SPELLING, AND ONLY THE SPELLING. The committed stage0 ABI is i64 and the
+//   direct-door fixtures are organized around i32. Relabelling the fixture target to i64 would
+//   erase the distinction rather than model it, so this profile OVERLAYS the one key it changes
+//   onto the Rust map instead of re-spelling the map or re-parameterizing it. The overlay is
+//   what keeps the base map byte-identical, which matters beyond tidiness: every claim that
+//   already shares one evaluation of rust_target_model keeps sharing exactly that evaluation,
+//   so this selection charges no other witness.
+//
+//   WHAT THIS IS NOT is a selection of Rust's realization of the language's `Int`. Rust's
+//   representation authority for a type atom is rust_target_atom_realization_catalog, and the
+//   produced-declaration type-reference route does not consult it: it renders
+//   ^dag_binding_type_int through binding_spellings, so that map is a second, weaker home for a
+//   fact the catalog owns (the duplicate `bool` spelling is the same fork seen from the other
+//   side, and an atom with no spelling there prints its symbol lexeme instead of refusing).
+//   This profile therefore overlays the route that actually produces the tokens, and says so:
+//   it is a bounded compatibility overlay for the stage0 boundary, not the canonical
+//   representation repair. That repair -- produced-declaration type references resolving
+//   through TargetAtomRealization, with a missing realization a typed refusal and neither
+//   binding_spellings nor a symbol lexeme admitted as a fallback in a type position -- is its
+//   own emission lane, and this overlay moves to the catalog when it lands.
 //
 // Everything else -- the bundle, the produced-declaration render schema, the runtime row, the
 // authority source text -- is taken from rust_target_model unchanged, so this profile cannot
