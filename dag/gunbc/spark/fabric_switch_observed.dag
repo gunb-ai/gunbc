@@ -36,11 +36,17 @@ import gunbc.fleet_intent_network {
 //   - BOTH second-function netdevs come up from the one leg, with distinct MACs the switch sees on
 //     the same lane. Only one of them may carry the rail address.
 //
-// THE LEG LINKS AT 50G, NOT 100G, AND THE CAUSE IS THE LEG'S EEPROM. The legs are QSFP28-coded:
-// extended specification compliance 0x0B ("100GBASE-CR4 or 25GBASE-CR CA-L") with a nominal rate of
-// 25.5 Gb/s per lane, so the ConnectX-7 firmware derives "Supported Cable Speed 50G_2X" and refuses
-// 100G_2X with "Cable speed not enabled" (mstlink status opcode 16). Two 25G lanes is 50G. The same
-// copper with legs coded 100GBASE-CR2 would link at 100G; that is a cable exchange, not a model change.
+// THE LEG LINKS AT 50G, NOT 100G, AND THE CAUSE IS THE COMPLIANCE CODING ALONE. The legs are
+// QSFP28-coded: extended specification compliance 0x0B ("100GBASE-CR4 or 25GBASE-CR CA-L") at byte
+// 192, with byte 116 read as 00h -- so nothing attests 100GBASE-CR2. The ConnectX-7 firmware
+// therefore derives "Supported Cable Speed 50G_2X" and refuses 100G_2X with "Cable speed not
+// enabled" (mstlink status opcode 16).
+//
+// THE COPPER IS NOT THE LIMIT, and this is measured rather than argued. Byte 222 says 6Ah = 106,
+// which at the specification's 250 MBd unit is 26,500 MBd -- 26.5 GBd, exactly right for 50G PAM4
+// per lane. An earlier head of this file said "a nominal rate of 25.5 Gb/s per lane", which was
+// `ethtool` rendering byte 140's FFh escape as 255 x 100 and was never a reading. The same copper
+// coded 100GBASE-CR2 links at 100G; the fix is the coding, not the cable.
 
 // THE EEPROM SIDE OF THIS ROW IS NOT SPELLED OUT HERE. It was: three fields carried the identifier,
 // the compliance byte and the nominal rate as prose strings and a bare count, which is a second
@@ -66,10 +72,15 @@ import gunbc.fleet_intent_network {
 // 25781250000). The number carries no information the model does not already hold -- it is byte 140
 // being 255, which NominalRateEscaped says exactly and honestly -- so there is nothing to keep.
 //
-// NEXT-RUNG TRIGGER, and it is a capability rather than an artifact: byte 222 modeled in
-// extdeps.transceiver.sff_8636 and carried as an observed field on CableLegObservation, so an
-// escaped byte 140 resolves to a rate THIS REPOSITORY read. Until someone runs
-// `ethtool -m <dev> raw on` against these legs, an escaped rate is a declared gap.
+// THAT TRIGGER IS DISCHARGED, and the row below is what discharges it. It named a capability --
+// byte 222 modeled in extdeps.transceiver.sff_8636 and carried as an observed field on
+// CableLegObservation, so an escaped byte 140 resolves to a rate THIS REPOSITORY read -- and both
+// halves now exist: the decoder is sff8636_nominal_rate_from_byte222 and the receipt is the
+// extended_rate field. `ethtool -m <dev> raw on` was run against spark-a3ee and spark-ac79 on
+// 2026-09-08 and both legs returned byte 222 = 6Ah, so this fleet's escaped rate resolves to
+// 26.5 GBd and is no longer a declared gap. A leg whose byte 222 is still unread stays escaped, and
+// cable_leg_unread_fields reports it -- the gap moved from this fleet to the general case, which is
+// where it belongs.
 
 type FabricLegCableObserved {
   vendor: NonEmptyStr
