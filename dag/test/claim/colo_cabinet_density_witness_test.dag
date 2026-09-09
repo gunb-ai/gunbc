@@ -10,7 +10,7 @@ import extdeps.colo.types {
   cabinet_density_air_established, cabinet_density_air_ceiling,
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
-  retail_grain_offers_single_cabinet,
+  retail_grain_single_cabinet_wording,
 }
 import extdeps.colo.databank {
   databank_lga4_density, databank_lga4_retail_grain,
@@ -131,9 +131,22 @@ test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
 // operator will only sell as part of a suite is not a candidate for one cabinet, and a 3 kW
 // cabinet sold singly is. Fusing them would have made one of the two unaskable.
 
+// THE HARNESS BOOL, DERIVED RATHER THAN CARRIED. The carrier answers "what is the single-cabinet
+// wording" as an Optional, because the wording is the grain (review 62968). A test asks the yes/no
+// question, so the collapse to Bool happens HERE, in the test layer, exactly as established_watts
+// above collapses an Optional Watt into a comparable Int. One derivation, imported by the sibling
+// New York witness rather than re-declared there - the fork this consolidation removed stays
+// removed.
+fn grain_offers_single_cabinet(g: RetailGrainStanding) -> Bool {
+  match retail_grain_single_cabinet_wording(g: g) {
+    Present { value } => true,
+    Absent => false,
+  }
+}
+
 test fn w_density_and_grain_are_separate_facts() -> Bool {
-  retail_grain_offers_single_cabinet(g: databank_lga4_retail_grain)
-    && retail_grain_offers_single_cabinet(g: iron_mountain_nje1_retail_grain)
+  grain_offers_single_cabinet(g: databank_lga4_retail_grain)
+    && grain_offers_single_cabinet(g: iron_mountain_nje1_retail_grain)
     && established_watts(d: databank_lga4_density) == 35000
 }
 
@@ -280,19 +293,19 @@ test fn w_unread_pennsylvania_densities_have_no_ceiling() -> Bool {
 // DataBank's Philadelphia suite publishes neither; Netrality publishes both. A consumer that reads
 // grain off density, in either direction, breaks here.
 test fn w_pennsylvania_grain_is_independent_of_density() -> Bool {
-  retail_grain_offers_single_cabinet(g: netrality_401_n_broad_retail_grain)
-    && retail_grain_offers_single_cabinet(g: tierpoint_philadelphia_retail_grain)
-    && retail_grain_offers_single_cabinet(g: tierpoint_allentown_retail_grain)
-    && retail_grain_offers_single_cabinet(g: tierpoint_bethlehem_retail_grain)
-    && retail_grain_offers_single_cabinet(g: tierpoint_lehigh_valley_retail_grain)
-    && retail_grain_offers_single_cabinet(g: tierpoint_valley_forge_retail_grain)
-    && retail_grain_offers_single_cabinet(g: h5_philadelphia_retail_grain)
+  grain_offers_single_cabinet(g: netrality_401_n_broad_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_philadelphia_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_allentown_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_bethlehem_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_lehigh_valley_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_valley_forge_retail_grain)
+    && grain_offers_single_cabinet(g: h5_philadelphia_retail_grain)
     && established_watts(d: tierpoint_philadelphia_density) == 0 - 1
-    && !retail_grain_offers_single_cabinet(g: databank_phl1_retail_grain)
-    && !retail_grain_offers_single_cabinet(g: lightwave_philadelphia_retail_grain)
-    && !retail_grain_offers_single_cabinet(g: flexential_philadelphia_collegeville_retail_grain)
-    && !retail_grain_offers_single_cabinet(g: five_9s_allentown_retail_grain)
-    && !retail_grain_offers_single_cabinet(g: three_sixty_five_philadelphia_retail_grain)
+    && !grain_offers_single_cabinet(g: databank_phl1_retail_grain)
+    && !grain_offers_single_cabinet(g: lightwave_philadelphia_retail_grain)
+    && !grain_offers_single_cabinet(g: flexential_philadelphia_collegeville_retail_grain)
+    && !grain_offers_single_cabinet(g: five_9s_allentown_retail_grain)
+    && !grain_offers_single_cabinet(g: three_sixty_five_philadelphia_retail_grain)
 }
 
 // THE REGION'S OWN COVERAGE RECEIPT, FOLDED. Review 62827 found the Pennsylvania survey landing in

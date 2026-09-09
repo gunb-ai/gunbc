@@ -3,12 +3,8 @@ module test.claim.ny_colo_census_rows_witness
 import std.types { Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
-import test.claim.colo_cabinet_density_witness { established_watts }
-import extdeps.colo.types {
-  CabinetDensityClaim, ColoFacilityRow,
-  RetailGrainStanding, retail_grain_offers_single_cabinet,
-  AddressStanding, address_street,
-}
+import test.claim.colo_cabinet_density_witness { established_watts, grain_offers_single_cabinet }
+import extdeps.colo.types { ColoFacilityRow, AddressStanding, address_street }
 import extdeps.colo.databank { databank_lga3_density, databank_lga3_retail_grain, databank_lga3_orangeburg }
 import extdeps.colo.critical_systems_realty {
   csr_orny1_density, csr_orny1_retail_grain, csr_orny1_orangeburg,
@@ -117,11 +113,11 @@ test fn w_ny_unread_densities_establish_nothing() -> Bool {
 // DataBank sell cabinets with a density read for one and absent for the other. A carrier that
 // fused the two facts would have to invent one of them for every row below.
 test fn w_ny_grain_is_published_where_density_is_not() -> Bool {
-  retail_grain_offers_single_cabinet(g: stafford_retail_grain)
-    && retail_grain_offers_single_cabinet(g: vastnet_retail_grain)
-    && retail_grain_offers_single_cabinet(g: long_island_interconnect_retail_grain)
-    && retail_grain_offers_single_cabinet(g: tierpoint_hawthorne_retail_grain)
-    && retail_grain_offers_single_cabinet(g: databank_lga3_retail_grain)
+  grain_offers_single_cabinet(g: stafford_retail_grain)
+    && grain_offers_single_cabinet(g: vastnet_retail_grain)
+    && grain_offers_single_cabinet(g: long_island_interconnect_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_hawthorne_retail_grain)
+    && grain_offers_single_cabinet(g: databank_lga3_retail_grain)
     && established_watts(d: stafford_density) == 0 - 1
     && established_watts(d: vastnet_density) == 0 - 1
 }
@@ -140,12 +136,12 @@ test fn w_ny_grain_is_published_where_density_is_not() -> Bool {
 // the co-located operator - the single most tempting inference in the whole census - reds this
 // witness rather than passing silently, which is the only reason the row is worth carrying.
 test fn w_ny_unstated_grain_is_not_an_offer() -> Bool {
-  retail_grain_offers_single_cabinet(g: equinix_ny13_retail_grain) == false
-    && retail_grain_offers_single_cabinet(g: three_sixty_five_commack_retail_grain) == false
-    && retail_grain_offers_single_cabinet(g: continuity_centers_retail_grain) == false
-    && retail_grain_offers_single_cabinet(g: hivelocity_ogb1_retail_grain) == false
-    && retail_grain_offers_single_cabinet(g: csr_orny1_retail_grain) == false
-    && retail_grain_offers_single_cabinet(g: nyi_long_island_retail_grain) == false
+  grain_offers_single_cabinet(g: equinix_ny13_retail_grain) == false
+    && grain_offers_single_cabinet(g: three_sixty_five_commack_retail_grain) == false
+    && grain_offers_single_cabinet(g: continuity_centers_retail_grain) == false
+    && grain_offers_single_cabinet(g: hivelocity_ogb1_retail_grain) == false
+    && grain_offers_single_cabinet(g: csr_orny1_retail_grain) == false
+    && grain_offers_single_cabinet(g: nyi_long_island_retail_grain) == false
 }
 
 // THE FACILITY ROWS THEMSELVES, WHICH NOTHING READ UNTIL NOW. Review 62921: the density and
@@ -207,6 +203,15 @@ test fn w_the_westbury_pair_is_one_municipality() -> Bool {
 // so it is not the self-comparison DESIGN section 5 warns about: nothing in this file supplies the
 // expected value, and if either operator's page is re-read to a different street the pair stops
 // agreeing and this reds.
+//
+// THE TWO not-equal-SENTINEL LINES ARE LOAD-BEARING AND WERE MISSING (review 62968). Without them,
+// if BOTH Westbury rows were re-read to AddressUnread the two sides of the equality would both be
+// "STREET-UNREAD" and the co-location assertion would PASS - vacuously, on the value the helper
+// returns when it has nothing. That is the sentinel doubling as the failure value and as a value
+// that satisfies the check, which is the worst shape an in-band marker can take: the assertion is
+// strongest exactly when the data is present and silently strongest-looking when it is gone.
+// Asserting each side is not the sentinel BEFORE comparing them is what makes the equality an
+// assertion about two streets rather than about two absences.
 fn street_or_unread(a: AddressStanding) -> NonEmptyStr {
   match address_street(a: a) {
     Present { value } => value,
@@ -216,6 +221,8 @@ fn street_or_unread(a: AddressStanding) -> NonEmptyStr {
 
 test fn w_addresses_are_read_or_owed_never_reconstructed() -> Bool {
   street_or_unread(a: vastnet_melville.address) == "STREET-UNREAD"
+    && street_or_unread(a: long_island_interconnect_westbury.address) != "STREET-UNREAD"
+    && street_or_unread(a: nyi_long_island.address) != "STREET-UNREAD"
     && street_or_unread(a: long_island_interconnect_westbury.address)
        == street_or_unread(a: nyi_long_island.address)
     && street_or_unread(a: databank_lga3_orangeburg.address) != "STREET-UNREAD"
