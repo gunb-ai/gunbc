@@ -112,7 +112,6 @@ data digital_realty_ewr12_retail_grain: RetailGrainStanding = SingleCabinetOffer
 // or grain is readable and no row is written from the campus material alone. This operator's
 // Piscataway campus is therefore modelled at two buildings of three, and the missing one needs a
 // live page or a spec sheet rather than an inference from its siblings.
-data digital_realty_facilities: List<ColoFacilityRow> = [digital_realty_ewr10, digital_realty_ewr20, digital_realty_ewr11, digital_realty_ewr12]
 data digital_realty_jfk10: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Digital Realty",
   facility_label: "Digital Realty JFK10",
@@ -179,6 +178,8 @@ data digital_realty_jfk13_retail_grain: RetailGrainStanding = SingleCabinetOffer
 data digital_realty_facilities: List<ColoFacilityRow> = [
   digital_realty_ewr10,
   digital_realty_ewr20,
+  digital_realty_ewr11,
+  digital_realty_ewr12,
   digital_realty_jfk10,
   digital_realty_jfk12,
   digital_realty_jfk13,

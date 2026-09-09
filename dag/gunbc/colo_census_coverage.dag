@@ -318,12 +318,11 @@ data nyc_queens_and_bronx: RegionCoverage = RegionCoverage {
 // typing. Carried as an annotation rather than a String row because no fold reads it: per DESIGN
 // section 4c an ordinary String declaration whose sole purpose is commentary is misplaced or dead
 // data, and // is the explicit quarantine boundary for exactly this.
-data census_regions: List<RegionCoverage> = [nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
-data census_regions: List<RegionCoverage> = [central_new_jersey, nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
 data census_regions: List<RegionCoverage> = [
   nj_hudson_bergen_essex_corridor,
   southern_new_jersey,
   hudson_valley,
+  central_new_jersey,
   nyc_five_boroughs,
   nyc_queens_and_bronx,
 ]
