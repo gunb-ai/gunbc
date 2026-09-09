@@ -167,6 +167,15 @@ test fn w_a_surveyed_empty_region_is_not_an_unsurveyed_one() -> Bool {
 // which makes a miscount unwritable rather than merely checkable. This witness stays as the
 // transposition control it always was, and stops being cited as evidence the counts are right.
 //
+// THE VACUOUS ARM IS AT facilities <= 0, NOT < 0, AND THAT DISTINCTION IS THE WHOLE BUG REVIEW
+// 62803 CAUGHT. A surveyed-empty region answers Present 0 facilities and Absent reads, so the
+// sentinels are 0 and -1: guarding only on facilities < 0 left southern_new_jersey and
+// hudson_valley failing both reads >= 0 and facilities > 0, and quantifying over the roster turned
+// that from unreachable into two live violators. Zero facilities cannot be exceeded by any number
+// of reads, so it is vacuously true rather than a violation. Both discriminating REDs survive the
+// widening: a transposed pair (1 facility, 27 reads) still fails, and reads going Absent while
+// facilities are present - the real inconsistency between the two accessors - fails on reads >= 0.
+//
 // AND IT RANGES OVER THE WHOLE ROSTER RATHER THAN COUNTING IT. This test previously ended with
 // census_regions.length() == 3, which is measure() == measure() over a roster authored in this same
 // repo: the literal's whole content was that nobody had added a region, and adding one correctly
@@ -183,7 +192,7 @@ fn read_count_or_sentinel(c: RegionCoverage) -> Int {
 fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
   let facilities_seen = facility_count_or_sentinel(c: c)
   let reads_seen = read_count_or_sentinel(c: c)
-  facilities_seen < 0 || (reads_seen <= facilities_seen && reads_seen >= 0 && facilities_seen > 0)
+  facilities_seen <= 0 || (reads_seen >= 0 && reads_seen <= facilities_seen)
 }
 
 // THE CONTROLLED FIXTURE THAT MAKES THE READ COUNT FALSIFIABLE. Asserting the live corridor's count

@@ -50,7 +50,12 @@ data qts_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // Jersey sites - Piscataway and East Windsor - and no Jersey City. Two fetches of Jersey City
 // facility paths on q.com returned 404 the same day. The honest state is that the registry entry
 // and the operator's index disagree, and the disagreement is what needs reading.
-data qts_jersey_city_registry_disagreement_obligation: NonEmptyStr = "Establish whether QTS still operates at 95 Christopher Columbus Drive, Jersey City. Its PeeringDB facility entry QTS Jersey City (JCY1) was read 2026-09-08 and names floor 16; q.com's own facility index read the same day lists only Piscataway and East Windsor in New Jersey, and jersey-city paths under q.com 404. Until an operator surface names it, this census carries no Jersey City row for QTS - and if the site was exited, the registry entry is what a later sweep will trip over, so record the resolution here rather than silently dropping it."
+// Establish whether QTS still operates at 95 Christopher Columbus Drive, Jersey City. Its
+// PeeringDB facility entry QTS Jersey City (JCY1) was read 2026-09-08 and names floor 16; q.com's
+// own facility index read the same day lists only Piscataway and East Windsor in New Jersey, and
+// jersey-city paths under q.com 404. Until an operator surface names it, this census carries no
+// Jersey City row for QTS - and if the site was exited, the registry entry is what a later sweep
+// will trip over, so record the resolution here rather than silently dropping it.
 
 data qts_cabinet_density: CabinetDensityClaim = DensityUnread {
   obligation: "q.com's data-centers index read 2026-09-08 publishes acreage and site megawatts - 38 acres and 65 MW+ at Piscataway - and no per-cabinet or per-rack kW figure at any site. Site megawatts is not cabinet density. Resolve by quote; note that this operator has no facility in the Hudson-Bergen-Essex corridor that it currently claims.",

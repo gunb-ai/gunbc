@@ -37,7 +37,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // this corridor, all three at addresses the census already carries under other operators. That is
 // the same building-versus-operator split 165 Halsey and 300 JFK Boulevard East already forced, and
 // it is why these are rows here rather than notes on someone else's module.
-data lumen_operator_note: NonEmptyStr = "Facilities are registered under the historical Level(3) name in PeeringDB, which is the operator's own entry and which Lumen has not renamed; the operator_label below carries the current company name and the facility_label carries the registered one, because a reader searching either spelling must land on the same row."
+// Facilities are registered under the historical Level(3) name in PeeringDB, which is the
+// operator's own entry and which Lumen has not renamed; the operator_label below carries the
+// current company name and the facility_label carries the registered one, because a reader
+// searching either spelling must land on the same row.
 
 data lumen_newark_165_halsey: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Lumen Technologies",

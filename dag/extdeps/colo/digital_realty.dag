@@ -66,7 +66,10 @@ data digital_realty_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // is recorded by a withdrawal note and not by erasing the history; but no quote should be sought
 // for EWR10, and the Weehawken building at 300 JFK Boulevard East is reachable in this census
 // through Centersquare EWR2-A,B, which is still listed by its operator.
-data digital_realty_ewr10_withdrawal_note: NonEmptyStr = "EWR10 Weehawken is absent from digitalrealty.com's New York/New Jersey facility list read 2026-09-08 and is marked (closed) on its PeeringDB facility entry read the same day. Treat the EWR10 row as history. The Clifton pair EWR20 and EWR21 and the Piscataway pair EWR11 and EWR12 are the operator's live New Jersey sites, none of which is in the Hudson-Bergen-Essex corridor."
+// EWR10 Weehawken is absent from digitalrealty.com's New York/New Jersey facility list read
+// 2026-09-08 and is marked (closed) on its PeeringDB facility entry read the same day. Treat the
+// EWR10 row as history. The Clifton pair EWR20 and EWR21 and the Piscataway pair EWR11 and EWR12
+// are the operator's live New Jersey sites, none of which is in the Hudson-Bergen-Essex corridor.
 
 data digital_realty_cabinet_density: CabinetDensityClaim = DensityUnread {
   obligation: "The operator's New York and New Jersey facility list, read 2026-09-08, publishes no per-cabinet or per-rack kW figure for any facility; it publishes a 133.5k square-foot colocation footprint, which is a portfolio fact and not a density. Resolve per facility from a spec sheet or a quote.",

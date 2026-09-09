@@ -70,8 +70,14 @@ data summit_secaucus_density: CabinetDensityClaim = DensityUnread {
 // so the reading is worth keeping even though the facility it applies to is out of region. It is
 // deliberately NOT a RetailPlanRow: a plan row here would assert this operator sells that plan at
 // its modelled facility, which is the thing the banner says it does not.
-data summit_chicago_area_package_note: NonEmptyStr = "Read from raw bytes 2026-09-09 under the banner \"Limited Time: Chicago-Area Facility\": Standard Colo Package, 1,600 USD a month, 42U rack space, 5 kW of 208V/30A A+B redundant power, 100 Mbps unmetered bandwidth, 1 carrier cross-connect, 2 managed PDUs, free 1 hr/month basic remote hands, free setup and installation. High-Density Colo Package, 3,600 USD a month, same specification but 12 kW of 2x 208V/50A A+B redundant power. Both marked valid for new customers only. Whoever models the Chicago metro owns these as plan rows; they are held here as a note because this module's facility is Secaucus and no page ties these prices to it."
-
+// Read from raw bytes 2026-09-09 under the banner "Limited Time: Chicago-Area Facility": Standard
+// Colo Package, 1,600 USD a month, 42U rack space, 5 kW of 208V/30A A+B redundant power, 100 Mbps
+// unmetered bandwidth, 1 carrier cross-connect, 2 managed PDUs, free 1 hr/month basic remote
+// hands, free setup and installation. High-Density Colo Package, 3,600 USD a month, same
+// specification but 12 kW of 2x 208V/50A A+B redundant power. Both marked valid for new customers
+// only. Whoever models the Chicago metro owns these as plan rows; they are held here as a note
+// because this module's facility is Secaucus and no page ties these prices to it.
+//
 // AND THIS SUPERSEDES THE 2026-08-18 READING OF THE GRAIN. The facility page's suites-and-custom
 // wording, which the facility note above records, made this operator look cage-or-suite only. The
 // product page sells quarter, third, half and full 42U cabinets, which is finer than a cabinet and
