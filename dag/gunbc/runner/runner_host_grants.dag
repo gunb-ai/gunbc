@@ -38,6 +38,8 @@ import gunbc.fabric_cell_effect {
   CellSubstrateRootOwned,
   CellAttemptWriterOwned,
   fabric_cell_slice_desired_directives,
+  SliceDirectivesComplete,
+  SliceDirectivesQuotaSurveyRefused,
 }
 import gunbc.fabric_allocation_store_substrate {
   AllocationStoreEffect,
@@ -146,11 +148,19 @@ fn fabric_cell_slice_property_operations(
   )
 }
 
+// A REFUSED SURVEY EMITS NO SLICE PROPERTY GRANTS. Applying MemoryMax without CPUQuota is the
+// unbounded-CPU slice this module must not authorize. When the survey resolves, the operations
+// are `fabric_cell_slice_desired_directives`'s complete list, including `slice_cpu_quota`.
 fn fabric_cell_slice_operations(slot: RunnerSlotIdentity) -> List<ExecutorPrivilegedOperation> {
-  fabric_cell_slice_property_operations(
-    unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
-    directives: fabric_cell_slice_desired_directives(),
-  )
+  match fabric_cell_slice_desired_directives() {
+    SliceDirectivesComplete { directives: ds } =>
+      fabric_cell_slice_property_operations(
+        unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
+        directives: ds,
+      )
+    SliceDirectivesQuotaSurveyRefused { cause: _ } =>
+      [] as List<ExecutorPrivilegedOperation>
+  }
 }
 
 // THE EFFECT-TO-OPERATION PROJECTION THE APPLY SHELL CONSUMES. gunbc.fleet_converge_plan renders
@@ -277,6 +287,32 @@ fn runner_slot_teardown_grant_operations(deploy: RunnerHostDeploy) -> List<Execu
 // The last rows are host-wide: the executor launches runner micro-VMs
 // (gunbc.runner.runner_microvm_host_ready), so it must be able to open /dev/kvm, and the
 // group that owns the device is udev's, not ours.
+fn runner_host_wide_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  let job = deploy.job_user
+  [
+    EnsureOwnedDirectory {
+      path: gunbc_fleet_converge_state_dir,
+      owner: job,
+      group: job,
+      mode: executor_managed_directory_mode,
+    },
+    EnsureOwnedDirectory {
+      path: actions_runner_base_dir as NonEmptyStr,
+      owner: deploy.runner_user,
+      group: deploy.runner_user,
+      mode: executor_managed_directory_mode,
+    },
+    EnsureOwnedDirectory {
+      path: actions_runner_cache_dir as NonEmptyStr,
+      owner: deploy.runner_user,
+      group: deploy.runner_user,
+      mode: executor_managed_directory_mode,
+    },
+    EnsureSupplementaryGroupMembership { login: job, group: kvm_device_group },
+    SystemdDaemonReload
+  ]
+}
+
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let job = deploy.job_user
   let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
@@ -285,28 +321,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + runner_slot_activation_operations(deploy: deploy)
     + fabric_cell_privileged_operations(deploy: deploy)
     + fabric_allocation_store_privileged_operations(deploy: deploy)
-    + [
-      EnsureOwnedDirectory {
-        path: gunbc_fleet_converge_state_dir,
-        owner: job,
-        group: job,
-        mode: executor_managed_directory_mode,
-      },
-      EnsureOwnedDirectory {
-        path: actions_runner_base_dir as NonEmptyStr,
-        owner: deploy.runner_user,
-        group: deploy.runner_user,
-        mode: executor_managed_directory_mode,
-      },
-      EnsureOwnedDirectory {
-        path: actions_runner_cache_dir as NonEmptyStr,
-        owner: deploy.runner_user,
-        group: deploy.runner_user,
-        mode: executor_managed_directory_mode,
-      },
-      EnsureSupplementaryGroupMembership { login: job, group: kvm_device_group },
-      SystemdDaemonReload
-    ]
+    + runner_host_wide_privileged_operations(deploy: deploy)
 }
 
 // THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
