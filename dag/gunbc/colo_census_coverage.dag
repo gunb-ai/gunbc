@@ -136,11 +136,21 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // AND THIS FUNCTION IS THE HABIT REPEATING, WHICH review 62935 CAUGHT AND THIS FILE ALREADY
 // CONDEMNED IN ADVANCE. Nine lines above, coverage_facility_count carries the sentence "writing the
 // predicate again one module later is the receipt that the first deletion was applied to an instance
-// and not to the habit" - written about cabinet_density_is_read, deleted from the carrier for being
-// a Bool arm-matcher over a reusable coproduct. density_claim_is_read is a Bool arm-matcher over the
-// same coproduct, one module later, in the file carrying that sentence. DISPOSITION: YELLOW, not
-// green, and the reviewer is right that the long note above justifies not using the ceiling without
-// disposing of what replaced it.
+// and not to the habit" - written about cabinet_density_is_read. density_claim_is_read asks the same
+// question over the same coproduct, one module later, in the file carrying that sentence.
+// DISPOSITION: YELLOW, not green.
+//
+// THE DIAGNOSIS ABOVE USED TO SAY THE DEFECT WAS "a Bool arm-matcher over a reusable coproduct". THAT
+// IS WRONG AND IT IS WORTH CORRECTING IN PLACE, because it is the sentence a future reader inherits.
+// A match returning Bool collapses to an equality test only when EVERY ARM OF THE COORDINATE IS
+// NULLARY, so that a complete inhabitant exists to compare against. CabinetDensityClaim's arms both
+// carry payload - DensityPublished { figures } and DensityUnread { obligation } - so there is nothing
+// to compare to without inventing the figures being asked about. For this type the match returning
+// Bool IS the authority shape, not a lazy alternative to one.
+//
+// SO THE DEFECT IS LOCATION, NOT SHAPE: the question has a home in the carrier and is asked again
+// here. Left as it stood, this note would have sent the next author hunting for a collapse that
+// cannot exist for this type, and they would have discovered that only by trying to write it.
 //
 // WHY IT IS NOT REPAIRED IN THIS CHANGE. The right home is the carrier - a presence-shaped accessor
 // that answers "was anything published" without also committing to a direction and a medium, which
