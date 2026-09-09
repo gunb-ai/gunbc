@@ -1,7 +1,10 @@
 module gunbc.colo_census_coverage
 
 import std.types { NonEmptyStr, Int, List, Bool }
-import extdeps.colo.types { ColoFacilityRow, CabinetDensityClaim, cabinet_density_air_ceiling }
+import extdeps.colo.types {
+  ColoFacilityRow, CabinetDensityClaim,
+  DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
+}
 import extdeps.colo.equinix {
   equinix_ny1_density, equinix_ny2_density, equinix_ny3_density, equinix_ny4_density,
   equinix_ny5_density, equinix_ny6_density, equinix_ny7_density, equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7 }
@@ -102,35 +105,38 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
   }
 }
 
-// THE CORRIDOR ROW, AND THE NUMBER THAT SHOULD WORRY A READER MOST. Twenty-seven facilities
-// modelled in the densest colocation market in the region, and ONE of them publishes a cabinet
-// density anybody has verified against page bytes. That ratio is the census's real finding about
-// the corridor: the facilities are there, the retail density figures are not published, and a
-// planner who wanted a dense cabinet in Hudson-Bergen-Essex would be negotiating rather than
-// shopping.
+// RETRIEVAL COVERAGE AND DECISION UTILITY ARE SEPARATE FACTS, AND THIS FOLD COUNTS THE FIRST.
+// Operator instruction, 2026-09-09: "Do not preserve density_claim_is_read := can make air ceiling."
 //
-// The count is one AFTER an audit, not before it. This region briefly read two: a Summit Secaucus
-// row citing 12 kW in a 42U cabinet, whose wording reproduced in the page bytes exactly and which
-// sat under a block headed "Limited Time: Chicago-Area Facility". Real figure, published price,
-// wrong metro. The withdrawal is recorded in
-// gunbc.recurring_failure_mode.citation_verified_against_a_rendering_that_destroyed_its_scope,
-// because a citation confirmed by string occurrence alone cannot fail on correct text attached to
-// the wrong subject.
-// A DENSITY IS READ EXACTLY WHEN THE CARRIER CAN PRODUCE A CEILING FOR IT, and that question is
-// already answered by extdeps.colo.types. Asking it through cabinet_density_air_ceiling rather than
-// re-matching the arms here keeps one authority for what "read" means: a ceiling is Present for
-// both published arms - real power and apparent power - and Absent exactly for DensityUnread. A
-// local predicate over the same coproduct would be a second spelling of a question the carrier
-// owns, which is the fork the deleted cabinet_density_is_read was removed to avoid reintroducing.
+// THE PREVIOUS DEFINITION ASKED cabinet_density_air_ceiling AND I DEFENDED IT, WRONGLY. The defence
+// was that routing through the carrier keeps one authority for the word "read" rather than
+// re-matching the coproduct here. That argument answers a different question than the instruction
+// does. "Was a claim read from the operator" and "can this claim bound a cabinet" are not one
+// question asked twice - they are two questions, and the carrier owns only the second. Deriving the
+// first from the second silently makes coverage a function of usability.
 //
-// Only the PRESENCE of the ceiling is read here, never its magnitude. That is the sound use: a
-// ceiling answers whether a requirement is refused, and asking it "was anything published" is a
-// question about the claim rather than about the cabinet. The Watt inside CeilingAt is never
-// touched by this fold, so counting read claims cannot become admitting on a bound.
+// THE FOUR CASES THAT PROVE THEY COME APART, all from the operator and all real in this census: a
+// verified "10kW+" LOWER bound was read and must not yield an at-most ceiling; a verified "2-16kW"
+// INTERVAL was read and is not one ceiling point; a verified "3kW average" was read and does not
+// bound an individual cabinet; a verified real-power claim with the COOLING MEDIUM unstated was read
+// and must not yield an AIR ceiling. Under the old definition every one of those counts as unread.
+//
+// SO THE CENSUS WOULD HAVE APPEARED TO LOSE READINGS AT THE EXACT MOMENT IT GAINED THEM. When the
+// directional-bound carrier lands at gunbc#10885, this corridor's seven Equinix kVA floors and every
+// interval and average in the census become properly typed claims - and a ceiling-derived count would
+// have reported that improvement as a drop to zero. A metric that falls when the data improves is
+// measuring the wrong thing, and it would have been read as a regression by whoever saw it first.
+//
+// This is therefore a claim-PRESENCE question over the arms, which is what the coverage roster owns.
+// It is not a second spelling of the ceiling: nothing here reads a figure, a unit, a direction or a
+// cooling medium, and no Watt is touched. Requirement-specific usability stays where the operator put
+// it, inside the selection projection, and cabinet_density_air_ceiling remains the sole authority for
+// what a cabinet may draw - this module no longer calls it at all.
 fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
-  match cabinet_density_air_ceiling(d: d) {
-    Present { value } => true,
-    Absent => false,
+  match d {
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => true,
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => true,
+    DensityUnread { obligation } => false,
   }
 }
 
@@ -157,6 +163,21 @@ fn coverage_density_read_count(c: RegionCoverage) -> Int? {
   }
 }
 
+// THE CORRIDOR ROW, AND THE NUMBER THAT SHOULD WORRY A READER MOST. The facility rows below are the densest colocation market in the
+// region, and exactly ONE of them publishes a cabinet density anybody has verified against page
+// bytes - a ratio the fold derives rather than this paragraph asserting it. That ratio is the census's real finding about
+// the corridor: the facilities are there, the retail density figures are not published, and a
+// planner who wanted a dense cabinet in Hudson-Bergen-Essex would be negotiating rather than
+// shopping.
+//
+// The count is one AFTER an audit, not before it. This region briefly read two: a Summit Secaucus
+// row citing 12 kW in a 42U cabinet, whose wording reproduced in the page bytes exactly and which
+// sat under a block headed "Limited Time: Chicago-Area Facility". Real figure, published price,
+// wrong metro. The withdrawal is recorded in
+// gunbc.recurring_failure_mode.citation_verified_against_a_rendering_that_destroyed_its_scope,
+// because a citation confirmed by string occurrence alone cannot fail on correct text attached to
+// the wrong subject.
+//
 // THE COUNTS ARE GONE AND THE ROWS ARE HERE INSTEAD, which is review 62780's finding fixed at the
 // root: 28 and 1 were hand-transcribed measurements of the repo's own live corpus, and DESIGN
 // section 6 says a measurement is cited by naming the producer that re-derives it. Deriving them
