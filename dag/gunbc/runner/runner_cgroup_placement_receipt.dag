@@ -4,6 +4,9 @@ import std.types { Bool, List, NonEmptyStr, String, FilePath }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.runner.runner_guest_egress_attempt {
+  CpuBoundStanding, CpuBoundWrittenButUnread,
+}
 
 // THE ATTEMPT IS BOUNDED NOW, AND THE BOUND WAS OBSERVED FROM BOTH SIDES WHILE IT HELD. Attempt
 // slice5b-cgroup-77e659df on the Mt. Collins unit, 2026-09-06. The live census had found the VMM
@@ -56,10 +59,28 @@ data placement_accounting: CgroupAccounting = CgroupAccounting {
 
 // THE WATCHER IS IN THE CGROUP TOO, which is correct rather than incidental: it is attempt-scoped,
 // so it belongs inside the attempt's bound. The leaf held exactly the two attempt identities.
-data placement_cgroup_members: List<NonEmptyStr> = [
-  "1694 -- the AttemptExecution identity, in its FirecrackerRunning phase",
-  "1729 -- the AttemptDeadlineWatcher",
-]
+type CgroupMemberRole
+  = AttemptExecution
+  | AttemptDeadlineWatcher
+
+type CgroupMember {
+  pid: Nat
+  role: CgroupMemberRole
+}
+
+fn placement_cgroup_members_from_verdict() -> List<CgroupMember> {
+  match placement_verdict {
+    PlacementBidirectional { cgroup_path: _, pid: p } => [
+      CgroupMember { pid: p, role: AttemptExecution },
+      CgroupMember { pid: 1729, role: AttemptDeadlineWatcher },
+    ]
+    PlacementForwardOnly { detail: _ } => []
+    PlacementReverseOnly { detail: _ } => []
+    PlacementNotEstablished { detail: _ } => []
+  }
+}
+
+data placement_cgroup_members: List<CgroupMember> = placement_cgroup_members_from_verdict()
 
 // ── retirement, read in the order that makes it mean something ──────────────────────────────────
 
@@ -67,13 +88,11 @@ data placement_cgroup_members: List<NonEmptyStr> = [
 // that still held a process could not have been removed at all. Reading procs before the rmdir is
 // what makes the removal evidence rather than a side effect.
 type CgroupRetirement {
-  procs_at_retirement: NonEmptyStr
   empty: Bool
   removed: Bool
 }
 
 data placement_retirement: CgroupRetirement = CgroupRetirement {
-  procs_at_retirement: "empty",
   empty: true,
   removed: true,
 }
@@ -104,7 +123,7 @@ data placement_defect_found: PlacementDefect = PlacementDefect {
   attempt: "slice5-cgroup-ae62a97c",
   written_pid: 1,
   intended_pid: "the launching subshell, which would become the VMM",
-  found_by: "the reverse read -- cgroup.procs listed pid 1; the forward read said only that placement was absent",
+  found_by: "the reverse read of cgroup.procs; the forward read said only that placement was absent",
 }
 
 // AND THE SIDE EFFECT IT CAUSED, recorded rather than passed over: that run left init inside the
@@ -112,36 +131,27 @@ data placement_defect_found: PlacementDefect = PlacementDefect {
 // next boot, but a supervisor doing this on a long-lived host would have leaked a cgroup holding
 // pid 1.
 type PlacementDefectRetirement
-  = LeafHeldInit { process_in_leaf: NonEmptyStr, emptied: Bool, removed: Bool, cleared_by: NonEmptyStr }
+  = LeafHeldInit { pid: Nat, emptied: Bool, removed: Bool, cleared_by: NonEmptyStr }
   | LeafRetiredCleanly
 
 data placement_defect_retirement: PlacementDefectRetirement = LeafHeldInit {
-  process_in_leaf: "pid 1 -- init",
+  pid: placement_defect_found.written_pid,
   emptied: false,
   removed: false,
   cleared_by: "the next boot, not retirement",
 }
 
-// ── still open: the cpu bound did not apply ─────────────────────────────────────────────────────
+// ── this attempt's cpu.max write did not stick ──────────────────────────────────────────────────
 
-// THE CONTROLLER IS DELEGATED AND THE LIMIT IS STILL EMPTY. cgroup.controllers on the leaf reads
-// "cpu memory pids", so the cpu controller IS available there -- and cpu.max reads back empty after
-// being written. memory.max and pids.max both took. So this is not a delegation failure and not a
-// missing controller, and no cause is claimed here.
-//
-// IT IS VISIBLE ONLY BECAUSE THE CONTROLLER STATE IS NOW PRINTED. The previous run wrote cpu.max,
-// read nothing back, and said nothing about it -- a limit that silently did not apply. The readback
-// is what turned it from an absent bound into a named open question.
-type CpuBoundStanding
-  = CpuBoundApplied { value: NonEmptyStr }
-  | CpuBoundWrittenButUnread { leaf_controllers: NonEmptyStr }
-
+// ON THIS PLACEMENT RUN the leaf listed cpu in cgroup.controllers and cpu.max still read back
+// empty. The cause is CpuBoundStanding on the attempt receipt (later refused with EPERM, then an
+// interface after the CFS-bandwidth rebuild). This row is that earlier standing, not a second type
+// and not a still-open fleet question.
 data placement_cpu_bound: CpuBoundStanding = CpuBoundWrittenButUnread {
   leaf_controllers: "cpu memory pids",
 }
 
 data placement_open: List<NonEmptyStr> = [
-  "why cpu.max reads back empty on a leaf whose cgroup.controllers includes cpu, while memory.max and pids.max apply",
   "an OOM policy for the attempt, which no run has set",
   "whether the bound is ENFORCED rather than merely accounted -- nothing has yet exceeded it on purpose",
   "the post-cleanup identity join, which still compares by name rather than by launch/exec identity",

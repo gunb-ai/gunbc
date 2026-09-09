@@ -3,7 +3,9 @@ module gunbc.runner.runner_cpu_bandwidth_receipt
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { ByteSize }
-import gunbc.runner.runner_guest_egress_attempt { cpu_bound_write_refused }
+import gunbc.runner.runner_guest_egress_attempt {
+  cpu_bound_write_refused, CpuBoundStanding, CpuBoundInterfacePresent,
+}
 import gunbc.runner.runner_cgroup_placement_receipt {
   placement_verdict, PlacementBidirectional, PlacementForwardOnly,
   PlacementReverseOnly, PlacementNotEstablished,
@@ -65,15 +67,8 @@ data cites_placement_accounting: DeclarationRef = DeclarationRef {
 
 // ── what the run shows ─────────────────────────────────────────────────────────────────────────
 
-type CpuBoundStanding
-  = CpuBoundInterfacePresent { value: NonEmptyStr, what_this_does_not_show: NonEmptyStr, closed_a_prior_refusal: Bool }
-  | CpuBoundEnforcementObserved { evidence: NonEmptyStr }
-  | CpuBoundAbsent { errno: NonEmptyStr }
-
-// A FILE THAT ACCEPTS A WRITE AND READS THE VALUE BACK IS AN INTERFACE, NOT A BOUND. Every previous
-// receipt in this lane that stopped at a successful read was later found to have proven less than
-// it claimed, and the cgroup-placement bug was exactly that shape: the forward read agreed with the
-// intent while the reverse read named init sitting in the leaf.
+// CpuBoundStanding lives on the attempt receipt. This row is the later standing: the interface
+// exists; enforcement does not.
 data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
   value: "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf",
   what_this_does_not_show: "that a process exceeding it is actually throttled. No load was applied, so cpu.stat's throttled_usec and nr_throttled were never going to move, and nothing here distinguishes an enforced bound from a stored number",

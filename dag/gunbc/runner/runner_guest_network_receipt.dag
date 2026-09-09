@@ -6,6 +6,7 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, PrefixLength }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.linux.neighbour { NeighbourNudState, NudReachable }
 
 // GUEST USERSPACE, AND A HOST THAT CAN REACH IT. Attempt slice6b-net-05165ea5 on the Mt. Collins
 // unit, 2026-09-07. The guest mounted its squashfs root, ran /sbin/init, brought systemd 255.4 up on
@@ -51,7 +52,7 @@ type GuestReachability {
   prefix_length: PrefixLength
   transmitted: Int
   received: Int
-  arp_state: NonEmptyStr
+  arp_state: NeighbourNudState
   resolved_mac: Eui48Address
 }
 
@@ -65,7 +66,7 @@ data guest_reachability: GuestReachability = GuestReachability {
   prefix_length: 30,
   transmitted: 3,
   received: 3,
-  arp_state: "REACHABLE",
+  arp_state: NudReachable,
   resolved_mac: mac_address(octet1: 6, octet2: 0, octet3: 172, octet4: 16, octet5: 0, octet6: 2),
 }
 
@@ -166,10 +167,7 @@ data defect_truncated_interface_name: InterfaceNameConstruction = TruncatedToKer
 
 data guest_network_closed: List<NonEmptyStr> = [
   "the guest mounts its squashfs root read-only and runs /sbin/init",
-  "systemd 255.4 reaches system mode on arm64 inside the guest",
-  "an attempt-scoped host TAP carries traffic to the guest, three of three pings, ARP resolved to the configured guest MAC",
   "the tap is absent from the host after retirement",
-  "cgroup placement remained bidirectional across a run that now includes networking",
 ]
 
 data guest_network_open: List<NonEmptyStr> = [

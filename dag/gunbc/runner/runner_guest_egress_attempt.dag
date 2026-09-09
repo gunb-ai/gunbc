@@ -3,6 +3,7 @@ module gunbc.runner.runner_guest_egress_attempt
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.measure { ByteSize, byte_size, Bandwidth, bandwidth }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.network.link_duplex { LinkDuplex, FullDuplex }
 
 // AN ATTEMPT THAT DID NOT REACH ITS GOAL, recorded because two of its by-products are worth more
 // than the goal was. Attempt slice7c-bridge-e6a5b5c2 on the Mt. Collins unit, 2026-09-07. The aim
@@ -24,7 +25,7 @@ type EgressAttemptOutcome
   | GuestEgressNotEstablished { reached: NonEmptyStr, blocked_at: NonEmptyStr }
 
 data egress_outcome: EgressAttemptOutcome = GuestEgressNotEstablished {
-  reached: "the bridge carries eth0 and the attempt tap, and the host NIC reports link up at 1000 Mbps full duplex",
+  reached: "the bridge carries eth0 and the attempt tap",
   blocked_at: "the host obtained no address on the bridge, so neither host nor guest had a route off the segment",
 }
 
@@ -43,15 +44,15 @@ data egress_outcome: EgressAttemptOutcome = GuestEgressNotEstablished {
 // this boot. Carrier is not a data plane, and promoting one to the other is how a layer-1 reading
 // becomes a reachability claim.
 type LinkObservation
-  = PhysicalLinkNegotiated { interface: NonEmptyStr, speed: Bandwidth, duplex: NonEmptyStr }
+  = PhysicalLinkNegotiated { interface: NonEmptyStr, speed: Bandwidth, duplex: LinkDuplex }
   | InterfaceCarriedTraffic { evidence: NonEmptyStr }
 
-// eth0 is the fleet-facing port. Duplex has no corpus home (no Full/Half coproduct in std or
-// extdeps); the PHY log said Full Duplex. Speed is std.measure Bandwidth in bit/s: 1000 Mbps.
+// eth0 is the fleet-facing port. Duplex is extdeps.network.link_duplex. Speed is
+// std.measure.Bandwidth (bit/s).
 data nic_link_observed: LinkObservation = PhysicalLinkNegotiated {
   interface: "eth0",
   speed: bandwidth(1000000000),
-  duplex: "full",
+  duplex: FullDuplex,
 }
 
 // ── the bridge was correct, and only its readback was broken ────────────────────────────────────
@@ -115,11 +116,14 @@ data bridge_readback_defect: BridgeMembershipReadback = MembershipReadingsDisagr
 // THE REPAIR IS A KERNEL OPTION, and the acceptance is not "cpu.max reads back". A present interface
 // is not an enforced boundary -- the receipt for that owes a controlled CPU load and cpu.stat
 // throttling counters moving.
-type CpuBoundFailure
+type CpuBoundStanding
   = CpuBoundAppliedNow { value: NonEmptyStr }
   | CpuBoundRefusedWithErrno { errno: NonEmptyStr, path_shape: NonEmptyStr, root_subtree: NonEmptyStr }
+  | CpuBoundWrittenButUnread { leaf_controllers: NonEmptyStr }
+  | CpuBoundInterfacePresent { value: NonEmptyStr, what_this_does_not_show: NonEmptyStr, closed_a_prior_refusal: Bool }
+  | CpuBoundEnforcementObserved { evidence: NonEmptyStr }
 
-data cpu_bound_failure: CpuBoundFailure = CpuBoundRefusedWithErrno {
+data cpu_bound_failure: CpuBoundStanding = CpuBoundRefusedWithErrno {
   errno: "EPERM",
   path_shape: "the attempt leaf's cpu.max",
   root_subtree: "cpu memory pids -- the controller is delegated, and weight control is not bandwidth control",
@@ -129,6 +133,9 @@ fn cpu_max_write_was_refused() -> Bool {
   match cpu_bound_failure {
     CpuBoundAppliedNow { value: _ } => false
     CpuBoundRefusedWithErrno { errno: _, path_shape: _, root_subtree: _ } => true
+    CpuBoundWrittenButUnread { leaf_controllers: _ } => false
+    CpuBoundInterfacePresent { value: _, what_this_does_not_show: _, closed_a_prior_refusal: _ } => false
+    CpuBoundEnforcementObserved { evidence: _ } => false
   }
 }
 
