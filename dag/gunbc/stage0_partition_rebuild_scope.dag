@@ -85,6 +85,7 @@ type PartitionRebuildDecision
       package_closure: List<String>
       executable_assembly: PartitionExecutableAssembly
     }
+  | ReleaseScopeEmpty { changed_mirrors: List<String> }
   | WholeCompilerRebuildRequired { cause: WholeCompilerRebuildCause }
   | RebuildScopeRefused { cause: RebuildScopeRefusalCause }
 
@@ -110,6 +111,30 @@ data rebuild_scope_partition_generation_mirrors: List<String> = [
 data rebuild_scope_shared_build_input_mirrors: List<String> = [
   "gunbc_stage0_crate_layout_generated.rs",
   "v1_compiler_workspace_members.rs"
+]
+
+// THE THIRD POSITIVELY MODELED CLASS, reached like the two above by NAMING its members, never by
+// failing to name something else: emitted mirrors whose bytes cannot reach the next-pass
+// executable, so their precise rebuild scope is the EMPTY set -- derived, not widened to. The
+// authority for membership is the emitter itself: v1.compiler.emit_rust
+// emit_compiler_tests_module emits compiler_tests.rs with every item it defines behind
+// #[cfg(test)], and the round's only build invocation is `cargo build --release --bin
+// claim_executor` (required_regen_host RegenConvergenceStageReceipt.build_invocation), under
+// which cfg(test) is off and the file contributes no item to any release unit. THE MECHANISM IS
+// ONE LEVEL FINER THAN THE MOD LINE: emit_lib_rs_from_paths declares the OUTER `mod
+// compiler_tests;` ungated, so rustc does read and parse the file in a release build and the
+// shell crate's fingerprint recompiles it -- measured 2026-09-08, convergence stage-2 compiled
+// v1-compiler with this file as the only installed surface -- while elaborating zero items from
+// it, and the produced executable was byte-identical (stage input seed digest == output seed
+// digest on the same receipt). So the empty scope is a claim about the EXECUTABLE, verified by
+// the digest comparison the round already performs, not a claim that nothing recompiles. A
+// mirror is on this roster only while that citation holds; an unowned mirror NOT named here
+// still refuses MirrorHasNoOwningPackage, so the roster cannot decay into the absorbing fallback
+// this module exists to refuse. The host verifies the partition half by execution: under
+// ReleaseScopeEmpty every partition package is excluded, the build still runs, and a compiled
+// partition package refuses the stage.
+data rebuild_scope_release_excluded_mirrors: List<String> = [
+  "compiler_tests.rs"
 ]
 
 // THE EXECUTABLE THE SECOND GENERATION RUNS, stated as a typed state rather than assumed.
@@ -173,7 +198,10 @@ fn rebuild_scope_extend_with_executable(
 // so a probe may build them and must terminate as packages-built-executable-unassembled: it may
 // not feed the fixed-point receipt or the second pass. Making that a typed question the host asks
 // -- rather than a sentence in a comment the host is trusted to have read -- is what keeps
-// "we derived the scope" from being spent as "we rebuilt from it".
+// "we derived the scope" from being spent as "we rebuilt from it". ReleaseScopeEmpty is
+// ACTUATABLE BECAUSE THERE IS NOTHING TO COMPILE, not because there is nothing to verify: the
+// host still runs the build, and the exclusion set (every package) makes any compilation a
+// located refusal rather than an unnoticed widening.
 fn stage0_partition_rebuild_is_actuatable(decision: PartitionRebuildDecision) -> Bool {
   match decision {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: assembly } =>
@@ -181,6 +209,7 @@ fn stage0_partition_rebuild_is_actuatable(decision: PartitionRebuildDecision) ->
         PartitionAssembledExecutable { package_name: _, bin_name: _ } => true
         ExecutableAssemblyUnavailable { trigger: _, detail: _ } => false
       }
+    ReleaseScopeEmpty { changed_mirrors: _ } => true
     WholeCompilerRebuildRequired { cause: _ } => false
     RebuildScopeRefused { cause: _ } => false
   }
@@ -296,6 +325,10 @@ fn rebuild_scope_changed_in_roster(changed_mirrors: List<String>, roster: List<S
   changed_mirrors |> filter(m => rebuild_scope_list_has(items: roster, item: m))
 }
 
+fn rebuild_scope_changed_outside_roster(changed_mirrors: List<String>, roster: List<String>) -> List<String> {
+  changed_mirrors |> filter(m => !rebuild_scope_list_has(items: roster, item: m))
+}
+
 // THE DECISION. `unlocatable` is the host's list of changed paths it could not name as a compared
 // mirror; a non-empty list refuses before anything else is asked, exactly as
 // gunbc.regen_affected_set EditedSetUnlocatable does, and for the same reason.
@@ -306,6 +339,13 @@ fn rebuild_scope_changed_in_roster(changed_mirrors: List<String>, roster: List<S
 // the executable-coverage check with an empty closure and report ExecutableAssemblyNotCovered,
 // which is a true sentence about a question nobody asked and a false one about the tree. A round
 // that installed nothing is not a round whose executable is uncovered.
+//
+// RELEASE-EXCLUDED MIRRORS ARE PARTITIONED OFF FIRST inside the non-empty arm: they contribute
+// no owning package to any build the round can run, so owner resolution must not be asked about
+// them -- its refusal is for mirrors whose release scope EXISTS and cannot be answered, and a
+// cfg(test)-gated file is not one. When nothing release-visible remains, the answer is the
+// empty scope as a first-class verdict, not the ExecutableAssemblyNotCovered refusal an empty
+// closure would otherwise meet below: the executable is UNAFFECTED, not uncovered.
 fn stage0_partition_rebuild_decision(
   changed_mirrors: List<String>,
   unlocatable: List<String>,
@@ -322,8 +362,12 @@ fn stage0_partition_rebuild_decision(
   } else if count(changed_mirrors) == 0 {
     RebuildScopeRefused { cause: NoChangedMirrorsToRebuild }
   } else {
-    let generation = rebuild_scope_changed_in_roster(changed_mirrors: changed_mirrors, roster: rebuild_scope_partition_generation_mirrors)
-    let shared = rebuild_scope_changed_in_roster(changed_mirrors: changed_mirrors, roster: rebuild_scope_shared_build_input_mirrors)
+    let release_changed = rebuild_scope_changed_outside_roster(changed_mirrors: changed_mirrors, roster: rebuild_scope_release_excluded_mirrors)
+    if count(release_changed) == 0 {
+      ReleaseScopeEmpty { changed_mirrors: changed_mirrors }
+    } else {
+    let generation = rebuild_scope_changed_in_roster(changed_mirrors: release_changed, roster: rebuild_scope_partition_generation_mirrors)
+    let shared = rebuild_scope_changed_in_roster(changed_mirrors: release_changed, roster: rebuild_scope_shared_build_input_mirrors)
     if count(generation) > 0 {
       WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: generation } }
     } else if count(shared) > 0 {
@@ -338,7 +382,7 @@ fn stage0_partition_rebuild_decision(
           }
         }
       } else {
-        match rebuild_scope_resolve_owners(changed_mirrors: changed_mirrors, rows: rows) {
+        match rebuild_scope_resolve_owners(changed_mirrors: release_changed, rows: rows) {
           OwnerRefused { cause: c } => RebuildScopeRefused { cause: c }
           OwnerResolved { packages: owners } => {
             let partition_closure = rebuild_scope_reverse_closure(seeds: owners, rows: rows)
@@ -371,6 +415,7 @@ fn stage0_partition_rebuild_decision(
           }
         }
       }
+    }
     }
   }
 }
@@ -433,6 +478,8 @@ fn stage0_partition_rebuild_decision_line(decision: PartitionRebuildDecision) ->
       "partition-rebuild: RebuildScopeRefused NoChangedMirrorsToRebuild"
     RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: ms, reason: r } } =>
       concat(concat("partition-rebuild: RebuildScopeRefused ChangedMirrorUnlocatable mirrors=[", rebuild_scope_join(items: ms)), concat("] reason=", r))
+    ReleaseScopeEmpty { changed_mirrors: m } =>
+      concat("partition-rebuild: ReleaseScopeEmpty changed_mirrors=[", concat(rebuild_scope_join(items: m), "] -- every changed mirror is excluded from the release build by construction; the executable is unaffected and the build runs as verification"))
     RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: m } } =>
       concat("partition-rebuild: RebuildScopeRefused MirrorHasNoOwningPackage mirror=", m)
     RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: m, packages: ps } } =>
@@ -477,8 +524,25 @@ fn stage0_partition_rebuild_packages_today(
 ) -> List<String> {
   match stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors, unlocatable: unlocatable) {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: c, executable_assembly: _ } => c
+    ReleaseScopeEmpty { changed_mirrors: _ } => []
     WholeCompilerRebuildRequired { cause: _ } => []
     RebuildScopeRefused { cause: _ } => []
+  }
+}
+
+// THE FOURTH HOST QUESTION, and the reason the empty closure below is legal: an empty package
+// list from ReleaseScopeEmpty is the derived answer, while an empty list from the refusing arms
+// is no answer at all. The host distinguishes them HERE -- by the variant, never by counting --
+// so the guard that refuses an empty closure under a derived scope stays load-bearing.
+fn stage0_partition_rebuild_release_scope_empty_today(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>
+) -> Bool {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors, unlocatable: unlocatable) {
+    ReleaseScopeEmpty { changed_mirrors: _ } => true
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    RebuildScopeRefused { cause: _ } => false
   }
 }
 
@@ -486,7 +550,10 @@ fn stage0_partition_rebuild_packages_today(
 // touches one of them is a located refusal rather than an unnoticed widening: an exclusion no
 // consumer can read is not evidence of anything, and this is the exclusion the whole
 // change-denominated claim rests on. The emit shell is a partition package, so it appears here
-// whenever the changed mirrors do not reach it.
+// whenever the changed mirrors do not reach it. UNDER ReleaseScopeEmpty THE CLOSURE IS EMPTY BY
+// CONSTRUCTION, so this answers EVERY package: the guarantee the host enforces is that the
+// verification build compiles no partition package, and an exclusion that names every package
+// is what makes a single compiled crate a located refusal.
 fn stage0_partition_rebuild_excluded_today(
   changed_mirrors: List<String>,
   unlocatable: List<String>

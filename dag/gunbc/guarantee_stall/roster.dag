@@ -29,7 +29,6 @@ import gunbc.guarantee_stall.enforcement_live_closure_gate_stall { enforcement_l
 import gunbc.guarantee_stall.mandatory_tag_live_corpus_stall { mandatory_tag_live_corpus_stall }
 import gunbc.guarantee_stall.parse_ingest_grammar_relation_stall { parse_ingest_grammar_relation_stall }
 import gunbc.guarantee_stall.required_regen_host_derivation_stall { required_regen_host_derivation_stall }
-import gunbc.guarantee_stall.self_host_candidate_generation_add_slice_stall { self_host_candidate_generation_add_slice_stall }
 import gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall { self_host_hand_authorized_cargo_toml_stall }
 import gunbc.guarantee_stall.self_host_hand_authorized_driver_source_stall { self_host_hand_authorized_driver_source_stall }
 import gunbc.guarantee_stall.self_host_spelling_search_stall { self_host_spelling_search_stall }
@@ -195,7 +194,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   mandatory_tag_live_corpus_stall,
   parse_ingest_grammar_relation_stall,
   required_regen_host_derivation_stall,
-  self_host_candidate_generation_add_slice_stall,
   self_host_hand_authorized_cargo_toml_stall,
   self_host_hand_authorized_driver_source_stall,
   self_host_spelling_search_stall,

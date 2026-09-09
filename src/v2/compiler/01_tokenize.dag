@@ -522,7 +522,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 tokens: Cons {
                   head: Token {
                     class: class,
-                    lexeme: lexeme,
+                    lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
                     file: acc.file,
                     start: acc.pos,
                     end: acc.pos + length(xs: lexeme)
@@ -559,7 +559,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 annotations: Cons {
                   head: UnboundSourceAnnotation {
                     annotation_class: class,
-                    lexeme: lexeme,
+                    lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
                     placement: placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
                     file: acc.file,
                     start: acc.pos,

@@ -24,6 +24,11 @@ data go_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Json",   target_type: "interface{}", grounding_type: "interface{}", default_expr: "nil",        is_copy: none, literal_suffix: none }
 ]
 
+// NO PointwisePower ROW — see extdeps.languages.rust.types (the note above
+// rust_algebra_inhabitants) for the full reasoning. PointwisePower is the open-support
+// characteristic-function carrier; a finite map[...]struct{} realizes FinitePowerSet, not it.
+// The fossil row's only live effect was the record-literal refusal panic, measured on the
+// emitted 00_compile closure's first native run (2026-09-07).
 data go_algebra_inhabitants: List<InhabitantDecl> = [
 
   { algebra: "FreeMonoid",
@@ -34,13 +39,6 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
     is_copy: none },
 
   { algebra: "FinitePowerSet",
-    template: "map[\{0\}]struct{}",
-    arity: 1,
-    identity_expr: "nil",
-    import_path: none,
-    is_copy: none },
-
-  { algebra: "PointwisePower",
     template: "map[\{0\}]struct{}",
     arity: 1,
     identity_expr: "nil",

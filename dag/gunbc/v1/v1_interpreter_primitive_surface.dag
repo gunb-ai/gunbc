@@ -194,11 +194,7 @@ fn shadowed_spellings(rows: List<InterpreterPrimitiveDispatchArm>) -> List<Strin
 }
 
 fn row_key(row: InterpreterPrimitiveDispatchArm) -> String {
-  row.dispatch_symbol
-    |> concat(":")
-    |> concat(row.arm.identity)
-    |> concat(":")
-    |> concat(row.authored_spelling)
+  concat(concat(concat(concat(row.dispatch_symbol, ":"), row.arm.identity), ":"), row.authored_spelling)
 }
 
 fn duplicate_row_keys(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
