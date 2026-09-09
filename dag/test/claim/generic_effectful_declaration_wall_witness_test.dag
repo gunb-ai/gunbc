@@ -2,7 +2,7 @@ module test.claim.generic_effectful_declaration_wall_witness_test
 
 import std.types { String, Bool, Int }
 import v2.std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 
 // ENROLLED EVIDENCE for the refusal that the `func` keyword cut made necessary, kept here rather
@@ -33,22 +33,65 @@ import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // the expected refusal from a malformed fixture or an unrelated earlier failure." Counting
 // ParseError says the wall fired, not merely that something did.
 //
-// COVERAGE BOUND, STATED BECAUSE IT IS NOT OBVIOUS FROM A GREEN. These arms cover the WALL. They
-// do NOT cover the sibling repair in the same change -- parse_fn_body_from_prefix threading
-// `prefix.uses` into the node it builds, which hardcoded `uses: []` while the `func` path bound
-// the row. That defect is invisible to every cheap oracle: a discarded effect row still PARSES
-// (measured: the .dag sweep reports 0 errors with the row dropped), and regen drift cannot see it
-// either because the stage0 mirrors project only the compiler's own modules, which declare no
-// `uses`. Its executing evidence today is the witness floor, which ran 3550 claims with
-// claims_failed=0 over a corpus carrying the effectful declarations. NEXT-RUNG TRIGGER: an
-// emit-level assertion that an effect row reaches the emitted signature, which needs a fixture
-// whose emitted text is read rather than substring-guessed -- four probe rounds against
-// compile_dag_rust_emit_check established that the resource NAME is not emitted and that its
-// include/exclude pair collapses to one Bool, so a control cannot say which half moved.
+// THE POSITIVE CONTROL CONSUMES THE RESOURCE IT DECLARES, AND THAT IS THE WHOLE REPAIR IT PROVES.
+// An earlier cut of this file declared `uses net: GewNet2` and never mentioned `net` in the body,
+// then asserted that the ParseError count was zero. Restoring the exact defect this change
+// repairs -- `parse_fn_body_from_prefix` building its node with a hardcoded `uses: []` while the
+// deleted `func` path bound `prefix.uses` -- would have passed that assertion unchanged, because a
+// DISCARDED effect row still parses. The witness was green over its own subject (review 5149145309).
+// The control now returns `net.id`, so the declared resource must be BOUND for the fixture to
+// compile: with the row threaded `net` resolves, and with the row dropped `net` is unbound and the
+// compile carries a blocking diagnostic. The mutation bar is therefore exact and is stated as a
+// bar rather than as a hope, and it was EXECUTED rather than argued -- three mutation rounds, each
+// with the other two arms standing as controls on the plant:
+//
+//   success node  `uses: prefix.uses` -> `uses: []`   =>  THIS ARM FAILS, the other two PASS.
+//   recovery node `uses: prefix.uses` -> `uses: []`   =>  ALL THREE PASS. NOT COVERED.
+//
+// SO THE BAR HOLDS FOR ONE NODE AND NOT THE OTHER, AND THE HALF THAT FAILS IS STATED RATHER THAN
+// AVERAGED AWAY. The recovery node is built with `body: none`, so no expression in it can reference
+// the declared resource and the row's presence has nothing observable to change; a compile census
+// cannot separate a threaded row from a dropped one there. Threading it is defensive consistency,
+// not a behaviour this file measures, and no fixture written against this harness can make it one.
+//
+// WHICH TREE THE MUTATION MUST BE MADE IN, because the first round was run in the wrong one and
+// passed. `compile_dag_diagnostic_census` is a HOST fold in cli_run, so the fixture is compiled by
+// the SEED BINARY -- not by src/v1/02_parse.dag under interpretation. Mutating the .dag authority
+// leaves this witness green until a regen installs it, which is the opposite of the rule that holds
+// for a claim witness whose subject it interprets. The mutation above is therefore made in
+// v1_compiler_parse.rs, and a future reader re-establishing this bar must go there too.
+//
+// AND THE CONTROL COUNTS EVERY BLOCKING CLASS, NOT ParseError ALONE. An unbound `net` is not a
+// parse failure -- it is refused later, under whatever class the resolver names -- so a control
+// scoped to ParseError would be blind to exactly the mutation this arm exists to catch. Counting
+// every blocking row is EXACT here and is not exact in general: gunbc.compile_diagnostic_census
+// records that a census carries the whole compile's rows, its imported closure included, so a
+// total over an IMPORTING fixture asserts a property of the corpus and is permanently false. These
+// three fixtures are standalone module sources that import nothing, so their closure is themselves
+// and the total is a statement about the fixture. The refusal arm stays class-scoped for the
+// opposite reason: it must say the WALL fired, not merely that something did.
+//
+// THE THIRD ARM IS THE REMOVED SPELLING. `func` is no longer a keyword, so a declaration head that
+// still spells it must be refused rather than quietly re-admitted, and nothing else in this change
+// asserts that -- the corpus sweep establishes that no `func` declaration REMAINS, which is a
+// different claim from the grammar REFUSING one. This arm is authorable exactly because a fixture
+// hands the compiler source it would never accept from the tree, which is what DESIGN section 4b
+// names as the boundary that decides whether a top-rung check has a writable RED.
+//
+// COVERAGE BOUND, STATED BECAUSE IT IS NOT OBVIOUS FROM A GREEN. These arms cover the parse-time
+// grammar and binding. They do NOT reach the EMITTED artifact: no arm here reads emitted text, so
+// an effect row that binds correctly and is then dropped on the way to a target signature is
+// invisible to this file. NEXT-RUNG TRIGGER: an emit-level assertion that an effect row reaches the
+// emitted signature, which needs a fixture whose emitted text is read rather than
+// substring-guessed -- four probe rounds against compile_dag_rust_emit_check established that the
+// resource NAME is not emitted and that its include/exclude pair collapses to one Bool, so a
+// control cannot say which half moved.
 
 data gew_generic_effectful_source: String = "module gew_wall_generic\n\ntype GewNet \{\n  id: Int\n}\n\nfn gew_generic_effectful<T>(x: T) -> T\n  uses net: GewNet\n\{\n  x\n}\n"
 
-data gew_plain_effectful_source: String = "module gew_wall_effectful\n\ntype GewNet2 \{\n  id: Int\n}\n\nfn gew_plain_effectful(x: String) -> String\n  uses net: GewNet2\n\{\n  x\n}\n"
+data gew_plain_effectful_source: String = "module gew_wall_effectful\n\ntype GewNet2 \{\n  id: Int\n}\n\nfn gew_plain_effectful(x: Int) -> Int\n  uses net: GewNet2\n\{\n  net.id\n}\n"
+
+data gew_legacy_func_source: String = "module gew_wall_legacy\n\nfunc gew_legacy() -> Int \{\n  1\n}\n"
 
 // NOT-RUNNABLE IS NOT ZERO: a census that could not run has observed nothing, and rendering that
 // as "no diagnostics of this class" would let a broken harness satisfy the == 0 control while
@@ -60,10 +103,26 @@ fn gew_blocking_count(source: String, wanted: String) -> Int {
   }
 }
 
+fn gew_total_blocking(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
 test fn a_generic_effectful_declaration_is_refused_at_parse() -> Bool {
   gew_blocking_count(source: gew_generic_effectful_source, wanted: "ParseError") == 1
 }
 
-test fn a_nongeneric_effectful_declaration_still_parses() -> Bool {
-  gew_blocking_count(source: gew_plain_effectful_source, wanted: "ParseError") == 0
+// THE ARM THAT GOES RED IF THE EFFECT ROW IS DISCARDED. `net.id` needs the `uses` binding, so a
+// zero here is a statement about the repair and not merely about the grammar.
+test fn an_effectful_declaration_binds_the_resource_it_declares() -> Bool {
+  gew_total_blocking(source: gew_plain_effectful_source) == 0
+}
+
+// GREATER THAN ZERO RATHER THAN AN EXACT COUNT, because a refused declaration head also orphans
+// whatever follows it and the cascade size is not the claim. What is claimed is that the removed
+// spelling is REFUSED: before the cut this same source compiled clean, so the arm discriminates.
+test fn the_removed_func_spelling_is_refused() -> Bool {
+  gew_blocking_count(source: gew_legacy_func_source, wanted: "ParseError") > 0
 }
