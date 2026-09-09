@@ -126,6 +126,27 @@ fn vllm_trim_fraction(text: String) -> String {
   }
 }
 
+// ── THE REQUEST AS AN IDENTITY TERM ───────────────────────────────────────────────────────────
+//
+// OMISSION GETS ITS OWN SPELLING, not an empty string and not a zero. This key is a component of an
+// execution profile's identity, and two launches that differ in whether they NAMED a fraction are
+// different launches even when the effective value turns out the same -- one owns the number and one
+// inherits whatever the image's revision defaults to. Rendering omission as `omitted` keeps that
+// distinction visible in the identity rather than collapsing it into a value nobody requested.
+fn vllm_memory_request_key(r: VllmMemoryRequest) -> String {
+  join([
+    match r.utilization {
+      Absent => "util:omitted"
+      Present { value: bp } => join(["util:", vllm_basis_point_fraction_wire(bp: bp)], "")
+    },
+    "/",
+    match r.kv_cache_bytes {
+      Absent => "kvbytes:omitted"
+      Present { value: b } => join(["kvbytes:", to_string(byte_size_count(b: b))], "")
+    },
+  ], "")
+}
+
 fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
   match r {
     PrefixCachingOmitted => []

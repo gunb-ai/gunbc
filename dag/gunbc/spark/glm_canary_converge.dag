@@ -17,6 +17,15 @@ import extdeps.vllm.runtime_defaults {
   resolve_vllm_memory_policy,
 }
 import extdeps.nvidia.management_library { gb10_torch_device_memory }
+import std.decl_ref { decl_ref }
+import gunbc.spark.serving_deployment_selection {
+  DeploymentCandidate, deployment_candidate, TopologyShape, topology_shape,
+  ServingDecisionParameters, serving_decision_parameters,
+  ServingExecutionProfile, execution_profile_of,
+  ExecutorProfile, ExecutorMpProfile, KvLayoutPolicy, KvFp8Layout,
+  SpeculativePolicy, SpeculationOff, SpeculationOn,
+  RuntimeRevision, runtime_revision, artifact_glm_53_flash_2bit,
+}
 import std.algebra { trim }
 import product.placement_supply { HostIdentity }
 import extdeps.zhipu.glm_5_3_flash {
@@ -379,6 +388,76 @@ fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
             glm_canary_speculation_argv(p: arm.speculation),
           )) }
       }
+  }
+}
+
+// ── THE CANARY'S OWN EXECUTION PROFILE, DERIVED FROM THE ARM ──────────────────────────────────
+//
+// THE NEAREST EXISTING PROFILE WAS A DIFFERENT SUBJECT AND IT ADMITTED ANYWAY. The memory-receipt
+// witness described this canary using `glm_native_tp1_x8` and `serving_parameters_current` -- the
+// NATIVE artifact with the shared production tuple: a 300K window, an explicit 82% utilization, 32
+// sequences and the Ray-executor DeepSeek runtime. The captured line it admitted came from the EXL3
+// 2.05-bpw single-Spark canary at a 262,144 window, both memory flags omitted, one sequence, and the
+// community image. Every axis differed and the receipt was admitted, because `profile` was a
+// parameter passed beside the launch rather than a fact joined to it.
+//
+// SO THE PROFILE IS DERIVED FROM `glm_canary_arm`, NOT AUTHORED BESIDE IT. Every term below reads an
+// arm field or a row the arm names, so an arm change moves the profile identity with it -- which is
+// what makes a stale receipt detectable instead of merely unlikely.
+fn glm_canary_candidate(arm: GlmCanaryArm) -> DeploymentCandidate {
+  deployment_candidate(
+    identity: decl_ref(module_path: "gunbc.spark.glm_canary_converge", decl_name: "glm_canary_arm"),
+    label: "GLM 5.3 Flash EXL3 2.05-bpw, single Spark, canary" as NonEmptyStr,
+    artifact: artifact_glm_53_flash_2bit,
+    topology: topology_shape(
+      tensor_parallel_degree: serving_topology_rank_count(t: arm.topology),
+      replica_count: 1),
+  )
+}
+
+// THE EXECUTOR IS `mp` BECAUSE THE LAUNCH NAMES NO BACKEND AND RUNS ON ONE HOST. The canary's argv
+// carries no --distributed-executor-backend, so it takes the single-node default rather than the Ray
+// backend the four-rank pair route requires. Recording Ray here would describe a cluster this arm
+// does not form.
+fn glm_canary_parameters(arm: GlmCanaryArm) -> ServingDecisionParameters? {
+  match serving_runtime_row(r: arm.runtime) {
+    Absent => none
+    Present { value: rrow } => Present { value: serving_decision_parameters(
+      max_model_len: arm.max_model_len,
+      memory_request: arm.memory_request,
+      max_num_batched_tokens: glm_canary_batched_token_count(p: arm.max_num_batched_tokens),
+      max_num_seqs: glm_canary_seq_bound(b: arm.max_num_seqs),
+      executor: ExecutorMpProfile,
+      kv_layout: KvFp8Layout,
+      speculative: glm_canary_speculative_policy(p: arm.speculation),
+      runtime: runtime_revision(
+        image: rrow.image_reference,
+        vllm_revision: (defaults_source_revision(r: rrow.claimed_defaults_revision)).full_revision),
+    ) }
+  }
+}
+
+// AN UNSPELLED BATCHED-TOKEN LIMIT HAS NO NUMBER TO PUT IN AN IDENTITY, so the arm that declines to
+// name one cannot produce a profile that claims a value. Today's arm names 2048 explicitly.
+fn glm_canary_batched_token_count(p: BatchedTokenPolicy) -> TokenCount {
+  match p {
+    EngineDefault => token_count(count: 0)
+    ExplicitBatchedTokenLimit { tokens: t, basis: _ } => t
+  }
+}
+
+fn glm_canary_speculative_policy(p: SpeculationPolicy) -> SpeculativePolicy {
+  match p {
+    SpeculationDisabled { basis: _ } => SpeculationOff
+    SpeculationMtp { draft_tokens: _, basis: _ } => SpeculationOn
+  }
+}
+
+fn glm_canary_execution_profile(arm: GlmCanaryArm) -> ServingExecutionProfile? {
+  match glm_canary_parameters(arm: arm) {
+    Absent => none
+    Present { value: params } =>
+      Present { value: execution_profile_of(c: glm_canary_candidate(arm: arm), p: params) }
   }
 }
 

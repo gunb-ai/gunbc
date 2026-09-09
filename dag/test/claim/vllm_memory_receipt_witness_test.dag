@@ -2,20 +2,24 @@ module test.claim.vllm_memory_receipt
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, EpochSecs }
-import std.measure { basis_point }
-import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, content_hash_of_value }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
-import gunbc.spark.serving_deployment_selection {
-  ServingExecutionProfile, execution_profile_of, glm_native_tp1_x8, serving_parameters_current,
-}
+import gunbc.spark.serving_deployment_selection { ServingExecutionProfile }
+import gunbc.spark.glm_canary_converge { glm_canary_arm, glm_canary_execution_profile }
 import gunbc.fleet_intent_network { operator_host_srv9 }
-import extdeps.vllm.server { vllm_source_revision }
-import extdeps.vllm.memory_profile { vllm_parse_memory_profile }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
+import extdeps.vllm.log_lines {
+  VllmStartupReading, vllm_startup_reading, MemoryProfileSummary, GpuKvCacheSize,
+}
 import gunbc.spark.vllm_memory_receipt {
   VllmMemoryReceiptAdmission, MemoryReceiptAdmitted, MemoryReceiptRefusedUnreadable,
   MemoryReceiptRefusedForeignLaunch, MemoryReceiptRefusedIncomparableLaunch,
-  admit_memory_receipt,
+  VllmMemoryProfileCapture, capture_memory_profile,
+  ProfiledServingOccurrence, ServingOccurrenceAdmission,
+  ServingOccurrenceAdmitted, ServingOccurrenceRefusedUnbound,
+  LaunchProfileBinding, LaunchRenderedFromProfile, LaunchProfileUnestablished,
+  admit_serving_occurrence, admit_memory_receipt,
 }
 
 data w_captured: String = "Free memory on device (114.93/121.69 GiB) on startup. Desired GPU memory utilization is (0.92, 111.95 GiB). Actual usage is 82.52 GiB for consumed memory (weights + non-torch), 7.42 GiB for peak activation, and 0.1 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=23372437156` (21.77 GiB) to fit into requested memory, or `--kv-cache-memory=26572776960` (24.75 GiB) to fully utilize gpu memory. Current kv cache memory in use is 22.02 GiB."
@@ -34,7 +38,7 @@ fn w_launch(invocation: String) -> VllmServingLaunch {
     container_id: "glm-canary" as NonEmptyStr,
     executable_digest: w_sha256(hex: w_digest_hex),
     unit_digest: w_sha256(hex: w_digest_hex),
-    started_at: 1788907506 as EpochSecs,
+    started_at: 1788907506,
   )
 }
 
@@ -42,29 +46,99 @@ fn w_launch(invocation: String) -> VllmServingLaunch {
 // build a `ServingExecutionProfile` directly, with a `parameters_digest` of "witness-fixture" -- a
 // digest denoting no parameters anyone could run. The compiler refused it: the type is
 // `sole_constructor` and its defining module says why in its own words, that no caller may describe a
-// profile no candidate expresses. A test fixture is a caller like any other, and the fix is to obey
-// the seal rather than to widen it with an `admit_callers` for the convenience of a witness.
+// profile no candidate expresses.
 //
-// SO THE SUBJECT IS A REAL ONE: the TP=1 GLM candidate and the current parameters row that already
-// exist in the selection authority. Nothing is minted here, which also means the digest this witness
-// compares against is the digest a real launch would carry.
-data w_profile: ServingExecutionProfile = execution_profile_of(c: glm_native_tp1_x8, p: serving_parameters_current)
+// AND THE PROFILE IT THEN BORROWED WAS STILL THE WRONG SUBJECT. It derived from `glm_native_tp1_x8`
+// and `serving_parameters_current` -- the NATIVE artifact with the shared production tuple: a 300K
+// window, an explicit 82% utilization, 32 sequences, the Ray executor and the DeepSeek runtime. The
+// line admitted below was captured from the EXL3 2.05-bpw single-Spark canary at 262,144 tokens with
+// both memory flags omitted, one sequence and the community image. Every axis differed and admission
+// succeeded, because `profile` was a parameter passed beside the launch rather than a fact joined to
+// it. The subject is now the canary's own profile, derived from the same arm the launch line is
+// rendered from.
+fn w_profile() -> ServingExecutionProfile? {
+  glm_canary_execution_profile(arm: glm_canary_arm)
+}
 
-fn w_admit(observed: String, claimed: String, text: String) -> VllmMemoryReceiptAdmission {
-  admit_memory_receipt(
-    profile: w_profile,
-    observed_on: w_launch(invocation: observed),
-    claimed_for: w_launch(invocation: claimed),
-    capture_digest: w_sha256(hex: w_digest_hex),
-    parse: vllm_parse_memory_profile(
-      captured_text: text,
-      requested_utilization: basis_point(count: 9200),
-      observed_at_revision: vllm_source_revision(
-        repository: "github.com/vllm-project/vllm" as NonEmptyStr,
-        full_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
-      ),
+data w_revision: VllmSourceRevision = vllm_source_revision(
+  repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+  full_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
+)
+
+// THE OBSERVER PRODUCES THE CAPTURE AND THE DIGEST IS NOT A PARAMETER. `capture_memory_profile`
+// hashes the bytes it is holding, so this witness cannot hand in a digest of something else -- which
+// is what it used to do, passing a fixed 0x44... sha256 beside text it never described.
+fn w_capture(invocation: String, text: String) -> VllmMemoryProfileCapture {
+  capture_memory_profile(
+    launch: w_launch(invocation: invocation),
+    startup_reading: vllm_startup_reading(
+      line: MemoryProfileSummary,
+      captured_text: text as NonEmptyStr,
+      observed_at_revision: w_revision,
     ),
   )
+}
+
+data w_rendered_line: NonEmptyStr = "serve /model --served-model-name glm-5.3-flash-exl3-canary" as NonEmptyStr
+
+fn w_occurrence(invocation: String, binding: LaunchProfileBinding) -> ProfiledServingOccurrence? {
+  match w_profile() {
+    Absent => none
+    Present { value: p } =>
+      match admit_serving_occurrence(profile: p, launch: w_launch(invocation: invocation), binding: binding) {
+        ServingOccurrenceAdmitted { occurrence: o } => Present { value: o }
+        ServingOccurrenceRefusedUnbound { cause: _ } => none
+      }
+  }
+}
+
+fn w_admit_opt(observed: String, claimed: String, text: String) -> VllmMemoryReceiptAdmission? {
+  match w_occurrence(invocation: observed, binding: LaunchRenderedFromProfile { rendered_line: w_rendered_line }) {
+    Absent => none
+    Present { value: o } => Present { value: admit_memory_receipt(occurrence: o, capture: w_capture(invocation: claimed, text: text)) }
+  }
+}
+
+fn w_is_admitted(observed: String, claimed: String, text: String) -> Bool {
+  match w_admit_opt(observed: observed, claimed: claimed, text: text) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        MemoryReceiptAdmitted { receipt: _ } => true
+        MemoryReceiptRefusedUnreadable { cause: _ } => false
+        MemoryReceiptRefusedForeignLaunch { observed: _, claimed: _ } => false
+        MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
+      }
+  }
+}
+
+// A HELPER THAT CLASSIFIES THE REFUSAL, so each test below names the arm it expects rather than
+// accepting any refusal at all. An Absent admission means the occurrence itself would not admit,
+// which is a distinct failure and never a pass.
+fn w_refused_foreign(observed: String, claimed: String, text: String) -> Bool {
+  match w_admit_opt(observed: observed, claimed: claimed, text: text) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        MemoryReceiptRefusedForeignLaunch { observed: o, claimed: c } => (o as String) == observed && (c as String) == claimed
+        MemoryReceiptAdmitted { receipt: _ } => false
+        MemoryReceiptRefusedUnreadable { cause: _ } => false
+        MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
+      }
+  }
+}
+
+fn w_refused_unreadable(observed: String, claimed: String, text: String) -> Bool {
+  match w_admit_opt(observed: observed, claimed: claimed, text: text) {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        MemoryReceiptRefusedUnreadable { cause: _ } => true
+        MemoryReceiptAdmitted { receipt: _ } => false
+        MemoryReceiptRefusedForeignLaunch { observed: _, claimed: _ } => false
+        MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
+      }
+  }
 }
 
 // ── THE ADMITTED CASE ──────────────────────────────────────────────────────────────────────────
@@ -72,12 +146,7 @@ fn w_admit(observed: String, claimed: String, text: String) -> VllmMemoryReceipt
 // One launch, a readable line: a receipt exists. Without this the refusals below are satisfied by a
 // function that refuses everything.
 test fn a_readable_line_observed_on_the_claimed_launch_is_admitted() -> Bool {
-  match w_admit(observed: "inv-A", claimed: "inv-A", text: w_captured) {
-    MemoryReceiptAdmitted { receipt: _ } => true
-    MemoryReceiptRefusedUnreadable { cause: _ } => false
-    MemoryReceiptRefusedForeignLaunch { observed: _, claimed: _ } => false
-    MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
-  }
+  w_is_admitted(observed: "inv-A", claimed: "inv-A", text: w_captured)
 }
 
 // ── THE WALL ───────────────────────────────────────────────────────────────────────────────────
@@ -88,13 +157,7 @@ test fn a_readable_line_observed_on_the_claimed_launch_is_admitted() -> Bool {
 // where the canary's container was replaced once already and every memory figure in this program
 // predates or postdates that boundary.
 test fn a_reading_observed_on_another_launch_is_refused() -> Bool {
-  match w_admit(observed: "inv-A", claimed: "inv-B", text: w_captured) {
-    MemoryReceiptRefusedForeignLaunch { observed: o, claimed: c } =>
-      (o as String) == "inv-A" && (c as String) == "inv-B"
-    MemoryReceiptAdmitted { receipt: _ } => false
-    MemoryReceiptRefusedUnreadable { cause: _ } => false
-    MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
-  }
+  w_refused_foreign(observed: "inv-A", claimed: "inv-B", text: w_captured)
 }
 
 // ── AN UNREADABLE LINE HAS NO POSITIVE ARM ─────────────────────────────────────────────────────
@@ -103,22 +166,55 @@ test fn a_reading_observed_on_another_launch_is_refused() -> Bool {
 // receipt is a parse that succeeded against the captured text -- which is what stops a person reading
 // figures off a log and calling the result evidence.
 test fn an_unreadable_line_on_the_right_launch_is_still_refused() -> Bool {
-  match w_admit(observed: "inv-A", claimed: "inv-A", text: "INFO 09-08 22:43:46 init engine took 110.84 s") {
-    MemoryReceiptRefusedUnreadable { cause: _ } => true
-    MemoryReceiptAdmitted { receipt: _ } => false
-    MemoryReceiptRefusedForeignLaunch { observed: _, claimed: _ } => false
-    MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
-  }
+  w_refused_unreadable(observed: "inv-A", claimed: "inv-A", text: "INFO 09-08 22:43:46 init engine took 110.84 s")
 }
 
 // BOTH FAILURES AT ONCE STILL REFUSE, and the launch check runs first because "this is about another
 // engine" is the more fundamental objection: a reading that survives parsing but describes the wrong
 // incarnation is more dangerous than one that never parsed, because it looks like evidence.
 test fn a_foreign_launch_with_an_unreadable_line_refuses_on_the_launch() -> Bool {
-  match w_admit(observed: "inv-A", claimed: "inv-B", text: "nothing resembling the line") {
-    MemoryReceiptRefusedForeignLaunch { observed: _, claimed: _ } => true
-    MemoryReceiptAdmitted { receipt: _ } => false
-    MemoryReceiptRefusedUnreadable { cause: _ } => false
-    MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
+  w_refused_foreign(observed: "inv-A", claimed: "inv-B", text: "nothing resembling the line")
+}
+
+// ── AN UNBOUND PROFILE PRODUCES NO OCCURRENCE, SO THERE IS NOTHING TO ADMIT ────────────────────
+//
+// THE COUNTEREXAMPLE THE OLD SHAPE COULD NOT EXPRESS. Previously `profile` was a parameter, so the
+// question "was this launch actually running that profile" had no place to be asked and no way to be
+// answered no. Now an occurrence exists only where the binding evidence does, and without one the
+// receipt has no first argument.
+test fn a_launch_whose_profile_is_unbound_yields_no_occurrence() -> Bool {
+  match w_occurrence(
+    invocation: "inv-A",
+    binding: LaunchProfileUnestablished { cause: "the running line was not read, so nothing says which profile this launch ran" as NonEmptyStr },
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── THE DIGEST DESCRIBES THE BYTES, BECAUSE NOBODY SUPPLIES IT ────────────────────────────────
+//
+// The capture hashes the text it holds. Two captures of the same bytes therefore agree, and a capture
+// of different bytes differs -- properties that were unavailable while the digest was a parameter
+// carrying a fixed 0x44... value beside text it never described.
+test fn a_captures_digest_is_the_digest_of_its_own_text() -> Bool {
+  (w_capture(invocation: "inv-A", text: w_captured)).capture_digest == content_hash_of_value(value: w_captured as NonEmptyStr)
+}
+
+test fn captures_of_different_text_carry_different_digests() -> Bool {
+  !((w_capture(invocation: "inv-A", text: w_captured)).capture_digest
+    == (w_capture(invocation: "inv-A", text: "a different line entirely")).capture_digest)
+}
+
+// ── THE PROFILE ON THE RECEIPT IS THE CANARY'S, NOT A NEIGHBOUR'S ─────────────────────────────
+//
+// THE FINDING THIS FILE EXISTS TO CLOSE. The witness previously admitted the canary's captured line
+// against the native GLM artifact and the shared production parameters. The profile now comes from
+// the canary arm, so this asserts the identity is the canary's own -- and it would go red the moment
+// somebody reintroduced a borrowed profile, which is exactly how the defect arrived.
+test fn the_receipt_carries_the_canarys_own_execution_profile() -> Bool {
+  match w_profile() {
+    Absent => false
+    Present { value: p } => (p.tensor_parallel_degree == 1) && !(p.parameters_digest == "witness-fixture")
   }
 }

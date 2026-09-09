@@ -1,14 +1,15 @@
 module gunbc.spark.vllm_memory_receipt
 
 import std.types { String, Bool, List, NonEmptyStr }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_of_value }
+import extdeps.vllm.log_lines { VllmStartupReading }
 import gunbc.spark.vllm_serving_launch {
   VllmServingLaunch, LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction, same_launch,
 }
 import gunbc.spark.serving_deployment_selection { ServingExecutionProfile }
 import extdeps.vllm.memory_profile {
   VllmMemoryProfileParse, VllmMemoryProfileParsed, VllmMemoryProfileUnreadable,
-  VllmMemoryProfileReading,
+  VllmMemoryProfileReading, vllm_parse_memory_profile,
 }
 
 // A PARSED READING IS NOT YET EVIDENCE ABOUT ANYTHING. extdeps.vllm.memory_profile turns a captured
@@ -26,6 +27,75 @@ import extdeps.vllm.memory_profile {
 // program has produced -- 22.02 GiB, the two recommendations, the 111.95 GiB envelope -- is a fact
 // about ONE incarnation, and the engine restarts often enough that the distinction is operational
 // rather than theoretical: this branch replaced the canary's container once already.
+// ── THE CAPTURE: A LAUNCH, THE BYTES READ FROM IT, AND A DIGEST NOBODY ASSERTS ────────────────
+//
+// FOUR THINGS ARRIVED INDEPENDENTLY AND ONLY ONE PAIR WAS CHECKED. `admit_memory_receipt` took a
+// profile, two launches, a digest and a parse as five separate arguments, and verified only that the
+// two launches matched -- which passing the same value twice satisfies. Nothing established that the
+// digest was the digest OF the captured text, that the parse was a parse OF those same bytes, or that
+// the profile was the profile that launch ran. Every one of those was a caller's assertion, and a
+// caller that assembles four agreeing arguments has proved nothing except that it can type.
+//
+// SO THE OBSERVER PRODUCES A CAPTURE AND THE DIGEST IS DERIVED FROM THE RETAINED BYTES. There is no
+// parameter for it: `capture_memory_profile` hashes the text it is holding, so a capture whose digest
+// does not describe its own bytes has no constructor. The reading travels WITH the launch it was read
+// from, and the parse happens inside admission from that same reading -- so the three cannot be about
+// different things.
+type VllmMemoryProfileCapture sole_constructor {
+  launch: VllmServingLaunch
+  startup_reading: VllmStartupReading
+  capture_digest: ContentHash
+}
+
+fn capture_memory_profile(launch: VllmServingLaunch, startup_reading: VllmStartupReading) -> VllmMemoryProfileCapture {
+  VllmMemoryProfileCapture {
+    launch: launch,
+    startup_reading: startup_reading,
+    capture_digest: content_hash_of_value(value: startup_reading.captured_text),
+  }
+}
+
+// ── THE OCCURRENCE: WHICH PROFILE A LAUNCH ACTUALLY RAN ───────────────────────────────────────
+//
+// A PROFILE IS JOINED TO A LAUNCH BY EVIDENCE, NOT BY ADJACENCY. The evidence this fleet already
+// produces is the canary's serve-line agreement: the converge root renders the arm's launch line and
+// compares it to the line the running container was started with, and `ServeAgreed` means they are
+// identical. That is exactly the statement "this launch ran this profile", because the profile is
+// derived from the same arm the line was rendered from.
+//
+// THE EVIDENCE ARRIVES AS A TYPED VALUE RATHER THAN A BOOL, so a caller cannot pass `true`. And this
+// module does not import the canary: the converge root maps its own agreement into this vocabulary,
+// which keeps the dependency pointing from the deployment toward the receipt rather than back.
+type LaunchProfileBinding
+  = LaunchRenderedFromProfile { rendered_line: NonEmptyStr }
+  | LaunchProfileUnestablished { cause: NonEmptyStr }
+
+type ProfiledServingOccurrence sole_constructor {
+  profile: ServingExecutionProfile
+  launch: VllmServingLaunch
+  rendered_line: NonEmptyStr
+}
+
+type ServingOccurrenceAdmission
+  = ServingOccurrenceAdmitted { occurrence: ProfiledServingOccurrence }
+  | ServingOccurrenceRefusedUnbound { cause: NonEmptyStr }
+
+fn admit_serving_occurrence(
+  profile: ServingExecutionProfile,
+  launch: VllmServingLaunch,
+  binding: LaunchProfileBinding,
+) -> ServingOccurrenceAdmission {
+  match binding {
+    LaunchProfileUnestablished { cause: c } => ServingOccurrenceRefusedUnbound { cause: c }
+    LaunchRenderedFromProfile { rendered_line: line } =>
+      ServingOccurrenceAdmitted { occurrence: ProfiledServingOccurrence {
+        profile: profile,
+        launch: launch,
+        rendered_line: line,
+      } }
+  }
+}
+
 type VllmMemoryProfileReceipt sole_constructor {
   profile: ServingExecutionProfile
   launch: VllmServingLaunch
@@ -47,20 +117,25 @@ type VllmMemoryReceiptAdmission
 // the launch it intends the receipt to describe, and this refuses when they are not the same
 // incarnation. That is the whole wall: it is trivially satisfiable by an honest caller and
 // unsatisfiable by one attributing an old capture to a new engine.
+// TWO ARGUMENTS, AND EACH IS ALREADY A JOIN. The occurrence carries a profile bound to a launch by
+// evidence; the capture carries bytes bound to a launch with a digest derived from them. The only
+// thing left for admission to check is that the two speak about the SAME launch -- and because each
+// side arrived joined, that single check is now sufficient rather than one of four that were never
+// made.
 fn admit_memory_receipt(
-  profile: ServingExecutionProfile,
-  observed_on: VllmServingLaunch,
-  claimed_for: VllmServingLaunch,
-  capture_digest: ContentHash,
-  parse: VllmMemoryProfileParse,
+  occurrence: ProfiledServingOccurrence,
+  capture: VllmMemoryProfileCapture,
 ) -> VllmMemoryReceiptAdmission {
-  match same_launch(a: observed_on, b: claimed_for) {
+  match same_launch(a: occurrence.launch, b: capture.launch) {
     DifferentLaunch { left: l, right: r } =>
       MemoryReceiptRefusedForeignLaunch { observed: l, claimed: r }
     LaunchContradiction { invocation: i, field: f } =>
       MemoryReceiptRefusedIncomparableLaunch { invocation: i, field: f }
     SameLaunch => admit_memory_receipt_for_launch(
-      profile: profile, launch: observed_on, capture_digest: capture_digest, parse: parse)
+      profile: occurrence.profile,
+      launch: capture.launch,
+      capture_digest: capture.capture_digest,
+      parse: vllm_parse_memory_profile(reading: capture.startup_reading))
   }
 }
 
