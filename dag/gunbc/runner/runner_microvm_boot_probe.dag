@@ -36,6 +36,9 @@ import gunbc.command_runner {
 
 data runner_microvm_boot_probe_disposition: Disposition = SingleAuthority
 
+// A GREEN GUEST BOOT PROBE IS NOT HOST-IMAGE PLACEABILITY. It runs a copied guest rootfs from a
+// checkout-built artifact, not a gunbc binary carried in the host image on tmpfs at host boot.
+
 // THE BOOT IS THE MEASUREMENT THE GUEST IMAGE MODULE PROMISED, AND IT IS THE ONLY THING THAT CAN
 // SETTLE IT. gunbc.runner_guest_image builds a root filesystem WITHOUT ROOT, and states in full what
 // that costs: an unprivileged extraction restores no ownership, no setuid bits and no device nodes.
