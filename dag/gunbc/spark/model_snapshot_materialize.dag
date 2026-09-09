@@ -22,7 +22,7 @@ import gunbc.artifact_acquisition {
   SourceLocator, SourceArgv, SourceUrl,
 }
 import gunbc.spark.model_snapshot_acquisition {
-  ModelSnapshotDesired, ModelSnapshotRole,
+  ModelSnapshotDesired, ModelSnapshotRole, SnapshotSeed, SnapshotReplicaOf,
   model_snapshot_subject_for, model_snapshot_completion_check_argv, spark_hub_cache_root,
 }
 
@@ -673,11 +673,50 @@ fn spark_snapshot_handler(ctx: SparkMaterializeContext, verify: List<String>) ->
 type SparkMaterializeOutcome
   = SparkMaterialized { host: HostIdentity, outcome: AcquisitionOutcome }
   | SparkMaterializeUnpinned { host: HostIdentity }
+  | SparkMaterializeRefused { host: HostIdentity, cause: NonEmptyStr }
 
 // MATERIALIZE ONE MEMBER. An unpinned snapshot yields no subject and therefore no attempt, which is
 // a different state from an attempt that failed -- the caller must not read it as either success or
 // transport failure.
+// RAIL REPLICATION REFUSES RATHER THAN EXECUTING THROUGH THE WRONG EXECUTOR. A replica's source is an
+// `rsync` that must run HOST-NATIVE; the seed's is an `hf` invocation that must run INSIDE the runtime
+// container, because no Spark has the Hub CLI on its host. This module carries ONE executor per
+// context and applies it to every source, so a replica role would have had its rsync rewritten through
+// `docker run --entrypoint sh <image>` and its paths translated across a mount boundary that does not
+// apply to it.
+//
+// NOTHING WOULD HAVE REFUSED. The command would have run, failed for a reason unrelated to the bytes,
+// and the fold would have read it as this source failing -- which is how three separate receipts came
+// to report a perfectly good checkpoint as unverified earlier on this branch, each for a different
+// executor-shaped reason. A fourth is not worth discovering in production.
+//
+// THE SEED PATH IS EXECUTED AND THIS ONE IS NOT. Local-directory seed acquisition has adopted an
+// 85 GB checkpoint against a live host and produced receipts; rail replication has never run. The
+// honest standing is that this transport is unbuilt, and a typed refusal says so at the one place a
+// caller could otherwise assume it worked.
+//
+// DISSOLVE-ON: the source carries its own execution locus -- containerised for Hub, host-native for
+// rail -- so `spark_snapshot_handler` stops applying one executor to every source. That is the source
+// -specific execution split; until it lands, this arm is the wall.
 fn spark_materialize_member(
+  ctx: SparkMaterializeContext,
+  role: ModelSnapshotRole,
+  snapshot: ModelSnapshotDesired,
+) -> SparkMaterializeOutcome {
+  match role {
+    SnapshotReplicaOf { peer_rail_address: peer } =>
+      SparkMaterializeRefused {
+        host: ctx.host,
+        cause: join([
+          "rail replication from ", render_ipv4_address(addr: peer) as String,
+          " is not realised: its rsync must run host-native while this context applies the containerised Hub executor to every source, so the transfer would be rewritten through the runtime image and its paths translated across a mount that does not apply. The seed path is executed; this one is unbuilt",
+        ], "") as NonEmptyStr,
+      }
+    SnapshotSeed => spark_materialize_seed(ctx: ctx, role: role, snapshot: snapshot)
+  }
+}
+
+fn spark_materialize_seed(
   ctx: SparkMaterializeContext,
   role: ModelSnapshotRole,
   snapshot: ModelSnapshotDesired,

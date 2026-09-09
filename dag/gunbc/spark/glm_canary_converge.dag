@@ -24,6 +24,7 @@ import gunbc.spark.model_snapshot_acquisition {
 }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkMaterializeOutcome, SparkMaterialized, SparkMaterializeUnpinned,
+  SparkMaterializeRefused,
   SnapshotAcquisitionExecutor, ContainerizedCli,
   spark_materialize_member,
   SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
@@ -185,6 +186,8 @@ fn glm_canary_converge(ctx: SparkMaterializeContext) -> GlmCanaryConvergence {
         Absent => CanaryMaterializeRefused { cause: "the canary arm's checkpoint has no modelled row, so no snapshot subject exists to acquire" as NonEmptyStr }
         Present { value: snapshot } =>
           match spark_materialize_member(ctx: ctx, role: SnapshotSeed, snapshot: snapshot) {
+            SparkMaterializeRefused { host: _, cause: c } =>
+              CanaryMaterializeRefused { cause: c }
             SparkMaterializeUnpinned { host: _ } =>
               CanaryMaterializeRefused { cause: "the canary snapshot carries no pinned revision" as NonEmptyStr }
             SparkMaterialized { host: _, outcome: o } =>
