@@ -67,7 +67,14 @@ import gunbc.runner_microvm {
 }
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
 import std.measure { hardware_thread_count_value, hardware_thread_count, byte_size, gibibyte_to_byte_size }
-import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot, CoresPerSlotResolved, CoresPerSlotUnresolved, gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_cores_per_slot,
+  CoresPerSlotResolved,
+  CoresPerSlotUnresolved,
+  gunbc_runner_slot_desired,
+  CpuQuotaResolved,
+  CpuQuotaRefused,
+}
 
 
 // THE srv4 MVP CONFIGURATION, RETAINED AS THE ENVELOPE WALL'S RED INPUT.
@@ -564,16 +571,21 @@ test fn the_production_reserve_is_the_declared_allowance() -> Bool {
 //
 // It judges MODEL admission -- whether such a row is one this repository would accept -- and boots
 // nothing; no Firecracker process is involved at any step.
-test fn the_production_reserve_lets_the_declared_configuration_reach_admission_under_authored_topology() -> Bool {
+// PRODUCTION SIZING WITHDRAWS THE DECLARED CONFIGURATION NOW THAT THE CELL GRANTS AN ABSOLUTE
+// ENTITLEMENT. This previously asserted that the fleet's declared VM reached admission. That wall
+// landed: Absolute is inhabited, so gunbc_runner_microvm_vm_config is Unresolved and names the
+// repair. Per DESIGN 4b(4) the expecting-green probe flips rather than retiring.
+test fn the_production_vm_config_refuses_while_topology_is_still_the_stale_declaration() -> Bool {
   match gunbc_runner_microvm_vm_config(
     rootfs_path: "/var/lib/gunbc/cell/rootfs.ext4",
     jit_config_path: "/var/lib/gunbc/cell/jitcfg.ext4",
     kernel_path: "/var/lib/gunbc/cell/vmlinux",
     net: GuestNetworkAbsent { cause: "this control judges admission, not the per-slot tap" },
   ) {
-    MicroVmConfigUnresolved { cause: _ } => false
-    MicroVmConfigResolved { config: c } =>
-      admission_is_admitted(a: gunbc_runner_microvm_admission(topology: VmmIsMainProcess, config: c))
+    MicroVmConfigResolved { config: _ } => false
+    MicroVmConfigUnresolved { cause: c } =>
+      cause_mentions(cause: c, needle: "derivable")
+        && cause_mentions(cause: c, needle: "stale")
   }
 }
 
@@ -589,13 +601,18 @@ test fn the_declared_guest_plus_allowance_sits_under_the_cell_throttle() -> Bool
   guest + allowance <= byte_size_count(b: gunbc_runner_slot_desired().memory_high)
 }
 
-// THE CELL GRANTS NO ABSOLUTE CPU ENTITLEMENT, AND THE CAUSE SAYS WHICH DIRECTIVE IT DOES CARRY.
-// If this ever resolves to CpuEntitlementAbsolute the sizing may derive a vCPU count, and this
-// witness is what makes that transition visible rather than silent.
-test fn the_cell_grants_no_absolute_cpu_entitlement() -> Bool {
-  match gunbc_runner_microvm_cell_cpu_entitlement() {
-    CpuEntitlementAbsolute { threads: _ } => false
-    CpuEntitlementRelativeOnly { cause: c } => cause_mentions(cause: c, needle: "CPUWeight")
+// THE CELL GRANTS AN ABSOLUTE CPU ENTITLEMENT WHEN THE SLOT SURVEY RESOLVES, AND THAT IS THE SAME
+// THREAD COUNT AS gunbc_runner_slot_desired().cpu_quota. If this ever falls back to RelativeOnly
+// while the survey is Resolved, the slice quota and the guest-sizing entitlement have forked.
+test fn the_cell_grants_the_surveyed_absolute_cpu_entitlement() -> Bool {
+  match gunbc_runner_slot_desired().cpu_quota {
+    CpuQuotaRefused { cause: _ } => false
+    CpuQuotaResolved { threads: want } =>
+      match gunbc_runner_microvm_cell_cpu_entitlement() {
+        CpuEntitlementRelativeOnly { cause: _ } => false
+        CpuEntitlementAbsolute { threads: got } =>
+          hardware_thread_count_value(t: want) == hardware_thread_count_value(t: got)
+      }
   }
 }
 
@@ -635,9 +652,12 @@ test fn the_cell_grants_no_absolute_cpu_entitlement() -> Bool {
 
 // THE POSITIVE CONTROL FOR THE DECLARED SIZE: while the cell grants only a relative CPU share --
 // which is the fact that FORCED the declaration -- the decision resolves, and it resolves to the
-// declared row rather than to some derived approximation of it.
+// declared row rather than to some derived approximation of it. Driven with a fixture RelativeOnly
+// so production Absolute does not make this row permanently red.
 test fn a_relative_only_entitlement_resolves_to_the_declared_size() -> Bool {
-  match runner_microvm_size_decision(cpu: gunbc_runner_microvm_cell_cpu_entitlement()) {
+  match runner_microvm_size_decision(
+    cpu: CpuEntitlementRelativeOnly { cause: "fixture: relative share only" },
+  ) {
     MicroVmSizeUnresolved { cause: _ } => false
     MicroVmSized { size: sz } =>
       hardware_thread_count_value(t: sz.vcpu_count)
@@ -679,11 +699,8 @@ test fn a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does() -> 
     && count(mvp_sized_config().network_interfaces) == 1
 }
 
-// THE CORE COUNT RESOLVES AND IS STILL NOT ENOUGH, WHICH IS THE POINT. An earlier revision of this
-// block claimed the vCPU axis was unblocked because the core count resolves. That was wrong: a
-// resolved core count is a fact about the HOST SURVEY, and what a guest vCPU count would have to be
-// derived from is an ABSOLUTE CELL ENTITLEMENT, which the cell does not grant. This witness keeps
-// the survey fact true so the refusal above cannot be misread as "the survey failed".
+// THE CORE COUNT RESOLVES AND THE CELL NOW GRANTS THAT COUNT AS AN ABSOLUTE ENTITLEMENT. This
+// witness keeps the survey fact true so a sizing refusal cannot be misread as "the survey failed".
 test fn the_cell_core_count_still_resolves() -> Bool {
   match gunbc_runner_cores_per_slot() {
     CoresPerSlotUnresolved { cause: _ } => false
