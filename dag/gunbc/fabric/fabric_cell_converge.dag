@@ -6,6 +6,10 @@ import std.disposition { Disposition, SingleAuthority }
 import std.string_type { string_is_lexicographically_before }
 import v2.std.optional { Optional, Present, Absent }
 import std.measure { byte_size_count }
+import extdeps.systemd {
+  systemd_cpu_quota_per_sec_of_threads,
+  systemd_cpu_quota_per_sec_magnitude_identity,
+}
 import product.placement_supply { HostIdentity }
 import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
@@ -14,6 +18,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
   gunbc_runner_slot_desired,
+  RunnerSlotCpuQuota, CpuQuotaResolved, CpuQuotaRefused,
   runner_slot_membership,
   CommittedSlotMember,
   SlotOutsideCommittedPopulation,
@@ -199,14 +204,30 @@ fn fabric_cell_member_ownership(member: FabricCellMember) -> Optional<Ownership>
 // address instead of drifting silently. The digest is over the values the boundary will carry.
 fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
   let desired = gunbc_runner_slot_desired()
-  fabric_cell_boundary_state_digest_of(
-    memory_max: to_string(byte_size_count(b: desired.memory_max)),
-    memory_high: to_string(byte_size_count(b: desired.memory_high)),
-    memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
-    tasks_max: to_string(desired.tasks_max),
-    cpu_weight: to_string(desired.cpu_weight),
-  )
+  match desired.cpu_quota {
+    CpuQuotaRefused { cause: c } =>
+      join(["cpu_quota_survey_refused=", c], "") as NonEmptyStr
+    CpuQuotaResolved { threads: t } =>
+      fabric_cell_boundary_state_digest_of(
+        memory_max: to_string(byte_size_count(b: desired.memory_max)),
+        memory_high: to_string(byte_size_count(b: desired.memory_high)),
+        memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+        tasks_max: to_string(desired.tasks_max),
+        cpu_weight: to_string(desired.cpu_weight),
+        cpu_quota_per_sec: systemd_cpu_quota_per_sec_magnitude_identity(
+          usec: systemd_cpu_quota_per_sec_of_threads(threads: t),
+        ),
+      )
+  }
 }
+
+// THE QUOTA MEMBER IS THE MAGNITUDE IDENTITY OF systemd_cpu_quota_per_sec_of_threads, NOT A SECOND
+// RENDERER AND NOT A SENTINEL. Desired authors a thread count; observed reads CPUQuotaPerSecUSec as
+// a formatted span, parses it, and supplies the same identity. A six-thread cell and a host that
+// printed `6s` compare equal as 6000000 microseconds. A refused survey has no magnitude and is not
+// stuffed into this field: fabric_cell_resource_boundary_state_digest names the refusal on its own
+// arm, and fabric_cell_address_standing_for_quota blocks every disposition so reconcile cannot
+// treat that string as drift-to-repair.
 
 // THE SPELLING IS A FUNCTION, BECAUSE THE OBSERVED SIDE HAS TO PRODUCE THE SAME ONE. The desired
 // digest above is compared against a digest an OBSERVER builds out of what a host reported, and if
@@ -222,12 +243,17 @@ fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
 // round-trip the comparison does not need and would have to decide what `infinity` means as a
 // number -- so the digest compares the RENDERED values, and the desired side renders its
 // magnitudes through the same authority it always did.
+// CPUQuotaPerSecUSec is the exception this sixth member exists for: systemd prints a time span,
+// so the observed caller first parses it and then supplies the identity string, never the raw
+// show text -- otherwise `6s` and `6000000` would be two spellings of one ceiling and every
+// unchanged cell would read as drifted.
 fn fabric_cell_boundary_state_digest_of(
   memory_max: String,
   memory_high: String,
   memory_swap_max: String,
   tasks_max: String,
   cpu_weight: String,
+  cpu_quota_per_sec: String,
 ) -> NonEmptyStr {
   join([
     "memory_max=", memory_max,
@@ -235,6 +261,7 @@ fn fabric_cell_boundary_state_digest_of(
     ";memory_swap_max=", memory_swap_max,
     ";tasks_max=", tasks_max,
     ";cpu_weight=", cpu_weight,
+    ";cpu_quota_per_sec=", cpu_quota_per_sec,
   ], "") as NonEmptyStr
 }
 
@@ -647,22 +674,54 @@ type FabricCellAddressStanding
   | StandingExplicitlyAbsent { ref: FabricCellAddressRef }
   | StandingBlocked { disposition: FabricCellAddressDisposition }
 
+fn fabric_cell_address_disposition_ref(d: FabricCellAddressDisposition) -> FabricCellAddressRef {
+  match d {
+    AddressPresent { ref: r, member: _ } => r
+    AddressMissingOnHost { ref: r } => r
+    AddressUnobserved { ref: r } => r
+    AddressContradicted { ref: r } => r
+    AddressUnreadable { ref: r, cause: _ } => r
+  }
+}
+
+fn fabric_cell_address_standing_for_quota(
+  slot: RunnerSlotIdentity,
+  d: FabricCellAddressDisposition,
+  quota: RunnerSlotCpuQuota,
+) -> FabricCellAddressStanding {
+  match quota {
+    CpuQuotaRefused { cause: c } =>
+      StandingBlocked {
+        disposition: AddressUnreadable {
+          ref: fabric_cell_address_disposition_ref(d: d),
+          cause: join(["desired CPU quota refused: ", c], ""),
+        },
+      }
+    CpuQuotaResolved { threads: _ } =>
+      match d {
+        AddressUnreadable { ref: _, cause: _ } => StandingBlocked { disposition: d }
+        AddressContradicted { ref: _ } => StandingBlocked { disposition: d }
+        AddressMissingOnHost { ref: r } => StandingExplicitlyAbsent { ref: r }
+        AddressUnobserved { ref: _ } => StandingBlocked { disposition: d }
+        AddressPresent { ref: r, member: m } =>
+          if (m.state_digest as String) == (fabric_cell_desired_state_digest(slot: r.slot, address: r.address) as String) {
+            StandingSatisfied { ref: r }
+          } else {
+            StandingObservedDrift { ref: r, observed_state_digest: m.state_digest }
+          }
+      }
+  }
+}
+
 fn fabric_cell_address_standing(
   slot: RunnerSlotIdentity,
   d: FabricCellAddressDisposition,
 ) -> FabricCellAddressStanding {
-  match d {
-    AddressUnreadable { ref: _, cause: _ } => StandingBlocked { disposition: d }
-    AddressContradicted { ref: _ } => StandingBlocked { disposition: d }
-    AddressMissingOnHost { ref: r } => StandingExplicitlyAbsent { ref: r }
-    AddressUnobserved { ref: _ } => StandingBlocked { disposition: d }
-    AddressPresent { ref: r, member: m } =>
-      if (m.state_digest as String) == (fabric_cell_desired_state_digest(slot: r.slot, address: r.address) as String) {
-        StandingSatisfied { ref: r }
-      } else {
-        StandingObservedDrift { ref: r, observed_state_digest: m.state_digest }
-      }
-  }
+  fabric_cell_address_standing_for_quota(
+    slot: slot,
+    d: d,
+    quota: gunbc_runner_slot_desired().cpu_quota,
+  )
 }
 
 fn fabric_cell_address_standings(

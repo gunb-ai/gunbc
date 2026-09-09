@@ -67,6 +67,7 @@ import gunbc.fabric_cell_effect {
   CellRosterDuplicateKey,
   CellChangeNotYetRealizable,
   CellTeardownNotYetRealizable,
+  CellCpuQuotaSurveyRefused,
   CellPlanRealizable,
   CellPlanRefused,
   FabricCellEffect,
@@ -1009,6 +1010,8 @@ fn fabric_cell_realization_refusal_line(refusal: FabricCellRealizationRefusal) -
       concat("fabric-cell ", concat(w, " change realization undeclared: no staged intermediates (gunbc.change_realization)"))
     CellTeardownNotYetRealizable { address_wire: w } =>
       concat("fabric-cell ", concat(w, " teardown unmodeled: destructive effect over possibly-live attempt state"))
+    CellCpuQuotaSurveyRefused { address_wire: w, cause: c } =>
+      join(["fabric-cell ", w, " CPU quota survey refused: ", c], "")
   }
 }
 
