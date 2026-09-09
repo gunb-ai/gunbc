@@ -64,9 +64,9 @@ data colocation_america_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // an operator whose pages I failed to reach are different facts, and only one of them is about the
 // operator.
 data colocation_america_cabinet_density: CabinetDensityClaim = DensityUnread {
-  obligation: "colocationamerica.com refused a direct fetch of its New Jersey locations page with HTTP 403 on 2026-09-08, so no operator page has been read this pass and no per-cabinet kW figure exists for NJDC1 Clifton or NJDC2 Secaucus. Resolve by a route the operator's edge admits, or by quote.",
+  obligation: "THE PAGES WERE READ AND THEY PUBLISH NO DENSITY, which is a stronger and different fact from the refusal this obligation used to assert. The operator's New Jersey page and its locations index were fetched 2026-09-09 with an ordinary browser user-agent (HTTP 200, 178 KB) and read from raw bytes after tag-stripping; no per-cabinet kW figure appears for the one New Jersey site those pages name, 100 Delawanna Avenue in Clifton. The earlier 403 was this reader's client, not the operator's edge, so 'resolve by a route the operator's edge admits' was discharged by fixing the fetch and is withdrawn as an obligation. What remains to be read is a quote: ask what a cabinet at Clifton may draw. NJDC2 Secaucus is deliberately not named here - the operator's own pages do not claim that site at all, and the registry disagreement is recorded in the annotation above rather than carried as a density obligation for a facility this census does not model.",
 }
 
 data colocation_america_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "Same 403: no minimum-footprint wording has been read from the operator's own surface on 2026-09-08.",
+  obligation: "Read, not refused: the operator's New Jersey page and locations index were fetched 2026-09-09 with an ordinary browser user-agent (HTTP 200, 178 KB) and state no minimum footprint for the Clifton site. The 2026-08-18 pass recorded granularity as published without a wording, and no minimum-footprint sentence appears in the bytes read on 2026-09-09 either, so the grain stays unread against the operator's own surface rather than against a refusal. Resolve by asking the quote whether a single cabinet, or a fraction of one, is contractable at 100 Delawanna Avenue.",
 }

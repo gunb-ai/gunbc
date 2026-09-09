@@ -15,7 +15,6 @@ import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_density }
 import extdeps.colo.interserver { interserver_secaucus, interserver_teb4_secaucus, interserver_cabinet_density }
 import extdeps.colo.halsey_165 { halsey_165_newark, halsey_165_cabinet_density }
 import extdeps.colo.databank { databank_ewr1_newark, databank_ewr1_density }
-import extdeps.colo.colocation_america { colocation_america_cabinet_density }
 import extdeps.colo.lumen { lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken, lumen_cabinet_density }
 import v2.std.optional { Optional, Present, Absent }
 
@@ -178,6 +177,14 @@ fn coverage_density_read_count(c: RegionCoverage) -> Int? {
 // digital_realty_ewr20 in Clifton, three_sixty_five_bridgewater, h5_philadelphia,
 // colocation_america_njdc1, databank_lga4_orangeburg - are deliberately absent: this row is a
 // region, not an operator inventory.
+//
+// AND THE SAME RULE NOW BINDS THE DENSITY ROSTER, WHICH IT DID NOT. colocation_america's density
+// claim sat in the densities list while that operator had NO facility in the list beside it - and
+// deliberately so, since its one New Jersey site is in Clifton, outside this corridor. A density is
+// a claim ABOUT a facility, so a density whose facility this region does not model is an orphan: it
+// cannot be joined to anything here, and it made the two lists disagree about which operators the
+// region contains. Removed. The row itself stands in extdeps.colo.colocation_america, where the
+// out-of-corridor site it describes lives, exactly as colocation_america_njdc1 does.
 data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
   region_label: "NJ Hudson-Bergen-Essex corridor",
   region_code: "NJ",
@@ -212,7 +219,6 @@ data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
       interserver_cabinet_density,
       halsey_165_cabinet_density,
       databank_ewr1_density,
-      colocation_america_cabinet_density,
       lumen_cabinet_density,
     ],
   },
