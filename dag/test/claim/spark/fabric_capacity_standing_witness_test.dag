@@ -2,7 +2,7 @@ module test.claim.spark.fabric_capacity_standing_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
-import std.measure { concurrent_request_hundredths_count }
+import std.measure { concurrent_request_hundredths_count, token_count, token_count_value }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
 import extdeps.vllm.log_lines { vllm_startup_line_prefix, GpuKvCacheSize, MaximumConcurrency }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_log_path, spark_pair_head_unit_name }
@@ -68,8 +68,19 @@ test fn an_unobserved_revision_refuses_rather_than_stamping_the_modelled_constan
   match w_fields() {
     ProbeUnreadable { detail: _ } => false
     ProbeFields { fields: f } =>
-      match readings_from_fields(f: f, observed_revision: none) {
+      match readings_from_fields(f: f, observed_revision: none, observed_hash_block_size: none) {
         ProbeReadingsRefused { cause: c } => string_contains(s: c as String, pattern: "did not observe the engine's vLLM source revision")
+        ProbeReadingsReady { pool: _, reported: _, layout: _ } => false
+      }
+  }
+}
+
+test fn a_supplied_revision_without_hash_block_size_refuses_rather_than_copying_the_scheduler_size() -> Bool {
+  match w_fields() {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match readings_from_fields(f: f, observed_revision: Present { value: w_foreign_revision() }, observed_hash_block_size: none) {
+        ProbeReadingsRefused { cause: c } => string_contains(s: c as String, pattern: "did not observe hash_block_size")
         ProbeReadingsReady { pool: _, reported: _, layout: _ } => false
       }
   }
@@ -79,7 +90,11 @@ test fn a_supplied_revision_is_the_one_the_readings_carry() -> Bool {
   match w_fields() {
     ProbeUnreadable { detail: _ } => false
     ProbeFields { fields: f } =>
-      match readings_from_fields(f: f, observed_revision: Present { value: w_foreign_revision() }) {
+      match readings_from_fields(
+        f: f,
+        observed_revision: Present { value: w_foreign_revision() },
+        observed_hash_block_size: Present { value: token_count(count: 32) },
+      ) {
         ProbeReadingsRefused { cause: _ } => false
         ProbeReadingsReady { pool: pool, reported: reported, layout: layout } =>
           (pool.observed_at_revision.full_revision as String) == "0000000000000000000000000000000000000000"
@@ -88,7 +103,16 @@ test fn a_supplied_revision_is_the_one_the_readings_carry() -> Bool {
             && (pool.observed_at_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String)
             && (pool.captured_line as String) == "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens"
             && concurrent_request_hundredths_count(c: reported.max_concurrency) == 1122
+            && token_count_value(t: layout.scheduler_block_size) == 16
+            && token_count_value(t: layout.hash_block_size) == 32
       }
+  }
+}
+
+test fn extra_probe_lines_refuse_rather_than_shifting_later_slots() -> Bool {
+  match decode_probe(stdout: join([w_lines(running: "0", waiting: "0"), "\nextra"], "")) {
+    ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "not the ")
+    ProbeFields { fields: _ } => false
   }
 }
 

@@ -37,8 +37,9 @@ import gunbc.spark.pair_serving_capacity_floor {
 //     --entry dag/gunbc/instruments/fabric_capacity_standing.dag --function fabric_capacity_standing
 //
 // WHAT IT IS FOR. The expected answer today is that capacity is refused on every group, because
-// the probe does not observe a vLLM source revision and will not stamp the modelled one, and because
-// even a supplied revision would find empty groups. That is the point rather than a disappointment:
+// the probe does not observe a vLLM source revision and will not stamp the modelled one, because it
+// does not observe hash_block_size and will not stamp the scheduler block_size onto that field, and
+// because even those two supplied would find empty groups. That is the point rather than a disappointment:
 // knowing mechanically that we cannot establish capacity is worth more than reading a dashboard
 // number that says 99% and means something else. The instrument earns its keep the day the answer
 // changes without anyone intending it to.
@@ -54,11 +55,15 @@ data capacity_probe_script_brace_workaround_dissolution: DissolutionCondition = 
 
 data capacity_probe_script_shell_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) realizes this remote inventory probe as typed orchestration intent (or typed host-effect argv) and group_report ships that realization rather than stdin_payload: capacity_probe_script(). SUFFICIENT FOR: emit_field and capacity_probe_script delete together; ExecPortableWordsWithStdin no longer carries a hand-assembled 12-field bash program. The which-prefix decision is already this module's: vllm_startup_line_prefix is interpolated into the payload. Until then this is the marked shell-as-string fact for transport and field order, not for the upstream log surface." as NonEmptyStr)
 
-data observed_engine_revision_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the live probe observes the engine's vLLM source revision as VllmSourceRevision (repository plus full git object), not /version and not the container image digest (extdeps.vllm.server), and group_report passes that Present value into readings_from_fields instead of none. SUFFICIENT FOR: ProbeReadingsReady is reachable from fabric_capacity_standing, so admit_kv_layout, capacity_floor_standing and admission_posture run on the live path and ExitSuccess is authorable. Until then none is the honest observation, not a stamp of vllm_source_revision_read." as NonEmptyStr)
+data observed_engine_revision_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the live probe observes the engine's vLLM source revision as VllmSourceRevision (repository plus full git object), not /version and not the container image digest (extdeps.vllm.server), and group_report passes that Present value into readings_from_fields instead of none. SUFFICIENT FOR: the revision refuse arm is no longer the live path's first stop. ProbeReadingsReady still also needs observed_hash_block_size_frontier. Until then none is the honest observation, not a stamp of vllm_source_revision_read." as NonEmptyStr)
+
+data observed_hash_block_size_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the live probe observes hash_block_size as its own TokenCount from the engine (not cache-config block_size, which is the scheduler minimum). group_report passes that Present into readings_from_fields. SUFFICIENT FOR: layout_from_fields stamps the observed hash size, and a scheduler size that happens to equal it is coincidence rather than a second name for the same reading. Until then none is the honest observation." as NonEmptyStr)
 
 // ONE ROSTER, BOTH ENDS. The far side prints one line per slot, in this list's order; decode looks
 // slots up by name, so inserting a command cannot silently rebind unit_sha to the container id.
-// "-" means the host could not answer.
+// That names the SLOT, not the captured bytes: a value that contains a newline still splits into
+// extra lines, so decode refuses unless the line count equals the roster length. "-" means the
+// host could not answer.
 //
 // The two launch figures are taken from the LAST matching line rather than the first: the log
 // accumulates across restarts, and the engine serving now is the one that printed last.
@@ -212,7 +217,7 @@ fn refuse_slot(name: ProbeFieldName) -> CapacityProbeRead {
 fn decode_probe(stdout: String) -> CapacityProbeRead {
   let lines = split(s: trim(s: stdout), delimiter: "\n")
   let expected = list_length(items: capacity_probe_slots())
-  if list_length(items: lines) < expected {
+  if list_length(items: lines) != expected {
     ProbeUnreadable { detail: join(["the probe returned ", to_string(list_length(items: lines)), " lines, not the ", to_string(expected), " the script emits"], "") }
   } else {
     match int_named(lines: lines, name: StartedAt) {
@@ -394,28 +399,36 @@ fn reported_from_fields(pool: VllmObservedKvPool, f: CapacityProbeFields, revisi
 // GROUPS ARE EMPTY, AND THAT IS THE OBSERVATION. The engine's metadata does not carry layer count
 // or page size, so there is nothing to put here and the receipt will refuse for exactly that
 // reason. Filling it with a guess is the one move that would make this instrument lie.
-fn layout_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision) -> ResolvedKvLayout {
+//
+// HASH BLOCK SIZE IS THE SAME KIND OF FACT. cache-config block_size is the scheduler minimum;
+// hash_block_size is a separately named field on ResolvedKvLayout. Stamping the neighbour is
+// fabrication. The caller supplies the observation, or this fold refuses.
+fn layout_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision, hash_block_size: TokenCount) -> ResolvedKvLayout {
   resolved_kv_layout(
     allocator_blocks: f.allocator_blocks,
     scheduler_block_size: f.block_size,
-    hash_block_size: f.block_size,
+    hash_block_size: hash_block_size,
     max_model_len: f.max_model_len,
     groups: [],
     established_at_revision: revision,
   )
 }
 
-fn readings_from_fields(f: CapacityProbeFields, observed_revision: VllmSourceRevision?) -> ProbeReadings {
+fn readings_from_fields(f: CapacityProbeFields, observed_revision: VllmSourceRevision?, observed_hash_block_size: TokenCount?) -> ProbeReadings {
   match observed_revision {
     Absent => ProbeReadingsRefused { cause: "the probe did not observe the engine's vLLM source revision, so it will not stamp the modelled revision onto the reading" as NonEmptyStr }
     Present { value: revision } =>
-      match pool_from_fields(f: f, revision: revision) {
-        Absent => ProbeReadingsRefused { cause: "the captured KV-cache-size reading was refused by its own carrier" as NonEmptyStr }
-        Present { value: pool } =>
-          match reported_from_fields(pool: pool, f: f, revision: revision) {
-            Absent => ProbeReadingsRefused { cause: "the captured maximum-concurrency reading was refused by its own carrier" as NonEmptyStr }
-            Present { value: reported } =>
-              ProbeReadingsReady { pool: pool, reported: reported, layout: layout_from_fields(f: f, revision: revision) }
+      match observed_hash_block_size {
+        Absent => ProbeReadingsRefused { cause: "the probe did not observe hash_block_size, so it will not stamp the scheduler block_size onto that field" as NonEmptyStr }
+        Present { value: hash_bs } =>
+          match pool_from_fields(f: f, revision: revision) {
+            Absent => ProbeReadingsRefused { cause: "the captured KV-cache-size reading was refused by its own carrier" as NonEmptyStr }
+            Present { value: pool } =>
+              match reported_from_fields(pool: pool, f: f, revision: revision) {
+                Absent => ProbeReadingsRefused { cause: "the captured maximum-concurrency reading was refused by its own carrier" as NonEmptyStr }
+                Present { value: reported } =>
+                  ProbeReadingsReady { pool: pool, reported: reported, layout: layout_from_fields(f: f, revision: revision, hash_block_size: hash_bs) }
+              }
           }
       }
   }
@@ -478,7 +491,7 @@ fn group_report(group: FabricGroup) -> GroupStanding {
             match launch_from_fields(group: group, head: head, f: f) {
               LaunchUnidentified { detail: d } => refused_standing(text: join([name, ": the launch could not be identified, so nothing is joined to it -- ", d], ""))
               LaunchIdentified { launch: launch } =>
-                match readings_from_fields(f: f, observed_revision: none) {
+                match readings_from_fields(f: f, observed_revision: none, observed_hash_block_size: none) {
                   ProbeReadingsRefused { cause: c } => refused_standing(text: join([
                     name, " @ ", address as String, " invocation=", f.invocation, "\n",
                     "    engine: ", to_string(f.running), " running, ", to_string(f.waiting), " waiting; inventory ",
@@ -518,9 +531,9 @@ fn group_report(group: FabricGroup) -> GroupStanding {
 
 
 // THE EXIT CODE IS THE VERDICT. Today this exits non-zero on both groups: the probe does not
-// observe a vLLM source revision, so it refuses to stamp one, and even a supplied revision would
-// still find empty groups. That is a true statement about the deployment produced by executing
-// against it, which is the thing none of the surrounding model could claim on its own.
+// observe a vLLM source revision or hash_block_size, so it refuses to stamp either, and even both
+// supplied would still find empty groups. That is a true statement about the deployment produced by
+// executing against it, which is the thing none of the surrounding model could claim on its own.
 fn fabric_capacity_standing() -> ProcessExit {
   let standings = map(spark_pair_serving_groups, g => group_report(group: g))
   if all(standings, st => st.admitting) {
