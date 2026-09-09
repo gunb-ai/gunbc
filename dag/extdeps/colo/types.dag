@@ -12,6 +12,7 @@ import std.measure {
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { FreeSemigroup, FreeMonoid }
+import v2.std.algebra { non_empty_to_list }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -294,13 +295,6 @@ type PublishedDensityFigure {
 // length arguing that the duplication lookup should reuse std.pareto's ReadingLookup shape rather
 // than re-coin it, and then re-coined the non-empty carrier eleven lines away. Reuse was applied as a
 // rule to the concept under review and not to the one being used to carry it.
-// The flattening accessor, kept because every consumer here wants a list and the carrier is a
-// head-plus-monoid. It is the only place the two shapes meet, which is what keeps FreeSemigroup from
-// leaking into five census lanes' fold sites.
-fn density_figures_all(figures: FreeSemigroup<PublishedDensityFigure>) -> List<PublishedDensityFigure> {
-  concat([figures.head], figures.tail)
-}
-
 type CabinetDensityClaim
   = DensityPublished {
       figures: FreeSemigroup<PublishedDensityFigure>
@@ -351,12 +345,23 @@ type CabinetPowerCeiling = CeilingAt { at_most: Watt }
 // note declared it as a future construction rung and shipped it anyway; the honest reading is that
 // the query widened on contradiction TODAY, so it is fixed today.
 //
-// THE MITIGATION NEEDS NO NEW CAPABILITY BECAUSE std.pareto ALREADY OWNS THIS SHAPE. ReadingLookup
-// answers Found, Absent or Duplicated over a list of axis readings, with a count-first fold that
-// refuses before it selects. This is that, over media instead of axes - reused rather than re-coined,
-// and the count-first structure is what makes a mutation adding a second air figure go red by
-// producing the Duplicated arm rather than by changing list ORDER, which is what a `.first()` test
-// would actually have been measuring.
+// THE SHAPE IS MODELLED ON std.pareto's ReadingLookup AND IS RE-AUTHORED RATHER THAN CONSUMED, WHICH
+// AN EARLIER DRAFT OF THIS ANNOTATION CLAIMED THE OPPOSITE OF. It said "reused rather than re-coined"
+// while DensityFigureLookup, figure_matches_count and figure_lookup were a line-for-line re-authoring
+// of ReadingLookup, reading_matches and reading_for with the payload and predicate swapped. That is an
+// annotation asserting a machine claim that is false, which DESIGN section 4c forbids outright - and
+// worse than a missing note, because it reads as a reuse audit already performed.
+//
+// WHY IT IS RE-AUTHORED, STATED HONESTLY: ReadingLookup is not generic. It carries
+// OrderedClosedInterval readings keyed by DeclarationRef, so it cannot be instantiated over media, and
+// consuming it would mean widening the wrong authority to fit this consumer. The count-first fold that
+// refuses before it selects is what makes a mutation adding a second air figure go red by producing
+// the Duplicated arm rather than by changing list ORDER, which is what a `.first()` test would
+// actually have been measuring - so the structure is worth having twice for now.
+//
+// NEXT-RUNG TRIGGER: a generic count-first unique-lookup over a keyed collection, authored once in
+// std and consumed by both. That is the capability that dissolves this duplicate, and until it lands
+// this file carries a second spelling of a fold - stated, rather than described as a reuse.
 //
 // One-slot-per-medium construction remains the ceiling and would make a duplicate unconstructible
 // rather than merely refused. NEXT-RUNG TRIGGER: the medium-slot record landing in the same motion as
@@ -377,27 +382,44 @@ type DensityFigureLookup
 // figure the operator never labelled matches no request, and a REQUEST for CoolingMediumUnspecified
 // matches no figure - so the value stays countable as a census fact while being unable to answer an
 // air or a liquid question, which is exactly what it means for a page to have named no medium.
+// ONE EQUALITY, AND THE FIRST CUT SPELLED IT THREE TIMES. figure_is_air, figure_is_liquid and
+// figure_is_unspecified were three full matches over one closed three-arm type, each returning true
+// for a single variant, with this function then dispatching across two of them. That is medium
+// equality authored once per variant - the same section 2 re-invention this branch has now removed at
+// two other grains, and the third instance was inside the carrier five census lanes consume.
+//
+// THE ASYMMETRY THE THREE PREDICATES WERE DEFENDING SURVIVES THE COLLAPSE, AND IS NOW THE ONLY THING
+// THIS FUNCTION SAYS. An unspecified medium is a fact about what the PAGE said, never a medium
+// anything can be deployed into, so it satisfies no request - including a request for it. That lives
+// in one arm here rather than being distributed across three predicates where a reader had to
+// reconstruct it from their absences.
 fn medium_matches(f: PublishedDensityFigure, requested: CoolingMediumStanding) -> Bool {
   match requested {
-    AirCoolingPublished => figure_is_air(f: f),
-    LiquidCoolingPublished => figure_is_liquid(f: f),
     CoolingMediumUnspecified => false,
+    AirCoolingPublished => medium_eq(a: f.medium, b: requested),
+    LiquidCoolingPublished => medium_eq(a: f.medium, b: requested),
   }
 }
 
-fn figure_is_air(f: PublishedDensityFigure) -> Bool {
-  match f.medium {
-    AirCoolingPublished => true,
-    LiquidCoolingPublished => false,
-    CoolingMediumUnspecified => false,
-  }
-}
-
-fn figure_is_liquid(f: PublishedDensityFigure) -> Bool {
-  match f.medium {
-    AirCoolingPublished => false,
-    LiquidCoolingPublished => true,
-    CoolingMediumUnspecified => false,
+// Equality on the closed medium coordinate. Exhaustive on both sides rather than a wildcard, so
+// adding a fourth medium refuses to compile here instead of silently comparing unequal.
+fn medium_eq(a: CoolingMediumStanding, b: CoolingMediumStanding) -> Bool {
+  match a {
+    AirCoolingPublished => match b {
+      AirCoolingPublished => true,
+      LiquidCoolingPublished => false,
+      CoolingMediumUnspecified => false,
+    },
+    LiquidCoolingPublished => match b {
+      AirCoolingPublished => false,
+      LiquidCoolingPublished => true,
+      CoolingMediumUnspecified => false,
+    },
+    CoolingMediumUnspecified => match b {
+      AirCoolingPublished => false,
+      LiquidCoolingPublished => false,
+      CoolingMediumUnspecified => true,
+    },
   }
 }
 
@@ -425,7 +447,7 @@ fn figure_lookup(figures: List<PublishedDensityFigure>, requested: CoolingMedium
 fn density_figure_for_medium(d: CabinetDensityClaim, requested: CoolingMediumStanding) -> DensityFigureLookup {
   match d {
     DensityPublished { figures } =>
-      figure_lookup(figures: density_figures_all(figures: figures), requested: requested),
+      figure_lookup(figures: non_empty_to_list(xs: figures), requested: requested),
     DensityUnread { obligation } => FigureAbsent { absent_medium: requested },
   }
 }
@@ -659,7 +681,7 @@ fn figure_wording_is_verified(f: PublishedDensityFigure) -> Bool {
 fn density_claim_wording_is_verified(d: CabinetDensityClaim) -> Bool {
   match d {
     DensityPublished { figures } =>
-      all(density_figures_all(figures: figures), f => figure_wording_is_verified(f: f)),
+      all(non_empty_to_list(xs: figures), f => figure_wording_is_verified(f: f)),
     DensityUnread { obligation } => false,
   }
 }
@@ -687,20 +709,8 @@ fn density_claim_wording_is_verified(d: CabinetDensityClaim) -> Bool {
 // separates unread from read, and a caller wanting that distinction asks for it.
 fn density_claim_figures(d: CabinetDensityClaim) -> List<PublishedDensityFigure> {
   match d {
-    DensityPublished { figures } => density_figures_all(figures: figures),
+    DensityPublished { figures } => non_empty_to_list(xs: figures),
     DensityUnread { obligation } => [],
   }
 }
 
-// THE THIRD MEDIUM PREDICATE, WHICH EXISTS SO A CENSUS CAN COUNT WHAT IT CANNOT SCREEN. An unlabelled
-// figure is a real reading and a real coverage fact - it is the single most common shape in this
-// corpus - and a lane reporting "N facilities publish a density, of which M name no cooling medium"
-// is asking a question no screening accessor can answer. Without this, each lane would fold its own
-// medium match and the coordinate would be re-spelled once per census.
-fn figure_is_unspecified(f: PublishedDensityFigure) -> Bool {
-  match f.medium {
-    AirCoolingPublished => false,
-    LiquidCoolingPublished => false,
-    CoolingMediumUnspecified => true,
-  }
-}

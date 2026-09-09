@@ -16,7 +16,7 @@ import extdeps.colo.types {
   DensityScreen, ScreenHolds, ScreenUndetermined, ScreenNeedsEvidence,
   density_wording_covers, density_ceiling_refuses, density_claim_contains_figure,
   figure_wording_is_verified, density_claim_wording_is_verified,
-  density_claim_figures, figure_is_unspecified,
+  density_claim_figures, medium_eq,
   quantity_ceiling,
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
@@ -539,7 +539,7 @@ test fn w_occupancy_verification_and_utility_are_three_facts() -> Bool {
 test fn w_an_unscreenable_figure_is_still_inventoried() -> Bool {
   density_claim_figures(d: iron_mountain_nje1_density).length() == 1
     && !has_figure_for(d: iron_mountain_nje1_density, requested: CoolingMediumUnspecified)
-    && all(density_claim_figures(d: iron_mountain_nje1_density), f => figure_is_unspecified(f: f))
+    && all(density_claim_figures(d: iron_mountain_nje1_density), f => medium_eq(a: f.medium, b: CoolingMediumUnspecified))
     && density_claim_figures(d: databank_lga4_density).length() == 2
     && density_claim_figures(d: iron_mountain_wpa1_density).length() == 0
 }
