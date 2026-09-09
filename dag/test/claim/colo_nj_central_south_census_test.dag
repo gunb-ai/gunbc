@@ -1,11 +1,12 @@
 module test.claim.colo_nj_central_south_census
 
 import std.types { Bool, Int }
-import std.measure { Watt, watt_count }
+import std.measure { Watt, watt, watt_count }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types {
-  CabinetDensityClaim, cabinet_density_air_established, cabinet_density_air_upper_bound,
+  CabinetDensityClaim, cabinet_density_air_established, cabinet_density_air_ceiling,
+  CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
 }
 import extdeps.colo.njfx { njfx_wall_density, njfx_wall_retail_grain }
@@ -37,10 +38,23 @@ fn established_watts(d: CabinetDensityClaim) -> Int {
   }
 }
 
-fn bound_watts(d: CabinetDensityClaim) -> Int {
-  match cabinet_density_air_upper_bound(d: d) {
-    Present { value } => watt_count(w: value),
-    Absent => 0 - 1,
+// A CEILING ANSWERS ONE QUESTION AND THIS IS IT. `bound_watts` used to sit here returning the
+// ceiling as a plain Int on the same axis as an established reading, which is the confusion the
+// carrier's own rewrite removed at the source (review 62791): a ceiling is what a cabinet certainly
+// cannot exceed, never what it can deliver, so the only sound query is whether a requirement is
+// refused by it. Asking "does the published evidence refuse this many watts" is a question that
+// cannot accidentally admit a candidate.
+fn ceiling_refuses_at(d: CabinetDensityClaim, required: Int) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => ceiling_refuses(c: value, required: watt(count: required)),
+    Absent => false,
+  }
+}
+
+fn has_ceiling(d: CabinetDensityClaim) -> Bool {
+  match cabinet_density_air_ceiling(d: d) {
+    Present { value } => true,
+    Absent => false,
   }
 }
 
@@ -66,10 +80,18 @@ test fn w_central_nj_read_densities_are_their_published_watts() -> Bool {
 // THE SAME FIGURES BOUND THEMSELVES. For a real-power publication the established reading and the
 // upper bound coincide; they diverge only for apparent power. This control is what would red if a
 // real-power row were ever re-encoded as apparent power to make a numeral fit.
-test fn w_real_power_rows_bound_themselves() -> Bool {
-  bound_watts(d: njfx_wall_density) == 16000
-    && bound_watts(d: digital_fortress_piscataway_density) == 15000
-    && bound_watts(d: databank_ewr2_density) == 10000
+// EACH READ ROW'S CEILING SITS EXACTLY AT ITS PUBLISHED FIGURE, probed from both sides. One watt
+// above the published number is refused on published evidence alone; one watt below is NOT refused
+// - and not-refused is undetermined rather than admitted, which is why this asserts the refusal
+// boundary and never reads a number back out. A row re-encoded as apparent power would move this
+// boundary, and a row whose figure drifted would move it too.
+test fn w_read_rows_refuse_one_watt_above_their_published_figure() -> Bool {
+  ceiling_refuses_at(d: njfx_wall_density, required: 16001)
+    && !ceiling_refuses_at(d: njfx_wall_density, required: 15999)
+    && ceiling_refuses_at(d: digital_fortress_piscataway_density, required: 15001)
+    && !ceiling_refuses_at(d: digital_fortress_piscataway_density, required: 14999)
+    && ceiling_refuses_at(d: databank_ewr2_density, required: 10001)
+    && !ceiling_refuses_at(d: databank_ewr2_density, required: 9999)
 }
 
 // THE REFUSALS, AND THE MOST IMPORTANT CONTROL IN THIS MODULE. QTS Piscataway markets 65 MW of
@@ -79,7 +101,8 @@ test fn w_real_power_rows_bound_themselves() -> Bool {
 // feet published, not one kilowatt per cabinet.
 test fn w_facility_megawatts_never_become_cabinet_watts() -> Bool {
   established_watts(d: qts_piscataway_density) == 0 - 1
-    && bound_watts(d: qts_piscataway_density) == 0 - 1
+    && !has_ceiling(d: qts_piscataway_density)
+    && !ceiling_refuses_at(d: qts_piscataway_density, required: 1)
     && established_watts(d: digital_realty_ewr11_density) == 0 - 1
     && established_watts(d: digital_realty_ewr12_density) == 0 - 1
     && established_watts(d: three_sixty_five_bridgewater_density) == 0 - 1

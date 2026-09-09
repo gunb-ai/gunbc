@@ -1598,7 +1598,7 @@ fn belt_actuate_spawn_for_instance(
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
             launch: launch,
           }
-        DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
           match belt_provider_preflight_for_instance(
             instance: instance,
             provider: provider,
@@ -1928,7 +1928,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
             launch: launch,
           }
-        DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
           match belt_provider_preflight(provider: provider) {
             ProviderPreflightRefused { step: st, detail: d } =>
               SpawnFailed {
@@ -2079,7 +2079,7 @@ fn belt_resolved_spawn_plan(
         step: "dispatch-selection" as NonEmptyStr,
         detail: reason as String,
       }
-    DispatchActuatorSelectionOk { provider, effort, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider, effort, model, process_fingerprint: _ } =>
       dispatch_spawn_commands_for_resolved_instance(
         instance: instance,
         node: node,
@@ -2087,6 +2087,7 @@ fn belt_resolved_spawn_plan(
         attempt_key: attempt_key,
         provider: provider,
         effort: effort,
+        model: model,
         origin: origin,
       )
   }
@@ -2172,7 +2173,10 @@ fn belt_observe_from_result(
   match classify_tmux_session_list(exit_ok: success, stdout: stdout, stderr: stderr) {
     TmuxSessionsListed { entries } =>
       Observed {
-        live: dispatch_live_sessions_from_entries(entries: entries),
+        live: dispatch_live_sessions_from_entries(
+          entries: entries,
+          selection: dispatch_actuator_selection(node_sizing: Unsized),
+        ),
       }
     TmuxNoServer { evidence: _ } =>
       Observed { live: [] }
@@ -3550,6 +3554,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: panes,
                   pane_observation_refusal: "",
+                  selection: dispatch_actuator_selection(node_sizing: Unsized),
                 ),
               }
             BeltAttemptPanesRefused { reason } =>
@@ -3558,6 +3563,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: [],
                   pane_observation_refusal: reason,
+                  selection: dispatch_actuator_selection(node_sizing: Unsized),
                 ),
               }
           }
@@ -5530,7 +5536,10 @@ fn belt_stop_node_for_instance(
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     Observed { live } => {
-      match dispatch_tmux_session_scope(node_id: node_id) {
+      match dispatch_tmux_session_scope(
+        node_id: node_id,
+        selection: dispatch_actuator_selection(node_sizing: Unsized),
+      ) {
         Absent =>
           StopRefusedResult {
             node_id: node_id,
@@ -6309,7 +6318,7 @@ data belt_dispatch_path_prefix: String = "/dispatch/"
 // standing refuses production re-query.
 fn belt_dispatch_provider_label() -> String {
   match dispatch_actuator_selection(node_sizing: Unsized) {
-    DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
       dispatch_provider_label(provider: provider)
     DispatchActuatorSelectionRefused { reason } =>
       concat("selection-refused: ", reason as String)

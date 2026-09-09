@@ -104,7 +104,7 @@ The reviewer's question is therefore two-part and both halves are located: for e
 
 ## 3d. Selection precedes convergence
 
-**Selection precedes convergence.** A convergence primitive (`gunbc.world_converge`, `ensure`) neither enumerates subjects nor chooses a realization: it decides Noop/Apply/Refuse over a caller-supplied requirement with independent readback. Generating candidates or choosing policy inside convergence is the conflation this section forbids. The missing authority sits *before* those folds, in `std.decision`.
+**Selection precedes convergence.** A convergence primitive (`std.goal_assessment`, `ensure`) neither enumerates subjects nor chooses a realization: it assesses a caller-supplied goal against an independent observation, or decides Noop/Apply/Refuse over a caller-supplied requirement with independent readback. Generating candidates or choosing policy inside convergence is the conflation this section forbids. The missing authority sits *before* those folds, in `std.decision`.
 
 **Pareto assessment is not realization selection.** `std.pareto` computes dominance and the frontier — axis identities rather than positional alignment, per-axis orientation, interval-valued readings, `Incomparable` separated from `DominanceUndecided`, and refusal on missing or duplicated funded-axis readings. A Pareto front of two is not a winner. Realization selection is the policy-bound operation that can produce one desired realization; it **consumes** `std.pareto` and must not redeclare dominance, axis orientation, intervals, or evidence-gap vocabulary. Growing a second decision algebra beside Pareto is the §3 fork this law exists to prevent.
 
