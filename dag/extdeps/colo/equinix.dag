@@ -110,15 +110,21 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
   facility_note: "The operator's North Bergen site, in Hudson County between the Secaucus cluster and the Weehawken waterfront. No operator-page reading exists for it; everything beyond name and address is unread.",
 }
 
-// THE REFUSAL IS THE READING. Two fetches on 2026-09-08 - the New York colocation index and the
-// NY4 facility page beneath it - were both refused HTTP 403 by the operator's edge. That is why
-// this census carries no Equinix density figure, and it is recorded here rather than left as an
-// absence, so nobody later reads the silence as "Equinix publishes no density" or, worse, fills it
-// from a directory. It is one claim per operator because the refusal was at the operator's edge.
+// THE REFUSAL WAS MINE, NOT THEIRS, AND THE CORRECTION IS THE POINT. This row first recorded two
+// HTTP 403s as the operator refusing readers, and built an obligation on it. Re-fetching from raw
+// bytes with an ordinary browser user-agent on 2026-09-09 returned 200 - the operator blocks
+// nothing, my client was being refused, and the two paths I had tried answer 404 rather than 403.
+//
+// An operator that blocks readers and an operator whose pages I failed to reach are DIFFERENT
+// FACTS, and only one of them is about the operator. Recording the first when the second is true
+// puts a claim about someone else's behaviour into an upstream module on the strength of my own
+// tooling, and it fails in the flattering direction: it makes an unread density look like the
+// operator's choice rather than my gap. The density stays unread either way; what changes is that
+// the obligation now names something a later reader can actually act on.
 data equinix_cabinet_density: CabinetDensityClaim = DensityUnread {
-  obligation: "equinix.com refused two direct fetches with HTTP 403 on 2026-09-08 (the New York colocation index and the NY4 facility page). No per-cabinet kW figure has been read from any Equinix surface for any corridor IBX. Resolve by a route that the operator's edge admits, or by asking the quote for the per-cabinet air-cooled maximum at the named IBX; do not import a figure from a directory or from another operator's campus.",
+  obligation: "CORRECTED 2026-09-09: the 2026-09-08 refusals were my client, not this operator's edge. Re-fetched from raw bytes with an ordinary browser user-agent, equinix.com/data-centers answers HTTP 200 with 225 KB and contains no occurrence of kW or cabinet; the two colocation paths tried on 2026-09-08 answer 404, so they were wrong paths rather than blocked ones. So no per-cabinet kW figure has been read for any corridor IBX, and the reason is that the reachable index does not publish one - not that the operator refuses readers. Resolve by locating the operator's current per-IBX pages, or by asking the quote for the per-cabinet air-cooled maximum at the named IBX; do not import a figure from a directory or from another operator's campus.",
 }
 
 data equinix_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "Same 403 as the density obligation: no minimum-footprint wording has been read from the operator's own surface. Whether a single cabinet is contractable, and at which of the six corridor IBXs, is a quote question.",
+  obligation: "Same correction as the density obligation: the operator's reachable index carries no cabinet, cage or suite wording, so no minimum footprint has been read from its own surface. Whether a single cabinet is contractable, and at which of the seven corridor IBXs, is a quote question.",
 }

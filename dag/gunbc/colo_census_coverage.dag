@@ -15,7 +15,7 @@ import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_density }
 import extdeps.colo.interserver { interserver_secaucus, interserver_teb4_secaucus, interserver_cabinet_density }
 import extdeps.colo.halsey_165 { halsey_165_newark, halsey_165_cabinet_density }
 import extdeps.colo.databank { databank_ewr1_newark, databank_ewr1_density }
-import extdeps.colo.colocation_america { colocation_america_njdc2_secaucus, colocation_america_cabinet_density }
+import extdeps.colo.colocation_america { colocation_america_cabinet_density }
 import extdeps.colo.lumen { lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken, lumen_cabinet_density }
 import v2.std.optional { Optional, Present, Absent }
 
@@ -158,8 +158,11 @@ fn coverage_density_read_count(c: RegionCoverage) -> Int? {
 // THE COUNTS ARE GONE AND THE ROWS ARE HERE INSTEAD, which is review 62780's finding fixed at the
 // root: 28 and 1 were hand-transcribed measurements of the repo's own live corpus, and DESIGN
 // section 6 says a measurement is cited by naming the producer that re-derives it. Deriving them
-// immediately proved the point - the corridor holds TWENTY-SEVEN facility rows, and 17 pre-existing
-// ones had been added as 18.
+// immediately proved the point - the corridor holds TWENTY-SIX facility rows, where 28 had been
+// typed. Two separate errors: 17 pre-existing rows were added as 18, and Colocation America NJDC2
+// was carried as a facility until the operator's own pages, read on 2026-09-09, turned out to name
+// no Secaucus site at all. The second is the one worth noting - it was found AFTER the count became
+// derived, and the fold absorbed it with no number to edit.
 //
 // THE WITNESS WAS GREEN BESIDE THAT ERROR FOR AS LONG AS IT EXISTED. It asserted that read
 // densities never exceed facilities, and 1 <= 28 is exactly as true as 1 <= 27. Choosing a relation
@@ -193,7 +196,6 @@ data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
       interserver_secaucus, interserver_teb4_secaucus,
       halsey_165_newark,
       databank_ewr1_newark,
-      colocation_america_njdc2_secaucus,
       lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken,
     ],
     densities: [

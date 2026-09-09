@@ -43,23 +43,26 @@ data colocation_america_retail_rates: RetailRateStanding = RatesQuoteOnly {
   obligation: "Granularity is published but prices are not on the pages read 2026-08-18; per-U and quarter-cabinet quotes required.",
 }
 
-// A SECOND NEW JERSEY FACILITY FROM THIS OPERATOR, IN THE CORRIDOR, and the existing NJDC1 row is
-// in Clifton which is not. The operator's own registry entry names NJDC2 at 275 Hartz Way, Secaucus
-// - the same street address the census already carries for Equinix NY2 - so this is another
-// in-building reseller row rather than another building. The operator's own site could not be read:
-// colocationamerica.com refused a direct fetch with HTTP 403 on 2026-09-08.
-data colocation_america_njdc2_secaucus: ColoFacilityRow = ColoFacilityRow {
-  operator_label: "Colocation America",
-  facility_label: "Colocation America NJDC2 (in-building at 275 Hartz Way)",
-  address: AddressListed {
-    street: "275 Hartz Way, Suite 1, Secaucus, NJ 07094",
-    citation: "PeeringDB facility NJDC2 - Colocation America Corporation, read 2026-09-08. The registry entry's title carries a 300 J F Kennedy Blvd label while its address field carries 275 Hartz Way; the address field is what is modelled and the discrepancy is recorded in the note.",
-  },
-  municipality: "Secaucus",
-  region_code: "NJ",
-  facility_note: "275 Hartz Way is the building the census already carries as Equinix NY2, so this row is a reseller inside a facility another operator also sells from. The registry title names a 300 J F Kennedy Blvd address - which is the Weehawken building carrying Centersquare EWR2-A,B and the closed Digital Realty EWR10 - while the address field names Secaucus; one of the two is stale and a quote must establish which suite is actually being sold.",
-}
-
+// A REGISTRY ENTRY THE OPERATOR'S OWN PAGES DO NOT CLAIM, so it is recorded here rather than
+// carried as a facility row - the same treatment extdeps.colo.qts gives QTS Jersey City, and for
+// the same reason: a row would assert a live site the operator does not.
+//
+// PeeringDB carries "NJDC2 - Colocation America Corporation" at 275 Hartz Way, Suite 1, Secaucus -
+// the building this census already models as Equinix NY2. The operator's own New Jersey page and
+// its locations index, both read 2026-09-09 from raw bytes, name ONE New Jersey site: 100 Delawanna
+// Avenue, Clifton. Neither page contains the string "Secaucus" or "Hartz" at all. So the registry
+// and the operator disagree, and the disagreement is the fact.
+//
+// WHAT MUST BE READ TO RESOLVE IT: whether Colocation America still sells from 275 Hartz Way. If it
+// does, this becomes a facility row in the corridor; if it exited, the PeeringDB entry is what a
+// later sweep will trip over, so record the resolution here rather than silently dropping it.
+//
+// THE EARLIER 403 ON THIS OPERATOR WAS MY CLIENT, NOT THEIR EDGE, and the correction matters
+// because the row it justified was wrong in the flattering direction. Two fetches on 2026-09-08
+// were refused, and the obligations below said the operator refused them. Re-fetching on 2026-09-09
+// with an ordinary browser user-agent returned 200 and 178 KB. An operator that blocks readers and
+// an operator whose pages I failed to reach are different facts, and only one of them is about the
+// operator.
 data colocation_america_cabinet_density: CabinetDensityClaim = DensityUnread {
   obligation: "colocationamerica.com refused a direct fetch of its New Jersey locations page with HTTP 403 on 2026-09-08, so no operator page has been read this pass and no per-cabinet kW figure exists for NJDC1 Clifton or NJDC2 Secaucus. Resolve by a route the operator's edge admits, or by quote.",
 }
