@@ -2,11 +2,19 @@ module gunbc.scm.ordinary_commit
 
 // MINTING A COMMIT THAT CONSUMED NOTHING, AS A CONSTRUCTION RATHER THAN AS AN ARGUMENT.
 //
-// WHY THIS EXISTS AT ALL, AND IT IS NOT A CONVENIENCE WRAPPER. `mint_commit_from_stored_manifest`
-// takes a `CommitIntegration`, so its outcome must carry `BrandedRootIntegrationSourceMissing` -- an
-// honest arm, because for a MERGE that source can genuinely be absent. An ordinary commit passes
-// `NoSquashIntegration`, which has no source at all, so that arm is unreachable from this route and
-// every consumer downstream was being made to match on a state this operation cannot produce.
+// WHY THIS EXISTS AT ALL, AND IT IS NOT A CONVENIENCE WRAPPER. This module was built when
+// `mint_commit_from_stored_manifest` still took a `CommitIntegration` and therefore had to carry
+// `BrandedRootIntegrationSourceMissing`: an arm honest for a MERGE, whose source can genuinely be
+// absent, and unreachable for an ordinary commit passing `NoSquashIntegration` -- so every consumer
+// downstream was made to match a state this operation cannot produce.
+//
+// THAT PREMISE IS NOW HISTORY, AND THE CONCLUSION OUTLIVED IT. The generic mint no longer accepts an
+// integration at all, so the arm is gone at the source rather than merely unreachable from here. What
+// still justifies this module is the narrower fact it always really rested on: an ordinary commit
+// answers FEWER questions than the generic route asks, so it deserves an outcome shaped to the
+// questions it actually has. Stated in the past tense because the arm it was written against no
+// longer exists, and a note written in the present about a removed parameter is the stale authority
+// statement this stack keeps finding.
 //
 // THE FIRST ATTEMPT KEPT THE ARM AND SAID SO IN A COMMENT. That is the `carry_mint` error this stack
 // has already paid for once: preserving the callee's causes is honest about the CALLEE's domain and

@@ -249,8 +249,10 @@ test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool 
 // The generic mint no longer TAKES an integration. `SquashIntegrated` is reachable through exactly one
 // route, `store_and_admit_merge_basis`, whose subject requires a derived base and a conflict-free
 // manifest merge -- so a forward-dated anchor has no constructor rather than a refusal. The class
-// climbed from mechanically preventable to structurally impossible, and DESIGN 4b(4) retires the
-// PRODUCTION machinery on a climb while keeping the discriminating RED enrolled.
+// climbed from mechanically preventable to structurally impossible ON THE PRODUCTION MINT PATH, and
+// DESIGN 4b(4) retires the production machinery on a climb while keeping the discriminating RED
+// enrolled. The scoping matters and the next paragraph is why: the CLASS did not climb, one of its
+// two paths did.
 //
 // THE CLASS IS STILL WITNESSED, ON THE PATH WHERE ITS RED IS STILL AUTHORABLE.
 //

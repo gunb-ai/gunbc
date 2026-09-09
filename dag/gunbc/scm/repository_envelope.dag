@@ -93,6 +93,11 @@ import gunbc.scm.json_member {
 }
 import gunbc.scm.manifest_merge {
   MergedManifestEntries,
+  ManifestMergeOutcome,
+  ManifestMerged,
+  ManifestConflicted,
+  ManifestPathConflict,
+  merge_manifests,
 }
 import gunbc.scm.object_store {
   NodeRecordAbsent,
@@ -788,8 +793,11 @@ type MintedCommit sole_constructor {
   reference: RepositoryCommitRef
 }
 
-// THE PARENT ADMISSION, HELD ONCE, so the ordinary and the squash routes ask it the same way rather
-// than each writing their own lookup.
+// THE PARENT ADMISSION, HELD ONCE. It was written so the ordinary and squash routes would ask it the
+// same way rather than each writing their own lookup; squash no longer asks it at all, because its
+// parent arrives already resolved inside `ResolvedMergeAnchors`. It is held once for the ordinary
+// routes that remain, and the squash route reaching a parent WITHOUT this question is the point of
+// the merge seal, not a gap in it.
 type CommitParentAdmission
   = CommitParentAdmitted { ancestry: CommitAncestry }
   | CommitParentAbsent { parent: RepositoryCommitRef }
@@ -818,10 +826,15 @@ fn admit_commit_parent(
 // exist, and receive a well-formed repository back. Sealing the OUTPUT cannot close that; the input
 // relation is what needed carrying. Found by external review.
 //
-// SO THE ADMISSIONS MINT THE SUBJECT. `AdmittedCommitSubject` can only be built by
-// `admit_commit_subject` below, which runs all three; this function takes nothing else and therefore
-// cannot be reached with an unadmitted one. The two routes -- ordinary and squash -- differ in which
-// questions they ASK, and both end at the same admission and the same row construction.
+// SO THE ADMISSIONS MINT THE SUBJECT. `AdmittedCommitSubject` can only be built inside this module,
+// and this function takes nothing else, so it cannot be reached with an unadmitted one.
+//
+// THE TWO ROUTES ARE NO LONGER VARIANTS OF ONE ADMISSION. That sentence stood here while squash still
+// passed through `admit_commit_subject`, differing only in which questions it asked. It does not any
+// more: an ordinary commit is admitted from a subject and a bare parent reference, while a squash is
+// admitted from a sealed `AdmittedMergeSubject` whose anchors and merged manifests were established
+// together. They share the ROW CONSTRUCTION and the allocator rule below, and they no longer share an
+// admission -- which is the whole reason the integration parameter could be removed from this one.
 // THE ALLOCATOR RULE, HELD ONCE. `next_ordinal < 0` was spelled independently in three executable
 // places -- the generic route before root resolution, and both subject admissions -- directly beneath
 // a rationale claiming the admission rules have one authority each. Three copies of a rule is three
@@ -927,7 +940,6 @@ type AdmittedCommitBasis sole_constructor {
 type BasisAdmission
   = BasisAdmitted(AdmittedCommitBasis)
   | BasisParentAbsent { parent: RepositoryCommitRef }
-  | BasisIntegrationSourceAbsent { source: RepositoryCommitRef }
 
 // A ROOT COMMIT HAS NO PARENT AND NO SOURCE, so this mint cannot refuse: both questions have no
 // subject rather than an unknown answer.
@@ -1000,16 +1012,94 @@ type AdmittedMergeSubject sole_constructor {
   merged: MergedManifestEntries
 }
 
-// THE ONLY MINT, AND IT TAKES TWO SEALED VALUES AND NOTHING ELSE. Both arguments are constructible
-// only by the authority that decides them -- `resolve_merge_anchors` for the anchors, `merge_manifests`
-// for the entries -- and the repository is read out of the anchors rather than supplied, so there is no
-// argument left for a caller to mis-pair. This is what makes the receipt merge-authority-only: reaching
-// it requires having derived a base AND having merged the manifests without conflict.
-fn admit_merge_subject(
-  anchors: ResolvedMergeAnchors,
-  merged: MergedManifestEntries,
-) -> AdmittedMergeSubject {
-  AdmittedMergeSubject { anchors: anchors, merged: merged }
+// THE SIDES ARE NAMED HERE BECAUSE THE READ THAT NEEDS THEM IS HERE.
+type MergeSideName
+  = MergeBaseCommit
+  | MergeSourceCommit
+  | MergeTargetCommit
+
+type MergeSubjectAdmission
+  = MergeSubjectAdmitted(AdmittedMergeSubject)
+  | MergeSubjectSideRootMissing { side: MergeSideName, root: ObjectId }
+  | MergeSubjectSideRootIsAuthoredSource { side: MergeSideName, root: ObjectId }
+  | MergeSubjectSideRootIsSemanticNode { side: MergeSideName, root: ObjectId }
+  | MergeSubjectConflicted { conflicts: List<ManifestPathConflict> }
+
+type MergeSideRead
+  = MergeSideReadRecord { record: CorpusManifestRecord }
+  | MergeSideReadRefused(MergeSubjectAdmission)
+
+fn read_anchor_manifest(
+  repository: RepositoryEnvelope,
+  side: MergeSideName,
+  presence: CommitPresence,
+) -> MergeSideRead {
+  match find_corpus_manifest_record(
+    store: repository.store,
+    identity: presence.commit.root.locator,
+  ) {
+    CorpusManifestFound(record) => MergeSideReadRecord { record: record }
+    CorpusManifestAbsent { identity: r } =>
+      MergeSideReadRefused(MergeSubjectSideRootMissing { side: side, root: r })
+    CorpusManifestIsAuthoredSource { identity: r } =>
+      MergeSideReadRefused(MergeSubjectSideRootIsAuthoredSource { side: side, root: r })
+    CorpusManifestIsSemanticNode { identity: r } =>
+      MergeSideReadRefused(MergeSubjectSideRootIsSemanticNode { side: side, root: r })
+  }
+}
+
+// THE SUBJECT IS BUILT FROM THE ANCHORS' OWN MANIFESTS, BECAUSE TWO INDEPENDENTLY SEALED VALUES ARE
+// NOT A SEALED RELATION.
+//
+// The previous revision took `admit_merge_subject(anchors, merged)` as PEERS. Both arguments were
+// sole-constructed, and that felt sufficient -- but `MergedManifestEntries` proves only "this is SOME
+// conflict-free merge result", never "this is the result FOR THESE ANCHORS". The authorable
+// counterexample is exact: hold valid anchors A, obtain a conflict-free `merged` from an unrelated
+// triple B, and pair them. The route below then stores B's corpus, parents it on A's target, and
+// writes `SquashIntegrated { source: A.source }` -- committing the wrong corpus AND spending A's
+// source, on a merge of A's manifests that never happened. Sealing each argument had made the
+// arguments honest and left the RELATION between them unwitnessed. Found by external review.
+//
+// So there is no seam to mis-pair any more. This function reads the three manifests from
+// `anchors.repository` at the anchors' own roots, runs `merge_manifests` on exactly those records, and
+// constructs the subject from THAT `ManifestMerged` arm and no other value. `merged` is never an
+// argument, so no caller can supply one (DESIGN 4b: construction over validation). The three read
+// refusals and the conflict travel out typed for the verb to carry one-to-one.
+fn admit_merge_subject(anchors: ResolvedMergeAnchors) -> MergeSubjectAdmission {
+  let repository = anchors.repository
+  match read_anchor_manifest(
+    repository: repository,
+    side: MergeBaseCommit,
+    presence: anchors.base,
+  ) {
+    MergeSideReadRefused(refusal) => refusal
+    MergeSideReadRecord { record: base_manifest } =>
+      match read_anchor_manifest(
+        repository: repository,
+        side: MergeSourceCommit,
+        presence: anchors.source,
+      ) {
+        MergeSideReadRefused(refusal) => refusal
+        MergeSideReadRecord { record: source_manifest } =>
+          match read_anchor_manifest(
+            repository: repository,
+            side: MergeTargetCommit,
+            presence: anchors.target,
+          ) {
+            MergeSideReadRefused(refusal) => refusal
+            MergeSideReadRecord { record: target_manifest } =>
+              match merge_manifests(
+                base: base_manifest,
+                source: source_manifest,
+                target: target_manifest,
+              ) {
+                ManifestConflicted { conflicts: c } => MergeSubjectConflicted { conflicts: c }
+                ManifestMerged { merged: e } =>
+                  MergeSubjectAdmitted(AdmittedMergeSubject { anchors: anchors, merged: e })
+              }
+          }
+      }
+  }
 }
 
 // THE STORE-AND-BASIS TRANSITION IS ONE OPERATION, AND IT IS CO-HOMED WITH THE STORE IT ADVANCES.
@@ -2929,60 +3019,23 @@ fn nearest_common_ancestor(
   })
 }
 
-// THE ORDER OF THE THREE QUESTIONS IS LOAD-BEARING AND IS NOT AN OPTIMIZATION. The consumed join is
-// asked BEFORE the common ancestor is sought, because in every case this module exists to close, a
-// common ancestor DOES exist and is exactly the stale one. Deriving it first and then refusing would
-// mean the unsafe value was constructed and discarded, which is a weaker guarantee than never
-// constructing it -- and the shape that invites a later author to return it "since we already have
-// it".
-// THE THREE LOOKUPS CANNOT FAIL HERE, AND THE ARM THEY GET IS THE ONE THAT IS TRUE IF THEY DO.
+// THE ANCHOR CONSTRUCTION IS INLINE, BECAUSE A PUBLIC RESOLVER WAS A BYPASS AROUND THIS FUNCTION.
 //
-// Target and source were traced by walks that already refused when a start was not in this history;
-// the base was returned by `nearest_common_ancestor`, which selects only from the two traced chains.
-// So each row IS present. What the impossible branch must not do is invent a cause: an
-// `AncestryStartNotInHistory` walk is precisely the fact a failed lookup would establish -- that this
-// reference names no commit in this history -- and it is the same cause the walk itself reports for
-// the same condition. Naming it here is therefore accurate rather than a widening, and it introduces
-// no vocabulary a caller has not already had to handle.
-fn resolve_merge_anchors(
-  repository: RepositoryEnvelope,
-  base: RepositoryCommitRef,
-  source: RepositoryCommitRef,
-  target: RepositoryCommitRef,
-) -> MergeBaseOutcome {
-  match admit_commit_presence(repository: repository, reference: base) {
-    Absent =>
-      MergeBaseHistoryUnwalkable {
-        side: MergeBaseTargetSide,
-        walk: AncestryStartNotInHistory { start: base },
-      }
-    Present { value: base_at } =>
-      match admit_commit_presence(repository: repository, reference: source) {
-        Absent =>
-          MergeBaseHistoryUnwalkable {
-            side: MergeBaseSourceSide,
-            walk: AncestryStartNotInHistory { start: source },
-          }
-        Present { value: source_at } =>
-          match admit_commit_presence(repository: repository, reference: target) {
-            Absent =>
-              MergeBaseHistoryUnwalkable {
-                side: MergeBaseTargetSide,
-                walk: AncestryStartNotInHistory { start: target },
-              }
-            Present { value: target_at } =>
-              MergeBaseDerived {
-                anchors: ResolvedMergeAnchors {
-                  repository: repository,
-                  base: base_at,
-                  source: source_at,
-                  target: target_at,
-                },
-              }
-          }
-      }
-  }
-}
+// `resolve_merge_anchors(repository, base, source, target)` USED TO STAND BESIDE THIS ONE, taking three
+// bare references and minting `MergeBaseDerived` once all three were merely PRESENT. `.dag` has no
+// module privacy, so it was reachable directly -- and a caller reaching it could nominate any present
+// commit as the "base", replay a source this target had already consumed, or pair tips whose histories
+// never meet, and still receive the success carrier. Every question that makes a base legitimate --
+// `consumed_join` and `nearest_common_ancestor` -- lives HERE and was skipped entirely.
+//
+// Sealing `ResolvedMergeAnchors` did not prevent that: the seal restricts WHICH MODULE may construct
+// the value, and the bypass was in the same module. A caller's intended sequencing is not a constraint
+// on a helper's public domain. Found by external review, one round after the seal was added -- the
+// third time in this stack that a wall has been placed where the door was not.
+//
+// So the presences are resolved in the ADMITTED BRANCH and nowhere else. There is no longer a function
+// that turns raw references into anchors, so the only route to `MergeBaseDerived` runs through the
+// consumed join and the common-ancestor search above it (DESIGN 4b: construction over validation).
 
 fn merge_base(
   repository: RepositoryEnvelope,
@@ -3008,12 +3061,38 @@ fn merge_base(
                   if repository_commit_ref_eq(left: base, right: source) {
                     MergeBaseSourceIsAncestorOfTarget { target: target, source: source }
                   } else {
-                    resolve_merge_anchors(
-                      repository: repository,
-                      base: base,
-                      source: source,
-                      target: target,
-                    )
+                    match admit_commit_presence(repository: repository, reference: base) {
+                      Absent =>
+                        MergeBaseHistoryUnwalkable {
+                          side: MergeBaseTargetSide,
+                          walk: AncestryStartNotInHistory { start: base },
+                        }
+                      Present { value: base_at } =>
+                        match admit_commit_presence(repository: repository, reference: source) {
+                          Absent =>
+                            MergeBaseHistoryUnwalkable {
+                              side: MergeBaseSourceSide,
+                              walk: AncestryStartNotInHistory { start: source },
+                            }
+                          Present { value: source_at } =>
+                            match admit_commit_presence(repository: repository, reference: target) {
+                              Absent =>
+                                MergeBaseHistoryUnwalkable {
+                                  side: MergeBaseTargetSide,
+                                  walk: AncestryStartNotInHistory { start: target },
+                                }
+                              Present { value: target_at } =>
+                                MergeBaseDerived {
+                                  anchors: ResolvedMergeAnchors {
+                                    repository: repository,
+                                    base: base_at,
+                                    source: source_at,
+                                    target: target_at,
+                                  },
+                                }
+                            }
+                        }
+                    }
                   }
                 Absent => MergeBaseHistoriesDisjoint { target: target, source: source }
               }

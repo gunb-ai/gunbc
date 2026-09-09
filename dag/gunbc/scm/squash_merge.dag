@@ -77,11 +77,6 @@ import gunbc.scm.repository_envelope {
 // are read here and all three can be damaged in the same three ways; an outcome naming only the
 // locator would send an operator to diff a store against nine possibilities. The locator says WHAT
 // is wrong and this says WHOSE.
-type MergeSideName
-  = MergeBaseCommit
-  | MergeSourceCommit
-  | MergeTargetCommit
-
 // THE ARMS, AND WHY EACH IS ITS OWN ARM RATHER THAN A FIELD ON A SHARED ONE:
 //
 //   SquashMergeBaseRefused          carried out of merge_base UNCHANGED. Re-wording it here would
@@ -138,39 +133,6 @@ type SquashMergeOutcome
 // READING ONE SIDE'S MANIFEST IS ONE FUNCTION, USED THREE TIMES. Writing the resolution inline per
 // side would put one rule in three places and let the copies drift, which is the redundancy DESIGN
 // section 2 names -- and it is exactly how the "which side" fact gets dropped from one of them.
-type MergeSideManifest
-  = MergeSideManifestRead { record: CorpusManifestRecord }
-  | MergeSideManifestRefused { outcome: SquashMergeOutcome }
-
-// IT TAKES THE RESOLVED ROW, SO THE COMMIT QUESTION IS ABSENT RATHER THAN UNREACHABLE.
-//
-// This function used to look the reference up in `repository.commits` and carry a commit-missing arm
-// for an answer `merge_base` had already excluded -- it walked that same list to succeed at all. The
-// row now arrives inside `ResolvedMergeAnchors`, minted only on the derived-base path, so there is
-// nothing left to ask and `SquashMergeCommitMissing` is DELETED rather than reported from a branch no
-// caller could reach. What REMAINS is this function's real question: whether the root that commit
-// names is a manifest this store holds. Those three wrong-kind refusals have a genuine producer here
-// and are untouched. Ruled by external review.
-fn read_side_manifest(
-  repository: RepositoryEnvelope,
-  side: MergeSideName,
-  commit: RepositoryCommit,
-) -> MergeSideManifest {
-  match find_corpus_manifest_record(store: repository.store, identity: commit.root.locator) {
-    CorpusManifestFound(record) => MergeSideManifestRead { record: record }
-    CorpusManifestAbsent { identity: r } =>
-      MergeSideManifestRefused { outcome: SquashMergeRootMissing { side: side, root: r } }
-    CorpusManifestIsAuthoredSource { identity: r } =>
-      MergeSideManifestRefused {
-        outcome: SquashMergeRootIsAuthoredSource { side: side, root: r },
-      }
-    CorpusManifestIsSemanticNode { identity: r } =>
-      MergeSideManifestRefused {
-        outcome: SquashMergeRootIsSemanticNode { side: side, root: r },
-      }
-  }
-}
-
 // THE MINT'S REFUSALS ARE CARRIED ONE-TO-ONE, AND NOW THERE ARE ONLY THREE TO CARRY. Nothing is
 // translated, widened or merged here; the branded route's outcome type and this one have the same
 // shape because they describe the same three ways a commit can fail to be minted once its root is
@@ -301,41 +263,16 @@ fn squash_merge(
     MergeBaseSourceIsAncestorOfTarget { target: t, source: s } =>
       SquashMergeBaseRefused { refusal: MergeBaseSourceIsAncestorOfTarget { target: t, source: s } }
     MergeBaseDerived { anchors: anchors } =>
-      match read_side_manifest(
-        repository: repository,
-        side: MergeBaseCommit,
-        commit: anchors.base.commit,
-      ) {
-        MergeSideManifestRefused { outcome: o } => o
-        MergeSideManifestRead { record: base_manifest } =>
-          match read_side_manifest(
-            repository: repository,
-            side: MergeSourceCommit,
-            commit: anchors.source.commit,
-          ) {
-            MergeSideManifestRefused { outcome: o } => o
-            MergeSideManifestRead { record: source_manifest } =>
-              match read_side_manifest(
-                repository: repository,
-                side: MergeTargetCommit,
-                commit: anchors.target.commit,
-              ) {
-                MergeSideManifestRefused { outcome: o } => o
-                MergeSideManifestRead { record: target_manifest } =>
-                  match merge_manifests(
-                    base: base_manifest,
-                    source: source_manifest,
-                    target: target_manifest,
-                  ) {
-                    ManifestConflicted { conflicts: c } => SquashMergeConflicted { conflicts: c }
-                    ManifestMerged { merged: e } =>
-                      commit_merged_manifest(
-                        admitted: admit_merge_subject(anchors: anchors, merged: e),
-                        message: message,
-                      )
-                  }
-              }
-          }
+      match admit_merge_subject(anchors: anchors) {
+        MergeSubjectSideRootMissing { side: sd, root: r } =>
+          SquashMergeRootMissing { side: sd, root: r }
+        MergeSubjectSideRootIsAuthoredSource { side: sd, root: r } =>
+          SquashMergeRootIsAuthoredSource { side: sd, root: r }
+        MergeSubjectSideRootIsSemanticNode { side: sd, root: r } =>
+          SquashMergeRootIsSemanticNode { side: sd, root: r }
+        MergeSubjectConflicted { conflicts: c } => SquashMergeConflicted { conflicts: c }
+        MergeSubjectAdmitted(admitted) =>
+          commit_merged_manifest(admitted: admitted, message: message)
       }
   }
 }
