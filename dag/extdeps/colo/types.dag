@@ -245,13 +245,21 @@ type RetailGrainStanding
 // nothing defends: the census's rule that a street is READ or is an obligation, never reconstructed
 // from a PO box or a directory, was enforced by authorial discipline alone.
 //
-// FALSE MEANS NOBODY HAS READ A STREET, WHICH IS NOT THE SAME AS THE FACILITY LACKING ONE. Every
-// facility has an address; AddressUnread says this row does not carry it and names what to read.
-// A caller that needs the obligation text matches the arm.
-fn address_is_listed(a: AddressStanding) -> Bool {
+// ABSENT MEANS NOBODY HAS READ A STREET, NOT THAT THE FACILITY LACKS ONE. Every facility has an
+// address; AddressUnread says this row does not carry it and names what to read. A caller that
+// needs the obligation text still matches the arm - Optional carries the street, not the reason.
+//
+// THE SHAPE IS THE ONE ITS SIBLINGS ALREADY ESTABLISHED, and an earlier draft got it wrong in a way
+// worth recording. This was first written as `address_is_listed -> Bool`, which answered only the
+// was-it-read half and threw the street away, leaving a caller who wanted the street to hand-match -
+// the exact state the accessor was added to remove. cabinet_density_air_established and
+// cabinet_power_established both answer "was it read, and with what" as an Optional; an address axis
+// answering less, in a file where every sibling answers more, is DESIGN section 2 re-invention
+// rather than reuse. The payload is precisely what makes the Optional the right shape.
+fn address_street(a: AddressStanding) -> NonEmptyStr? {
   match a {
-    AddressListed { street, citation } => true,
-    AddressUnread { obligation } => false,
+    AddressListed { street, citation } => Present { value: street },
+    AddressUnread { obligation } => Absent,
   }
 }
 

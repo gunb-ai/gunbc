@@ -1,12 +1,13 @@
 module test.claim.ny_colo_census_rows_witness
 
-import std.types { Bool }
+import std.types { Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
 import test.claim.colo_cabinet_density_witness { established_watts }
 import extdeps.colo.types {
   CabinetDensityClaim, ColoFacilityRow,
   RetailGrainStanding, retail_grain_offers_single_cabinet,
-  AddressStanding, address_is_listed,
+  AddressStanding, address_street,
 }
 import extdeps.colo.databank { databank_lga3_density, databank_lga3_retail_grain, databank_lga3_orangeburg }
 import extdeps.colo.critical_systems_realty {
@@ -189,20 +190,36 @@ test fn w_the_westbury_pair_is_one_municipality() -> Bool {
 }
 
 // A STREET IS READ OR IT IS AN OBLIGATION, AND VASTNET IS WHY THE ARM EXISTS. That operator
-// publishes a PO box and no street, so its row is AddressUnread carrying what to ask for. Every
-// other facility here published a street somebody read. The rule this defends is the census's
-// oldest: an address is never reconstructed from a directory, a PO box, or a co-located operator's
-// page. Filling Vastnet's street in from any of those - which is a five-minute temptation for
-// whoever wants a complete-looking table - reds this test.
+// publishes a PO box and no street, so its row is AddressUnread carrying what to ask for. The rule
+// this defends is the census's oldest: an address is never reconstructed from a directory, a PO box,
+// or a co-located operator's page. Filling Vastnet's street in from any of those - a five-minute
+// temptation for whoever wants a complete-looking table - reds this test.
 //
-// Before this test the AddressStanding arms had NO consumer anywhere in the corpus, so that rule
-// was enforced by authorial discipline alone. It is now enforced by execution.
+// Before this test the AddressStanding arms had NO consumer anywhere in the corpus, so that rule was
+// enforced by authorial discipline alone. It is now enforced by execution.
+//
+// THE STREET EQUALITY IS THE ASSERTION THIS FILE COULD NOT WRITE BEFORE, and it is why the accessor
+// returns the street rather than a Bool (review 62953). NYI and Long Island Interconnect carry
+// BYTE-IDENTICAL streets because they are two operators selling in one building - that co-location
+// is the premise the grain tests above rest on, and until now it was asserted only through
+// municipality, which two different Westbury buildings would also satisfy. Comparing the two streets
+// TO EACH OTHER tests a relation between two rows rather than a row against a transcribed literal,
+// so it is not the self-comparison DESIGN section 5 warns about: nothing in this file supplies the
+// expected value, and if either operator's page is re-read to a different street the pair stops
+// agreeing and this reds.
+fn street_or_unread(a: AddressStanding) -> NonEmptyStr {
+  match address_street(a: a) {
+    Present { value } => value,
+    Absent => "STREET-UNREAD",
+  }
+}
+
 test fn w_addresses_are_read_or_owed_never_reconstructed() -> Bool {
-  address_is_listed(a: vastnet_melville.address) == false
-    && address_is_listed(a: databank_lga3_orangeburg.address)
-    && address_is_listed(a: long_island_interconnect_westbury.address)
-    && address_is_listed(a: nyi_long_island.address)
-    && address_is_listed(a: tierpoint_hawthorne_hwt.address)
-    && address_is_listed(a: tierpoint_hawthorne_hw2.address)
-    && address_is_listed(a: continuity_centers_woodbury.address)
+  street_or_unread(a: vastnet_melville.address) == "STREET-UNREAD"
+    && street_or_unread(a: long_island_interconnect_westbury.address)
+       == street_or_unread(a: nyi_long_island.address)
+    && street_or_unread(a: databank_lga3_orangeburg.address) != "STREET-UNREAD"
+    && street_or_unread(a: tierpoint_hawthorne_hwt.address) != "STREET-UNREAD"
+    && street_or_unread(a: tierpoint_hawthorne_hw2.address) != "STREET-UNREAD"
+    && street_or_unread(a: continuity_centers_woodbury.address) != "STREET-UNREAD"
 }
