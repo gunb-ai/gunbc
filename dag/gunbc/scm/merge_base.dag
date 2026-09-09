@@ -45,6 +45,9 @@ import gunbc.scm.integration {
 }
 import gunbc.scm.repository_envelope {
   RepositoryCommit,
+  RepositoryEnvelope,
+  CommitPresence,
+  admit_commit_presence,
   commit_at_reference,
   repository_history,
 }
@@ -100,15 +103,21 @@ import gunbc.scm.repository_envelope {
 // resolve; the base is in BOTH traced chains, so it is a member of this history by construction. A
 // consumer holding only references cannot re-establish any of that without asking again.
 //
-// THIS MODULE STAYS PURE OVER `commits` AND DOES NOT TAKE THE STORE. Carrying resolved MANIFESTS
+// THE ANCHORS CARRY PRESENCES RATHER THAN BARE ROWS, so membership is a value the envelope issued and
+// not a property a later caller must re-establish. That is what lets the store-and-basis transition
+// mint a consumption receipt without asking again whether these commits exist. Holding the envelope
+// rather than a bare commit list does NOT give this module store-based refusals: a presence reads the
+// commit population only.
+//
+// THIS MODULE DOES NOT RESOLVE MANIFESTS. Carrying resolved MANIFESTS
 // instead of rows was the alternative, and it would give a function that answers "what is the base"
 // a store dependency and refusal reasons about manifest integrity, which is a different question with
 // different blame. The rows carry `root`, so the consumer that DOES own the store resolves manifests
 // itself and keeps its own wrong-kind refusals, which are real and stay.
 type ResolvedMergeAnchors sole_constructor {
-  base: RepositoryCommit
-  source: RepositoryCommit
-  target: RepositoryCommit
+  base: CommitPresence
+  source: CommitPresence
+  target: CommitPresence
 }
 
 type MergeBaseOutcome
@@ -230,37 +239,37 @@ fn nearest_common_ancestor(
 // the same condition. Naming it here is therefore accurate rather than a widening, and it introduces
 // no vocabulary a caller has not already had to handle.
 fn resolve_merge_anchors(
-  commits: List<RepositoryCommit>,
+  repository: RepositoryEnvelope,
   base: RepositoryCommitRef,
   source: RepositoryCommitRef,
   target: RepositoryCommitRef,
 ) -> MergeBaseOutcome {
-  match commit_at_reference(commits: commits, reference: base) {
+  match admit_commit_presence(repository: repository, reference: base) {
     Absent =>
       MergeBaseHistoryUnwalkable {
         side: MergeBaseTargetSide,
         walk: AncestryStartNotInHistory { start: base },
       }
-    Present { value: base_row } =>
-      match commit_at_reference(commits: commits, reference: source) {
+    Present { value: base_at } =>
+      match admit_commit_presence(repository: repository, reference: source) {
         Absent =>
           MergeBaseHistoryUnwalkable {
             side: MergeBaseSourceSide,
             walk: AncestryStartNotInHistory { start: source },
           }
-        Present { value: source_row } =>
-          match commit_at_reference(commits: commits, reference: target) {
+        Present { value: source_at } =>
+          match admit_commit_presence(repository: repository, reference: target) {
             Absent =>
               MergeBaseHistoryUnwalkable {
                 side: MergeBaseTargetSide,
                 walk: AncestryStartNotInHistory { start: target },
               }
-            Present { value: target_row } =>
+            Present { value: target_at } =>
               MergeBaseDerived {
                 anchors: ResolvedMergeAnchors {
-                  base: base_row,
-                  source: source_row,
-                  target: target_row,
+                  base: base_at,
+                  source: source_at,
+                  target: target_at,
                 },
               }
           }
@@ -269,10 +278,11 @@ fn resolve_merge_anchors(
 }
 
 fn merge_base(
-  commits: List<RepositoryCommit>,
+  repository: RepositoryEnvelope,
   target: RepositoryCommitRef,
   source: RepositoryCommitRef,
 ) -> MergeBaseOutcome {
+  let commits = repository.commits
   let history = repository_history(commits: commits)
   match ancestry_walk(start: target, history: history) {
     AncestryTraced { chain: target_chain } =>
@@ -292,7 +302,7 @@ fn merge_base(
                     MergeBaseSourceIsAncestorOfTarget { target: target, source: source }
                   } else {
                     resolve_merge_anchors(
-                      commits: commits,
+                      repository: repository,
                       base: base,
                       source: source,
                       target: target,

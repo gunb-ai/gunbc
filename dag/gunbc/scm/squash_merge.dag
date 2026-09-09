@@ -61,11 +61,12 @@ import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryCommit,
   commit_at_reference,
-  OrdinaryAncestralSubjectAdmission, OrdinaryAncestralSubjectAdmitted,
-  OrdinaryAncestralSubjectAllocatorInvalid,
+  AncestralSubjectAdmission, AncestralSubjectAdmitted,
+  AncestralSubjectAllocatorInvalid,
   admit_commit_subject_from_basis, mint_repository_commit_admitted,
-  AdmittedCommitBasis, BasisAdmitted, BasisParentAbsent, BasisIntegrationSourceAbsent,
-  admit_merge_basis,
+  AdmittedCommitBasis,
+  MergeStoreOutcome, MergeStoreAdvanced, MergeStoreLocatorCollision,
+  store_and_admit_merge_basis,
   RepositoryManifestRootUniqueStored,
   RepositoryManifestRootUniqueLocatorCollision, repository_root_by_storing_unique,
 }
@@ -94,11 +95,6 @@ type MergeSideName
 //                                   a missing object while "occupied by an authored source" is an
 //                                   identity collision or a corrupt row -- different damage,
 //                                   different investigation.
-//   SquashMergeCommitMissing        a reference naming no commit. NO LONGER PRODUCED WHEN READING A
-//                                   SIDE: `ResolvedMergeAnchors` hands back the three rows the walk
-//                                   already found, so that question is absent rather than asked and
-//                                   refused. It survives only on the post-store basis admission,
-//                                   whose arms this route cannot reach -- see the note there.
 //   SquashMergeResult*              the merged manifest would not store. Kept apart from the mint
 //                                   arms below because this happens before any commit is proposed:
 //                                   the corpus itself could not be written down.
@@ -132,7 +128,6 @@ type SquashMergeOutcome
   | SquashMergeRootIsAuthoredSource { side: MergeSideName, root: ObjectId }
   | SquashMergeRootIsSemanticNode { side: MergeSideName, root: ObjectId }
 
-  | SquashMergeCommitMissing { side: MergeSideName, reference: RepositoryCommitRef }
 
   | SquashMergeResultLocatorCollision { identity: ObjectId }
 
@@ -183,12 +178,12 @@ fn read_side_manifest(
 // `AdmittedMergeSubject`. What is left is the allocator, which is a property of the repository that
 // nothing upstream has answered, and the mint itself.
 fn carry_ancestral_mint(
-  admission: OrdinaryAncestralSubjectAdmission,
+  admission: AncestralSubjectAdmission,
   message: String,
 ) -> SquashMergeOutcome {
   match admission {
-    OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: _ } => SquashMergeAllocatorInvalid
-    OrdinaryAncestralSubjectAdmitted(admitted) => {
+    AncestralSubjectAllocatorInvalid { next_ordinal: _ } => SquashMergeAllocatorInvalid
+    AncestralSubjectAdmitted(admitted) => {
       let minted = mint_repository_commit_admitted(admitted: admitted, message: message)
       SquashMerged { repository: minted.repository, reference: minted.reference }
     }
@@ -236,11 +231,16 @@ fn carry_ancestral_mint(
 // residual hole one level up: even a sealed ancestry proved admission in SOME repository while the
 // subject arrived separately, so the two could come from different ones.
 //
-// `admit_merge_basis` closes both. It takes the stored subject and establishes BOTH anchors in that
-// subject's own repository, so the parent relation and the integration source are derived rather than
-// asserted, and there is no second argument to mis-pair. The integration source matters as much as the
-// parent: it is the row a LATER merge reads to refuse a second consumption, so a source this
-// repository does not hold would write a receipt naming nothing.
+// `store_and_admit_merge_basis` closes both, and it replaced an `admit_merge_basis` that closed only
+// the first. That function established the two anchors against the ADVANCED repository, which made it
+// a public production root for a consumption receipt: given any two references a repository happened
+// to hold, it minted a basis carrying `SquashIntegrated { source }`, so any caller could SPEND a branch
+// without either merge authority admitting the merge. Mere membership is not that authority. Found by
+// external review, in a function this module reached one round after it was added.
+//
+// Membership is now a value the envelope issues BEFORE the advance and carries THROUGH it, so the
+// parent relation and the integration source are derived from evidence rather than asserted, and there
+// is no second argument to mis-pair and no membership question after the store.
 //
 // THE ORDER OF THE TWO STEPS HAD TO FLIP TO GET THIS. The subject does not exist until the merged
 // entries are stored, so the basis cannot be admitted before the store -- an earlier revision admitted
@@ -253,23 +253,20 @@ fn carry_ancestral_mint(
 // possible meanings, and all three are wrong: skip the check and recreate the forge, run it and re-ask
 // a settled question, or deduplicate silently and invent merge policy. Ruled by external review.
 //
-// `SquashMergeCommitMissing` NO LONGER HAS A REACHABLE PRODUCER, AND SAYING SO PRECISELY MATTERS
-// BECAUSE I PREVIOUSLY SAID THE OPPOSITE. An earlier revision of this note claimed the arm had gained
-// two real producers, one per side; review corrected it, and the correction was right --
-// `repository_root_by_storing_unique` advances the STORE while preserving the commit population, and
-// target and source were established by successful walks, so `admit_merge_basis` cannot refuse here.
+// `SquashMergeCommitMissing` IS DELETED, AND THE ROUTE THAT USED TO NEED IT IS GONE WITH IT.
 //
-// The read side is now genuinely absent: `ResolvedMergeAnchors` carries the rows, so nothing re-asks
-// whether those commits exist. What remains is the POST-STORE admission, which re-establishes the two
-// anchors against the advanced repository because the sealed basis may not be minted from rows a
-// caller supplied -- that is exactly the cross-repository mis-pairing this stack closed one round ago.
-// Removing the last two arms therefore needs a store-only advance that PRESERVES the established
-// presence into the new repository, which is the remaining ruled work and is deliberately not
-// half-built here.
+// Two rounds of this were wrong in opposite directions. First the arm was carried for shape and could
+// not fire. Then I reported that it had gained two real producers; review corrected me -- the advance
+// copies the commit population unchanged, so it never could. Now nobody asks: the anchors carry
+// presences the envelope issued before the advance, and `store_and_admit_merge_basis` carries the same
+// ones through, so there is no membership question on either side of the store.
+//
+// THE SUBJECT CARRIES THE ANCHORS RATHER THAN PROJECTING THEM BACK DOWN TO LOOSE REFERENCES, which is
+// what made the old post-store admission possible at all: once the evidence had been flattened to two
+// bare refs, the only way to mint was to look them up again. Ruled by external review.
 type AdmittedMergeSubject sole_constructor {
   repository: RepositoryEnvelope
-  target: RepositoryCommitRef
-  source: RepositoryCommitRef
+  anchors: ResolvedMergeAnchors
   entries: PathUniqueManifestEntries
 }
 
@@ -277,28 +274,19 @@ fn commit_merged_manifest(
   admitted: AdmittedMergeSubject,
   message: String,
 ) -> SquashMergeOutcome {
-  match repository_root_by_storing_unique(
+  match store_and_admit_merge_basis(
     repository: admitted.repository,
+    parent: admitted.anchors.target,
+    source: admitted.anchors.source,
     unique: admitted.entries,
   ) {
-    RepositoryManifestRootUniqueLocatorCollision { identity: i } =>
+    MergeStoreLocatorCollision { identity: i } =>
       SquashMergeResultLocatorCollision { identity: i }
-    RepositoryManifestRootUniqueStored(subject) =>
-      match admit_merge_basis(
-        subject: subject,
-        parent: admitted.target,
-        source: admitted.source,
-      ) {
-        BasisParentAbsent { parent: p } =>
-          SquashMergeCommitMissing { side: MergeTargetCommit, reference: p }
-        BasisIntegrationSourceAbsent { source: sref } =>
-          SquashMergeCommitMissing { side: MergeSourceCommit, reference: sref }
-        BasisAdmitted(basis) =>
-          carry_ancestral_mint(
-            admission: admit_commit_subject_from_basis(basis: basis),
-            message: message,
-          )
-      }
+    MergeStoreAdvanced(basis) =>
+      carry_ancestral_mint(
+        admission: admit_commit_subject_from_basis(basis: basis),
+        message: message,
+      )
   }
 }
 
@@ -310,7 +298,7 @@ fn squash_merge(
   source: RepositoryCommitRef,
   message: String,
 ) -> SquashMergeOutcome {
-  match merge_base(commits: repository.commits, target: target, source: source) {
+  match merge_base(repository: repository, target: target, source: source) {
     MergeBaseSourceAlreadyConsumed { recorded_at: a, consumed: b, source: c } =>
       SquashMergeBaseRefused {
         refusal: MergeBaseSourceAlreadyConsumed { recorded_at: a, consumed: b, source: c },
@@ -325,21 +313,21 @@ fn squash_merge(
       match read_side_manifest(
         repository: repository,
         side: MergeBaseCommit,
-        commit: anchors.base,
+        commit: anchors.base.commit,
       ) {
         MergeSideManifestRefused { outcome: o } => o
         MergeSideManifestRead { record: base_manifest } =>
           match read_side_manifest(
             repository: repository,
             side: MergeSourceCommit,
-            commit: anchors.source,
+            commit: anchors.source.commit,
           ) {
             MergeSideManifestRefused { outcome: o } => o
             MergeSideManifestRead { record: source_manifest } =>
               match read_side_manifest(
                 repository: repository,
                 side: MergeTargetCommit,
-                commit: anchors.target,
+                commit: anchors.target.commit,
               ) {
                 MergeSideManifestRefused { outcome: o } => o
                 MergeSideManifestRead { record: target_manifest } =>
@@ -353,8 +341,7 @@ fn squash_merge(
                       commit_merged_manifest(
                         admitted: AdmittedMergeSubject {
                           repository: repository,
-                          target: target,
-                          source: source,
+                          anchors: anchors,
                           entries: e,
                         },
                         message: message,

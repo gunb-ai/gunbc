@@ -33,8 +33,8 @@ import gunbc.scm.repository_envelope {
   MintedCommit,
   OrdinaryCommitSubjectAdmission, OrdinaryCommitSubjectAdmitted,
   OrdinaryCommitSubjectAllocatorInvalid, OrdinaryCommitSubjectParentMissing,
-  OrdinaryAncestralSubjectAdmission, OrdinaryAncestralSubjectAdmitted,
-  OrdinaryAncestralSubjectAllocatorInvalid,
+  AncestralSubjectAdmission, AncestralSubjectAdmitted,
+  AncestralSubjectAllocatorInvalid,
   AdmittedCommitBasis,
   admit_ordinary_commit_subject, admit_commit_subject_from_basis,
   mint_repository_commit_admitted,
@@ -102,9 +102,9 @@ fn mint_ancestral_commit(
   message: String,
 ) -> AncestralCommitMint {
   match admit_commit_subject_from_basis(basis: basis) {
-    OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: n } =>
+    AncestralSubjectAllocatorInvalid { next_ordinal: n } =>
       AncestralCommitAllocatorInvalid { next_ordinal: n }
-    OrdinaryAncestralSubjectAdmitted(admitted) =>
+    AncestralSubjectAdmitted(admitted) =>
       AncestralCommitMinted(mint_repository_commit_admitted(admitted: admitted, message: message))
   }
 }

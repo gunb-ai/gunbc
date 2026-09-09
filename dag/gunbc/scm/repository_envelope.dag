@@ -935,28 +935,69 @@ fn admit_descendant_basis(
   }
 }
 
-// THE MERGE MINT ESTABLISHES BOTH ANCHORS IN THE SUBJECT'S OWN REPOSITORY. The integration source is
-// the row a LATER merge reads to refuse a second consumption, so a source this repository does not
-// hold would write a receipt naming nothing.
-fn admit_merge_basis(
-  subject: RepositoryManifestRoot,
-  parent: RepositoryCommitRef,
-  source: RepositoryCommitRef,
-) -> BasisAdmission {
-  match admit_base_in(subject: subject, reference: parent) {
-    BaseAbsentInRepository { reference: r } => BasisParentAbsent { parent: r }
-    BaseAdmitted { basis: _, committed: _ } =>
-      match commit_at_reference(commits: subject.repository.commits, reference: source) {
-        Absent => BasisIntegrationSourceAbsent { source: source }
-        Present { value: _ } =>
-          BasisAdmitted(
-            AdmittedCommitBasis {
-              subject: subject,
-              ancestry: DescendsFrom { parent: parent },
-              integration: SquashIntegrated { source: source },
-            }
-          )
-      }
+// A COMMIT THIS REPOSITORY WAS OBSERVED TO HOLD, CARRYING THE ROW THAT OBSERVATION FOUND.
+//
+// `admit_merge_basis` USED TO STAND HERE AND IT WAS A PRODUCTION ROOT FOR A CONSUMPTION RECEIPT.
+// Given any two references a repository happened to hold, it minted a basis carrying
+// `SquashIntegrated { source }` -- the exact row `consumed_join` reads to refuse a LATER merge. `.dag`
+// has no module privacy, so any caller could reach it and SPEND a branch without either merge
+// authority having admitted the merge. Mere membership of a parent and a source is not authority to
+// write that receipt; the empty commit was never the damage, the receipt is. Found by external review,
+// in a function this stack added one round earlier while closing a different hole.
+//
+// So membership is now a VALUE rather than a check a mint repeats. `admit_commit_presence` is the only
+// mint, it is this module's own lookup, and the row it found travels inside -- so a holder of a
+// presence needs no second lookup to read that commit's root, and no consumer can assemble one from a
+// reference it merely happens to have.
+type CommitPresence sole_constructor {
+  commit: RepositoryCommit
+}
+
+fn admit_commit_presence(
+  repository: RepositoryEnvelope,
+  reference: RepositoryCommitRef,
+) -> CommitPresence? {
+  match commit_at_reference(commits: repository.commits, reference: reference) {
+    Absent => none
+    Present { value: commit } => Present { value: CommitPresence { commit: commit } }
+  }
+}
+
+// THE STORE-AND-BASIS TRANSITION IS ONE OPERATION, AND IT IS CO-HOMED WITH THE STORE IT ADVANCES.
+//
+// The merge used to store its manifest and THEN ask, of the advanced repository, whether its parent
+// and source were present -- re-asking a question the pre-store walks had already settled, and
+// carrying two arms no caller on that route could reach. The advance is what makes those arms
+// unreachable: it changes `store` and copies the commit population UNCHANGED. That fact was true and
+// unstated, so the returned value had forgotten it and the caller had to re-derive it.
+//
+// It is stated here instead. The presences are established BEFORE the advance, they are carried
+// THROUGH it, and the basis is minted from the same ones that went in -- so there is no membership
+// refusal after the advance, and the caller never passes anchors beside an advanced repository. This
+// lives in the envelope rather than beside the merge because the envelope owns both
+// `repository_root_by_storing_unique` and the basis seal, and the merge modules import THIS one:
+// homing it there would invert the dependency (DESIGN 3, acyclicity). Ruled by external review.
+type MergeStoreOutcome
+  = MergeStoreAdvanced(AdmittedCommitBasis)
+  | MergeStoreLocatorCollision { identity: ObjectId }
+
+fn store_and_admit_merge_basis(
+  repository: RepositoryEnvelope,
+  parent: CommitPresence,
+  source: CommitPresence,
+  unique: PathUniqueManifestEntries,
+) -> MergeStoreOutcome {
+  match repository_root_by_storing_unique(repository: repository, unique: unique) {
+    RepositoryManifestRootUniqueLocatorCollision { identity: i } =>
+      MergeStoreLocatorCollision { identity: i }
+    RepositoryManifestRootUniqueStored(subject) =>
+      MergeStoreAdvanced(
+        AdmittedCommitBasis {
+          subject: subject,
+          ancestry: DescendsFrom { parent: parent.commit.reference },
+          integration: SquashIntegrated { source: source.commit.reference },
+        }
+      )
   }
 }
 
@@ -1002,22 +1043,27 @@ fn admit_base_in(
 // was minted. The allocator question is NOT absent, because it is a property of the repository rather
 // than of the parent, and nothing upstream has answered it.
 //
+// THE NAME DROPPED "Ordinary" BECAUSE THE ROUTE IS NO LONGER THE ORDINARY ONE ALONE. Squash merge
+// reaches this same admission, so a name promising an ordinary-commit subject described a narrower
+// population than the type actually serves -- a stale authority statement of the kind this stack keeps
+// finding. Found by external review.
+//
 // THIS TAKES THE BASIS AND NOTHING ELSE. An earlier revision took the subject, an admitted ancestry
 // and a raw integration as three arguments, which is what let a caller pair evidence from one
 // repository with a subject from another. Found by external review, twice: once for the ancestry being
 // unsealed, and again for the seal not naming what it was evidence about.
-type OrdinaryAncestralSubjectAdmission
-  = OrdinaryAncestralSubjectAdmitted(AdmittedCommitSubject)
-  | OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: Int }
+type AncestralSubjectAdmission
+  = AncestralSubjectAdmitted(AdmittedCommitSubject)
+  | AncestralSubjectAllocatorInvalid { next_ordinal: Int }
 
 fn admit_commit_subject_from_basis(
   basis: AdmittedCommitBasis,
-) -> OrdinaryAncestralSubjectAdmission {
+) -> AncestralSubjectAdmission {
   match admit_commit_allocator(repository: basis.subject.repository) {
     CommitAllocatorInvalid { next_ordinal: n } =>
-      OrdinaryAncestralSubjectAllocatorInvalid { next_ordinal: n }
+      AncestralSubjectAllocatorInvalid { next_ordinal: n }
     CommitAllocatorAdmitted =>
-      OrdinaryAncestralSubjectAdmitted(
+      AncestralSubjectAdmitted(
         AdmittedCommitSubject {
           subject: basis.subject,
           ancestry: basis.ancestry,

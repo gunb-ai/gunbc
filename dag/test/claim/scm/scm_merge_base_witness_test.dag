@@ -196,7 +196,7 @@ test fn scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base() ->
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: _, s1: s1, m1: m1, t1: t1, s2: s2, i1: _ } =>
-      match merge_base(commits: r.commits, target: t1, source: s2) {
+      match merge_base(repository: r, target: t1, source: s2) {
         MergeBaseSourceAlreadyConsumed { recorded_at: at, consumed: c, source: s } =>
           repository_commit_ref_eq(left: at, right: m1)
             && repository_commit_ref_eq(left: c, right: s1)
@@ -217,8 +217,8 @@ test fn scm_mb_an_independent_lineage_sharing_content_still_derives_its_base() -
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: _, m1: _, t1: t1, s2: _, i1: i1 } =>
-      match merge_base(commits: r.commits, target: t1, source: i1) {
-        MergeBaseDerived { anchors: a } => repository_commit_ref_eq(left: a.base.reference, right: c0)
+      match merge_base(repository: r, target: t1, source: i1) {
+        MergeBaseDerived { anchors: a } => repository_commit_ref_eq(left: a.base.commit.reference, right: c0)
         MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
@@ -234,7 +234,7 @@ test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool 
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: _, s1: s1, m1: m1, t1: t1, s2: _, i1: _ } =>
-      match merge_base(commits: r.commits, target: t1, source: s1) {
+      match merge_base(repository: r, target: t1, source: s1) {
         MergeBaseSourceAlreadyConsumed { recorded_at: at, consumed: c, source: s } =>
           repository_commit_ref_eq(left: at, right: m1)
             && repository_commit_ref_eq(left: c, right: s1)
@@ -298,7 +298,7 @@ test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool {
           match decode_repository(v: doc) {
             RepositoryDecodeRefused { cause: _ } => false
             RepositoryDecoded { envelope: back } =>
-              match merge_base(commits: back.commits, target: t1, source: s2) {
+              match merge_base(repository: back, target: t1, source: s2) {
                 MergeBaseSourceAlreadyConsumed { recorded_at: at, consumed: c, source: _ } =>
                   repository_commit_ref_eq(left: at, right: m1)
                     && repository_commit_ref_eq(left: c, right: s1)
@@ -456,7 +456,7 @@ test fn scm_mb_merging_a_commit_into_itself_has_nothing_to_integrate() -> Bool {
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: _, s1: _, m1: _, t1: t1, s2: _, i1: _ } =>
-      match merge_base(commits: r.commits, target: t1, source: t1) {
+      match merge_base(repository: r, target: t1, source: t1) {
         MergeBaseSourceIsAncestorOfTarget { target: t, source: s } =>
           repository_commit_ref_eq(left: t, right: t1)
             && repository_commit_ref_eq(left: s, right: t1)
@@ -474,7 +474,7 @@ test fn scm_mb_squashing_an_ancestor_into_its_descendant_has_nothing_to_integrat
   match mb_scene() {
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: _, m1: _, t1: t1, s2: _, i1: _ } =>
-      match merge_base(commits: r.commits, target: t1, source: c0) {
+      match merge_base(repository: r, target: t1, source: c0) {
         MergeBaseSourceIsAncestorOfTarget { target: t, source: s } =>
           repository_commit_ref_eq(left: t, right: t1)
             && repository_commit_ref_eq(left: s, right: c0)
