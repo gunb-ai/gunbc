@@ -7,6 +7,14 @@ import gunbc.target_binding {
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
+  CompileCleanAdvisoryCensusProducer,
+  CompileCleanAdvisoryCensusStanding,
+  CompileCleanAdvisoryCensusCompleted,
+  CompileCleanAdvisoryCensusRefused,
+  CompileCleanAdvisoryCensusObservation,
+  CompileCleanAdvisoryCensusRefusalCause,
+  AdvisoryCensusClosureUnresolvable, AdvisoryCensusGraphAbsent,
+  AdvisoryClassCensusEntry,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted,
   HeadsReadingDifferentialSubjectUnreached,
@@ -69,6 +77,16 @@ fn behavioral_receipt_selftest_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-selftest" } }
 }
 
+// THE COMPILE-CLEAN ADVISORY CENSUS. Its subject is the whole-tree compile-clean closure -- the
+// same source set the floor gate compiles -- because an advisory count is a statement about the
+// corpus only when the closure is the corpus's: censusing a narrower entry would report what was
+// compiled, not what exists. This is the restored reachability for the census whose standalone
+// bin was swept as an unrostered seed probe in gunbc#9160; the instrument target is the rostered
+// entry point that sweep showed was missing.
+fn compile_clean_advisory_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compile-clean-advisory-census" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -97,6 +115,10 @@ fn behavioral_receipt_selftest_target() -> BuildTarget {
   instrument_test_target(label: behavioral_receipt_selftest_label())
 }
 
+fn compile_clean_advisory_census_target() -> BuildTarget {
+  instrument_test_target(label: compile_clean_advisory_census_label())
+}
+
 fn heads_reading_differential_binding() -> TargetBinding {
   TargetBinding {
     target: heads_reading_differential_label()
@@ -114,6 +136,10 @@ fn behavioral_receipt_census_binding() -> TargetBinding {
 
 fn behavioral_receipt_selftest_binding() -> TargetBinding {
   TargetBinding { target: behavioral_receipt_selftest_label() producer: BehavioralReceiptSelftestProducer {} }
+}
+
+fn compile_clean_advisory_census_binding() -> TargetBinding {
+  TargetBinding { target: compile_clean_advisory_census_label() producer: CompileCleanAdvisoryCensusProducer {} }
 }
 
 // THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN ARGUMENT THE CALLER SUPPLIES.
@@ -152,14 +178,16 @@ fn behavioral_receipt_source_roots() -> List<String> {
 fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
-    behavioral_receipt_census_label(), behavioral_receipt_selftest_label()
+    behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
+    compile_clean_advisory_census_label()
   ]
 }
 
 fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
-    behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding()
+    behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
+    compile_clean_advisory_census_binding()
   ]
 }
 
@@ -259,6 +287,76 @@ fn heads_reading_differential_standing_rendered(
       concat(
         "heads-reading-differential: refused: ",
         differential_refusal_cause_rendered(c: c)
+      )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ADVISORY CENSUS'S OWN CLASSIFIER AND ITS OWN RENDERING
+// ---------------------------------------------------------------------------------------------
+
+// WHAT "HELD" MEANS FOR A BURNDOWN INSTRUMENT: the advisory population is empty. Every nonempty
+// class row is work standing between the corpus and the promotion of that class to blocking, so
+// the observation holds exactly when no class carries a row. A census that cannot reach its
+// closure refuses; it never reports an unobserved tree as a clean one.
+fn compile_clean_advisory_census_holds(o: CompileCleanAdvisoryCensusObservation) -> Bool {
+  (o.classes |> count) == 0
+}
+
+fn compile_clean_advisory_census_termination(
+  s: CompileCleanAdvisoryCensusStanding
+) -> InvocationTermination {
+  match s {
+    CompileCleanAdvisoryCensusCompleted { observation: o } =>
+      if compile_clean_advisory_census_holds(o: o) {
+        InvocationObservationHeld {}
+      } else {
+        InvocationObservationDidNotHold {}
+      }
+    CompileCleanAdvisoryCensusRefused { cause: _ } => InvocationRefused {}
+  }
+}
+
+fn advisory_census_refusal_cause_rendered(c: CompileCleanAdvisoryCensusRefusalCause) -> String {
+  match c {
+    AdvisoryCensusClosureUnresolvable => "whole-tree closure unresolvable"
+    AdvisoryCensusGraphAbsent => "compilation produced no graph"
+  }
+}
+
+fn advisory_class_census_entry_rendered(e: AdvisoryClassCensusEntry) -> String {
+  join([
+    e.diagnostic_class as String,
+    " diagnostics=", to_string(e.diagnostics),
+    " distinct_modules=", to_string(e.distinct_modules),
+    " distinct_positions=", to_string(e.distinct_positions)
+  ], "")
+}
+
+// THE RENDERING IS THE CENSUS'S OWN VOCABULARY: the denominator, then one line per class with
+// the three counts the burndown works at. It does not say PASSED or FAILED -- those are the
+// aggregate's words, and this instrument is outside the aggregate by construction.
+fn compile_clean_advisory_census_observation_rendered(
+  o: CompileCleanAdvisoryCensusObservation
+) -> String {
+  join([
+    "compile-clean-advisory-census: closure_modules=", to_string(o.closure_modules),
+    " advisory_classes=", to_string(o.classes |> count),
+    "\n",
+    join(o.classes |> map(e => advisory_class_census_entry_rendered(e: e)), "\n")
+  ], "")
+}
+
+fn compile_clean_advisory_census_standing_rendered(
+  s: CompileCleanAdvisoryCensusStanding
+) -> String {
+  match s {
+    CompileCleanAdvisoryCensusCompleted { observation: o } =>
+      compile_clean_advisory_census_observation_rendered(o: o)
+    CompileCleanAdvisoryCensusRefused { cause: c } =>
+      concat(
+        "compile-clean-advisory-census: refused: ",
+        advisory_census_refusal_cause_rendered(c: c)
       )
   }
 }

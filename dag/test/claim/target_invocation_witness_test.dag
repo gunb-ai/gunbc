@@ -14,6 +14,10 @@ import gunbc.target_binding {
   build_target_binding_index,
   TargetProducer, HeadsReadingDifferentialProducer, BehavioralReceiptPlanProducer,
   BehavioralReceiptCensusProducer, BehavioralReceiptSelftestProducer,
+  CompileCleanAdvisoryCensusProducer,
+  CompileCleanAdvisoryCensusStanding, CompileCleanAdvisoryCensusCompleted,
+  CompileCleanAdvisoryCensusRefused, CompileCleanAdvisoryCensusObservation,
+  AdvisoryClassCensusEntry, AdvisoryCensusClosureUnresolvable,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted, HeadsReadingDifferentialSubjectUnreached,
   HeadsReadingDifferentialRefused,
@@ -37,6 +41,9 @@ import gunbc.instrument_targets {
   heads_reading_differential_binding,
   behavioral_receipt_plan_label, behavioral_receipt_census_label,
   behavioral_receipt_selftest_label,
+  compile_clean_advisory_census_label,
+  compile_clean_advisory_census_termination,
+  compile_clean_advisory_census_standing_rendered,
   instrument_targets, instrument_bindings,
   invoke_target,
   heads_reading_differential_termination,
@@ -59,7 +66,7 @@ import gunbc.discovery_census {
   required_aggregate_from_census,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool }
+import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
 
 // EVERY FIXTURE IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says
@@ -106,6 +113,18 @@ test fn every_behavioral_instrument_operand_routes_to_its_own_producer() -> Bool
       }
       TargetInvocationRouteRefused { cause: _ } => false
     }
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// THE CENSUS ENTRY POINT IS A ROW ON THE SAME GENERIC ROUTE. This is the reachability the
+// burndown sizing cites: the operand a shell would hand the verb must end at the census's own
+// producer, and a registry that lost the row reds here rather than silently halving the roster.
+test fn the_advisory_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compile-clean-advisory-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compile_clean_advisory_census_label())
+        && (b.producer == CompileCleanAdvisoryCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -278,6 +297,57 @@ test fn the_rendering_reports_the_populations_the_differential_measured() -> Boo
   ) == "heads-reading-differential: compared=3 divergent=1 narrowed=0 regressed=0 both_refused=0"
 }
 
+// THE CENSUS HOLDS ONLY ON AN EMPTY ADVISORY POPULATION. A completed census with no class rows is
+// the held state the burndown is driving toward; one class row -- the discriminating arm -- flips
+// it, so a reintroduced advisory instance is visible at the termination rather than only in the
+// printout. A refusal is neither: it never reached the closure, and it must not inherit a verdict.
+test fn the_advisory_census_holds_only_when_no_class_carries_a_row() -> Bool {
+  let held = compile_clean_advisory_census_termination(
+    s: CompileCleanAdvisoryCensusCompleted {
+      observation: CompileCleanAdvisoryCensusObservation { closure_modules: 3, classes: [] }
+    }
+  )
+  let carrying = compile_clean_advisory_census_termination(
+    s: CompileCleanAdvisoryCensusCompleted {
+      observation: CompileCleanAdvisoryCensusObservation {
+        closure_modules: 3,
+        classes: [AdvisoryClassCensusEntry {
+          diagnostic_class: "UnlistedImportUse" as NonEmptyStr,
+          diagnostics: 2,
+          distinct_modules: 1,
+          distinct_positions: 2
+        }]
+      }
+    }
+  )
+  let refused = compile_clean_advisory_census_termination(
+    s: CompileCleanAdvisoryCensusRefused { cause: AdvisoryCensusClosureUnresolvable {} }
+  )
+  (held == InvocationObservationHeld {})
+    && (carrying == InvocationObservationDidNotHold {})
+    && (refused == InvocationRefused {})
+    && (invocation_exit_status(t: carrying) == 1)
+    && (invocation_exit_status(t: refused) == 2)
+}
+
+// THE CENSUS RENDERING CARRIES THE THREE BURNDOWN COUNTS PER CLASS, because count, distinct
+// modules and distinct positions are what separate a diffuse class from a per-site repair.
+test fn the_advisory_census_rendering_reports_the_per_class_counts() -> Bool {
+  compile_clean_advisory_census_standing_rendered(
+    s: CompileCleanAdvisoryCensusCompleted {
+      observation: CompileCleanAdvisoryCensusObservation {
+        closure_modules: 3,
+        classes: [AdvisoryClassCensusEntry {
+          diagnostic_class: "UnlistedImportUse" as NonEmptyStr,
+          diagnostics: 2,
+          distinct_modules: 1,
+          distinct_positions: 2
+        }]
+      }
+    }
+  ) == "compile-clean-advisory-census: closure_modules=3 advisory_classes=1\nUnlistedImportUse diagnostics=2 distinct_modules=1 distinct_positions=2"
+}
+
 // ---------------------------------------------------------------------------------------------
 // THE ROWS ARE REAL, AND THE LABEL IS ABSENT FROM //:required
 // ---------------------------------------------------------------------------------------------
@@ -291,8 +361,8 @@ test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
          LabelNonCanonical { cause: _ } => false
        })
     && (render_label(l: t.label) == differential_operand())
-    && ((instrument_targets() |> count) == 4)
-    && ((instrument_bindings() |> count) == 4)
+    && ((instrument_targets() |> count) == 5)
+    && ((instrument_bindings() |> count) == 5)
 }
 
 // THE ABSENCE PROOF, MEASURED OVER THE DERIVED POPULATION RATHER THAN ASSERTED IN PROSE.
@@ -305,10 +375,18 @@ test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
 // site's OWN label must be present in the same population; without it, an aggregate that lost
 // every row -- or a membership predicate stuck at false -- would satisfy the absence claim
 // perfectly. Absence is only evidence when presence is demonstrated by the same instrument.
+//
+// THE PLANNED SITE'S MODULE PATH MUST SIT INSIDE THE STATIC GATE. Since the 2026-08-29 bankruptcy
+// ruling, `v2.workflow.required_floor` `required_gate_prefixes` is a static roster and a site
+// outside it dispositions `DeclinedOutsideRequiredGate` -- which is what happened to the original
+// `test.claim.some_witness` fixture path: the presence conjunct above went silently red while the
+// module itself sat off-gate and unexecuted. `v2.test.` is a rostered prefix, so the fixture's
+// planned site plans again; a future roster shrink that drops the prefix reds this test loudly,
+// which is the control working rather than a new fragility.
 fn census_fixture_sites() -> List<DiscoveredSite> {
   [
     DiscoveredSite {
-      module_path: "test.claim.some_witness",
+      module_path: "v2.test.some_witness",
       function: "a_planned_site",
       reads_live_tree: SubstrateInputsOnly {}
     },
@@ -322,7 +400,7 @@ fn census_fixture_sites() -> List<DiscoveredSite> {
 
 fn planned_site_label() -> Label {
   Label {
-    package: PackagePath { segments: ["test", "claim", "some_witness"] }
+    package: PackagePath { segments: ["v2", "test", "some_witness"] }
     target: TargetName { name: "a_planned_site" }
   }
 }

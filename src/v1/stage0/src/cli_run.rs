@@ -4863,10 +4863,17 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_diagnostic_histogram";
 
-// DELETE WHEN dissolved: `compile_clean_unlisted_import_census` bin,
-// `UnlistedImportBindingSource`, `classify_unlisted_import_binding_source`,
-// `compile_clean_unlisted_import_census`, and related census helpers (~150 LOC).
-// Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion;
+// DELETE WHEN dissolved: `UnlistedImportBindingSource`,
+// `classify_unlisted_import_binding_source`, `unlisted_import_rows_from_resolved`,
+// `UnlistedImportCensusRow`, and the unlisted-import-specific census helpers. The standalone bin
+// this marker once named was swept in gunbc#9160, and the dead `compile_clean_unlisted_import_census`
+// wrapper deleted when the per-class `compile_clean_advisory_census` subsumed it (its
+// `unlisted_import_rows` carries the same rows); what remains is the binding-source classification
+// the advisory census consumes. The census itself is NOT in this list: per DESIGN section 4b(4) it
+// stays enrolled after each class's climb as the executing evidence that the class stays at zero.
+// Receipt: the marker const below is itself the receipt -- present until deletion, gone with the
+// scaffold (a count receipt over the marker STRING counts this comment and the marker test too,
+// so the count form can never read what it claims).
 // namespace-only lane (docs/plans/namespace-resolution-design.md).
 pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_unlisted_import_census";

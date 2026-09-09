@@ -5,7 +5,7 @@ import extdeps.bazel.label {
   render_label, label_canonicality,
 }
 import v2.std.optional { Optional, Present, Absent }
-import std.types { String }
+import std.types { String, List, NonEmptyStr }
 import std.integer { Int }
 
 // A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
@@ -19,6 +19,7 @@ type TargetProducer
   | BehavioralReceiptCensusProducer
   | BehavioralReceiptSelftestProducer
   | HeadsReadingDifferentialProducer
+  | CompileCleanAdvisoryCensusProducer
 
 type TargetBinding {
   target: Label
@@ -252,3 +253,39 @@ type HeadsReadingDifferentialStanding
       cause: HeadsReadingDifferentialSubjectCause
     }
   | HeadsReadingDifferentialRefused { cause: HeadsReadingDifferentialRefusalCause }
+
+// THE ADVISORY CENSUS, ONE ROW PER DIAGNOSTIC CLASS. The class name is the compiler's own
+// diagnostic variant name (the same key `cli_run` `compile_clean_diagnostic_histogram_key`
+// derives by total match), never a paraphrase, so a row joins to the diagnostic authority rather
+// than to a second taxonomy. The three counts are the burndown's working grain: total diagnostics,
+// the distinct modules carrying them, and the distinct source positions they occupy -- a class
+// whose positions outrun its modules is diffuse, and one concentrated in a few modules is a
+// per-site repair.
+type AdvisoryClassCensusEntry {
+  diagnostic_class: NonEmptyStr
+  diagnostics: Int
+  distinct_modules: Int
+  distinct_positions: Int
+}
+
+// The subject is the whole-tree compile-clean closure (the same source set the floor gate
+// compiles), so `closure_modules` is the denominator every per-class count is read against.
+// Advisory is the exact complement of the blocking partition `gunbc.compile_clean_diagnostic_policy`
+// governs; a diagnostic counted by neither side would be the silent third state the partition
+// exists to make unwritable.
+type CompileCleanAdvisoryCensusObservation {
+  closure_modules: Int
+  classes: List<AdvisoryClassCensusEntry>
+}
+
+type CompileCleanAdvisoryCensusRefusalCause
+  = AdvisoryCensusClosureUnresolvable
+  | AdvisoryCensusGraphAbsent
+
+// A census over a source closure has no caller-selected subject that can be absent: the closure
+// failing to resolve, or resolving to no graph, is a typed producer refusal, never a census of
+// zero. A completed census whose `classes` is empty is the held state -- the advisory population
+// is empty -- and every nonempty class row is an observation that did not hold.
+type CompileCleanAdvisoryCensusStanding
+  = CompileCleanAdvisoryCensusCompleted { observation: CompileCleanAdvisoryCensusObservation }
+  | CompileCleanAdvisoryCensusRefused { cause: CompileCleanAdvisoryCensusRefusalCause }

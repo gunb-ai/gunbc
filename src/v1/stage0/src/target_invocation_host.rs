@@ -151,6 +151,7 @@ pub enum TargetProducer {
     BehavioralReceiptPlan,
     BehavioralReceiptCensus,
     BehavioralReceiptSelftest,
+    CompileCleanAdvisoryCensus,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -181,6 +182,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("behavioral-receipt-selftest"),
             TargetProducer::BehavioralReceiptSelftest,
+        ),
+        (
+            instrument_label("compile-clean-advisory-census"),
+            TargetProducer::CompileCleanAdvisoryCensus,
         ),
     ]
 }
@@ -351,6 +356,82 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::BehavioralReceiptSelftest => behavioral_outcome(
             cli_run::behavioral_receipt_host::run_selftest(&behavioral_receipt_source_roots()),
         ),
+        TargetProducer::CompileCleanAdvisoryCensus => run_compile_clean_advisory_census(),
+    }
+}
+
+/// THE ADVISORY CENSUS PRODUCER. The subject is the whole-tree compile-clean closure, which the
+/// census itself derives from `witness_layer_roots` — like the differential's roots, which corpus
+/// is measured is the instrument's own fact, not an invocation option.
+///
+/// The modeled observation (`gunbc.target_binding` `CompileCleanAdvisoryCensusObservation`) is the
+/// per-class summary. Two host lines ride below it, outside the model, exactly as the
+/// differential's parse-wall figures do: the UnlistedImportUse binding-source partition and the
+/// per-row worklist, because those are the repair instrument's detail for the one class whose
+/// promotion is staged, not per-class census vocabulary. Their next rung is a modeled carrier;
+/// until then they are named unmodeled host output, printed rather than dropped.
+fn run_compile_clean_advisory_census() -> InvocationOutcome {
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "compile-clean-advisory-census: refused: could not anchor at the workspace root: {e}"
+            ),
+        };
+    }
+    let census = match cli_run::compile_clean_advisory_census() {
+        Ok(c) => c,
+        Err(e) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("compile-clean-advisory-census: refused: {e}"),
+            };
+        }
+    };
+    let advisory_total: usize = census.entries.iter().map(|e| e.diagnostics).sum();
+    let mut message = format!(
+        "compile-clean-advisory-census: closure_modules={} advisory_classes={} advisory_total={}",
+        census.closure_modules,
+        census.entries.len(),
+        advisory_total,
+    );
+    for entry in &census.entries {
+        message.push_str(&format!(
+            "\nCLASS\t{}\tdiagnostics={}\tdistinct_modules={}\tdistinct_positions={}",
+            entry.class_name, entry.diagnostics, entry.distinct_modules, entry.distinct_positions,
+        ));
+    }
+    if !census.unlisted_import_rows.is_empty() {
+        let mut by_source: std::collections::BTreeMap<&'static str, usize> =
+            std::collections::BTreeMap::new();
+        for row in &census.unlisted_import_rows {
+            *by_source.entry(row.binding_source.as_str()).or_default() += 1;
+        }
+        message.push_str("\n--- UNLISTED_IMPORT_USE BINDING_SOURCE ---");
+        for (source, count) in &by_source {
+            message.push_str(&format!("\nSOURCE\t{source}\t{count}"));
+        }
+        message.push_str(
+            "\n--- UNLISTED_IMPORT_USE TSV ---\nfile\treferenced_name\treferencing_module\tdefiner_module\tbinding_source",
+        );
+        for row in &census.unlisted_import_rows {
+            message.push_str(&format!(
+                "\n{}\t{}\t{}\t{}\t{}",
+                row.file,
+                row.referenced_name,
+                row.referencing_module,
+                row.definer_module.as_deref().unwrap_or(""),
+                row.binding_source.as_str(),
+            ));
+        }
+    }
+    InvocationOutcome {
+        termination: if census.entries.is_empty() {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message,
     }
 }
 

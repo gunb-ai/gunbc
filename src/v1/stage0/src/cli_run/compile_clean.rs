@@ -668,10 +668,10 @@ pub(crate) fn compile_clean_whole_tree_resolved(
     )))
 }
 
-/// Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
-pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensusRow>, String> {
+fn unlisted_import_rows_from_resolved(
+    result: &v1_compiler_compile::ResolvedPipelineResult,
+) -> Result<Vec<UnlistedImportCensusRow>, String> {
     use crate::v1_std_core::CompilerDiagnostic;
-    let result = compile_clean_whole_tree_resolved()?;
     let graph = result
         .graph
         .clone()
@@ -698,6 +698,76 @@ pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensus
             .then_with(|| a.referencing_module.cmp(&b.referencing_module))
     });
     Ok(rows)
+}
+
+/// One advisory diagnostic class counted over the whole-tree compile-clean closure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdvisoryClassCensusEntry {
+    pub class_name: String,
+    pub diagnostics: usize,
+    pub distinct_modules: usize,
+    pub distinct_positions: usize,
+}
+
+/// The per-class advisory census: one entry per diagnostic class the compile-clean policy
+/// currently admits as advisory, over the same whole-tree closure the floor gate compiles, plus
+/// the binding-source-attributed UnlistedImportUse rows (the burndown worklist for the class
+/// whose promotion is staged in `gunbc.compile_clean_diagnostic_policy`).
+#[derive(Debug, Clone)]
+pub struct CompileCleanAdvisoryCensus {
+    pub closure_modules: usize,
+    pub entries: Vec<AdvisoryClassCensusEntry>,
+    pub unlisted_import_rows: Vec<UnlistedImportCensusRow>,
+}
+
+/// Per-class advisory census over the whole-tree compile-clean closure (issue 11).
+///
+/// The class key is `compile_clean_diagnostic_histogram_key`'s first component — the total
+/// match over `CompilerDiagnostic` — so a class name here can never drift from the compiler's
+/// own variant identity. Advisory is the exact complement of `compile_clean_diagnostic_is_hard`,
+/// the same partition the gate and the CLI transport read.
+pub fn compile_clean_advisory_census() -> Result<CompileCleanAdvisoryCensus, String> {
+    let result = compile_clean_whole_tree_resolved()?;
+    let closure_modules = result.graph.as_ref().map(|g| g.modules.len()).unwrap_or(0);
+    let mut by_class: BTreeMap<String, (usize, BTreeSet<String>, BTreeSet<String>)> =
+        BTreeMap::new();
+    for d in result.diagnostics.iter() {
+        if !compile_clean_diagnostic_is_advisory(d) {
+            continue;
+        }
+        let (class, _) = compile_clean_diagnostic_histogram_key(d);
+        let span = diagnostic_to_span(d.diagnostic.clone());
+        let position = if span.file.is_empty() {
+            format!("module:{}", d.module_name)
+        } else {
+            format!(
+                "{}:{}",
+                normalize_repo_relative_path_for_census(&span.file),
+                span.start
+            )
+        };
+        let entry = by_class.entry(class).or_default();
+        entry.0 += 1;
+        entry.1.insert(d.module_name.clone());
+        entry.2.insert(position);
+    }
+    let entries = by_class
+        .into_iter()
+        .map(
+            |(class_name, (diagnostics, modules, positions))| AdvisoryClassCensusEntry {
+                class_name,
+                diagnostics,
+                distinct_modules: modules.len(),
+                distinct_positions: positions.len(),
+            },
+        )
+        .collect();
+    let unlisted_import_rows = unlisted_import_rows_from_resolved(&result)?;
+    Ok(CompileCleanAdvisoryCensus {
+        closure_modules,
+        entries,
+        unlisted_import_rows,
+    })
 }
 
 /// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).

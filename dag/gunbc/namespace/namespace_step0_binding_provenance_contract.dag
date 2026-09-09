@@ -194,7 +194,7 @@ data step0_census_receipt_fields: List<Step0CensusReceiptField> = [
 data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may not promote UnlistedImportUse from advisory to enforced in order to observe its own subject; the acceptance path may not be changed by the change that measures it" as NonEmptyStr
 
 // AND THE EXISTING CENSUS'S COVERAGE IS NOT UNPROVEN -- IT IS REFUTED. This row was written as a
-// caution: compile_clean_unlisted_import_census selects UnlistedImportUse rows from a masked
+// caution: compile_clean_advisory_census selects UnlistedImportUse rows from a masked
 // type-name emission path, so its coverage of the family roster was UNESTABLISHED. That standing has
 // been discharged in the harder direction. A calibration run over a hand-authored subject shows the
 // reference-occurrence producer emitting no denominator row at all for several families of the roster
