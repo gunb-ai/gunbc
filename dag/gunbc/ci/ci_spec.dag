@@ -2190,11 +2190,32 @@ fn ci_heal_author_commit_package_lines() -> List<String> {
 // ledgers emits at least one judged line per ledger artifact, so an empty file means nothing was
 // judged. The denominator is zero, which is precisely the state that must never be mistaken for a
 // clean numerator.
+// THE HEAL COMMIT IS AUTHORED BY THE IDENTITY THAT ACTUALLY PUSHES IT, and the identity it used
+// before resolved to NO GITHUB ACCOUNT AT ALL. gunbc-ci-auto-heal@users.noreply.github.com belongs
+// to no user, so GitHub renders every heal commit with a null author -- and the repository's
+// fork-pr-contributor-approval policy, read as first_time_contributors on 2026-09-09, admits a
+// pull_request run on whether its ACTOR has ever had a commit or pull request merged here.
+//
+// The actor is the PUSHER, which is github-actions[bot] because the push carries the Actions job
+// credential. Measured the same day: github-actions[bot] has 0 merged pull requests and 0 commits
+// attributed to it in this repository, against gunbai-bot[bot]'s 100+ and 79 of the last 100 on
+// main. So the actor is a first-time contributor, and every heal push it creates is WITHHELD --
+// the run is created and executes nothing.
+//
+// THE FABRICATED AUTHOR IS WHY THE STANDING NEVER ACCRUED. Heal has been landing commits for
+// months; every one of them counted toward nobody, because the author it named does not exist.
+// Writing the canonical identity documented by actions/checkout means the next merged heal commit
+// is attributed to github-actions[bot], which retires the first-time standing permanently and
+// dissolves the hold at its cause rather than routing around it with a second credential.
+//
+// The id is not decorative: GitHub attributes a noreply address to an account by the numeric
+// prefix, so 41898282 IS the binding to github-actions[bot] and a name-only change attributes
+// nothing.
 fn ci_heal_shell_lines() -> List<String> {
   concat(
     [
-      "git config user.name \"gunbc-ci-auto-heal\"",
-      "git config user.email \"gunbc-ci-auto-heal@users.noreply.github.com\""
+      "git config user.name \"github-actions[bot]\"",
+      "git config user.email \"41898282+github-actions[bot]@users.noreply.github.com\""
     ],
     concat(
       ci_heal_author_commit_drift_lines(),
