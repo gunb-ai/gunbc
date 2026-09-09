@@ -20,8 +20,7 @@ import extdeps.colo.iron_mountain {
 }
 import gunbc.colo_census_coverage {
   RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
-  coverage_density_read_count,
-  coverage_is_surveyed, coverage_facility_count,
+  coverage_density_read_count, coverage_facility_count,
   nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley, census_regions,
 }
 
@@ -146,31 +145,33 @@ data unsurveyed_fixture: RegionCoverage = RegionCoverage {
 test fn w_surveyed_empty_and_unsurveyed_do_not_agree() -> Bool {
   facility_count_or_sentinel(c: southern_new_jersey) == 0
     && facility_count_or_sentinel(c: unsurveyed_fixture) == 0 - 1
-    && coverage_is_surveyed(c: southern_new_jersey)
-    && !coverage_is_surveyed(c: unsurveyed_fixture)
 }
 
-// AND THE LIVE ROW THAT LOOKS LIKE THE UNSURVEYED ONE AND IS NOT. The Hudson Valley yielded no
-// retail colocation, and the temptation is to read that as nobody having looked. It answers ZERO
-// and reports itself surveyed, which is the whole distinction holding on a real row rather than
-// on the fixture.
+// THE SAME DISTINCTION ON A LIVE ROW, WHICH IS WHAT KEEPS THE FIXTURE FROM BEING THE ONLY EVIDENCE.
+// The Hudson Valley yielded no retail colocation and is the row a reader is most tempted to misread
+// as nobody having looked - enterprise and hyperscale sites are present there, they just do not
+// sell retail cabinets. It answers ZERO, so the presence of the count is what says it was surveyed,
+// and no second predicate is consulted to find that out.
 test fn w_a_surveyed_empty_region_is_not_an_unsurveyed_one() -> Bool {
   facility_count_or_sentinel(c: hudson_valley) == 0
-    && coverage_is_surveyed(c: hudson_valley)
 }
 
-// A SURVEYED REGION WITH FACILITIES ANSWERS ITS COUNT, which is the third arm and the one that
-// keeps the other two from being a ledger of failures only. The relation is asserted rather than
-// the literal: a witness repeating a hand-authored number it cannot re-derive proves only that
-// the file was not edited. Read densities can never exceed facilities, and this reds on a
-// transposed pair. Both sides are now DERIVED from the facility and density rows rather than
-// transcribed, so the transposition this was written to catch is no longer authorable - the
-// remaining content is that a region claiming facilities has at least one and never reports more
-// reads than facilities.
+// A SURVEYED REGION WITH FACILITIES ANSWERS ITS COUNT, and this witness is kept together with an
+// honest statement of what it could NOT see. The relation is asserted rather than the literal,
+// because a witness repeating a hand-authored number it cannot re-derive proves only that the file
+// was not edited. But the relation chosen - read densities never exceed facilities - was too weak
+// to discriminate the error that actually occurred: the corridor row carried 28 when the corpus
+// holds 27, and 1 <= 28 is exactly as true as 1 <= 27, so this stayed green beside the miscount for
+// as long as it existed. Avoiding the literal was right; this relation was not the answer. The
+// answer is derivation, and both counts are now folded from the facility and claim rows themselves,
+// which makes a miscount unwritable rather than merely checkable. This witness stays as the
+// transposition control it always was, and stops being cited as evidence the counts are right.
 fn read_count_or_sentinel(c: RegionCoverage) -> Int {
   match coverage_density_read_count(c: c) {
     Present { value } => value,
     Absent => 0 - 1,
+  }
+}
   }
 }
 
