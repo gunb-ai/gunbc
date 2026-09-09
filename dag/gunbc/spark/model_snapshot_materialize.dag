@@ -22,7 +22,7 @@ import gunbc.artifact_acquisition {
   SourceLocator, SourceArgv, SourceUrl,
 }
 import gunbc.spark.model_snapshot_acquisition {
-  ModelSnapshotDesired, ModelSnapshotRole, SnapshotSeed, SnapshotReplicaOf,
+  ModelSnapshotDesired, ModelSnapshotRole, SnapshotSeed, SnapshotReplicaOf, SnapshotRoleUndecidable,
   model_snapshot_subject_for, model_snapshot_completion_check_argv, spark_hub_cache_root,
 }
 
@@ -704,21 +704,55 @@ type SparkMaterializeOutcome
 // DISSOLVE-ON: the source carries its own execution locus -- containerised for Hub, host-native for
 // rail -- so `spark_snapshot_handler` stops applying one executor to every source. That is the source
 // -specific execution split; until it lands, this arm is the wall.
+// ── WHICH ROLES REFUSE BEFORE ANY I/O IS A PURE QUESTION ──────────────────────────────────────
+//
+// Separated from spark_materialize_member because it IS a different question -- "does this member's
+// role permit an attempt at all" is decided from the role alone, while the attempt itself needs a
+// reach path, a trust anchor, a credential and an executor. Keeping them fused meant the decision
+// could only be exercised by supplying all four, and FleetOpenSshTrustPolicy is sole_constructor, so
+// no witness can build one: the meaning of these arms was unreachable to evidence. A pure
+// classification and an effectful acquisition are two folds that happened to share a function, and
+// the seam is where the I/O begins.
+//
+// AN UNDECIDABLE ROLE REFUSES AND CARRIES ITS OWN CAUSE. The acquisition authority gained that third
+// state so an unresolved rail member would not silently become another upstream seed -- at 306 GiB
+// per member that absorbing fallback is expensive as well as wrong -- and this consumer still assumed
+// the closed two-arm coproduct. Exact-head CI found it as a non-exhaustive match after every local
+// witness had passed, because none of them reaches this fold.
+//
+// THE OTHER THREE MAPPINGS ARE EACH WRONG IN THEIR OWN WAY, stated so that stays visible. NOT
+// SparkMaterializeUnpinned: the snapshot may be perfectly pinned, and what is unknown is this
+// MEMBER'S ROLE. NOT seed: that is the absorbing fallback the third state exists to prevent. NOT
+// replica: there is no established peer, which is precisely what could not be decided. NOT a silent
+// no-op: a member that was asked for and never made ready must say so.
+//
+// THE CAUSE IS PASSED THROUGH rather than replaced with a sentence of this module's own. It names
+// which member could not be placed and why -- an unresolved rail address, or no eligible seed at all
+// -- and rewriting it here would lose the distinction a caller needs.
+fn role_refusal(host: HostIdentity, role: ModelSnapshotRole) -> SparkMaterializeOutcome? {
+  match role {
+    SnapshotRoleUndecidable { because: cause } =>
+      Present { value: SparkMaterializeRefused { host: host, cause: cause } }
+    SnapshotReplicaOf { peer_rail_address: peer } =>
+      Present { value: SparkMaterializeRefused {
+        host: host,
+        cause: join([
+          "rail replication from ", render_ipv4_address(addr: peer) as String,
+          " is not realised: its rsync must run host-native while this context applies the containerised Hub executor to every source, so the transfer would be rewritten through the runtime image and its paths translated across a mount that does not apply. The seed path is executed; this one is unbuilt",
+        ], "") as NonEmptyStr,
+      } }
+    SnapshotSeed => none
+  }
+}
+
 fn spark_materialize_member(
   ctx: SparkMaterializeContext,
   role: ModelSnapshotRole,
   snapshot: ModelSnapshotDesired,
 ) -> SparkMaterializeOutcome {
-  match role {
-    SnapshotReplicaOf { peer_rail_address: peer } =>
-      SparkMaterializeRefused {
-        host: ctx.host,
-        cause: join([
-          "rail replication from ", render_ipv4_address(addr: peer) as String,
-          " is not realised: its rsync must run host-native while this context applies the containerised Hub executor to every source, so the transfer would be rewritten through the runtime image and its paths translated across a mount that does not apply. The seed path is executed; this one is unbuilt",
-        ], "") as NonEmptyStr,
-      }
-    SnapshotSeed => spark_materialize_seed(ctx: ctx, role: role, snapshot: snapshot)
+  match role_refusal(host: ctx.host, role: role) {
+    Present { value: refusal } => refusal
+    Absent => spark_materialize_seed(ctx: ctx, role: role, snapshot: snapshot)
   }
 }
 
