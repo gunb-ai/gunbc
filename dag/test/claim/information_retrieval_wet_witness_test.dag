@@ -7,6 +7,7 @@ import gunbc.information_query {
   TimeInvariant,
   SoleRetrieval,
   InformationEvidenceUnavailable,
+  InformationEvidenceUnobservable,
   InformationEvidenceInferred,
 }
 import test.claim.information_query_witness {
@@ -49,6 +50,7 @@ test fn w_wet_retrieval_never_fabricates_a_receipt() -> Bool {
         independence: SoleRetrieval,
       ) {
         InformationEvidenceUnavailable { cause: _ } => true
+        InformationEvidenceUnobservable { detail: _ } => true
         InformationEvidenceInferred { inference: _ } => false
       }
   }

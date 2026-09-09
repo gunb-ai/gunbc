@@ -1,14 +1,12 @@
 module gunbc.information_retrieval
 
-import std.types { String, NonEmptyStr, List, EpochMs, HttpStatus }
+import std.types { String, NonEmptyStr, List, EpochMs }
 import extdeps.uri { Uri, uri_wire }
 import extdeps.http.client
 import extdeps.external_authority { ExternalAuthority }
 import std.citation {
   CitationRetrievalRequest,
-  CitationRetrievalObservation,
   CitationUnreachable,
-  ResponseObservedWithoutRepresentation,
   TransportUnreachable,
   CitationTarget,
   CitationSelector,
@@ -21,6 +19,7 @@ import std.claim_evidence {
 }
 import gunbc.information_query {
   InformationEvidence,
+  InformationEvidenceUnobservable,
   InformationTemporalScope,
   InformationEvidenceProbeIndependence,
   information_evidence_from_verification,
@@ -32,43 +31,21 @@ import gunbc.information_query {
 // the evidence join would fuse the transport to the decision -- one of N handlers written as though
 // it were a fact about the concept.
 
-// CURL'S SUCCESS IS NARROWER THAN HTTP'S. http.Client.GetBounded runs curl with -f, which is
-// documented to fail on any HTTP error response, so a successful exit means a 2xx was served. The
-// operation reports only a Bool, so the exact code inside that band is NOT observed; 200 is the
-// band's canonical member and is used to type the observation, not to claim the server said 200.
-data information_retrieval_success_status: HttpStatus = 200
-
-// A SUCCESSFUL FETCH STILL PRODUCES NO REPRESENTATION OBSERVATION, and that is the honest state
-// rather than a defect worked around. Reconciling bytes against a pin requires digesting the body,
-// and the only sha256 realization in the corpus runs over a FILE (extdeps.crypto.hash sha256sum_argv),
-// so nothing here can hash a body held in memory. The result is therefore
-// ResponseObservedWithoutRepresentation -- a response was seen, no representation was observed --
-// which std.citation already refuses through to InformationEvidenceUnavailable. It does NOT
-// fabricate a digest, and it does NOT widen into a weaker evidence class (DESIGN section 5).
+// A RESPONSE THIS TRANSPORT CANNOT WITNESS DOES NOT BECOME AN OBSERVATION. http.Client.GetBounded
+// reports only body and success: the HTTP status is never observed, and reconciling bytes against a
+// pin needs a sha256 over the body that no in-memory realization provides. Constructing a
+// CitationRetrievalObservation here would mean writing an unobserved status into an observation
+// record -- fabricated plausible output (DESIGN section 5), committed by the very path whose purpose
+// is to stop unverified material from acquiring verified standing. So the reachable case produces NO
+// observation at all: it is typed InformationEvidenceUnobservable and refuses.
 //
-// THE CAPABILITY THIS WAITS ON is a body-digesting realization -- sha256 over retrieved bytes
-// without a filesystem round trip, or a retrieval operation that reports the digest itself. Naming
-// that capability rather than a pull request is DESIGN 4b(3): a trigger that names an artifact is
-// satisfied while the capability stays dead.
-fn information_retrieval_observation(
-  request: CitationRetrievalRequest,
-  observed_at: EpochMs,
-) -> CitationRetrievalObservation {
-  let got = http.Client.GetBounded(url: uri_wire(uri: request.locator))
-  if got.success {
-    ResponseObservedWithoutRepresentation {
-      request: request,
-      observed_at: observed_at,
-      http_status: information_retrieval_success_status,
-    }
-  } else {
-    CitationUnreachable {
-      request: request,
-      observed_at: observed_at,
-      cause: TransportUnreachable,
-    }
-  }
-}
+// Only the unreachable case yields an observation, because every field of it is genuinely witnessed:
+// the request we issued, the moment we issued it, and a transport that did not complete.
+//
+// THE CAPABILITY THIS WAITS ON is a retrieval operation that reports what it actually saw -- the
+// response status, and a digest of the body -- rather than a bare success flag. Named as a
+// capability rather than a pull request, because a trigger naming an artifact is satisfied while the
+// capability stays dead (DESIGN 4b(3)).
 
 // THE JOIN, so that this module is a consumer of gunbc.information_query and not a second evidence
 // authority beside it. Every arm routes through verify_citation_representation and the module's own
@@ -85,23 +62,32 @@ fn information_retrieve_evidence(
   fidelity_losses: List<NonEmptyStr>,
   independence: InformationEvidenceProbeIndependence,
 ) -> InformationEvidence {
-  information_evidence_from_verification(
-    fact_id: fact_id,
-    outcome: verify_citation_representation(
-      target: target,
-      observation: information_retrieval_observation(
-        request: CitationRetrievalRequest {
-          locator: target.expected_pin.subject.access_route,
+  let request = CitationRetrievalRequest {
+    locator: target.expected_pin.subject.access_route,
+  }
+  let got = http.Client.GetBounded(url: uri_wire(uri: request.locator))
+  if got.success {
+    InformationEvidenceUnobservable {
+      detail: "a response was served, but this transport reports neither its status nor a digest of its body, so no citation observation can be witnessed" as NonEmptyStr,
+    }
+  } else {
+    information_evidence_from_verification(
+      fact_id: fact_id,
+      outcome: verify_citation_representation(
+        target: target,
+        observation: CitationUnreachable {
+          request: request,
+          observed_at: observed_at,
+          cause: TransportUnreachable,
         },
-        observed_at: observed_at,
       ),
-    ),
-    scope: scope,
-    direction: direction,
-    authority: authority,
-    provenance: provenance,
-    freshness_basis: freshness_basis,
-    fidelity_losses: fidelity_losses,
-    independence: independence,
-  )
+      scope: scope,
+      direction: direction,
+      authority: authority,
+      provenance: provenance,
+      freshness_basis: freshness_basis,
+      fidelity_losses: fidelity_losses,
+      independence: independence,
+    )
+  }
 }

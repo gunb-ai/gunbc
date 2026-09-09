@@ -187,6 +187,7 @@ test fn w_unreachable_retrieval_is_not_admissible() -> Bool {
         independence: SoleRetrieval,
       ) {
         InformationEvidenceUnavailable { cause: _ } => true
+        InformationEvidenceUnobservable { detail: _ } => false
         InformationEvidenceInferred { inference: _ } => false
       }
   }

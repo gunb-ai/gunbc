@@ -48,21 +48,24 @@ import std.claim_evidence {
 // inspire an information need, but cannot construct admissible evidence. The fact is reacquired
 // here or it does not count.
 //
-// WHO CONSUMES THIS, AND WHAT IS STILL UNBOUND. gunbc.information_retrieval consumes this module
-// in production: it runs the transport, types the result as a CitationRetrievalObservation, and
-// routes it through information_evidence_from_verification rather than judging admissibility itself.
-// So this is no longer a declared frontier -- the evidence join is reached by an executing path, and
-// a wet witness exercises that path against a live fetch.
+// WHO CONSUMES THIS, AND HOW FAR THAT ACTUALLY GOES. gunbc.information_retrieval consumes this
+// module: it runs the transport and routes the result through information_evidence_from_verification
+// rather than judging admissibility itself. That is a real executing consumer, and it is NOT the
+// same as being reached from the product -- outside these two modules and their witnesses, nothing
+// in the tree calls either of them. The honest statement is that this PAIR is a declared frontier,
+// not that the frontier was discharged by adding a second module inside it.
 //
-// WHAT REMAINS UNBOUND is the digesting of a retrieved body. Reconciling bytes against a pin needs a
-// sha256 over the response, and the only realization in the corpus runs over a FILE
-// (extdeps.crypto.hash sha256sum_argv), so today every live retrieval lands on
-// ResponseObservedWithoutRepresentation and therefore on InformationEvidenceUnavailable. The
-// verified arm is exercised by witnesses over constructed receipts, not yet by a live fetch. THE
-// CAPABILITY THIS WAITS ON is a body-digesting realization -- sha256 over retrieved bytes without a
-// filesystem round trip, or a retrieval operation that reports the digest itself -- named as a
-// capability rather than as a pull request, because a trigger naming an artifact is satisfied while
-// the capability stays dead (DESIGN 4b(3)).
+// THE CAPABILITY THE PAIR WAITS ON is the harness admitting a tool that routes a stated information
+// need through this retrieval path; until it exists, both modules are exercised by witnesses alone.
+// THE DISSOLUTION CONDITION is unchanged and applies to both: if that capability does not land, they
+// are DELETED, not left standing, on the ground that an unconsumed model is redundant work.
+//
+// A SECOND CAPABILITY BOUNDS WHAT LIVE RETRIEVAL CAN PRODUCE TODAY. Reconciling bytes against a pin
+// needs the response status and a digest of the body, and http.Client.GetBounded reports neither, so
+// every reachable fetch is typed InformationEvidenceUnobservable and refuses. The verified arm is
+// exercised only over constructed receipts. Both capabilities are named rather than pointed at a
+// pull request, because a trigger naming an artifact is satisfied while the capability stays dead
+// (DESIGN 4b(3)).
 
 // Freshness is a property of the CLAIM the evidence is offered for, not of the document. A
 // time-invariant proposition is not stale because the page is old; a current-state proposition is
@@ -123,6 +126,7 @@ type InformationInference = EvidenceInference<InformationFact, InformationTempor
 type InformationEvidence
   = InformationEvidenceInferred { inference: InformationInference }
   | InformationEvidenceUnavailable { cause: CitationVerificationRefusalCause }
+  | InformationEvidenceUnobservable { detail: NonEmptyStr }
 
 data information_query_inference_rule: InferenceRuleId = "retrieved-representation-verified-against-expected-pin" as InferenceRuleId
 
@@ -225,5 +229,6 @@ fn information_evidence_is_admissible(evidence: InformationEvidence) -> Bool {
         },
       )
     InformationEvidenceUnavailable { cause: _ } => false
+    InformationEvidenceUnobservable { detail: _ } => false
   }
 }
