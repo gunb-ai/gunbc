@@ -93,12 +93,22 @@ test fn w_published_kilowatts_establish_real_power() -> Bool {
     && !ceiling_refuses_at(d: databank_lga4_density, required: 34999)
 }
 
+// THE FIRST CONJUNCT PINS THE CAUSE AND IS NOT DECORATION. established_watts collapses Absent to
+// the sentinel -1, and Absent has TWO causes: the claim is unread, or the claim IS published but in
+// apparent power. Asserting only the sentinel therefore cannot say WHICH, and this witness would
+// have stayed green if someone edited the fixture to DensityUnread - at which point the kVA wall it
+// exists to guard would be a decoration passing forever. has_ceiling is true only for a PUBLISHED
+// row, so the pair asserts "this row is published AND it establishes no real power", which is the
+// actual claim. The rule is one this lane proposed and the carrier owner then found in one of their
+// own witnesses: an outcome that is the union of N causes cannot be the control for one of them.
+//
 // THE DISCRIMINATING RED, AND THE REASON THE APPARENT-POWER ARM EXISTS. A kVA publication
 // establishes NO real-power reading: kW = kVA x power factor, no power factor is published, and
 // assuming unity would overstate the cabinet in the flattering direction. If this ever returns
 // 5000 instead of refusing, the carrier has silently equated apparent and real power again.
 test fn w_apparent_power_establishes_no_real_power() -> Bool {
-  established_watts(d: apparent_power_fixture) == 0 - 1
+  has_ceiling(d: apparent_power_fixture)
+    && established_watts(d: apparent_power_fixture) == 0 - 1
 }
 
 // The same figure DOES bound real power from above, because kW <= kVA - usable to REJECT a cabinet
