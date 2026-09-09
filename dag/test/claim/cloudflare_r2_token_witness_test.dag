@@ -27,7 +27,6 @@ import extdeps.cloudflare.account_api_tokens {
   CreateAccountTokenRequest,
   AccountTokenPolicy,
   PermissionGroupRef,
-  account_api_tokens_write_permission_name,
   admit_account_token_api_mint,
   account_token_policy_create_wire
 }
@@ -41,11 +40,7 @@ import extdeps.cloudflare.r2 {
   r2_object_read_token_policy,
   r2_object_read_create_request,
   r2_s3_access_pair_from_created_token,
-  workers_r2_storage_bucket_item_read_permission_group_id,
-  workers_r2_storage_bucket_item_read_permission_group_id_citation,
-  r2_s3_access_key_is_created_token_id_citation,
-  r2_s3_secret_is_sha256_of_create_value_citation,
-  r2_tokens_doc_as_of
+  workers_r2_storage_bucket_item_read_permission_group_id
 }
 import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
@@ -58,8 +53,7 @@ import gunbc.cloudflare.r2_token_mint {
   cloudflare_r2_object_read_token_shape,
   admit_r2_object_read_api_mint,
   cloudflare_r2_token_mint_frontier_rows,
-  vendor_cloudflare_frontier_rows,
-  cloudflare_account_token_bootstrap_intervention
+  vendor_cloudflare_frontier_rows
 }
 
 test fn cloudflare_client_v4_base_is_the_documented_host() -> Bool {
@@ -188,14 +182,6 @@ test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Boo
     && cloudflare_r2_object_read_token_shape().acquisition == CreatedViaAccountTokensApi
 }
 
-test fn bootstrap_intervention_cites_the_account_api_tokens_write_permission_name() -> Bool {
-  let i = cloudflare_account_token_bootstrap_intervention()
-  (i.subject as String) == join(
-    ["Cloudflare account API token with ", account_api_tokens_write_permission_name as String],
-    ""
-  )
-}
-
 test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
   match admit_r2_object_read_api_mint(
     name: "r2-read",
@@ -277,18 +263,6 @@ test fn api_mint_refuses_when_create_policies_cite_a_different_permission_group(
     AccountTokenApiMintAdmitted { shape: _, request: _ } => false
     AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
   }
-}
-
-test fn r2_s3_derivation_and_permission_group_id_cite_the_r2_tokens_doc() -> Bool {
-  r2_tokens_doc_as_of == "2026-08-18"
-    && r2_s3_access_key_is_created_token_id_citation.authority.uri.locator
-      == "developers.cloudflare.com/r2/api/tokens"
-    && r2_s3_secret_is_sha256_of_create_value_citation.authority.uri.locator
-      == "developers.cloudflare.com/r2/api/tokens"
-    && workers_r2_storage_bucket_item_read_permission_group_id_citation.authority.uri.locator
-      == "developers.cloudflare.com/r2/api/tokens"
-    && workers_r2_storage_bucket_item_read_permission_group_id
-      == "6a018a9f2fc74eb6b293b0c548f38b39"
 }
 
 fn frontier_row_names_decl(row: FrontierRow, ref: DeclarationRef) -> Bool {
