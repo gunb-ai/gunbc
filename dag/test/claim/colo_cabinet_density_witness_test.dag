@@ -14,6 +14,11 @@ import extdeps.colo.databank { databank_lga4_density, databank_lga4_retail_grain
 import extdeps.colo.iron_mountain {
   iron_mountain_nje1_density, iron_mountain_wpa1_density, iron_mountain_nje1_retail_grain,
 }
+import gunbc.colo_census_coverage {
+  RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
+  coverage_is_surveyed, coverage_facility_count,
+  nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley, census_regions,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -95,4 +100,76 @@ test fn w_density_and_grain_are_separate_facts() -> Bool {
   grain_admits_single_cabinet(g: databank_lga4_retail_grain)
     && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
     && established_watts(d: databank_lga4_density) == 35000
+}
+
+// THE COVERAGE CARRIER'S CONSUMER, ENROLLED FOR THE SAME REASON AS THE ONES ABOVE. Review 62758
+// found `gunbc.colo_census_coverage` dangling on this branch - a type, two accessors and three
+// rows nothing imported - which is the identical section 3c finding review 62722 made about the
+// density carrier one commit earlier. Landing the same defect twice in one PR is the receipt that
+// the first fix was applied to an instance and not to the habit.
+
+fn facility_count_or_sentinel(c: RegionCoverage) -> Int {
+  match coverage_facility_count(c: c) {
+    Present { value } => value,
+    Absent => 0 - 1,
+  }
+}
+
+// A FIXTURE FOR THE UNSURVEYED ARM, AND THE REASON IT HAD TO BE ONE. Writing this witness is what
+// established that `RegionUnsurveyed` HAS NO INHABITANT in the live roster - all three rows are
+// surveyed - so the distinction the module exists to draw could not be discriminated by any test
+// over the census as it stands. DESIGN section 4b: where the forbidden state is unauthorable on
+// the live corpus, the fixture is where the RED becomes expressible, and declining to write one
+// leaves a wall that is permanently green by construction. The roster's own growth note explains
+// why no live unsurveyed row exists yet - an unsurveyed roster over an undecided geographic scope
+// has a length that is an artefact of where the author stopped typing - so the arm is real, is
+// reachable, and is deliberately uninhabited rather than dead.
+data unsurveyed_fixture: RegionCoverage = RegionCoverage {
+  region_label: "witness fixture: a region nobody has surveyed",
+  region_code: "XX",
+  outcome: RegionUnsurveyed {
+    obligation: "fixture standing for the arm the live roster does not yet inhabit",
+  },
+}
+
+// THE DISCRIMINATING RED, AND THE ONLY REASON THE MODULE EXISTS. A region somebody surveyed and
+// found empty answers ZERO facilities; a region nobody has looked at answers NOTHING. If these two
+// ever agree, the module has collapsed expensive knowledge into an open obligation and a reader
+// cannot tell a measurement from a gap - which is the error this census already made once,
+// reporting the absence of any New York row as a consequence of a refused-operator ruling rather
+// than as nobody having surveyed the state.
+test fn w_surveyed_empty_and_unsurveyed_do_not_agree() -> Bool {
+  facility_count_or_sentinel(c: southern_new_jersey) == 0
+    && facility_count_or_sentinel(c: unsurveyed_fixture) == 0 - 1
+    && coverage_is_surveyed(c: southern_new_jersey)
+    && !coverage_is_surveyed(c: unsurveyed_fixture)
+}
+
+// AND THE LIVE ROW THAT LOOKS LIKE THE UNSURVEYED ONE AND IS NOT. The Hudson Valley yielded no
+// retail colocation, and the temptation is to read that as nobody having looked. It answers ZERO
+// and reports itself surveyed, which is the whole distinction holding on a real row rather than
+// on the fixture.
+test fn w_a_surveyed_empty_region_is_not_an_unsurveyed_one() -> Bool {
+  facility_count_or_sentinel(c: hudson_valley) == 0
+    && coverage_is_surveyed(c: hudson_valley)
+}
+
+// A SURVEYED REGION WITH FACILITIES ANSWERS ITS COUNT, which is the third arm and the one that
+// keeps the other two from being a ledger of failures only. The relation is asserted rather than
+// the literal: a witness repeating a hand-authored number it cannot re-derive proves only that
+// the file was not edited. Read densities can never exceed facilities, and this reds on a
+// transposed pair - which is the plausible way the corridor's 28 and 1 get written wrongly.
+fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
+  match c.outcome {
+    FacilitiesModelled { facility_count, density_read_count } =>
+      density_read_count <= facility_count && density_read_count >= 0 && facility_count > 0,
+    SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => true,
+    RegionUnsurveyed { obligation } => true,
+  }
+}
+
+test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bool {
+  density_reads_never_exceed_facilities(c: nj_hudson_bergen_essex_corridor)
+    && facility_count_or_sentinel(c: nj_hudson_bergen_essex_corridor) > 0
+    && census_regions.length() == 3
 }
