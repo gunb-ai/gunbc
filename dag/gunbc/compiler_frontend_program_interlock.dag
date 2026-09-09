@@ -370,6 +370,27 @@ type NamespaceDeltaDisposition
 // binding its generator's inputs do NOT explain remains NewPoolCoincidenceResolution
 // and remains refused; that refusal is the arm's positive control, not a leftover.
 //
+// IT ANSWERS FOR ONE GENERATOR, AND THE PROSE ABOVE WOULD OTHERWISE READ AS THOUGH
+// IT GENERALIZED. The realization opens by refusing every module that is not the
+// failure-mode roster, so a SECOND derived module with declared inputs is refused by
+// this wall exactly as the first one was, and the repair would be someone editing
+// the predicate to name it. That is a hand-maintained membership list where each new
+// member costs an edit -- the shape gunbc#10822 has just finished deleting one layer
+// up -- and it is disclosed here rather than discovered by the next author, who would
+// otherwise meet a refusal and read an authority claiming to be about generators'
+// declared inputs in general.
+//
+// THE NARROWNESS IS NOT LAZINESS, AND THE REASON IS THE TRIGGER. A general arm needs
+// a carrier where a generator DECLARES ITS INPUT RELATION, and none exists:
+// gunbc.generated_artifact's GeneratedArtifact is a closed coproduct of artifact
+// IDENTITIES and carries no inputs at all, so there is nothing for a general
+// predicate to consult. Inventing that carrier inside a required-gate repair would be
+// modelling a substrate concept to unblock a wall, which is the wrong order. So the
+// next rung is that carrier: when a generator's declared input relation is modeled,
+// this predicate reads it and stops naming a module. Until then the honest reading is
+// ONE generator, decided from ITS OWN constants rather than from a literal spelled
+// here -- which is why it is a narrow arm and not a special case.
+//
 // THE RESIDUAL RISK, STATED RATHER THAN LEFT FOR A READER TO FIND. This arm trusts
 // the generator's DECLARED inputs, and what it actually checks is the declaration,
 // not the generator's behaviour. If a generator's implementation ever drifts from
