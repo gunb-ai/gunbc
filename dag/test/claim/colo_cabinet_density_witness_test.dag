@@ -13,7 +13,7 @@ import extdeps.colo.types {
 }
 import extdeps.colo.databank {
   databank_lga4_density, databank_lga4_retail_grain,
-  databank_ewr1_newark, databank_ewr1_density,
+  databank_ewr1_newark, databank_ewr1_density, databank_ewr1_retail_grain,
 }
 import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_density, hivelocity_jfk1_retail_grain }
 import extdeps.colo.centersquare { centersquare_retail_grain }
