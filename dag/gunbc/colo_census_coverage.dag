@@ -192,8 +192,11 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // that triggers must not name artifacts. Writing the artifact down was the defect each time; the
 // lesson did not transfer until it had cost four edits.
 //
-// SO, NAMING NO ARTIFACT: extdeps.colo.types carries a route from which "did this operator publish any
-// figure" is answerable without committing to a medium or a direction. That holds whether the carrier
+// SO, NAMING NO ARTIFACT, AND NOT YET ON MAIN: the carrier lane's in-flight change to
+// extdeps.colo.types carries a route from which "did this operator publish any figure" is answerable
+// without committing to a medium or a direction. It is NOT on main, this module still matches arms
+// locally, and the trigger is unmet until that route lands - review 62964 read an earlier present
+// tense here as claiming otherwise, which it should not have. That holds whether the carrier
 // exposes the question directly or exposes the figures and lets presence fall out - over a
 // structurally non-empty figures carrier an empty result IS the unread arm, equal BY CONSTRUCTION and
 // not by coincidence, so both shapes satisfy this trigger and neither is named here.

@@ -123,7 +123,10 @@ data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
 // the operator has just ruled that retrieval coverage and decision utility are separate facts.
 // Calling a read claim unread to silence a ceiling would re-fuse the two axes in the opposite
 // direction and drop the corridor census to zero read densities while the reading sits in the file.
-// The correct arm is CapabilityAtLeast, it does not exist yet, and it is gunbc#10885.
+// The correct shape is a figure carrying its DIRECTION - a published floor recorded as a floor - and
+// no arm of this carrier can express one today. That capability is what this row waits on, and it is
+// deliberately not named as a pull request here: an earlier wording of this sentence named gunbc#10885,
+// which is now closed without landing, so the obligation would have had no route to retirement at all.
 //
 // WHAT IS TRUE TODAY, stated so the risk is sized rather than asserted away: NO CALL SITE READS THIS
 // ROW'S CEILING. The only consumers of cabinet_density_air_ceiling in the tree are two helpers in

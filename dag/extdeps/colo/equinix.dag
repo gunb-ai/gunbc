@@ -153,7 +153,10 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // section 2's anemic decomposition: types.dag already carries the quantity as PublishedApparentPower
 // over VoltAmpere, and these seven readings are unreachable by any fold, including density_claim_is_read.
 //
-// THE REPLACEMENT IS gunbc#10885, AND IT IS NOT THE SHAPE THIS ANNOTATION FIRST NAMED. I recommended a
+// THE REPLACEMENT IS A DIRECTION-CARRYING FIGURE, AND IT IS NOT THE SHAPE THIS ANNOTATION FIRST NAMED.
+// It is stated as a capability rather than as a pull request because the wording here first named
+// gunbc#10885, which is now closed without landing - a trigger naming a dead pull request can never be
+// satisfied by anything. I recommended a
 // DensityMinimumCommitted arm on CabinetDensityClaim. The carrier owner declined that shape and was
 // right to: a fourth arm for a floor needs a fifth for an interval, a sixth for an average, and a
 // seventh the first time an operator publishes a floor for air beside a cap for liquid - the
@@ -171,7 +174,8 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // what a prose obligation could never supply. Sending a floor to Absent would have been harmless and
 // useless; that is a better answer than the one asked for.
 //
-// WHEN #10885 LANDS these seven rows move from DensityUnread to CapabilityAtLeast carrying the
+// WHEN THE CARRIER CAN HOLD A FIGURE'S DIRECTION AND ITS APPARENT-POWER UNIT, these seven rows move
+// from DensityUnread to a floor-shaped published figure carrying the
 // wording they already hold, and the resolve step below stays owed, because a floor is genuinely not
 // a maximum and the maximum is still unread.
 
