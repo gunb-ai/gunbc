@@ -62,7 +62,13 @@ data guest_reachability: GuestReachability = GuestReachability {
 // THE TAP IS ATTEMPT-SCOPED AND GOES WITH THE ATTEMPT. It is created before the jail because
 // Firecracker opens an EXISTING host device by name rather than creating one, and it is torn down
 // at retirement -- observed absent afterwards rather than assumed gone.
-data guest_tap_retired: NonEmptyStr = "the attempt's tap device was absent from the host after retirement, read rather than assumed"
+type DeviceRetirement
+  = ObservedAbsentAfterRetirement { device: NonEmptyStr }
+  | AssumedGone
+
+data guest_tap_retired: DeviceRetirement = ObservedAbsentAfterRetirement {
+  device: "the attempt's tap device",
+}
 
 // ── a claim four earlier receipts carried, now corrected ────────────────────────────────────────
 
@@ -78,7 +84,20 @@ data guest_tap_retired: NonEmptyStr = "the attempt's tap device was absent from 
 // THE CORRECTION IS NARROW ON PURPOSE. The earlier receipts are not rewritten to claim success they
 // did not observe -- their attempts genuinely did not read the tail. What is removed from them is
 // the unmeasured clause about WHERE the guest was killed.
-data corrected_claim: NonEmptyStr = "earlier receipts said the guest was killed early in boot; that was inferred from rc=137 and a truncated log read, and the full log shows the guest reaching systemd"
+type EarlierClaimCorrection
+  = InventedReasonWithdrawn {
+      observation_that_held: NonEmptyStr
+      invented_reason: NonEmptyStr
+      inferred_from: NonEmptyStr
+      later_observation: NonEmptyStr
+    }
+
+data corrected_claim: EarlierClaimCorrection = InventedReasonWithdrawn {
+  observation_that_held: "guest userspace unobserved on those earlier attempts",
+  invented_reason: "killed at the deadline while still early in boot",
+  inferred_from: "rc=137 plus a head -25 of the guest log",
+  later_observation: "the full log shows systemd reaching system mode; the deadline fired on a healthy guest",
+}
 
 // ── three defects this slice cost, all self-inflicted ───────────────────────────────────────────
 

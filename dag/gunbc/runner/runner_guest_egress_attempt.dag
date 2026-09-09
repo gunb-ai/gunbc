@@ -68,7 +68,22 @@ data bridge_membership: List<NonEmptyStr> = [
   "the attempt's tap device",
 ]
 
-data bridge_readback_defect: NonEmptyStr = "sysfs established both bridge members; an earlier brctl show br0 rendering came back empty and the cause is unresolved -- the first explanation offered, that busybox rejects the argument, is false and is withdrawn"
+type BridgeMembershipReadback
+  = MembershipReadingsDisagree {
+      established_by: NonEmptyStr
+      disagreed: NonEmptyStr
+      withdrawn_claim: NonEmptyStr
+      withdrawn_because: NonEmptyStr
+      remaining_standing: NonEmptyStr
+    }
+
+data bridge_readback_defect: BridgeMembershipReadback = MembershipReadingsDisagree {
+  established_by: "sysfs /sys/class/net/br0/brif -- both interfaces enslaved",
+  disagreed: "an earlier brctl show br0 rendering came back empty",
+  withdrawn_claim: "busybox brctl show rejects a bridge argument",
+  withdrawn_because: "busybox 1.36.1 documents show [BRIDGE]... and iterates the bridges it is given",
+  remaining_standing: "the disagreement is unexplained",
+}
 
 // ── the cpu bound has a cause now ───────────────────────────────────────────────────────────────
 
