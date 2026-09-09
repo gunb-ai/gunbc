@@ -3,16 +3,12 @@ module test.claim.capacity_lease_chain_witness
 import std.types { Bool, Int, NonEmptyStr, List, String, EpochSecs }
 import std.nat { Nat }
 import std.measure { Measure, Count, One }
-import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_reading_at, PoolReading, PoolRead, PoolReadingRefused }
+import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_reading_at, PoolReading, PoolRead, PoolReadingRefused, pool_acquire, PoolOutcome, PoolAdvanced, PoolRefused }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
   AppendDecision, AppendAdmitted, AppendStale, decide_append, chain_from_head, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
 }
-import product.capacity.lease {
-  LeaseFence, lease_fence_of, fence_verdict, FenceVerdict, FenceCurrent, FenceObsolete, FenceForeignGrant,
-  LeasePolicy, LeaseGrant, lease_grant, ReleaseLaw, FencedResource, QuiescenceRequired,
-  QuiescenceFact, Quiescent, QuiescenceUnobserved, CapacityAfterExpiry, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence, capacity_after_expiry,
-}
+import product.capacity.lease { LeaseFence, lease_fence_of, fence_verdict, FenceVerdict, FenceCurrent, FenceObsolete, FenceForeignGrant, LeasePolicy, LeaseGrant, lease_grant, ReleaseLaw, FencedResource, QuiescenceRequired, QuiescenceFact, Quiescent, QuiescenceUnobserved, CapacityAfterExpiry, LeaseNotExpired, CapacityFreed, CapacityHeldPendingQuiescence, capacity_after_expiry }
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
@@ -38,7 +34,7 @@ fn w_env(id: String, parent: String, payload: PoolEvent, at: EpochSecs) -> Chain
 }
 
 fn w_root() -> Pool<Count, One> {
-  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 2), replenishment: NoReplenishment)
+  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 2), replenishment: NoReplenishment, release_law: FencedResource)
 }
 
 fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
@@ -231,5 +227,103 @@ test fn a_duplicate_reference_still_refuses_the_fold() -> Bool {
   match pool_fold(root: w_root(), oldest_first: dup) {
     PoolFolded { pool: _, generation: _ } => false
     PoolFoldRefused { at_event: e, wire: _ } => (e as String) == "d2"
+  }
+}
+
+// ── AN EXPIRED SEAT UNDER QUIESCENCE-REQUIRED STILL CONSUMES THE CEILING ──────────────────────
+//
+// THE DISCRIMINATING CONTROL FOR THE LAW THE POOL USED TO IGNORE. lease.dag's capacity_after_expiry
+// says a quiescence-required grant is CapacityHeldPendingQuiescence once its term lapses, because
+// nothing can stop an obsolete holder from still using the resource. The pool freed it anyway: every
+// held entry stopped charging at expiry whatever the law said, so the authority and the fold
+// disagreed, and under vLLM -- which cannot reject a superseded holder -- that gap is the overlap the
+// one-seat ceiling exists to prevent. A holder that stalls past its term hands its seat to the next
+// arrival while it is still able to send.
+//
+// So the same event history is folded against two roots that differ ONLY in the law. Under
+// FencedResource the seat is free after expiry, which is correct: the resource itself refuses the old
+// holder. Under QuiescenceRequired it is still held, and a second acquisition at that instant is
+// refused. This control goes red on exactly the shape that shipped.
+fn w_root_law(law: ReleaseLaw) -> Pool<Count, One> {
+  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 1), replenishment: NoReplenishment, release_law: law)
+}
+
+fn w_after_expiry(law: ReleaseLaw) -> Int {
+  match pool_acquire(pool: w_root_law(law: law), reference: "turn-stalled" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 300) {
+    PoolAdvanced { pool: p } => w_headroom(p: p, at: 2000)
+    PoolRefused { refusal: _ } => -2
+  }
+}
+
+test fn an_expired_unquiesced_seat_still_consumes_the_ceiling() -> Bool {
+  w_after_expiry(law: FencedResource) == 1 && w_after_expiry(law: QuiescenceRequired) == 0
+}
+
+// AND THE REFUSAL IS WHAT THE HEADROOM MEANS. A count nobody acts on would leave the wall stated and
+// unenforced, so the second acquisition is attempted against the same expired-but-unquiesced pool and
+// must be refused rather than granted beside the stalled holder.
+test fn a_second_seat_is_refused_while_an_expired_holder_is_unquiesced() -> Bool {
+  match pool_acquire(pool: w_root_law(law: QuiescenceRequired), reference: "turn-stalled" as NonEmptyStr, amount: w_seats(n: 1), at: 1000, term_seconds: 300) {
+    PoolRefused { refusal: _ } => false
+    PoolAdvanced { pool: held } =>
+      match pool_acquire(pool: held, reference: "turn-arriving" as NonEmptyStr, amount: w_seats(n: 1), at: 2000, term_seconds: 300) {
+        PoolRefused { refusal: _ } => true
+        PoolAdvanced { pool: _ } => false
+      }
+  }
+}
+
+// ── AND THE EVENT PATH OBEYS THE SAME LAW AS THE READING ──────────────────────────────────────
+//
+// THE SECOND SPELLING, which the first repair left standing. The charge reading refused to free an
+// expired quiescence-required holder, and the LAPSE EVENT released it anyway: pool_apply_event sent
+// every PoolLapsed through a pass that released every expired entry whatever the law said. A history
+// of [PoolAcquired, PoolLapsed] therefore handed the seat away exactly as before, while the direct
+// control passed -- which is worse than the original gap, because the passing control is what a
+// reader would trust.
+//
+// So the same chain is folded against two roots differing ONLY in the law. Fenced frees the expired
+// holder, which is correct. Quiescence-required does not, and the seat is still unavailable to the
+// next arrival.
+fn w_lapse_chain() -> List<ChainEnvelope<PoolEvent>> {
+  [ w_env(id: "l1", parent: "", payload: PoolAcquired { reference: "seat-stalled" as NonEmptyStr, amount: 1, term_seconds: 300 }, at: 1000),
+    w_env(id: "l2", parent: "l1", payload: PoolLapsed, at: 2000) ]
+}
+
+fn w_headroom_after_lapse(law: ReleaseLaw) -> Int {
+  match pool_fold(root: w_root_law(law: law), oldest_first: w_lapse_chain()) {
+    PoolFoldRefused { at_event: _, wire: _ } => -3
+    PoolFolded { pool: p, generation: _ } => w_headroom(p: p, at: 2000)
+  }
+}
+
+test fn a_lapse_event_does_not_release_a_quiescence_required_holder() -> Bool {
+  w_headroom_after_lapse(law: FencedResource) == 1 && w_headroom_after_lapse(law: QuiescenceRequired) == 0
+}
+
+// AND THE SEAT IS STILL UNAVAILABLE AFTER THAT LAPSE, which is the property the headroom stands for.
+// A count that nobody acts on would leave this wall stated and unenforced on the event path exactly
+// as it was on the reading path.
+test fn a_lapsed_quiescence_required_partition_still_refuses_the_next_seat() -> Bool {
+  match pool_fold(root: w_root_law(law: QuiescenceRequired), oldest_first: w_lapse_chain()) {
+    PoolFoldRefused { at_event: _, wire: _ } => false
+    PoolFolded { pool: p, generation: g } =>
+      match propose_acquire(pool: p, generation: g, head: HeadAt { id: w_id(s: "l2") }, partition: w_partition(),
+                            actor: "srv1-harness" as NonEmptyStr,
+                            request: SeatRequest { reference: "seat-arriving" as NonEmptyStr, amount: 1, at: 2001, term_seconds: 300 }) {
+        SeatProposed { event: _, expected_head: _ } => false
+        SeatRefused { wire: w } => w == "pool-full"
+      }
+  }
+}
+
+// AND AN EXPLICIT RELEASE STILL FREES IT, which is what keeps the law from being a wall with no door:
+// quiescence-required means expiry alone does not release, not that nothing does. Without this the
+// two controls above are satisfied by a pool that can never be given back.
+test fn an_explicit_release_frees_a_quiescence_required_seat() -> Bool {
+  let released = concat(w_lapse_chain(), [w_env(id: "l3", parent: "l2", payload: PoolReleased { reference: "seat-stalled" as NonEmptyStr, reason: "turn ended" as NonEmptyStr }, at: 2002)])
+  match pool_fold(root: w_root_law(law: QuiescenceRequired), oldest_first: released) {
+    PoolFoldRefused { at_event: _, wire: _ } => false
+    PoolFolded { pool: p, generation: _ } => w_headroom(p: p, at: 2003) == 1
   }
 }

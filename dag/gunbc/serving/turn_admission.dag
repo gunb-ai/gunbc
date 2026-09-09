@@ -1,0 +1,285 @@
+module gunbc.serving.turn_admission
+
+import std.types { String, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { second, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
+import extdeps.currency.currency { Usd }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.selection {
+  AvailabilityObservation, AvailableIndefinitely, CommitmentState, StartCostObservation,
+  StartCostMeasured, TransitionCostObservation, NoTransitionRequired, OperatingCostObservation,
+  OperatingCostBorneBySupplier, OpportunityCostObservation, NoFeasibleAlternativeUse, DispatchInputs,
+}
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.work { TrustDomainRef }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+
+// ── CO-TENANCY IS AN ADMISSION CONSTRAINT, NOT A PRICE ────────────────────────────────────────
+//
+// THE DECISION THIS MODULE REVERSES, STATED FIRST BECAUSE IT WAS MINE. The earlier design priced
+// co-tenancy on the opportunity axis and let a busy group merely RANK WORSE, on the reasoning that
+// a price is the more general mechanism and a ceiling is a blunt instrument. That is the right
+// instinct for a preference and the wrong one for a quality violation, and the difference is not a
+// matter of tuning: a soft price lets the damaging group WIN whenever the alternatives look worse.
+// Both groups occupied, the other group unreadable, the estimate too low, every candidate bad but
+// one numerically least bad -- in each of those the priced arm places the arriving turn exactly
+// where the measurement says it must not go, and does so quietly, because a ranking outcome carries
+// no refusal.
+//
+// WHAT THE MEASUREMENT ESTABLISHES. A cold prefill sharing a serving group with an active
+// interactive decoder forces that decoder onto approximately one token per prefill chunk: its
+// inter-token latency degrades by about two orders of magnitude for as long as the overlap lasts.
+// The victim is a turn already in flight and already being read by someone. That is not a cost
+// traded off against throughput; it is the interactive product failing while it is being used.
+//
+// The controlled overlap experiment that establishes it -- one launch, one victim, decode alone
+// against decode beside a cold prefill, temporal overlap established rather than inferred -- is
+// cited by receipt below and its typed carrier is authored by the serving-evidence lane. This
+// module deliberately does not restate its numbers: a magnitude copied into prose here would be a
+// second authority for a measurement, and the first thing to rot when the experiment is repeated.
+data serving_co_tenancy_overlap_receipt: ObservationReceiptRef = "gunbc.serving.corrected-overlap-experiment" as ObservationReceiptRef
+
+// ── WHAT THE SERVED GAUGES SAY, AND WHAT AN UNREAD GAUGE IS NOT ───────────────────────────────
+//
+// Two counts, or neither. A reading carrying one gauge and defaulting the other is an observation
+// half-invented, and the half that gets invented is always the one that admits.
+type ServingQueueReading
+  = QueueDepthRead { waiting: Nat, running: Nat }
+  | QueueDepthUnread { obligation: NonEmptyStr }
+
+// UNREAD IS NOT IDLE. This is the whole rule, and it is stated as a coproduct rather than as a
+// caution because it has been got wrong here before: a probe that did not answer was treated as an
+// engine with nothing running, and the placement went ahead on that. An unreadable group carries an
+// obligation to go and measure -- never a licence to place beside whatever is actually running on
+// it.
+type ServingCoTenancy
+  = GroupIdle
+  | GroupServingInteractiveTurn { occupied_by: Nat }
+  | CoTenancyUnread { obligation: NonEmptyStr }
+
+fn serving_co_tenancy(reading: ServingQueueReading) -> ServingCoTenancy {
+  match reading {
+    QueueDepthUnread { obligation: o } => CoTenancyUnread { obligation: o }
+    QueueDepthRead { waiting: w, running: r } =>
+      if r == 0 {
+        if w == 0 { GroupIdle } else { GroupServingInteractiveTurn { occupied_by: w } }
+      } else {
+        GroupServingInteractiveTurn { occupied_by: r }
+      }
+  }
+}
+
+// A GROUP WITH WORK WAITING IS NOT IDLE EITHER, which is why the reading above folds waiting into
+// the occupied arm rather than looking only at running. A request admitted and waiting is a request
+// that will start the moment the engine is free, so placing a cold prefill in front of it produces
+// the same overlap one scheduler step later. The field is named occupied_by rather than running
+// BECAUSE it carries whichever gauge established the occupancy: calling it running would be a second
+// name for one of the two readings, and the wrong one half the time. Nothing downstream prices it,
+// so no ordering depends on which gauge it came from.
+
+// ── THE SEAT LEDGER IS THE NON-LAGGING HALF OF THE OCCUPANCY READING ──────────────────────────
+//
+// THE GAUGES LAG, AND THE LAG IS EXACTLY THE WINDOW THIS RULE CARES ABOUT. num_requests_running and
+// num_requests_waiting count what the ENGINE has been handed. A placement whose seat was granted a
+// moment ago, whose caller is still assembling its request, is invisible to both -- so two
+// placements arriving together each read zero, each conclude the group is idle, and each land a cold
+// prefill on it. That is the overlap this module exists to prevent, arriving through the one reading
+// that cannot see it (review 62155).
+//
+// THE FIX IS NOT A DELAY OR A TIGHTER GAUGE. The seat pool already holds the answer: a granted seat
+// IS an occupancy observation, taken at placement time rather than at arrival time, and the
+// placement path reads it before it offers anything. So occupancy is BOTH readings, and a group is
+// idle only when the ledger holds no seat AND the engine reports nothing.
+//
+// WHAT THIS COSTS, STATED RATHER THAN DISCOVERED. The ceiling is whatever
+// gunbc.harness.harness_seat harness_interactive_quality_seats says, and this rule admits only at
+// zero held -- so while it stands, a serving group takes ONE cold-risk turn at a time and any
+// remaining seats are unreachable for this demand class. Naming the row rather than its value is the
+// whole point: an earlier spelling of this block transcribed the count, the same commit changed it,
+// and the prose was wrong before anyone read it. That is the interactive-quality consequence of the
+// measurement, not a capacity claim: the ceiling still says what the pool may hold, and this says
+// what may be placed beside a turn already in flight. It dissolves when a turn can be observed to be
+// warm on a named launch, because a warm turn is not the arriving cold prefill that
+// serving_co_tenancy_overlap_receipt names the experiment for.
+type ServingSeatOccupancy
+  = NoSeatHeld
+  | SeatsHeldForTurns { held: Nat }
+  | SeatOccupancyUnread { obligation: NonEmptyStr }
+
+// ── THE ADMISSION VERDICT ─────────────────────────────────────────────────────────────────────
+//
+// Three arms and no fourth. There is deliberately no arm meaning "occupied but acceptable": that is
+// the priced reading this module replaces, and re-admitting it here as a constructor would let a
+// caller reconstruct it. A group that is occupied -- by the ledger or by the engine -- is not a
+// candidate for fresh cold-risk work, and a group whose occupancy is unread on EITHER reading is not
+// a candidate either.
+//
+// WHAT MAKES A TURN COLD-RISK, AND WHY THERE IS NO WARM ARM YET. A turn is cold-risk when the prefix
+// it would prefill is not established to be resident on the candidate. Nothing in this repository
+// observes prefix residency, so every turn is cold-risk today and the type carries no second arm for
+// a state nothing can produce. The trigger for a warm arm is an observed prefix-hit standing on a
+// named launch; until then, a warm turn is unrepresentable rather than assumed.
+type ServingGroupAdmission
+  = AdmissibleForColdPrefill { receipt: ObservationReceiptRef }
+  | InadmissibleActiveInteractiveTurn { occupied_by: Nat, basis: ObservationReceiptRef }
+  | AdmissibilityUnread { obligation: NonEmptyStr }
+
+// UNREAD ON EITHER READING REFUSES, AND THE LEDGER IS CONSULTED FIRST. Not because it outranks the
+// engine, but because it sees the earlier event: a seat is taken before a request is sent, so a
+// group the ledger calls busy is busy even when the gauges have not caught up. When both readings
+// are clear the group is idle on both clocks, which is the only state this rule admits.
+fn serving_group_admission(tenancy: ServingCoTenancy, seats: ServingSeatOccupancy, receipt: ObservationReceiptRef) -> ServingGroupAdmission {
+  match seats {
+    SeatOccupancyUnread { obligation: o } => AdmissibilityUnread { obligation: o }
+    SeatsHeldForTurns { held: h } =>
+      InadmissibleActiveInteractiveTurn { occupied_by: h, basis: serving_co_tenancy_overlap_receipt }
+    NoSeatHeld =>
+      match tenancy {
+        CoTenancyUnread { obligation: o } => AdmissibilityUnread { obligation: o }
+        GroupIdle => AdmissibleForColdPrefill { receipt: receipt }
+        GroupServingInteractiveTurn { occupied_by: r } =>
+          InadmissibleActiveInteractiveTurn { occupied_by: r, basis: serving_co_tenancy_overlap_receipt }
+      }
+  }
+}
+
+fn serving_admission_detail(group: FabricGroup, admission: ServingGroupAdmission) -> String {
+  match admission {
+    AdmissibleForColdPrefill { receipt: _ } =>
+      join([fabric_group_wire(g: group) as String, ": idle and admissible"], "")
+    InadmissibleActiveInteractiveTurn { occupied_by: r, basis: _ } =>
+      join([fabric_group_wire(g: group) as String, ": ", to_string(r), " turn(s) held or in flight, so a cold prefill placed here would stall a decode already being read"], "")
+    AdmissibilityUnread { obligation: o } =>
+      join([fabric_group_wire(g: group) as String, ": occupancy unread, which is not idle -- ", o as String], "")
+  }
+}
+
+// ── WHAT AN ADMITTED CANDIDATE COSTS, WHICH IS THE PART THIS CUT DELIBERATELY DOES NOT MODEL ──
+//
+// Every quantitative axis below is zero or absent, and that is the point of the cut rather than an
+// omission in it. The refuted execution model that priced them -- a fixed prefill term, a per-token
+// term, and a whole-prefill step duration -- has been withdrawn, and rebuilding placement on top of
+// its successor before that successor exists is how the withdrawn one got here. So the axes carry
+// what is actually established today and no more, and the decision is made by ADMISSION and by the
+// tie policy rather than by arithmetic over estimates.
+//
+// AVAILABILITY. An admitted candidate is idle with a seat available, so there is no delay before it
+// can start. This is not a queue-delay model: a group with anything queued is not admitted at all,
+// so the arm that would need one is unreachable from here.
+fn serving_availability(receipt: ObservationReceiptRef) -> AvailabilityObservation {
+  AvailableIndefinitely { delay: second(count: 0), receipt: receipt }
+}
+
+// TRANSITION. A fresh demand has no residency anywhere, so there is nothing to move and no
+// transition is required to place it here. The prefill it will pay is the WORK ITSELF, identical on
+// every candidate, and pricing identical work as a differentiator ranks nothing.
+//
+// AND INCUMBENCY IS ABSENT ON PURPOSE, WHICH IS THE SECOND THING THIS CUT REVERSES. The earlier
+// design read "this conversation was last placed on group A" as NoTransitionRequired -- a measured
+// zero materialization cost. Last placement does not establish current materialization: an engine
+// restart, a KV eviction, a launch replacement, or a prefix that simply differs from the previous
+// turn's all leave the record intact and the cache empty. Those are separate facts -- last
+// placement, exact current launch, prefix hit observed, prefix miss observed, prefix standing unread
+// -- and only the last of them is true today. So affinity buys nothing here until prefix standing
+// is observed on a named launch, and this module offers no way to spell a zero it has not measured.
+fn serving_transition_cost() -> TransitionCostObservation {
+  NoTransitionRequired
+}
+
+// OPPORTUNITY, AND THE RECEIPT NAMES THE DROP RATHER THAN AN OBSERVATION. An admitted candidate is
+// idle on both readings, so no TURN is displaced by placing this one -- but the arm says no feasible
+// alternative USE, which is a wider claim than the gauges and the seat ledger can carry: neither can
+// enumerate the other fabric demands that might have wanted this group. Handing this arm the
+// observation receipt of the offer binding would attribute the wider claim to a reading that does not
+// establish it, so the receipt it carries names the declared rung drop that admits the assertion.
+data serving_asserted_axis_receipt: ObservationReceiptRef = "gunbc.rung_drop.serving_cost_axes_asserted_unmeasured" as ObservationReceiptRef
+
+fn serving_opportunity_cost() -> OpportunityCostObservation {
+  NoFeasibleAlternativeUse { receipt: serving_asserted_axis_receipt }
+}
+
+// ── START AND OPERATING, AND A DIVERGENCE DECLARED RATHER THAN HIDDEN ─────────────────────────
+//
+// The engine is already running when the turn arrives, so there is no start to pay.
+//
+// OPERATING IS WHERE THIS MODULE DIVERGES FROM THE AUTHORITY IT CONSUMES, AND THE DIVERGENCE IS
+// STATED HERE BECAUSE AN UNSTATED ONE IS A FORK. selection.dag's own fixtures price owned metal's
+// power and cooling as a REAL operating cost and reserve OperatingCostBorneBySupplier for the case
+// where a vendor's quote already contains it. A Spark group's power is equally real and equally
+// ours, so this arm is not literally true of it; nobody has measured what a serving group costs to
+// run, and OperatingCostUnread -- the honest arm -- makes every offer NotPriceable and places
+// nothing at all.
+//
+// WHAT IS ACTUALLY GOING ON, so that nobody reads these zeros as measurements: this cut needs
+// fungibility, admission, a quality seat and a demand-keyed tie-break, and it is reaching those
+// through a SIX-AXIS PRICED SELECTOR by supplying the axes it has not observed with values that do
+// not change an ordering in which every candidate is identical. The same applies to the opportunity
+// axis below: NoFeasibleAlternativeUse does not follow from an engine's gauges reading zero, because
+// those gauges cannot enumerate the other fabric demands that might have wanted this group.
+//
+// AND THE DEPARTURE IS A DECLARED RUNG DROP, NOT THIS ANNOTATION. Prose cannot discharge a machine
+// claim -- no Accepted program reads it (DESIGN 4c) -- so the two asserting axes are declared at
+// gunbc.rung_drop.serving_cost_axes_asserted_unmeasured, rostered with the others, carrying their
+// population and the capability that retires them: a selection policy instantiation that decides an
+// admission-only placement from what such a placement knows, and refuses to require an economic axis
+// its caller did not observe (reviews 62155, 62228).
+fn serving_start_cost(receipt: ObservationReceiptRef) -> StartCostObservation {
+  StartCostMeasured { amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd }, receipt: receipt }
+}
+
+fn serving_operating_cost() -> OperatingCostObservation {
+  OperatingCostBorneBySupplier
+}
+
+fn serving_dispatch_inputs<P>(
+  offer: FabricIdentity<P, OfferKey>,
+  commitment: CommitmentState,
+  receipt: ObservationReceiptRef,
+) -> DispatchInputs<P> {
+  DispatchInputs {
+    offer: offer,
+    availability: serving_availability(receipt: receipt),
+    commitment: commitment,
+    start: serving_start_cost(receipt: receipt),
+    transition: serving_transition_cost(),
+    operating: serving_operating_cost(),
+    opportunity: serving_opportunity_cost(),
+  }
+}
+
+// ── THE ONE INPUT THAT IS A JUDGEMENT RATHER THAN A MEASUREMENT ───────────────────────────────
+//
+// select_supply takes a delay valuation, and with every axis above at zero it multiplies nothing:
+// two admitted Spark groups tie exactly, and the tie policy decides. It is declared as a row rather
+// than written as a literal at the call site so that its status is visible, and its value is one
+// micro-dollar per second -- positive, so orderings resolve, and small enough that nobody reading a
+// total mistakes it for a priced claim. The literal sits inside the modelled rate rather than in a
+// bare Nat row beside it: a second row named for the unit its neighbour already carries is one fact
+// written twice, and the domain-named scalar is the shape that invites a raw number to be passed
+// where a Measure belongs. It becomes load-bearing the moment an offer with a non-zero
+// quote joins the set, and at that point it must be restated by someone who can defend the number.
+// THE DISSOLUTION CONDITION: an offer with a non-zero quote enters the serving offer set. At that
+// point cash no longer ties, this rate decides how many seconds of waiting a dollar is worth, and
+// that is a judgement this placeholder does not make and must not be read as having made.
+data serving_delay_valuation: MoneyPerSecond = MoneyRate {
+  amount: money_amount_micro(count: 1),
+  currency: Usd,
+}
+
+// ── A SERVING TURN IS NOT ISOLATED FROM THE TURNS BESIDE IT ───────────────────────────────────
+//
+// Turns on a group share one engine process, one KV cache and one container: there is no fresh root
+// per turn, no private namespace per turn, no attempt-scoped secret, and no dedicated kernel. Every
+// guarantee in the vocabulary is about separating one unit of work from another, and a serving group
+// separates none of them. So the profile is empty, and empty here is an ASSERTION derived from how
+// the engine runs rather than a gap left by a probe that failed.
+//
+// The consequence is one the fabric already handles: work requiring any guarantee cannot be made
+// fungible with a serving offer, and the refusal names the missing guarantee rather than saying the
+// offer is not isolated enough.
+fn serving_isolation_profile() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+data spark_serving_trust_domain: TrustDomainRef = "gunbc.trust.spark-fleet" as TrustDomainRef
