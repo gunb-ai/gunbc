@@ -231,7 +231,51 @@ fn serving_decision_parameters(
   }
 }
 
-fn parameters_key(p: ServingDecisionParameters) -> String {
+fn runtime_revision_eq(a: RuntimeRevision, b: RuntimeRevision) -> Bool {
+  (a.image as String) == (b.image as String) && (a.vllm_revision as String) == (b.vllm_revision as String)
+}
+
+fn executor_profile_eq(a: ExecutorProfile, b: ExecutorProfile) -> Bool {
+  match a {
+    ExecutorRayProfile => match b { ExecutorRayProfile => true, ExecutorMpProfile => false }
+    ExecutorMpProfile => match b { ExecutorRayProfile => false, ExecutorMpProfile => true }
+  }
+}
+
+fn kv_layout_eq(a: KvLayoutPolicy, b: KvLayoutPolicy) -> Bool {
+  match a {
+    KvAutoLayout => match b { KvAutoLayout => true, KvFp8DsMlaLayout => false }
+    KvFp8DsMlaLayout => match b { KvAutoLayout => false, KvFp8DsMlaLayout => true }
+  }
+}
+
+// ── PARAMETER EQUALITY IS FIELD-WISE, AND THAT IS WHAT REMOVES THE COLLISION ───────────────────
+//
+// IDENTITY USED TO BE A RENDERED STRING AND THE COLLISION WAS IN THE EQUALITY RELATION ITSELF, not
+// merely in a label. `parameters_key` joined the fields with `|` and `runtime_revision_key` joined an
+// image to a revision with `@`, and `execution_profile_eq` compared those renderings -- so
+// image "a@b" with revision "c" and image "a" with revision "b@c" were THE SAME PROFILE, and a
+// quality receipt acquired under one would have admitted the other. No delimiter choice fixes this:
+// any separator can appear inside a field, and escaping it is a second encoding to get wrong.
+//
+// Comparing field by field has no such failure mode, because nothing is concatenated. The collision
+// is not caught -- it has no constructor, which is rung four rather than a wall to maintain.
+fn parameters_eq(a: ServingDecisionParameters, b: ServingDecisionParameters) -> Bool {
+  token_count_value(t: a.max_model_len) == token_count_value(t: b.max_model_len)
+    && a.gpu_memory_utilisation_percent == b.gpu_memory_utilisation_percent
+    && token_count_value(t: a.max_num_batched_tokens) == token_count_value(t: b.max_num_batched_tokens)
+    && a.max_num_seqs == b.max_num_seqs
+    && executor_profile_eq(a: a.executor, b: b.executor)
+    && kv_layout_eq(a: a.kv_layout, b: b.kv_layout)
+    && speculative_policy_eq(a: a.speculative, b: b.speculative)
+    && a.enable_prefix_caching == b.enable_prefix_caching
+    && runtime_revision_eq(a: a.runtime, b: b.runtime)
+}
+
+// THE RENDERED FORMS SURVIVE FOR PROSE AND FOR NOTHING ELSE. A receipt's evidence sentence and a
+// systemd unit name want a readable string; identity does not, and the two uses are kept apart so a
+// display helper can never become a comparison again.
+fn parameters_render(p: ServingDecisionParameters) -> String {
   join([
     "ctx", to_string(token_count_value(t: p.max_model_len)),
     "|util", to_string(p.gpu_memory_utilisation_percent),
@@ -360,25 +404,25 @@ fn deployment_candidate(identity: DeclarationRef, label: NonEmptyStr, artifact: 
 type ServingExecutionProfile sole_constructor {
   artifact: DeclarationRef
   tensor_parallel_degree: Nat
-  parameters_digest: String
+  parameters: ServingDecisionParameters
 }
 
 fn execution_profile_of(c: DeploymentCandidate, p: ServingDecisionParameters) -> ServingExecutionProfile {
   ServingExecutionProfile {
     artifact: c.artifact.identity,
     tensor_parallel_degree: c.topology.tensor_parallel_degree,
-    parameters_digest: parameters_key(p: p),
+    parameters: p,
   }
 }
 
 fn execution_profile_eq(a: ServingExecutionProfile, b: ServingExecutionProfile) -> Bool {
   declaration_ref_eq(a: a.artifact, b: b.artifact)
     && a.tensor_parallel_degree == b.tensor_parallel_degree
-    && a.parameters_digest == b.parameters_digest
+    && parameters_eq(a: a.parameters, b: b.parameters)
 }
 
-fn execution_profile_key(p: ServingExecutionProfile) -> String {
-  join([declaration_ref_display_key(ref: p.artifact), "|tp", to_string(p.tensor_parallel_degree), "|", p.parameters_digest], "")
+fn execution_profile_render(p: ServingExecutionProfile) -> String {
+  join([declaration_ref_display_key(ref: p.artifact), "|tp", to_string(p.tensor_parallel_degree), "|", parameters_render(p: p.parameters)], "")
 }
 
 // ── QUALITY: A REPORT IS ORDINARY DATA, A VERDICT IS NOT ──────────────────────────────────────
@@ -863,17 +907,17 @@ fn serving_evidence_snapshot(
 
 fn quality_assessment_key(a: ServingQualityAssessment) -> String {
   match a {
-    QualityPassed { verdict: v } => join(["pass|", execution_profile_key(p: v.subject), "|", to_string(v.divergence_millinats)], "")
-    QualityFailed { subject: s, requirement: _, violations: vs } => join(["fail|", execution_profile_key(p: s), "|", to_string(count(vs))], "")
-    QualityUnobserved { subject: s, obligations: _ } => join(["unobs|", execution_profile_key(p: s)], "")
+    QualityPassed { verdict: v } => join(["pass|", execution_profile_render(p: v.subject), "|", to_string(v.divergence_millinats)], "")
+    QualityFailed { subject: s, requirement: _, violations: vs } => join(["fail|", execution_profile_render(p: s), "|", to_string(count(vs))], "")
+    QualityUnobserved { subject: s, obligations: _ } => join(["unobs|", execution_profile_render(p: s)], "")
   }
 }
 
 fn runtime_feasibility_key(r: RuntimeFeasibility) -> String {
   match r {
     RuntimeFeasibilityEstablished { witness: w } =>
-      join(["ok|", execution_profile_key(p: w.subject), "|", to_string(token_count_value(t: w.admitted_context))], "")
-    RuntimeFeasibilityUnestablished { subject: s, obligation: _ } => join(["no|", execution_profile_key(p: s)], "")
+      join(["ok|", execution_profile_render(p: w.subject), "|", to_string(token_count_value(t: w.admitted_context))], "")
+    RuntimeFeasibilityUnestablished { subject: s, obligation: _ } => join(["no|", execution_profile_render(p: s)], "")
   }
 }
 
@@ -931,7 +975,7 @@ fn key_occurrences(keys: List<CombinationKey>, k: CombinationKey) -> Nat {
 fn domain_key_render(d: ServingDeploymentChoiceDomain) -> String {
   join([
     join(map(expected_combinations(d: d), k => combination_key_render(k: k)), ","),
-    "|", parameters_key(p: d.parameters),
+    "|", parameters_render(p: d.parameters),
   ], "")
 }
 
@@ -1241,7 +1285,7 @@ fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
     parameters: [
       ParameterBound {
         parameter: id_param_execution,
-        evidence: join(["every candidate is built at exactly one declared execution profile and carries no field in which to disagree with it: ", parameters_key(p: input.field.domain.parameters)], "") as NonEmptyStr,
+        evidence: join(["every candidate is built at exactly one declared execution profile and carries no field in which to disagree with it: ", parameters_render(p: input.field.domain.parameters)], "") as NonEmptyStr,
       },
     ],
     selected_candidate: Absent,
@@ -1653,17 +1697,17 @@ data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input
 type ServingExperimentSubject sole_constructor {
   artifact: DeclarationRef
   topology: TopologyShape
-  parameters_digest: String
+  parameters: ServingDecisionParameters
 }
 
-fn serving_experiment_subject(artifact: DeclarationRef, topology: TopologyShape, parameters_digest: String) -> ServingExperimentSubject {
-  ServingExperimentSubject { artifact: artifact, topology: topology, parameters_digest: parameters_digest }
+fn serving_experiment_subject(artifact: DeclarationRef, topology: TopologyShape, parameters: ServingDecisionParameters) -> ServingExperimentSubject {
+  ServingExperimentSubject { artifact: artifact, topology: topology, parameters: parameters }
 }
 
 fn experiment_subject_eq(a: ServingExperimentSubject, b: ServingExperimentSubject) -> Bool {
   declaration_ref_eq(a: a.artifact, b: b.artifact)
     && topology_shape_eq(a: a.topology, b: b.topology)
-    && a.parameters_digest == b.parameters_digest
+    && parameters_eq(a: a.parameters, b: b.parameters)
 }
 
 // THE ARM HAS NO EXPORTED BUILDER, for the same reason SelectedServingDeployment has none: possessing
@@ -1720,7 +1764,7 @@ fn admit_serving_experiment(
       match authorize(authorization: authorization, request: request, observed_at: observed_at) {
         AuthorizationRefused { cause: c } => ExperimentAuthorizationRefused { cause: c }
         AuthorizationPermitted { grant: g } => {
-          let requested = serving_experiment_subject(artifact: artifact.identity, topology: topology, parameters_digest: parameters_key(p: parameters))
+          let requested = serving_experiment_subject(artifact: artifact.identity, topology: topology, parameters: parameters)
           if !experiment_subject_eq(a: g.subject, b: requested) {
             ExperimentAdmissionRefused {
               because: join([
@@ -1794,7 +1838,7 @@ data glm_native_tp4_experiment_topology: TopologyShape = topology_shape(tensor_p
 data glm_native_tp4_experiment_subject: ServingExperimentSubject = serving_experiment_subject(
   artifact: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
   topology: glm_native_tp4_experiment_topology,
-  parameters_digest: parameters_key(p: serving_parameters_current),
+  parameters: serving_parameters_current,
 )
 
 data glm_native_tp4_experiment_scope: AuthorizationScope = AuthorizationScope {

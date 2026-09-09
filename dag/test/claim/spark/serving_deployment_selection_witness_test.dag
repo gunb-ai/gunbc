@@ -10,7 +10,7 @@ import gunbc.spark.serving_deployment_selection {
   ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, SpeculationOff, SpeculationOn,
   RuntimeRevision, runtime_revision,
   ServingDecisionParameters, serving_decision_parameters,
-  ServingExecutionProfile, execution_profile_of,
+  ServingExecutionProfile, execution_profile_of, execution_profile_eq, parameters_render,
   ServingQualityReport, serving_quality_report,
   QualityRequirement, quality_requirement,
   ServingQualityAssessment, QualityPassed, QualityFailed, QualityUnobserved, assess_quality,
@@ -170,13 +170,62 @@ fn evidence_admitting(profiles: List<ServingQualityAssessment>, w: WorkloadDeman
   )
 }
 
+// THE MODULE'S OWN IDENTITY RELATION IS THE ONE ASSERTED ON, not the language's derived record
+// equality. Two notions of "same profile" would be the fork this branch keeps removing, and only
+// execution_profile_eq is the one the projector and the evidence lookups actually consult.
 test fn a_quality_receipt_is_not_transportable_across_execution_profiles() -> Bool {
-  execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
-    != execution_profile_of(c: native_tp4_x2, p: other_runtime_parameters)
-    && execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
-      != execution_profile_of(c: native_tp4_x2, p: wider_context_parameters)
-    && execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
-      != execution_profile_of(c: native_tp2_x4, p: serving_parameters_current)
+  !execution_profile_eq(
+      a: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+      b: execution_profile_of(c: native_tp4_x2, p: other_runtime_parameters))
+    && !execution_profile_eq(
+      a: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+      b: execution_profile_of(c: native_tp4_x2, p: wider_context_parameters))
+    && !execution_profile_eq(
+      a: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+      b: execution_profile_of(c: native_tp2_x4, p: serving_parameters_current))
+}
+
+// ── THE DELIMITER COLLISION, WHICH USED TO MAKE TWO PROFILES ONE ──────────────────────────────
+//
+// Identity was a rendered string: the runtime joined an image to a revision with `@` and the
+// parameters joined their fields with `|`. So image "a@b" at revision "c" and image "a" at revision
+// "b@c" rendered IDENTICALLY, and because equality compared renderings they were the same profile --
+// a quality or feasibility receipt acquired under one would have admitted the other. No delimiter
+// choice repairs that: any separator can occur inside a field, and escaping is a second encoding to
+// get wrong.
+//
+// These two runtimes are that exact pair. The row asserts the profiles are DISTINCT, and asserts
+// alongside it that their rendered forms are equal -- because if the renderings ever stop colliding
+// the row would pass for the wrong reason and stop testing anything.
+data collide_left: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 262144),
+  gpu_memory_utilisation_percent: 82,
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_layout: KvFp8DsMlaLayout,
+  speculative: SpeculationOff,
+  enable_prefix_caching: true,
+  runtime: runtime_revision(image: "a@b" as NonEmptyStr, vllm_revision: "c" as NonEmptyStr),
+)
+
+data collide_right: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 262144),
+  gpu_memory_utilisation_percent: 82,
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_layout: KvFp8DsMlaLayout,
+  speculative: SpeculationOff,
+  enable_prefix_caching: true,
+  runtime: runtime_revision(image: "a" as NonEmptyStr, vllm_revision: "b@c" as NonEmptyStr),
+)
+
+test fn two_runtimes_that_render_alike_are_not_the_same_profile() -> Bool {
+  !execution_profile_eq(
+      a: execution_profile_of(c: native_tp4_x2, p: collide_left),
+      b: execution_profile_of(c: native_tp4_x2, p: collide_right))
+    && parameters_render(p: collide_left) == parameters_render(p: collide_right)
 }
 
 // ── CONTROL 6: A MEMORY FRACTION ABOVE THE DEVICE REFUSES ─────────────────────────────────────
