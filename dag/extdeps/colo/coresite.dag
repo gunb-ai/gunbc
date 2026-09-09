@@ -22,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.coresite",
-      decl_name: "coresite_ny2",
+      decl_name: "coresite_facilities",
       field: WholeDeclaration
     }
   },
