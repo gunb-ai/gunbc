@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.algebra { trim }
-import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count, allocator_block_count_value }
+import std.measure { TokenCount, token_count, token_count_value, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count, allocator_block_count_value }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest, Fnv1a64, content_hash_atom }
 import extdeps.ssh.session
@@ -12,6 +12,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
+import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_log_path, spark_pair_head_unit_name }
 import gunbc.spark.managed_access_apply { spark_managed_login }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
@@ -49,10 +50,6 @@ import gunbc.spark.pair_serving_capacity_floor {
 // of the upstream surface. A field the far side cannot produce is a literal "-", which refuses
 // here and never arrives as a zero.
 
-data capacity_probe_unit: String = "gunbc-spark-pair-head"
-data capacity_probe_container: String = "gunbc-spark-pair"
-data capacity_probe_log: String = "/var/log/gunbc/spark-pair-head.log"
-
 data capacity_probe_script_brace_workaround_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a heads-only (or full) module index whose brace matching is token-aware. SUFFICIENT FOR: a --format template or a shell function body to inhabit a .dag string without flattening (gunbc.recurring_failure_mode.heads_only_index_counts_braces_inside_string_literals). Until then this script is flattened because the reader cannot tell a string from structure. Token-aware matching does not emit this program as typed argv." as NonEmptyStr)
 
 data capacity_probe_script_shell_emit_dissolution: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) realizes this remote inventory probe as typed orchestration intent (or typed host-effect argv) and group_report ships that realization rather than stdin_payload: capacity_probe_script(). SUFFICIENT FOR: emit_field and capacity_probe_script delete together; ExecPortableWordsWithStdin no longer carries a hand-assembled 12-field bash program. The which-prefix decision is already this module's: vllm_startup_line_prefix is interpolated into the payload. Until then this is the marked shell-as-string fact for transport and field order, not for the upstream log surface." as NonEmptyStr)
@@ -75,7 +72,7 @@ fn emit_field(command: String) -> String {
 
 fn capacity_probe_script() -> String {
   join(concat([
-    join(["set -u\nu=", capacity_probe_unit, "\nlog=", capacity_probe_log, "\nc=", capacity_probe_container, "\n"], ""),
+    join(["set -u\nu=", spark_pair_head_unit_name as String, "\nlog=", spark_pair_head_log_path as String, "\nc=", spark_pair_container_name as String, "\n"], ""),
     "m=$(curl -s --max-time 8 http://127.0.0.1:30000/metrics)\n",
   ], map([
     "systemctl show $u -p InvocationID --value",
@@ -101,9 +98,9 @@ type CapacityProbeFields {
   started_at: Int
   pool_line: String
   concurrency_line: String
-  allocator_blocks: Int
-  block_size: Int
-  max_model_len: Int
+  allocator_blocks: AllocatorBlockCount
+  block_size: TokenCount
+  max_model_len: TokenCount
   running: Int
   waiting: Int
 }
@@ -197,9 +194,9 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                                       started_at: started,
                                       pool_line: pool_line,
                                       concurrency_line: conc_line,
-                                      allocator_blocks: blocks,
-                                      block_size: bs,
-                                      max_model_len: ctx,
+                                      allocator_blocks: allocator_block_count(count: blocks),
+                                      block_size: token_count(count: bs),
+                                      max_model_len: token_count(count: ctx),
                                       running: running,
                                       waiting: waiting,
                                     } }
@@ -299,10 +296,10 @@ fn reported_from_fields(pool: VllmObservedKvPool, f: CapacityProbeFields, revisi
 // reason. Filling it with a guess is the one move that would make this instrument lie.
 fn layout_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision) -> ResolvedKvLayout {
   resolved_kv_layout(
-    allocator_blocks: allocator_block_count(count: f.allocator_blocks),
-    scheduler_block_size: token_count(count: f.block_size),
-    hash_block_size: token_count(count: f.block_size),
-    max_model_len: token_count(count: f.max_model_len),
+    allocator_blocks: f.allocator_blocks,
+    scheduler_block_size: f.block_size,
+    hash_block_size: f.block_size,
+    max_model_len: f.max_model_len,
     groups: [],
     established_at_revision: revision,
   )
@@ -385,7 +382,7 @@ fn group_report(group: FabricGroup) -> GroupStanding {
                   ProbeReadingsRefused { cause: c } => refused_standing(text: join([
                     name, " @ ", address as String, " invocation=", f.invocation, "\n",
                     "    engine: ", to_string(f.running), " running, ", to_string(f.waiting), " waiting; inventory ",
-                    to_string(f.allocator_blocks), " blocks of ", to_string(f.block_size), "\n",
+                    to_string(allocator_block_count_value(c: f.allocator_blocks)), " blocks of ", to_string(token_count_value(t: f.block_size)), "\n",
                     "    printed: ", f.pool_line, " / ", f.concurrency_line, "\n",
                     "    receipt: refused -- ", c as String,
                   ], ""))
@@ -403,7 +400,7 @@ fn group_report(group: FabricGroup) -> GroupStanding {
                       text: join([
                       name, " @ ", address as String, " invocation=", f.invocation, "\n",
                       "    engine: ", to_string(f.running), " running, ", to_string(f.waiting), " waiting; inventory ",
-                      to_string(f.allocator_blocks), " blocks of ", to_string(f.block_size), "\n",
+                      to_string(allocator_block_count_value(c: f.allocator_blocks)), " blocks of ", to_string(token_count_value(t: f.block_size)), "\n",
                       "    printed: ", f.pool_line, " / ", f.concurrency_line, "\n",
                       "    receipt: ", receipt_wire(r: receipt), "\n",
                       "    floor:   ", standing_wire(s: floor), "\n",

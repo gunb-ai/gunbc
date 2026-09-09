@@ -5,6 +5,7 @@ import v2.std.optional { Present, Absent }
 import std.measure { concurrent_request_hundredths_count }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
 import extdeps.vllm.log_lines { vllm_startup_line_prefix, GpuKvCacheSize, MaximumConcurrency }
+import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_log_path, spark_pair_head_unit_name }
 import gunbc.instruments.fabric_capacity_standing {
   CapacityProbeRead, ProbeFields, ProbeUnreadable, decode_probe,
   ProbeReadings, ProbeReadingsReady, ProbeReadingsRefused, readings_from_fields,
@@ -107,6 +108,9 @@ test fn the_probe_script_greps_the_declared_startup_prefixes_and_emits_the_line(
   let script = capacity_probe_script()
   string_contains(s: script, pattern: vllm_startup_line_prefix(line: GpuKvCacheSize) as String)
     && string_contains(s: script, pattern: vllm_startup_line_prefix(line: MaximumConcurrency) as String)
+    && string_contains(s: script, pattern: spark_pair_head_unit_name as String)
+    && string_contains(s: script, pattern: spark_pair_container_name as String)
+    && string_contains(s: script, pattern: spark_pair_head_log_path as String)
     && !string_contains(s: script, pattern: "s/.*size: //")
     && !string_contains(s: script, pattern: "s/.*request: //")
 }
