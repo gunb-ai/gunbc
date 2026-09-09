@@ -94,7 +94,7 @@ test fn an_unobserved_revision_refuses_rather_than_stamping_the_modelled_constan
   match w_fields() {
     ProbeUnreadable { detail: _ } => false
     ProbeFields { fields: f } =>
-      match readings_from_fields(f: f, observed_revision: none, observed_hash_block_size: none) {
+      match readings_from_fields(f: f, observed_revision: none, observed_hash_block_size: Absent) {
         ProbeReadingsRefused { cause: c } => string_contains(s: c as String, pattern: "did not observe the engine's vLLM source revision")
         ProbeReadingsReady { pool: _, reported: _, layout: _ } => false
       }
@@ -105,7 +105,7 @@ test fn a_supplied_revision_without_hash_block_size_refuses_rather_than_copying_
   match w_fields() {
     ProbeUnreadable { detail: _ } => false
     ProbeFields { fields: f } =>
-      match readings_from_fields(f: f, observed_revision: Present { value: w_foreign_revision() }, observed_hash_block_size: none) {
+      match readings_from_fields(f: f, observed_revision: Present { value: w_foreign_revision() }, observed_hash_block_size: Absent) {
         ProbeReadingsRefused { cause: c } => string_contains(s: c as String, pattern: "did not observe hash_block_size")
         ProbeReadingsReady { pool: _, reported: _, layout: _ } => false
       }
