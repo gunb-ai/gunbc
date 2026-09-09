@@ -78,7 +78,7 @@ data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // returned 404 on 2026-09-08, so no address, capacity or density is carried for it. A tailored
 // deployment for one named tenant would in any case be a different fact from a marketed cabinet
 // maximum, and would need its own arm rather than being read as retail density.
-data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator contributes exactly one modelled facility despite operating several in this metro, which understates it."
+data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator contributes two modelled facilities, LGA3 and LGA4, both on the one Orangeburg campus, despite operating several sites across this metro - so the census still understates it, and now understates it in a way that could be mistaken for coverage of the operator rather than of one campus."
 
 // THE OTHER BUILDING ON THE SAME CAMPUS, and it is the larger one. LGA4 was modelled first because
 // it was the row that broke the census's New York blindness; LGA3 is the operational sibling at the
