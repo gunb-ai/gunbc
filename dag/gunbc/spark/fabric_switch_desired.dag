@@ -2,6 +2,7 @@ module gunbc.spark.fabric_switch_desired
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import v2.std.algebra { non_empty_to_list }
 import extdeps.ethernet.link_mode { LinkMode }
 import extdeps.mikrotik.crs812 {
   Crs812LaneSpeed, crs812_lane_speed_for_link_mode,
@@ -11,9 +12,12 @@ import extdeps.mikrotik.crs812 {
   crs812_passive_dac_requires_forced_mode,
 }
 import product.cable_plant_converge {
-  CablePlantRefusal, CablePlantConvergence, CablePlant,
+  CablePlantRefusal, CablePlant,
 }
-import gunbc.world_converge { WorldConverged, WorldNotConverged }
+import std.goal_assessment {
+  GoalInspected, GoalObservationRefused,
+  GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+}
 import gunbc.spark.fabric_switch_observed {
   FabricLaneObserved, fabric_lane_observations, fabric_lane_interface,
   fabric_cable_plant_convergence,
@@ -42,8 +46,15 @@ import gunbc.spark.fabric_switch_observed {
 // for. Collapsing them would make "we do not know" mean two different repairs -- recode the cables,
 // versus this hardware cannot do it at all -- so the cause is a closed vocabulary and each arm names
 // the fact that produced it.
+// THE PLANT CAN FAIL TO SETTLE THE SPEED TWO DIFFERENT WAYS, AND THEY ARE TWO ARMS BECAUSE THE
+// REMEDIES DIFFER. The plant may not be OBSERVABLE -- a leg nobody read, a plant with nothing in it
+// -- which a reading fixes; or it may be observed and DIVERGENT, which needs a leg replaced. The
+// shape this module used to read collapsed both into one refusal, so a caller could not tell "go
+// read the plant" from "go change the copper" without inspecting the cause. Splitting them here is
+// that distinction surfacing where it was always true.
 type DesiredSpeedUndecidedCause
-  = PlantDidNotConverge { cause: CablePlantRefusal }
+  = PlantNotObservable { cause: CablePlantRefusal }
+  | PlantDivergedFromRequirement { legs: Nat }
   | SwitchCannotRunRequiredMode { mode: LinkMode }
 
 type Crs812DesiredLaneSpeed
@@ -57,14 +68,26 @@ type Crs812DesiredLaneSpeed
 // annotation warns about, so the annotation is only true if the code reads the subject.
 fn crs812_desired_lane_speed() -> Crs812DesiredLaneSpeed {
   match fabric_cable_plant_convergence() {
-    WorldNotConverged { subject: s, refusal: f } =>
-      DesiredLaneSpeedUndecided { cause: PlantDidNotConverge { cause: f } }
-    WorldConverged { subject: s, observed: o, receipt: r } =>
-      match crs812_lane_speed_for_link_mode(m: s.required_mode) {
-        LaneSpeedForMode { speed: sp } => DesiredLaneSpeed { speed: sp }
-        NoLaneSpeedForMode { mode: um } => DesiredLaneSpeedUndecided {
-          cause: SwitchCannotRunRequiredMode { mode: um },
+    GoalObservationRefused { subject: s, cause: f } =>
+      DesiredLaneSpeedUndecided { cause: PlantNotObservable { cause: f } }
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: ds } => DesiredLaneSpeedUndecided {
+          cause: PlantDivergedFromRequirement { legs: list_length(items: non_empty_to_list(xs: ds)) },
         }
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => DesiredLaneSpeedUndecided {
+          cause: PlantDivergedFromRequirement { legs: list_length(items: kd) },
+        }
+        GoalAssessmentRefused { cause: c } => DesiredLaneSpeedUndecided {
+          cause: PlantDivergedFromRequirement { legs: 0 },
+        }
+        GoalSatisfied { evidence: e } =>
+          match crs812_lane_speed_for_link_mode(m: s.required_mode) {
+            LaneSpeedForMode { speed: sp } => DesiredLaneSpeed { speed: sp }
+            NoLaneSpeedForMode { mode: um } => DesiredLaneSpeedUndecided {
+              cause: SwitchCannotRunRequiredMode { mode: um },
+            }
+          }
       }
   }
 }

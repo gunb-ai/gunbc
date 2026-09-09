@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.read_only_policy_bound_as_an_actuator_that_only_refuses
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data read_only_policy_bound_as_an_actuator_that_only_refuses: RecurringFailureMode = RecurringFailureMode {
+  identity: "read_only_policy_bound_as_an_actuator_that_only_refuses" as NonEmptyStr,
+
+  receipts: [
+    "**a subject that can only be READ is bound to an interface with an actuation stage, so the binding supplies an actuator whose every arm is a refusal** (the shape compiles, every claim over it passes, and nothing is obviously wrong -- the actuator is doing the safe thing. The defect is that the refusal vocabulary then grows to describe A WRITE THAT DOES NOT EXIST, and those causes are indistinguishable, at the type, from causes about the world. ",
+
+    "SPECIMEN (2026-09-07, gunbc.repo_ruleset against the deleted gunbc.world_converge). The repository-ruleset subject is observable and, under this repository's credential, unwritable: a whole-ruleset PUT would delete bypass actors the read cannot even enumerate. It was nonetheless bound to a six-parameter convergence handler carrying `apply`, so three of its seven refusal causes described the missing writer rather than the live ruleset -- an unbound actuation realization, a live rule a PUT would delete, a bypass roster a PUT would overwrite. ONE OF THE THREE WAS A SECOND REPRESENTATION OF A FACT THE DIVERGENCE LIST ALREADY CARRIED: an undeclared live rule was reported as the divergence `RulesetRuleUnexpected` AND as the actuation cause `RepositoryRulesetUnexpectedLiveRule`, free to disagree, with only the second reachable once a hold fired. ",
+
+    "**THE HARM IS ORDERING, AND IT ARRIVES LATER THAN THE MODELLING ERROR.** Refusals about the absent writer are checked BEFORE the comparison, because an actuator that cannot run has nothing to say about drift -- so the hold wins and the comparison is discarded. In the specimen the bypass roster is unreadable on EVERY live read, so the binding reported `the roster could not be read` unconditionally and NEVER reported that the enforcement, the required contexts or the ruleset name had also drifted. The one thing the subject existed to detect was suppressed by a refusal about a capability nobody was exercising. ",
+
+    "**THE TELL IS AN ACTUATION STAGE WITH NO GREEN ARM ANYWHERE IN THE CORPUS.** It is mechanically visible: the generic's own fixture bound `apply` to a constant refusal named `FixtureApplyShouldNotRun`, so the successful application path had never executed in the tree at all. An interface stage that no test and no production path can drive is not a conservative default; it is a stage whose contract is unmeasured, and it will be inherited by the next binding as though it were proven. ",
+
+    "**RECOGNITION RULE: if every arm a binding supplies for a stage is a refusal, the binding does not inhabit that stage -- ask whether the interface should have been the smaller one.** The repair is not a better refusal. It is to bind the READ-ONLY interface, delete the causes that described the absent writer, and let the facts they carried redistribute onto what they always were: an unreadable subject is an observation-layer refusal, an unread field is an unknown, an undeclared live rule is a deviation. ",
+
+    "SEPARATION FROM ITS NEIGHBOURS, since three rows are close. [[detector_promoted_to_an_actuator_predicate]] is the opposite direction -- something that only observes is made to decide an action. [[non_verdict_disposition_surfaces_as_refusal]] is about a disposition that is not a verdict being rendered as one, within a stage that legitimately exists. [[parallel_representation_debt]] covers the duplicated fact this specimen also carried, but not the ordering harm, which is the part that actually cost a finding. ",
+
+    "AND THE PRICE OF LEAVING IT: because the stage is structural, the misfiling compounds. Each new fact about why the write is unsafe arrives as another refusal cause rather than as an observation, so the subject's vocabulary drifts further from the thing it observes -- and the further it drifts, the more plausible the next refusal-shaped cause looks.)",
+  ],
+
+  evidence: [],
+}

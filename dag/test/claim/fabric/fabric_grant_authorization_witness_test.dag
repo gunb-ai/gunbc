@@ -1,0 +1,224 @@
+module test.claim.fabric_grant_authorization_witness
+
+import std.types { NonEmptyStr, Bool, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+// THE FABRIC GRANT FIXTURES ARE IMPORTED, NOT REBUILT. test.claim.fabric_grant_issuance_witness
+// owns the one construction of an issued grant and the account it fences against; rebuilding
+// either here would be a second answer to "what authorizes this work", and the two would drift
+// the first time issuance moved.
+import test.claim.fabric_grant_issuance_witness {
+  issue, subject_work, other_work, first_attempt, funded_account, exhausted_account, admitted_offer, thread_appropriation,
+  money_request,
+}
+import product.fabric.execution { ExecutionGrant }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.grant_issue {
+  GrantCommitted, GrantRefused,
+  GrantAuthorization, GrantAuthorizes, GrantFenceRefused,
+  GrantAuthorizesDifferentWork, GrantAnswersDifferentDemand, GrantIssuedAgainstDifferentOffer,
+  grant_authorizes_reservation,
+}
+import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE COMMITTED GRANT AND THE ACCOUNT IT FENCES AGAINST, CARRIED AS ONE PAIR because they are one
+// fact. issue_grant returns GrantCommitted { grant, account, ledger }: the returned account is the
+// one carrying the recorded lease, and fencing a fresh grant against the PRE-issuance account
+// refuses every time. Splitting the pair is what makes that error writable, so it is not split.
+//
+// Derived through production issuance rather than authored as literals -- a hand-built
+// ExecutionGrant would let this witness assert an execution against an authorization the fabric
+// would never have issued, which is the failure the grant exists to prevent.
+//
+// This returns a LIST rather than one pair on purpose. A helper that had to produce a single grant
+// would need an arm for "issuance committed nothing", and the only things to put there are a
+// fabricated grant or a non-terminating call -- so every claim matches the list and an empty
+// issuance fails the claim loudly instead of being papered over.
+// THE MONEY GENERATION THE ISSUER REQUESTED, TAKEN FROM THE REQUEST RATHER THAN FROM THE ACCOUNT.
+// Reading it back off the account would make the fence arm compare a value to itself and green by
+// construction -- a 4b decoration. money_request is what the ISSUER asked for; the account's held
+// counter is what reserve_money RECORDED. The fence joins those two independently authored facts,
+// so presenting the request's value is the honest positive direction.
+//
+// IT IS ALSO NOT THE LEASE'S GENERATION, and the two fixtures make that easy to miss: the money
+// request and the resource lease both carry 9, so an earlier revision of this witness passed the
+// LEASE generation, fenced green, and read as a positive control while proving only that two
+// unrelated counters happened to coincide. Review 62587 found it. The fixtures are left at 9 and
+// the discrimination is carried by a claim that presents a DIFFERENT generation, below.
+data issued_money_generation: Int = money_request.generation
+
+type IssuedAuthorization {
+  grant: ExecutionGrant<NonEmptyStr>
+  account: MoneyAccount
+}
+
+fn issued_authorizations() -> List<IssuedAuthorization> {
+  match issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ) {
+    GrantCommitted { grant: g, account: a, ledger: _ } =>
+      [IssuedAuthorization { grant: g, account: a }]
+    GrantRefused { refusal: _ } => []
+  }
+}
+
+// THE GRANT CONTROLS, DRIVING THE RULE DIRECTLY. Each control matches ONE named variant rather
+// than a substring of a cause string: a refusal that named the wrong authority would still carry
+// the right words, so a string match cannot separate "refused for this reason" from "refused for
+// some reason whose text happens to contain these words".
+//
+// Why the rule takes COORDINATES rather than a snapshot: RequiredBuildCellSnapshot is
+// sole_constructor, so no fixture outside its module can build a DISAGREEING one, and a control
+// aimed at a snapshot-taking rule would have an unauthorable RED -- a 4b decoration. FabricIdentity
+// is an ordinary record, so over coordinates the disagreement is writable, and four claims write it.
+//
+// The absent-grant case has no claim BECAUSE IT HAS NO CONSTRUCTOR: the grant is a required
+// parameter, so "no grant" cannot be written at a call site.
+test fn a_grant_that_does_not_fence_authorizes_nothing() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: exhausted_account,
+        money_generation: issued_money_generation,
+        work: auth.grant.context.work,
+        demand: auth.grant.context.demand,
+        offer: auth.grant.object.offer,
+      ) {
+        GrantFenceRefused => true
+        GrantAuthorizes => false
+        GrantAuthorizesDifferentWork => false
+        GrantAnswersDifferentDemand => false
+        GrantIssuedAgainstDifferentOffer => false
+      }
+    Empty {} => false
+  }
+}
+
+// THE GENERATION ARM OF THE SAME FENCE, AND IT IS THE ONE THE FIXTURE COINCIDENCE WAS HIDING. The
+// claim above refuses because the exhausted account holds NO lease for the reference at all, which
+// a rule that ignored the generation entirely would still pass. This one presents the RIGHT account
+// against a WRONG generation, so it can only go green if the presented counter actually
+// participates -- and it is exactly the claim that reds if the lease generation is substituted back
+// in, because the lease and the money request agree at 9 while this presents 10.
+test fn a_grant_fenced_at_another_money_generation_authorizes_nothing() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: auth.account,
+        money_generation: issued_money_generation + 1,
+        work: auth.grant.context.work,
+        demand: auth.grant.context.demand,
+        offer: auth.grant.object.offer,
+      ) {
+        GrantFenceRefused => true
+        GrantAuthorizes => false
+        GrantAuthorizesDifferentWork => false
+        GrantAnswersDifferentDemand => false
+        GrantIssuedAgainstDifferentOffer => false
+      }
+    Empty {} => false
+  }
+}
+
+// THE SUBSTITUTION CONTROL, and it is the one the grant parameter alone did not give. Every
+// coordinate agrees except Work: a grant issued for one execution presented against another
+// execution's reservation. Before the join existed this combination was ADMITTED, because the only
+// thing read off the grant was its money reservation.
+test fn a_grant_for_another_work_authorizes_nothing() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: auth.account,
+        money_generation: issued_money_generation,
+        work: other_work.id,
+        demand: auth.grant.context.demand,
+        offer: auth.grant.object.offer,
+      ) {
+        GrantAuthorizesDifferentWork => true
+        GrantAuthorizes => false
+        GrantFenceRefused => false
+        GrantAnswersDifferentDemand => false
+        GrantIssuedAgainstDifferentOffer => false
+      }
+    Empty {} => false
+  }
+}
+
+// THE SAME SUBSTITUTION, ON THE OTHER TWO COORDINATES. Work, Demand and Offer are three separate
+// joins and each needs its own RED: with only the Work control enrolled, a rule that dropped the
+// Demand and Offer checks entirely would still green every claim in this file, so the join would be
+// reported at a rung its executed evidence does not establish.
+test fn a_grant_for_another_demand_authorizes_nothing() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: auth.account,
+        money_generation: issued_money_generation,
+        work: auth.grant.context.work,
+        demand: FabricIdentity { principal: "gunbc", key: "demand-2" },
+        offer: auth.grant.object.offer,
+      ) {
+        GrantAnswersDifferentDemand => true
+        GrantAuthorizes => false
+        GrantFenceRefused => false
+        GrantAuthorizesDifferentWork => false
+        GrantIssuedAgainstDifferentOffer => false
+      }
+    Empty {} => false
+  }
+}
+
+test fn a_grant_for_another_offer_authorizes_nothing() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: auth.account,
+        money_generation: issued_money_generation,
+        work: auth.grant.context.work,
+        demand: auth.grant.context.demand,
+        offer: FabricIdentity { principal: "gunbc", key: "offer-2" },
+      ) {
+        GrantIssuedAgainstDifferentOffer => true
+        GrantAuthorizes => false
+        GrantFenceRefused => false
+        GrantAuthorizesDifferentWork => false
+        GrantAnswersDifferentDemand => false
+      }
+    Empty {} => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE SAME RULE. Without it every row above is satisfied by a rule that
+// refuses unconditionally -- which is exactly the shape that passed here once already, when the
+// fence was checked against the pre-issuance account and refused everything.
+test fn the_issued_grant_authorizes_its_own_reservation() -> Bool {
+  match issued_authorizations() {
+    Cons { head: auth, tail: _ } =>
+      match grant_authorizes_reservation(
+        grant: auth.grant,
+        account: auth.account,
+        money_generation: issued_money_generation,
+        work: auth.grant.context.work,
+        demand: auth.grant.context.demand,
+        offer: auth.grant.object.offer,
+      ) {
+        GrantAuthorizes => true
+        GrantFenceRefused => false
+        GrantAuthorizesDifferentWork => false
+        GrantAnswersDifferentDemand => false
+        GrantIssuedAgainstDifferentOffer => false
+      }
+    Empty {} => false
+  }
+}
