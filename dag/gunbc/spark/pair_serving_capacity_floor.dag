@@ -15,7 +15,7 @@ import extdeps.vllm.kv_layout {
   ResolvedKvLayout, AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.harness.harness_seat { harness_seat_operator_policy_seats }
+import gunbc.harness.harness_seat { harness_interactive_quality_seats }
 
 // ── THE FLOOR IS DECLARED IN THE UNIT THE OPERATOR ACTUALLY WANTS ──────────────────────────────
 //
@@ -26,8 +26,8 @@ import gunbc.harness.harness_seat { harness_seat_operator_policy_seats }
 // and the blocks are DERIVED from it against the engine's own layout.
 //
 // AND THE SESSION COUNT IS NOT A SECOND NUMBER EITHER. It is the same policy constant the harness
-// hands out seats against (gunbc.harness.harness_seat harness_seat_operator_policy_seats). A fabric
-// whose floor said four while the harness seated three would be holding capacity nobody could use,
+// hands out seats against (gunbc.harness.harness_seat harness_interactive_quality_seats). A fabric
+// whose floor said four while the harness seated one would be holding capacity nobody could use,
 // and one whose floor said two would be admitting a seat the fabric never promised. They are one
 // fact, so they are read from one place; when that constant's drop retires and the count becomes
 // derived, the floor follows without an edit here.
@@ -41,7 +41,7 @@ type MinimumColdSessions {
 // spending a discount that has not been granted.
 data spark_pair_serving_minimum_cold_sessions: MinimumColdSessions = MinimumColdSessions {
   maximum_sequence_tokens: token_count(count: 500000),
-  sessions: harness_seat_operator_policy_seats,
+  sessions: harness_interactive_quality_seats,
 }
 
 // ── CAPACITY IS A READINESS PROPERTY OF ONE INCARNATION ────────────────────────────────────────

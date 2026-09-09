@@ -16,7 +16,7 @@ import extdeps.vllm.kv_layout {
   VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
 }
 import gunbc.spark.vllm_kv_layout_observe { VllmKvLayoutReceipt, KvLayoutObserved, KvLayoutInconsistent, admit_kv_layout }
-import gunbc.harness.harness_seat { harness_seat_operator_policy_seats }
+import gunbc.harness.harness_seat { harness_interactive_quality_seats }
 import gunbc.spark.pair_serving_capacity_floor {
   MinimumColdSessions, spark_pair_serving_minimum_cold_sessions,
   CapacityFloorStanding, MeetsFloor, BelowFloor, FloorUnestablished, capacity_floor_standing,
@@ -106,7 +106,7 @@ fn w_receipt_from(invocation: String, blocks: Nat, pool: VllmObservedKvPool) -> 
 }
 
 test fn the_block_requirement_is_derived_from_the_declared_session_floor() -> Bool {
-  spark_pair_serving_minimum_cold_sessions.sessions == harness_seat_operator_policy_seats
+  spark_pair_serving_minimum_cold_sessions.sessions == harness_interactive_quality_seats
     && (match w_pool(tokens: 93750 * 16) {
           Absent => false
           Present { value: p } =>
