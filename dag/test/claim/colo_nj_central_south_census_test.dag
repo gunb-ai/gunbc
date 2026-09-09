@@ -18,6 +18,9 @@ import extdeps.colo.digital_realty {
   digital_realty_ewr12_retail_grain, digital_realty_ewr11_retail_grain,
 }
 import extdeps.colo.qts { qts_piscataway_density, qts_piscataway_retail_grain }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_bridgewater_density, three_sixty_five_bridgewater_retail_grain,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -79,6 +82,16 @@ test fn w_facility_megawatts_never_become_cabinet_watts() -> Bool {
     && bound_watts(d: qts_piscataway_density) == 0 - 1
     && established_watts(d: digital_realty_ewr11_density) == 0 - 1
     && established_watts(d: digital_realty_ewr12_density) == 0 - 1
+    && established_watts(d: three_sixty_five_bridgewater_density) == 0 - 1
+}
+
+// A CABINET INVENTORY IS NOT AN OFFER, which is the grain axis's version of the same refusal. 365
+// Bridgewater's page says the building contains nearly 300 cabinets and never says one is sold; a
+// count of cabinets is a fact about the building exactly as its megawatts are. This control reds if
+// that inventory line is ever promoted to a single-cabinet offer without an operator statement.
+test fn w_a_cabinet_count_is_not_a_retail_offer() -> Bool {
+  !grain_admits_single_cabinet(g: three_sixty_five_bridgewater_retail_grain)
+    && established_watts(d: three_sixty_five_bridgewater_density) == 0 - 1
 }
 
 // GRAIN IS READ PER BUILDING, NOT PER CAMPUS. EWR12 publishes a single-cabinet offer and its
