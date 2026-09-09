@@ -795,6 +795,7 @@ fn cp_reservation_label(r: CellReservation) -> NonEmptyStr {
   match r {
     CellReserved { offer: _, slot_key: _, generation: _, account: _ } => "reserved"
     NoCellAdmissible { considered: _, refused: _ } => "no-cell-admissible"
+    CellSelectionTieUnresolved { digest: _, considered: _ } => "selection-tie-unresolved"
     BudgetRefused { slot_key: _, refusal: _ } => "budget-refused"
     ReservationLost { slot_key: _ } => "reservation-lost"
     PermitNamesAnotherUseForCell { standing: st } =>
