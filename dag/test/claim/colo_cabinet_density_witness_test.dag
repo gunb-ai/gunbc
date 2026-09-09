@@ -702,21 +702,29 @@ test fn w_a_published_average_supports_no_bound_in_either_direction() -> Bool {
 // stranded module outside the four this PR edits - netrality - plus these five witnesses.
 // ============================================================================================
 
-// PHILADELPHIA PUBLISHES ONE CABINET DENSITY AND IT IS A CEILING, NOT A READING. Netrality's page
-// says "Cabinet density up to 30kW" - a marketed maximum - so it bounds from above and establishes
-// nothing about what any cabinet supplies. The original witness asserted `established_watts == 30000`,
-// which read the ceiling as a measurement; that accessor is deleted precisely because no arm can
-// honestly answer it.
+// PHILADELPHIA PUBLISHES ONE CABINET DENSITY, IT IS A CEILING RATHER THAN A READING, AND NO MEDIUM
+// REQUEST REACHES IT. Netrality's page says "Cabinet density up to 30kW" - a marketed maximum - so it
+// bounds from above and establishes nothing about what any cabinet supplies. The original witness
+// asserted `established_watts == 30000`, which read the ceiling as a measurement; that accessor is
+// deleted precisely because no arm can honestly answer it.
 //
-// AND THE MEDIUM CHANGED WITH THE MIGRATION. That page names no cooling medium, so the row is
-// CoolingMediumUnspecified and answers NOTHING on an air question - which the second conjunct asserts
-// directly rather than through a screen, because absence of a figure is the cause and a screen answer
-// would union it with three others. The ceiling is reachable by asking for the medium the page
-// actually stated.
-test fn w_philadelphia_publishes_one_ceiling_and_no_reading() -> Bool {
-  refuses_at(d: netrality_401_n_broad_density, requested: CoolingMediumUnspecified, required: 30001)
-    && !has_figure_for(d: netrality_401_n_broad_density, requested: AirCoolingPublished)
+// THE MEDIUM CHANGED WITH THE MIGRATION AND THAT COSTS THE SCREEN, NOT THE ROW. The page names no
+// cooling medium, so the row is CoolingMediumUnspecified. An air request does not return it - the
+// pre-migration row DID answer that question, off an inference from the absence of a liquid figure,
+// and losing that answer is the whole point of the coordinate. Nor is "unspecified" itself requestable
+// (`w_requesting_an_unspecified_medium_answers_nothing`), so this figure is screenable at NO medium at
+// all: the first conjunct asserts the air screen refuses for want of a figure and the second asserts
+// the same for the medium the page actually stated, which is the conjunct that would go red if a later
+// author made unspecified requestable to "recover" the ceiling.
+//
+// THE THIRD CONJUNCT IS WHY THAT IS A SCREEN LOSS AND NOT A DATA LOSS. The figure is still inventoried,
+// verbatim-sourced and countable by a coverage roster; only the medium-keyed question has no answer.
+test fn w_philadelphia_publishes_one_ceiling_reachable_at_no_medium() -> Bool {
+  !has_figure_for(d: netrality_401_n_broad_density, requested: AirCoolingPublished)
+    && !has_figure_for(d: netrality_401_n_broad_density, requested: CoolingMediumUnspecified)
+    && !has_ceiling_for(d: netrality_401_n_broad_density, requested: CoolingMediumUnspecified)
     && density_claim_figures(d: netrality_401_n_broad_density).length() == 1
+    && all(density_claim_figures(d: netrality_401_n_broad_density), f => medium_eq(a: f.medium, b: CoolingMediumUnspecified))
 }
 
 // EVERY OTHER PENNSYLVANIA ROW PUBLISHED NOTHING, ASSERTED AS EMPTY INVENTORY RATHER THAN AS A
