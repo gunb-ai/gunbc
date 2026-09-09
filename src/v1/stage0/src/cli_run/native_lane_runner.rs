@@ -84,8 +84,12 @@ struct EmittedPreparation {
 
 fn sha256_file(path: &Path) -> Result<String, String> {
     use sha2::Digest;
-    let bytes = std::fs::read(path)
-        .map_err(|e| format!("could not read {} for its content identity: {e}", path.display()))?;
+    let bytes = std::fs::read(path).map_err(|e| {
+        format!(
+            "could not read {} for its content identity: {e}",
+            path.display()
+        )
+    })?;
     Ok(format!("{:x}", sha2::Sha256::digest(&bytes)))
 }
 
@@ -103,9 +107,14 @@ fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
     files.sort();
     let mut hasher = sha2::Sha256::new();
     for path in &files {
-        let bytes = std::fs::read(path)
-            .map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        hasher.update(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().as_bytes());
+        let bytes =
+            std::fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+        hasher.update(
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .as_bytes(),
+        );
         hasher.update(&bytes);
     }
     Ok(format!("{:x}", hasher.finalize()))
@@ -178,8 +187,10 @@ fn derive_native_universe(
              floor_discovery_finalize_source_outcomes: {e}"
         )
     })?;
-    let rows = super::parse_floor_discovery_producer_result(&ctx, &finalized)
-        .map_err(|reason| format!("V2-NATIVE REFUSAL cause=UniverseDerivationRefused — {reason}"))?;
+    let rows =
+        super::parse_floor_discovery_producer_result(&ctx, &finalized).map_err(|reason| {
+            format!("V2-NATIVE REFUSAL cause=UniverseDerivationRefused — {reason}")
+        })?;
     let mut universe: Vec<(String, String)> = Vec::new();
     for row in &rows {
         let Some(module) = module_for_path.get(row.entry.as_str()) else {
@@ -236,9 +247,12 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
             ))
         }
     }
-    let (crate_dir, written) =
-        super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, NATIVE_COMPILE_ENTRY)
-            .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
+    let (crate_dir, written) = super::emitted_closure_compile_host::write_probe_crate(
+        &run,
+        &probe_root,
+        NATIVE_COMPILE_ENTRY,
+    )
+    .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
     let closure_identity = emitted_closure_identity(&crate_dir)?;
     // THE BUILD'S PEAK MUST NOT STACK ON THE EMISSION'S RETAINED ARENA. The emission's resolved
     // graph died inside `compile_entry_emission` and the emitted file texts die with `run` here,
@@ -268,10 +282,9 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
             super::emitted_closure_compile_host::cargo_verdict_summary(&verdict)
         ));
     }
-    let binary_path = workspace
-        .join("target")
-        .join("release")
-        .join(super::emitted_closure_compile_host::probe_package_name(NATIVE_COMPILE_ENTRY));
+    let binary_path = workspace.join("target").join("release").join(
+        super::emitted_closure_compile_host::probe_package_name(NATIVE_COMPILE_ENTRY),
+    );
     if !binary_path.is_file() {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=EmittedCompilerAbsent — cargo reported success but {} is \
@@ -327,7 +340,10 @@ fn withdraw_old_route(workspace: &Path) -> Result<OldRouteWithdrawalGuard, Strin
         "required-ci: v2-native old route withdrawn ({} moved aside for the native spawns)",
         original.display()
     );
-    Ok(OldRouteWithdrawalGuard { original, withdrawn })
+    Ok(OldRouteWithdrawalGuard {
+        original,
+        withdrawn,
+    })
 }
 
 impl Drop for OldRouteWithdrawalGuard {
@@ -345,10 +361,7 @@ impl Drop for OldRouteWithdrawalGuard {
 /// universe followed by the two live-verdict controls (which the harness names explicitly —
 /// they are controls, never universe members, and the receipt's population join would refuse
 /// them as foreign rows if they reached it).
-fn write_universe_file(
-    path: &Path,
-    universe: &[(String, String)],
-) -> Result<(), String> {
+fn write_universe_file(path: &Path, universe: &[(String, String)]) -> Result<(), String> {
     let mut text = String::new();
     for (module, declaration) in universe {
         text.push_str(module);
@@ -469,8 +482,8 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             verdict,
         });
     }
-    let terminal_rows = terminal_rows
-        .ok_or_else(|| "the native run printed no terminal marker".to_string())?;
+    let terminal_rows =
+        terminal_rows.ok_or_else(|| "the native run printed no terminal marker".to_string())?;
     Ok(NativeRunOutput {
         observations,
         file_refusals,
@@ -554,11 +567,7 @@ fn reclassify_context_refusals(
 // interpreter's symbol literal value), records and variants name their types, and the Optional
 // controls use the Present/Absent encoding every host bridge in this crate shares.
 
-fn identity_value(
-    ctx: &v1_interpreter::InterpContext,
-    module: &str,
-    declaration: &str,
-) -> Value {
+fn identity_value(ctx: &v1_interpreter::InterpContext, module: &str, declaration: &str) -> Value {
     Value::Record {
         type_name: ctx.sym("NativeRouteTestIdentity"),
         fields: Rc::new(vec![
@@ -683,7 +692,10 @@ fn receipt_value(
                 ctx.sym("executable_identity"),
                 str_value(&preparation.binary_identity),
             ),
-            (ctx.sym("universe"), super::list_value_from_vec(universe_values)),
+            (
+                ctx.sym("universe"),
+                super::list_value_from_vec(universe_values),
+            ),
             (
                 ctx.sym("population"),
                 super::list_value_from_vec(population_values),
@@ -834,14 +846,8 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
             type_name: route_ctx.sym("NativeRouteMalformedControl"),
             variant_name: route_ctx.sym("MalformedSpecimenRefused"),
             fields: Rc::new(vec![
-                (
-                    route_ctx.sym("path"),
-                    str_value(&malformed_control.0),
-                ),
-                (
-                    route_ctx.sym("reason"),
-                    str_value(&malformed_control.1),
-                ),
+                (route_ctx.sym("path"), str_value(&malformed_control.0)),
+                (route_ctx.sym("reason"), str_value(&malformed_control.1)),
             ]),
         }
     };

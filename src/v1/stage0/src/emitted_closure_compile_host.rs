@@ -718,7 +718,11 @@ fn attributed_diagnostic(
 /// lock on that directory.
 /// `pub(crate)` for the same consumer as `write_probe_crate`: the v2-native lane builds the
 /// emitted compiler crate through this same cargo invocation.
-pub(crate) fn run_cargo(crate_dir: &Path, workspace: &Path, attribution_symbol: &str) -> CargoVerdict {
+pub(crate) fn run_cargo(
+    crate_dir: &Path,
+    workspace: &Path,
+    attribution_symbol: &str,
+) -> CargoVerdict {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let mut command = std::process::Command::new(&cargo);
     command
