@@ -2,6 +2,7 @@ module extdeps.github.commits
 
 import extdeps.github.github { default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome }
 import std.types { String, Int, CommitSha, NonEmptyStr, Timestamp, List }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -102,6 +103,7 @@ service github.Commits {
     }
     output {
       detail: CommitDetail
+      outcome: RestOutcome
     }
     readonly
     transport rest {

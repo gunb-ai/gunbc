@@ -9,43 +9,41 @@ concurrency:
 jobs:
   open:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 10
+    timeout-minutes: 45
     permissions:
       contents: read
       pull-requests: write
     steps:
-      - name: Open the bootstrap pull request as the Actions job credential
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Isolate toolchain homes
         run: |
-          set -euo pipefail
-          API="https://api.github.com/repos/$GITHUB_REPOSITORY"
-          AUTH="Authorization: Bearer $GITHUB_TOKEN"
-          HEAD_BRANCH="heal-canonical-author-v2"
-          EXPECTED="72d2584a3e0e898e1a6622c7e992696ed4c11366"
-          BASE="main"
-          OBSERVED="$(curl -sS -H "$AUTH" -H 'Accept: application/vnd.github+json' "$API/commits/$HEAD_BRANCH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("sha",""))')"
-          if [ -z "$OBSERVED" ]; then echo "::error::BootstrapHeadUnreadable: $HEAD_BRANCH does not resolve in $GITHUB_REPOSITORY; opening NO pull request" >&2; exit 1; fi
-          if [ "$OBSERVED" != "$EXPECTED" ]; then echo "::error::BootstrapHeadMoved: $HEAD_BRANCH is at $OBSERVED, expected $EXPECTED. The launcher opens the reviewed commit or nothing; opening NO pull request" >&2; exit 1; fi
-          OPEN="$(curl -sS -H "$AUTH" -H 'Accept: application/vnd.github+json' "$API/pulls?state=open&head=${GITHUB_REPOSITORY%%/*}:$HEAD_BRANCH" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')"
-          if [ "$OPEN" != 0 ]; then echo "::error::BootstrapPullRequestAlreadyOpen: $OPEN open pull request(s) already carry $HEAD_BRANCH; opening NO pull request" >&2; exit 1; fi
-          BODY_FILE="$RUNNER_TEMP/bootstrap-pr-body.json"
-          python3 -c 'import json,sys; json.dump({"title": sys.argv[1], "head": sys.argv[2], "base": sys.argv[3], "body": sys.argv[4]}, open(sys.argv[5],"w"))' \
-            "Heal authors as the identity that actually pushes" "$HEAD_BRANCH" "$BASE" \
-            "Opened by the Actions job credential, so this pull request is authored by github-actions[bot]. Head pinned to $EXPECTED by gunbc.ci_bootstrap_pr_launcher_workflow.\n\nWHAT MERGING THIS ESTABLISHES, exactly one input: that github-actions[bot] has authored a merged pull request in this repository. It does NOT establish that later GITHUB_TOKEN pull_request synchronize runs will stop requiring approval -- GitHub documents an approval rule for GITHUB_TOKEN-caused pull_request runs that does not mention contributor standing at all, and in every population measured here the actor and the triggering credential are perfectly correlated, so the measurement cannot separate them. A separate experiment adjudicates that.\n\nEXPECT ONE APPROVAL on this pull request's own runs: a pull request created with GITHUB_TOKEN gets its runs in an approval-required state. That approval is expected by the documented rule and says nothing by itself about standing." \
-            "$BODY_FILE"
-          CODE="$(curl -sS -o "$RUNNER_TEMP/bootstrap-pr-response.json" -w '%{http_code}' -X POST -H "$AUTH" -H 'Accept: application/vnd.github+json' -d @"$BODY_FILE" "$API/pulls")"
-          if [ "$CODE" != 201 ]; then echo "::error::BootstrapPullRequestRefused: GitHub answered HTTP $CODE. A 403 here means the organisation setting 'Allow GitHub Actions to create and approve pull requests' is disabled -- that is a control-plane setting, not a defect in this workflow. Response: $(cat "$RUNNER_TEMP/bootstrap-pr-response.json")" >&2; exit 1; fi
-          NUM="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["number"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
-          GOT_AUTHOR="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["user"]["login"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
-          GOT_SHA="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["head"]["sha"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
-          GOT_HEAD_REF="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["head"]["ref"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
-          GOT_BASE_REF="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["base"]["ref"])' "$RUNNER_TEMP/bootstrap-pr-response.json")"
-          POSTFAIL=""
-          if [ "$GOT_AUTHOR" != "github-actions[bot]" ]; then POSTFAIL="$POSTFAIL author=$GOT_AUTHOR"; fi
-          if [ "$GOT_SHA" != "$EXPECTED" ]; then POSTFAIL="$POSTFAIL head_sha=$GOT_SHA"; fi
-          if [ "$GOT_HEAD_REF" != "$HEAD_BRANCH" ]; then POSTFAIL="$POSTFAIL head_ref=$GOT_HEAD_REF"; fi
-          if [ "$GOT_BASE_REF" != "$BASE" ]; then POSTFAIL="$POSTFAIL base_ref=$GOT_BASE_REF"; fi
-          if [ -n "$POSTFAIL" ]; then curl -sS -o /dev/null -X PATCH -H "$AUTH" -H 'Accept: application/vnd.github+json' -d '{"state":"closed"}' "$API/pulls/$NUM"; echo "::error::BootstrapPullRequestMisattributed: pull request $NUM did not match its postconditions ($POSTFAIL); it has been CLOSED. A refused launcher must not leave behind the pull request it refuses to vouch for" >&2; exit 1; fi
-          echo "BootstrapPullRequestOpened number=$NUM author=$GOT_AUTHOR head=$GOT_SHA base=$GOT_BASE_REF"
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Build the launcher binary
+        run: |
+          cargo build --release -p v1-compiler --bin gunbc
+      - name: Open the bootstrap pull request (gunbc.ci_bootstrap_pr_open)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/ci/bootstrap_pr_open.dag --function bootstrap_pr_open_wet
         env:
           GITHUB_TOKEN: ${{ github.token }}
         timeout-minutes: 5
