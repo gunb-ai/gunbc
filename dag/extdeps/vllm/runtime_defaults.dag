@@ -25,73 +25,106 @@ import extdeps.uri { Uri, Https }
 // provenance question about an image, and it is carried as its own field rather than folded into the
 // value -- an effective figure whose image equivalence is unestablished is still a resolved figure,
 // and pretending otherwise would make every adopted container unmodellable.
-type VllmRuntimeDefaults sole_constructor {
-  source_revision: VllmSourceRevision
-  gpu_memory_utilization: BasisPoint
-  kv_cache_memory_bytes: ByteSize?
-  prefix_caching_enabled: Bool
-  image_source_equivalence: VllmImageSourceEquivalence
-  provenance: ExternalAuthority
-}
-
-// THE IMAGE IS NOT THE SOURCE, AND THIS FIELD REFUSES TO LET THAT BLUR. A digest-pinned image built by
-// a third party from a claimed revision is evidence of intent, not of content; establishing it needs
-// the image's own bytes compared to the revision's, which nothing here has done for either runtime.
-type VllmImageSourceEquivalence
+// THE SOURCE DEFAULTS AND THE IMAGE BINDING ARE TWO FACTS, AND ONE RECORD CARRIED BOTH. A
+// `VllmRuntimeDefaults` record stood here with an `image_source_equivalence` field -- on a record that
+// names no image. The field could not answer WHICH image had been compared to WHICH source, and
+// nothing read it: an unestablished relation still produced a positively resolved default, so the type
+// silently converted a fact about SOURCE into a fact about a running IMAGE.
+//
+// THEY ARE SEPARATED BECAUSE THEY AUTHORIZE DIFFERENT THINGS. A source default is enough to say what
+// an omitted flag WOULD resolve to at a revision. Predicting what a particular image will do needs
+// that image bound to that source. And an effective value OBSERVED from a launch that already ran
+// needs neither -- which is the GLM canary's case, where 0.92 is measured fact regardless of whether
+// the image was ever compared to upstream.
+type ImageSourceEquivalence
   = ImageSourceEquivalenceUnestablished
   | ImageSourceEquivalenceObserved { evidence: NonEmptyStr }
+
+type VllmImageSourceBinding sole_constructor {
+  image_digest: NonEmptyStr
+  source_revision: VllmSourceRevision
+  equivalence: ImageSourceEquivalence
+}
 
 // BASIS POINTS RATHER THAN A PERCENT, because the values this field actually takes are not integers.
 // The engine's own guidance on the GLM launch names 0.9112 and 0.9288 -- an integer percent cannot
 // carry either, and rounding them to 91 and 93 would silently change the envelope by hundreds of
 // megabytes on a 121.69 GiB device. The existing selection model's integer percent is the reason this
 // module does not reuse it.
-data vllm_default_utilization_basis_points: Nat = 9200
+//
+// A SHARED CONSTANT STOOD HERE AND IT CONTRADICTED THIS MODULE'S OWN ARGUMENT. One
+// `vllm_default_utilization_basis_points: Nat = 9200` was consumed by BOTH revision rows, so editing
+// one revision's default would have silently moved the other's -- the two revisions' present equality
+// made an AUTHORITY by construction, in the same file that says their equality must never be used as
+// a fallback. The prose was right and the data was the thing it warned about.
+//
+// THE REVISION IS NOW A CLOSED VARIANT WHOSE PROJECTIONS RETURN ITS OWN FACTS. Adding a third runtime
+// is then a compile error in every projection until each says what that revision does, and "both
+// currently equal 9200" becomes a derived comparison rather than their common source. It also removes
+// the roster lookup entirely, and with it the first-row-wins reading of a duplicated entry: a closed
+// variant cannot be listed twice.
+type ModelledVllmDefaultsRevision
+  = Vllm487ecf187
+  | Vllm1967a5627
 
-data vllm_upstream_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "github.com/vllm-project/vllm/blob/487ecf187d3dfe74d2cf6119a92881dba403c219/vllm/config/cache.py"
+fn defaults_source_revision(r: ModelledVllmDefaultsRevision) -> VllmSourceRevision {
+  match r {
+    Vllm487ecf187 => vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
+    )
+    Vllm1967a5627 => vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "1967a5627bc3710b680bbec24ecb99aaddedf22b" as NonEmptyStr,
+    )
   }
 }
 
-// THE GLM CANARY'S RUNTIME. Its engine self-reports 0.1.dev20051+g487ecf187, and this row's laws are
-// read from that revision's source rather than from the running process -- a self-reported version
-// string is a lexical fact about a response body, which extdeps.vllm.server already refuses to treat
-// as runtime provenance.
-data vllm_defaults_487ecf187: VllmRuntimeDefaults = VllmRuntimeDefaults {
-  source_revision: vllm_source_revision(
-    repository: "github.com/vllm-project/vllm" as NonEmptyStr,
-    full_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
-  ),
-  gpu_memory_utilization: basis_point(count: vllm_default_utilization_basis_points),
-  kv_cache_memory_bytes: none,
-  prefix_caching_enabled: true,
-  image_source_equivalence: ImageSourceEquivalenceUnestablished,
-  provenance: vllm_upstream_authority,
+// EACH REVISION CITES ITS OWN SOURCE FILE, AND ONE AUTHORITY PREVIOUSLY ANSWERED FOR BOTH. A single
+// `vllm_upstream_authority` pointing at 487ecf's cache.py was supplied as provenance to the 1967a562
+// row as well -- a row whose VALUE named one revision and whose EVIDENCE named another, which is
+// structurally capable of asserting a correct figure from the wrong source. The values happen to
+// agree, so nothing would have caught it.
+fn defaults_authority(r: ModelledVllmDefaultsRevision) -> ExternalAuthority {
+  ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: join([
+        "github.com/vllm-project/vllm/blob/",
+        (defaults_source_revision(r: r)).full_revision as String,
+        "/vllm/config/cache.py",
+      ], "")
+    }
+  }
 }
 
-// THE DEEPSEEK PAIR ROUTE'S RUNTIME, whose defaults are IDENTICAL on all three fields. That matters
-// because the difference between the two routes was briefly read as a difference between runtimes:
-// it is not. Both default to 0.92, absent KV bytes and enabled prefix caching. The pair route differs
-// because it EXPLICITLY REQUESTS 82%, which makes the default non-causal there; the canary differs
-// because it requests nothing at all.
-data vllm_defaults_1967a5627: VllmRuntimeDefaults = VllmRuntimeDefaults {
-  source_revision: vllm_source_revision(
-    repository: "github.com/vllm-project/vllm" as NonEmptyStr,
-    full_revision: "1967a5627bc3710b680bbec24ecb99aaddedf22b" as NonEmptyStr,
-  ),
-  gpu_memory_utilization: basis_point(count: vllm_default_utilization_basis_points),
-  kv_cache_memory_bytes: none,
-  prefix_caching_enabled: true,
-  image_source_equivalence: ImageSourceEquivalenceUnestablished,
-  provenance: vllm_upstream_authority,
+// BOTH REVISIONS DEFAULT TO 9200 BASIS POINTS, and each says so ON ITS OWN. The agreement is a fact
+// about today's two runtimes, derivable by comparing these projections; it is not a shared value, and
+// editing one arm here cannot move the other.
+fn defaults_gpu_utilization(r: ModelledVllmDefaultsRevision) -> BasisPoint {
+  match r {
+    Vllm487ecf187 => basis_point(count: 9200)
+    Vllm1967a5627 => basis_point(count: 9200)
+  }
 }
 
-data vllm_modelled_runtime_defaults: List<VllmRuntimeDefaults> = [
-  vllm_defaults_487ecf187,
-  vllm_defaults_1967a5627,
-]
+fn defaults_kv_cache_memory_bytes(r: ModelledVllmDefaultsRevision) -> ByteSize? {
+  match r {
+    Vllm487ecf187 => none
+    Vllm1967a5627 => none
+  }
+}
+
+// THE DEFAULT THAT IS A TENANCY FACT. Both runtimes enable prefix caching when the flag is omitted, so
+// a launch that says nothing shares a cache domain across whatever requesters reach it.
+fn defaults_prefix_caching(r: ModelledVllmDefaultsRevision) -> Bool {
+  match r {
+    Vllm487ecf187 => true
+    Vllm1967a5627 => true
+  }
+}
+
+data vllm_modelled_revisions: List<ModelledVllmDefaultsRevision> = [Vllm487ecf187, Vllm1967a5627]
 
 // AN UNMODELLED REVISION REFUSES RATHER THAN BORROWING A NEIGHBOUR'S DEFAULTS. The two rows above
 // agree on every field today, which is exactly the coincidence that would make a fallback look
@@ -99,12 +132,17 @@ data vllm_modelled_runtime_defaults: List<VllmRuntimeDefaults> = [
 // another's earlier on this branch. A third runtime that changed the default would be adopted
 // silently by any arm that answered from "the other one".
 type VllmDefaultsResolution
-  = VllmDefaultsKnown { defaults: VllmRuntimeDefaults }
+  = VllmDefaultsKnown { revision: ModelledVllmDefaultsRevision }
   | VllmDefaultsUnestablished { revision: VllmSourceRevision }
 
+// A CLOSED VARIANT CANNOT BE LISTED TWICE WITH DIFFERENT FACTS, which is why the roster lookup this
+// replaced is gone rather than repaired. That lookup was `first(filter(rows, ...))`, and a roster with
+// two rows naming one revision would have silently answered from whichever appeared first -- an
+// ambiguity read as permission. Here every fact is a total projection of the variant, so two entries
+// in the iteration list cannot disagree; there is nothing for a duplicate to mean.
 fn vllm_runtime_defaults_for(revision: VllmSourceRevision) -> VllmDefaultsResolution {
-  match first(filter(vllm_modelled_runtime_defaults, d => vllm_revision_eq(a: d.source_revision, b: revision))) {
-    Present { value: d } => VllmDefaultsKnown { defaults: d }
+  match first(filter(vllm_modelled_revisions, r => vllm_revision_eq(a: defaults_source_revision(r: r), b: revision))) {
+    Present { value: r } => VllmDefaultsKnown { revision: r }
     Absent => VllmDefaultsUnestablished { revision: revision }
   }
 }
@@ -120,10 +158,18 @@ fn vllm_revision_eq(a: VllmSourceRevision, b: VllmSourceRevision) -> Bool {
 // requests with different consequences, and collapsing the first into "unknown" is what made the
 // canary's 0.92 unnameable: the launch did not fail to say something, it deliberately said nothing
 // and accepted whatever the runtime resolves.
-type VllmMemoryRequest
-  = VllmMemoryArgsOmitted
-  | VllmUtilizationExplicit { fraction: BasisPoint }
-  | VllmKvBytesExplicit { bytes_per_rank: ByteSize }
+// THE SUM COULD NOT REPRESENT A REQUEST UPSTREAM ACCEPTS. Its three arms were both-omitted,
+// utilization-only and kv-bytes-only -- but a launch may pass BOTH, and upstream defines the
+// consequence: explicit KV bytes ignore the fraction. A model whose purpose is reproducing exact
+// launches could not have ingested such an argv at all, which is a worse failure than resolving it
+// wrongly.
+//
+// TWO OPTIONAL FIELDS RATHER THAN FOUR ARMS, because the arms were the cross product of two
+// independent presences and spelling a cross product by hand is how the fourth case went missing.
+type VllmMemoryRequest sole_constructor {
+  utilization: BasisPoint?
+  kv_cache_bytes: ByteSize?
+}
 
 // ── WHERE AN EFFECTIVE VALUE CAME FROM ─────────────────────────────────────────────────────────
 //
@@ -131,9 +177,26 @@ type VllmMemoryRequest
 // answer. The origins are not interchangeable: an explicit argument is a decision this repository
 // made and owns, a runtime default is a decision made upstream that this repository ACCEPTED, and the
 // difference decides who must act when upstream changes it.
+// THE FIELD IS A CLOSED IDENTITY, NOT A STRING. RuntimeDefault carried `declaration: NonEmptyStr`,
+// which let any text stand in for the upstream declaration -- including a misspelling, or the name of
+// a field the value did not come from. A reader could not tell a cited declaration from a plausible
+// one, which is the positional-citation defect DESIGN section 3 names, wearing a different shape.
+type VllmConfigField
+  = GpuMemoryUtilizationField
+  | KvCacheMemoryBytesField
+  | EnablePrefixCachingField
+
+fn vllm_config_field_declaration(f: VllmConfigField) -> NonEmptyStr {
+  match f {
+    GpuMemoryUtilizationField => "CacheConfig.gpu_memory_utilization" as NonEmptyStr
+    KvCacheMemoryBytesField => "CacheConfig.kv_cache_memory_bytes" as NonEmptyStr
+    EnablePrefixCachingField => "CacheConfig.enable_prefix_caching" as NonEmptyStr
+  }
+}
+
 type VllmResolutionOrigin
-  = ExplicitArgument
-  | RuntimeDefault { source_revision: VllmSourceRevision, declaration: NonEmptyStr }
+  = ExplicitArgument { field: VllmConfigField }
+  | RuntimeDefault { source_revision: VllmSourceRevision, field: VllmConfigField }
 
 // ── THE RESOLVED POLICY ────────────────────────────────────────────────────────────────────────
 //
@@ -141,8 +204,16 @@ type VllmResolutionOrigin
 // SUPERSEDES the utilization fraction, which is why the fraction is absent from that arm entirely
 // rather than carried beside it as a value nothing reads. Carrying both would invite exactly the
 // question this type exists to close -- which of these two numbers is the engine actually using.
+// KV-BYTE MODE RETAINS THE FRACTION IT IGNORED. An observed launch may carry both arguments, and
+// dropping the ignored one on ingestion would make the model unable to reproduce that launch's argv --
+// while carrying it as though it were causal would invite exactly the question this type closes. It is
+// therefore present AND named noncausal.
 type ResolvedVllmMemoryPolicy
-  = KvBytesMode { bytes_per_rank: ByteSize, origin: VllmResolutionOrigin }
+  = KvBytesMode {
+      bytes_per_rank: ByteSize
+      origin: VllmResolutionOrigin
+      noncausal_utilization: BasisPoint?
+    }
   | AutoProfiledMode {
       utilization: BasisPoint
       origin: VllmResolutionOrigin
@@ -154,8 +225,20 @@ type ResolvedVllmMemoryPolicy
 // 121.69 GiB and 9200 basis points; it is their product, and writing it down separately creates a
 // third number that can disagree with the two that produce it. The exact byte value is the authority
 // and the GiB figure in any log is a projection of it.
+// UPSTREAM CEILS AND NATURAL DIVISION TRUNCATES, so this rounds up explicitly. vLLM computes the
+// envelope as `math.ceil(total_memory * gpu_memory_utilization)`; an earlier spelling here divided and
+// let Nat truncation stand, which agrees only when the product happens to divide exactly. The GB10
+// figure at 9200 basis points does divide, so the example this module was built on would have hidden a
+// one-byte disagreement -- an arithmetic law must not be established by a divisible sample.
 fn vllm_requested_envelope_bytes(device_total: ByteSize, utilization: BasisPoint) -> ByteSize {
-  byte_size(count: byte_size_count(b: device_total) * basis_point_count(bp: utilization) / basis_point_unity_count())
+  byte_size(count: ceil_div(
+    numerator: byte_size_count(b: device_total) * basis_point_count(bp: utilization),
+    denominator: basis_point_unity_count(),
+  ))
+}
+
+fn ceil_div(numerator: Nat, denominator: Nat) -> Nat {
+  (numerator + denominator - 1) / denominator
 }
 
 fn resolve_vllm_memory_policy(
@@ -163,16 +246,23 @@ fn resolve_vllm_memory_policy(
   device_total: ByteSize,
   defaults: VllmDefaultsResolution,
 ) -> ResolvedVllmMemoryPolicy {
-  match request {
-    VllmKvBytesExplicit { bytes_per_rank: b } =>
-      KvBytesMode { bytes_per_rank: b, origin: ExplicitArgument }
-    VllmUtilizationExplicit { fraction: f } =>
-      AutoProfiledMode {
-        utilization: f,
-        origin: ExplicitArgument,
-        requested_envelope_bytes: vllm_requested_envelope_bytes(device_total: device_total, utilization: f),
+  match request.kv_cache_bytes {
+    Present { value: b } =>
+      KvBytesMode {
+        bytes_per_rank: b,
+        origin: ExplicitArgument { field: KvCacheMemoryBytesField },
+        noncausal_utilization: request.utilization,
       }
-    VllmMemoryArgsOmitted => resolve_omitted_memory_request(device_total: device_total, defaults: defaults)
+    Absent =>
+      match request.utilization {
+        Present { value: f } =>
+          AutoProfiledMode {
+            utilization: f,
+            origin: ExplicitArgument { field: GpuMemoryUtilizationField },
+            requested_envelope_bytes: vllm_requested_envelope_bytes(device_total: device_total, utilization: f),
+          }
+        Absent => resolve_omitted_memory_request(device_total: device_total, defaults: defaults)
+      }
   }
 }
 
@@ -190,26 +280,21 @@ fn resolve_omitted_memory_request(device_total: ByteSize, defaults: VllmDefaults
           " defaults to -- and that revision's defaults are not modelled, so no effective value exists to admit",
         ], "") as NonEmptyStr,
       }
-    VllmDefaultsKnown { defaults: d } =>
-      match d.kv_cache_memory_bytes {
+    VllmDefaultsKnown { revision: rev } =>
+      match defaults_kv_cache_memory_bytes(r: rev) {
         Present { value: b } =>
           KvBytesMode {
             bytes_per_rank: b,
-            origin: RuntimeDefault {
-              source_revision: d.source_revision,
-              declaration: "CacheConfig.kv_cache_memory_bytes" as NonEmptyStr,
-            },
+            origin: RuntimeDefault { source_revision: defaults_source_revision(r: rev), field: KvCacheMemoryBytesField },
+            noncausal_utilization: none,
           }
         Absent =>
           AutoProfiledMode {
-            utilization: d.gpu_memory_utilization,
-            origin: RuntimeDefault {
-              source_revision: d.source_revision,
-              declaration: "CacheConfig.gpu_memory_utilization" as NonEmptyStr,
-            },
+            utilization: defaults_gpu_utilization(r: rev),
+            origin: RuntimeDefault { source_revision: defaults_source_revision(r: rev), field: GpuMemoryUtilizationField },
             requested_envelope_bytes: vllm_requested_envelope_bytes(
               device_total: device_total,
-              utilization: d.gpu_memory_utilization,
+              utilization: defaults_gpu_utilization(r: rev),
             ),
           }
       }
@@ -236,7 +321,8 @@ fn resolve_vllm_prefix_caching(
   defaults: VllmDefaultsResolution,
 ) -> ResolvedVllmPrefixCaching {
   match request {
-    PrefixCachingExplicit { enabled: e } => PrefixCachingResolved { enabled: e, origin: ExplicitArgument }
+    PrefixCachingExplicit { enabled: e } =>
+      PrefixCachingResolved { enabled: e, origin: ExplicitArgument { field: EnablePrefixCachingField } }
     PrefixCachingOmitted =>
       match defaults {
         VllmDefaultsUnestablished { revision: r } =>
@@ -247,13 +333,10 @@ fn resolve_vllm_prefix_caching(
               " is not modelled, so whether this engine shares a prefix cache across requesters is unestablished",
             ], "") as NonEmptyStr,
           }
-        VllmDefaultsKnown { defaults: d } =>
+        VllmDefaultsKnown { revision: rev } =>
           PrefixCachingResolved {
-            enabled: d.prefix_caching_enabled,
-            origin: RuntimeDefault {
-              source_revision: d.source_revision,
-              declaration: "CacheConfig.enable_prefix_caching" as NonEmptyStr,
-            },
+            enabled: defaults_prefix_caching(r: rev),
+            origin: RuntimeDefault { source_revision: defaults_source_revision(r: rev), field: EnablePrefixCachingField },
           }
       }
   }
