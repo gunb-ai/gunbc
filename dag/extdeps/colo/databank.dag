@@ -59,8 +59,8 @@ data databank_lga4_orangeburg: ColoFacilityRow = ColoFacilityRow {
 data databank_lga4_density: CabinetDensityClaim = DensityMarketedMax {
   air_cooled: PublishedRealPower { power: watt(count: 35000) },
   liquid_cooled: PublishedRealPower { power: watt(count: 100000) },
-  claim_wording: "35kW+ air-cooled, 100kW+ liquid-cooled",
-  citation: "databank.com Orangeburg campus LGA4 page, read 2026-09-08. The figures carry a plus sign in the operator's own wording, so they are marketed floors on a maximum rather than exact ceilings; the integers here are the stated numerals and the wording is retained beside them.",
+  claim_wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liq",
+  citation: "databank.com Orangeburg campus LGA4 page, raw fetch 2026-09-09 (HTTP 200). THE WORDING ABOVE IS NOW THE LITERAL SPEC-TABLE CELLS AND WAS NOT BEFORE. The first cut read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool, not text on the page. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the WORDING did not, which is the general shape silent-heron-303 found across the census. The plus signs are the operator's own, so these are marketed floors on a maximum rather than exact ceilings; the integers are the stated numerals."
 }
 
 data databank_lga4_retail_grain: RetailGrainStanding = SingleCabinetOffered {

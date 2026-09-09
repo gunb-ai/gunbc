@@ -1,0 +1,114 @@
+module gunbc.colo_census_coverage
+
+import std.types { NonEmptyStr, Int, List, Bool }
+import v2.std.optional { Optional, Present, Absent }
+
+// WHERE WE LOOKED AND FOUND NOTHING, WHICH IS A MEASUREMENT AND NOT AN ABSENCE.
+//
+// Two census lanes reached this need independently within an hour of each other. Southern New
+// Jersey - Burlington, Camden, Gloucester, Atlantic, Cumberland, Salem, Cape May - yielded zero
+// facility rows, and the Hudson Valley proper - Dutchess, Orange, Ulster, Putnam - yielded zero
+// retail colocation. Both lanes wanted to record that as a RESULT and neither had anywhere to put
+// it, so both wrote it into a pull-request body where the next reader will never find it.
+//
+// THE PROBLEM IS THAT A SURVEYED-EMPTY REGION AND AN UNSURVEYED ONE RENDER IDENTICALLY. A census
+// with no row for Cape May County looks exactly the same whether somebody read every operator page
+// in it and found no facility, or whether nobody has ever looked. The first is expensive knowledge
+// worth keeping; the second is an open obligation. Collapsing them means the expensive half is
+// re-derived by the next lane, and the open half is mistaken for settled - and this census has
+// already made the second error once, when the absence of any New York row was reported as a
+// consequence of a refused-operator ruling rather than as nobody having surveyed the state.
+//
+// This module is OURS and not an upstream fact. DESIGN section 3: observations this repository
+// produces are receipts in the observing layer, never properties of the observed. So it lives
+// under gunbc rather than extdeps, and it cites the facility modules rather than being cited by
+// them.
+
+// What a search actually resolved to, kept because a region is empty for reasons that differ in
+// what they oblige next. A region full of aggregators needs a different follow-up from one where
+// operators exist but sell no retail colocation.
+type EmptyRegionCause
+  = ResolvedToAggregatorsOnly { detail: NonEmptyStr }
+  | ResolvedToResellersWithoutFacility { detail: NonEmptyStr }
+  | OperatorsPresentButNotRetailColocation { detail: NonEmptyStr }
+  | DirectoryClaimContradictedByOperator { detail: NonEmptyStr }
+
+type RegionSurveyOutcome
+  = FacilitiesModelled {
+      facility_count: Int
+      density_read_count: Int
+    }
+  // Somebody looked, systematically, and there is nothing to model. The searched list is what
+  // makes this a measurement rather than an assertion: a later reader can see the coverage and
+  // judge whether it was thorough, instead of taking "empty" on trust.
+  | SurveyedNoRetailOperator {
+      searched: List<NonEmptyStr>
+      causes: List<EmptyRegionCause>
+      surveyed_on: NonEmptyStr
+      surveyed_by: NonEmptyStr
+    }
+  // Nobody has looked. This is the arm that must never be confused with the one above, and the
+  // only one that carries an open obligation.
+  | RegionUnsurveyed {
+      obligation: NonEmptyStr
+    }
+
+type RegionCoverage {
+  region_label: NonEmptyStr
+  region_code: NonEmptyStr
+  outcome: RegionSurveyOutcome
+}
+
+fn coverage_is_surveyed(c: RegionCoverage) -> Bool {
+  match c.outcome {
+    FacilitiesModelled { facility_count, density_read_count } => true,
+    SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => true,
+    RegionUnsurveyed { obligation } => false,
+  }
+}
+
+// A surveyed region contributes its facility count; an EMPTY surveyed region contributes zero and
+// an UNSURVEYED one contributes nothing at all. The distinction is the whole point of the module,
+// so the count is Optional rather than a zero that both arms could produce.
+fn coverage_facility_count(c: RegionCoverage) -> Int? {
+  match c.outcome {
+    FacilitiesModelled { facility_count, density_read_count } => Present { value: facility_count },
+    SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Present { value: 0 },
+    RegionUnsurveyed { obligation } => Absent,
+  }
+}
+
+data southern_new_jersey: RegionCoverage = RegionCoverage {
+  region_label: "Southern New Jersey",
+  region_code: "NJ",
+  outcome: SurveyedNoRetailOperator {
+    searched: [
+      "Burlington County", "Camden County", "Gloucester County", "Atlantic County",
+      "Cumberland County", "Salem County", "Cape May County",
+    ],
+    causes: [
+      ResolvedToAggregatorsOnly { detail: "every search hit resolved to a directory aggregator or a lead-generation page rather than an operator publishing a facility" },
+      ResolvedToResellersWithoutFacility { detail: "managed-service resellers with no facility of their own" },
+      DirectoryClaimContradictedByOperator { detail: "TierPoint is directory-cited in New Jersey but its own location pages carry NO New Jersey site; Agile Data Sites is directory-cited for a Monmouth Junction facility and now redirects to databridgesites.com, which lists Silver Spring and Aurora and no New Jersey location" },
+    ],
+    surveyed_on: "2026-09-08",
+    surveyed_by: "census lane: NJ central and south",
+  },
+}
+
+data hudson_valley: RegionCoverage = RegionCoverage {
+  region_label: "Hudson Valley proper",
+  region_code: "NY",
+  outcome: SurveyedNoRetailOperator {
+    searched: ["Dutchess County", "Orange County", "Ulster County", "Putnam County"],
+    causes: [
+      OperatorsPresentButNotRetailColocation { detail: "what is present is enterprise or hyperscale-shaped - IBM Poughkeepsie, a CyrusOne enterprise hall, a blocked East Fishkill build - none of it publishing retail colocation at cabinet grain" },
+    ],
+    surveyed_on: "2026-09-08",
+    surveyed_by: "census lane: NY Westchester Rockland Hudson Valley and Long Island",
+  },
+}
+
+data census_regions: List<RegionCoverage> = [southern_new_jersey, hudson_valley]
+
+data coverage_growth_note: NonEmptyStr = "This roster is INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It carries the regions a lane surveyed and found empty; it does not yet carry a RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding those rows is worth doing only when the census's geographic scope is decided - an unsurveyed roster over an undecided scope is a list whose length is an artefact of where the author stopped typing."
