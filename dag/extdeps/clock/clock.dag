@@ -22,8 +22,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // least the Nat refinement (Int where non_negative) encodes the sign constraint
 // that Int lacked, and the parameter name names the unit as a second-best signal.
 
-// UnixMillis exists because a throttle needs to ANSWER `has 20 hours passed`, and answering it from Clock.Now is not possible without a date parser: Timestamp is `String` in std.types, so Clock.Now's apparent typing is an alias over rendered ISO-8601 text, not a magnitude. UnixSecs was no better for a different reason — it declared its output as String, so the one operation in the tree that produces a number produced it as text and every consumer would have owned the decode. The output is therefore EpochMs (std.types, `Int where range(min: 0)`), which is the existing magnitude carrier for exactly this quantity, so no new time type is minted.
-
 service Clock {
   operation Now {
     input {}
