@@ -5,6 +5,7 @@ import std.nat { Nat, nat_range_inclusive }
 import std.measure { Measure, Count, One }
 import extdeps.accounting.encumbrance { ExceedsAppropriation, DuplicateReference, Held, Released, Expended }
 import extdeps.accounting.appropriation_period { AppropriationPeriod }
+import product.capacity.lease { FencedResource }
 import product.capacity.pool {
   Pool, Replenishment, NoReplenishment, LapseAtPeriodEnd,
   PoolOutcome, PoolAdvanced, PoolRefused, PoolRefusal, LedgerRefusal, LeaseCrossesLapse, PoolInstantBeforeAnchor, LeaseAlreadyLapsed,
@@ -37,7 +38,7 @@ fn w_ref(i: Nat) -> NonEmptyStr { join(["seat-", to_string(i)], "") as NonEmptyS
 // thirty-third refuses at the ledger, a release makes room, and a lease under a reference already
 // held refuses as a duplicate rather than doubling the hold.
 fn w_seat_pool() -> Pool<Count, One> {
-  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 32), replenishment: NoReplenishment)
+  pool_of(identity: "group-a-seats" as NonEmptyStr, ceiling: w_seats(n: 32), replenishment: NoReplenishment, release_law: FencedResource)
 }
 
 fn w_fill(p: Pool<Count, One>, upto: Nat, at: EpochSecs) -> Pool<Count, One> {
@@ -94,6 +95,7 @@ fn w_core_pool() -> Pool<Count, One> {
     identity: "github-core" as NonEmptyStr,
     ceiling: w_seats(n: 5000),
     replenishment: LapseAtPeriodEnd { period: AppropriationPeriod { period_seconds: 3600, anchor: 0 } },
+    release_law: FencedResource,
   )
 }
 
@@ -115,6 +117,7 @@ test fn an_instant_before_the_anchor_has_no_window_and_refuses() -> Bool {
     identity: "github-core-late-anchor" as NonEmptyStr,
     ceiling: w_seats(n: 5000),
     replenishment: LapseAtPeriodEnd { period: AppropriationPeriod { period_seconds: 3600, anchor: 7200 } },
+    release_law: FencedResource,
   )
   w_headroom(p: p, at: 500) == -1
     && w_refused_as(o: pool_acquire(pool: p, reference: "early" as NonEmptyStr, amount: w_seats(n: 1), at: 500, term_seconds: 60), wire: "instant-before-anchor")
