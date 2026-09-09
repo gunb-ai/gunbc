@@ -69,11 +69,6 @@ service Clock {
     }
   }
 
-  // CONVERT an ISO-8601 timestamp to Unix epoch seconds (as string).
-  // A wrapper function (not a transport coercion) parses the string with
-  // proper refusal — see clock_unix_timestamp_read. The operation output
-  // stays String because putting a decode inside the transport layer would
-  // have no way to refuse a non-numeric stdout.
   operation TimestampToUnixSecs {
     input { timestamp: Timestamp }
     output { unix_secs: String from "stdout" }
