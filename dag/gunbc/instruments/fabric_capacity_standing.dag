@@ -7,7 +7,13 @@ import std.algebra { trim }
 import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+import product.placement_supply { HostIdentity }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import gunbc.spark.vllm_kv_layout_observe {
+  VllmKvLayoutReceipt, admit_kv_layout,
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.log_lines { vllm_startup_reading, vllm_startup_line_prefix, GpuKvCacheSize, MaximumConcurrency, VllmStartupLine }
@@ -33,6 +39,10 @@ data observed_hash_block_size_frontier: DissolutionCondition = unbound_dissoluti
 
 data live_inventory_host_effect_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) or another modeled host-effect realizes remote inventory as typed argv/orchestration, and fabric_capacity_standing group_report consumes that realization. SUFFICIENT FOR: a live line-list reaches decode_probe from the entry point. Until then the entry refuses without ssh+bash -s." as NonEmptyStr)
 
+data layout_receipt_launch_join_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: group_report (once live_inventory_host_effect_frontier fires) calls launch_from_fields then readings_from_fields with that Present launch and a capture digest of the decoded bytes, so ProbeReadingsReady is only reachable through admit_kv_layout. SUFFICIENT FOR: live layout evidence is a VllmKvLayoutReceipt bound to a VllmServingLaunch, not a free ResolvedKvLayout. Until then the entry does not call readings_from_fields." as NonEmptyStr)
+
+data drain_load_gauge_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: DrainStanding is constructed from observed in-flight request counts (or an equivalent engine load gauge) on the same launch. SUFFICIENT FOR: running/waiting metrics are decoded again as that fold's inputs. Until then those slots are not on this roster." as NonEmptyStr)
+
 // ONE ROSTER, DECODE END. Decode looks slots up by name, so inserting a field cannot silently
 // rebind unit_sha to the container id. That names the SLOT, not the captured bytes: a value that
 // contains a newline still splits into extra lines, so decode refuses unless the line count equals
@@ -48,8 +58,6 @@ type ProbeFieldName
   | AllocatorBlocks
   | BlockSize
   | MaxModelLen
-  | Running
-  | Waiting
 
 type CapacityProbeSlot {
   name: ProbeFieldName
@@ -68,8 +76,6 @@ fn probe_field_key(n: ProbeFieldName) -> String {
     AllocatorBlocks => "allocator_blocks"
     BlockSize => "block_size"
     MaxModelLen => "max_model_len"
-    Running => "running"
-    Waiting => "waiting"
   }
 }
 
@@ -85,8 +91,6 @@ fn capacity_probe_slots() -> List<CapacityProbeSlot> {
     CapacityProbeSlot { name: AllocatorBlocks, missing: "num_gpu_blocks was not present in the engine's cache-config metric" },
     CapacityProbeSlot { name: BlockSize, missing: "block_size was not present in the engine's cache-config metric" },
     CapacityProbeSlot { name: MaxModelLen, missing: "max_model_len was not readable from /v1/models" },
-    CapacityProbeSlot { name: Running, missing: "num_requests_running was not present in the engine's metrics" },
-    CapacityProbeSlot { name: Waiting, missing: "num_requests_waiting was not present in the engine's metrics" },
   ]
 }
 
@@ -124,8 +128,6 @@ type CapacityProbeFields {
   allocator_blocks: AllocatorBlockCount
   block_size: TokenCount
   max_model_len: TokenCount
-  running: Int
-  waiting: Int
 }
 
 type CapacityProbeRead
@@ -193,12 +195,6 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                         match int_named(lines: lines, name: MaxModelLen) {
                           Absent => refuse_slot(name: MaxModelLen)
                           Present { value: ctx } =>
-                            match int_named(lines: lines, name: Running) {
-                              Absent => refuse_slot(name: Running)
-                              Present { value: running } =>
-                                match int_named(lines: lines, name: Waiting) {
-                                  Absent => refuse_slot(name: Waiting)
-                                  Present { value: waiting } =>
                                     match captured_named(lines: lines, name: Invocation) {
                                       Absent => refuse_slot(name: Invocation)
                                       Present { value: invocation } =>
@@ -222,15 +218,11 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                                                       allocator_blocks: allocator_block_count(count: blocks),
                                                       block_size: token_count(count: bs),
                                                       max_model_len: token_count(count: ctx),
-                                                      running: running,
-                                                      waiting: waiting,
                                                     } }
                                                 }
                                             }
                                         }
                                     }
-                                }
-                            }
                         }
                     }
                 }
@@ -280,7 +272,7 @@ fn hundredths_from_maximum_concurrency_line(line: String) -> Int? {
 // launch identity, not that fact; /version is a self-report and is not that fact). Until a caller
 // supplies one, the readings refuse.
 type ProbeReadings
-  = ProbeReadingsReady { pool: VllmObservedKvPool, reported: VllmReportedCapacity, layout: ResolvedKvLayout }
+  = ProbeReadingsReady { pool: VllmObservedKvPool, reported: VllmReportedCapacity, receipt: VllmKvLayoutReceipt }
   | ProbeReadingsRefused { cause: NonEmptyStr }
 
 fn pool_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision) -> VllmObservedKvPool? {
@@ -338,20 +330,63 @@ fn layout_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision, hash
   )
 }
 
-fn readings_from_fields(f: CapacityProbeFields, observed_revision: VllmSourceRevision?, observed_hash_block_size: TokenCount?) -> ProbeReadings {
+type LaunchRead
+  = LaunchIdentified { launch: VllmServingLaunch }
+  | LaunchUnidentified { detail: String }
+
+fn launch_from_fields(group: FabricGroup, head: HostIdentity, f: CapacityProbeFields) -> LaunchRead {
+  match sha256_hex_digest(hex: f.image_sha) {
+    Absent => LaunchUnidentified { detail: join(["the container image digest did not read as a sha256: ", f.image_sha], "") }
+    Present { value: image } =>
+      match sha256_hex_digest(hex: f.unit_sha) {
+        Absent => LaunchUnidentified { detail: join(["the unit text digest did not read as a sha256: ", f.unit_sha], "") }
+        Present { value: unit } =>
+          LaunchIdentified { launch: vllm_serving_launch(
+            group: group,
+            head: head,
+            systemd_invocation: f.invocation as NonEmptyStr,
+            container_id: f.container as NonEmptyStr,
+            executable_digest: Sha256Hash(image),
+            unit_digest: Sha256Hash(unit),
+            started_at: f.started_at,
+          ) }
+      }
+  }
+}
+
+fn readings_from_fields(
+  f: CapacityProbeFields,
+  observed_revision: VllmSourceRevision?,
+  observed_hash_block_size: TokenCount?,
+  observed_launch: VllmServingLaunch?,
+  source_capture_digest: ContentHash,
+) -> ProbeReadings {
   match observed_revision {
     Absent => ProbeReadingsRefused { cause: "the probe did not observe the engine's vLLM source revision, so it will not stamp the modelled revision onto the reading" as NonEmptyStr }
     Present { value: revision } =>
       match observed_hash_block_size {
         Absent => ProbeReadingsRefused { cause: "the probe did not observe hash_block_size, so it will not stamp the scheduler block_size onto that field" as NonEmptyStr }
         Present { value: hash_bs } =>
-          match pool_from_fields(f: f, revision: revision) {
-            Absent => ProbeReadingsRefused { cause: "the captured KV-cache-size reading was refused by its own carrier" as NonEmptyStr }
-            Present { value: pool } =>
-              match reported_from_fields(pool: pool, f: f, revision: revision) {
-                Absent => ProbeReadingsRefused { cause: "the captured maximum-concurrency reading was refused by its own carrier" as NonEmptyStr }
-                Present { value: reported } =>
-                  ProbeReadingsReady { pool: pool, reported: reported, layout: layout_from_fields(f: f, revision: revision, hash_block_size: hash_bs) }
+          match observed_launch {
+            Absent => ProbeReadingsRefused { cause: "a layout is evidence only when it is bound to a launch, so readings_from_fields will not mint a free ResolvedKvLayout" as NonEmptyStr }
+            Present { value: launch } =>
+              match pool_from_fields(f: f, revision: revision) {
+                Absent => ProbeReadingsRefused { cause: "the captured KV-cache-size reading was refused by its own carrier" as NonEmptyStr }
+                Present { value: pool } =>
+                  match reported_from_fields(pool: pool, f: f, revision: revision) {
+                    Absent => ProbeReadingsRefused { cause: "the captured maximum-concurrency reading was refused by its own carrier" as NonEmptyStr }
+                    Present { value: reported } =>
+                      ProbeReadingsReady {
+                        pool: pool,
+                        reported: reported,
+                        receipt: admit_kv_layout(
+                          launch: launch,
+                          layout: layout_from_fields(f: f, revision: revision, hash_block_size: hash_bs),
+                          reported: reported,
+                          source_capture_digest: source_capture_digest,
+                        ),
+                      }
+                  }
               }
           }
       }
