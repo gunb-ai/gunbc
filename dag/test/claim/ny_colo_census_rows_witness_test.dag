@@ -50,7 +50,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // literal in a merge-blocking test. Editing a row's watt value without the operator having
 // changed its page turns one of these red, which is the discrimination the test exists for.
 
-// THE SIX READ DENSITIES, each against the numeral its operator published. Rockland spans an order
+// THE FIVE READ DENSITIES, each against the numeral its operator published. Five and not six: the
+// sixth reading in this region is DataBank LGA4, which was already on main before this lane began
+// and is asserted by the carrier's own witness. Counting it here would have been this file claiming
+// a row it does not read - the same shape as the coverage claim review 62890 found, which is why
+// the numeral is stated against what the conjunction below actually contains. Rockland spans an order
 // of magnitude across three independently governed operators, and two of those three - 1547 as
 // landlord and Hivelocity as its in-building tenant - describe the SAME building at 1 Ramland Road
 // while disagreeing by a factor of two. Both are asserted here because each is a faithful reading
@@ -64,7 +68,11 @@ test fn w_ny_read_densities_establish_the_published_watts() -> Bool {
     && established_watts(d: nyi_long_island_density) == 3000
 }
 
-// THE SEVEN UNREAD ONES ESTABLISH NOTHING, AND THAT IS THE HALF THAT MATTERS MOST. An unread
+// THE SIX UNREAD ONES ESTABLISH NOTHING, AND THAT IS THE HALF THAT MATTERS MOST. Six unread and
+// five read against TWELVE facility rows, because TierPoint HWT and HW2 are two buildings on one
+// Hawthorne campus sharing a single density row: a density is a claim about a cabinet, and the
+// operator publishes one claim over both halls. Facilities and density claims are deliberately not
+// in bijection, so a reader who expects the two counts to match is expecting the wrong thing. An unread
 // density is the census's fail-closed arm: no operator page states a figure, so no watt reading
 // exists and a consumer that needs one must refuse rather than receive a plausible number. If any
 // of these ever yields a value without its page having changed, someone has filled in a guess.
