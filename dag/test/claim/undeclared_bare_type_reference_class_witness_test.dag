@@ -14,6 +14,7 @@ import tools.multi_module_compile_fixture {
   fixture_has_class,
   fixture_rows_of_class
 }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -256,4 +257,129 @@ test fn qualified_use_of_a_listed_import_charges_no_unlisted_import_use() -> Boo
 // fine", which would be the absorbing-fallback arm (DESIGN 5) wearing a repair's clothes.
 test fn qualified_use_without_any_import_still_charges_unlisted_import_use() -> Bool {
   ubtr_diagnosed_as(ubtr_qualified_run(ubtr_qualified_user_unlisted_source), "UnlistedImportUse")
+}
+
+// ----------------------------------------------------------------------------------------------
+// FALSE-NEGATIVE CONTROLS FOR THE THREE EMISSION REPAIRS (review finding 6, 2026-09-09).
+//
+// The three repair arms above prove the selected false-positive rows disappear. They say nothing
+// about the boundary the repair must NOT cross: each repair widens an exclusion, and a widened
+// exclusion that also swallows the nearby true-positive population is the absorbing fallback
+// (DESIGN 5) wearing a repair's clothes. The arms below hold that boundary, one per repair, and
+// each names the mutation it exists to red.
+// ----------------------------------------------------------------------------------------------
+
+// ONE SHARED READER: the count of diagnostics of a class charging one subject name. The census
+// row aggregates by (class, subject_name) with an occurrence count, so "exactly one diagnostic
+// naming N" is the sum over the matching rows, never the row count -- a class aggregated
+// differently would read as one row over several occurrences and pass a row-count check while
+// the population it reports on grew.
+fn ubtr_subject_count(rows: List<CompileDiagnosticCensusRow>, wanted: String, subject: String) -> Int {
+  fixture_rows_of_class(rows: rows, wanted: wanted)
+    |> filter(r => r.subject_name == subject)
+    |> fold(init: 0, f: fn(acc, r) { acc + r.count })
+}
+
+// THE NAME-COLLISION CONTROL FOR THE KERNEL-IDENTITY GUARD. The guard suppresses the charge when
+// the RESOLVED BINDING is a kernel-minted identity -- an identity test
+// (v1.std.core resolved_node_is_kernel_identity_for_name: the resolved node's ident span file
+// is the kernel mint's own), never a NAME test. This arm authors the synthetic formal's own
+// spelling (N, the formal the kernel arm above measures) as a REAL declaration in the definer and
+// references it bare with no import edge. The binding is the corpus declaration, whose ident span
+// is the definer's file, so the guard has no purchase and the charge must fire exactly once.
+// MUTATION THIS ARM REDS: broadening the exception from identity-based to name-based -- any
+// spelling test in place of the identity predicate -- silences this row.
+data ubtr_kernel_collision_definer_source: String = "module ubtr.kdef\n\ntype N {\n  code: Int\n}\n"
+
+data ubtr_kernel_collision_user_source: String = "module ubtr.kuser\n\ntype UbtrRowN {\n  payload: N\n  seq: Int\n}\n"
+
+fn ubtr_kernel_collision_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("ubtr/kdef.dag", ubtr_kernel_collision_definer_source),
+      fixture_source("ubtr/kuser.dag", ubtr_kernel_collision_user_source)
+    ],
+    entry: "ubtr/kuser.dag"
+  })
+}
+
+test fn authored_reference_spelled_like_a_kernel_formal_still_charges_unlisted_import_use() -> Bool {
+  match ubtr_kernel_collision_run() {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      ubtr_subject_count(rows: rows, wanted: "UnlistedImportUse", subject: "N") == 1,
+    // A terminal unresolved/ambiguous refusal satisfies the control as well: what must not
+    // happen is the authored occurrence passing SILENTLY (the widened-exclusion state).
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: "UnresolvedType")
+        || fixture_has_class(rows: rows, wanted: "AmbiguousReference")
+        || fixture_has_class(rows: rows, wanted: "UnlistedImportUse"),
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE USE-SITE ARGUMENT CONTROL FOR THE ALIAS PEEL. The peel resolves the imported alias's
+// EXPANSION with masked=false because that tree is the definer's import responsibility. A
+// use-site type argument is the opposite half of the boundary: authored by the user, resolved at
+// the use site, and masked there by the standing authority (v1.compiler.infer_resolve
+// resolve_node_bounded_masked_boundary -- the generic-args recursion inherits masked=true). This
+// arm lists the alias and applies it to an authored argument the user does NOT list: exactly one
+// UnlistedImportUse row, naming the argument, must fire, and no row may name the definer-internal
+// half of the expansion (UbtrSel, which the expansion applies on the definer's behalf).
+// MUTATION THIS ARM REDS: masked=false set one level too high, so the use-site arguments are
+// unmasked along with the definer tree.
+data ubtr_palias_definer_source: String = "module ubtr.pdef\n\ntype UbtrKey {\n  raw: Int\n}\n\ntype UbtrSel {\n  picked: Int\n}\n\ntype UbtrPackNode<K, S> {\n  key: K\n  sel: S\n}\n\ntype UbtrAliasOf<X> = UbtrPackNode<X, UbtrSel>\n"
+
+data ubtr_palias_user_source: String = "module ubtr.puser\n\nimport ubtr.pdef { UbtrAliasOf, UbtrSel }\n\ntype UbtrHolder {\n  packed: UbtrAliasOf<UbtrKey>\n  own: UbtrSel\n}\n"
+
+fn ubtr_palias_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("ubtr/pdef.dag", ubtr_palias_definer_source),
+      fixture_source("ubtr/puser.dag", ubtr_palias_user_source)
+    ],
+    entry: "ubtr/puser.dag"
+  })
+}
+
+test fn use_site_type_argument_through_an_imported_alias_still_charges_unlisted_import_use() -> Bool {
+  match ubtr_palias_run() {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      ubtr_subject_count(rows: rows, wanted: "UnlistedImportUse", subject: "UbtrKey") == 1
+        && count(fixture_rows_of_class(rows: rows, wanted: "UnlistedImportUse")) == 1,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE PROPAGATION CONTROL FOR THE ALIAS PEEL. The peel accumulates the traversal's diagnostics
+// (concat(once.diagnostics, rest.diagnostics)) precisely so that flipping the mask does not also
+// SILENCE the hard refusals the expansion traversal produces. This arm constructs through an
+// imported alias whose expansion names a type that exists nowhere: the definer's own compile
+// never resolves the alias's right-hand side (a paramless alias resolves as a leaf until a
+// construction forces the expansion), so the UnresolvedType row can reach the outcome only
+// through the peel's own diagnostic accumulation. MUTATION THIS ARM REDS: dropping or filtering
+// the accumulated diagnostics on the peel path -- the compile then refuses nothing and reports
+// clean over a construction whose fields cannot be typed.
+data ubtr_broken_alias_definer_source: String = "module ubtr.bdef\n\ntype UbtrSel {\n  picked: Int\n}\n\ntype UbtrPackNode<K, S> {\n  key: K\n  sel: S\n}\n\ntype UbtrBrokenAlias = UbtrPackNode<UbtrGhost, UbtrSel>\n"
+
+data ubtr_broken_alias_user_source: String = "module ubtr.buser\n\nimport ubtr.bdef { UbtrBrokenAlias }\n\nfn ubtr_rebuild(n: UbtrBrokenAlias) -> UbtrBrokenAlias {\n  UbtrBrokenAlias { key: n.key, sel: n.sel }\n}\n"
+
+fn ubtr_broken_alias_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("ubtr/bdef.dag", ubtr_broken_alias_definer_source),
+      fixture_source("ubtr/buser.dag", ubtr_broken_alias_user_source)
+    ],
+    entry: "ubtr/buser.dag"
+  })
+}
+
+test fn diagnostics_from_the_alias_expansion_still_propagate() -> Bool {
+  match ubtr_broken_alias_run() {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      ubtr_subject_count(rows: rows, wanted: "UnresolvedType", subject: "UbtrGhost") > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      ubtr_subject_count(rows: rows, wanted: "UnresolvedType", subject: "UbtrGhost") > 0,
+    FixtureInstrumentRefused { cause: c } => false
+  }
 }
