@@ -35,8 +35,7 @@ import extdeps.cloudflare.account_api_tokens {
   PermissionGroupRef,
   admit_account_token_api_mint,
   account_token_policy_create_wire,
-  CreateAccountOwnedToken,
-  credential_supports,
+  AccountApiTokensWrite,
   cloudflare_account_api_tokens_frontier_rows
 }
 import extdeps.cloudflare.r2 {
@@ -215,10 +214,7 @@ test fn r2_s3_access_key_id_is_the_created_token_id() -> Bool {
 }
 
 test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Bool {
-  credential_supports(
-    shape: cloudflare_bootstrap_token_shape(),
-    capability: CreateAccountOwnedToken
-  )
+  cloudflare_bootstrap_token_shape().grants == [AccountApiTokensWrite]
     && shape_grants_include_r2_object_read(shape: cloudflare_r2_object_read_token_shape())
     && !shape_grants_include_r2_object_read(shape: cloudflare_bootstrap_token_shape())
     && human_intervention_count_at(
