@@ -100,7 +100,7 @@ data databank_phl1_philadelphia: ColoFacilityRow = ColoFacilityRow {
 }
 
 data databank_phl1_density: CabinetDensityClaim = DensityUnread {
-  obligation: "databank.com Philadelphia page, read 2026-09-08, states critical IT load, IT square footage and carrier count, and NO per-cabinet density. Raw-byte confirmed 2026-09-09 (HTTP 200, 113,383 bytes): the served Philadelphia HTML contains ZERO occurrences of 'kw' at all. The operator's 35 kW+ claim belongs to the Orangeburg campus and may not be carried to this suite - a 0.34 MW suite and a 10 MW campus are different plant. Request a PHL1 spec sheet or a quote.",
+  obligation: "databank.com Philadelphia page, read 2026-09-08, states critical IT load, IT square footage and carrier count, and NO per-cabinet density. Raw-byte confirmed 2026-09-09 under a subject control (HTTP 200, full browser user-agent): 'Philadelphia' occurs 26 times, so the instrument reached this facility's surface, and 'kW', 'kVA' and even 'cabinet' occur zero times. The operator's 35 kW+ claim belongs to the Orangeburg campus and may not be carried to this suite - a 0.34 MW suite and a 10 MW campus are different plant. Request a PHL1 spec sheet or a quote.",
 }
 
 data databank_phl1_retail_grain: RetailGrainStanding = RetailGrainUnread {

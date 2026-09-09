@@ -28,7 +28,9 @@ import extdeps.colo.tierpoint {
 }
 import extdeps.colo.h5 { h5_philadelphia_density, h5_philadelphia_retail_grain }
 import extdeps.colo.lightwave_networks { lightwave_philadelphia_density, lightwave_philadelphia_retail_grain }
-import extdeps.colo.flexential { flexential_allentown_density, flexential_allentown_retail_grain }
+import extdeps.colo.flexential {
+  flexential_philadelphia_collegeville_density, flexential_philadelphia_collegeville_retail_grain,
+}
 import extdeps.colo.five_9s_digital { five_9s_allentown_density, five_9s_allentown_retail_grain }
 import extdeps.colo.three_sixty_five {
   three_sixty_five_philadelphia_density,
@@ -263,7 +265,7 @@ test fn w_every_other_pennsylvania_density_establishes_nothing() -> Bool {
     && established_watts(d: h5_philadelphia_density) == 0 - 1
     && established_watts(d: databank_phl1_density) == 0 - 1
     && established_watts(d: lightwave_philadelphia_density) == 0 - 1
-    && established_watts(d: flexential_allentown_density) == 0 - 1
+    && established_watts(d: flexential_philadelphia_collegeville_density) == 0 - 1
     && established_watts(d: five_9s_allentown_density) == 0 - 1
     && established_watts(d: three_sixty_five_philadelphia_density) == 0 - 1
     && established_watts(d: three_sixty_five_philadelphia_university_city_density) == 0 - 1
@@ -294,7 +296,7 @@ test fn w_pennsylvania_grain_is_independent_of_density() -> Bool {
     && established_watts(d: tierpoint_philadelphia_density) == 0 - 1
     && !grain_admits_single_cabinet(g: databank_phl1_retail_grain)
     && !grain_admits_single_cabinet(g: lightwave_philadelphia_retail_grain)
-    && !grain_admits_single_cabinet(g: flexential_allentown_retail_grain)
+    && !grain_admits_single_cabinet(g: flexential_philadelphia_collegeville_retail_grain)
     && !grain_admits_single_cabinet(g: five_9s_allentown_retail_grain)
     && !grain_admits_single_cabinet(g: three_sixty_five_philadelphia_retail_grain)
 }

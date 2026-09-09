@@ -13,7 +13,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.flexential.com/data-centers/pa/allentown/data-center"
+    locator: "www.flexential.com/data-centers"
   }
 }
 
@@ -21,7 +21,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.flexential",
-      decl_name: "flexential_allentown",
+      decl_name: "flexential_philadelphia_collegeville",
       field: WholeDeclaration
     }
   },
@@ -29,37 +29,46 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// A ROW WHOSE ENTIRE CONTENT IS A REFUSED FETCH, WHICH IS STILL A READING. Two attempts on
-// 2026-09-08 - the Allentown data-center page and its parent path - both returned HTTP 403 to this
-// session. Nothing about this facility is therefore first-hand, and the row carries obligations in
-// every field rather than the square footage and watts-per-square-foot a search summary offered.
-// Watts per square foot would not have been a cabinet density in any case: it is a floor-loading
-// average over a room, and a cabinet is not a room. The alternative to this row is silence, which
-// would read as 'no Flexential in the Lehigh Valley' - a stronger and less true claim than 'the
-// operator publishes here and this census could not open the page'.
-data flexential_allentown: ColoFacilityRow = ColoFacilityRow {
+// THE ROW THIS MODULE FIRST CARRIED WAS THE WRONG FACILITY, AND OUR OWN INSTRUMENT IS WHY. The
+// first cut modelled an ALLENTOWN site with every field an obligation, on the ground that the
+// operator refused every fetch with HTTP 403. The 403 was ours: this host answers 403 with a 5,520
+// byte interstitial to `-A "Mozilla/5.0"` and 200 with 194,883 bytes to a full browser
+// user-agent - a SHORT user-agent is worse than none, which is the opposite of what anyone adding
+// one expects. Re-fetched properly on 2026-09-09, the operator's own map lists NO Allentown
+// facility and one Pennsylvania site: Philadelphia - Collegeville. So a recorded operator refusal
+// concealed a wrong subject, which is the cost of a false obstacle - it stops the inquiry that
+// would have found the real defect.
+data flexential_philadelphia_collegeville: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Flexential",
-  facility_label: "Flexential Allentown",
+  facility_label: "Flexential Philadelphia - Collegeville",
   address: AddressUnread {
-    obligation: "flexential.com/data-centers/pa/allentown/data-center and its parent path both returned HTTP 403 on 2026-09-08; no address was read first-hand. Secondary listings additionally report that the operator no longer lists this facility, which would make the site's very existence as a Flexential product the first thing to confirm. Retry the fetch from a client the site admits, or ask sales.",
+    obligation: "The operator's data-centers map, read as raw bytes 2026-09-09 (HTTP 200, 194,883 bytes with a full browser user-agent), names the facility 'Philadelphia - Collegeville' with 203,703 square feet and 7.2 MW and a map marker at 40.151919, -75.476908, but publishes NO street address on that page. Read the facility's own page for the street.",
   },
-  municipality: "Allentown",
+  municipality: "Collegeville",
   region_code: "PA",
-  facility_note: "Carried as an unresolved coverage obligation in the Lehigh Valley rather than as a confirmed facility: every fetch of the operator's own page was refused on 2026-09-08, so no square footage, power, grain or status is first-hand here.",
+  facility_note: "203,703 square feet and 7.2 MW on the operator's own facility table (read 2026-09-09) - the largest single Pennsylvania facility in this census by marketed power. Montgomery County, north-west of Philadelphia, in the same suburban ring as TierPoint's Valley Forge site.",
 }
 
-data flexential_allentown_density: CabinetDensityClaim = DensityUnread {
-  obligation: "No page was successfully read (HTTP 403, 2026-09-08). A search summary quoted '150+ watts per square foot' for this site; that is a room-average power intensity, NOT a per-cabinet density, and it is recorded here as the thing not to convert rather than as a reading.",
+// THE COMPANY MARKETS 80+ kW PER CABINET AND THIS FACILITY ROW DOES NOT CARRY IT. The sentence
+// 'Supporting 80+ kW per cabinet for high-density power demands and GPU deployments' is on the page
+// verbatim, in one <li>, and the heading above it is 'High-efficiency colocation for deployments
+// near and far' - a platform claim about the operator's forty-site portfolio, not a specification
+// of Collegeville. It would be the densest cabinet figure in this census by a factor of two, which
+// is exactly why it may not be carried on a scope this weak: attaching a portfolio claim to one
+// building is the same error as attaching a facility's megawatts to one cabinet, one level up. The
+// figure is recorded here so the next reader does not have to re-find it, and so that it is
+// unmistakably NOT this row's density.
+data flexential_philadelphia_collegeville_density: CabinetDensityClaim = DensityUnread {
+  obligation: "No per-cabinet density is published FOR THIS FACILITY. The operator's platform page carries '80+ kW per cabinet' under a portfolio heading covering all forty-plus sites (read as raw bytes 2026-09-09, HTTP 200, 194,883 bytes), which scopes it to the product line and not to Collegeville. Confirm with the facility's own page or a quote whether this site delivers it - and if it does, that is the densest published cabinet in this census.",
 }
 
-// NO RETAIL-RATE STANDING IS CARRIED FOR THIS OPERATOR, DELIBERATELY. Every other module in this
-// census declares one, and the shape of that type is RatesPublished or RatesQuoteOnly - both
-// affirmative readings, with no unread arm. Taking RatesQuoteOnly here would have been a positive
-// typed claim about an operator whose every page refused this session (HTTP 403, 2026-09-08 and
-// 2026-09-09), inferred from what the rest of the market does rather than read; DESIGN section 5
-// forbids exactly that substitution, and a reviewer caught it standing in the first cut of this
-// file. Absence of the row is the honest state until either the page opens or the carrier grows an
-// unread arm, and the obligation to resolve it is recorded on the address row above.
-data flexential_allentown_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "No page was successfully read (HTTP 403, 2026-09-08), so nothing is known first-hand about the smallest unit sold at this site.",
+data flexential_philadelphia_collegeville_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The same platform page offers 'remote hands, cabinets, cages and private suite solutions' at portfolio scope, under the same heading as the density claim, and says nothing about the grain sold at Collegeville specifically. Operator-wide product wording is not a per-site reading - this census already declines to carry DataBank's Orangeburg grain onto its Philadelphia suite for the same reason. Confirm the smallest sellable unit at this site.",
 }
+
+// AN ALLENTOWN SITE APPEARED IN DIRECTORY LISTINGS UNDER THIS OPERATOR AND IS NOT MODELLED. The
+// building at 1110 St. Luke's Way carries an ESite Systems, AGILE and DataBridge lineage in
+// secondary sources, is reported both as a Flexential DC7 and as decommissioned and offered for
+// sale by a different operator, and appears nowhere on Flexential's own map read 2026-09-09. A
+// facility three sources disagree about is a coverage obligation, not a row.
+data flexential_allentown_obligation: NonEmptyStr = "Establish whether Flexential still operates any Lehigh Valley facility. Its own data-centers map (read 2026-09-09) lists no Allentown site; directory listings tie 1110 St. Luke's Way to it and also report that building decommissioned and listed for sale by Five 9s Digital. Resolve against the operator directly before any Lehigh Valley row is written for it."

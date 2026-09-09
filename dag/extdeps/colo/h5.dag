@@ -65,7 +65,7 @@ data h5_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // generator backup are stated by the operator; a per-cabinet figure is not, and the megawatts are
 // a building fact that says nothing about what one cabinet may draw.
 data h5_philadelphia_density: CabinetDensityClaim = DensityUnread {
-  obligation: "h5datacenters.com Philadelphia page, read 2026-09-08, states 72,000 SF and 7.5 MW generator backup and NO per-cabinet or per-rack density. The absence is raw-byte confirmed: a curl fetch on 2026-09-09 (HTTP 200, 68,972 bytes) contains ZERO case-insensitive occurrences of 'kw' anywhere in the served HTML. Request the facility spec sheet or a quote naming the cabinet draw.",
+  obligation: "h5datacenters.com Philadelphia page, read 2026-09-08, states 72,000 SF and 7.5 MW generator backup and NO per-cabinet or per-rack density. The absence is raw-byte confirmed under a subject control: re-fetched 2026-09-09 with a full browser user-agent (HTTP 200), the served HTML contains 'Philadelphia' 67 times - so the instrument reached this facility's own surface and not an index - and 'kW' zero times, 'kVA' zero times, case-SENSITIVE because kw is a common substring of minified identifiers. Request the facility spec sheet or a quote naming the cabinet draw.",
 }
 
 data h5_philadelphia_retail_grain: RetailGrainStanding = SingleCabinetOffered {

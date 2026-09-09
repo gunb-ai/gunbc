@@ -114,7 +114,7 @@ data three_sixty_five_philadelphia_density: CabinetDensityClaim = DensityUnread 
 }
 
 data three_sixty_five_philadelphia_university_city_density: CabinetDensityClaim = DensityUnread {
-  obligation: "365datacenters.com Philadelphia data center page read 2026-09-08 states four 180 kW UPS modules and a 1,000 kW generator for the 3701 Market site and NO per-cabinet density. UPS module kilowatts are room capacity and must not be divided into a cabinet figure. Raw-byte confirmed 2026-09-09 (HTTP 200, 200,372 bytes): the only two 'kW' occurrences in the served HTML are '4 x 180 kW' and 'Dedicated onsite 1000 kW', both plant. Request the downloadable facility specification the page references.",
+  obligation: "365datacenters.com Philadelphia data center page read 2026-09-08 states four 180 kW UPS modules and a 1,000 kW generator for the 3701 Market site and NO per-cabinet density. UPS module kilowatts are room capacity and must not be divided into a cabinet figure. Raw-byte confirmed 2026-09-09 under a subject control (HTTP 200, full browser user-agent): 'Philadelphia' occurs 33 times, so the instrument reached the facility surface; 'kW' occurs exactly twice and both are plant - '4 x 180 kW' UPS modules and 'Dedicated onsite 1000 kW diesel generator' - and 'kVA' zero times. Request the downloadable facility specification the page references.",
 }
 
 data three_sixty_five_philadelphia_retail_grain: RetailGrainStanding = RetailGrainUnread {

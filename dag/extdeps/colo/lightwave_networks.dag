@@ -50,7 +50,7 @@ data lightwave_philadelphia: ColoFacilityRow = ColoFacilityRow {
 }
 
 data lightwave_philadelphia_density: CabinetDensityClaim = DensityUnread {
-  obligation: "Two of this operator's own pages were read on 2026-09-08 - the Philadelphia data center page and the Philadelphia colocation service page - and NEITHER states a per-cabinet or per-rack kW or amp figure. The 40,000 kW utility capacity on the first page is a building-level number and must not be read as density. Raw-byte confirmed 2026-09-09 (HTTP 200, 75,267 bytes): all three 'kW' occurrences in the served HTML are the 40,000 kW utility and 4,000 kW generator figures, both plant. Obtain a quote or a cabinet spec sheet before any density is attributed to this seller.",
+  obligation: "Two of this operator's own pages were read on 2026-09-08 - the Philadelphia data center page and the Philadelphia colocation service page - and NEITHER states a per-cabinet or per-rack kW or amp figure. The 40,000 kW utility capacity on the first page is a building-level number and must not be read as density. Raw-byte confirmed 2026-09-09 under a subject control (HTTP 200, full browser user-agent): 'Philadelphia' occurs 46 times, so the instrument reached the facility surface; the three 'kW' occurrences are all plant - 'utility power capacity of 40,000 kW' and 'backup generator power capacity of 4,000 kW' - and the two 'kVA' occurrences are the building's '1,200 kVA' UPS, which is apparent power at BUILDING scale and is doubly not a cabinet reading. Obtain a quote or a cabinet spec sheet before any density is attributed to this seller.",
 }
 
 data lightwave_philadelphia_retail_grain: RetailGrainStanding = RetailGrainUnread {
