@@ -178,6 +178,44 @@ data hudson_valley: RegionCoverage = RegionCoverage {
   },
 }
 
+// NYC FIVE BOROUGHS, surveyed 2026-09-08 by census lane snappy-moth-679. Twenty-four facility rows
+// with five-borough addresses: Equinix NY9; Digital Realty JFK10/JFK12/JFK13 (Manhattan carrier
+// hotels despite the JFK codes); CoreSite NY1; DataVerge Brooklyn; DataBank LGA1 and LGA2; Telehouse
+// Chelsea and Teleport; Sabey 375 Pearl; H5 325 Hudson; Colocation America NYDC1 and NYDC2; 365 Data
+// Centers' eight Manhattan POPs plus Brooklyn Vanderbilt and Staten Island Teleport. DataBank LGA4
+// Orangeburg is Rockland County and is not in this count. Two density reads survive byte verification:
+// Telehouse Chelsea (5 kVA apparent) and Telehouse Teleport (20 kW real). Equinix NY8 is named on a
+// 2021 spec sheet and absent from the live campus listing, so it has no current facility row.
+// Colocation America NYDC3 Hawthorne is Westchester, not this region. Staten Island's building-operator
+// colo is Telehouse Teleport; 365's Teleport listing is an in-building POP in that same campus.
+data nyc_five_boroughs: RegionCoverage = RegionCoverage {
+  region_label: "NYC five boroughs",
+  region_code: "NY",
+  outcome: FacilitiesModelled {
+    facility_count: 24,
+    density_read_count: 2,
+  },
+}
+
+// QUEENS AND THE BRONX were searched in the same sweep. Hits resolved to aggregator or
+// lead-generation pages, to DataVerge Brooklyn's connectivity claim that its MMR underpins Queens
+// (not a Queens facility), and to Digital Realty sites whose operator pages place them in Manhattan
+// carrier hotels. No independently cited operator facility page with a Queens or Bronx address was
+// modelled.
+data nyc_queens_and_bronx: RegionCoverage = RegionCoverage {
+  region_label: "Queens and Bronx",
+  region_code: "NY",
+  outcome: SurveyedNoRetailOperator {
+    searched: ["Queens", "Bronx"],
+    causes: [
+      ResolvedToAggregatorsOnly { detail: "directory and marketplace hits for Queens and the Bronx resolved to aggregators or lead-generation pages rather than an operator publishing a facility at a Queens or Bronx street address" },
+      DirectoryClaimContradictedByOperator { detail: "DataVerge Brooklyn's page claims its MMR underpins Queens and Long Island - a connectivity claim, not a second facility in Queens. Digital Realty JFK10/12/13 use JFK codes and sit at Manhattan carrier-hotel addresses on the operator pages" },
+    ],
+    surveyed_on: "2026-09-08",
+    surveyed_by: "census lane: NYC five boroughs (snappy-moth-679)",
+  },
+}
+
 // THIS ROSTER IS INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It
 // carries the regions a lane surveyed, including ones surveyed and found empty; it does not carry a
 // RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding
@@ -188,4 +226,11 @@ data hudson_valley: RegionCoverage = RegionCoverage {
 // data, and // is the explicit quarantine boundary for exactly this.
 data census_regions: List<RegionCoverage> = [nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
 data census_regions: List<RegionCoverage> = [central_new_jersey, nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
+data census_regions: List<RegionCoverage> = [
+  nj_hudson_bergen_essex_corridor,
+  southern_new_jersey,
+  hudson_valley,
+  nyc_five_boroughs,
+  nyc_queens_and_bronx,
+]
 

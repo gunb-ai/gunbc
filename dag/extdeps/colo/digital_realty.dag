@@ -6,6 +6,7 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
+  RetailGrainStanding, SingleCabinetOffered,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -111,6 +112,76 @@ data digital_realty_ewr12_retail_grain: RetailGrainStanding = SingleCabinetOffer
 // Piscataway campus is therefore modelled at two buildings of three, and the missing one needs a
 // live page or a spec sheet rather than an inference from its siblings.
 data digital_realty_facilities: List<ColoFacilityRow> = [digital_realty_ewr10, digital_realty_ewr20, digital_realty_ewr11, digital_realty_ewr12]
+data digital_realty_jfk10: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Digital Realty",
+  facility_label: "Digital Realty JFK10",
+  address: AddressListed {
+    street: "111 8th Avenue, New York, NY 10011",
+    citation: "digitalrealty.com JFK10 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "15-story 111,000 square foot carrier hotel floorplate with N+1 UPS and cooling per the operator page read 2026-09-08. Markets New York's first Quantum-AI colocation (OQC plus NVIDIA) inside the same building Equinix NY9 and DataBank LGA2 also sell from - distinct operator rows, one building.",
+}
+
+data digital_realty_jfk10_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The JFK10 page read 2026-09-08 publishes building size and UPS redundancy but no per-cabinet kilowatt ceiling.",
+}
+
+data digital_realty_jfk10_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "From single cabinets to private data center suites",
+  citation: "digitalrealty.com JFK10 page, read 2026-09-08",
+}
+
+data digital_realty_jfk12: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Digital Realty",
+  facility_label: "Digital Realty JFK12",
+  address: AddressListed {
+    street: "60 Hudson Street, New York, NY 10013",
+    citation: "digitalrealty.com JFK12 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "24-story 163,500 square foot presence in the 60 Hudson carrier hotel with N+1 UPS and cooling per the operator page read 2026-09-08. DataBank LGA1 and Colocation America NYDC1 sell from the same building under their own modules.",
+}
+
+data digital_realty_jfk12_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The JFK12 page read 2026-09-08 names multi-megawatt suites through single cabinet deployments as a product range but states no marketed kilowatts per cabinet.",
+}
+
+data digital_realty_jfk12_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "From multi-megawatt suites to single cabinet deployments",
+  citation: "digitalrealty.com JFK12 page, read 2026-09-08",
+}
+
+data digital_realty_jfk13: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Digital Realty",
+  facility_label: "Digital Realty JFK13",
+  address: AddressListed {
+    street: "32 Avenue of the Americas, New York, NY 10013",
+    citation: "digitalrealty.com JFK13 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "27-story 132,500 square foot multi-floor colocation in the 32 Avenue of the Americas carrier hotel per the operator page read 2026-09-08. CoreSite NY1 occupies the same building under its own module.",
+}
+
+data digital_realty_jfk13_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The JFK13 page read 2026-09-08 publishes building size and redundancy, not a per-cabinet density.",
+}
+
+data digital_realty_jfk13_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "From single cabinets to private data center suites",
+  citation: "digitalrealty.com JFK13 page, read 2026-09-08",
+}
+
+data digital_realty_facilities: List<ColoFacilityRow> = [
+  digital_realty_ewr10,
+  digital_realty_ewr20,
+  digital_realty_jfk10,
+  digital_realty_jfk12,
+  digital_realty_jfk13,
+]
 
 data digital_realty_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "digitalrealty.com sales",
