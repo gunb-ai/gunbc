@@ -230,9 +230,11 @@ fn switch_read_lanes(readings: List<Crs812LaneReading>) -> List<ObservedLane> {
 // and it outlived the thing it described by one release. An unbound actuation stage and an
 // unchanged-receipt stage are not stages of this module; observation and assessment are.
 //
-// THE OBSERVER RECEIVES THE READINGS AND NOTHING ELSE, so it cannot consult the intent to decide
-// what to report -- the guarantee std.goal_assessment used to state in prose and now carries in the
-// shape of this argument list.
+// THE OBSERVER RECEIVES THE SWITCH AND THE READINGS, AND NO GOAL. It cannot consult the intent to
+// decide what to report, and -- since the repair above -- neither can the value it is handed: the
+// request is no longer computed from the intent either. The earlier wording here said "the readings
+// and nothing else", which was true of the observer's BODY and false twice over: of its argument
+// list, which also carries the subject, and of the request, which the goal used to shape.
 //
 // IT ALSO CANNOT REFUSE. There is no RouterOS transport here: the readings are declared corpus data,
 // so every call yields the snapshot it was handed, and a lane nobody captured is an unread MEMBER of
@@ -361,21 +363,39 @@ fn inspect_fabric_switch(subject: Crs812SwitchSubject) -> Crs812SwitchInspection
 //
 // Once the cables are recoded the intent decides, and the lanes nobody captured become one UNKNOWN
 // each rather than a refusal, with no shape change anywhere.
-fn fabric_switch_intent_interfaces() -> List<NonEmptyStr> {
-  match fabric_switch_intent() {
-    SwitchIntentUndecided { cause: c } => []
-    SwitchIntent {
-      identity: id, board_name: b, management_interface: m, bridge: br, lanes: ls,
-    } => map(ls, i => lane_intent_interface(i: i))
-  }
+// THE REQUEST IS EMPTY BECAUSE NO CAPTURE EXISTS, not because the intent is undecided.
+//
+// THE ROUTE THIS CLOSES. `readings` used to be built by mapping over the intent's own interfaces,
+// so an undecided intent produced an empty request and therefore an empty snapshot -- the GOAL
+// deciding what got read, one level above the observer. Closing the parameter route while the
+// request was still computed from the goal changed the argument's name and kept the mechanism, and
+// it falsified this module's own note three declarations above the observer.
+//
+// EMPTY IS ALSO THE TRUE STATE: there is no RouterOS capture of this switch at all, so nothing was
+// read, and the honest request says so without consulting what anyone wanted. The lanes that go
+// UNKNOWN are still one per intent lane, because `switch_unknowns` joins the intent's declared
+// roster against the snapshot -- on the ASSESSMENT side, which is the stage that is allowed to know
+// the goal. The reported answer is unchanged; what changed is that the goal no longer reaches the
+// read.
+//
+// WHEN A CAPTURE LANDS it replaces this list with what the transport returned, still without
+// consulting the intent.
+// THE INTENT IS A PARAMETER SO THE GOAL-INDEPENDENCE OF THE REQUEST IS TESTABLE. With the intent
+// read from inside, the property "the request does not depend on the goal" has no authorable RED
+// today: the fleet's real intent is undecided, so a goal-derived request and an empty one are the
+// same list, and a control comparing them is permanently green whatever the code does. Taking the
+// intent as a parameter lets a witness supply a DECIDED one and observe that the request is still
+// empty -- which goes red the moment the request is computed from the intent again.
+fn fabric_switch_subject_under(intent: Crs812SwitchIntent) -> Crs812SwitchSubject {
+  crs812_switch_subject(
+    switch: "gunbc-fabric-switch" as NonEmptyStr,
+    intent: intent,
+    readings: [],
+  )
 }
 
 fn fabric_switch_subject() -> Crs812SwitchSubject {
-  crs812_switch_subject(
-    switch: "gunbc-fabric-switch" as NonEmptyStr,
-    intent: fabric_switch_intent(),
-    readings: map(fabric_switch_intent_interfaces(), n => LaneNeverRead { interface: n }),
-  )
+  fabric_switch_subject_under(intent: fabric_switch_intent())
 }
 
 fn fabric_switch_inspection() -> Crs812SwitchInspection {

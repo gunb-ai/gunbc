@@ -36,18 +36,39 @@ import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 // bound an observer that matched on `subject.intent`, so the desired mode selected which lanes were
 // read -- with the module's own note claiming the separation held. A guarantee carried only by
 // prose is one binding away from being false, and it was false in two of the three bindings that
-// existed. So the observer now receives an `ObservationRequest` and NOTHING ELSE: it has no
-// goal-typed parameter to read, the desired side is unconstructible in its argument, and DESIGN
-// section 4b rung four replaces the sentence that used to ask authors to be careful.
+// existed. So the observer now receives the SUBJECT and an `ObservationRequest`, and no goal: it
+// has no goal-typed parameter to read, so the desired side is unconstructible in its argument list.
+// (An earlier wording here said it receives a request "and NOTHING ELSE". That was written before
+// the subject was restored to the observer -- goal-blind is not subject-blind -- and it went false
+// in the edit that restored it. It is corrected rather than quietly dropped: this module's whole
+// subject is prose outliving the code it described.)
 //
-// WHAT THIS DOES NOT CLOSE, stated so the rung is not read as higher than it is. The PARAMETER route
-// is structurally impossible: there is no goal-typed argument for an observer to read. The CAPTURE
-// route is not closed -- a binding may pass a lambda that closes over the goal lexically and shapes
-// the read by it, and no type here can see that. So the honest rung for goal-blindness is
-// structural against the parameter and MITIGATED BY REVIEW against capture, and
-// test.claim.goal_assessment_witness holds that residual as an executing fact rather than a worry.
-// NEXT-RUNG TRIGGER: a lens over the `Node` tree refusing an `observe` argument whose free variables
-// include the goal bound at the same call site.
+// WHAT THIS DOES NOT CLOSE, stated so the rung is not read as higher than it is. THERE ARE THREE
+// ROUTES BY WHICH A GOAL CAN REACH A READ, and this type closes exactly one of them.
+//
+//   PARAMETER -- structurally impossible. There is no goal-typed argument for an observer to read.
+//
+//   CAPTURE -- mitigated by review. A binding may pass a lambda that closes over the goal lexically
+//     and shape the read by it, and no type here can see that.
+//
+//   GOAL-DERIVED REQUEST -- mitigated by review. The `request` is constructed by the CALLER, so a
+//     caller may compute it from the goal and hand the observer a scope the desire chose. The
+//     observer stays honest and the read is still shaped by the goal, one level up. This is not
+//     hypothetical: gunbc.spark.fabric_switch_assessment did exactly this in the change that
+//     introduced the split -- its request was the intent's own interface list, so an undecided
+//     intent produced an empty snapshot BECAUSE OF THE GOAL. Closing the parameter route while the
+//     request was still goal-derived renamed the mechanism rather than removing it. That binding
+//     now derives its request from the absence of a capture instead, but the TYPE does not force
+//     that and cannot: a request is by nature caller-chosen.
+//
+// So the honest rung for goal-blindness is STRUCTURAL against the parameter and MITIGATED BY REVIEW
+// against both capture and goal-derived requests. test.claim.goal_assessment_witness holds the
+// capture residual as an executing fact.
+//
+// NEXT-RUNG TRIGGER, and it is one lens covering both residuals: a reader over the `Node` tree that
+// refuses an `observe` argument, or a `request` argument, whose free variables include the goal
+// bound at the same `inspect_goal` call site. Both residuals are the same shape -- a goal reaching
+// the read through a value rather than a parameter -- so neither climbs until that lens exists.
 //
 // WHAT THIS MODULE DELIBERATELY DOES NOT CARRY, stated so its absence reads as a boundary and not
 // an oversight. There is no `reconcile_once`: no planner, no admission, no actuator, and no

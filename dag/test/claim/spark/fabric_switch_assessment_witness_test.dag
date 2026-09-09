@@ -10,6 +10,7 @@ import extdeps.ethernet.link_mode {
 }
 import gunbc.spark.fabric_switch_desired {
   Crs812SwitchIntent, SwitchIntent, SwitchIntentUndecided,
+  SwitchCannotRunRequiredMode,
   LaneCarriesLeg, LaneOwnedByItsPair,
 }
 import gunbc.spark.fabric_switch_assessment {
@@ -19,7 +20,8 @@ import gunbc.spark.fabric_switch_assessment {
   LaneSpeedDisagrees, LaneFecDisagrees,
   LaneShouldCarryLegButIsDisabled, LaneShouldBeOwnedByItsPairButIsEnabled, LaneIsNotInTheIntent,
   SwitchIntentUndecidedHere, SwitchIntentNamesNoLanes,
-  inspect_fabric_switch, fabric_switch_inspection,
+  inspect_fabric_switch, fabric_switch_inspection, fabric_switch_subject,
+  fabric_switch_subject_under,
 }
 import std.goal_assessment {
   GoalInspected, GoalObservationRefused,
@@ -348,5 +350,36 @@ test fn a_mode_the_switch_cannot_run_has_no_wire_value() -> Bool {
   match crs812_lane_speed_for_link_mode(m: ieee_25gbase_cr) {
     NoLaneSpeedForMode { mode: u } => true
     LaneSpeedForMode { speed: s } => false
+  }
+}
+
+// THE CONTROL FOR THE ROUTE THE TYPE DOES NOT CLOSE, at the binding that had it. The fleet
+// subject's observation request must not be derived from the intent: if it were, the intent would
+// decide what got read, which is the mechanism std.goal_assessment's parameter split removes,
+// surviving one level up.
+//
+// THE FIRST VERSION OF THIS CONTROL WAS PERMANENTLY GREEN AND IS RECORDED HERE RATHER THAN QUIETLY
+// REPLACED. It compared the fleet subject against an undecided-intent subject and asserted both
+// requests were empty. Both ARE empty under the defect too: the fleet's real intent is undecided
+// today, so the goal-derived roster returns the empty list anyway. Mutation proved it -- restoring
+// the goal-derived request left the check green. Deleting one decoration in this same change and
+// then writing another is the reason the mutation step is not optional.
+//
+// THIS ONE VARIES THE GOAL, which is the only way the property is observable: a DECIDED intent
+// naming two lanes must still produce an empty request. Under the defect it produces two, so the
+// RED is authorable and mutation-confirmed.
+data decided_intent_for_request_control: Crs812SwitchIntent = decided_intent
+
+test fn the_request_is_not_derived_from_the_goal() -> Bool {
+  match inspect_fabric_switch(subject: fabric_switch_subject_under(intent: decided_intent_for_request_control)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      list_length(items: rq) == 0
+        && list_length(items: o.lanes) == 0
+        && match a {
+             GoalIndeterminate { known_deviations: kd, unknowns: u } =>
+               list_length(items: non_empty_to_list(xs: u)) == 2
+             _ => false
+           }
   }
 }
