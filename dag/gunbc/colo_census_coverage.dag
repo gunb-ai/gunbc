@@ -1,7 +1,7 @@
 module gunbc.colo_census_coverage
 
 import std.types { NonEmptyStr, Int, List, Bool }
-import extdeps.colo.types { ColoFacilityRow, CabinetDensityClaim, cabinet_density_air_upper_bound }
+import extdeps.colo.types { ColoFacilityRow, CabinetDensityClaim, cabinet_density_air_ceiling }
 import extdeps.colo.equinix { equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7, equinix_cabinet_density }
 import extdeps.colo.coresite { coresite_ny2, coresite_ny3, coresite_secaucus_density }
 import extdeps.colo.centersquare { centersquare_weehawken, centersquare_ewr5_secaucus, centersquare_cabinet_density }
@@ -114,15 +114,19 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // gunbc.recurring_failure_mode.citation_verified_against_a_rendering_that_destroyed_its_scope,
 // because a citation confirmed by string occurrence alone cannot fail on correct text attached to
 // the wrong subject.
-// A DENSITY IS READ EXACTLY WHEN THE CARRIER CAN PRODUCE A BOUND FOR IT, and that question is
-// already answered by extdeps.colo.types. Asking it through cabinet_density_air_upper_bound rather
-// than re-matching the arms here keeps one authority for what "read" means: the upper bound is
-// Present for both published arms - real power and apparent power - and Absent exactly for
-// DensityUnread. A local predicate over the same coproduct would be a second spelling of a
-// question the carrier owns, which is the fork the deleted cabinet_density_is_read was removed to
-// avoid reintroducing.
+// A DENSITY IS READ EXACTLY WHEN THE CARRIER CAN PRODUCE A CEILING FOR IT, and that question is
+// already answered by extdeps.colo.types. Asking it through cabinet_density_air_ceiling rather than
+// re-matching the arms here keeps one authority for what "read" means: a ceiling is Present for
+// both published arms - real power and apparent power - and Absent exactly for DensityUnread. A
+// local predicate over the same coproduct would be a second spelling of a question the carrier
+// owns, which is the fork the deleted cabinet_density_is_read was removed to avoid reintroducing.
+//
+// Only the PRESENCE of the ceiling is read here, never its magnitude. That is the sound use: a
+// ceiling answers whether a requirement is refused, and asking it "was anything published" is a
+// question about the claim rather than about the cabinet. The Watt inside CeilingAt is never
+// touched by this fold, so counting read claims cannot become admitting on a bound.
 fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
-  match cabinet_density_air_upper_bound(d: d) {
+  match cabinet_density_air_ceiling(d: d) {
     Present { value } => true,
     Absent => false,
   }
