@@ -7,7 +7,7 @@ import v2.std.algebra { length, any }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_schedule { ScheduleWitnessEntry }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_template_entries }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition }
 
 // Kernel-D Stage 3 (session loyal-raven-94, 2026-07-24): a typed, counted roster over the
 // emit_host_*/rust_*_equals_eval witness families tracking NATIVE-EVAL CONSTRUCT COVERAGE — each
@@ -59,31 +59,46 @@ fn coverage_subject(module_path: String, decl_name: String) -> DeclarationRef {
   }
 }
 
-fn retained_via_eval_agreement(
-  subject: DeclarationRef,
-  entry: String,
-  f: String
-) -> EmitCoverageFrontierRow {
-  EmitCoverageFrontierRow {
-    subject: subject,
-    witness_entry: entry,
-    witness_function: f,
-    disposition: InterpreterRetained {
-      reason: "witness_body_calls_eval",
-      dissolution: unbound_dissolution(description: "a native_only-verdict-style witness (real ingest to emit to compile to run native, verdict decoded from stdout, eval() never called — the emit_host_native_only_verdict_test.dag pattern) lands for this family and is enrolled in falsifier_self_host_wet_template_entries")
-    }
-  }
-}
-
+// ALL FIFTEEN roster rows are SelfEmittedNative as of 2026-09-08 — the InterpreterRetained
+// population is zero and the retained_via_eval_agreement row constructor was deleted with the last
+// flip (DESIGN section 3c: a constructor no row consumes is dead data; the InterpreterRetained
+// VARIANT stays as the disposition authority's other state, matched by coverage_row_is_native).
+// Each promotion landed on a native-only verdict arm (positive + wrong-octet broken control) in
+// the already file-grain-enrolled native-only verdict entry, so each backing citation is enrolled
+// by construction (coverage_row_backing_is_enrolled): the add family row (first element, backing
+// emit_host_native_only_add_holds), the complement family row (backing
+// emit_host_native_only_complement_holds, run through the logic family crate per the
+// witness_family_build_grain_ruling), the field_access family row (backing
+// emit_host_native_only_field_access_holds, octet 9 pinned against the family one-build cache),
+// the three match_loop_fold family rows (match, loop, fold_closure — backing
+// emit_host_native_only_{match,loop,fold_closure}_holds, run through the three-member family crate
+// per the witness_family_build_grain_ruling, octet lists pinned against the family one-build
+// cache), the meet_join family row (backing emit_host_native_only_meet_holds — the arm split
+// one-member-per-claim under the floor's 500ms claim ceiling, so emit_host_native_only_join_holds
+// carries the family's other half, run through the logic family crate it shares with complement,
+// octets meet=1 join=1 pinned against the family one-build cache), the variant_construct family row (backing
+// emit_host_native_only_variant_construct_holds, octet 9 pinned against the family one-build
+// cache), the two host-effect transport rows (filesystem_read, shell_exec_run — backing
+// emit_host_native_only_{filesystem_read,shell_exec_run}_holds, literal octets grounded by the
+// families' own enrolled fixture pins, run through the families' fixed witness workspaces), and
+// the four emit-path rows (module, produced_module, call, record_construct — backing
+// emit_host_native_only_{module,produced_module,call,record_construct}_holds, octets 5/5/7/9
+// pinned against the equals_eval pairs' own oracle legs, run under per-family fixed workspace
+// roots with realization-digest content-safety). Each family's equals_eval agreement pair stays
+// enrolled as its program-side discrimination leg.
 data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
-  retained_via_eval_agreement(
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.manual.rust_add_emit_translate",
       decl_name: "rust_add_inferred_tree"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
-    f: "emit_host_add_equals_eval_holds"
-  ),
+    witness_entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
+    witness_function: "emit_host_add_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_add_holds"
+    }
+  },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.long.emit_host_classical_not_ingested_equals_eval",
@@ -96,110 +111,162 @@ data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
       backing_function: "emit_host_native_only_classical_not_holds"
     }
   },
-  retained_via_eval_agreement(
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.execution.emit_host_complement_equals_eval",
       decl_name: "emit_complement_eval_subject"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
-    f: "emit_host_complement_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
+    witness_function: "emit_host_complement_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_complement_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.execution.emit_host_field_access_equals_eval",
       decl_name: "emit_field_eval_subgraph_node"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
-    f: "emit_host_field_access_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
+    witness_function: "emit_host_field_access_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_field_access_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.extdeps.languages.rust_test",
       decl_name: "rust_filesystem_read_family_target_model_staging"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
-    f: "emit_host_filesystem_read_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
+    witness_function: "emit_host_filesystem_read_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_filesystem_read_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.emit.fold_call_closure_fixture",
       decl_name: "fold_fixture_param_call_body"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
-    f: "emit_host_fold_closure_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
+    witness_function: "emit_host_fold_closure_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_fold_closure_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.complexity_gate.table_fixture_loop_subject_producer",
       decl_name: "table_fixture_loop_arrow_with_body"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
-    f: "emit_host_loop_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
+    witness_function: "emit_host_loop_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_loop_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.complexity_gate.table_fixture_match_subject_producer",
       decl_name: "table_fixture_match_arrow_with_body"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
-    f: "emit_host_match_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
+    witness_function: "emit_host_match_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_match_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.execution.emit_host_meet_join_equals_eval",
       decl_name: "meet_join_eval_subject"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
-    f: "emit_host_meet_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+    witness_function: "emit_host_meet_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_meet_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.execution.emit_host_module_equals_eval",
       decl_name: "emit_host_module_add_equals_eval_holds"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
-    f: "emit_host_module_add_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
+    witness_function: "emit_host_module_add_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_module_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.long.emit_host_produced_module_equals_eval",
       decl_name: "emit_host_produced_module_add_equals_eval_holds"
     ),
-    entry: "src/v2/test/claim/execution/long/emit_host_produced_module_equals_eval_test.dag",
-    f: "emit_host_produced_module_add_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/long/emit_host_produced_module_equals_eval_test.dag",
+    witness_function: "emit_host_produced_module_add_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_produced_module_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.extdeps.languages.rust_test",
       decl_name: "rust_shell_exec_run_family_target_model_staging"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval_test.dag",
-    f: "emit_host_shell_exec_run_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval_test.dag",
+    witness_function: "emit_host_shell_exec_run_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_shell_exec_run_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.execution.emit_host_variant_construct_equals_eval",
       decl_name: "emit_variant_construct_eval_subgraph_node"
     ),
-    entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
-    f: "emit_host_variant_construct_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
+    witness_function: "emit_host_variant_construct_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_variant_construct_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.execution.rust_emit_host_call_equals_eval",
       decl_name: "rust_emit_host_call_equals_eval_holds"
     ),
-    entry: "src/v2/test/claim/execution/rust_emit_host_call_equals_eval_test.dag",
-    f: "rust_emit_host_call_equals_eval_holds"
-  ),
-  retained_via_eval_agreement(
+    witness_entry: "src/v2/test/claim/execution/rust_emit_host_call_equals_eval_test.dag",
+    witness_function: "rust_emit_host_call_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_call_holds"
+    }
+  },
+  EmitCoverageFrontierRow {
     subject: coverage_subject(
       module_path: "v2.test.execution.rust_record_construct_emit_host_equals_eval",
       decl_name: "rust_record_construct_emit_host_equals_eval_holds"
     ),
-    entry: "src/v2/test/claim/execution/rust_record_construct_emit_host_equals_eval_test.dag",
-    f: "rust_record_construct_emit_host_equals_eval_holds"
-  )
+    witness_entry: "src/v2/test/claim/execution/rust_record_construct_emit_host_equals_eval_test.dag",
+    witness_function: "rust_record_construct_emit_host_equals_eval_holds",
+    disposition: SelfEmittedNative {
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_function: "emit_host_native_only_record_construct_holds"
+    }
+  }
 ]
 
 fn coverage_frontier_total_holds() -> Bool {

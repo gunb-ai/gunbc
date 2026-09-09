@@ -220,5 +220,33 @@ data hudson_valley: RegionCoverage = RegionCoverage {
 // typing. Carried as an annotation rather than a String row because no fold reads it: per DESIGN
 // section 4c an ordinary String declaration whose sole purpose is commentary is misplaced or dead
 // data, and // is the explicit quarantine boundary for exactly this.
-data census_regions: List<RegionCoverage> = [central_new_jersey, nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
+// EASTERN PENNSYLVANIA, SURVEYED 2026-09-08 AND 2026-09-09. Thirteen facilities across Philadelphia
+// and the Lehigh Valley carry a cited density claim and a grain standing, and exactly ONE of the
+// thirteen publishes a per-cabinet figure at all - Netrality's 30 kW at 401 North Broad, the only
+// one in the region and the only one verified verbatim against the page's own bytes. The other
+// twelve publish plant: square footage, raised floor, generator counts, UPS modules, critical IT
+// load. That ratio is the region's finding and it is why the row is here rather than in a pull
+// request body: a reader who sees twelve DensityUnread rows and no receipt cannot tell a surveyed
+// market that publishes nothing from a market nobody has opened.
+//
+// The counts are hand-authored, which is the weakness this module already names on the corridor
+// row: they are the author's tally and no fold re-derives them. They are carried because the
+// alternative is no receipt at all, and they dissolve into the derived counts being folded from the
+// facility and claim rows themselves.
+data pa_philadelphia_and_lehigh_valley: RegionCoverage = RegionCoverage {
+  region_label: "PA Philadelphia and Lehigh Valley",
+  region_code: "PA",
+  outcome: FacilitiesModelled {
+    facility_count: 13,
+    density_read_count: 1,
+  },
+}
+
+data census_regions: List<RegionCoverage> = [
+  central_new_jersey,
+  nj_hudson_bergen_essex_corridor,
+  southern_new_jersey,
+  hudson_valley,
+  pa_philadelphia_and_lehigh_valley,
+]
 

@@ -64,6 +64,185 @@ test fn w_host_map_record_shape_refuses_instead_of_constructing_a_second_carrier
   )
 }
 
+// THE OPEN-SUPPORT CARRIER CONSTRUCTS STRUCTURALLY, THE DISCRIMINATING RED for the fossil-row
+// class. PointwisePower<T> is the power set presented as a characteristic function (std.algebra,
+// OpenSupport) — no finite BTreeSet can realize an open membership oracle — but all four target
+// inhabitant rosters carried a pre-split "PointwisePower" -> finite-set row, and the construction
+// arm consulted it while the type renderer (keyed on declaration provenance) did not: the type
+// rendered structurally and the literal emitted the record-shaped-carrier refusal panic. Measured
+// on the emitted 00_compile closure's first native run (2026-09-07): twelve such panic sites, hit
+// through dag_language_model().canonical_symbols. The rows are removed; the literal now takes the
+// same structural path the type renderer already took (Rc'd closure field, phantom filled — the
+// bool_boolean_algebra pattern). The finite-set exclusion is spelled `BTreeSet<i64` and not the
+// bare carrier name because every emitted file's preamble imports `OrdSet as BTreeSet`; the
+// applied spelling names the realization, the bare spelling names the import.
+test fn w_pointwise_power_record_shape_constructs_its_structural_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.pointwise_power_record_shape_probe\nimport std.algebra { PointwisePower }\nimport std.types { Int }\nfn probe(only: Int) -> PointwisePower<Int> { PointwisePower { member: fn(n) { n == only } } }\n",
+    "src/test_claim_pointwise_power_record_shape_probe.rs",
+    ["PointwisePower {", "member:"],
+    ["record-shaped carrier has no realization", "BTreeSet<i64"]
+  )
+}
+
+// THE BOUNDARY CONTROL. FinitePowerSet — the finite counterpart the fossil row actually described
+// — keeps its BTreeSet inhabitant row, and with it the construction refusal: a record literal
+// still cannot construct the finite-set host inhabitant from characteristic-function fields. A
+// repair that cleared the set-carrier rows wholesale instead of removing only the open-support
+// fossil greens the panic arm and reds here. (Type position is not the discriminator: the
+// provenance-keyed renderer emits both carriers structurally today — measured 2026-09-07, the
+// type-position form of this probe renders FinitePowerSet<Int>, not BTreeSet<i64>.)
+test fn w_finite_power_set_record_shape_still_refuses_while_its_row_stands() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.finite_power_set_record_shape_probe\nimport std.algebra { FinitePowerSet }\nimport std.types { Int }\nfn probe(s: FinitePowerSet<Int>) -> FinitePowerSet<Int> { FinitePowerSet { member: fn(n) { s.member(n) }, union: fn(other) { s }, intersect: fn(other) { s }, diff: fn(other) { s }, contains: fn(n) { s.contains(n) }, count: fn() { s.count() }, length: fn() { s.length() } } }\n",
+    "src/test_claim_finite_power_set_record_shape_probe.rs",
+    ["record-shaped carrier has no realization"],
+    ["FinitePowerSet {"]
+  )
+}
+
+// FIELDLESS-RECORD DATA UNDER THE JSON PATH, THE DISCRIMINATING RED for the second native-parity
+// divergence class. A data definition of record type with no cross-refs is emitted as a
+// serde_json round-trip (emit_data_value_json), and the value side spelled EVERY record as a
+// JSON map -- including the zero-field record, whose emitted Rust type is a unit struct
+// (emit_struct_from_children, `pub struct Marker;`). serde's unit-struct Deserialize reads
+// `null` and rejects `{}`, so the emitted compiler panicked at first touch of the data:
+// "invalid type: map, expected unit struct BoolEncodingFact", measured 2026-09-08 on the native
+// run of the emitted 00_compile closure (v2.std.logic bool_primitive_facts). The value side now
+// spells the zero-field record `null`; this row reds if the map spelling returns.
+test fn w_fieldless_record_data_value_spells_null_for_the_unit_struct() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.fieldless_record_json_probe\ntype Marker {}\ntype Holder {\n  marker: Marker\n}\ndata probe: Holder = Holder { marker: Marker {} }\n",
+    "src/test_claim_fieldless_record_json_probe.rs",
+    ["pub struct Marker;", "\"marker\": null"],
+    ["\"marker\": {}"]
+  )
+}
+
+// THE BOUNDARY CONTROL. The null spelling is the zero-field case ONLY: a record with fields
+// keeps the map spelling its braced struct deserializes from. A repair that emitted `null` for
+// every record literal greens the row above and reds here.
+test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nonempty_record_json_probe\nimport std.types { String }\ntype Holder {\n  name: String\n}\ndata probe: Holder = Holder { name: \"kept\" }\n",
+    "src/test_claim_nonempty_record_json_probe.rs",
+    ["\"name\": \"kept\""],
+    ["\"name\": null"]
+  )
+}
+
+
+// THE VARIANT BOUNDARY OF THE JSON DATA PATH, SPELLED. A record literal with parent_enum PRESENT
+// is a variant construction, and its wire spelling is the parent coproduct's declared
+// VariantEncoding policy -- measured against serde 2026-09-08: the internal-tag default accepts
+// only the tag map (`{"_variant": "A"}`), while `null` and the bare string are both rejected.
+// This row stood as a fail-closed REFUSAL for one day, because the policy is a module-local fact
+// of the parent's home module and the JSON value path carried no cross-module view of it; it
+// greened the day its named trigger landed -- the closure-wide wire-spelling index
+// (EmitGraphInfo.data_variant_wire_spellings, built beside type_decl_items by
+// build_data_variant_wire_spellings), which this pair of rows now pins. The probe forces the JSON
+// path (the Holder record nests Marker) and constructs the fieldless variant with braces; the
+// bare spelling never reaches the arm (an ExprVar routes the whole value to direct construction
+// via data_value_has_cross_refs). It reds if the tag map is lost, and if the former
+// mis-serializations (null, or the compile_error! refusal) return.
+test fn w_variant_record_lit_on_the_json_data_path_spells_the_internal_tag() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.variant_json_spelling_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: A {}, m: Marker {} }\n",
+    "src/test_claim_variant_json_spelling_probe.rs",
+    ["{\"e\": {\"_variant\": \"A\"}, \"m\": null}"],
+    ["compile_error!", "\"e\": null"]
+  )
+}
+
+// THE FIELD-CARRYING HALF OF THE SAME BOUNDARY. The internal-tag default spells a record variant
+// as the tag map with the payload fields INLINE (`{"_variant": "B", "x": 3}`), not the bare field
+// map (`{"x": 3}`) the pre-index arm produced -- measured against serde 2026-09-08: the untagged
+// field map is rejected ("missing field `_variant`"). This is the shape the five real closure
+// sites take (SurfaceAtomKey { atom } in v2.std.compilers.sugar, CopiedPortCitationRetained {
+// combiner, migration_trigger } in v2.lens.cost.copied_port_citations), so this row is the
+// discriminating control for the population the index actually serves. It reds if the tag or the
+// inline fields are dropped, and if the compile_error! refusal returns.
+test fn w_fielded_variant_record_lit_on_the_json_data_path_spells_tag_and_fields() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.variant_json_fielded_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: B { x: 3 }, m: Marker {} }\n",
+    "src/test_claim_variant_json_fielded_probe.rs",
+    ["{\"e\": {\"_variant\": \"B\", \"x\": 3}, \"m\": null}"],
+    ["compile_error!", "\"e\": {\"x\": 3}"]
+  )
+}
+
+// LOCALITY WINS OVER A FOREIGN AMBIGUITY, the third native-parity divergence class. The leaf
+// index is global: a leaf two closure modules declare answers LeafAmbiguous, and the alias-RHS
+// module resolver used to end at the poison marker for EVERY such reference -- including a
+// reference inside one of the declaring modules itself, where source resolution binds the local
+// declaration before any cross-module lookup. Measured on the native 00_compile closure build as
+// twelve E0433 sites in v2_std_integer.rs, whose own `type Compose<carrier, dimension>` co-resides
+// with std.machine_constraints' `Compose` alias. The probe reproduces that shape exactly: a local
+// parametric opaque Compose, a foreign Compose pulled in by the MachineWidth import, and an alias
+// whose RHS applies the local one. It reds if the poison marker returns, and if the local
+// declaration stops being the resolution.
+test fn w_alias_rhs_leaf_declared_locally_shadows_foreign_declarer() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.ambiguous_leaf_locality_probe\nimport std.machine_constraints { MachineWidth }\ntype Compose<carrier, dimension>\ntype Word = Compose<MachineWidth<8>, MachineWidth<8>>\n",
+    "src/test_claim_ambiguous_leaf_locality_probe.rs",
+    ["pub type Word = Compose<"],
+    ["__ambiguous_leaf__Compose"]
+  )
+}
+
+// THE QUALIFIER IS THE DISAMBIGUATOR, the fourth native-parity divergence class. A qualified type
+// reference names its provider in its own spelling, so a global leaf ambiguity never attaches to
+// it -- but the qualified use-line route asked the leaf index, saw LeafAmbiguous, and declined to
+// synthesize any line, leaving the bare leaf unimported in the emitted file. Measured on the
+// native 00_compile closure build as eight E0425/E0433 `Nat` sites in v2_lens_fact_density.rs,
+// which references v2.std.nat.Nat qualified while the std.nat alias co-resides in the closure.
+//
+// HOW THE DOTTED SPELLING REACHES THE ROUTE constrained the probe shape, because a signature
+// annotation alone does NOT produce it: the resolver binds `n: v2.std.nat.Nat` to the declaration
+// node and the surface walk collects the bare leaf (measured: a signature-only probe delivered no
+// dotted name). The dotted spelling enters through the VALUE surface -- a qualified value
+// projection (`v2.std.nat.Zero` as match scrutinee) takes its inferred type from
+// qualify_borrowed_type_names, whose borrowed view carries the qualified name, and
+// annotate_pattern_parent_enums stamps that spelling as the patterns' parent_enum, which
+// collect_pattern_ref_names emits. That is the fact_density chain in miniature. The record-lit
+// head contributes the dotted VARIANT `v2.std.nat.Succ` to the same route, so the exclude half
+// pins the E0603 boundary: the variant must still be declined (it is not a type the qualifier
+// declares), or the route re-opens the sixteen-site false-import class its comment records.
+// The pool admits a module only through an import edge, so
+// test.fixture.nat_qualified_provider holds the v2.std.nat edge while std.nat is imported
+// directly; both Nat declarers co-reside and the leaf is globally ambiguous, exactly the closure
+// condition the fix answers. It reds if the qualifier stops resolving the ambiguity, and if the
+// variant leaf starts being imported.
+test fn w_qualified_type_reference_qualifier_disambiguates_the_leaf() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.qualified_leaf_disambiguation_probe\nimport test.fixture.nat_qualified_provider { nat_qualified_provider_touch }\nimport std.nat { nat_max }\nfn probe() -> v2.std.nat.Nat {\n  match v2.std.nat.Zero {\n    v2.std.nat.Zero => v2.std.nat.Zero\n    v2.std.nat.Succ { prev: p } => v2.std.nat.Succ { prev: p }\n  }\n}\n",
+    "src/test_claim_qualified_leaf_disambiguation_probe.rs",
+    ["pub use crate::v2_std_nat::Nat;", "pub fn probe() -> Rc<Nat>"],
+    ["pub use crate::v2_std_nat::Succ;"]
+  )
+}
+
+// THE SECOND HOP OF CLONE-BOUND FORWARDING, the fifth native-parity divergence class. The
+// call-forwarding derivation re-derived each callee's bound from the callee's SELF-derived half
+// only, so a callee whose bound is itself forwarded re-derived to empty and the wrapper emitted
+// bare -- declared one-hop until the specimen arrived: std.realization_measurement
+// witness_measured_rollup_differs_from_predicted_zero<S> through cost_account_time_count<S> (itself
+// forwarded from cost_time_axis_established's match-scrutinee clone), E0277 on the native
+// 00_compile closure build. The probe is that chain in miniature: inner earns the bound by
+// matching its Rc'd coproduct by value, middle forwards it one hop, outer needs two. The
+// derivation is now transitive over the call graph (visited-set termination, the module's existing
+// pattern); this row reds if the second hop is lost, and also pins the two boundary controls --
+// middle's one-hop bound must stand and wrap, which constructs rather than clones, must stay bare
+// (a spurious bound tightens a signature and breaks its callers).
+test fn w_clone_bound_forwards_transitively_over_two_call_hops() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.clone_bound_two_hop_probe\ntype Measure<Q, S, M> { count: M }\ntype CostTimeAxis<S>\n  = CostTimeMeasured { value: Measure<S, S, Bool> }\n  | CostTimeUnestablished\n\ntype CostAccount<S> {\n  time: CostTimeAxis<S>\n}\nfn inner<S>(axis: CostTimeAxis<S>) -> Bool {\n  match axis {\n    CostTimeMeasured { value: _ } => true\n    CostTimeUnestablished => false\n  }\n}\nfn middle<S>(account: CostAccount<S>) -> Bool {\n  inner(axis: account.time)\n}\nfn wrap<S>(m: Measure<S, S, Bool>) -> CostAccount<S> {\n  CostAccount { time: CostTimeMeasured { value: m } }\n}\nfn outer<S>(wall_time: Measure<S, S, Bool>) -> Bool {\n  middle(account: wrap(m: wall_time))\n}\n",
+    "src/test_claim_clone_bound_two_hop_probe.rs",
+    ["pub fn inner<S: Clone>", "pub fn middle<S: Clone>", "pub fn outer<S: Clone>", "pub fn wrap<S>("],
+    ["pub fn outer<S>"]
+  )
+}
+
 // THE PROBE IMPORTS v2.std.collection AND THEN CALLS IT BY ITS QUALIFIED NAME, which looks
 // redundant and is not. compile_dag_rust_emit_check compiles through the witness harness's
 // restricted pool (2973 modules against the corpus's 4261), and a qualified spelling alone does not

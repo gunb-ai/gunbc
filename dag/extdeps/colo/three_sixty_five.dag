@@ -97,12 +97,47 @@ data three_sixty_five_philadelphia: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Roughly 135,000 square feet with about 70,000 square feet of raised floor and 10 MW marketed per datacenterhawk, read 2026-08-18; multi-operator building shared with an H5 floor.",
 }
 
+// A SECOND PHILADELPHIA SITE THE EARLIER SWEEP MISSED, and it was missed in a way worth naming:
+// the 2026-08-18 row was built from a directory profile that knew only the Spring Garden floor,
+// and the operator's own Philadelphia page (read 2026-09-08) lists TWO buildings. A directory that
+// carries one of an operator's two sites is not wrong about the site it carries and is silently
+// wrong about the operator's footprint, which is the failure the primary read exists to catch.
+data three_sixty_five_philadelphia_university_city: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 PH2 Philadelphia (University City)",
+  address: AddressListed {
+    street: "3701 Market Street, Philadelphia, PA 19104",
+    citation: "365datacenters.com Philadelphia location page and Philadelphia data center page, read 2026-09-08",
+  },
+  municipality: "Philadelphia",
+  region_code: "PA",
+  facility_note: "20,500 square foot data center in the Penn Medicine science building in University City, with four 180 kW UPS modules and a 1,000 kW diesel generator and a stated 400 lb per square foot floor loading (read 2026-09-08). Materially smaller in power than the operator's Spring Garden floor, and the smaller of this census's two Philadelphia rows for this operator.",
+}
+
 data three_sixty_five_facilities: List<ColoFacilityRow> = [
   three_sixty_five_carlstadt,
   three_sixty_five_bridgewater,
   three_sixty_five_weehawken,
   three_sixty_five_philadelphia,
+  three_sixty_five_philadelphia_university_city,
 ]
+
+// TWO PHILADELPHIA SITES, NEITHER PUBLISHING A CABINET DENSITY. This operator is the census's
+// clearest case of fine retail grain with no published density: its company overview sells space
+// by the rack unit and the quarter cabinet, which is the OPPOSITE end of the market from the 30 kW
+// cabinet next door at 401 North Broad, and the pages that would say how much power such a unit
+// carries say nothing at all.
+data three_sixty_five_philadelphia_density: CabinetDensityClaim = DensityUnread {
+  obligation: "365datacenters.com Philadelphia pages read 2026-09-08 publish no per-cabinet or per-rack density for the Spring Garden site. Request the facility spec sheet named on the page.",
+}
+
+data three_sixty_five_philadelphia_university_city_density: CabinetDensityClaim = DensityUnread {
+  obligation: "365datacenters.com Philadelphia data center page read 2026-09-08 states four 180 kW UPS modules and a 1,000 kW generator for the 3701 Market site and NO per-cabinet density. UPS module kilowatts are room capacity and must not be divided into a cabinet figure. Raw-byte confirmed 2026-09-09 under a subject control (HTTP 200, full browser user-agent): 'Philadelphia' occurs 33 times, so the instrument reached the facility surface; 'kW' occurs exactly twice and both are plant - '4 x 180 kW' UPS modules and 'Dedicated onsite 1000 kW diesel generator' - and 'kVA' zero times. Request the downloadable facility specification the page references.",
+}
+
+data three_sixty_five_philadelphia_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The operator's company overview (read 2026-08-18) sells rack units, quarter and half cabinets, but neither Philadelphia page read 2026-09-08 states the grain for these two buildings specifically. The company-level product list is not carried onto the site rows, because which products a given floor sells is a per-site fact. Confirm per site with sales.",
+}
 
 data three_sixty_five_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "365datacenters.com sales",

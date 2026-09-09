@@ -13,8 +13,8 @@ import v2.std.compilers.target_model {
 }
 import extdeps.communication.medium { Medium }
 import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.algebra { fold_list, list_append }
-import std.algebra { Empty }
+import v2.std.algebra { fold_list, FreeMonoid, list_append, list_snoc_item }
+import std.algebra { Cons, Empty }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -28,7 +28,8 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Conj, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.logic { Bool }
 import v2.std.text { String }
 
 fn emit_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -67,6 +68,66 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
         )
       }
   }
+}
+
+// WHERE PRODUCED DECLARATIONS COME FROM. A produced declaration inside a resolved tree is the
+// decl-shaped node itself: a Conj whose first child is a Named edge into an Arrow — exactly the
+// shape emit_produced_decl_inner_arrow and produced_decl_subject_from_decl consume, so collection
+// never synthesizes a wrapper node. The fold is total and pure: it reports every decl-shaped node
+// and never recurses into one (a declaration owns its subtree). How many declarations a
+// composition expects, and what a zero or surplus population means, is the caller's admission
+// policy — never a silent filter here.
+// The children match lives behind a declared FreeMonoid<Edge> parameter because the v1 seed
+// stamps pattern variables from a declared parameter type, not from a field-access scrutinee:
+// matching node.children directly leaves the Cons head as an unresolved T (no field 'label' on
+// type 'T'), and routing the same lookup through list_at_optional fails its generic instantiation
+// when the callee is typechecked lazily from inside the recursive collector cluster.
+fn produced_decl_children_have_decl_head(children: FreeMonoid<Edge>) -> Bool {
+  match children {
+    Empty => false
+    Cons { head: first, tail: _ } =>
+      match first.label {
+        Named { name: _ } =>
+          match first.target.kind {
+            TypeNode { connective: Arrow } => true
+            _ => false
+          }
+        Positional => false
+      }
+  }
+}
+
+fn produced_decl_node_is_decl(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } => produced_decl_children_have_decl_head(children: node.children)
+    _ => false
+  }
+}
+
+fn produced_decl_conjs_in_children(
+  children: FreeMonoid<Edge>,
+  acc: FreeMonoid<Node>
+) -> FreeMonoid<Node> {
+  match children {
+    Empty => acc
+    Cons { head: e, tail: rest } =>
+      produced_decl_conjs_in_children(
+        children: rest,
+        acc: produced_decl_conjs_in_tree_into(node: e.target, acc: acc)
+      )
+  }
+}
+
+fn produced_decl_conjs_in_tree_into(node: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
+  if produced_decl_node_is_decl(node: node) {
+    list_snoc_item(xs: acc, item: node)
+  } else {
+    produced_decl_conjs_in_children(children: node.children, acc: acc)
+  }
+}
+
+fn produced_decl_conjs_in_tree(root: Node) -> FreeMonoid<Node> {
+  produced_decl_conjs_in_tree_into(node: root, acc: Empty)
 }
 
 fn emit_produced_decl_with_target(
