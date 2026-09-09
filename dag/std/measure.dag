@@ -152,6 +152,10 @@ fn milli_per_unit() -> Nat {
   1000
 }
 
+fn micro_per_unit() -> Nat {
+  milli_per_unit() * milli_per_unit()
+}
+
 fn mega_factor() -> Nat {
   1000 * 1000
 }
