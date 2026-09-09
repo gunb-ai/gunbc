@@ -3,9 +3,26 @@ module gunbc.plans.compile_clean_forcecheck
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, AlignRight }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
+import gunbc.compiler_diagnostic_seed_projection { compiler_diagnostic_seed_projection_paragraphs }
+import v2.std.algebra { list_append, list_map }
 
+// THE RECEIPT SECTION IS RENDERED, NOT AUTHORED HERE. The body is three pieces rather than one
+// literal so the CompilerDiagnostic seed-projection paragraphs come from the typed rows in
+// gunbc.compiler_diagnostic_seed_projection, which is this receipt's single authority. Authoring
+// them here beside a citation of the carrier is the exact fork section 4 of this document already
+// records itself committing once, and the drift gate now reverts it rather than a reviewer.
 fn compile_clean_forcecheck_body() -> List<MarkdownBlock> {
+  list_append(
+    left: list_append(
+      left: compile_clean_forcecheck_head_blocks(),
+      right: list_map(xs: compiler_diagnostic_seed_projection_paragraphs(), f: p)
+    ),
+    right: compile_clean_forcecheck_tail_blocks()
+  )
+}
+
+fn compile_clean_forcecheck_head_blocks() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** historical diagnosis (execution-proven) + live **(A) partition design**. The 10-name / 102-site blast radius is a 2026-06-21 capture, not a live census. **DESIGN §5 (fail-closed) is authority.** Sibling of [fail-closed-lockdown.md](fail-closed-lockdown.md) §3."),
     p(text: "**Re-verified against the live tree 2026-07-31.** `v1.compiler.infer_method` `builtin_function_registry` remains a flat global name→type map; `std.encoding` `utf8_decode_bytes` is now grounded and its old registry row is gone. Symbols, not line positions, are receipts."),
@@ -50,11 +67,13 @@ fn compile_clean_forcecheck_body() -> List<MarkdownBlock> {
       li(text: "**(C) Grounding `utf8_decode_bytes` as a real std fn — complete.** `std.encoding` now declares `utf8_decode_bytes`, and the historical registry row is gone. Its host realization still carries `utf8_decode_bytes_host_realization_marker`, which dissolves with the registry fork."),
     ]),
     h3(text: "HAND-RUST GATE receipt — CompilerDiagnostic seed projection"),
-    p(text: "**Explicit deferral. Lane: compiler-static-failure-closure (`v1-method-existence-wall` / `v1-declared-type-conformance-wall`). ROADMAP row: hand-MAINTAINED Rust to zero at v2 self-host.**"),
-    p(text: "The (B) wall adds FIVE variants to the `CompilerDiagnostic` coproduct in `.dag` (`MethodNotFound`, `MethodExistenceUndecided`, `MethodExistenceFrontierAdmitted`, `ReceiverTypeUnestablished`, `FrontierOccurrenceBudgetExceeded`). It read SIX until `DeclaredTypeConformanceUnjudged` was excluded from the PR (review 45767) and its arms went with it. Each forces an arm in two TOTAL matches in the hand-maintained seed transport `cli_run.rs` — `compile_clean_diagnostic_histogram_key` and its method-name extractor. Without those arms the seed does not compile, so they are the mechanical consequence of the `.dag` change rather than host capability chosen in Rust."),
-    p(text: "This is a different class from the gate's usual subject, and the distinction is the receipt. The gate's other explicit deferrals (the emit-surface retirement rows) are DECISION SURFACES that could live in `.dag` and are deferred for a stated reason, so they owe a dissolution schedule of their own. `cli_run::selection_control_input_sources` stood in that list until 2026-08-15, when it was deleted with affected-set selection; a deferral discharged by deletion leaves the citation naming nothing, which is the stale-citation class this document's own section 3 describes. An exhaustiveness arm owes none: it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. There is no separable work to schedule, which is why the trigger is the seed itself."),
-    p(text: "**Checkable receipt — the hand-Rust carrier census is flat; only arm count moved.** THE FIGURES ARE NOT REPEATED HERE, AND THAT IS THE POINT. They live once, on the carrier named in the next paragraph, beside the coproduct whose extension forces the arms; each is stated there with the exact command that reproduces it, so a reader checks the receipt by running those commands rather than by trusting either copy. This paragraph carried its own copy of the numbers until review 45565 quoted them back after they had been re-derived on the carrier and not here — the §3 fork doing exactly what §3 says it does, in a paragraph whose very next sentence already named the carrier as the single authority. A receipt duplicated across two carriers is worse than one in the wrong place: both read as authoritative, they diverge silently, and the stale one is as likely to be cited as the live one. The prior drift is itself instructive and is recorded on the carrier: the row read five variants and 13 lines after a sixth landed (review 45501), and the fn census it quoted was never reproducible by any command at all."),
-    p(text: "`compiler_tests.rs` is GENERATED, not hand-written: it is emitted from `src/v1/compiler_tests_rust.dag` by the stage0 emit and is claimed by the derived generated population (`gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths`), so its line growth is witness text authored in `.dag` and is not hand-Rust surface. The authority for this receipt is the carrier, `v1.compiler.core` `compiler_diagnostic_seed_projection_note`, beside the coproduct whose extension forces the arms. THIS DOC IS A PROJECTION of this plan and is regenerated by the generated-artifact gate, so the receipt is authored here; a receipt written into the .md alone is reverted on the next heal."),
+    p(text: "**Explicit deferral. ROADMAP row: hand-MAINTAINED Rust to zero at v2 self-host.** THE PARAGRAPHS THAT FOLLOW ARE RENDERED from the typed rows in `gunbc.compiler_diagnostic_seed_projection`, which is the single authority for this receipt. Those rows replaced a `String` data row in `v1.std.core` that seven lanes had written into (review 62020; DESIGN §4c — a receipt, a deferral schedule and a count are not program data). This document restated that row in four hand-authored paragraphs until the migration, which is the §3 fork this section had already recorded itself committing once (review 45565 quoted figures back from here after they had been re-derived on the carrier). Editing the rendered text without editing the rows is reverted on the next heal."),
+  ]
+}
+
+fn compile_clean_forcecheck_tail_blocks() -> List<MarkdownBlock> {
+  [
+    p(text: "`compiler_tests.rs` and `v1_std_core.rs` are GENERATED, not hand-written, so their growth is authored in `.dag` and is not hand-Rust surface. That classification is DERIVED by `gunbc.stage0_rust_source_lifecycle_scaffold` `derived_generated_stage0_repo_paths` and `gunbc.generated_artifact` rather than asserted here, and the receipt's dispositions name no generated file."),
     h2(text: "5. (A) partition design"),
     p(text: "**Two facts must be separated** at the call-head builtin-resolution seam:"),
     ol(items: [

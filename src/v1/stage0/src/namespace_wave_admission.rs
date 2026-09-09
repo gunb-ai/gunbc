@@ -101,6 +101,7 @@ pub enum NamespaceDeltaDisposition {
     NewUnresolvedness,
     NewPoolCoincidenceResolution,
     AuthoredReferenceResolution,
+    DerivedGeneratorInputResolution,
     UnexplainedSubjectMotion,
     NotEvaluated,
 }
@@ -121,6 +122,9 @@ pub fn disposition_label(d: NamespaceDeltaDisposition) -> &'static str {
         NamespaceDeltaDisposition::NewUnresolvedness => "NewUnresolvedness",
         NamespaceDeltaDisposition::NewPoolCoincidenceResolution => "NewPoolCoincidenceResolution",
         NamespaceDeltaDisposition::AuthoredReferenceResolution => "AuthoredReferenceResolution",
+        NamespaceDeltaDisposition::DerivedGeneratorInputResolution => {
+            "DerivedGeneratorInputResolution"
+        }
         NamespaceDeltaDisposition::UnexplainedSubjectMotion => "UnexplainedSubjectMotion",
         NamespaceDeltaDisposition::NotEvaluated => "NotEvaluated",
     }
@@ -138,7 +142,8 @@ pub fn disposition_auto_admitted(d: NamespaceDeltaDisposition) -> bool {
         NamespaceDeltaDisposition::SameDeclarationIdentityRebind
         | NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved
         | NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta
-        | NamespaceDeltaDisposition::AuthoredReferenceResolution => true,
+        | NamespaceDeltaDisposition::AuthoredReferenceResolution
+        | NamespaceDeltaDisposition::DerivedGeneratorInputResolution => true,
         NamespaceDeltaDisposition::TargetChanged
         | NamespaceDeltaDisposition::NewAmbiguity
         | NamespaceDeltaDisposition::NewUnresolvedness
@@ -153,7 +158,7 @@ pub const DISPOSITION_AUTHORITY_MODULE: &str = "gunbc.compiler_frontend_program_
 pub const DISPOSITION_AUTHORITY_DECL: &str = "NamespaceDeltaDisposition";
 
 /// Every label this host enum carries, in the authority's own spelling.
-pub const DISPOSITION_LABELS: [&str; 10] = [
+pub const DISPOSITION_LABELS: [&str; 11] = [
     "SameDeclarationIdentityRebind",
     "UnusedSubjectMembershipRemoved",
     "ExplicitlyEvaluatedZeroDelta",
@@ -162,6 +167,7 @@ pub const DISPOSITION_LABELS: [&str; 10] = [
     "NewUnresolvedness",
     "NewPoolCoincidenceResolution",
     "AuthoredReferenceResolution",
+    "DerivedGeneratorInputResolution",
     "UnexplainedSubjectMotion",
     "NotEvaluated",
 ];
@@ -2020,6 +2026,7 @@ pub fn adjudicate(
                 base_set,
                 head_set,
                 locally_authored_claim_added(head, base_record, head_record, &key.1),
+                derived_generator_input_binding(module, head_set),
             );
             deltas.push(NamespaceDelta {
                 subject: DeltaSubject::Binding {
@@ -2196,6 +2203,36 @@ fn admission_consumed_at_base(
     }
 }
 
+/// Whether a binding this module gained is the mechanical image of its GENERATOR'S DECLARED
+/// INPUT RELATION.
+///
+/// THE QUESTION IS NOT "IS THIS MODULE GENERATED". A generated module is exactly where a wrong
+/// binding has no human reader, so exempting the category would be the fail-open direction of the
+/// same conflation the `0 -> 1` split repaired. The question is whether the generator's OWN
+/// DECLARED INPUTS explain the binding: `derived_row_roster` declares that the roster is produced
+/// by reading the `.dag` files of `ROW_MODULE`, so a roster binding whose every candidate is a
+/// module of that directory is the deterministic consequence of a file the change adds, and is
+/// decidable here from the generator's constants rather than from a reader's judgement.
+///
+/// EVERY OTHER BINDING A DERIVED MODULE ACQUIRES STILL REFUSES, and that refusal is this arm's
+/// positive control rather than an unhandled case: a roster binding to a module OUTSIDE its
+/// generator's input directory is not explained by the generator, so it stays
+/// `NewPoolCoincidenceResolution`.
+fn derived_generator_input_binding(module: &str, head: &BTreeSet<String>) -> bool {
+    let roster_module = crate::cli_run::derived_row_roster::ROSTER_MODULE;
+    if module != roster_module {
+        return false;
+    }
+    let input_prefix = format!("{}.", crate::cli_run::derived_row_roster::ROW_MODULE);
+    !head.is_empty()
+        && head.iter().all(|candidate| {
+            candidate != roster_module
+                && candidate
+                    .strip_prefix(&input_prefix)
+                    .is_some_and(|stem| !stem.contains('.'))
+        })
+}
+
 /// Which disposition a changed candidate SET carries.
 ///
 /// EVERY ARM IS OVER SETS, NOT WINNERS. `1 -> 0` stopped denoting anything; `1 -> 2` now admits
@@ -2209,6 +2246,17 @@ fn admission_consumed_at_base(
 /// the repair the wall wants, and the state it refused. Opposite owners, opposite repairs, one
 /// symbol: DESIGN's state-space conflation.
 ///
+/// `0 -> 1` HAS A THIRD STATE, AND IT IS THE ONE A GENERATED MODULE INHABITS. The `authored_here`
+/// discriminator presumes a module that HAS an author to consult. A DERIVED module does not: its content
+/// is produced by a generator, `authored_here` is false for every binding it will ever acquire,
+/// and so every binding it gains reads as a coincidence in the pool. `derived_generator_input`
+/// answers the question authorship cannot — is this binding THE MECHANICAL IMAGE OF THE
+/// GENERATOR'S DECLARED INPUT RELATION, the deterministic consequence of a source file the change
+/// adds. It is deliberately NOT "the module is generated": admitting that category would
+/// auto-admit every binding any generated module ever acquires, on the one surface where a wrong
+/// binding has no human reader. A generated module acquiring a binding its generator's inputs do
+/// not explain stays `NewPoolCoincidenceResolution` and stays refused.
+///
 /// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
 /// consults authorship (`membership_declared`, over `membership_bound_through`), which admitted
 /// the membership edge of the very change this arm refused. So `authored_here` is passed in, not
@@ -2217,6 +2265,7 @@ fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
     authored_here: bool,
+    derived_generator_input: bool,
 ) -> NamespaceDeltaDisposition {
     if head.is_empty() {
         return NamespaceDeltaDisposition::NewUnresolvedness;
@@ -2224,6 +2273,8 @@ fn binding_disposition(
     if base.is_empty() {
         return if authored_here {
             NamespaceDeltaDisposition::AuthoredReferenceResolution
+        } else if derived_generator_input {
+            NamespaceDeltaDisposition::DerivedGeneratorInputResolution
         } else {
             NamespaceDeltaDisposition::NewPoolCoincidenceResolution
         };
