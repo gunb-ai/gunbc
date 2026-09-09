@@ -4,23 +4,37 @@ import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import test.claim.colo_cabinet_density_witness { established_watts }
 import extdeps.colo.types {
-  CabinetDensityClaim,
+  CabinetDensityClaim, ColoFacilityRow,
   RetailGrainStanding, retail_grain_offers_single_cabinet,
+  AddressStanding, address_is_listed,
 }
-import extdeps.colo.databank { databank_lga3_density, databank_lga3_retail_grain }
-import extdeps.colo.critical_systems_realty { csr_orny1_density, csr_orny1_retail_grain }
-import extdeps.colo.hivelocity { hivelocity_ogb1_density, hivelocity_ogb1_retail_grain }
+import extdeps.colo.databank { databank_lga3_density, databank_lga3_retail_grain, databank_lga3_orangeburg }
+import extdeps.colo.critical_systems_realty {
+  csr_orny1_density, csr_orny1_retail_grain, csr_orny1_orangeburg,
+}
+import extdeps.colo.hivelocity {
+  hivelocity_ogb1_density, hivelocity_ogb1_retail_grain, hivelocity_ogb1_orangeburg,
+}
 import extdeps.colo.long_island_interconnect {
   long_island_interconnect_density, long_island_interconnect_retail_grain,
+  long_island_interconnect_westbury,
 }
-import extdeps.colo.nyi { nyi_long_island_density, nyi_long_island_retail_grain }
-import extdeps.colo.stafford_associates { stafford_density, stafford_retail_grain }
-import extdeps.colo.vastnet { vastnet_density, vastnet_retail_grain }
-import extdeps.colo.continuity_centers { continuity_centers_density, continuity_centers_retail_grain }
-import extdeps.colo.tierpoint { tierpoint_hawthorne_density, tierpoint_hawthorne_retail_grain }
-import extdeps.colo.equinix { equinix_ny13_density, equinix_ny13_retail_grain }
+import extdeps.colo.nyi { nyi_long_island_density, nyi_long_island_retail_grain, nyi_long_island }
+import extdeps.colo.stafford_associates {
+  stafford_density, stafford_retail_grain, stafford_setauket,
+}
+import extdeps.colo.vastnet { vastnet_density, vastnet_retail_grain, vastnet_melville }
+import extdeps.colo.continuity_centers {
+  continuity_centers_density, continuity_centers_retail_grain, continuity_centers_woodbury,
+}
+import extdeps.colo.tierpoint {
+  tierpoint_hawthorne_density, tierpoint_hawthorne_retail_grain,
+  tierpoint_hawthorne_hwt, tierpoint_hawthorne_hw2,
+}
+import extdeps.colo.equinix { equinix_ny13_density, equinix_ny13_retail_grain, equinix_ny13 }
 import extdeps.colo.three_sixty_five {
   three_sixty_five_commack_density, three_sixty_five_commack_retail_grain,
+  three_sixty_five_commack,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -120,4 +134,64 @@ test fn w_ny_unstated_grain_is_not_an_offer() -> Bool {
     && retail_grain_offers_single_cabinet(g: hivelocity_ogb1_retail_grain) == false
     && retail_grain_offers_single_cabinet(g: csr_orny1_retail_grain) == false
     && retail_grain_offers_single_cabinet(g: nyi_long_island_retail_grain) == false
+}
+
+// THE TWELVE FACILITY ROWS THEMSELVES, WHICH NOTHING READ UNTIL NOW. Review 62921: the density and
+// grain rows were enrolled and the ColoFacilityRow declarations they hang off were not, so
+// `ColoFacilityRow` was a type no fold outside its own carrier modules touched. That is DESIGN
+// section 3c red - and it is the THIRD set this file has had to enrol, after its own duplicate
+// folds and two grain rows. The pattern is worth naming rather than fixing quietly: each time I
+// enrolled the rows I was thinking about and left the ones I was not, which is why the header's
+// claim to prove "every row this lane authored" kept being false in a new place. It is now stated
+// against what the conjunctions below contain rather than against what the file was written to do.
+//
+// REGION IS THE DISCRIMINATION, NOT A TAUTOLOGY. Every row here is asserted NY because this lane's
+// subject is New York, and the census carries facilities in other regions in these same operator
+// modules - TierPoint's Pennsylvania rows and DataBank's New Jersey obligation sit feet away. A row
+// filed under the wrong region, or a New Jersey row copied here as a template and left unedited,
+// reds this test. That has already happened once in this census: a Summit Secaucus figure was
+// withdrawn after its wording proved to sit under a Chicago-area promotional block.
+test fn w_ny_facility_rows_are_all_in_new_york() -> Bool {
+  databank_lga3_orangeburg.region_code == "NY"
+    && csr_orny1_orangeburg.region_code == "NY"
+    && hivelocity_ogb1_orangeburg.region_code == "NY"
+    && tierpoint_hawthorne_hwt.region_code == "NY"
+    && tierpoint_hawthorne_hw2.region_code == "NY"
+    && equinix_ny13.region_code == "NY"
+    && long_island_interconnect_westbury.region_code == "NY"
+    && nyi_long_island.region_code == "NY"
+    && stafford_setauket.region_code == "NY"
+    && vastnet_melville.region_code == "NY"
+    && three_sixty_five_commack.region_code == "NY"
+    && continuity_centers_woodbury.region_code == "NY"
+}
+
+// THE CO-LOCATION IS A FACT ABOUT THE BUILDING AND IS ASSERTED AS ONE. NYI and Long Island
+// Interconnect are two operators selling in one Westbury building, which is why their density
+// figures agree and their grain readings do not. Elsewhere in this file that pair is what makes a
+// transferred grain reading go red; here it is the premise that makes the pair meaningful at all.
+// If either row's municipality is ever edited apart from the other, the co-location claim the grain
+// tests rest on has silently stopped being true, and this is where that surfaces.
+test fn w_the_westbury_pair_is_one_municipality() -> Bool {
+  long_island_interconnect_westbury.municipality == "Westbury"
+    && nyi_long_island.municipality == "Westbury"
+}
+
+// A STREET IS READ OR IT IS AN OBLIGATION, AND VASTNET IS WHY THE ARM EXISTS. That operator
+// publishes a PO box and no street, so its row is AddressUnread carrying what to ask for. Every
+// other facility here published a street somebody read. The rule this defends is the census's
+// oldest: an address is never reconstructed from a directory, a PO box, or a co-located operator's
+// page. Filling Vastnet's street in from any of those - which is a five-minute temptation for
+// whoever wants a complete-looking table - reds this test.
+//
+// Before this test the AddressStanding arms had NO consumer anywhere in the corpus, so that rule
+// was enforced by authorial discipline alone. It is now enforced by execution.
+test fn w_addresses_are_read_or_owed_never_reconstructed() -> Bool {
+  address_is_listed(a: vastnet_melville.address) == false
+    && address_is_listed(a: databank_lga3_orangeburg.address)
+    && address_is_listed(a: long_island_interconnect_westbury.address)
+    && address_is_listed(a: nyi_long_island.address)
+    && address_is_listed(a: tierpoint_hawthorne_hwt.address)
+    && address_is_listed(a: tierpoint_hawthorne_hw2.address)
+    && address_is_listed(a: continuity_centers_woodbury.address)
 }

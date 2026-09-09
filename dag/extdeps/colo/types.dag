@@ -238,6 +238,23 @@ type RetailGrainStanding
   | CageOrSuiteMinimum { wording: NonEmptyStr, citation: NonEmptyStr }
   | RetailGrainUnread { obligation: NonEmptyStr }
 
+// WHETHER A STREET WAS READ, WHICH IS THE ADDRESS AXIS'S ONLY QUESTION AND HAD NO CONSUMER AT ALL.
+// AddressStanding has carried two arms since the carrier was written and no witness in the corpus
+// exercised either (review 62921 found the facility rows dangling; checking the address arm while
+// enrolling them found it unexercised everywhere, not merely here). An arm nothing reads is an arm
+// nothing defends: the census's rule that a street is READ or is an obligation, never reconstructed
+// from a PO box or a directory, was enforced by authorial discipline alone.
+//
+// FALSE MEANS NOBODY HAS READ A STREET, WHICH IS NOT THE SAME AS THE FACILITY LACKING ONE. Every
+// facility has an address; AddressUnread says this row does not carry it and names what to read.
+// A caller that needs the obligation text matches the arm.
+fn address_is_listed(a: AddressStanding) -> Bool {
+  match a {
+    AddressListed { street, citation } => true,
+    AddressUnread { obligation } => false,
+  }
+}
+
 // THE GRAIN QUESTION A CONSUMER ACTUALLY ASKS, and it lives here because two witness modules had
 // independently folded these three arms into a Bool under two different names - review 62870, and
 // DESIGN section 3's nicknaming failure exactly: one concept, two names, so a later arm added to
