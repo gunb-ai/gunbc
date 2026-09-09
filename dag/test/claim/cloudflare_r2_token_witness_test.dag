@@ -51,7 +51,6 @@ import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_row
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.human_intervention {
   FleetOnce,
-  ProvisioningHumanBurden,
   human_intervention_count_at
 }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
@@ -61,7 +60,7 @@ import gunbc.cloudflare.r2_token_mint {
   admit_r2_object_read_api_mint,
   cloudflare_r2_token_mint_frontier_rows,
   vendor_cloudflare_frontier_rows,
-  cloudflare_account_token_bootstrap_intervention
+  cloudflare_r2_token_human_burden
 }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -193,9 +192,7 @@ test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Boo
     && shape_grants_include_r2_object_read(shape: cloudflare_r2_object_read_token_shape())
     && !shape_grants_include_r2_object_read(shape: cloudflare_bootstrap_token_shape())
     && human_intervention_count_at(
-      burden: ProvisioningHumanBurden {
-        interventions: [cloudflare_account_token_bootstrap_intervention()]
-      },
+      burden: cloudflare_r2_token_human_burden(),
       frequency: FleetOnce
     ) == 1
     && cloudflare_bootstrap_token_shape().acquisition == HumanDashboardAcquired
@@ -321,6 +318,11 @@ test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
       frontier_row_names_decl(
         row: row,
         ref: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
+      ))
+    && any(cloudflare_r2_token_mint_frontier_rows, row =>
+      frontier_row_names_decl(
+        row: row,
+        ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "cloudflare_r2_token_human_burden"),
       ))
 }
 

@@ -7,6 +7,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
+  ProvisioningHumanBurden,
   FleetOnce,
   NoDischargeSiteModeled,
 }
@@ -62,6 +63,13 @@ data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
       description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
     ),
   ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "cloudflare_r2_token_human_burden"),
+    reason: "no executing consumer of the FleetOnce bootstrap burden; witness is not a consumer",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration consumes cloudflare_r2_token_human_burden on an executing converge or gunbc-run entry that prices the dashboard bootstrap; a witness that the burden exists does not fire this",
+    ),
+  ),
 ]
 
 data vendor_cloudflare_frontier_rows: List<FrontierRow> = [
@@ -113,6 +121,12 @@ fn cloudflare_account_token_bootstrap_intervention() -> HumanIntervention {
       ""
     ) as NonEmptyStr,
     completion_evidence: NoDischargeSiteModeled
+  }
+}
+
+fn cloudflare_r2_token_human_burden() -> ProvisioningHumanBurden {
+  ProvisioningHumanBurden {
+    interventions: [cloudflare_account_token_bootstrap_intervention()]
   }
 }
 
