@@ -108,10 +108,13 @@ data compile_clean_unlisted_import_use_enforcement_dissolve_on: DissolutionCondi
 // occurrence count was 4,621 at 3,704 distinct positions). The denominator also moved honestly:
 // 4,057 is the modules the whole-tree closure actually compiles, not the corpus's file count. The
 // certified reading is the instrument's and moves with the corpus -- the data row below carries the
-// current one, and its first two moves landed the same day as the flip: the kernel-identity guard
+// current one, and its first three moves landed the same day as the flip: the kernel-identity guard
 // closed the first defect carve-out the UnlistedImportUse ceiling row records, 4,621 -> 3,745
-// occurrences, and the field-access alias peel (masked=false at
-// v1.compiler.infer peel_alias_once_for_field_access) closed the second, 3,745 -> 3,367.
+// occurrences; the field-access alias peel (masked=false at
+// v1.compiler.infer peel_alias_once_for_field_access) closed the second, 3,745 -> 3,367; and the
+// qualified-spelling visibility fold (v1.compiler.infer build_type_env enters each imported name
+// under its qualified spelling) closed the third, 3,367 -> 3,249, moving exactly the listed-import
+// column 511 -> 393 while definer-resolvable (242) and pool-coincidence (2,614) stood unchanged.
 //
 // THE SWEEP THAT MADE THE ORDER-ONLY READING STAND SO LONG. The census's first entry point,
 // src/v1/stage0/src/bin/compile_clean_unlisted_import_census.rs, was deleted in gunbc#9160 as one
@@ -166,8 +169,8 @@ data unlisted_import_use_burndown_sizing: UnlistedImportUseSizingObservation = U
     }
   },
   denominator_modules: 4057,
-  modules_carrying: 501,
-  module_name_pairs: 1330,
+  modules_carrying: 483,
+  module_name_pairs: 1303,
   read_as: CertifiedCount
 }
 
@@ -184,9 +187,10 @@ data unlisted_import_use_burndown_sizing: UnlistedImportUseSizingObservation = U
 // runs (DESIGN 6 -- name the instrument, never transcribe its output).
 //
 // THE WORK ORDER IS THE LIST ORDER, sorted by (population x mechanical-fixability) as measured by
-// the 2026-09-09 census over the whole-tree closure (4,057 modules, 25,025 advisories across 6
-// classes after the kernel-identity guard and the field-access alias peel landed): the two
-// mechanically fixable import-list classes first (UnlistedImportUse 3,367 occurrences, then
+// the 2026-09-09 census over the whole-tree closure (4,057 modules, 24,907 advisories across 6
+// classes after the kernel-identity guard, the field-access alias peel and the qualified-spelling
+// visibility fold landed): the two
+// mechanically fixable import-list classes first (UnlistedImportUse 3,249 occurrences, then
 // UnlistedVariantValueUse 3,670), then
 // the two declared-admission rosters whose instances each carry their own triggers
 // (ServiceConfigReferenceJudgmentDeferred 15, MethodExistenceFrontierAdmitted 2), then the two
@@ -224,7 +228,7 @@ data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
   AdvisoryClassCeilingRow {
     class_name: "UnlistedImportUse" as NonEmptyStr,
     ceiling: MechanicallyFixableNow {
-      repair: "add the referenced name to the referencing module's import name list (or add the import edge); the resolver already attributes every row's binding source, so the repair is derivable from the census worklist. TWO CLOSED CARVE-OUTS, defects that lived inside the class. FIRST: the emitter also charged references whose RESOLVED BINDING is a kernel-minted identity (ident span <kernel:NAME>) -- synthetic formal nodes of imported generic fns reached through the ancestry overlay, and authored occurrences of lexically-introduced type parameters. No import-list edit can discharge such a row: the binding is not import-governed, and adding the name would rebind the reference, not repair a listing gap. The pre-fix census under-counted the defect at 19 by measuring occurrence SPANS; measured by binding it was 876 of 4,621. v1.compiler.infer_resolve now guards the emission with v1.compiler.core resolved_node_is_kernel_identity_for_name, and the discriminating witness test.claim.undeclared_bare_type_reference_class_witness_test imported_generic_call_charges_no_unlisted_import_use_on_the_formal is enrolled (RED pre-fix, GREEN post). SECOND: the field-access alias peel (v1.compiler.infer peel_alias_once_for_field_access) resolved an imported alias's EXPANSION under the importer's masked env, charging the definer tree's argument names against an import list that could never list them honestly -- the names are the definer's locals and the definer's own module compiles clean. The masked-boundary authority (v1.compiler.infer_resolve resolve_node_bounded_masked_boundary) states the invariant this violated: grounding recursions descend into defining-module structure with masked=false. The peel now resolves with masked=false, the census moved 3,745 -> 3,367 occurrences (501 modules, 1,330 pairs), and the discriminating witness test.claim.undeclared_bare_type_reference_class_witness_test constructing_through_an_imported_alias_charges_no_unlisted_import_use_on_the_expansion is enrolled (RED pre-fix, GREEN post). The class's remaining population is the genuine burndown worklist."
+      repair: "add the referenced name to the referencing module's import name list (or add the import edge); the resolver already attributes every row's binding source, so the repair is derivable from the census worklist. TWO CLOSED CARVE-OUTS, defects that lived inside the class. FIRST: the emitter also charged references whose RESOLVED BINDING is a kernel-minted identity (ident span <kernel:NAME>) -- synthetic formal nodes of imported generic fns reached through the ancestry overlay, and authored occurrences of lexically-introduced type parameters. No import-list edit can discharge such a row: the binding is not import-governed, and adding the name would rebind the reference, not repair a listing gap. The pre-fix census under-counted the defect at 19 by measuring occurrence SPANS; measured by binding it was 876 of 4,621. v1.compiler.infer_resolve now guards the emission with v1.compiler.core resolved_node_is_kernel_identity_for_name, and the discriminating witness test.claim.undeclared_bare_type_reference_class_witness_test imported_generic_call_charges_no_unlisted_import_use_on_the_formal is enrolled (RED pre-fix, GREEN post). SECOND: the field-access alias peel (v1.compiler.infer peel_alias_once_for_field_access) resolved an imported alias's EXPANSION under the importer's masked env, charging the definer tree's argument names against an import list that could never list them honestly -- the names are the definer's locals and the definer's own module compiles clean. The masked-boundary authority (v1.compiler.infer_resolve resolve_node_bounded_masked_boundary) states the invariant this violated: grounding recursions descend into defining-module structure with masked=false. The peel now resolves with masked=false, the census moved 3,745 -> 3,367 occurrences (501 modules, 1,330 pairs), and the discriminating witness test.claim.undeclared_bare_type_reference_class_witness_test constructing_through_an_imported_alias_charges_no_unlisted_import_use_on_the_expansion is enrolled (RED pre-fix, GREEN post). THIRD: source_visible_names (v1.compiler.infer build_type_env) carried only BARE spellings, so the leaf check fired on every masked QUALIFIED use -- including `q.def.QFoo` beside `import q.def { QFoo }`, a row no import-list edit could discharge. The import-scoped policy's gate is that the import list says which qualified names are visible (namespace-resolution-design.md section 7); the fold now enters each imported name under its qualified spelling as well (selective imports qualify exactly the listed names; is-all imports qualify the module's own interface names, never ancestry names). The census moved 3,367 -> 3,249 occurrences (483 modules, 1,303 pairs), exactly the listed-import column 511 -> 393 with definer-resolvable (242) and pool-coincidence (2,614) unchanged, and the discriminating witness test.claim.undeclared_bare_type_reference_class_witness_test qualified_use_of_a_listed_import_charges_no_unlisted_import_use is enrolled (RED pre-fix, GREEN post) beside qualified_use_without_any_import_still_charges_unlisted_import_use (the gate still gates). The class's remaining population is the genuine burndown worklist."
     },
     census: DeclarationRef {
       module_path: "gunbc.instrument_targets",
