@@ -14,7 +14,7 @@ import product.cable_leg_observation {
   ExtendedRateObserved,
 }
 import product.cable_plant_converge {
-  CablePlant, cable_plant, CableLegReading, LegReadingTaken, CablePlantConvergence,
+  CablePlant, cable_plant, CableLegReading, LegReadingTaken, LegNeverRead, CablePlantConvergence,
   converge_cable_plant,
 }
 import gunbc.fleet_intent_network {
@@ -36,19 +36,31 @@ import gunbc.fleet_intent_network {
 //   - BOTH second-function netdevs come up from the one leg, with distinct MACs the switch sees on
 //     the same lane. Only one of them may carry the rail address.
 //
-// THE LEG LINKS AT 50G, NOT 100G, AND THE CAUSE IS THE COMPLIANCE CODING ALONE. The legs are
+// THE LEG LINKS AT 50G, NOT 100G, AND THE COMPLIANCE CODING IS A DEMONSTRATED BLOCKER. The legs are
 // QSFP28-coded: extended specification compliance 0x0B ("100GBASE-CR4 or 25GBASE-CR CA-L") at byte
 // 192, with byte 116 read as 00h -- so nothing attests 100GBASE-CR2. The ConnectX-7 firmware
 // therefore derives "Supported Cable Speed 50G_2X" and refuses 100G_2X with "Cable speed not
-// enabled" (mstlink status opcode 16).
+// enabled" (mstlink status opcode 16). That the coding blocks the mode is observed. Whether it is
+// the ONLY blocker is NOT, and this file must not say otherwise.
 //
-// THE COPPER IS NOT THE LIMIT, and the two supports for that are different claims. Byte 222 says
-// 6Ah = 106, which at the specification's 250 MBd unit is 26,500 MBd -- 26.5 GBd, exactly right for
-// 50G PAM4 per lane. That is what the module DECLARES about itself; it is not a measurement of the
-// electrical path. What establishes the path is separate and was observed: both ends link stably
-// when forced to 50G-CR2. Neither alone carries the conclusion, so both are named. An earlier head of this file said "a nominal rate of 25.5 Gb/s per lane", which was
-// `ethtool` rendering byte 140's FFh escape as 255 x 100 and was never a reading. The same copper
-// coded 100GBASE-CR2 links at 100G; the fix is the coding, not the cable.
+// WHAT BYTE 222 DOES AND DOES NOT ESTABLISH. It says 6Ah = 106, which at the specification's
+// 250 MBd unit is a declared nominal 26,500 MBd. That is EEPROM METADATA: it is what the module
+// declares about itself, and SFF-8636 places physical-layer behaviour outside its own scope, so no
+// byte in it qualifies the copper electrically. Two earlier heads of this block got this wrong in
+// two different directions -- first resting the conclusion on the byte, then resting it on the
+// stability of the running 50G link. extdeps.ethernet.link_mode rules out the second in terms:
+// operating in 50GBASE-CR2 does not certify 100GBASE-CR2, the modes differ in modulation, baud and
+// insertion-loss budget, and the higher-rate path has never been demonstrated on this assembly.
+//
+// AND 26.5 GBd IS NOT THE MODE'S RATE. ieee_100gbase_cr2 carries 26.5625 GBd; byte 222 has 250 MBd
+// resolution, so 106 is a quantized nominal consistent with the 50G PAM4 family and is not equal to
+// the mode's figure. Reading it as an exact match would be a comparison the field cannot support
+// without a modeled quantization relation, which does not exist yet.
+//
+// SO THE HONEST STANDING CLAIM: the coding does not attest the required mode and the NIC refuses it
+// today. Recoding is the indicated next step and its outcome is an EXPERIMENT, not a foregone
+// result -- write the coding, read it back off the same leg, observe 100G_2X actually enabled, and
+// only then is anything established about the copper.
 
 // THE EEPROM SIDE OF THIS ROW IS NOT SPELLED OUT HERE. It was: three fields carried the identifier,
 // the compliance byte and the nominal rate as prose strings and a bare count, which is a second
@@ -177,13 +189,40 @@ data srv10_fabric_link_observed: Bool = true
 //
 // The required mode is the rail's, not the cable's: 100GBASE-CR2 is what a two-lane leg must attest
 // for this fabric to run at the speed it was bought for.
+// TWO LEGS WERE READ, NOT EIGHT, AND THE PLANT SAYS SO. The raw dump on 2026-09-08 covered
+// spark-a3ee and spark-ac79 -- both in cage 1, at lanes 1 and 3. The other six endpoints, including
+// every leg in cage 2, have never been read.
+//
+// An earlier head of this row mapped ALL EIGHT lanes to the one measured coding. That is the
+// absorbing fallback DESIGN section 5 forbids, wearing the costume of a receipt: it converted six
+// unknown legs into LegReadingTaken and so bypassed the exact refusal cable_plant_converge exists to
+// produce. Worse for this subject specifically -- the legs are FIELD PROGRAMMABLE, which is the whole
+// reason this model exists, so "same SKU" cannot stand in for "same coding" even as a guess, and
+// reprogramming one leg would have silently reprogrammed all eight in the model.
+data fabric_dump_hosts: List<NonEmptyStr> = [
+  "spark-a3ee" as NonEmptyStr,
+  "spark-ac79" as NonEmptyStr,
+]
+
+fn fabric_leg_was_dumped(o: FabricLaneObserved) -> Bool {
+  length(filter(fabric_dump_hosts, h => h == o.spark_hostname)) > 0
+}
+
+fn fabric_leg_reading(o: FabricLaneObserved) -> CableLegReading {
+  if fabric_leg_was_dumped(o: o) {
+    LegReadingTaken {
+      endpoint: fabric_lane_interface(o: o),
+      observation: fabric_leg_cable_observed.coding,
+    }
+  } else {
+    LegNeverRead { endpoint: fabric_lane_interface(o: o) }
+  }
+}
+
 data fabric_cable_plant: CablePlant = cable_plant(
   plant: "spark fabric, CRS812 QSFP-DD breakout legs" as NonEmptyStr,
   required_mode: ieee_100gbase_cr2,
-  readings: map(fabric_lane_observations, o => LegReadingTaken {
-    endpoint: fabric_lane_interface(o: o),
-    observation: fabric_leg_cable_observed.coding,
-  }))
+  readings: map(fabric_lane_observations, o => fabric_leg_reading(o: o)))
 
 fn fabric_cable_plant_convergence() -> CablePlantConvergence {
   converge_cable_plant(subject: fabric_cable_plant)

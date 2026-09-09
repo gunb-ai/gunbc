@@ -29,7 +29,8 @@ import product.cable_leg_observation {
   cable_leg_unread_fields, cable_leg_interpretation_gaps,
   ExtendedRateObserved, ExtendedRateNotObserved,
   CableLegField, ExtendedRateField, SecondaryComplianceField,
-  cable_leg_signalling_rate,
+  PrimaryComplianceField, EncodingField, NominalRateField,
+  cable_leg_declared_nominal_rate,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -422,7 +423,7 @@ test fn an_unfollowed_escape_is_reported_as_an_unread_field() -> Bool {
 // here, which is what `ethtool` prints and what an earlier head of this work recorded as a
 // measurement. Resolution must decline instead.
 test fn an_unfollowed_escape_does_not_resolve_to_a_rate() -> Bool {
-  match cable_leg_signalling_rate(obs: escape_never_followed_leg) {
+  match cable_leg_declared_nominal_rate(obs: escape_never_followed_leg) {
     NominalRateEscaped => true
     NominalRateDirect { rate: r } => false
     NominalRateUnspecified => false

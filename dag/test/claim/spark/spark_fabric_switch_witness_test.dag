@@ -8,7 +8,7 @@ import extdeps.transceiver.sff_8636 {
   Sff8636NominalRate, NominalRateUnspecified, NominalRateDirect, NominalRateEscaped,
 }
 import std.measure { symbol_rate_count }
-import product.cable_leg_observation { cable_leg_signalling_rate }
+import product.cable_leg_observation { cable_leg_declared_nominal_rate }
 import gunbc.spark.fabric_switch_observed {
   fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
   FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
@@ -43,14 +43,18 @@ test fn the_link_speed_is_the_cable_codings_ceiling_and_forced_mode_is_required(
 }
 
 
-// BYTE 222 WAS READ ON 2026-09-08, AND IT IS 6Ah. `ethtool -m <dev> raw on` on spark-a3ee and
-// spark-ac79 (both FS QDD-400G-4QPC015 legs) returned byte 140 = FFh and byte 222 = 6Ah = 106, which
-// at the specification's 250 MBd unit is 26,500 MBd. So the escape resolves to 26.5 GBd, and the
-// 25500 that `ethtool` PRINTED was the sentinel multiplied out -- wrong by a thousand baud per unit
-// AND in the wrong quantity. This witness is what stops that figure coming back: it holds the
-// resolved rate against the byte, so reconstituting 25500 from byte 140 fails here.
-test fn the_escape_resolves_to_the_rate_byte_222_actually_holds() -> Bool {
-  match cable_leg_signalling_rate(obs: fabric_leg_cable_observed.coding) {
+// BYTE 222 WAS READ ON 2026-09-08 ON TWO LEGS, AND IT IS 6Ah. `ethtool -m <dev> raw on` on
+// spark-a3ee and spark-ac79 -- two of the fleet's eight legs, both in cage 1 -- returned byte
+// 140 = FFh and byte 222 = 6Ah = 106, which at the specification's 250 MBd unit is a DECLARED
+// nominal of 26,500 MBd. This witness is what stops the fabricated figure coming back: the wrong
+// behaviour reconstitutes 25500 by multiplying byte 140's escape out, which is what `ethtool`
+// prints and what an earlier head recorded as a measurement.
+//
+// IT IS NOT A CLAIM THAT THE LEG RUNS AT 26.5 GBd, and it is not the mode's rate: ieee_100gbase_cr2
+// carries 26.5625 GBd, and byte 222's 250 MBd resolution cannot express that. 106 is a quantized
+// nominal consistent with the 50G PAM4 family, which is a weaker and true statement.
+test fn the_escape_resolves_to_the_declared_rate_byte_222_holds() -> Bool {
+  match cable_leg_declared_nominal_rate(obs: fabric_leg_cable_observed.coding) {
     NominalRateDirect { rate: r } => symbol_rate_count(r: r) == 26500000000
     NominalRateEscaped => false
     NominalRateUnspecified => false

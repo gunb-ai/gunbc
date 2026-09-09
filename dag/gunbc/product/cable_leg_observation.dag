@@ -104,7 +104,7 @@ fn cable_leg_unread_fields(obs: CableLegObservation) -> List<CableLegField> {
           SecondaryNotObserved => [SecondaryComplianceField]
           SecondaryObserved { code: sc } => []
         },
-        match cable_leg_signalling_rate(obs: o) {
+        match cable_leg_declared_nominal_rate(obs: o) {
           NominalRateEscaped => [ExtendedRateField]
           NominalRateDirect { rate: r } => []
           NominalRateUnspecified => []
@@ -112,14 +112,18 @@ fn cable_leg_unread_fields(obs: CableLegObservation) -> List<CableLegField> {
       ], f => f))
 }
 
-// THE RATE THIS LEG ACTUALLY SIGNALS AT, escape followed where it was read. Every consumer asks
-// this rather than obs.nominal_rate, so a leg that resolved its escape and one that never had to
-// answer the same way, and a leg still standing on an unfollowed escape stays visibly escaped.
+// THE RATE THIS LEG DECLARES, escape followed where it was read -- named for what it is, because an
+// earlier head called this the rate the leg "actually signals at" and that is a claim about the wire
+// which no EEPROM byte can make. SFF-8636 is a management interface and puts physical-layer
+// behaviour outside its scope, so this is metadata: what the module says about itself, at the
+// specification's 250 MBd quantization. Every consumer asks this rather than obs.nominal_rate, so a
+// leg that resolved its escape and one that never had to answer the same way, and a leg still
+// standing on an unfollowed escape stays visibly escaped.
 // RESOLUTION REFUSES TO INVENT THE BYTE IT DOES NOT HAVE. An unread byte 222 leaves the escape
 // standing rather than falling back to multiplying byte 140 out, which extdeps.transceiver.sff_8636
 // names by name as the fabrication this subject exists to catch. Where the byte WAS read, the
 // upstream decoder says what it means and this function only decides which byte to ask.
-fn cable_leg_signalling_rate(obs: CableLegObservation) -> Sff8636NominalRate {
+fn cable_leg_declared_nominal_rate(obs: CableLegObservation) -> Sff8636NominalRate {
   match obs.nominal_rate {
     NominalRateDirect { rate: r } => NominalRateDirect { rate: r }
     NominalRateUnspecified => NominalRateUnspecified
