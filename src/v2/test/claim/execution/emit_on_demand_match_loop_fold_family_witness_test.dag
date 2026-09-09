@@ -31,7 +31,7 @@ import extdeps.realization.emit_on_demand_host {
   native_cache_workspace_root, emit_on_demand_evict_native_cache,
 }
 import extdeps.communication.medium { Medium }
-import v2.compiler.emit_module { EmitFamilyMember, emit_family }
+import v2.compiler.emit_module { EmitFamilyMember, EmittedFamilyCrate, emit_family }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_emit_host_cached_with_run_args,
@@ -233,6 +233,46 @@ fn mlf_family_native_key(members: List<EmitFamilyMember>) -> ContentHash {
     target_language: "rust",
     grain: NativeArtifact
   )
+}
+
+// THE PRIMARY FAMILY CRATE, EMITTED ONCE OUTSIDE THE CLAIM FOLD. Every native-only verdict claim
+// for this family (v2.test.long.emit_host_native_only_verdict's six match/loop/fold arms) begins
+// with the same pure walk — three primary trees, the member list, emit_family, the native key —
+// and the required floor measured all six within one runner-swing of the 500ms per-claim ceiling
+// (run 34315228217: 462-504ms cpu, loop_holds over). The members are not portable (InferredTree's
+// facts PartialFunction), so the share point is the deepest portable stage: the emitted crate
+// source plus its native key. Nullary and warm-enrolled in
+// `v2.workflow.floor_pure_producer_share` (floor_cross_claim_pure_producers_warm), which carries
+// the measured recompute/sharing/serve case; the required floor forces it during strict
+// preparation, outside every per-claim budget, and each claim pays only the cached native run.
+fn mlf_family_primary_emitted() -> Outcome<EmittedFamilyCrate> {
+  match match_primary_tree() {
+    Accepted { value: match_tree, diagnostics: _ } =>
+      match loop_primary_tree() {
+        Accepted { value: loop_tree, diagnostics: _ } =>
+          let members = mlf_family_members(
+            match_tree: match_tree,
+            loop_tree: loop_tree,
+            fold_tree: fold_primary_tree()
+          )
+          match emit_family(
+            members: members,
+            transport_target: rust_match_loop_fold_family_target_model_staging()
+          ) {
+            Accepted { value: source, diagnostics: _ } =>
+              Accepted {
+                value: EmittedFamilyCrate {
+                  source: source,
+                  native_key: mlf_family_native_key(members: members)
+                },
+                diagnostics: None
+              }
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
 }
 
 fn mlf_family_member_run(

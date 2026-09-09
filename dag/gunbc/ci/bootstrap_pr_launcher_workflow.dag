@@ -1,0 +1,141 @@
+module gunbc.ci_bootstrap_pr_launcher_workflow
+
+import std.types { String, NonEmptyStr }
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep,
+  WorkflowTrigger, WorkflowDispatch,
+  WorkflowPermissions, PermRead, PermWrite,
+  RunnerSpec
+}
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.repo_identity { gunbc_default_branch_name }
+import v2.std.optional { Present }
+
+// A ONE-SHOT LAUNCHER WHOSE ONLY CAPABILITY IS OPENING ONE EXACT PULL REQUEST.
+//
+// WHY IT EXISTS AT ALL. This repository's approval policy admits a pull_request run on whether its
+// ACTOR has ever had a commit or pull request merged here, and github-actions[bot] has neither, so
+// every heal push it actors is withheld. Standing cannot be accrued by a COMMIT, because the
+// repository is squash-only and a squash attributes the result to the PR author -- measured, 416
+// heal commits exist and zero have reached main. The remaining arm of the policy is a merged PULL
+// REQUEST, and a pull request opened with the Actions job credential is authored by
+// github-actions[bot]. So the bot must OPEN a pull request, which is the one thing no existing
+// workflow here does.
+//
+// WHY IT IS A SEPARATE WORKFLOW RATHER THAN A JOB ON AN EXISTING ONE. A workflow_dispatch workflow
+// must already exist on the DEFAULT BRANCH before it can be dispatched, so the launcher cannot be
+// introduced and used by the same pull request. That constraint is what forces the split: this
+// lands first, then it is dispatched from main.
+//
+// THE AUTHORITY IT DOES NOT TAKE, and each omission is deliberate rather than unbuilt. It does not
+// check out the repository, so no repository content is ever materialised in the job. It federates
+// to nothing and reads no secret, so no long-lived credential is reachable from it. It takes no
+// input at all -- not a branch, not a base, not a command -- so there is no argument through which
+// a caller could redirect it. contents is READ because the only thing it reads is one ref; only
+// pull_requests is write, and creating a pull request is the entire capability.
+//
+// THE BRANCH AND ITS HEAD ARE BOTH PINNED, and the SHA is the load-bearing half. Pinning only the
+// branch name would let anyone who can push to that branch choose what the bot's pull request
+// contains, which would make the bot author arbitrary content. Pinning the exact commit means the
+// launcher either opens the pull request that was reviewed or refuses.
+data bootstrap_pr_head_branch: String = "heal-canonical-author"
+
+// The exact commit reviewed as the bootstrap subject. A head that has moved is a REFUSAL, never a
+// silent retarget: the launcher's whole value is that what the bot authors was seen first.
+data bootstrap_pr_expected_head_sha: String = "c5ab56909bf9f191cda6c61cd8ed7c1587fd8c94"
+
+data bootstrap_pr_title: String = "Heal authors as the identity that actually pushes"
+
+data bootstrap_pr_launcher_workflow_name: String = "bootstrap-pr-launcher"
+
+data bootstrap_pr_launcher_job_id: String = "open"
+
+fn bootstrap_pr_launcher_permissions() -> WorkflowPermissions {
+  WorkflowPermissions {
+    contents: Present { value: PermRead },
+    pull_requests: Present { value: PermWrite },
+    issues: none,
+    actions: none,
+    id_token: none
+  }
+}
+
+// The refusal arms are typed, located and countable, and each names the state it refuses rather
+// than a generic failure: a moved head, an already-open pull request, and a create that GitHub
+// declined. The third exists because "Allow GitHub Actions to create and approve pull requests"
+// is an organisation setting this repository has never exercised -- zero pull requests here have
+// ever been authored by github-actions[bot] -- so a 403 is a REAL expected outcome and must say
+// which permission is missing rather than reading as a bug in this workflow.
+fn bootstrap_pr_launcher_open_script() -> String {
+  join([
+    "set -euo pipefail\n",
+    "API=\"https://api.github.com/repos/$GITHUB_REPOSITORY\"\n",
+    "AUTH=\"Authorization: Bearer $GITHUB_TOKEN\"\n",
+    "HEAD_BRANCH=\"", bootstrap_pr_head_branch, "\"\n",
+    "EXPECTED=\"", bootstrap_pr_expected_head_sha, "\"\n",
+    "BASE=\"", gunbc_default_branch_name, "\"\n",
+    "OBSERVED=\"$(curl -sS -H \"$AUTH\" -H 'Accept: application/vnd.github+json' \"$API/commits/$HEAD_BRANCH\" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get(\"sha\",\"\"))')\"\n",
+    "if [ -z \"$OBSERVED\" ]; then echo \"::error::BootstrapHeadUnreadable: $HEAD_BRANCH does not resolve in $GITHUB_REPOSITORY; opening NO pull request\" >&2; exit 1; fi\n",
+    "if [ \"$OBSERVED\" != \"$EXPECTED\" ]; then echo \"::error::BootstrapHeadMoved: $HEAD_BRANCH is at $OBSERVED, expected $EXPECTED. The launcher opens the reviewed commit or nothing; opening NO pull request\" >&2; exit 1; fi\n",
+    "OPEN=\"$(curl -sS -H \"$AUTH\" -H 'Accept: application/vnd.github+json' \"$API/pulls?state=open&head=$\{GITHUB_REPOSITORY%%/*}:$HEAD_BRANCH\" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')\"\n",
+    "if [ \"$OPEN\" != 0 ]; then echo \"::error::BootstrapPullRequestAlreadyOpen: $OPEN open pull request(s) already carry $HEAD_BRANCH; opening NO pull request\" >&2; exit 1; fi\n",
+    "BODY_FILE=\"$RUNNER_TEMP/bootstrap-pr-body.json\"\n",
+    "python3 -c 'import json,sys; json.dump({\"title\": sys.argv[1], \"head\": sys.argv[2], \"base\": sys.argv[3], \"body\": sys.argv[4]}, open(sys.argv[5],\"w\"))' \\\n",
+    "  \"", bootstrap_pr_title, "\" \"$HEAD_BRANCH\" \"$BASE\" \\\n",
+    "  \"Opened by the Actions job credential so this pull request is authored by github-actions[bot].\\n\\nThat authorship is the entire point: this repository is squash-only, so branch authorship cannot accrue contributor standing, and the remaining arm of the first_time_contributors policy is a merged PULL REQUEST. Merging this retires the withheld state for every future heal push.\\n\\nHead pinned to $EXPECTED by gunbc.ci.bootstrap_pr_launcher_workflow.\\n\\nEXPECT ONE APPROVAL: a pull request created with GITHUB_TOKEN gets its workflow runs in an approval-required state. That approval is the experiment, not an anomaly.\" \\\n",
+    "  \"$BODY_FILE\"\n",
+    "CODE=\"$(curl -sS -o \"$RUNNER_TEMP/bootstrap-pr-response.json\" -w '%\{http_code}' -X POST -H \"$AUTH\" -H 'Accept: application/vnd.github+json' -d @\"$BODY_FILE\" \"$API/pulls\")\"\n",
+    "if [ \"$CODE\" != 201 ]; then echo \"::error::BootstrapPullRequestRefused: GitHub answered HTTP $CODE. A 403 here means the organisation setting 'Allow GitHub Actions to create and approve pull requests' is disabled -- that is a control-plane setting, not a defect in this workflow. Response: $(cat \"$RUNNER_TEMP/bootstrap-pr-response.json\")\" >&2; exit 1; fi\n",
+    "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(\"BootstrapPullRequestOpened number=%s author=%s head=%s\" % (d[\"number\"], d[\"user\"][\"login\"], d[\"head\"][\"sha\"]))' \"$RUNNER_TEMP/bootstrap-pr-response.json\"\n"
+  ], "")
+}
+
+fn bootstrap_pr_launcher_open_step() -> Step {
+  RunStep {
+    name: Present { value: "Open the bootstrap pull request as the Actions job credential" },
+    id: none,
+    run: bootstrap_pr_launcher_open_script(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: 5 }
+  }
+}
+
+fn bootstrap_pr_launcher_job() -> Job {
+  Job {
+    id: bootstrap_pr_launcher_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: [bootstrap_pr_launcher_open_step()],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: 10 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: bootstrap_pr_launcher_permissions() }
+  }
+}
+
+data bootstrap_pr_launcher_workflow: Workflow = Workflow {
+  name: bootstrap_pr_launcher_workflow_name,
+  run_name: none,
+  on: [WorkflowDispatch { inputs: [] }],
+  concurrency: none,
+  env: none,
+  permissions: none,
+  jobs: [bootstrap_pr_launcher_job()],
+}
+
+fn expected_bootstrap_pr_launcher_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: bootstrap_pr_launcher_workflow))
+}

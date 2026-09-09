@@ -22,14 +22,37 @@ import extdeps.colo.types {
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
 }
-import extdeps.colo.databank { databank_lga4_density, databank_lga4_retail_grain }
+import extdeps.colo.databank {
+  databank_lga4_density, databank_lga4_retail_grain,
+  databank_phl1_density, databank_phl1_retail_grain,
+}
 import extdeps.colo.iron_mountain {
   iron_mountain_nje1_density, iron_mountain_wpa1_density, iron_mountain_nje1_retail_grain,
+}
+import extdeps.colo.netrality { netrality_401_n_broad_density, netrality_401_n_broad_retail_grain }
+import extdeps.colo.tierpoint {
+  tierpoint_philadelphia_density, tierpoint_allentown_density, tierpoint_bethlehem_density,
+  tierpoint_lehigh_valley_density, tierpoint_valley_forge_density,
+  tierpoint_philadelphia_retail_grain, tierpoint_allentown_retail_grain,
+  tierpoint_bethlehem_retail_grain, tierpoint_lehigh_valley_retail_grain,
+  tierpoint_valley_forge_retail_grain,
+}
+import extdeps.colo.h5 { h5_philadelphia_density, h5_philadelphia_retail_grain }
+import extdeps.colo.lightwave_networks { lightwave_philadelphia_density, lightwave_philadelphia_retail_grain }
+import extdeps.colo.flexential {
+  flexential_philadelphia_collegeville_density, flexential_philadelphia_collegeville_retail_grain,
+}
+import extdeps.colo.five_9s_digital { five_9s_allentown_density, five_9s_allentown_retail_grain }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_philadelphia_density,
+  three_sixty_five_philadelphia_university_city_density,
+  three_sixty_five_philadelphia_retail_grain,
 }
 import gunbc.colo_census_coverage {
   RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
   coverage_facility_count,
-  nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley, census_regions,
+  nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley,
+  pa_philadelphia_and_lehigh_valley, census_regions,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -663,5 +686,95 @@ test fn w_a_published_average_supports_no_bound_in_either_direction() -> Bool {
   !covers_at(d: published_average_fixture, requested: AirCoolingPublished, required: 1)
     && !covers_at(d: published_average_fixture, requested: AirCoolingPublished, required: 3000)
     && !refuses_at(d: published_average_fixture, requested: AirCoolingPublished, required: 999999)
-    && has_ceiling_for(d: air_labelled_cap_fixture, requested: AirCoolingPublished)
+    && has_ceiling_for(d: air_labelled_cap_fixture, requested: AirCoolingPublished)}
+
+// ============================================================================================
+// PENNSYLVANIA, RE-KEYED ONTO THE CARRIER RATHER THAN TRANSLATED CALL-FOR-CALL. These five witnesses
+// landed on main while this branch was open and every one of them called an accessor this branch
+// deletes - `established_watts`, `has_ceiling`, `ceiling_refuses_at` in their air-baked forms. Git
+// merged both sides with NO CONFLICT MARKERS in the ranges concerned: one side removed definitions,
+// the other side kept calling them, and the edits were nowhere near each other. A textual merge
+// cannot see that by construction, and neither can a brace count, an orphan scan or a marker grep.
+//
+// The check that found it is keen-newt-324's and generalises: AFTER ANY MERGE, FOR EACH NAME YOUR
+// BRANCH DELETED, GREP FOR A DEFINITION AND FOR CALLS. def=0 with calls>0 is the defect; def=0
+// calls=0 is clean; def>0 is your deletion being reverted. Run on this branch it printed exactly one
+// stranded module outside the four this PR edits - netrality - plus these five witnesses.
+// ============================================================================================
+
+// PHILADELPHIA PUBLISHES ONE CABINET DENSITY AND IT IS A CEILING, NOT A READING. Netrality's page
+// says "Cabinet density up to 30kW" - a marketed maximum - so it bounds from above and establishes
+// nothing about what any cabinet supplies. The original witness asserted `established_watts == 30000`,
+// which read the ceiling as a measurement; that accessor is deleted precisely because no arm can
+// honestly answer it.
+//
+// AND THE MEDIUM CHANGED WITH THE MIGRATION. That page names no cooling medium, so the row is
+// CoolingMediumUnspecified and answers NOTHING on an air question - which the second conjunct asserts
+// directly rather than through a screen, because absence of a figure is the cause and a screen answer
+// would union it with three others. The ceiling is reachable by asking for the medium the page
+// actually stated.
+test fn w_philadelphia_publishes_one_ceiling_and_no_reading() -> Bool {
+  refuses_at(d: netrality_401_n_broad_density, requested: CoolingMediumUnspecified, required: 30001)
+    && !has_figure_for(d: netrality_401_n_broad_density, requested: AirCoolingPublished)
+    && density_claim_figures(d: netrality_401_n_broad_density).length() == 1
+}
+
+// EVERY OTHER PENNSYLVANIA ROW PUBLISHED NOTHING, ASSERTED AS EMPTY INVENTORY RATHER THAN AS A
+// SENTINEL. The original folded absence into `established_watts == -1`, an in-band integer standing
+// for "no reading" on the same axis as real readings. Empty inventory is the same fact with no
+// sentinel to collide: a claim nobody read has no figures, and over a structurally non-empty carrier
+// that is exactly the unread arm.
+test fn w_every_other_pennsylvania_density_published_nothing() -> Bool {
+  density_claim_figures(d: tierpoint_philadelphia_density).length() == 0
+    && density_claim_figures(d: tierpoint_allentown_density).length() == 0
+    && density_claim_figures(d: tierpoint_bethlehem_density).length() == 0
+    && density_claim_figures(d: tierpoint_lehigh_valley_density).length() == 0
+    && density_claim_figures(d: tierpoint_valley_forge_density).length() == 0
+    && density_claim_figures(d: h5_philadelphia_density).length() == 0
+    && density_claim_figures(d: databank_phl1_density).length() == 0
+    && density_claim_figures(d: lightwave_philadelphia_density).length() == 0
+    && density_claim_figures(d: flexential_philadelphia_collegeville_density).length() == 0
+    && density_claim_figures(d: five_9s_allentown_density).length() == 0
+    && density_claim_figures(d: three_sixty_five_philadelphia_density).length() == 0
+    && density_claim_figures(d: three_sixty_five_philadelphia_university_city_density).length() == 0
+}
+
+// AN UNREAD ROW BOUNDS NOTHING, INCLUDING THE ABSURD. 1,000,000 W is the discriminating requirement
+// for the same reason 999999 is elsewhere in this file: an absent ceiling refuses nothing at all,
+// which is what separates it from a generous one. Asked on the medium the pages do not state, so a
+// carrier that answered unspecified requests would red here too.
+test fn w_unread_pennsylvania_densities_have_no_ceiling() -> Bool {
+  !refuses_at(d: h5_philadelphia_density, requested: CoolingMediumUnspecified, required: 1000000)
+    && !refuses_at(d: five_9s_allentown_density, requested: AirCoolingPublished, required: 1000000)
+    && !has_figure_for(d: h5_philadelphia_density, requested: CoolingMediumUnspecified)
+}
+
+// GRAIN AND DENSITY MOVE INDEPENDENTLY ACROSS THIS REGION, which is what makes it worth quoting at
+// all. TierPoint sells single cabinets at five sites and publishes no density anywhere; DataBank's
+// Philadelphia suite publishes neither; Netrality publishes both. A consumer reading grain off
+// density, in either direction, breaks here.
+test fn w_pennsylvania_grain_is_independent_of_density() -> Bool {
+  grain_admits_single_cabinet(g: netrality_401_n_broad_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_philadelphia_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_allentown_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_bethlehem_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_lehigh_valley_retail_grain)
+    && grain_admits_single_cabinet(g: tierpoint_valley_forge_retail_grain)
+    && grain_admits_single_cabinet(g: h5_philadelphia_retail_grain)
+    && density_claim_figures(d: tierpoint_philadelphia_density).length() == 0
+    && !grain_admits_single_cabinet(g: databank_phl1_retail_grain)
+    && !grain_admits_single_cabinet(g: lightwave_philadelphia_retail_grain)
+    && !grain_admits_single_cabinet(g: flexential_philadelphia_collegeville_retail_grain)
+    && !grain_admits_single_cabinet(g: five_9s_allentown_retail_grain)
+    && !grain_admits_single_cabinet(g: three_sixty_five_philadelphia_retail_grain)
+}
+
+// THE REGION'S OWN COVERAGE RECEIPT, FOLDED. Review 62827 found the Pennsylvania survey landing in
+// extdeps with no row in the observing layer, which is the case the coverage module exists to
+// prevent: a region somebody surveyed rendering identically to one nobody has opened. This is the
+// count RELATION, not the count - the literal is a hand-authored number a witness cannot re-derive,
+// and a test repeating it would prove only that the file was not edited.
+test fn w_the_pennsylvania_survey_is_a_recorded_measurement() -> Bool {
+  facility_count_or_sentinel(c: pa_philadelphia_and_lehigh_valley) > 0
+    && density_reads_never_exceed_facilities(c: pa_philadelphia_and_lehigh_valley)
 }

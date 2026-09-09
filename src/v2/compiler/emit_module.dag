@@ -3,6 +3,7 @@ module v2.compiler.emit_module
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.target_carriers { target_source_medium }
+import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.emission_provenance {
   EmissionAuthoredFragment,
@@ -191,4 +192,17 @@ fn emit_family(
       target_source_medium(text: joined, target: transport_target)
     }
   )
+}
+
+// THE PORTABLE PROJECTION of one emit_family product, keyed for the native build's cache. A
+// family pipeline's member list is not shareable across claims — EmitFamilyMember carries an
+// InferredTree, whose facts PartialFunction is origin-bound — so a cross-claim share of the
+// pipeline (v2.workflow.floor_pure_producer_share) must publish a closure-free stage: the
+// emitted source and the content key the native build is cached under. The key's DERIVATION
+// stays with each family's own native_key function; this record only joins the two portable
+// outputs, and it lives here — one type, not one per family (DESIGN §2/§3) — because the family
+// emit authority is the one module both family pipelines already import for emit_family itself.
+type EmittedFamilyCrate {
+  source: Medium<String>,
+  native_key: ContentHash
 }
