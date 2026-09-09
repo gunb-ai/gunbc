@@ -206,6 +206,13 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // ON REBASE this function is DELETED and coverage_density_read_count asks the carrier, in whatever
 // shape the carrier settles on. It is NOT rewritten against the new arms: that would be the same
 // predicate authored a fourth time in the file that already carries the sentence predicting the third.
+//
+// AND WHERE THE CARRIER ANSWERS WITH THE FIGURES RATHER THAN THE QUESTION, this fold destructures them
+// rather than measuring them. `length(...) > 0` computes a TOTAL to decide a PRESENCE, which is the
+// classic cost shape section 6 says to fix regardless of realized n, since n is not time-stable - and
+// this fold ranges over the whole census where the carrier's own witnesses range over one or two
+// claims. Matching the empty and non-empty arms answers it without a traversal. Stated here because
+// the tempting spelling is the measuring one, and it is tempting precisely where the list is short.
 // Recorded here rather than in a PR thread, because the next reader of this function needs to know it
 // is owed a home, and needs the trigger to be one that can actually be checked.
 fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
