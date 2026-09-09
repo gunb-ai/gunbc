@@ -7,14 +7,20 @@ import gunbc.target_binding {
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
-  CompileCleanAdvisoryCensusProducer,
-  CompileCleanAdvisoryCensusStanding,
-  CompileCleanAdvisoryCensusCompleted,
-  CompileCleanAdvisoryCensusRefused,
-  CompileCleanAdvisoryCensusObservation,
-  CompileCleanAdvisoryCensusRefusalCause,
-  AdvisoryCensusClosureUnresolvable, AdvisoryCensusGraphAbsent,
-  AdvisoryClassCensusEntry,
+  CompileCleanDiagnosticCensusProducer,
+  CompileCleanDiagnosticCensusStanding,
+  CompileCleanDiagnosticCensusCompleted,
+  CompileCleanDiagnosticCensusRefused,
+  CompileCleanDiagnosticCensusObservation,
+  CompileCleanDiagnosticCensusIdentity,
+  CompileCleanDiagnosticCensusRefusalCause,
+  DiagnosticCensusClosureUnresolvable, DiagnosticCensusGraphAbsent,
+  DiagnosticCensusPolicyUnreadable, DiagnosticCensusConservationViolated,
+  DiagnosticCensusDetailCountMismatch, DiagnosticCensusCeilingRosterDuplicate,
+  DiagnosticCensusCeilingRosterStale, DiagnosticCensusCeilingRosterUncovered,
+  DiagnosticCensusIdentityUnavailable,
+  DiagnosticCensusDisposition, CensusAdvisory, CensusBlocking,
+  RawDiagnosticClassObservation,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted,
   HeadsReadingDifferentialSubjectUnreached,
@@ -33,7 +39,7 @@ import gunbc.target_invocation {
   InvocationSubjectUnreached, InvocationRefused,
   route_target_invocation,
 }
-import std.types { String, Bool }
+import std.types { String, Bool, NonEmptyStr }
 
 // THE REAL INSTRUMENT TARGETS, AND THEY ARE PRODUCTION ROWS RATHER THAN FIXTURE EXAMPLES.
 //
@@ -77,14 +83,17 @@ fn behavioral_receipt_selftest_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-selftest" } }
 }
 
-// THE COMPILE-CLEAN ADVISORY CENSUS. Its subject is the whole-tree compile-clean closure -- the
-// same source set the floor gate compiles -- because an advisory count is a statement about the
+// THE COMPILE-CLEAN DIAGNOSTIC CENSUS. Its subject is the whole-tree compile-clean closure -- the
+// same source set the floor gate compiles -- because a diagnostic count is a statement about the
 // corpus only when the closure is the corpus's: censusing a narrower entry would report what was
 // compiled, not what exists. This is the restored reachability for the census whose standalone
 // bin was swept as an unrostered seed probe in gunbc#9160; the instrument target is the rostered
-// entry point that sweep showed was missing.
-fn compile_clean_advisory_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "compile-clean-advisory-census" } }
+// entry point that sweep showed was missing. It was the ADVISORY census until the false-zero
+// finding (review 2026-09-09): partitioning by severity before counting let a class vanish from
+// the instrument exactly when its disposition changed, so the census now counts the raw emitted
+// population and carries disposition as a row attribute.
+fn compile_clean_diagnostic_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compile-clean-diagnostic-census" } }
 }
 
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
@@ -115,8 +124,8 @@ fn behavioral_receipt_selftest_target() -> BuildTarget {
   instrument_test_target(label: behavioral_receipt_selftest_label())
 }
 
-fn compile_clean_advisory_census_target() -> BuildTarget {
-  instrument_test_target(label: compile_clean_advisory_census_label())
+fn compile_clean_diagnostic_census_target() -> BuildTarget {
+  instrument_test_target(label: compile_clean_diagnostic_census_label())
 }
 
 fn heads_reading_differential_binding() -> TargetBinding {
@@ -138,8 +147,8 @@ fn behavioral_receipt_selftest_binding() -> TargetBinding {
   TargetBinding { target: behavioral_receipt_selftest_label() producer: BehavioralReceiptSelftestProducer {} }
 }
 
-fn compile_clean_advisory_census_binding() -> TargetBinding {
-  TargetBinding { target: compile_clean_advisory_census_label() producer: CompileCleanAdvisoryCensusProducer {} }
+fn compile_clean_diagnostic_census_binding() -> TargetBinding {
+  TargetBinding { target: compile_clean_diagnostic_census_label() producer: CompileCleanDiagnosticCensusProducer {} }
 }
 
 // THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN ARGUMENT THE CALLER SUPPLIES.
@@ -162,24 +171,32 @@ fn behavioral_receipt_source_roots() -> List<String> {
 
 // WHAT AN INVOCATION OF THIS INSTRUMENT DOES NOT ESTABLISH, STATED HERE RATHER THAN ASSUMED SAFE.
 //
-// The producer reads an UNPINNED LIVE WORKING TREE. Nothing binds the bytes it consumed to the
-// standing it returned -- the corpus may change while the walk is in progress -- so a completed
-// observation is not identified with any source state a later run could reconstruct. Every arm of
-// `HeadsReadingDifferentialStanding` is therefore an OUTCOME and none of them is a receipt, and no
-// digest, commit or head-ref field may be added here to close the gap: hashing before the run,
-// after it, or both proves nothing, because the tree can go A -> B -> A while the producer reads a
-// MIXED population and both hashes agree. A field that looks like provenance and supports none is
-// worse than the gap it hides.
+// The differential's producer reads an UNPINNED LIVE WORKING TREE. Nothing binds the bytes it
+// consumed to the standing it returned -- the corpus may change while the walk is in progress --
+// so a completed observation is not identified with any source state a later run could
+// reconstruct. Every arm of `HeadsReadingDifferentialStanding` is therefore an OUTCOME and none of
+// them is a receipt, and no digest, commit or head-ref field may be added THERE to close the gap:
+// hashing before the run, after it, or both proves nothing, because the tree can go A -> B -> A
+// while the producer reads a MIXED population and both hashes agree. A field that looks like
+// provenance and supports none is worse than the gap it hides.
 //
-// SO THE FOLLOWING ARE OUT OF REACH UNTIL SOURCE BINDING LANDS AS ITS OWN CAPABILITY: caching a
-// target's result, comparing two runs, executing remotely, replaying, and the statement "this
-// standing was about source X". Direct invocation and its immediate rendering are what this seam
-// claims, and they need none of them.
+// THE DIAGNOSTIC CENSUS IS THE ONE EXCEPTION, AND THE MECHANISM IS THE DIFFERENCE. It does not
+// hash the tree and then read it: it materializes the whole source vector into memory FIRST,
+// hashes exactly that vector, and hands the same in-memory bytes to the compiler, so the bytes
+// hashed are the bytes compiled and the mixed-population hole has no write path. Its identity
+// block (gunbc.target_binding CompileCleanDiagnosticCensusIdentity) is therefore provenance that
+// binds, not a digest-shaped decoration. What it still does not establish is anything CROSS-RUN:
+// comparing two observations (the per-class ratchet the burndown program wants) needs a stored
+// prior reading and a join discipline of its own, which is a later consumer, not a field here.
+//
+// SO FOR THE SEAM GENERALLY THE FOLLOWING REMAIN OUT OF REACH UNTIL SOURCE BINDING LANDS AS ITS
+// OWN CAPABILITY: caching a target's result, executing remotely, replaying. Direct invocation and
+// its immediate rendering are what this seam claims, and they need none of them.
 fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_advisory_census_label()
+    compile_clean_diagnostic_census_label()
   ]
 }
 
@@ -187,7 +204,7 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_advisory_census_binding()
+    compile_clean_diagnostic_census_binding()
   ]
 }
 
@@ -292,71 +309,124 @@ fn heads_reading_differential_standing_rendered(
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE ADVISORY CENSUS'S OWN CLASSIFIER AND ITS OWN RENDERING
+// THE DIAGNOSTIC CENSUS'S OWN CLASSIFIER AND ITS OWN RENDERING
 // ---------------------------------------------------------------------------------------------
 
-// WHAT "HELD" MEANS FOR A BURNDOWN INSTRUMENT: the advisory population is empty. Every nonempty
-// class row is work standing between the corpus and the promotion of that class to blocking, so
-// the observation holds exactly when no class carries a row. A census that cannot reach its
-// closure refuses; it never reports an unobserved tree as a clean one.
-fn compile_clean_advisory_census_holds(o: CompileCleanAdvisoryCensusObservation) -> Bool {
-  (o.classes |> count) == 0
+// THE RAW COUNT OF ONE CLASS OVER THE UNFILTERED POPULATION. An absent row and a zero-count row
+// are the same answer here -- the class emitted nothing -- because the census counts every
+// emitted diagnostic and a class with no emission has no row to carry.
+fn diagnostic_class_raw_count(
+  classes: List<RawDiagnosticClassObservation>,
+  wanted: NonEmptyStr
+) -> Int {
+  classes
+    |> filter(r => r.diagnostic_class == wanted)
+    |> fold(init: 0, f: fn(acc, r) { acc + r.diagnostics })
 }
 
-fn compile_clean_advisory_census_termination(
-  s: CompileCleanAdvisoryCensusStanding
+// WHAT "HELD" MEANS FOR THIS INSTRUMENT: the class-specific zero wall for the class whose
+// burndown it governs -- the RAW UnlistedImportUse count is zero. Two properties are doing the
+// work, and both are the point of the raw census. FIRST, the count is read over the unfiltered
+// population, so a severity change cannot hide a recurrence: the class row exists with its
+// disposition attribute whether the policy row says FloorNotYet or Enforced, and promoting the
+// class to blocking does not retire this wall -- it is the same observation. SECOND, the wall is
+// class-specific rather than the all-advisories-empty completion target: while the other advisory
+// classes burn down on their own tracks, this instrument holds exactly when UnlistedImportUse
+// reaches zero, and a reintroduced occurrence flips it back. A census that cannot reach its
+// closure, read its policy, or satisfy its conservation and roster invariants refuses; it never
+// reports an unobserved tree as a clean one.
+fn compile_clean_diagnostic_census_holds(o: CompileCleanDiagnosticCensusObservation) -> Bool {
+  diagnostic_class_raw_count(classes: o.classes, wanted: "UnlistedImportUse" as NonEmptyStr) == 0
+}
+
+fn compile_clean_diagnostic_census_termination(
+  s: CompileCleanDiagnosticCensusStanding
 ) -> InvocationTermination {
   match s {
-    CompileCleanAdvisoryCensusCompleted { observation: o } =>
-      if compile_clean_advisory_census_holds(o: o) {
+    CompileCleanDiagnosticCensusCompleted { observation: o } =>
+      if compile_clean_diagnostic_census_holds(o: o) {
         InvocationObservationHeld {}
       } else {
         InvocationObservationDidNotHold {}
       }
-    CompileCleanAdvisoryCensusRefused { cause: _ } => InvocationRefused {}
+    CompileCleanDiagnosticCensusRefused { cause: _ } => InvocationRefused {}
   }
 }
 
-fn advisory_census_refusal_cause_rendered(c: CompileCleanAdvisoryCensusRefusalCause) -> String {
+fn diagnostic_census_refusal_cause_rendered(c: CompileCleanDiagnosticCensusRefusalCause) -> String {
   match c {
-    AdvisoryCensusClosureUnresolvable => "whole-tree closure unresolvable"
-    AdvisoryCensusGraphAbsent => "compilation produced no graph"
+    DiagnosticCensusClosureUnresolvable => "whole-tree closure unresolvable"
+    DiagnosticCensusGraphAbsent => "compilation produced no graph"
+    DiagnosticCensusPolicyUnreadable => "disposition policy or ceiling roster unreadable"
+    DiagnosticCensusConservationViolated => "per-class counts do not sum to the raw diagnostics vector"
+    DiagnosticCensusDetailCountMismatch => "class count disagrees with the detailed UnlistedImportUse worklist"
+    DiagnosticCensusCeilingRosterDuplicate => "two ceiling rows name one diagnostic class"
+    DiagnosticCensusCeilingRosterStale => "a ceiling row names a class outside the schema or no longer advisory"
+    DiagnosticCensusCeilingRosterUncovered => "an observed advisory class carries no ceiling row"
+    DiagnosticCensusIdentityUnavailable => "an identity digest could not be computed; the observation would be unbound"
   }
 }
 
-fn advisory_class_census_entry_rendered(e: AdvisoryClassCensusEntry) -> String {
+fn diagnostic_census_disposition_rendered(d: DiagnosticCensusDisposition) -> String {
+  match d {
+    CensusAdvisory => "advisory"
+    CensusBlocking => "blocking"
+  }
+}
+
+fn raw_diagnostic_class_observation_rendered(e: RawDiagnosticClassObservation) -> String {
   join([
     e.diagnostic_class as String,
+    " disposition=", diagnostic_census_disposition_rendered(d: e.disposition),
     " diagnostics=", to_string(e.diagnostics),
     " distinct_modules=", to_string(e.distinct_modules),
     " distinct_positions=", to_string(e.distinct_positions)
   ], "")
 }
 
-// THE RENDERING IS THE CENSUS'S OWN VOCABULARY: the denominator, then one line per class with
-// the three counts the burndown works at. It does not say PASSED or FAILED -- those are the
-// aggregate's words, and this instrument is outside the aggregate by construction.
-fn compile_clean_advisory_census_observation_rendered(
-  o: CompileCleanAdvisoryCensusObservation
+fn compile_clean_diagnostic_census_identity_rendered(
+  i: CompileCleanDiagnosticCensusIdentity
 ) -> String {
   join([
-    "compile-clean-advisory-census: closure_modules=", to_string(o.closure_modules),
-    " advisory_classes=", to_string(o.classes |> count),
-    "\n",
-    join(o.classes |> map(e => advisory_class_census_entry_rendered(e: e)), "\n")
+    "identity source_vector=", i.source_vector_digest as String,
+    " compiler=", i.compiler_executable_digest as String,
+    " resolver_policy=", i.resolver_policy_digest as String,
+    " diagnostic_class_schema=", i.diagnostic_class_schema_digest as String,
+    " closure=", i.closure_digest as String
   ], "")
 }
 
-fn compile_clean_advisory_census_standing_rendered(
-  s: CompileCleanAdvisoryCensusStanding
+// THE RENDERING IS THE CENSUS'S OWN VOCABULARY: the denominator and the raw total, the walled
+// class's own count (the termination's subject, printed so the verdict and the printout cannot
+// diverge), the five identity digests, then one line per class with disposition and the three
+// burndown counts. It does not say PASSED or FAILED -- those are the aggregate's words, and this
+// instrument is outside the aggregate by construction.
+fn compile_clean_diagnostic_census_observation_rendered(
+  o: CompileCleanDiagnosticCensusObservation
+) -> String {
+  join([
+    "compile-clean-diagnostic-census: closure_modules=", to_string(o.closure_modules),
+    " raw_diagnostics=", to_string(o.raw_diagnostics),
+    " classes=", to_string(o.classes |> count),
+    " unlisted_import_use_raw=",
+      to_string(diagnostic_class_raw_count(classes: o.classes, wanted: "UnlistedImportUse" as NonEmptyStr)),
+    "\n",
+    compile_clean_diagnostic_census_identity_rendered(i: o.identity),
+    "\n",
+    join(o.classes |> map(e => raw_diagnostic_class_observation_rendered(e: e)), "\n")
+  ], "")
+}
+
+fn compile_clean_diagnostic_census_standing_rendered(
+  s: CompileCleanDiagnosticCensusStanding
 ) -> String {
   match s {
-    CompileCleanAdvisoryCensusCompleted { observation: o } =>
-      compile_clean_advisory_census_observation_rendered(o: o)
-    CompileCleanAdvisoryCensusRefused { cause: c } =>
+    CompileCleanDiagnosticCensusCompleted { observation: o } =>
+      compile_clean_diagnostic_census_observation_rendered(o: o)
+    CompileCleanDiagnosticCensusRefused { cause: c } =>
       concat(
-        "compile-clean-advisory-census: refused: ",
-        advisory_census_refusal_cause_rendered(c: c)
+        "compile-clean-diagnostic-census: refused: ",
+        diagnostic_census_refusal_cause_rendered(c: c)
       )
   }
 }

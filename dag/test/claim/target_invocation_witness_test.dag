@@ -14,10 +14,13 @@ import gunbc.target_binding {
   build_target_binding_index,
   TargetProducer, HeadsReadingDifferentialProducer, BehavioralReceiptPlanProducer,
   BehavioralReceiptCensusProducer, BehavioralReceiptSelftestProducer,
-  CompileCleanAdvisoryCensusProducer,
-  CompileCleanAdvisoryCensusStanding, CompileCleanAdvisoryCensusCompleted,
-  CompileCleanAdvisoryCensusRefused, CompileCleanAdvisoryCensusObservation,
-  AdvisoryClassCensusEntry, AdvisoryCensusClosureUnresolvable,
+  CompileCleanDiagnosticCensusProducer,
+  CompileCleanDiagnosticCensusStanding, CompileCleanDiagnosticCensusCompleted,
+  CompileCleanDiagnosticCensusRefused, CompileCleanDiagnosticCensusObservation,
+  CompileCleanDiagnosticCensusIdentity,
+  RawDiagnosticClassObservation, DiagnosticCensusClosureUnresolvable,
+  DiagnosticCensusDisposition, CensusAdvisory, CensusBlocking,
+  DiagnosticCensusPolicyUnreadable,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted, HeadsReadingDifferentialSubjectUnreached,
   HeadsReadingDifferentialRefused,
@@ -41,9 +44,9 @@ import gunbc.instrument_targets {
   heads_reading_differential_binding,
   behavioral_receipt_plan_label, behavioral_receipt_census_label,
   behavioral_receipt_selftest_label,
-  compile_clean_advisory_census_label,
-  compile_clean_advisory_census_termination,
-  compile_clean_advisory_census_standing_rendered,
+  compile_clean_diagnostic_census_label,
+  compile_clean_diagnostic_census_termination,
+  compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
   invoke_target,
   heads_reading_differential_termination,
@@ -120,11 +123,11 @@ test fn every_behavioral_instrument_operand_routes_to_its_own_producer() -> Bool
 // THE CENSUS ENTRY POINT IS A ROW ON THE SAME GENERIC ROUTE. This is the reachability the
 // burndown sizing cites: the operand a shell would hand the verb must end at the census's own
 // producer, and a registry that lost the row reds here rather than silently halving the roster.
-test fn the_advisory_census_operand_routes_to_its_own_producer() -> Bool {
-  match invoke_target(operand: "//gunbc/instruments:compile-clean-advisory-census") {
+test fn the_diagnostic_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compile-clean-diagnostic-census") {
     TargetInvocationRouted { binding: b } =>
-      label_eq(a: b.target, b: compile_clean_advisory_census_label())
-        && (b.producer == CompileCleanAdvisoryCensusProducer {})
+      label_eq(a: b.target, b: compile_clean_diagnostic_census_label())
+        && (b.producer == CompileCleanDiagnosticCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -297,55 +300,103 @@ test fn the_rendering_reports_the_populations_the_differential_measured() -> Boo
   ) == "heads-reading-differential: compared=3 divergent=1 narrowed=0 regressed=0 both_refused=0"
 }
 
-// THE CENSUS HOLDS ONLY ON AN EMPTY ADVISORY POPULATION. A completed census with no class rows is
-// the held state the burndown is driving toward; one class row -- the discriminating arm -- flips
-// it, so a reintroduced advisory instance is visible at the termination rather than only in the
-// printout. A refusal is neither: it never reached the closure, and it must not inherit a verdict.
-test fn the_advisory_census_holds_only_when_no_class_carries_a_row() -> Bool {
-  let held = compile_clean_advisory_census_termination(
-    s: CompileCleanAdvisoryCensusCompleted {
-      observation: CompileCleanAdvisoryCensusObservation { closure_modules: 3, classes: [] }
+// THE CENSUS WALL IS CLASS-SPECIFIC AND SEVERITY-INDEPENDENT -- the two properties the raw census
+// exists to carry, each with its own discriminating arm. HELD: UnlistedImportUse emits nothing
+// while another advisory class still carries rows -- the all-classes-empty completion target is
+// the program's final state, not this instrument's admission question, and an implementation that
+// answered DidNotHold over ANY nonempty class row fails this arm. DID NOT HOLD, TWICE: a raw
+// UnlistedImportUse row flips the wall whether its disposition is advisory TODAY or blocking
+// AFTER promotion -- an implementation that filtered the population by disposition before
+// counting passes the first arm and silently passes the second, which is exactly the false-zero
+// state the raw rework exists to delete. A refusal is neither: it never reached a counted
+// population, and it must not inherit a verdict.
+fn census_fixture_identity() -> CompileCleanDiagnosticCensusIdentity {
+  CompileCleanDiagnosticCensusIdentity {
+    source_vector_digest: "sv" as NonEmptyStr,
+    compiler_executable_digest: "ce" as NonEmptyStr,
+    resolver_policy_digest: "rp" as NonEmptyStr,
+    diagnostic_class_schema_digest: "cs" as NonEmptyStr,
+    closure_digest: "cl" as NonEmptyStr
+  }
+}
+
+fn census_class_row(
+  class_name: NonEmptyStr,
+  disposition: DiagnosticCensusDisposition,
+  diagnostics: Int
+) -> RawDiagnosticClassObservation {
+  RawDiagnosticClassObservation {
+    diagnostic_class: class_name,
+    disposition: disposition,
+    diagnostics: diagnostics,
+    distinct_modules: 1,
+    distinct_positions: diagnostics
+  }
+}
+
+fn census_observation(classes: List<RawDiagnosticClassObservation>) -> CompileCleanDiagnosticCensusObservation {
+  CompileCleanDiagnosticCensusObservation {
+    identity: census_fixture_identity(),
+    closure_modules: 3,
+    raw_diagnostics: classes |> fold(init: 0, f: fn(acc, r) { acc + r.diagnostics }),
+    classes: classes
+  }
+}
+
+test fn the_diagnostic_census_wall_is_class_specific_and_severity_independent() -> Bool {
+  let held = compile_clean_diagnostic_census_termination(
+    s: CompileCleanDiagnosticCensusCompleted {
+      observation: census_observation(classes: [
+        census_class_row(class_name: "WhereRefinementUnenforced" as NonEmptyStr, disposition: CensusAdvisory {}, diagnostics: 2)
+      ])
     }
   )
-  let carrying = compile_clean_advisory_census_termination(
-    s: CompileCleanAdvisoryCensusCompleted {
-      observation: CompileCleanAdvisoryCensusObservation {
-        closure_modules: 3,
-        classes: [AdvisoryClassCensusEntry {
-          diagnostic_class: "UnlistedImportUse" as NonEmptyStr,
-          diagnostics: 2,
-          distinct_modules: 1,
-          distinct_positions: 2
-        }]
-      }
+  let carrying_advisory = compile_clean_diagnostic_census_termination(
+    s: CompileCleanDiagnosticCensusCompleted {
+      observation: census_observation(classes: [
+        census_class_row(class_name: "UnlistedImportUse" as NonEmptyStr, disposition: CensusAdvisory {}, diagnostics: 2)
+      ])
     }
   )
-  let refused = compile_clean_advisory_census_termination(
-    s: CompileCleanAdvisoryCensusRefused { cause: AdvisoryCensusClosureUnresolvable {} }
+  let carrying_blocking = compile_clean_diagnostic_census_termination(
+    s: CompileCleanDiagnosticCensusCompleted {
+      observation: census_observation(classes: [
+        census_class_row(class_name: "UnlistedImportUse" as NonEmptyStr, disposition: CensusBlocking {}, diagnostics: 2)
+      ])
+    }
+  )
+  let refused = compile_clean_diagnostic_census_termination(
+    s: CompileCleanDiagnosticCensusRefused { cause: DiagnosticCensusClosureUnresolvable {} }
   )
   (held == InvocationObservationHeld {})
-    && (carrying == InvocationObservationDidNotHold {})
+    && (carrying_advisory == InvocationObservationDidNotHold {})
+    && (carrying_blocking == InvocationObservationDidNotHold {})
     && (refused == InvocationRefused {})
-    && (invocation_exit_status(t: carrying) == 1)
+    && (invocation_exit_status(t: carrying_advisory) == 1)
     && (invocation_exit_status(t: refused) == 2)
 }
 
-// THE CENSUS RENDERING CARRIES THE THREE BURNDOWN COUNTS PER CLASS, because count, distinct
-// modules and distinct positions are what separate a diffuse class from a per-site repair.
-test fn the_advisory_census_rendering_reports_the_per_class_counts() -> Bool {
-  compile_clean_advisory_census_standing_rendered(
-    s: CompileCleanAdvisoryCensusCompleted {
-      observation: CompileCleanAdvisoryCensusObservation {
-        closure_modules: 3,
-        classes: [AdvisoryClassCensusEntry {
-          diagnostic_class: "UnlistedImportUse" as NonEmptyStr,
-          diagnostics: 2,
-          distinct_modules: 1,
-          distinct_positions: 2
-        }]
-      }
+// THE CENSUS RENDERING CARRIES THE DENOMINATOR, THE RAW TOTAL, THE WALLED CLASS'S OWN COUNT, THE
+// FIVE IDENTITY DIGESTS, AND PER CLASS THE DISPOSITION ATTRIBUTE BESIDE THE THREE BURNDOWN COUNTS
+// -- the walled count printed so the verdict and the printout cannot diverge, and the disposition
+// printed as an attribute of the row rather than a filter on whether the row exists.
+test fn the_diagnostic_census_rendering_reports_the_raw_counts_and_identity() -> Bool {
+  compile_clean_diagnostic_census_standing_rendered(
+    s: CompileCleanDiagnosticCensusCompleted {
+      observation: census_observation(classes: [
+        census_class_row(class_name: "UnlistedImportUse" as NonEmptyStr, disposition: CensusAdvisory {}, diagnostics: 2)
+      ])
     }
-  ) == "compile-clean-advisory-census: closure_modules=3 advisory_classes=1\nUnlistedImportUse diagnostics=2 distinct_modules=1 distinct_positions=2"
+  ) == "compile-clean-diagnostic-census: closure_modules=3 raw_diagnostics=2 classes=1 unlisted_import_use_raw=2\nidentity source_vector=sv compiler=ce resolver_policy=rp diagnostic_class_schema=cs closure=cl\nUnlistedImportUse disposition=advisory diagnostics=2 distinct_modules=1 distinct_positions=2"
+}
+
+// THE POLICY-UNREADABLE REFUSAL RENDERS AS ITSELF, because it is the arm the false-zero finding
+// is closed by: a census that cannot read the disposition policy must say so in its own
+// vocabulary, never report a population it could not attribute.
+test fn the_diagnostic_census_refusal_renders_its_own_cause() -> Bool {
+  compile_clean_diagnostic_census_standing_rendered(
+    s: CompileCleanDiagnosticCensusRefused { cause: DiagnosticCensusPolicyUnreadable {} }
+  ) == "compile-clean-diagnostic-census: refused: disposition policy or ceiling roster unreadable"
 }
 
 // ---------------------------------------------------------------------------------------------

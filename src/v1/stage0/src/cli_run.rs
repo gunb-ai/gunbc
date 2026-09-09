@@ -4874,9 +4874,9 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &st
 // `classify_unlisted_import_binding_source`, `unlisted_import_rows_from_resolved`,
 // `UnlistedImportCensusRow`, and the unlisted-import-specific census helpers. The standalone bin
 // this marker once named was swept in gunbc#9160, and the dead `compile_clean_unlisted_import_census`
-// wrapper deleted when the per-class `compile_clean_advisory_census` subsumed it (its
+// wrapper deleted when the per-class `compile_clean_diagnostic_census` subsumed it (its
 // `unlisted_import_rows` carries the same rows); what remains is the binding-source classification
-// the advisory census consumes. The census itself is NOT in this list: per DESIGN section 4b(4) it
+// the diagnostic census consumes. The census itself is NOT in this list: per DESIGN section 4b(4) it
 // stays enrolled after each class's climb as the executing evidence that the class stays at zero.
 // Receipt: the marker const below is itself the receipt -- present until deletion, gone with the
 // scaffold (a count receipt over the marker STRING counts this comment and the marker test too,
@@ -4911,10 +4911,16 @@ impl UnlistedImportBindingSource {
     }
 }
 
-/// One attributed row of the UnlistedImportUse census.
+/// One attributed row of the UnlistedImportUse census. `position` is the diagnostic's own span
+/// start within `file` — the occurrence grain the burndown worklist groups and counts at. It is
+/// NOT the occurrence identity the Step 0 binding-provenance census
+/// (gunbc.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
+/// edits: (file, position) locates the charge, but does not name the selected declaration, the
+/// producing rule, or the pre/post-edit targets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnlistedImportCensusRow {
     pub file: String,
+    pub position: i64,
     pub referenced_name: String,
     pub referencing_module: String,
     pub definer_module: Option<String>,

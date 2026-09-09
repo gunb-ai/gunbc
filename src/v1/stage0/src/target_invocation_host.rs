@@ -151,7 +151,7 @@ pub enum TargetProducer {
     BehavioralReceiptPlan,
     BehavioralReceiptCensus,
     BehavioralReceiptSelftest,
-    CompileCleanAdvisoryCensus,
+    CompileCleanDiagnosticCensus,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -184,8 +184,8 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::BehavioralReceiptSelftest,
         ),
         (
-            instrument_label("compile-clean-advisory-census"),
-            TargetProducer::CompileCleanAdvisoryCensus,
+            instrument_label("compile-clean-diagnostic-census"),
+            TargetProducer::CompileCleanDiagnosticCensus,
         ),
     ]
 }
@@ -356,49 +356,83 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::BehavioralReceiptSelftest => behavioral_outcome(
             cli_run::behavioral_receipt_host::run_selftest(&behavioral_receipt_source_roots()),
         ),
-        TargetProducer::CompileCleanAdvisoryCensus => run_compile_clean_advisory_census(),
+        TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
     }
 }
 
-/// THE ADVISORY CENSUS PRODUCER. The subject is the whole-tree compile-clean closure, which the
+/// THE DIAGNOSTIC CENSUS PRODUCER. The subject is the whole-tree compile-clean closure, which the
 /// census itself derives from `witness_layer_roots` — like the differential's roots, which corpus
 /// is measured is the instrument's own fact, not an invocation option.
 ///
-/// The modeled observation (`gunbc.target_binding` `CompileCleanAdvisoryCensusObservation`) is the
-/// per-class summary. Two host lines ride below it, outside the model, exactly as the
-/// differential's parse-wall figures do: the UnlistedImportUse binding-source partition and the
-/// per-row worklist, because those are the repair instrument's detail for the one class whose
-/// promotion is staged, not per-class census vocabulary. Their next rung is a modeled carrier;
-/// until then they are named unmodeled host output, printed rather than dropped.
-fn run_compile_clean_advisory_census() -> InvocationOutcome {
+/// The modeled observation (`gunbc.target_binding` `CompileCleanDiagnosticCensusObservation`) is
+/// the per-class raw summary with its identity block, and the rendering below mirrors
+/// `gunbc.instrument_targets` `compile_clean_diagnostic_census_observation_rendered` line for
+/// line. Two host sections ride below it, outside the model, exactly as the differential's
+/// parse-wall figures do: the UnlistedImportUse binding-source partition and the per-row
+/// worklist, because those are the repair instrument's detail for the one class whose promotion
+/// is staged, not per-class census vocabulary. Their next rung is a modeled carrier; until then
+/// they are named unmodeled host output, printed rather than dropped.
+///
+/// THE TERMINATION IS THE MODELED CLASS-SPECIFIC WALL: the RAW UnlistedImportUse count over the
+/// unfiltered population is zero (`gunbc.instrument_targets`
+/// `compile_clean_diagnostic_census_holds`). Not the all-classes-empty completion target — while
+/// the other advisory classes burn down on their own tracks, this instrument holds exactly when
+/// UnlistedImportUse reaches zero, and a severity change cannot hide a recurrence because no
+/// severity filter stands between emission and the count.
+fn run_compile_clean_diagnostic_census() -> InvocationOutcome {
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
-                "compile-clean-advisory-census: refused: could not anchor at the workspace root: {e}"
+                "compile-clean-diagnostic-census: refused: could not anchor at the workspace root: {e}"
             ),
         };
     }
-    let census = match cli_run::compile_clean_advisory_census() {
+    let census = match cli_run::compile_clean_diagnostic_census() {
         Ok(c) => c,
-        Err(e) => {
+        Err(refusal) => {
             return InvocationOutcome {
                 termination: Termination::Refused,
-                message: format!("compile-clean-advisory-census: refused: {e}"),
+                message: format!(
+                    "compile-clean-diagnostic-census: refused: {}",
+                    cli_run::diagnostic_census_refusal_rendered(&refusal)
+                ),
             };
         }
     };
-    let advisory_total: usize = census.entries.iter().map(|e| e.diagnostics).sum();
+    let unlisted_import_use_raw: usize = census
+        .classes
+        .iter()
+        .filter(|e| e.class_name == "UnlistedImportUse")
+        .map(|e| e.diagnostics)
+        .sum();
     let mut message = format!(
-        "compile-clean-advisory-census: closure_modules={} advisory_classes={} advisory_total={}",
+        "compile-clean-diagnostic-census: closure_modules={} raw_diagnostics={} classes={} unlisted_import_use_raw={}",
         census.closure_modules,
-        census.entries.len(),
-        advisory_total,
+        census.raw_diagnostics,
+        census.classes.len(),
+        unlisted_import_use_raw,
     );
-    for entry in &census.entries {
+    message.push_str(&format!(
+        "\nidentity source_vector={} compiler={} resolver_policy={} diagnostic_class_schema={} closure={}",
+        census.identity.source_vector_digest,
+        census.identity.compiler_executable_digest,
+        census.identity.resolver_policy_digest,
+        census.identity.diagnostic_class_schema_digest,
+        census.identity.closure_digest,
+    ));
+    for entry in &census.classes {
+        let disposition = match entry.disposition {
+            cli_run::DiagnosticCensusDisposition::Advisory => "advisory",
+            cli_run::DiagnosticCensusDisposition::Blocking => "blocking",
+        };
         message.push_str(&format!(
-            "\nCLASS\t{}\tdiagnostics={}\tdistinct_modules={}\tdistinct_positions={}",
-            entry.class_name, entry.diagnostics, entry.distinct_modules, entry.distinct_positions,
+            "\n{} disposition={} diagnostics={} distinct_modules={} distinct_positions={}",
+            entry.class_name,
+            disposition,
+            entry.diagnostics,
+            entry.distinct_modules,
+            entry.distinct_positions,
         ));
     }
     if !census.unlisted_import_rows.is_empty() {
@@ -412,12 +446,13 @@ fn run_compile_clean_advisory_census() -> InvocationOutcome {
             message.push_str(&format!("\nSOURCE\t{source}\t{count}"));
         }
         message.push_str(
-            "\n--- UNLISTED_IMPORT_USE TSV ---\nfile\treferenced_name\treferencing_module\tdefiner_module\tbinding_source",
+            "\n--- UNLISTED_IMPORT_USE TSV ---\nfile\tposition\treferenced_name\treferencing_module\tdefiner_module\tbinding_source",
         );
         for row in &census.unlisted_import_rows {
             message.push_str(&format!(
-                "\n{}\t{}\t{}\t{}\t{}",
+                "\n{}\t{}\t{}\t{}\t{}\t{}",
                 row.file,
+                row.position,
                 row.referenced_name,
                 row.referencing_module,
                 row.definer_module.as_deref().unwrap_or(""),
@@ -426,7 +461,7 @@ fn run_compile_clean_advisory_census() -> InvocationOutcome {
         }
     }
     InvocationOutcome {
-        termination: if census.entries.is_empty() {
+        termination: if unlisted_import_use_raw == 0 {
             Termination::ObservationHeld
         } else {
             Termination::ObservationDidNotHold

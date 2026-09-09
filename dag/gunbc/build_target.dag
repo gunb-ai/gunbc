@@ -23,12 +23,12 @@ import gunbc.target_binding {
   TargetProducer,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
   BehavioralReceiptSelftestProducer, HeadsReadingDifferentialProducer,
-  CompileCleanAdvisoryCensusProducer,
+  CompileCleanDiagnosticCensusProducer,
   BehavioralReceiptPlanStanding,
   BehavioralReceiptCensusStanding,
   BehavioralReceiptSelftestStanding,
   HeadsReadingDifferentialStanding,
-  CompileCleanAdvisoryCensusStanding,
+  CompileCleanDiagnosticCensusStanding,
 }
 import v2.std.optional { Optional, Present, Absent }
 import std.types { String, Bool, NonEmptyStr }
@@ -143,7 +143,7 @@ type TestStanding
   | TestMeasuredByBehavioralReceiptCensus { standing: BehavioralReceiptCensusStanding }
   | TestMeasuredByBehavioralReceiptSelftest { standing: BehavioralReceiptSelftestStanding }
   | TestMeasuredByHeadsReadingDifferential { standing: HeadsReadingDifferentialStanding }
-  | TestMeasuredByCompileCleanAdvisoryCensus { standing: CompileCleanAdvisoryCensusStanding }
+  | TestMeasuredByCompileCleanDiagnosticCensus { standing: CompileCleanDiagnosticCensusStanding }
 
 type TargetStanding {
   target: Label
@@ -295,8 +295,8 @@ fn test_standing_verdict(t: TestStanding) -> StandingVerdict {
     TestMeasuredByHeadsReadingDifferential { standing: _ } => StandingUnsatisfied {
       cause: TestProducerOutsideRequiredAggregate { producer: HeadsReadingDifferentialProducer {} }
     }
-    TestMeasuredByCompileCleanAdvisoryCensus { standing: _ } => StandingUnsatisfied {
-      cause: TestProducerOutsideRequiredAggregate { producer: CompileCleanAdvisoryCensusProducer {} }
+    TestMeasuredByCompileCleanDiagnosticCensus { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: CompileCleanDiagnosticCensusProducer {} }
     }
   }
 }
@@ -715,8 +715,8 @@ fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatusExport 
     TestMeasuredByHeadsReadingDifferential { standing: _ } => TestStandingNotExportable {
       producer: HeadsReadingDifferentialProducer {}
     }
-    TestMeasuredByCompileCleanAdvisoryCensus { standing: _ } => TestStandingNotExportable {
-      producer: CompileCleanAdvisoryCensusProducer {}
+    TestMeasuredByCompileCleanDiagnosticCensus { standing: _ } => TestStandingNotExportable {
+      producer: CompileCleanDiagnosticCensusProducer {}
     }
   }
 }
