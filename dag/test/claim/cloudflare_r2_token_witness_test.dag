@@ -15,6 +15,7 @@ import extdeps.cloudflare.account_api_tokens {
   TokenActive,
   token_policy_effect_wire,
   PolicyAllow,
+  PolicyDeny,
   CreatedAccountToken,
   CreatedAccountTokenCreateResponse,
   created_account_token_from_create_response,
@@ -23,7 +24,8 @@ import extdeps.cloudflare.account_api_tokens {
   AccountTokenApiMintAdmitted,
   AccountTokenApiMintRefusedHumanDashboardOnly,
   account_api_tokens_write_permission_name,
-  admit_account_token_api_mint
+  admit_account_token_api_mint,
+  account_token_policy_create_wire
 }
 import extdeps.cloudflare.r2 {
   R2S3Endpoint,
@@ -76,6 +78,16 @@ test fn token_status_and_effect_use_upstream_wire_words() -> Bool {
   parse_account_token_status(raw: "active") == Present { value: TokenActive }
     && parse_account_token_status(raw: "nope") == none
     && token_policy_effect_wire(effect: PolicyAllow) == "allow"
+    && token_policy_effect_wire(effect: PolicyDeny) == "deny"
+}
+
+test fn create_policy_body_uses_the_effect_wire_word() -> Bool {
+  let policy = r2_object_read_token_policy(
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "my-bucket"
+  )
+  account_token_policy_create_wire(policy: policy).effect == "allow"
 }
 
 test fn create_response_folds_wire_status_fail_closed() -> Bool {

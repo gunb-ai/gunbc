@@ -194,6 +194,26 @@ type AccountTokenPolicy {
   resources: Map<String, String>
 }
 
+type AccountTokenPolicyCreateWire {
+  effect: String
+  permission_groups: List<PermissionGroupRef>
+  resources: Map<String, String>
+}
+
+fn account_token_policy_create_wire(policy: AccountTokenPolicy) -> AccountTokenPolicyCreateWire {
+  AccountTokenPolicyCreateWire {
+    effect: token_policy_effect_wire(effect: policy.effect),
+    permission_groups: policy.permission_groups,
+    resources: policy.resources
+  }
+}
+
+fn account_token_policies_create_wire(
+  policies: List<AccountTokenPolicy>
+) -> List<AccountTokenPolicyCreateWire> {
+  map(policies, p => account_token_policy_create_wire(policy: p))
+}
+
 type CreateAccountTokenRequest {
   name: String
   policies: List<AccountTokenPolicy>
@@ -366,7 +386,7 @@ service cloudflare.AccountTokens {
     transport rest {
       method: POST,
       path: "/accounts/\{account_id\}/tokens",
-      body: { name: name, policies: policies }
+      body: { name: name, policies: account_token_policies_create_wire(policies: policies) }
     }
     response {
       200 => CreatedAccountTokenCreateResponse

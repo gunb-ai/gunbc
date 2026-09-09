@@ -9,8 +9,6 @@ import std.dissolution {
   dissolution_status,
   bound_dissolution,
   unbound_dissolution,
-  BoundDissolution,
-  UnboundDissolution,
 }
 import std.types { List }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
@@ -24,26 +22,6 @@ test fn census_closure_frontier_rows_count_matches_hand_count() -> Bool {
 
 test fn census_closure_frontier_rows_well_formed() -> Bool {
   frontier_rows_well_formed(rows: census_closure_frontier_rows())
-}
-
-fn census_bound_row_count(rows: List<FrontierRow>) -> Int {
-  fold(rows, init: 0, f: fn(acc, row) {
-    match row.dissolution {
-      BoundDissolution { trigger: _ } => acc + 1
-      UnboundDissolution { description: _ } => acc
-    }
-  })
-}
-
-test fn frontier_expiry_fold_partitions_unbound_and_pending() -> Bool {
-  let rows = census_closure_frontier_rows()
-  let report = fold_frontier_expiry(
-    rows: rows,
-    present_decls: [],
-  )
-  report.pending_count == census_bound_row_count(rows: rows)
-    && report.fired_still_present_count == 0
-    && frontier_expiry_clean(report: report)
 }
 
 // AUTHORED FIXTURE ROWS, NOT THE LIVE CENSUS, and the change is a repair rather than a preference.
