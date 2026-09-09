@@ -300,7 +300,6 @@ type NamespaceDeltaDisposition
   | NewUnresolvedness
   | NewPoolCoincidenceResolution
   | AuthoredReferenceResolution
-  | DerivedGeneratorInputResolution
   | UnexplainedSubjectMotion
   | NotEvaluated
 
@@ -316,17 +315,10 @@ type NamespaceDeltaDisposition
 // The partition the operator ruled is therefore recorded HERE, where it cannot
 // be mistaken for an executing mechanism: the wall AUTO-ADMITS a same-declaration
 // -identity rebind, a removal of genuinely unused subject membership, an
-// explicitly evaluated zero delta, an authored-reference resolution, and a
-// derived-generator-input resolution. Every other disposition -- a changed
-// target, new ambiguity, new unresolvedness, new pool-coincidence resolution,
-// unexplained subject motion, and NotEvaluated -- REFUSES unless an exact
-// operator-authored transition admission names it.
-//
-// THE FIFTH MEMBER ARRIVED WITH THE 2026-09-08 SPLIT BELOW, and it is recorded
-// in this sentence rather than only beside the arm that added it: this paragraph
-// is where the partition is stated, so a new auto-admitted disposition recorded
-// only at its own declaration would leave one authority answering the same
-// question twice.
+// explicitly evaluated zero delta, and an authored-reference resolution. Every
+// other disposition -- a changed target, new ambiguity, new unresolvedness, new
+// pool-coincidence resolution, unexplained subject motion, and NotEvaluated --
+// REFUSES unless an exact operator-authored transition admission names it.
 //
 // AuthoredReferenceResolution WAS SPLIT OUT OF NewPoolCoincidenceResolution on
 // 2026-08-27, by operator ruling relayed through swift-badger-524, after the
@@ -344,68 +336,5 @@ type NamespaceDeltaDisposition
 // When the wall is built it matches on NamespaceDeltaDisposition directly. If a
 // shared projection is wanted at that point, it belongs beside the wall that
 // computes it, with the consumer that makes it load-bearing.
-
-// DerivedGeneratorInputResolution IS THE THIRD STATE OF THAT SAME `0 -> 1`, SPLIT OUT
-// on 2026-09-08 by operator ruling, and it is split for the reason the 2026-08-27
-// split was: one symbol was carrying two states with opposite owners and opposite
-// repairs. The discriminator the paragraph above names -- THE MODULE'S OWN SOURCE --
-// presumes a module that HAS an author. A GENERATED module does not. gunbc#10822 made
-// gunbc.recurring_failure_mode.roster derived: its content is produced by reading the
-// row directory, so it has no author to consult, `authored_here` is false for every
-// binding it will ever acquire, and every new row file was classified as a coincidence
-// in the pool. The wall then refused the append that the generator exists to perform --
-// measured across five lanes and seven changes, where every change adding a row MODULE
-// refused and every change editing an existing row passed.
-//
-// THE ADMISSIBLE FACT IS NOT "THE MODULE IS GENERATED", AND THAT DISTINCTION IS THE
-// WHOLE ARM. Admitting a category would auto-admit every binding any generated module
-// ever acquires, on the one surface where a wrong binding has no human reader -- the
-// state-space conflation this file warns about, committed in the opposite direction.
-// What is admissible is a binding that is THE MECHANICAL IMAGE OF THE GENERATOR'S
-// DECLARED INPUT RELATION: the derived roster's input is the row directory, so a
-// binding to a module that is a member of that directory is the deterministic
-// consequence of a file the change adds, and is decidable from the generator's own
-// declared inputs rather than from a reader's judgement. A generated module acquiring a
-// binding its generator's inputs do NOT explain remains NewPoolCoincidenceResolution
-// and remains refused; that refusal is the arm's positive control, not a leftover.
-//
-// IT ANSWERS FOR ONE GENERATOR, AND THE PROSE ABOVE WOULD OTHERWISE READ AS THOUGH
-// IT GENERALIZED. The realization opens by refusing every module that is not the
-// failure-mode roster, so a SECOND derived module with declared inputs is refused by
-// this wall exactly as the first one was, and the repair would be someone editing
-// the predicate to name it. That is a hand-maintained membership list where each new
-// member costs an edit -- the shape gunbc#10822 has just finished deleting one layer
-// up -- and it is disclosed here rather than discovered by the next author, who would
-// otherwise meet a refusal and read an authority claiming to be about generators'
-// declared inputs in general.
-//
-// THE NARROWNESS IS NOT LAZINESS, AND THE REASON IS THE TRIGGER. A general arm needs
-// a carrier where a generator DECLARES ITS INPUT RELATION, and none exists:
-// gunbc.generated_artifact's GeneratedArtifact is a closed coproduct of artifact
-// IDENTITIES and carries no inputs at all, so there is nothing for a general
-// predicate to consult. Inventing that carrier inside a required-gate repair would be
-// modelling a substrate concept to unblock a wall, which is the wrong order. So the
-// next rung is that carrier: when a generator's declared input relation is modeled,
-// this predicate reads it and stops naming a module. Until then the honest reading is
-// ONE generator, decided from ITS OWN constants rather than from a literal spelled
-// here -- which is why it is a narrow arm and not a special case.
-//
-// THE RESIDUAL RISK, STATED RATHER THAN LEFT FOR A READER TO FIND. This arm trusts
-// the generator's DECLARED inputs, and what it actually checks is the declaration,
-// not the generator's behaviour. If a generator's implementation ever drifts from
-// what it declares -- reading a second directory, or emitting a binding no input
-// explains -- the wall auto-admits against a stale premise and says nothing, because
-// the premise is exactly what it is not in a position to re-derive. That is an
-// honest boundary rather than a rung: it is the same class of fact as any other
-// declared-and-not-enforced input relation, and the ceiling is a generator whose
-// declared inputs ARE its inputs by construction. Until that exists, the mitigation
-// is that the declaration and the implementation sit in one module, so drift is a
-// same-file edit rather than an action at a distance.
-//
-// SO THE PARTITION THE OPERATOR RULED GAINS ONE AUTO-ADMITTED MEMBER and loses none.
-// The membership arm already reached this answer for the same files -- an added row
-// edge auto-admits as ExplicitlyEvaluatedZeroDelta, "reached by a name this module
-// authors" -- so before this arm the two arms disagreed about ONE file, which is the
-// tell that the disposition and not the population was wrong.
 
 data interlock_ruling_date: NonEmptyStr = "2026-08-26" as NonEmptyStr
