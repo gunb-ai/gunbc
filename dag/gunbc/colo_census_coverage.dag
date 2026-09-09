@@ -121,9 +121,10 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // bound an individual cabinet; a verified real-power claim with the COOLING MEDIUM unstated was read
 // and must not yield an AIR ceiling. Under the old definition every one of those counts as unread.
 //
-// SO THE CENSUS WOULD HAVE APPEARED TO LOSE READINGS AT THE EXACT MOMENT IT GAINED THEM. When the
-// directional-bound carrier lands at gunbc#10885, this corridor's seven Equinix kVA floors and every
-// interval and average in the census become properly typed claims - and a ceiling-derived count would
+// SO THE CENSUS WOULD HAVE APPEARED TO LOSE READINGS AT THE EXACT MOMENT IT GAINED THEM. Once the
+// carrier can hold a figure's DIRECTION and its APPARENT-POWER unit, this corridor's seven Equinix kVA
+// floors and every interval and average in the census become properly typed claims - and a
+// ceiling-derived count would
 // have reported that improvement as a drop to zero. A metric that falls when the data improves is
 // measuring the wrong thing, and it would have been read as a regression by whoever saw it first.
 //
