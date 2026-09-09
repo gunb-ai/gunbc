@@ -32,15 +32,16 @@ use std::path::Path;
 pub const ROSTER_BASENAME: &str = "roster.dag";
 /// Module path of the row files; `ROW_DIR_REL` is this spelling with `/` for `.`.
 pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
-/// The MODULE the derived roster declares, owned here rather than re-derived by consumers.
+/// Module path of the DERIVED roster itself. One spelling, consumed by the row join and by the
+/// namespace wave's base reconstruction, so neither carries its own copy (DESIGN 3).
 ///
-/// A CONSUMER RECOVERING THIS FROM `ROSTER_BASENAME` MUST STRIP `.dag` AND CHOOSE WHAT TO DO WHEN
-/// THE SUFFIX IS ABSENT, and every such choice is a guess about a name this module owns. One
-/// consumer is the wave-admission wall, where the recovered name gates an AUTO-ADMISSION: a
-/// fabricated fallback there would keep comparing against a plausible name instead of refusing,
-/// which is exactly the fabricated-plausible-output DESIGN section 5 forbids. Declaring the module
-/// once removes the recovery, so there is no default left to guess (section 3: the generator owns
-/// the name its own output declares).
+/// AND NO CONSUMER RECOVERS IT FROM `ROSTER_BASENAME`, which is the reason this is a constant
+/// rather than a strip of the filename. Recovering it means stripping `.dag` and choosing what to
+/// do when the suffix is absent, and every such choice is a guess about a name this module owns.
+/// One consumer is the wave-admission wall, where the recovered name gates an AUTO-ADMISSION: a
+/// fabricated fallback there keeps comparing against a plausible name instead of refusing, which
+/// is the fabricated-plausible-output DESIGN section 5 forbids. Declaring it once leaves no
+/// default to guess.
 pub const ROSTER_MODULE: &str = "gunbc.recurring_failure_mode.roster";
 pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
@@ -183,19 +184,21 @@ fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
     Ok(names)
 }
 
-fn render_roster(names: &[String]) -> String {
-    let mut out = String::from(
-        "module gunbc.recurring_failure_mode.roster\n\
+pub fn render_roster(names: &[String]) -> String {
+    let mut out = format!(
+        "module {ROSTER_MODULE}\n\
          \n\
          // DERIVED from sibling RecurringFailureMode row files. Do not hand-edit.\n\
          // Membership is the directory; order is the sorted filename stem, which is the\n\
          // declaration name. An append is a new file in this directory, never an edit here.\n\
          \n\
-         import std.types { List }\n\
-         import gunbc.recurring_failure_mode { RecurringFailureMode }\n",
+         import std.types {{ List }}\n\
+         import {ROW_MODULE} {{ RecurringFailureMode }}\n"
     );
     for name in names {
-        out.push_str("import gunbc.recurring_failure_mode.");
+        out.push_str("import ");
+        out.push_str(ROW_MODULE);
+        out.push_str(".");
         out.push_str(name);
         out.push_str(" { ");
         out.push_str(name);
@@ -217,7 +220,7 @@ mod tests {
     fn absent_is_not_an_empty_list_render_of_no_names_is_a_present_empty_literal() {
         let body = super::render_roster(&[]);
         assert!(
-            body.contains("module gunbc.recurring_failure_mode.roster"),
+            body.contains(&format!("module {}", super::ROSTER_MODULE)),
             "absence of members is a present module with an empty list, not a missing module"
         );
         assert!(body.contains("= [\n]\n"));

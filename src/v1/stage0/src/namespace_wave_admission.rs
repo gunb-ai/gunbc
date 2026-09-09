@@ -1622,13 +1622,15 @@ pub struct TransitionAdmission {
 /// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
 /// touch. Adjudicate that deletion by joining each row against main on its own
 /// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+///
+/// SIXTH DISSOLUTION (2026-09-08). #10688 merged; both rows report consumed. This change touches
+/// the roster (base-side reconstruction of the gitignored failure-mode fold), so the deletion is
+/// owed here.
+///
 /// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
-/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and adding
-/// the row below is it. ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE:
-/// the required run reported both as `already satisfied at the base -- consumed by its own merge`,
-/// which IS that (module, in_declaration, spelling, target) join executed against main rather than
-/// a reading of the trigger paragraph. Their label constant goes with them, since a label is text
-/// shared by the rows citing it and dissolves with the last one.
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch.
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE: a required run reported
+/// both as already satisfied at the base -- consumed by its own merge.
 ///
 /// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
 /// `cumulative_metric_read_as_per_event`, is added as its own file under
