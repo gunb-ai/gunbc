@@ -43,11 +43,11 @@ data continuity_centers_woodbury: ColoFacilityRow = ColoFacilityRow {
   facility_label: "Continuity Centers Woodbury",
   address: AddressListed {
     street: "1000 Woodbury Rd, Suite 104, Woodbury, NY 11797",
-    citation: "continuitycenters.com, read 2026-09-09. THE OPERATOR PUBLISHES THIS AS ITS HEADQUARTERS ADDRESS, not explicitly as a data center address; directory listings give the same street for the facility, which is consistent but is a directory's claim. Whether the hall is in this building is the first thing a quote must settle.",
+    citation: "continuitycenters.com, confirmed against raw HTML 2026-09-09. The page labels the block HEADQUARTERS verbatim. THE OPERATOR PUBLISHES THIS AS ITS HEADQUARTERS ADDRESS, not explicitly as a data center address; directory listings give the same street for the facility, which is consistent but is a directory's claim. Whether the hall is in this building is the first thing a quote must settle.",
   },
   municipality: "Woodbury",
   region_code: "NY",
-  facility_note: "Nassau County, on the Suffolk line. Founded 1999 per the operator. Directory profiles describe a Tier III facility with oversized freight elevators and roof rights, and SSAE 16 SOC 2 standing with HIPAA and PCI compliance claimed for the disaster-recovery product. NOTE THE FETCH: continuitycenters.com answers HTTP 403 to a plain client (5,491 bytes of block page), so every reading here came through a rendering fetch and none has been confirmed against the page's own bytes - the weaker of the two evidence grades used in this census.",
+  facility_note: "Nassau County, on the Suffolk line. Founded 1999 per the operator. Directory profiles describe a Tier III facility with oversized freight elevators and roof rights, and SSAE 16 SOC 2 standing with HIPAA and PCI compliance claimed for the disaster-recovery product. FETCH NOTE, CORRECTED: an early attempt recorded this operator as answering HTTP 403 to a plain client, and that was this client rather than the operator - a full browser user-agent returns HTTP 200 and 176 KB. The readings here are therefore at the RAW-BYTES grade, not the rendered one, and the correction strengthens the grain obligation below rather than weakening it: the word colocation does not occur anywhere in the page bytes.",
 }
 
 data continuity_centers_density: CabinetDensityClaim = DensityUnread {
@@ -55,7 +55,7 @@ data continuity_centers_density: CabinetDensityClaim = DensityUnread {
 }
 
 data continuity_centers_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "THE PRIOR QUESTION IS WHETHER COLOCATION IS SOLD AT ALL. The operator's own pages read 2026-09-09 market disaster recovery and backup with no colocation product; directories describe single-server through full-cabinet, cage and private-suite colocation. Ask whether the colocation product still exists, and if it does, ask for the grain and the price - a live single-server product on Long Island would be the second-finest grain in this census and would matter out of proportion to this operator's size.",
+  obligation: "THE PRIOR QUESTION IS WHETHER COLOCATION IS SOLD AT ALL, and the raw bytes make that question sharper rather than softer: THE WORD COLOCATION DOES NOT OCCUR IN THE PAGE (176 KB, HTTP 200, read 2026-09-09 with a browser user-agent). The operator markets disaster recovery, backup and Veeam-partnered cloud protection; directories describe single-server through full-cabinet, cage and private-suite colocation. Ask whether the colocation product still exists, and if it does, ask for the grain and the price - a live single-server product on Long Island would be the second-finest grain in this census and would matter out of proportion to this operator's size.",
 }
 
 data continuity_centers_westchester_obligation: NonEmptyStr = "A SECOND SITE IN THIS REGION IS DIRECTORY-ONLY AND IS DELIBERATELY NOT A ROW. Directory listings place a Continuity Centers facility in Westchester County under two different names, Chappaqua and Hawthorne, and the operator's own site names neither. One operator with two directory names for one unconfirmed site is exactly the shape that produces a phantom facility, so nothing is modelled: confirm from the operator whether a Westchester hall exists, what its address is, and whether the two directory names are one building or two."
