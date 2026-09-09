@@ -581,41 +581,6 @@ fn density_ceiling_refuses(
   }
 }
 
-// WHETHER A FIGURE WAS MODELLED AT ALL, WHICH IS A DIFFERENT QUESTION FROM EVERY OTHER ONE HERE AND
-// IS THE ONE A COVERAGE CENSUS ACTUALLY ASKS. Every accessor above answers "can this claim bound or
-// cover a load", and each correctly returns nothing for a floor, an average, or an unlabelled medium.
-// A census asking "did the operator publish a density" through any of them therefore counts a
-// verified reading as absent, and its consequence is that a census keyed on the ceiling accessor
-// reports a collapse toward zero at the moment the data improves.
-//
-// IT IS NAMED `contains` AND NOT `publishes`, WHICH IS A REVIEW FINDING AND A REAL NARROWING. The
-// implementation can prove that this modelled arm holds a figure. It cannot prove the operator
-// published it, that a representation was retrieved, or that the wording resolved - Iron Mountain is
-// the live counterexample, a modelled figure resting on a summarizing read whose exact wording is
-// unverified. That second fact now has its own carrier in FigureVerificationStanding, and this
-// function deliberately does not consult it: model occupancy and retrieval verification are two of
-// the three facts a census keeps, and one function answering both would be the fusion this file has
-// spent three axes removing.
-//
-// THE BODY IS NOW AN ARM TEST, AND THAT COLLAPSE IS THE RECEIPT FOR A CLIMB RATHER THAN A REGRESSION.
-// It used to be `figures.first()` over a plain list, because an empty DensityPublished was writable
-// and the predicate had to check for it at runtime. A non-empty carrier made that state
-// unconstructible, so the check had nothing left to check - the validation dissolved into the
-// construction that replaced it, which is what DESIGN section 4b's dissolution-on-climb rule looks
-// like when it fires. The discriminating evidence does not dissolve with it: the witness that used
-// to red on an empty published claim is now a compile-time refusal, and the mutation that would
-// construct one no longer parses.
-//
-// IT LIVES IN THE CARRIER RATHER THAN IN EACH WITNESS BECAUSE FIVE LANES ASK IT. One of them was
-// about to write it as a witness-local predicate and asked first, which is the only reason it is here
-// once instead of five times; a region sentinel asserting "this facility published no figure" is the
-// same question a coverage roster asks, and DESIGN section 3 does not care that one caller is a test.
-fn density_claim_contains_figure(d: CabinetDensityClaim) -> Bool {
-  match d {
-    DensityPublished { figures } => true,
-    DensityUnread { obligation } => false,
-  }
-}
 
 // Whether the operator sells at a grain this fleet can buy. A campus marketing 25 MW that takes
 // only private-suite commitments is not a candidate for one cabinet, and that is a different
@@ -654,8 +619,8 @@ type RemoteHandsWindowRate {
 // from opposite directions: an accessor answering a question nothing asked, and a field answering
 // nothing at all.
 //
-// IT IS THE SECOND OF THE THREE FACTS A COVERAGE CENSUS KEEPS, and it is a separate function from
-// `density_claim_contains_figure` on purpose. Occupancy asks whether the model holds a figure;
+// IT IS THE SECOND OF THE THREE FACTS A COVERAGE CENSUS KEEPS, and it is a separate function from the
+// inventory route on purpose. Occupancy asks whether the model holds a figure;
 // this asks whether the operator's own words were retrieved. Iron Mountain answers YES to the first
 // and NO to this one, which is exactly the row that would be miscounted by any single predicate -
 // and the third fact, whether the figure is useful for a particular requirement, depends on the
@@ -676,8 +641,8 @@ fn figure_wording_is_verified(f: PublishedDensityFigure) -> Bool {
 // be asked through the screening coordinate.
 //
 // FALSE FOR DensityUnread IS HONEST RATHER THAN CONFLATED: there is no wording to have verified. It
-// is `density_claim_contains_figure` that separates unread from read-but-unverified, and the two are
-// asked together precisely because neither answers alone.
+// is the inventory route that separates unread from read-but-unverified - an unread claim has no
+// figures at all - and the two are asked together precisely because neither answers alone.
 fn density_claim_wording_is_verified(d: CabinetDensityClaim) -> Bool {
   match d {
     DensityPublished { figures } =>
@@ -704,9 +669,26 @@ fn density_claim_wording_is_verified(d: CabinetDensityClaim) -> Bool {
 // screen, because the screen still cannot be asked with an unspecified medium - the routes answer
 // different questions rather than one question two ways, which is what would have been the fork.
 //
-// TOTAL, AND EMPTY FOR AN UNREAD CLAIM RATHER THAN REFUSING: a claim nobody read published no
-// figures, which is a true statement about its inventory. It is `density_claim_contains_figure` that
-// separates unread from read, and a caller wanting that distinction asks for it.
+// TOTAL, AND EMPTY FOR AN UNREAD CLAIM RATHER THAN REFUSING: a claim nobody read published no figures,
+// which is a true statement about its inventory. Because a published claim's figures are NON-EMPTY BY
+// CONSTRUCTION, emptiness here IS the unread arm - equal by construction rather than by coincidence -
+// so this one function answers both "what is here" and "was anything published".
+//
+// A `density_claim_contains_figure(d) -> Bool` STOOD BESIDE IT AND WAS DELETED, MAKING IT THE THIRD
+// TIME THIS CENSUS HAS DELETED THIS SHAPE. `cabinet_density_is_read` went from this very file, and
+// `coverage_is_surveyed` from gunbc.colo_census_coverage (review 62776), whose surviving annotation
+// says of the second that "writing the predicate again one module later is the receipt that the first
+// deletion was applied to an instance and not to the habit". It then happened a third time, here,
+// authored by someone who had read that sentence.
+//
+// THE ARGUMENT FOR KEEPING IT WAS THAT A CLOSED COPRODUCT CANNOT FORK SILENTLY - add a third arm and
+// both functions red at compile time, so the stale-half failure DESIGN section 3 exists to prevent is
+// unwritable. That is true and it proves the duplicate is SAFE, not that it is NEEDED. Section 2
+// prices authoring, review and maintenance, not only staleness, and a safe duplicate is still one.
+//
+// A CONTROL THAT WANTS TO ASSERT ARM MEMBERSHIP RATHER THAN A COUNT still can, and should say so in
+// its own annotation: over a structurally non-empty carrier `density_claim_figures(d).length() == 0`
+// IS the unread arm. The intent belongs in the assertion that has it, not in a second matcher.
 fn density_claim_figures(d: CabinetDensityClaim) -> List<PublishedDensityFigure> {
   match d {
     DensityPublished { figures } => non_empty_to_list(xs: figures),

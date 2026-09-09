@@ -14,7 +14,7 @@ import extdeps.colo.types {
   FigureVerificationStanding, WordingVerbatim,
   DensityFigureLookup, FigureFound, FigureAbsent, FigureDuplicated, density_figure_for_medium,
   DensityScreen, ScreenHolds, ScreenUndetermined, ScreenNeedsEvidence,
-  density_wording_covers, density_ceiling_refuses, density_claim_contains_figure,
+  density_wording_covers, density_ceiling_refuses,
   figure_wording_is_verified, density_claim_wording_is_verified,
   density_claim_figures, medium_eq,
   quantity_ceiling,
@@ -211,6 +211,56 @@ data duplicated_air_fixture: CabinetDensityClaim = DensityPublished {
         },
       },
     ],
+  },
+}
+
+// A REAL-POWER INTERVAL, WHICH NOTHING IN THE CORPUS CONSTRUCTED UNTIL THIS FIXTURE. The dimension
+// split gave MarketedRealInterval and MarketedApparentInterval separate arms, and both live fixtures
+// were apparent - so the REAL arm's covers path, `required <= lower`, was the only new
+// admission-granting path in the change and was reached only by typecheck. DESIGN section 5 is
+// explicit that a typecheck is not a consumer, and an admission path is the worst place to accept
+// one: it is the direction that puts a cabinet on a breaker.
+//
+// The numerals are NJFX Wall's published wording, "power densities ranging from 2 kW to 16 kW per
+// cabinet", because a two-ended real-power claim should be tested against a shape an operator
+// actually publishes. It is air-labelled and therefore a FIXTURE rather than a census row - that page
+// names no medium, and the live row belongs to the lane reading that operator.
+data real_interval_fixture: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: AirCoolingPublished,
+      quantity: MarketedRealInterval { lower: watt(count: 2000), upper: watt(count: 16000) },
+      wording: "witness fixture: a real-power interval the operator labelled air",
+      citation: "witness fixture reproducing NJFX Wall's two-ended publication shape in real power; no live row is both an interval and air-labelled, which is why this is constructed rather than cited",
+      verification: WordingVerbatim {
+        retrieval: "Fixture, verbatim by construction.",
+      },
+    },
+    tail: [],
+  },
+}
+
+// AN AVERAGE, WHICH IS THE ARM THAT EXISTS SO A READING IS NOT FILED AS AN OBLIGATION. "Cooling level
+// average is 3kW per cabinet" was read by a census lane that had no arm for it and had to record a
+// real reading as DensityUnread. The arm's whole design is that it is representable, countable and
+// citable while supporting NO bound in either direction - and until this fixture that claim rested on
+// two match arms nothing ever reached.
+//
+// A DECLARATION THAT NO OPERATION CONSUMES STILL NEEDS EVIDENCE THAT IT CONSUMES NOTHING. The carrier
+// annotation says "the arm exists and NO OPERATION CONSUMES IT"; that is a machine claim, and DESIGN
+// section 4b(1) says a rung is established by executed evidence rather than by a sentence.
+data published_average_fixture: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: AirCoolingPublished,
+      quantity: PublishedAverage { average: PublishedRealPower { power: watt(count: 3000) } },
+      wording: "witness fixture: cooling level average is 3kW per cabinet",
+      citation: "witness fixture reproducing the average publication shape a lane read and could not file; air-labelled so it REACHES the screen and can be shown to answer nothing once there",
+      verification: WordingVerbatim {
+        retrieval: "Fixture, verbatim by construction.",
+      },
+    },
+    tail: [],
   },
 }
 
@@ -493,7 +543,7 @@ test fn w_requesting_an_unspecified_medium_answers_nothing() -> Bool {
 }
 
 // MODEL OCCUPANCY IS NOT SCREEN UTILITY, AND IRON MOUNTAIN IS THE ROW THAT PROVES THEY DIVERGE. Its
-// page publishes a real figure, so `density_claim_contains_figure` is TRUE - and because the page
+// page publishes a real figure, so the inventory route is NON-EMPTY - and because the page
 // named no medium, every screen over it is undetermined. A census keyed on the ceiling accessor
 // would count this verified reading as absent; that is the exact miscount the predicate exists to
 // prevent, and this witness is the pair of answers that cannot both come from one function.
@@ -502,9 +552,9 @@ test fn w_requesting_an_unspecified_medium_answers_nothing() -> Bool {
 // is unconstructible: DensityUnread still answers false, so the function still discriminates the two
 // arms rather than the two list lengths it used to.
 test fn w_model_occupancy_is_not_screen_utility() -> Bool {
-  density_claim_contains_figure(d: iron_mountain_nje1_density)
+  density_claim_figures(d: iron_mountain_nje1_density).length() > 0
     && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
-    && !density_claim_contains_figure(d: iron_mountain_wpa1_density)
+    && density_claim_figures(d: iron_mountain_wpa1_density).length() == 0
 }
 
 // THREE QUESTIONS, THREE ANSWERS, ONE ROW - WHICH IS WHY THEY ARE THREE FUNCTIONS. Iron Mountain's
@@ -517,7 +567,7 @@ test fn w_model_occupancy_is_not_screen_utility() -> Bool {
 // cells, so its air figure IS verified. Without that conjunct a blanket `false` from
 // `figure_wording_is_verified` would pass the first three, which is the permanently-green shape.
 test fn w_occupancy_verification_and_utility_are_three_facts() -> Bool {
-  density_claim_contains_figure(d: iron_mountain_nje1_density)
+  density_claim_figures(d: iron_mountain_nje1_density).length() > 0
     && !density_claim_wording_is_verified(d: iron_mountain_nje1_density)
     && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCoolingPublished)
     && density_claim_wording_is_verified(d: databank_lga4_density)
@@ -542,4 +592,53 @@ test fn w_an_unscreenable_figure_is_still_inventoried() -> Bool {
     && all(density_claim_figures(d: iron_mountain_nje1_density), f => medium_eq(a: f.medium, b: CoolingMediumUnspecified))
     && density_claim_figures(d: databank_lga4_density).length() == 2
     && density_claim_figures(d: iron_mountain_wpa1_density).length() == 0
+}
+
+
+// THE REAL INTERVAL COVERS FROM ITS LOWER END AND CEILINGS AT ITS UPPER, AND THE APPARENT TWIN DOES
+// NEITHER. This is the only executed evidence for `required <= lower` on the real arm - the sole new
+// admission-granting path in this change, and previously reachable only by typecheck.
+//
+// CONJUNCTS ONE TO THREE PIN THE LOWER END EXACTLY: 2000 W is covered because it equals the published
+// floor, 1999 W because it sits below it, and 2001 W is NOT - an interval covers up to where the
+// operator's sentence reaches and no further. An implementation covering to the UPPER end would pass
+// the first two and fail the third, which is the reversal worth catching, because it would admit 16 kW
+// on a page promising 2.
+//
+// CONJUNCT FOUR IS THE DIMENSION-SPLIT CONTROL. The apparent fixture carries the same shape in kVA and
+// covers NOTHING, so the pair shows the split is doing work rather than being a rename: identical
+// structure, different dimension, opposite answer on the admitting side.
+test fn w_a_real_interval_covers_from_its_lower_end_only() -> Bool {
+  covers_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 2000)
+    && covers_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 1999)
+    && !covers_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 2001)
+    && !covers_at(d: apparent_power_fixture, requested: AirCoolingPublished, required: 1)
+}
+
+// THE SAME FIXTURE BOUNDS FROM ABOVE AT ITS UPPER END, the other half of the interval's contract and
+// the half the ceiling accessor reads. 16001 W exceeds the published maximum and is refused on the
+// operator's own sentence; 15999 W is NOT refused, and not-refused is undetermined rather than
+// admitted. A carrier that ceilinged at the LOWER end would refuse 2001 W and look entirely reasonable
+// doing it, so that conjunct is the one that catches the transposition.
+test fn w_a_real_interval_bounds_from_above_at_its_upper_end() -> Bool {
+  refuses_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 16001)
+    && !refuses_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 15999)
+    && !refuses_at(d: real_interval_fixture, requested: AirCoolingPublished, required: 2001)
+}
+
+// AN AVERAGE BOUNDS NOTHING IN EITHER DIRECTION, EXECUTED RATHER THAN ASSERTED IN PROSE. The carrier's
+// annotation claims no operation consumes this arm; this is the discriminating input for that claim.
+//
+// 1 W IS THE CONJUNCT THAT MATTERS. It sits far below the published 3 kW average, so an implementation
+// reading an average as a floor - the single most tempting misreading, since half the cabinets do
+// exceed it - would cover it, and this reds. The ceiling side is asserted at an absurd requirement for
+// the same reason `w_a_marketed_floor_yields_no_ceiling` uses 999999: an absent ceiling refuses nothing
+// at all, including the impossible, which is what separates it from a generous one.
+//
+// The fourth conjunct keeps this from being satisfiable by breaking the air path generally.
+test fn w_a_published_average_supports_no_bound_in_either_direction() -> Bool {
+  !covers_at(d: published_average_fixture, requested: AirCoolingPublished, required: 1)
+    && !covers_at(d: published_average_fixture, requested: AirCoolingPublished, required: 3000)
+    && !refuses_at(d: published_average_fixture, requested: AirCoolingPublished, required: 999999)
+    && has_ceiling_for(d: air_labelled_cap_fixture, requested: AirCoolingPublished)
 }
