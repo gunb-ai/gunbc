@@ -1616,13 +1616,15 @@ pub struct TransitionAdmission {
 /// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
 /// touch. Adjudicate that deletion by joining each row against main on its own
 /// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+///
+/// SIXTH DISSOLUTION (2026-09-08). #10688 merged; both rows report consumed. This change touches
+/// the roster (base-side reconstruction of the gitignored failure-mode fold), so the deletion is
+/// owed here.
+///
 /// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
-/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and adding
-/// the row below is it. ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE:
-/// the required run reported both as `already satisfied at the base -- consumed by its own merge`,
-/// which IS that (module, in_declaration, spelling, target) join executed against main rather than
-/// a reading of the trigger paragraph. Their label constant goes with them, since a label is text
-/// shared by the rows citing it and dissolves with the last one.
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch.
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE: a required run reported
+/// both as already satisfied at the base -- consumed by its own merge.
 ///
 /// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
 /// `cumulative_metric_read_as_per_event`, is added as its own file under
@@ -1672,7 +1674,95 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+///
+/// STRUCTURAL-TEXT AND LOGIC AUTHORITY REQUALIFICATION (2026-09-09, gunbc#10692). No ordinal is
+/// claimed, for the reason the entries above give. Five binding sites on the v2 self-host branch
+/// stop spelling two type names into the ambient kernel set and name the authority module
+/// instead, which is `TargetChanged` and is not auto-admitted: `EmitSpellingEscape.from/to`,
+/// `apply_emit_spelling_escapes.spelling` and `integer_string_to_decimal_digits_step.s` requalify
+/// `String` to `v2.std.text`; `py_bool_grounding` and `ts_bool_grounding` requalify their
+/// `BooleanAlgebra` parameter `Bool` to `v2.std.logic`.
+///
+/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check. The three
+/// `String` sites carry STRUCTURAL text — `v2.std.text.String` is `FreeMonoid<Char>`, and the
+/// chars(String) <- Variant cluster repair (this branch) restored structural reads end-to-end, so
+/// the carriers' types name the structural authority rather than the kernel homonym; the
+/// qualification is also load-bearing for native emission, whose host-String arm keys on
+/// declaration provenance (this branch, `is_host_text_carrier_type`), so an unqualified spelling
+/// would render the host carrier while value-position consumers render the structure. The two
+/// `Bool` sites bind a value whose own declaration already carries the qualified parameter:
+/// `v2.std.logic` declares `type Bool = True | False` and `bool_boolean_algebra:
+/// BooleanAlgebra<Bool>` resolves that spelling to its OWN module's declaration, so a grounding
+/// row annotated `BooleanAlgebra<Bool>` with the kernel reading stated a type its value does not
+/// inhabit. This is the gunbc#9907 namespace-lane requalification reaching five sites the XL-N
+/// closure repair touched.
+///
+/// ONE CHANGE CLASS. Nothing is requalified at the leaf: every spelling is identical on both
+/// sides, and what moved is the declaration behind it — from the ambient kernel type set
+/// (`<kernel>`) to the explicitly named authority module. No membership edge is added or removed
+/// by these five sites (the requalification is by qualified path or an import the module already
+/// carried), which is why the run reports exactly five binding rows and nothing else.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10692 merges. Main then binds
+/// each spelling to the named target, base and head agree, no run can produce these deltas, and
+/// all five report CONSUMED rather than stale — coming due on this roster's next touch.
+/// Adjudicate that deletion by joining each row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
+/// a trigger sentence is not evidence that the trigger fired.
+const V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL: &str =
+    "gunbc#10692 structural-text/logic authority requalification 2026-09-09";
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.extdeps.languages.python",
+            in_declaration: "py_bool_grounding",
+            spelling: "Bool",
+            target: "v2.std.logic",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.extdeps.languages.typescript",
+            in_declaration: "ts_bool_grounding",
+            spelling: "Bool",
+            target: "v2.std.logic",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.target_model",
+            in_declaration: "EmitSpellingEscape",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.target_model",
+            in_declaration: "apply_emit_spelling_escapes",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.integer",
+            in_declaration: "integer_string_to_decimal_digits_step",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

@@ -6,6 +6,7 @@ import extdeps.llm.cli {
   claude_trust_store_path,
   claude_workspace_trust_seeded,
   shape_claude_invoke_argv,
+  ProviderAccountDefaultModel,
   ReasoningHigh,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -68,6 +69,7 @@ test fn w_argv_head_is_program_authority() -> Bool {
     settings_json: "\{\}",
     append_system_prompt: "brief",
     start_prompt: "go",
+    model: ProviderAccountDefaultModel,
     permission_args: [],
   )
   match argv.first() {

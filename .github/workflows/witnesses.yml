@@ -321,6 +321,7 @@ jobs:
           if [ -e ".github/workflows/witnesses.yml" ] && ! git diff --quiet -- ".github/workflows/witnesses.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/witnesses.yml"; fi
           if [ -e ".github/workflows/fleet-converge.yml" ] && ! git diff --quiet -- ".github/workflows/fleet-converge.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/fleet-converge.yml"; fi
           if [ -e ".github/workflows/fleet-desired.yml" ] && ! git diff --quiet -- ".github/workflows/fleet-desired.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/fleet-desired.yml"; fi
+          if [ -e ".github/workflows/bootstrap-pr-launcher.yml" ] && ! git diff --quiet -- ".github/workflows/bootstrap-pr-launcher.yml"; then AUTHOR_COMMIT_DRIFT="$AUTHOR_COMMIT_DRIFT .github/workflows/bootstrap-pr-launcher.yml"; fi
           echo "heal_author_commit_required=0" >> "$GITHUB_OUTPUT"
           if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
             rm -rf "heal-author-commit-required"

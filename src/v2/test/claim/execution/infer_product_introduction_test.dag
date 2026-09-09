@@ -7,18 +7,15 @@ import v2.compiler.infer {
   InferredTree,
   infer
 }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_admission,
-  direct_rust_door_ingest
+  direct_rust_door_specimen_inferred
 }
 import v2.extdeps.languages.dag {
-  dag_int_inhabitant_node,
-  dag_language_model
+  dag_int_inhabitant_node
 }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List, list_at_optional }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -55,17 +52,6 @@ type ProductIntroductionCensus {
   conjs_derived: Int
   arrows: Int
   arrows_derived: Int
-}
-
-fn product_introduction_specimen_inferred() -> Outcome<InferredTree> {
-  match assemble_program_from_ingest(
-    ingest: direct_rust_door_ingest(),
-    admission: direct_rust_door_admission(),
-    lm: dag_language_model()
-  ) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
-  }
 }
 
 fn product_introduction_node_derived(inferred: InferredTree, n: Node) -> Bool {
@@ -195,7 +181,7 @@ fn params_conj_evidence_seen(inferred: InferredTree) -> Bool {
 }
 
 test fn product_introduction_derives_fully_evidenced_products_holds() -> Bool {
-  match product_introduction_specimen_inferred() {
+  match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       let census = product_introduction_census(inferred: inferred)
@@ -205,7 +191,7 @@ test fn product_introduction_derives_fully_evidenced_products_holds() -> Bool {
 }
 
 test fn product_introduction_composed_evidence_carries_child_groundings_holds() -> Bool {
-  match product_introduction_specimen_inferred() {
+  match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       params_conj_evidence_seen(inferred: inferred)

@@ -73,9 +73,10 @@ fn coverage_subject(module_path: String, decl_name: String) -> DeclarationRef {
 // the three match_loop_fold family rows (match, loop, fold_closure — backing
 // emit_host_native_only_{match,loop,fold_closure}_holds, run through the three-member family crate
 // per the witness_family_build_grain_ruling, octet lists pinned against the family one-build
-// cache), the meet_join family row (backing emit_host_native_only_meet_join_holds, run through
-// the logic family crate it shares with complement, octets meet=1 join=1 pinned against the family
-// one-build cache), the variant_construct family row (backing
+// cache), the meet_join family row (backing emit_host_native_only_meet_holds — the arm split
+// one-member-per-claim under the floor's 500ms claim ceiling, so emit_host_native_only_join_holds
+// carries the family's other half, run through the logic family crate it shares with complement,
+// octets meet=1 join=1 pinned against the family one-build cache), the variant_construct family row (backing
 // emit_host_native_only_variant_construct_holds, octet 9 pinned against the family one-build
 // cache), the two host-effect transport rows (filesystem_read, shell_exec_run — backing
 // emit_host_native_only_{filesystem_read,shell_exec_run}_holds, literal octets grounded by the
@@ -191,7 +192,7 @@ data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
     witness_function: "emit_host_meet_equals_eval_holds",
     disposition: SelfEmittedNative {
       backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
-      backing_function: "emit_host_native_only_meet_join_holds"
+      backing_function: "emit_host_native_only_meet_holds"
     }
   },
   EmitCoverageFrontierRow {

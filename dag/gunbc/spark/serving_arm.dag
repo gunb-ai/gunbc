@@ -1,0 +1,237 @@
+module gunbc.spark.serving_arm
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import gunbc.spark.model_snapshot_acquisition {
+  SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
+}
+
+// A SERVING ARM IS A CHECKPOINT, A RUNTIME AND A TOPOLOGY -- NOT A MODEL.
+//
+// WHY THIS AXIS IS BEING ADDED, AND WHAT IT COST TO DISCOVER. gunbc.harness.harness_reasoning_wire
+// carries a serving-unit coproduct whose GLM arm is a single `Glm53FlashOnVllm`. That collapse was
+// defensible when only one GLM realization was contemplated, and it broke the moment a second one
+// existed. "GLM on vLLM" is not one unit: measured on 2026-09-08, the fleet's pinned DeepSeek-era
+// image does not register `Glm5NextForConditionalGeneration` AT ALL, while a community SM121 image
+// registers it, ships a GLM reasoning parser, and returns reasoning under a DIFFERENT MEMBER NAME
+// than the model authority declares. Same model, same wire protocol family, incompatible units.
+//
+// THE AXES ARE INDEPENDENT AND EACH ONE DECIDES SOMETHING THE OTHERS CANNOT. A checkpoint fixes the
+// loader, the quantization, the bytes and the footprint; a runtime fixes the architecture registry,
+// the parsers, the attention backend and the response schema; a topology fixes the aggregate memory
+// and therefore which checkpoints are admissible at all. A model identity determines none of them,
+// which is precisely why one `Glm53FlashOnVllm` arm could not answer for two live realizations.
+
+type ServingCheckpoint
+  = Glm53NativeFp8
+  | Glm53Exl3_205
+  | Glm53Nvfp4CompressedTensors
+  | DeepseekV4FlashIq3sSplit
+
+type ServingRuntime
+  = GunbcSparkrunVllmDs4Gb10
+  | Gitcommit90Sm121Exl3
+  | Tonyd2wildSm121Nvfp4
+
+type ServingTopology
+  = SingleSparkTp1
+  | SparkPairTp2
+  | FourSparkTp4
+
+fn serving_topology_rank_count(t: ServingTopology) -> Nat {
+  match t {
+    SingleSparkTp1 => 1
+    SparkPairTp2 => 2
+    FourSparkTp4 => 4
+  }
+}
+
+// ONE GB10's UNIFIED POOL, read off a live member on 2026-09-08 (`free -g` on spark-0c75 reported
+// 121 GiB total). It is carried as a per-unit figure because aggregate admissibility is the product
+// of this and the rank count, and stating the aggregate directly would hide which half moved.
+data gb10_unified_pool_gib: Nat = 121
+
+fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
+  serving_topology_rank_count(t: t) * gb10_unified_pool_gib
+}
+
+// ── CHECKPOINT FACTS ───────────────────────────────────────────────────────────────────────────
+//
+// THESE ARE THE FACTS THAT DECIDE FIT, and they belong to the checkpoint rather than to the model.
+// The same GLM-5.3-Flash is 306 GiB of native FP8 weights and 79.3 GiB of EXL3 2.05bpw; a topology
+// that admits one refuses the other. A model-identity row cannot express that difference, which is
+// how a branch came to pin a checkpoint that could not fit the group it targeted.
+// PLACEMENT TRAVELS WITH THE CHECKPOINT ROW, so the one value that decides install path, download,
+// verification, mount and launch path is declared once beside the identity it belongs to. A
+// checkpoint's bytes are somewhere specific on a host; pretending every checkpoint lives in the same
+// layout is what made a modelled run report an ABSENT snapshot while 80 GiB of exactly that revision
+// sat on the same disk serving a live engine.
+//
+// REVIEW PROPOSED MOVING IT ONTO THE ARM'S SNAPSHOT BINDING, AND IT IS DECLINED HERE WITH A REASON
+// RATHER THAN APPLIED OR IGNORED. The proposal's premise is sound -- where bytes land is a deployment
+// choice, and deployment choices are the arm's. What it does not price is that keying placement by ARM
+// makes a specific bad state WRITABLE: two arms naming one checkpoint could place it differently, and
+// nothing in the type would refuse them.
+//
+// THAT STATE IS NOT MERELY UNTIDY, IT BREAKS A MECHANISM THAT DEPENDS ON ITS ABSENCE. Rail replication
+// (gunbc.spark.model_snapshot_acquisition model_snapshot_rail_source) fetches a snapshot from a peer
+// into the SAME path it resolves locally, and it is entitled to do that only because placement is a
+// function of the checkpoint and not of the host or the arm. Arm-keyed placement would make peer and
+// local paths diverge for one revision, which rsync cannot detect -- it would copy into a directory
+// that is correct for neither arm. The fleet would also hold two copies of eighty gigabytes with no
+// row saying it meant to.
+//
+// SO THE CURRENT SHAPE IS THE CONSTRUCTION AND THE PROPOSAL IS THE VALIDATION, which is the ordering
+// DESIGN section 5 asks for: keyed by checkpoint, divergent placement for one revision has no
+// spelling; keyed by arm, it is writable and would need a check to catch it afterwards. If a future
+// arm genuinely needs one checkpoint in two locations -- a staging copy beside a serving copy -- that
+// is a second checkpoint row with its own identity and provenance, not a placement field that has
+// quietly stopped being a function of the thing it names.
+type ServingCheckpointRow {
+  checkpoint: ServingCheckpoint
+  repo: HubRepoId
+  revision: NonEmptyStr
+  placement: SnapshotPlacement
+  weight_gib: Nat
+  quantization_wire: NonEmptyStr
+  provenance: NonEmptyStr
+}
+
+data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
+  checkpoint: Glm53Exl3_205,
+  repo: HubRepoId { kind: HubModelRepo, path: "turboderp/GLM-5.3-Flash-exl3" as NonEmptyStr },
+  revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
+  placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/glm53-flash-exl3-2.05" as NonEmptyStr },
+  weight_gib: 80,
+  quantization_wire: "exl3" as NonEmptyStr,
+  provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards" as NonEmptyStr,
+}
+
+data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
+  checkpoint: Glm53NativeFp8,
+  repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
+  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+  weight_gib: 306,
+  quantization_wire: "fp8" as NonEmptyStr,
+  provenance: "revision resolved from the Hub model API on 2026-09-07; weight figure is the vLLM recipe's published size for this checkpoint and is NOT measured on this fleet -- nothing here has fetched it" as NonEmptyStr,
+}
+
+fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
+  match c {
+    Glm53Exl3_205 => Present { value: glm53_exl3_205_row }
+    Glm53NativeFp8 => Present { value: glm53_native_fp8_row }
+    Glm53Nvfp4CompressedTensors => none
+    DeepseekV4FlashIq3sSplit => none
+  }
+}
+
+// ── RUNTIME FACTS ──────────────────────────────────────────────────────────────────────────────
+//
+// WHETHER A RUNTIME CAN LOAD AN ARCHITECTURE IS A MEASURED PROPERTY OF THE IMAGE, and it is the fact
+// that stopped this migration. It is carried per runtime, established by executing the registry
+// probe inside the image, and never inferred from the model card or the upstream recipe -- both of
+// which describe a vLLM newer than the one a given image pins.
+// THE HUB CLI'S PATH IS A PER-IMAGE FACT, measured inside each image rather than assumed common.
+// `/opt/env/bin/hf` in the DeepSeek runtime and `/usr/local/bin/hf` in the community one -- a single
+// hardcoded path silently produced a container that could not start, reported downstream as a
+// checkpoint whose bytes were wrong.
+type ServingRuntimeRow {
+  runtime: ServingRuntime
+  image_reference: NonEmptyStr
+  hub_cli_path: NonEmptyStr
+  vllm_version: NonEmptyStr
+  registers_glm5_next: Bool
+  reasoning_projection: ReasoningResponseProjection
+  provenance: NonEmptyStr
+}
+
+// HOW REASONING COMES BACK IS A RUNTIME PROPERTY WITH TWO SHAPES, AND THE MEMBER NAME IS PART OF IT.
+// An earlier revision of the harness seam asked only WHETHER the server parses reasoning, and took
+// the member NAME from the model authority (`reasoning_content`, DeepSeek's guide) with `reasoning`
+// demoted to an alias. Measured against the community SM121 image on 2026-09-08, the response
+// carries `reasoning` and has NO `reasoning_content` member at all -- so the model authority's name
+// is not this unit's primary, and the alias fold rescued the read by accident of ordering rather
+// than by the model being right.
+type ReasoningResponseProjection
+  = ParsedReasoningField { field: NonEmptyStr }
+  | InlineReasoning { end_token: NonEmptyStr }
+
+data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: Gitcommit90Sm121Exl3,
+  image_reference: "ghcr.io/gitcommit90/glm-5.3-one-spark@sha256:ba6db0547b24162854948fb16cda68dd4408360e03aeba480edb8d3d876eaeef" as NonEmptyStr,
+  hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
+  vllm_version: "0.1.dev20051+g487ecf187" as NonEmptyStr,
+  registers_glm5_next: true,
+  reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
+  provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`" as NonEmptyStr,
+}
+
+data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: GunbcSparkrunVllmDs4Gb10,
+  image_reference: "aidendle94/sparkrun-vllm-ds4-gb10 (digest pinned in extdeps.docker.images.sparkrun_vllm_ds4_gb10)" as NonEmptyStr,
+  hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
+  vllm_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr,
+  registers_glm5_next: false,
+  reasoning_projection: InlineReasoning { end_token: "</think>" as NonEmptyStr },
+  provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present" as NonEmptyStr,
+}
+
+fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
+  match r {
+    Gitcommit90Sm121Exl3 => Present { value: gitcommit90_sm121_exl3_row }
+    GunbcSparkrunVllmDs4Gb10 => Present { value: gunbc_sparkrun_ds4_row }
+    Tonyd2wildSm121Nvfp4 => none
+  }
+}
+
+// ── ADMISSION ──────────────────────────────────────────────────────────────────────────────────
+//
+// A TUPLE IS ADMITTED OR REFUSED, AND THE REFUSAL NAMES WHICH AXIS FAILED. Two independent walls,
+// both measured rather than assumed, and either alone is disqualifying -- which is exactly the state
+// the branch was in when it pinned native FP8 against the DeepSeek image.
+type ServingArmVerdict
+  = ServingArmAdmitted
+  | ServingArmRefused { cause: NonEmptyStr }
+
+// THE FOOTPRINT ALLOWANCE IS DELIBERATELY NOT A UTILISATION FRACTION. Weights are not the whole
+// requirement: the engine also needs KV, activations and graph memory, and the recipe's own runtime
+// minimum for native FP8 exceeds its weight size by a quarter. A checkpoint is admitted only when
+// the aggregate pool exceeds the weights with headroom, and the headroom is stated rather than
+// tuned away.
+data serving_arm_headroom_numerator: Nat = 5
+data serving_arm_headroom_denominator: Nat = 4
+
+fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
+  serving_topology_aggregate_pool_gib(t: t) * serving_arm_headroom_denominator
+    >= c.weight_gib * serving_arm_headroom_numerator
+}
+
+fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmVerdict {
+  match serving_checkpoint_row(c: checkpoint) {
+    Absent => ServingArmRefused { cause: "no checkpoint row: this checkpoint's repo, revision and footprint are unmodelled, so neither fit nor acquisition can be decided" as NonEmptyStr }
+    Present { value: crow } =>
+      match serving_runtime_row(r: runtime) {
+        Absent => ServingArmRefused { cause: "no runtime row: this image's architecture registry has not been probed, so whether it can load the checkpoint is unknown" as NonEmptyStr }
+        Present { value: rrow } =>
+          if !rrow.registers_glm5_next {
+            ServingArmRefused { cause: join([
+              "the runtime does not register Glm5NextForConditionalGeneration (vLLM ",
+              rrow.vllm_version as String,
+              "); no amount of weight transfer makes this tuple start",
+            ], "") as NonEmptyStr }
+          } else if !serving_arm_fits(c: crow, t: topology) {
+            ServingArmRefused { cause: join([
+              "the checkpoint does not fit the topology: ", to_string(crow.weight_gib),
+              " GiB of weights against ", to_string(serving_topology_aggregate_pool_gib(t: topology)),
+              " GiB aggregate unified pool across ", to_string(serving_topology_rank_count(t: topology)),
+              " rank(s), before KV and activations",
+            ], "") as NonEmptyStr }
+          } else {
+            ServingArmAdmitted
+          }
+      }
+  }
+}

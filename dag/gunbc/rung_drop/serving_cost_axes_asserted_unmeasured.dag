@@ -1,0 +1,69 @@
+module gunbc.rung_drop.serving_cost_axes_asserted_unmeasured
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for two serving cost axes asserted rather than observed (DESIGN 4b(3)).
+// ============================================================================================
+//
+// WHY THIS ROW EXISTS AT ALL. gunbc.serving.turn_admission carried this departure as an ANNOTATION,
+// and an annotation cannot discharge it: DESIGN 4c is explicit that no Accepted program can read
+// one, so a machine claim standing only in prose is a claim nothing checks. Review 62228 named that
+// exactly, and it is right -- the honest shapes are the fail-closed arms or a declared drop, and
+// prose beside the asserting arm is neither.
+//
+// WHAT THE DROP IS. product.fabric.selection prices six axes, and two of them are answered here from
+// facts nobody has observed. serving_operating_cost returns OperatingCostBorneBySupplier for a Spark
+// group whose power and cooling are ours and are real; selection.dag's own fixtures reserve that arm
+// for a vendor quote that already contains the cost. serving_opportunity_cost returns
+// NoFeasibleAlternativeUse from an engine's gauges reading zero, and those gauges cannot enumerate
+// the other fabric demands that might have wanted the group -- absence of a running TURN is not
+// absence of a feasible alternative USE.
+//
+// WHY THE FAIL-CLOSED ARMS WERE NOT TAKEN. OperatingCostUnread and AlternativeUseUnread exist, route
+// through priced_operating and priced_opportunity to AxisUnpriced, and make every serving offer
+// OfferNotPriceable. That is a typed, located refusal and it is the correct answer to "what does this
+// cost" -- but it is the answer to a question this cut does not ask. The placement decision here is
+// admission plus a demand-keyed tie-break over candidates that are identical on every axis, and
+// taking the refusal would place nothing at all, which is not a safer placement but no placement.
+// So the departure is stated as a drop with a runway rather than hidden behind a value.
+//
+// WHAT IS AND IS NOT LOST. Nothing ranks on these two axes today: every admitted serving candidate
+// carries the same values, so the ordering is decided by the tie policy and not by the assertions.
+// What is lost is the guarantee that a priced answer is an observed one -- the moment any offer with
+// a real quote joins the serving set, these zeros would silently undercut it. That is the harm, and
+// it is why the trigger below is not "measure the power draw" but the capability that stops this
+// module from having to answer a pricing question at all.
+//
+// THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT. A single measured operating cost would not
+// retire this row: the opportunity axis would still be asserted, and a measured number would still
+// be answering a question admission-only placement has no business answering. The capability is a
+// selection policy instantiation that states what an admission-only placement KNOWS -- fungibility,
+// admission, quality-seat availability and the tie policy -- and refuses to require an economic axis
+// it did not observe. Reaching that, serving placement stops routing through the priced selector's
+// cost axes and these two functions have nothing left to answer.
+//
+// DECLARED 2026-09-07 in the fabric relief cut, under review 62228.
+
+data serving_cost_axes_asserted_unmeasured: RungDrop = RungDrop {
+  identity: "serving_cost_axes_asserted_unmeasured" as NonEmptyStr,
+
+  subject: "two of the six priced axes for a serving offer -- operating and opportunity -- answered with asserting arms from facts this repository has not observed, so that an admission-only placement can reach a priced selector",
+
+  declared: "2026-09-07",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+    "gunbc.serving.turn_admission serving_operating_cost (returns OperatingCostBorneBySupplier for a group whose operating cost is ours and unmeasured; the fail-closed arm OperatingCostUnread is reachable and refuses)",
+    "gunbc.serving.turn_admission serving_opportunity_cost (returns NoFeasibleAlternativeUse from gauges that establish no running turn and cannot enumerate competing fabric demands; the fail-closed arm AlternativeUseUnread is reachable and refuses)",
+    ],
+    restoration_trigger: "a selection policy instantiation exists that decides an admission-only placement from what such a placement knows -- fungibility, admission, quality-seat availability and the equal-cost tie policy -- and refuses to require any economic axis its caller did not observe, so that serving placement no longer routes through the priced selector's cost axes and these two functions have no question left to answer. A measured operating cost for a serving group does NOT discharge this row on its own: it leaves the opportunity axis asserted, and it leaves an admission-only placement answering a pricing question it has no standing to answer",
+  }
+}

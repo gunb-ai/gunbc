@@ -1,0 +1,188 @@
+module gunbc.colo_census_coverage
+
+import std.types { NonEmptyStr, Int, List }
+import v2.std.optional { Optional, Present, Absent }
+
+// WHERE WE LOOKED AND FOUND NOTHING, WHICH IS A MEASUREMENT AND NOT AN ABSENCE.
+//
+// Two census lanes reached this need independently within an hour of each other. Southern New
+// Jersey - Burlington, Camden, Gloucester, Atlantic, Cumberland, Salem, Cape May - yielded zero
+// facility rows, and the Hudson Valley proper - Dutchess, Orange, Ulster, Putnam - yielded zero
+// retail colocation. Both lanes wanted to record that as a RESULT and neither had anywhere to put
+// it, so both wrote it into a pull-request body where the next reader will never find it.
+//
+// THE PROBLEM IS THAT A SURVEYED-EMPTY REGION AND AN UNSURVEYED ONE RENDER IDENTICALLY. A census
+// with no row for Cape May County looks exactly the same whether somebody read every operator page
+// in it and found no facility, or whether nobody has ever looked. The first is expensive knowledge
+// worth keeping; the second is an open obligation. Collapsing them means the expensive half is
+// re-derived by the next lane, and the open half is mistaken for settled - and this census has
+// already made the second error once, when the absence of any New York row was reported as a
+// consequence of a refused-operator ruling rather than as nobody having surveyed the state.
+//
+// This module is OURS and not an upstream fact. DESIGN section 3: observations this repository
+// produces are receipts in the observing layer, never properties of the observed. So it lives
+// under gunbc rather than extdeps, and it cites the facility modules rather than being cited by
+// them.
+
+// What a search actually resolved to, kept because a region is empty for reasons that differ in
+// what they oblige next. A region full of aggregators needs a different follow-up from one where
+// operators exist but sell no retail colocation.
+type EmptyRegionCause
+  = ResolvedToAggregatorsOnly { detail: NonEmptyStr }
+  | ResolvedToResellersWithoutFacility { detail: NonEmptyStr }
+  | OperatorsPresentButNotRetailColocation { detail: NonEmptyStr }
+  | DirectoryClaimContradictedByOperator { detail: NonEmptyStr }
+
+// The three outcomes a region can have, and the two that must never be confused.
+//
+// SurveyedNoRetailOperator is the case where somebody looked, systematically, and there is nothing
+// to model. Its searched list is what makes it a measurement rather than an assertion: a later
+// reader can see the coverage and judge whether it was thorough, instead of taking "empty" on
+// trust. RegionUnsurveyed is the case where nobody has looked, and it is the only arm carrying an
+// open obligation.
+//
+// The per-arm notes were written between the arms, where section 4c does not model annotations -
+// only module-item grain is captured, so an indented comment inside a declaration body is a parse
+// error rather than a preserved rationale. They are hoisted here intact.
+type RegionSurveyOutcome
+  = FacilitiesModelled {
+      facility_count: Int
+      density_read_count: Int
+    }
+  | SurveyedNoRetailOperator {
+      searched: List<NonEmptyStr>
+      causes: List<EmptyRegionCause>
+      surveyed_on: NonEmptyStr
+      surveyed_by: NonEmptyStr
+    }
+  | RegionUnsurveyed {
+      obligation: NonEmptyStr
+    }
+
+type RegionCoverage {
+  region_label: NonEmptyStr
+  region_code: NonEmptyStr
+  outcome: RegionSurveyOutcome
+}
+
+// THE SOLE AUTHORITY FOR "WAS THIS REGION SURVEYED", AND IT ANSWERS BY PRESENCE RATHER THAN BY A
+// SECOND PREDICATE. A surveyed region contributes its facility count; an EMPTY surveyed region
+// contributes zero and an UNSURVEYED one contributes nothing at all. The distinction is the whole
+// point of the module, so the count is Optional rather than a zero that both arms could produce.
+//
+// A `coverage_is_surveyed(c) -> Bool` stood beside this and was deleted (review 62776): surveyed
+// IFF the count is Present, so the Bool was a second representation of a constraint this function
+// already carries, and DESIGN section 5 prefers the single authority over the check that restates
+// it. The same PR had already deleted `cabinet_density_is_read` from the density carrier for
+// exactly that reason - writing the predicate again one module later is the receipt that the first
+// deletion was applied to an instance and not to the habit.
+fn coverage_facility_count(c: RegionCoverage) -> Int? {
+  match c.outcome {
+    FacilitiesModelled { facility_count, density_read_count } => Present { value: facility_count },
+    SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Present { value: 0 },
+    RegionUnsurveyed { obligation } => Absent,
+  }
+}
+
+// THE CORRIDOR ROW, AND THE NUMBER THAT SHOULD WORRY A READER MOST. Twenty-seven facilities
+// modelled in the densest colocation market in the region, and ONE of them publishes a cabinet
+// density anybody has verified against page bytes. That ratio is the census's real finding about
+// the corridor: the facilities are there, the retail density figures are not published, and a
+// planner who wanted a dense cabinet in Hudson-Bergen-Essex would be negotiating rather than
+// shopping.
+//
+// The count is one AFTER an audit, not before it. This region briefly read two: a Summit Secaucus
+// row citing 12 kW in a 42U cabinet, whose wording reproduced in the page bytes exactly and which
+// sat under a block headed "Limited Time: Chicago-Area Facility". Real figure, published price,
+// wrong metro. The withdrawal is recorded in
+// gunbc.recurring_failure_mode.citation_verified_against_a_rendering_that_destroyed_its_scope,
+// because a citation confirmed by string occurrence alone cannot fail on correct text attached to
+// the wrong subject.
+//
+// AND THESE TWO INTEGERS ARE THE WRONG SHAPE, WHICH IS RECORDED HERE BECAUSE THE REPLACEMENT IS
+// ALREADY IN FLIGHT RATHER THAN MERELY WISHED FOR. They are hand-transcribed measurements of our
+// own corpus, and DESIGN section 6 says a measurement is cited by naming the producer that
+// re-derives it. The first one carried 28 and was WRONG - the corridor holds 27 rows, and 17
+// pre-existing ones were added as 18. The witness over this row asserts that read densities never
+// exceed facilities, and 1 <= 28 is exactly as true as 1 <= 27, so a green relation sat beside the
+// error for as long as the error existed. Choosing a relation over a literal was right and the
+// relation chosen was too weak to discriminate; the answer is neither, it is derivation.
+// silent-heron-303 is replacing both fields with the facility and claim ROWS they count, folded on
+// read, which makes a miscount unwritable rather than merely checkable.
+data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
+  region_label: "NJ Hudson-Bergen-Essex corridor",
+  region_code: "NJ",
+  outcome: FacilitiesModelled {
+    facility_count: 27,
+    density_read_count: 1,
+  },
+}
+
+data southern_new_jersey: RegionCoverage = RegionCoverage {
+  region_label: "Southern New Jersey",
+  region_code: "NJ",
+  outcome: SurveyedNoRetailOperator {
+    searched: [
+      "Burlington County", "Camden County", "Gloucester County", "Atlantic County",
+      "Cumberland County", "Salem County", "Cape May County",
+    ],
+    causes: [
+      ResolvedToAggregatorsOnly { detail: "every search hit resolved to a directory aggregator or a lead-generation page rather than an operator publishing a facility" },
+      ResolvedToResellersWithoutFacility { detail: "managed-service resellers with no facility of their own" },
+      DirectoryClaimContradictedByOperator { detail: "TierPoint is directory-cited in New Jersey but its own location pages carry NO New Jersey site; Agile Data Sites is directory-cited for a Monmouth Junction facility and now redirects to databridgesites.com, which lists Silver Spring and Aurora and no New Jersey location" },
+    ],
+    surveyed_on: "2026-09-08",
+    surveyed_by: "census lane: NJ central and south",
+  },
+}
+
+data hudson_valley: RegionCoverage = RegionCoverage {
+  region_label: "Hudson Valley proper",
+  region_code: "NY",
+  outcome: SurveyedNoRetailOperator {
+    searched: ["Dutchess County", "Orange County", "Ulster County", "Putnam County"],
+    causes: [
+      OperatorsPresentButNotRetailColocation { detail: "what is present is enterprise or hyperscale-shaped - IBM Poughkeepsie, a CyrusOne enterprise hall, a blocked East Fishkill build - none of it publishing retail colocation at cabinet grain" },
+    ],
+    surveyed_on: "2026-09-08",
+    surveyed_by: "census lane: NY Westchester Rockland Hudson Valley and Long Island",
+  },
+}
+
+// THIS ROSTER IS INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It
+// carries the regions a lane surveyed, including ones surveyed and found empty; it does not carry a
+// RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding
+// those rows is worth doing only when the census's geographic scope is decided - an unsurveyed
+// roster over an undecided scope is a list whose length is an artefact of where the author stopped
+// typing. Carried as an annotation rather than a String row because no fold reads it: per DESIGN
+// section 4c an ordinary String declaration whose sole purpose is commentary is misplaced or dead
+// data, and // is the explicit quarantine boundary for exactly this.
+// EASTERN PENNSYLVANIA, SURVEYED 2026-09-08 AND 2026-09-09. Thirteen facilities across Philadelphia
+// and the Lehigh Valley carry a cited density claim and a grain standing, and exactly ONE of the
+// thirteen publishes a per-cabinet figure at all - Netrality's 30 kW at 401 North Broad, the only
+// one in the region and the only one verified verbatim against the page's own bytes. The other
+// twelve publish plant: square footage, raised floor, generator counts, UPS modules, critical IT
+// load. That ratio is the region's finding and it is why the row is here rather than in a pull
+// request body: a reader who sees twelve DensityUnread rows and no receipt cannot tell a surveyed
+// market that publishes nothing from a market nobody has opened.
+//
+// The counts are hand-authored, which is the weakness this module already names on the corridor
+// row: they are the author's tally and no fold re-derives them. They are carried because the
+// alternative is no receipt at all, and they dissolve into the derived counts being folded from the
+// facility and claim rows themselves.
+data pa_philadelphia_and_lehigh_valley: RegionCoverage = RegionCoverage {
+  region_label: "PA Philadelphia and Lehigh Valley",
+  region_code: "PA",
+  outcome: FacilitiesModelled {
+    facility_count: 13,
+    density_read_count: 1,
+  },
+}
+
+data census_regions: List<RegionCoverage> = [
+  nj_hudson_bergen_essex_corridor,
+  southern_new_jersey,
+  hudson_valley,
+  pa_philadelphia_and_lehigh_valley,
+]
+

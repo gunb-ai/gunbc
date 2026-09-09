@@ -7,18 +7,15 @@ import v2.compiler.infer {
   InferredTree,
   infer
 }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_admission,
-  direct_rust_door_ingest
+  direct_rust_door_specimen_inferred
 }
 import v2.extdeps.languages.dag {
-  dag_grammar_productions_roster_root,
-  dag_language_model
+  dag_grammar_productions_roster_root
 }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.target_model { target_model_canonical_operations_roster_root }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -51,17 +48,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // stays on the frontier. The closing control pins the specimen's full closure: zero frontier
 // nodes of fifteen. Deleting a rule reddens its control; widening a rule to non-members reddens
 // the boundary control.
-
-fn atom_grounding_specimen_inferred() -> Outcome<InferredTree> {
-  match assemble_program_from_ingest(
-    ingest: direct_rust_door_ingest(),
-    admission: direct_rust_door_admission(),
-    lm: dag_language_model()
-  ) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
-  }
-}
 
 fn atom_grounding_node_evidence(inferred: InferredTree, n: Node) -> Optional<Node> {
   match inferred.facts.lookup(n) {
@@ -105,7 +91,7 @@ fn atom_grounding_census_frontier(inferred: InferredTree) -> Int {
 }
 
 test fn canonical_operations_roster_grounds_wire_atoms_holds() -> Bool {
-  match atom_grounding_specimen_inferred() {
+  match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       let roster = target_model_canonical_operations_roster_root()
@@ -118,7 +104,7 @@ test fn canonical_operations_roster_grounds_wire_atoms_holds() -> Bool {
 }
 
 test fn grammar_productions_roster_grounds_module_atom_holds() -> Bool {
-  match atom_grounding_specimen_inferred() {
+  match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       let roster = dag_grammar_productions_roster_root()
@@ -150,7 +136,7 @@ fn is_operand_atom(n: Node) -> Bool {
 }
 
 test fn binding_reference_derives_parameter_atoms_holds() -> Bool {
-  match atom_grounding_specimen_inferred() {
+  match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       fold_list(
@@ -188,7 +174,7 @@ test fn atom_rules_leave_unbound_atom_on_the_frontier_holds() -> Bool {
 }
 
 test fn door_specimen_fully_derives_holds() -> Bool {
-  match atom_grounding_specimen_inferred() {
+  match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       atom_grounding_census_frontier(inferred: inferred) == 0
