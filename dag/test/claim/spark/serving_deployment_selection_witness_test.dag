@@ -34,7 +34,7 @@ import gunbc.spark.serving_deployment_selection {
   serving_selection_axes, candidate_gaps, candidate_diagnostics,
   ax_replica_capacity_share_lost, ax_physical_failure_domains, ax_independent_replicas,
   ax_accepted_task_goodput, ax_time_to_first_token, ax_cotenant_impact,
-  ExperimentAwaitingApproval, glm_native_tp4_experiment_admission,
+  ExperimentPlanNotAuthorizable, glm_native_tp4_experiment_admission,
   ParameterStandingCompleteness, AllParametersHaveStanding, ParametersWithoutStanding,
   ParametersWithConflictingStandings, parameter_standing_completeness,
   deepseek_quality_requirement,
@@ -576,9 +576,14 @@ test fn replica_count_is_still_readable_as_a_diagnostic() -> Bool {
 // state: nobody has granted a launch that would displace the DeepSeek group. No witness row asserts
 // that an experiment arm cannot become a deployment shape, because no such conversion exists -- its
 // red would be unauthorable and the check would be a decoration.
-test fn the_native_experiment_arm_awaits_approval_rather_than_launching() -> Bool {
+// The plan is blocked BEFORE authorization is even consulted, because two launch-critical parameters
+// are unestablished for GLM: the KV layout carries DeepSeek's MLA format, and the runtime is a
+// descriptive string where an image digest is needed. So an operator grant could not admit this arm
+// today even if one existed -- which is the parameter standings finally governing the decision rather
+// than describing it from the sidelines.
+test fn the_native_experiment_plan_is_not_authorizable_while_launch_critical_fields_are_unestablished() -> Bool {
   match glm_native_tp4_experiment_admission() {
-    ExperimentAwaitingApproval { escalation_id: _, purpose: _ } => true
+    ExperimentPlanNotAuthorizable { obligations: os } => count(os) == 2
     _ => false
   }
 }

@@ -13,7 +13,7 @@ import std.decision {
   DecisionAssessment, DecisionSubject, DecisionVariable,
   DecisionConstraint, DecisionRegion, ContextParameter, ObjectiveTerm, ObjectiveMeasure,
   ChoiceDomain, VariesAlong, MonotoneIncreasing, ConstraintSatisfied, ParameterBound,
-  PhysicalModelEstablished, CausalModelEstablished, VendorDocumentedCoupling,
+  PhysicalModelUnestablished, CausalModelUnestablished, SensitivityUnestablished,
   SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy,
   RealizationSelectionRefused, NoFeasibleRealization, CandidateFieldUnestablished,
   select_realization,
@@ -23,8 +23,10 @@ import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
 import std.scoped_authorization {
   AuthorizationScope, AuthorizedAction, AttemptIdentity, AuthorizationRequest, OperatorGrant,
   ScopedAuthorization, AuthorizationPending, AuthorizationGranted, AuthorizationDenied,
+  AuthorizationDecision, AuthorizationPermitted, AuthorizationRefused, AuthorizationRefusalCause,
+  authorize,
 }
-import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.external_authority { TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
 // ── ONE MODEL IN, A DEPLOYMENT SHAPE OR AN OBLIGATION OUT ─────────────────────────────────────
@@ -726,6 +728,8 @@ data ax_warm_conversation_capacity: DeclarationRef = decl_ref(module_path: "gunb
 data ax_independent_replicas: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_independent_replicas")
 data ax_replica_capacity_share_lost: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_replica_capacity_share_lost")
 data ax_physical_failure_domains: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_physical_failure_domains")
+data ax_operating_power: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_operating_power")
+data ax_operational_complexity: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_operational_complexity")
 
 data redundancy_exclusion_reason: NonEmptyStr = "operator ruling 2026-09-09: redundancy is not funded for this deployment. Excluded rather than weighted low, and excluded rather than left unfunded -- an unfunded dimension keeps asking for evidence, and evidence nobody intends to use is how a decision never settles" as NonEmptyStr
 
@@ -746,7 +750,22 @@ data serving_axis_roster: List<ServingAxis> = [
   serving_axis(identity: ax_independent_replicas, goal: HigherIsBetter, disposition: AxisObservedDiagnostic),
   serving_axis(identity: ax_replica_capacity_share_lost, goal: LowerIsBetter, disposition: AxisExcludedByOperatorPolicy { reason: redundancy_exclusion_reason }),
   serving_axis(identity: ax_physical_failure_domains, goal: HigherIsBetter, disposition: AxisExcludedByOperatorPolicy { reason: redundancy_exclusion_reason }),
+  serving_axis(identity: ax_operating_power, goal: LowerIsBetter, disposition: AxisObservedDiagnostic),
+  serving_axis(identity: ax_operational_complexity, goal: LowerIsBetter, disposition: AxisFundedObjective),
 ]
+
+// POWER AND OPERATIONAL COMPLEXITY DISAPPEARED WHEN THIS ROSTER WAS RESTRUCTURED, and that was my
+// defect rather than the operator's ruling: they excluded REDUNDANCY, not everything I happened to drop
+// while rewriting. Both are restored with explicit dispositions.
+//
+// POWER IS A DIAGNOSTIC because nothing on this fleet meters it per deployment shape, and an axis that
+// can never be read is an obligation nobody can discharge. OPERATIONAL COMPLEXITY IS FUNDED, because it
+// is the whole reason this program exists: the operator is trying to own more of the stack with less
+// hand-tuning, so a shape that is materially harder to operate is worse on a dimension they are
+// actually paying for. It is unmeasured, which makes it an obligation rather than a free win for the
+// simpler shape -- one eight-rank replica is not automatically simpler than two four-rank ones, and
+// asserting that it is would be exactly the unearned ranking this roster exists to prevent.
+data roster_restoration_note: NonEmptyStr = "power is a diagnostic because nothing meters it per shape; operational complexity is funded because reducing hand-tuning is the program's purpose, and it is unmeasured rather than assumed" as NonEmptyStr
 
 fn axis_is_ranked(a: ServingAxis) -> Bool {
   match a.disposition {
@@ -785,6 +804,7 @@ data serving_selection_constraints: List<HardConstraint> = map(
 // produces no obligation, which is the whole point of the disposition: the decision can settle without
 // evidence for a dimension nobody values.
 data unfunded_performance_axes: List<DeclarationRef> = [
+  ax_operational_complexity,
   ax_memory_stability,
   ax_accepted_task_goodput,
   ax_time_to_first_token,
@@ -1140,24 +1160,34 @@ fn decision_snapshot_key(input: ServingDeploymentDecisionInput) -> String {
 }
 
 // ── THE SUBJECT CLOSURE, DERIVED FROM THE INPUT ───────────────────────────────────────────────
-data tensor_parallel_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "docs.vllm.ai/en/latest/serving/distributed_serving.html" },
-}
-
 data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_deployment_subject")
 data id_var_topology: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "var_fleet_topology")
-data id_term_isolation: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "term_failure_isolation")
+data id_term_service: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "term_measured_service")
 data id_param_execution: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "param_execution_parameters")
 data id_region: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_topology_region")
 
 data var_fleet_topology: DecisionVariable = DecisionVariable { identity: id_var_topology }
 
-// A tensor-parallel replica FAILS AS A UNIT across its ranks -- upstream's documented behaviour, not
-// something this repository decided. The division that turns that into a percentage is downstream of
-// the fact; citing the division would be citing our own arithmetic back to ourselves.
-data term_failure_isolation: ObjectiveTerm = ObjectiveTerm {
-  identity: id_term_isolation,
-  ground: CitedToAuthority { authority: tensor_parallel_authority },
+// ── THE SUBJECT'S OBJECTIVE IS MEASURED SERVICE, NOT FAILURE ISOLATION ────────────────────────
+//
+// THE AXIS ROSTER EXCLUDED REDUNDANCY AND THE DECISION SUBJECT DID NOT, which meant every control I
+// wrote for that exclusion could pass while the generic closure handed to std.decision still declared
+// its one objective term to be `term_failure_isolation`, with the topology sensitivity, physical model
+// and causal model all expressed in terms of it. The controls inspected axis identities, gaps,
+// diagnostics and pending authorization; none inspected the DecisionSubject's term population, so the
+// residue sat exactly where they could not see it. That is a lesson about the controls as much as the
+// model: they tested the layer I had just edited.
+//
+// The term is now MEASURED SERVICE, whose sensitivity to topology is precisely what the experiment
+// exists to establish. It is deliberately NOT cited to an external authority: upstream documents that a
+// tensor-parallel replica fails as a unit, which grounded the old isolation term perfectly well and
+// grounds nothing about goodput or latency. Whether four ranks or eight serve this workload better is a
+// fact about THIS fleet and this model, so it carries a read obligation until this fleet answers it.
+data term_measured_service: ObjectiveTerm = ObjectiveTerm {
+  identity: id_term_service,
+  ground: TranscribedUncited {
+    read_obligation: "how measured service responds to tensor-parallel degree is unestablished for this model on this fleet. It is not an upstream fact: vendor documentation describes what tensor parallelism DOES, not which degree serves this workload better, and the outgoing model's numbers were taken on different weights at a different quantisation. The experiment arm exists to establish it" as NonEmptyStr,
+  },
 }
 
 data param_execution_parameters: ContextParameter = ContextParameter { identity: id_param_execution }
@@ -1167,7 +1197,7 @@ data serving_topology_region: DecisionRegion = DecisionRegion { identity: id_reg
 data serving_objective: ObjectiveMeasure = ObjectiveMeasure {
   identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_objective"),
   goal: HigherIsBetter,
-  terms: [term_failure_isolation],
+  terms: [term_measured_service],
 }
 
 data serving_choice_domain_cell: ChoiceDomain = ChoiceDomain {
@@ -1177,51 +1207,51 @@ data serving_choice_domain_cell: ChoiceDomain = ChoiceDomain {
 
 data serving_deployment_subject: DecisionSubject = DecisionSubject {
   identity: id_subject,
-  question: "which whole-fleet deployment shape serves this exact artifact under this exact execution profile" as NonEmptyStr,
+  question: "which whole-fleet deployment shape serves this exact artifact best at the declared execution profile, measured over the funded service outcomes" as NonEmptyStr,
   parameters: [param_execution_parameters],
   constraints: [constraint_cell],
   objective: serving_objective,
   choice_domain: serving_choice_domain_cell,
 }
 
-// DERIVED, NOT ACCEPTED. The parameter's binding evidence quotes the actual declared parameters, so
-// the assessment cannot describe a closure other than the one being decided.
+// THE SENSITIVITY IS UNESTABLISHED RATHER THAN ASSERTED MONOTONE. The old row claimed measured service
+// rises monotonically with the topology variable, which was really the isolation claim wearing a new
+// name -- more replicas, more isolation, monotone. Nothing establishes that goodput or latency behaves
+// monotonically in tensor-parallel degree, and there is good reason to think it does not: more ranks buy
+// memory headroom and cost per-token synchronisation, which pull opposite ways. So the relation is an
+// obligation, and the physical and causal models say so too rather than citing a vendor page that
+// answers a different question.
 fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
   DecisionAssessment {
     subject: serving_deployment_subject,
     sensitivities: [
-      VariesAlong {
-        term: id_term_isolation,
+      SensitivityUnestablished {
+        term: id_term_service,
         variable: id_var_topology,
-        region: serving_topology_region,
-        relation: MonotoneIncreasing,
-        coupling: CitedToAuthority { authority: tensor_parallel_authority },
+        obligation: "how measured service responds to tensor-parallel degree is unmeasured for this model on this fleet, and is not assumed monotone: more ranks buy memory headroom and cost per-token synchronisation, which pull in opposite directions" as NonEmptyStr,
       },
     ],
     constraints: [
       ConstraintSatisfied {
         constraint: id_constraint_authority,
-        evidence: "quality, weight fit, runtime feasibility, context coverage, workload standing and stability are each bounded at one and excluded before dominance" as NonEmptyStr,
+        evidence: "quality, weight fit, runtime feasibility, context coverage, workload standing and memory stability are each bounded at one and excluded before dominance" as NonEmptyStr,
       },
     ],
     parameters: [
       ParameterBound {
         parameter: id_param_execution,
-        evidence: join(["every candidate is built at exactly one declared execution profile, and carries no field in which to disagree with it: ", parameters_key(p: input.field.domain.parameters)], "") as NonEmptyStr,
+        evidence: join(["every candidate is built at exactly one declared execution profile and carries no field in which to disagree with it: ", parameters_key(p: input.field.domain.parameters)], "") as NonEmptyStr,
       },
     ],
     selected_candidate: Absent,
     term_drops: [],
-    physical_model: PhysicalModelEstablished { terms: [id_term_isolation] },
-    causal_model: CausalModelEstablished {
-      couplings: [
-        VendorDocumentedCoupling {
-          authority: tensor_parallel_authority,
-          term: id_term_isolation,
-          variable: id_var_topology,
-          subject: id_subject,
-        },
-      ],
+    physical_model: PhysicalModelUnestablished {
+      subject: id_subject,
+      read_obligation: "the funded service outcomes have no physical model for this model on this fleet: no accepted-task goodput, time to first token, inter-token latency, co-tenant impact, queue time or warm-conversation capacity has been measured at any topology" as NonEmptyStr,
+    },
+    causal_model: CausalModelUnestablished {
+      subject: id_subject,
+      read_obligation: "no coupling between tensor-parallel degree and measured service has been observed on this fleet. The vendor's documented unit-failure behaviour grounded the retired isolation term and grounds nothing here" as NonEmptyStr,
     },
   }
 }
@@ -1640,54 +1670,102 @@ type ServingExperimentArm sole_constructor {
 
 type ServingExperimentAdmission
   = ExperimentArmAdmitted { arm: ServingExperimentArm }
-  | ExperimentAwaitingApproval { escalation_id: NonEmptyStr, purpose: NonEmptyStr }
-  | ExperimentApprovalDenied { escalation_id: NonEmptyStr, reason: NonEmptyStr }
+  | ExperimentAuthorizationRefused { cause: AuthorizationRefusalCause }
+  | ExperimentPlanNotAuthorizable { obligations: List<NonEmptyStr> }
   | ExperimentAdmissionRefused { because: NonEmptyStr }
 
-// THE GRANT'S SUBJECT IS COMPARED TO THE ARM BEING LAUNCHED. A grant approving a four-rank native
-// experiment does not authorize an eight-rank one, nor the same topology under different fixed
-// parameters -- the digest carries context, memory fraction, batch budget, sequence population,
-// executor, KV layout, speculative policy and runtime, so any of those moving is a different subject
-// and needs its own approval. Without this comparison the grant would authorize by name rather than
-// by content, which is how an approval for one experiment silently covers the next.
+// THE ADMISSION CALLS std.scoped_authorization's DECISION PROCEDURE, and an earlier revision of this
+// function did not -- which was the most dangerous thing in this module.
+//
+// It matched the ScopedAuthorization coproduct directly and, in the granted arm, compared only the
+// grant's subject against the requested one. So it used the right VOCABULARY with none of the
+// ENFORCEMENT: a grant with a matching subject would have admitted the experiment while EXPIRED, while
+// issued for a different attempt, while carrying a different intent hash, while missing the required
+// scope, while already completed, or while claimed by another attempt. Every one of those is a
+// distinction `authorize` already draws and returns as a located, typed cause.
+//
+// That is the same failure as this module's earlier freely-mintable quality receipt, one layer up:
+// borrowing an authority's type without its decision. The refusal cause is now carried through rather
+// than flattened to prose, because escalation, scope, attempt and intent mismatches lead to four
+// different operator actions -- ask for the grant, stop because something wanted access nobody
+// approved, treat it as a replay, or re-request because the plan changed under an old grant.
+//
+// WHAT THIS FOLD STILL CANNOT DO IS CLAIM THE GRANT. Single use is a durable compare-and-set against a
+// slot keyed by escalation id, which is an effect; a pure admission cannot perform it, and returning a
+// "claimed" state from here would make the caller the arbiter of who won -- exactly the race the CAS
+// exists to resolve. So the arm carries the claim as an OBLIGATION ON ITS HOLDER: whoever actuates it
+// must claim before mutating anything and settle to CompletedBy or AbortedBy afterwards. That wet root
+// does not exist yet, which is one reason this experiment is not actuable.
 fn admit_serving_experiment(
   authorization: ScopedAuthorization<ServingExperimentSubject>,
+  request: AuthorizationRequest<ServingExperimentSubject>,
+  observed_at: Timestamp,
   artifact: ModelArtifact,
   topology: TopologyShape,
   parameters: ServingDecisionParameters,
 ) -> ServingExperimentAdmission {
-  let requested = serving_experiment_subject(artifact: artifact.identity, topology: topology, parameters_digest: parameters_key(p: parameters))
-  match authorization {
-    AuthorizationPending { request: r } =>
-      ExperimentAwaitingApproval { escalation_id: r.escalation_id, purpose: r.purpose }
-    AuthorizationDenied { escalation_id: e, denied_by: _, denied_at: _, reason: rs } =>
-      ExperimentApprovalDenied { escalation_id: e, reason: rs }
-    AuthorizationGranted { grant: g, claim: _ } =>
-      if !experiment_subject_eq(a: g.subject, b: requested) {
-        ExperimentAdmissionRefused {
-          because: join([
-            "the grant approves a different experiment subject than the one being launched: approved ",
-            declaration_ref_display_key(ref: g.subject.artifact), " at tp",
-            to_string(g.subject.topology.tensor_parallel_degree), " x", to_string(g.subject.topology.replica_count),
-            " under parameters ", g.subject.parameters_digest,
-            "; requested ", declaration_ref_display_key(ref: requested.artifact), " at tp",
-            to_string(requested.topology.tensor_parallel_degree), " x", to_string(requested.topology.replica_count),
-            " under parameters ", requested.parameters_digest,
-          ], "") as NonEmptyStr,
-        }
-      } else {
-        ExperimentArmAdmitted {
-          arm: ServingExperimentArm {
-            subject: requested,
-            artifact: artifact,
-            parameters: parameters,
-            granted_by: g.granted_by,
-            expires_at: g.expires_at,
-            purpose: g.purpose,
-          },
+  match launch_critical_obligations() {
+    ExperimentPlanBlocked { obligations: os } => ExperimentPlanNotAuthorizable { obligations: os }
+    ExperimentPlanAuthorizable =>
+      match authorize(authorization: authorization, request: request, observed_at: observed_at) {
+        AuthorizationRefused { cause: c } => ExperimentAuthorizationRefused { cause: c }
+        AuthorizationPermitted { grant: g } => {
+          let requested = serving_experiment_subject(artifact: artifact.identity, topology: topology, parameters_digest: parameters_key(p: parameters))
+          if !experiment_subject_eq(a: g.subject, b: requested) {
+            ExperimentAdmissionRefused {
+              because: join([
+                "the grant approves a different experiment subject than the one being launched: approved ",
+                declaration_ref_display_key(ref: g.subject.artifact), " at tp",
+                to_string(g.subject.topology.tensor_parallel_degree), " x", to_string(g.subject.topology.replica_count),
+                "; requested ", declaration_ref_display_key(ref: requested.artifact), " at tp",
+                to_string(requested.topology.tensor_parallel_degree), " x", to_string(requested.topology.replica_count),
+              ], "") as NonEmptyStr,
+            }
+          } else {
+            ExperimentArmAdmitted {
+              arm: ServingExperimentArm {
+                subject: requested,
+                artifact: artifact,
+                parameters: parameters,
+                granted_by: g.granted_by,
+                expires_at: g.expires_at,
+                purpose: g.purpose,
+              },
+            }
+          }
         }
       }
   }
+}
+
+// ── A PLAN WITH AN UNESTABLISHED LAUNCH-CRITICAL FIELD IS NOT AUTHORIZABLE ─────────────────────
+//
+// THE PARAMETER STANDINGS WERE AN ISLAND, which is the section 3c failure this module has now
+// committed twice. The roster could report that the KV layout and the runtime are unestablished for
+// GLM while the admission cheerfully used those very values -- so the honest census existed beside the
+// decision instead of governing it. A provenance nothing consumes is a description, not a wall.
+//
+// LAUNCH-CRITICAL IS NARROWER THAN UNESTABLISHED. A decided window and a decided sequence ceiling are
+// fine for an experiment -- that is what an experiment is for. What cannot be decided-by-default is a
+// field whose wrong value silently produces a DIFFERENT MODEL or a runtime that cannot load the
+// artifact: the KV layout currently carries DeepSeek's MLA format against a GLM subject, and the
+// runtime is a descriptive string where an exact image digest is needed.
+data launch_critical_parameter_fields: List<NonEmptyStr> = [
+  "kv_layout" as NonEmptyStr,
+  "runtime" as NonEmptyStr,
+]
+
+type ExperimentPlanStanding
+  = ExperimentPlanAuthorizable
+  | ExperimentPlanBlocked { obligations: List<NonEmptyStr> }
+
+fn launch_critical_obligations() -> ExperimentPlanStanding {
+  let blocked = flat_map(launch_critical_parameter_fields, f =>
+    flat_map(rows_for_field(field: f), r => match provenance_obligation(prov: r.provenance) {
+      Present { value: o } => [join([f as String, ": ", o as String], "") as NonEmptyStr]
+      Absent => []
+    }))
+  if count(blocked) == 0 { ExperimentPlanAuthorizable } else { ExperimentPlanBlocked { obligations: blocked } }
 }
 
 // ── THE NATIVE FOUR-RANK EVIDENCE ARM, REQUESTED AND NOT APPROVED ─────────────────────────────
@@ -1734,9 +1812,13 @@ data glm_native_tp4_experiment_authorization: ScopedAuthorization<ServingExperim
   request: glm_native_tp4_experiment_request,
 }
 
+data glm_native_tp4_experiment_observed_at: Timestamp = "2026-09-09T00:00:00Z"
+
 fn glm_native_tp4_experiment_admission() -> ServingExperimentAdmission {
   admit_serving_experiment(
     authorization: glm_native_tp4_experiment_authorization,
+    request: glm_native_tp4_experiment_request,
+    observed_at: glm_native_tp4_experiment_observed_at,
     artifact: artifact_glm_53_flash_native,
     topology: glm_native_tp4_experiment_topology,
     parameters: serving_parameters_current,
