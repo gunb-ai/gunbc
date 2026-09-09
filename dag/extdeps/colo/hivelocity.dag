@@ -54,5 +54,5 @@ data hivelocity_jfk1_density: CabinetDensityClaim = DensityUnread {
 }
 
 data hivelocity_jfk1_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "The operator's index read 2026-09-08 offers only a server-purchase route for Newark JFK1 and no colocation page, so no minimum footprint is stated for this site. The operator sells full, quarter and half racks elsewhere in its portfolio; whether any of that is orderable in the 165 Halsey suite is unread.",
+  obligation: "The operator's index read 2026-09-08 offers only a server-purchase route for Newark JFK1 and no colocation page, so no minimum footprint is stated for this site. The operator sells full, quarter and half racks elsewhere in its portfolio; whether any of that is orderable in the 165 Halsey suite is unread. A caution for whoever resolves this from hivelocity.net: successive fetches of the same New York 4 colocation URL on 2026-09-08 and 2026-09-09 returned materially different renderings of that page - one carrying a cabinet-grain sentence that a raw fetch by another reader could not find, and one in which the word cabinet did not appear at all although the page's own density sentence contains it. Quote this operator's pages from raw HTML, not from a rendered capture.",
 }

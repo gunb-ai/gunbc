@@ -98,8 +98,8 @@ data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
 // same page is a BUILDING fact and is not a second reading of this one.
 data databank_ewr1_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 10000) },
-  claim_wording: "N+1 design with 10kW+ cabinet density capability",
-  citation: "databank.com Newark 165 Halsey Street suite page, read 2026-09-08",
+  claim_wording: "10kW+ Cab Density Air",
+  citation: "databank.com Newark 165 Halsey Street suite page, read 2026-09-08 and re-read from raw HTML 2026-09-09. The wording is the literal spec-table cell, which pairs the row \"Cooling: N+1 Cooling Design\" with \"10kW+ Cab Density Air\"; an earlier capture of this row paraphrased the two cells into one sentence and the paraphrase is corrected here. The operator's own word is AIR, which is why this is DensityMarketedAirOnly and not a maximum with a liquid arm.",
 }
 
 data databank_ewr1_retail_grain: RetailGrainStanding = RetailGrainUnread {
