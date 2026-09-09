@@ -2201,34 +2201,6 @@ fn admission_consumed_at_base(
     }
 }
 
-/// Which disposition a changed candidate SET carries.
-///
-/// EVERY ARM IS OVER SETS, NOT WINNERS. `1 -> 0` stopped denoting anything; `1 -> 2` now admits
-/// two declarations, which the namespace authority refuses at the reference rather than
-/// resolving by nearness. Any other non-empty pair is a changed target.
-///
-/// `0 -> 1` IS TWO STATES, NOT ONE, AND THE SET PAIR CANNOT TELL THEM APART. An earlier revision
-/// read every `0 -> 1` as resolution from a pool — a name denoting something WITHOUT ANYONE
-/// AUTHORING A REFERENCE, the coincidence the containment rule removes, caused in ANOTHER module.
-/// The other is this module's author writing the import that resolves a name already spelled —
-/// the repair the wall wants, and the state it refused. Opposite owners, opposite repairs, one
-/// symbol: DESIGN's state-space conflation.
-///
-/// `0 -> 1` HAS A THIRD STATE, AND IT IS THE ONE A GENERATED MODULE INHABITS. The discriminator
-/// below presumes a module that HAS an author to consult. A DERIVED module does not: its content
-/// is produced by a generator, `authored_here` is false for every binding it will ever acquire,
-/// and so every binding it gains reads as a coincidence in the pool. `derived_generator_input`
-/// answers the question authorship cannot — is this binding THE MECHANICAL IMAGE OF THE
-/// GENERATOR'S DECLARED INPUT RELATION, the deterministic consequence of a source file the change
-/// adds. It is deliberately NOT "the module is generated": admitting that category would
-/// auto-admit every binding any generated module ever acquires, on the one surface where a wrong
-/// binding has no human reader. A generated module acquiring a binding its generator's inputs do
-/// not explain stays `NewPoolCoincidenceResolution` and stays refused.
-///
-/// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
-/// consults authorship (`membership_declared`, over `membership_bound_through`), which admitted
-/// the membership edge of the very change this arm refused. So `authored_here` is passed in, not
-/// re-derived: see `locally_authored_claim_added`.
 /// Whether a binding this module gained is the mechanical image of its GENERATOR'S DECLARED
 /// INPUT RELATION.
 ///
@@ -2265,6 +2237,34 @@ fn derived_generator_input_binding(module: &str, head: &BTreeSet<String>) -> boo
         })
 }
 
+/// Which disposition a changed candidate SET carries.
+///
+/// EVERY ARM IS OVER SETS, NOT WINNERS. `1 -> 0` stopped denoting anything; `1 -> 2` now admits
+/// two declarations, which the namespace authority refuses at the reference rather than
+/// resolving by nearness. Any other non-empty pair is a changed target.
+///
+/// `0 -> 1` IS TWO STATES, NOT ONE, AND THE SET PAIR CANNOT TELL THEM APART. An earlier revision
+/// read every `0 -> 1` as resolution from a pool — a name denoting something WITHOUT ANYONE
+/// AUTHORING A REFERENCE, the coincidence the containment rule removes, caused in ANOTHER module.
+/// The other is this module's author writing the import that resolves a name already spelled —
+/// the repair the wall wants, and the state it refused. Opposite owners, opposite repairs, one
+/// symbol: DESIGN's state-space conflation.
+///
+/// `0 -> 1` HAS A THIRD STATE, AND IT IS THE ONE A GENERATED MODULE INHABITS. The `authored_here`
+/// discriminator presumes a module that HAS an author to consult. A DERIVED module does not: its content
+/// is produced by a generator, `authored_here` is false for every binding it will ever acquire,
+/// and so every binding it gains reads as a coincidence in the pool. `derived_generator_input`
+/// answers the question authorship cannot — is this binding THE MECHANICAL IMAGE OF THE
+/// GENERATOR'S DECLARED INPUT RELATION, the deterministic consequence of a source file the change
+/// adds. It is deliberately NOT "the module is generated": admitting that category would
+/// auto-admit every binding any generated module ever acquires, on the one surface where a wrong
+/// binding has no human reader. A generated module acquiring a binding its generator's inputs do
+/// not explain stays `NewPoolCoincidenceResolution` and stays refused.
+///
+/// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
+/// consults authorship (`membership_declared`, over `membership_bound_through`), which admitted
+/// the membership edge of the very change this arm refused. So `authored_here` is passed in, not
+/// re-derived: see `locally_authored_claim_added`.
 fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
