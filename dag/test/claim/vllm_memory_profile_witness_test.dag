@@ -1,0 +1,126 @@
+module test.claim.vllm_memory_profile
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { basis_point, byte_size_count }
+import extdeps.vllm.server { vllm_source_revision }
+import extdeps.vllm.memory_profile {
+  VllmMemoryProfileParse, VllmMemoryProfileParsed, VllmMemoryProfileUnreadable,
+  VllmMemoryProfileReading, GibibyteReading, gibibyte_reading_hundredths,
+  vllm_parse_memory_profile,
+}
+
+// THE CAPTURED LINE, VERBATIM, from the GLM canary's own startup log on 2026-09-08. It is the subject
+// rather than an illustration: a parser witness built on a hand-simplified line proves the parser
+// handles a line nobody will ever feed it.
+data w_captured: String = "Free memory on device (114.93/121.69 GiB) on startup. Desired GPU memory utilization is (0.92, 111.95 GiB). Actual usage is 82.52 GiB for consumed memory (weights + non-torch), 7.42 GiB for peak activation, and 0.1 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=23372437156` (21.77 GiB) to fit into requested memory, or `--kv-cache-memory=26572776960` (24.75 GiB) to fully utilize gpu memory. Current kv cache memory in use is 22.02 GiB."
+
+fn w_parse(text: String) -> VllmMemoryProfileParse {
+  vllm_parse_memory_profile(
+    captured_text: text,
+    requested_utilization: basis_point(count: 9200),
+    observed_at_revision: vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
+    ),
+  )
+}
+
+fn w_reading_or_absent(text: String) -> VllmMemoryProfileReading? {
+  match w_parse(text: text) {
+    VllmMemoryProfileUnreadable { captured_text: _, cause: _ } => none
+    VllmMemoryProfileParsed { reading: r } => Present { value: r }
+  }
+}
+
+fn w_hundredths(text: String, pick: fn(VllmMemoryProfileReading) -> GibibyteReading) -> Nat {
+  match w_reading_or_absent(text: text) {
+    Absent => 0
+    Present { value: r } => gibibyte_reading_hundredths(r: pick(r))
+  }
+}
+
+// ── THE EXACT FIGURES ARE EXACT ────────────────────────────────────────────────────────────────
+//
+// These two are the only byte counts the line prints and the only terms admission arithmetic may use.
+// Asserting them to the byte is the point: a parser that dropped a digit would still produce a
+// plausible GiB rendering.
+test fn the_two_kv_recommendations_parse_to_exact_bytes() -> Bool {
+  match w_reading_or_absent(text: w_captured) {
+    Absent => false
+    Present { value: r } =>
+      byte_size_count(b: r.recommended_kv_within_requested_envelope) == 23372437156
+        && byte_size_count(b: r.recommended_kv_using_startup_availability) == 26572776960
+  }
+}
+
+// ── THE SINGLE-DECIMAL TERM ────────────────────────────────────────────────────────────────────
+//
+// THE DISCRIMINATING WITNESS OF THIS PARSER. The line prints CUDAGraph memory as `0.1`, one decimal
+// place, while every other figure carries two. A parser assuming two places reads it as 0.01 and
+// under-reports by a factor of ten -- on the smallest term, where nothing else would notice. 0.1 GiB
+// is 10 hundredths, not 1.
+test fn a_single_decimal_place_scales_by_its_own_length() -> Bool {
+  w_hundredths(text: w_captured, pick: fn(r) { r.cudagraph_allocated }) == 10
+}
+
+// ── EVERY ROUNDED TERM LANDS IN ITS OWN FIELD ──────────────────────────────────────────────────
+//
+// Asserted together because the anchors are adjacent in one sentence: a parse that slipped by one
+// clause would fill several fields with a neighbour's number and still return a well-formed receipt.
+test fn each_rounded_term_parses_into_its_own_field() -> Bool {
+  w_hundredths(text: w_captured, pick: fn(r) { r.startup_available }) == 11493
+    && w_hundredths(text: w_captured, pick: fn(r) { r.device_total }) == 12169
+    && w_hundredths(text: w_captured, pick: fn(r) { r.requested_envelope }) == 11195
+    && w_hundredths(text: w_captured, pick: fn(r) { r.persistent_consumed }) == 8252
+    && w_hundredths(text: w_captured, pick: fn(r) { r.peak_activation_headroom }) == 742
+    && w_hundredths(text: w_captured, pick: fn(r) { r.current_kv }) == 2202
+}
+
+// ── THE ROUNDED TERMS DO NOT RECONCILE, AND THE PARSER MUST NOT CARE ───────────────────────────
+//
+// 82.52 + 7.42 + 0.1 + 22.02 = 112.06 against a stated envelope of 111.95. The arithmetic happens
+// upstream in bytes and is rounded only for display, so a consumer summing these and refusing would be
+// refusing the ROUNDING. This asserts the discrepancy is real and survives parsing, so nobody later
+// "fixes" the parser to make it balance.
+test fn the_rounded_terms_deliberately_do_not_sum_to_the_envelope() -> Bool {
+  let consumed = w_hundredths(text: w_captured, pick: fn(r) { r.persistent_consumed })
+  let activation = w_hundredths(text: w_captured, pick: fn(r) { r.peak_activation_headroom })
+  let graph = w_hundredths(text: w_captured, pick: fn(r) { r.cudagraph_allocated })
+  let kv = w_hundredths(text: w_captured, pick: fn(r) { r.current_kv })
+  let envelope = w_hundredths(text: w_captured, pick: fn(r) { r.requested_envelope })
+  consumed + activation + graph + kv > envelope
+}
+
+// ── A MISSING TERM REFUSES ─────────────────────────────────────────────────────────────────────
+//
+// Without these the parser could return a receipt for anything. Each removes ONE clause from the real
+// line, so what is under test is that clause's own anchor rather than a wholesale rejection of
+// nonsense.
+test fn a_line_without_the_recommendations_is_unreadable() -> Bool {
+  w_is_unreadable(text: "Free memory on device (114.93/121.69 GiB) on startup. Desired GPU memory utilization is (0.92, 111.95 GiB). Actual usage is 82.52 GiB for consumed memory (weights + non-torch), 7.42 GiB for peak activation, and 0.1 GiB for CUDAGraph memory. Current kv cache memory in use is 22.02 GiB.")
+}
+
+test fn a_line_without_the_current_kv_clause_is_unreadable() -> Bool {
+  w_is_unreadable(text: "Free memory on device (114.93/121.69 GiB) on startup. Desired GPU memory utilization is (0.92, 111.95 GiB). Actual usage is 82.52 GiB for consumed memory (weights + non-torch), 7.42 GiB for peak activation, and 0.1 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=23372437156` (21.77 GiB) to fit into requested memory, or `--kv-cache-memory=26572776960` (24.75 GiB) to fully utilize gpu memory.")
+}
+
+test fn unrelated_text_is_unreadable() -> Bool {
+  w_is_unreadable(text: "INFO 09-08 22:43:46 [core.py:363] init engine (profile, create kv cache, warmup model) took 110.84 s")
+}
+
+fn w_is_unreadable(text: String) -> Bool {
+  match w_parse(text: text) {
+    VllmMemoryProfileParsed { reading: _ } => false
+    VllmMemoryProfileUnreadable { captured_text: _, cause: _ } => true
+  }
+}
+
+// THE CAPTURE IS RETAINED, so a receipt can be re-read when a later revision rewords the line.
+test fn the_parsed_receipt_retains_the_line_it_came_from() -> Bool {
+  match w_reading_or_absent(text: w_captured) {
+    Absent => false
+    Present { value: r } => (r.captured_text as String) == w_captured
+  }
+}
