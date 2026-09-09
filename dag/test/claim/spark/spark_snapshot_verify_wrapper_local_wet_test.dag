@@ -2,6 +2,7 @@ module test.claim.spark_snapshot_verify_wrapper_local_wet
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
+import std.algebra { string_contains }
 import std.resources { Network }
 import extdeps.exec.command { LocalExec }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
@@ -78,15 +79,25 @@ test fn the_wrapper_propagates_the_exact_exit_status_by_real_execution() -> Bool
 
 // ── ARGV BOUNDARIES SURVIVE THE RENDER ─────────────────────────────────────────────────────────
 //
-// A path containing a space must reach the process as ONE argument; this module lost that boundary
-// twice before the quoting landed. `test -d` on a directory that does not exist fails either way, so
-// what is asserted is that it fails having received ONE argument rather than three.
+// THE FIRST VERSION OF THIS WITNESS WAS GREEN THROUGH THE REGRESSION ITS NAME CLAIMS TO DETECT. It ran
+// `test -d "/nonexistent path with spaces"` and asserted only a nonzero exit -- but `test -d` fails
+// whether it receives ONE argument or THREE, so a renderer that split the path on spaces produced the
+// same verdict as one that quoted it. The assertion could not distinguish the two implementations, and
+// a control that cannot fail for the reason it names is worse than absent: it is cited as coverage.
+//
+// THE OUTPUT IS THE DISCRIMINATOR, NOT THE STATUS. `printf "%s|" "a b"` writes `a b|` when the
+// argument arrives whole and `a|b|` when it arrives split, so the two implementations produce
+// different TEXT rather than the same exit code. The wrapper's own sentinel still has to appear, which
+// keeps this a test of the rendered command rather than of printf.
 test fn an_argument_containing_a_space_stays_one_word_by_real_execution() -> Bool {
   let obs = run_shell_command_observe(
-    command: posix_sh_program_command(script: sentinel_command_line(argv: ["test", "-d", "/nonexistent path with spaces"])),
+    command: posix_sh_program_command(script: sentinel_command_line(argv: ["printf", "%s|", "a b"])),
     transport: LocalExec,
   )
-  obs.exit_code != 0 && read_instrument(exit_code: obs.exit_code, stdout: obs.stdout) == InstrumentRejectedTheSubject
+  obs.exit_code == 0
+    && string_contains(s: obs.stdout, pattern: "a b|")
+    && !string_contains(s: obs.stdout, pattern: "a|b|")
+    && read_instrument(exit_code: obs.exit_code, stdout: obs.stdout) == InstrumentVerified
 }
 
 // ── THE DISCRIMINATOR THE PREVIOUS FIX LEFT OPEN ───────────────────────────────────────────────
