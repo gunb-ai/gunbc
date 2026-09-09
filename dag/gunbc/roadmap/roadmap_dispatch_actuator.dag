@@ -311,6 +311,15 @@ type DispatchActuatorSelection
 // type whose other consumers still require the field.
 data harness_selection_process_fingerprint: NonEmptyStr = "gunbc" as NonEmptyStr
 
+// THE SAME FIELD CARRIES TWO MEANINGS, AND ONLY ONE OF THEM IS AN INSTRUCTION. On the three vendor
+// arms, model is what will be SENT to the process: it becomes --model on the argv or it is the
+// account default and no flag is passed. Here it is a REPORT -- what the observed roster says this
+// backend is serving -- and nothing transmits it, because the harness worker is this repository's own
+// binary talking to a fixed local engine, not a CLI that takes a model argument. The pin is honest
+// because the roster really did observe that identity; it must not become a reason to add a --model
+// to the harness spawn, which would be inventing a knob the executor does not have. When the harness
+// grows per-group model identity, that identity replaces the single constant this reports, and the
+// transmission question is still answered by the executor, not by this field.
 fn dispatch_harness_selection() -> DispatchActuatorSelection {
   match harness_observe_roster() {
     HarnessRosterServing { model: serving_model, serving: _, declined: _ } =>
@@ -503,6 +512,12 @@ type DispatchLeasePlan
   | DrainStaleThenSpawn
   | RefuseForeignSession
 
+// THE PERMIT CARRIES THE MODEL BESIDE THE EFFORT. It carried effort alone, which is the same drop
+// this change closes everywhere else: a permit that names one provider control and not the other is
+// the shape the next author copies, and it is harmless today only because nothing in production
+// consumes this gate. Adding the field now costs one line and removes the trap; the alternative --
+// deleting the gate as the unconsumed surface it is -- is a separate section 3c question, and
+// leaving a known-incomplete shape standing while that is decided is the worse of the two.
 type DispatchRequestGate
   = DispatchPermitted {
       session_name: String
@@ -510,6 +525,7 @@ type DispatchRequestGate
       branch_name: String
       brief: String
       reasoning_effort: ReasoningEffort
+      model: ProviderModelSelection
     }
   | DispatchRefused { reason: NonEmptyStr }
 
@@ -2760,6 +2776,7 @@ fn dispatch_permitted_from_selection(
   node: RoadmapNode,
   attempt_key: String,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
 ) -> DispatchRequestGate {
   DispatchPermitted {
     session_name: dispatch_tmux_session_name(node_id: node.node),
@@ -2767,6 +2784,7 @@ fn dispatch_permitted_from_selection(
     branch_name: dispatch_branch_name(node_id: node.node, attempt_key: attempt_key),
     brief: filled_dispatch_brief_for_node(node: node),
     reasoning_effort: effort,
+    model: model,
   }
 }
 
@@ -2777,6 +2795,7 @@ fn classify_dispatch_request_for_process_fingerprint(
   attempt_key: String,
   process_fingerprint: NonEmptyStr,
   effort: ReasoningEffort,
+  model: ProviderModelSelection,
 ) -> DispatchRequestGate {
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
@@ -2799,6 +2818,7 @@ fn classify_dispatch_request_for_process_fingerprint(
             node: node,
             attempt_key: attempt_key,
             effort: effort,
+            model: model,
           )
       }
     }
@@ -2837,7 +2857,7 @@ fn classify_dispatch_request(
       match selection {
         DispatchActuatorSelectionRefused { reason } =>
           DispatchRefused { reason: reason }
-        DispatchActuatorSelectionOk { provider: _, effort, model: _, process_fingerprint } =>
+        DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
           classify_dispatch_request_for_process_fingerprint(
             node: node,
             ready: ready,
@@ -2845,6 +2865,7 @@ fn classify_dispatch_request(
             attempt_key: attempt_key,
             process_fingerprint: process_fingerprint,
             effort: effort,
+            model: model,
           )
       }
     }

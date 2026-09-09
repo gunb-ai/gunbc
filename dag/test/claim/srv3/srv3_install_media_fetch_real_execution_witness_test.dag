@@ -2,11 +2,9 @@ module test.claim.srv3_install_media_fetch_real_execution
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
-import extdeps.provisioning.ubuntu_install_media_fetch {
-  observe_install_media_fetch,
-  InstallMediaFetchAbsent,
-  InstallMediaFetchVerified,
-  InstallMediaFetchHashMismatch,
+import extdeps.provisioning.ubuntu_install_media_fetch { observe_install_media_fetch }
+import gunbc.artifact_acquisition {
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch,
 }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
@@ -24,7 +22,7 @@ test fn install_media_hash_matches_true_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_sha256) == InstallMediaFetchVerified
+  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_sha256) == AcquisitionVerified
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && matched
 }
@@ -33,7 +31,7 @@ test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bo
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256) == InstallMediaFetchHashMismatch
+  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256) == AcquisitionDigestMismatch
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && matched
 }
@@ -46,15 +44,15 @@ test fn observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_
   let absent_ok = observe_install_media_fetch(
     path: missing_path,
     expected_hash: install_media_fetch_fixture_sha256,
-  ) == InstallMediaFetchAbsent
+  ) == AcquisitionAbsent
   let verified_ok = observe_install_media_fetch(
     path: present_path,
     expected_hash: install_media_fetch_fixture_sha256,
-  ) == InstallMediaFetchVerified
+  ) == AcquisitionVerified
   let mismatch_ok = observe_install_media_fetch(
     path: present_path,
     expected_hash: install_media_fetch_fixture_wrong_sha256,
-  ) == InstallMediaFetchHashMismatch
+  ) == AcquisitionDigestMismatch
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && absent_ok && verified_ok && mismatch_ok
 }

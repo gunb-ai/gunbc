@@ -1,0 +1,194 @@
+module extdeps.zhipu.glm_5_3_flash
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE GLM-5.3-FLASH FAMILY, as its own extdeps authority for the reason extdeps.deepseek.deepseek_v4
+// is one: an independently versioned upstream model, governed by Z.ai, is not a property of whatever
+// happens to serve it. The two modules are peers and neither may answer for the other -- which is the
+// whole point of authoring this one rather than repointing the harness's DeepSeek import, since a
+// repointed import is the same fork under a new name.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "huggingface.co/zai-org/GLM-5.3-Flash",
+  }
+}
+
+// THE MODEL IDENTITY, from the vLLM recipe's own --served-model-name. This is the single spelling of
+// WHICH MODEL; a serving realization that wants a different alias declares an alias beside this row
+// rather than a second name for the same subject.
+data glm_5_3_flash_model_id: NonEmptyStr = "zai-org/GLM-5.3-Flash" as NonEmptyStr
+
+// THE CONTEXT CEILING AND THE EVALUATED DEPTH ARE TWO FACTS, and carrying only the first is how a
+// ceiling gets read as a capability -- the same distinction deepseek_v4 draws between its 1M scaled
+// ceiling and its 64K native window. The model card states a 1,048,576-token input context; its
+// published long-context evaluations run to 300,000 tokens. A consumer sizing a working window is
+// entitled to the ceiling and is NOT entitled to treat the span above the evaluated depth as
+// characterised.
+data glm_5_3_flash_context_length: TokenCount = token_count(count: 1048576)
+data glm_5_3_flash_evaluated_context_depth: TokenCount = token_count(count: 300000)
+
+fn glm_5_3_flash_window_is_characterised(window: TokenCount) -> Bool {
+  token_count_value(t: window) <= token_count_value(t: glm_5_3_flash_evaluated_context_depth)
+}
+
+// THE BENCHMARK GENERATION LENGTH, carried as what it is -- the length Z.ai generated under when
+// reporting its numbers -- and NOT as an output ceiling. No primary source states a maximum output
+// token count, so as with deepseek_v4 the absence is the fact, and what bounds output is the serving
+// engine's input-plus-output admission against the window.
+data glm_5_3_flash_benchmark_generation_length: TokenCount = token_count(count: 163840)
+data glm_5_3_flash_declares_no_output_ceiling: Bool = true
+
+// SAMPLING, as the model card states it for its own benchmark runs.
+data glm_5_3_flash_benchmark_temperature: NonEmptyStr = "1.0" as NonEmptyStr
+data glm_5_3_flash_benchmark_top_p: NonEmptyStr = "0.95" as NonEmptyStr
+
+// THE REASONING WIRE.
+//
+// THINKING IS UNCONDITIONAL ON THIS MODEL, WHICH IS THE STRUCTURAL DIFFERENCE FROM DEEPSEEK V4 AND
+// THE REASON A HARNESS MUST ASK A SEAM RATHER THAN A LITERAL. DeepSeek's three modes include a
+// non-think mode reached by SENDING NOTHING; GLM-5.3-Flash's generation prompt opens the think block
+// unconditionally and reasoning_effort DEFAULTS TO max when the key is absent. So the two models
+// give the empty request opposite meanings: on DeepSeek, omission is the fast path; here, omission is
+// the deepest one. A harness carrying DeepSeek's "send nothing for non-think" rule to this model
+// would silently request maximum reasoning while believing it had turned it off -- the exact class of
+// error that produced twenty-three zero-thinking rounds in the other direction on 2026-09-04.
+//
+// THERE IS NO OFF. `low` is the floor, and the model card states it as a reduction rather than a
+// disable. A consumer wanting no reasoning at all must be refused, not approximated.
+type GlmReasoningEffort = GlmEffortLow | GlmEffortHigh | GlmEffortMax
+
+fn glm_5_3_flash_reasoning_effort_wire(effort: GlmReasoningEffort) -> NonEmptyStr {
+  match effort {
+    GlmEffortLow => "low" as NonEmptyStr
+    GlmEffortHigh => "high" as NonEmptyStr
+    GlmEffortMax => "max" as NonEmptyStr
+  }
+}
+
+data glm_5_3_flash_effort_values: List<NonEmptyStr> = [
+  "low" as NonEmptyStr, "high" as NonEmptyStr, "max" as NonEmptyStr,
+]
+
+// THE DEFAULT WHEN THE KEY IS ABSENT, AND WHEN IT IS PRESENT BUT UNRECOGNISED. The model card states
+// both in one sentence -- it defaults to max if not passed OR if set to any other value -- so an
+// unknown effort string is not an error the server reports; it is silently the maximum. That makes a
+// misspelled effort the most expensive possible typo on this model, and it is recorded as a row
+// because nothing on the wire will tell a caller it happened.
+data glm_5_3_flash_absent_effort_defaults_to_max: Bool = true
+data glm_5_3_flash_unrecognised_effort_defaults_to_max: Bool = true
+data glm_5_3_flash_thinking_is_unconditional: Bool = true
+
+// THE REQUEST KEYS THE CHAT TEMPLATE RECOGNISES, carried under chat_template_kwargs on the OpenAI
+// chat-completions shape exactly as the vLLM recipe sends them. Note that GLM has no boolean
+// thinking switch at all: where DeepSeek carries `thinking`, this model carries only an effort and a
+// history control. The two kwarg vocabularies are disjoint, which is why they cannot share a row.
+data glm_5_3_flash_reasoning_effort_kwarg: NonEmptyStr = "reasoning_effort" as NonEmptyStr
+data glm_5_3_flash_clear_thinking_kwarg: NonEmptyStr = "clear_thinking" as NonEmptyStr
+
+// CLEAR_THINKING GOVERNS PRIOR TURNS, NOT THIS ONE, and its default is the retaining one. The chat
+// template defaults clear_thinking to false, so earlier turns' reasoning stays in context unless a
+// caller asks for it to be dropped; the model card recommends passing true FOR CHAT SCENARIOS
+// specifically. A tool-using loop therefore wants the default and must not pass true -- the same
+// retention DeepSeek's encoder forces once tools are defined, arrived at by a different mechanism.
+data glm_5_3_flash_clear_thinking_default: Bool = false
+data glm_5_3_flash_clear_thinking_recommended_for_chat: Bool = true
+data glm_5_3_flash_tool_use_retains_prior_reasoning_by_default: Bool = true
+
+// THE COMPLETION SHAPE. The generation prompt opens the think block, so a completion that reaches a
+// client UNPARSED carries reasoning up to the end token and speech after it -- the same split shape
+// DeepSeek's encoder documents. Unlike DeepSeek on this fleet, vLLM SHIPS A REASONING PARSER for
+// this family (glm45), so the split is normally performed server-side and the client receives the
+// reasoning already separated into reasoning_content. Both facts are carried because which one
+// applies is a property of the SERVING UNIT's flags, not of the model.
+data glm_5_3_flash_thinking_start_token: NonEmptyStr = "<think>" as NonEmptyStr
+data glm_5_3_flash_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+data glm_5_3_flash_chat_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
+
+// WHAT THE vLLM RECIPE PRESCRIBES.
+//
+// These are upstream's own serving prescriptions for this model, cited to recipes.vllm.ai, and they
+// are facts about the model's shape rather than tuning this repository chose.
+//
+// THE KV DTYPE IS A WIRE VALUE AND NOT A STORAGE FORMAT, AND AN EARLIER REVISION HERE CONFUSED THE
+// TWO IN THE MOST INSTRUCTIVE POSSIBLE DIRECTION. It reasoned FROM this flag TO the architecture:
+// `fp8` is not `fp8_ds_mla`, `fp8_ds_mla` is the Multi-head Latent Attention layout, therefore this
+// model is not MLA. The flag was right and the inference was backwards. Measured on the running
+// canary 2026-09-08, the engine is launched with `--kv-cache-dtype fp8` and then reports
+// `Using fp8_ds_mla KV cache format for FLASHINFER_MLA_SPARSE_SM120 backend` -- it DERIVES the MLA
+// storage format from the architecture it found in the checkpoint, and the wire value never named it.
+//
+// SO THE VALUE BELOW IS CORRECT AND ITS OLD JUSTIFICATION WAS NOT, which is the more dangerous
+// failure of the two: a wrong row is caught the first time it is used, while a right row resting on
+// a wrong reason silently licenses every further conclusion drawn from that reason -- as it did one
+// declaration further down, where it was read off as a claim about the attention mechanism itself.
+// The two facts are separated here so no future reader can travel between them again: this is what
+// is PASSED, and what the engine SELECTS is a realization fact recorded where the runtime is.
+data glm_5_3_flash_vllm_kv_cache_dtype_wire: NonEmptyStr = "fp8" as NonEmptyStr
+data glm_5_3_flash_vllm_tool_call_parser: NonEmptyStr = "glm47" as NonEmptyStr
+// THE RECIPE NAMES A REASONING PARSER, AND WHETHER A GIVEN ENGINE BUILD HAS IT IS A DIFFERENT FACT.
+// This row records what upstream prescribes; it is NOT a claim that any particular deployment can
+// honour it. Measured 2026-09-08 on this fleet's pinned image (vLLM 0.21.1rc1.dev339+g1967a5627bc3):
+// no GLM reasoning parser is present, while the glm47 tool parser is. The consumer that must decide
+// what a completion looks like therefore asks the SERVING UNIT
+// (gunbc.harness.harness_reasoning_wire harness_unit_server_parses_reasoning), never this row.
+data glm_5_3_flash_vllm_reasoning_parser: NonEmptyStr = "glm45" as NonEmptyStr
+// THE ATTENTION ARCHITECTURE, CORRECTED AND DECOMPOSED. This stood as
+// `glm_5_3_flash_attention_is_multi_head_latent: Bool = false`, which was false in both senses: the
+// value was wrong, and a Bool could not have carried the truth even set the other way.
+//
+// THE MEASUREMENT THAT SETTLED IT, from the checkpoint's own config.json -- an upstream artifact, so
+// these are upstream's facts and belong in this module rather than beside the deployment that read
+// them. `kv_lora_rank: 512` is the defining latent-compression parameter of Multi-head Latent
+// Attention; there is no reading of that key under which the mechanism is absent. It sits with
+// `qk_nope_head_dim: 256`, `qk_rope_head_dim: 0` and `v_head_dim: 256`, the decoupled-RoPE head
+// layout MLA is built from. The engine independently agrees, selecting FLASHINFER_MLA_SPARSE_SM120
+// and reporting an MLAAttentionSpec.
+//
+// AND IT IS A HYBRID, WHICH IS THE PART THE BOOL COULD NEVER HAVE SAID. The same config declares
+// `linear_attn_config` and a `full_attn_layers` list, and the engine groups the layers as
+// [('MLAAttentionSpec', [0], ...), ('MambaSpec', [2, 3, 4, 5], 'MambaManager', ...)]. MLA is the
+// mechanism on the FULL-ATTENTION layers; the rest are linear-attention layers. A single Bool forces
+// one answer onto a model that has two, so setting the old row to `true` would have replaced a wrong
+// answer with a differently wrong one -- which is why this is decomposed rather than negated.
+//
+// THE SPARSITY IS A SEPARATE AXIS FROM THE LATENCY OF THE MECHANISM, and only the engine's own words
+// establish it: `Sparse MLA impl has no dense-MHA prefill path; using the top-k MQA path only`. That
+// is a property of the realization's kernel, not of the checkpoint, so it is named and not claimed.
+type GlmAttentionMechanism
+  = GlmMultiHeadLatentAttention { kv_lora_rank: Nat, qk_nope_head_dim: Nat, qk_rope_head_dim: Nat, v_head_dim: Nat }
+  | GlmLinearAttention
+
+data glm_5_3_flash_full_attention_mechanism: GlmAttentionMechanism = GlmMultiHeadLatentAttention {
+  kv_lora_rank: 512,
+  qk_nope_head_dim: 256,
+  qk_rope_head_dim: 0,
+  v_head_dim: 256,
+}
+data glm_5_3_flash_non_full_attention_mechanism: GlmAttentionMechanism = GlmLinearAttention
+data glm_5_3_flash_attention_is_hybrid: Bool = true
+
+// THE RECIPE'S OWN OMISSIONS, stated because an absence read as a zero is how a default gets
+// invented. The recipe's serve line carries NO --max-model-len and NO --gpu-memory-utilization; it
+// relies on the model's declared window and vLLM's own default utilization. So there is no upstream
+// figure for either, and a deployment that sets them is choosing, not citing.
+data glm_5_3_flash_recipe_declares_max_model_len: Bool = false
+data glm_5_3_flash_recipe_declares_gpu_memory_utilization: Bool = false
+
+// WHAT THIS MODULE DOES NOT CARRY, AND WHY THE ABSENCE IS DELIBERATE. No KV-pool token figure, no
+// max-num-seqs, no measured throughput. Those are properties of a scenario -- this artifact, this
+// quantisation, this tensor-parallel width, this pool -- and a number measured under one and read
+// under another is the failure that bricked a ledger partition on 2026-09-06. A measurement about a
+// serving unit belongs to that unit's observed row with its instrument named, never to the model.
+data glm_5_3_flash_carries_no_serving_measurements: Bool = true
+
+fn glm_5_3_flash_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
+  let w = token_count_value(t: window)
+  let i = token_count_value(t: input_tokens)
+  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
+}

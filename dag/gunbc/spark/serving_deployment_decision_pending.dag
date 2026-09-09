@@ -1,0 +1,117 @@
+module gunbc.spark.serving_deployment_decision_pending
+
+import std.types { String, Bool, List, NonEmptyStr }
+
+// EVERY SERVING LAUNCH PARAMETER ON THIS BRANCH IS AN AUTHORED LITERAL AWAITING A DECISION FUNCTION
+// THAT LIVES ELSEWHERE. This module holds NO selection logic and must never grow any. It exists so
+// that the branch which owns the decision and the branch which owns the deployment do not each
+// invent half a selector and then have to reconcile them.
+//
+// THE OWNER IS `std.decision.select_realization`, WHICH THIS BRANCH DELIBERATELY DOES NOT IMPORT.
+// That module does not exist here yet -- it arrives with the selection PR -- and writing a local
+// stand-in would be exactly the fork this row is placed to prevent. `std.pareto` computes a frontier
+// and does not pick a winner; policy-bound realization selection belongs in `std.decision`, and
+// missing evidence and missing policy stay explicit rather than becoming a guessed choice.
+//
+// WHY A ROW AND NOT A COMMENT. These literals are spread across four modules and read as settled
+// facts. Without one place naming them as pending, the selection PR has to rediscover them, and this
+// branch has no wall against someone "tuning" one of them into a number with no basis.
+
+// WHAT THIS BRANCH HARDCODES TODAY, AND WHICH ROLE EACH SHOULD TAKE. The role names mirror
+// std.decision's own vocabulary so the selection PR can consume this roster directly rather than
+// translating it.
+type PendingDecisionRole
+  = ShouldBeDecisionVariable
+  | ShouldBeContextParameter
+  | ShouldBeDerivedOutcome
+
+type PendingServingDecision {
+  parameter: NonEmptyStr
+  authored_at: NonEmptyStr
+  current_value: NonEmptyStr
+  role: PendingDecisionRole
+  basis_today: NonEmptyStr
+}
+
+// THE ROSTER. Each row's `basis_today` is the honest provenance of the literal as it stands -- an
+// operator choice, a measurement in one scenario, or an inheritance -- so the selection PR can see
+// which are evidence and which are merely decided.
+data pending_serving_decisions: List<PendingServingDecision> = [
+  PendingServingDecision {
+    parameter: "gunbc.spark.pair_serving_desired spark_pair_serving_engine_args gpu_memory_utilization" as NonEmptyStr,
+    authored_at: "2026-09-05" as NonEmptyStr,
+    current_value: "82 percent" as NonEmptyStr,
+    role: ShouldBeDecisionVariable,
+    basis_today: "operator's observed-safe tuple for DeepSeek V4 Flash; nothing derives it and no headroom law is modelled" as NonEmptyStr,
+  },
+  PendingServingDecision {
+    parameter: "gunbc.spark.pair_serving_desired spark_pair_serving_engine_args max_model_len" as NonEmptyStr,
+    authored_at: "2026-09-08" as NonEmptyStr,
+    current_value: "the served model's declared ceiling" as NonEmptyStr,
+    role: ShouldBeDecisionVariable,
+    basis_today: "the model authority's declared context ceiling, which is a LIMIT rather than a chosen working window; no workload requirement is modelled against it" as NonEmptyStr,
+  },
+  PendingServingDecision {
+    parameter: "gunbc.spark.pair_serving_desired spark_pair_serving_seq_capacity max_num_seqs" as NonEmptyStr,
+    authored_at: "2026-09-03" as NonEmptyStr,
+    current_value: "32" as NonEmptyStr,
+    role: ShouldBeDecisionVariable,
+    basis_today: "measured from one DeepSeek launch line in its own scenario; valid there and explicitly barred from travelling to another model, quantisation or KV layout" as NonEmptyStr,
+  },
+  PendingServingDecision {
+    parameter: "gunbc.spark.glm_canary_converge glm_canary_arm max_num_batched_tokens" as NonEmptyStr,
+    authored_at: "2026-09-08" as NonEmptyStr,
+    current_value: "2048" as NonEmptyStr,
+    role: ShouldBeContextParameter,
+    basis_today: "operator ruling, spelled explicitly so an ambient engine default becomes an authored choice; held constant until GLM evidence gives a reason to vary it" as NonEmptyStr,
+  },
+  PendingServingDecision {
+    parameter: "gunbc.spark.glm_canary_converge glm_canary_arm max_num_seqs" as NonEmptyStr,
+    authored_at: "2026-09-08" as NonEmptyStr,
+    current_value: "1" as NonEmptyStr,
+    role: ShouldBeDecisionVariable,
+    basis_today: "experimental first-boot bound; the engine's reported 9.71x full-window KV concurrency is capacity, NOT a safe scheduler population, and is deliberately not its basis" as NonEmptyStr,
+  },
+  PendingServingDecision {
+    parameter: "gunbc.spark.glm_canary_converge glm_canary_arm topology (tensor parallel degree)" as NonEmptyStr,
+    authored_at: "2026-09-08" as NonEmptyStr,
+    current_value: "SingleSparkTp1" as NonEmptyStr,
+    role: ShouldBeDecisionVariable,
+    basis_today: "the only shape the EXL3 checkpoint was proven to load on; a whole-fleet deployment shape was never compared" as NonEmptyStr,
+  },
+  PendingServingDecision {
+    parameter: "gunbc.spark.glm_canary_converge glm_canary_arm speculation" as NonEmptyStr,
+    authored_at: "2026-09-08" as NonEmptyStr,
+    current_value: "SpeculationDisabled" as NonEmptyStr,
+    role: ShouldBeDecisionVariable,
+    basis_today: "off for first boot to remove an execution variable. MTP's quality standing is UNREAD on this fleet -- it must not be assumed lossless and taken for free" as NonEmptyStr,
+  },
+  PendingServingDecision {
+    parameter: "gunbc.harness.harness_seat harness_seat_operator_policy_seats" as NonEmptyStr,
+    authored_at: "2026-09-06" as NonEmptyStr,
+    current_value: "3" as NonEmptyStr,
+    role: ShouldBeDecisionVariable,
+    basis_today: "operator policy against concurrency observed on a DeepSeek group; declared uncalibrated for any other model" as NonEmptyStr,
+  },
+]
+
+// THE ONE RULE THIS BRANCH COMMITS TO, so the two lines of work cannot collide: NOTHING HERE SELECTS.
+// This branch may author a literal with a stated basis and may refuse when a basis is absent. It may
+// not rank candidates, compute a frontier, score axes, break a tie, or convert missing evidence into
+// a chosen value. Every one of those belongs to the selection PR.
+data this_branch_selects_nothing: Bool = true
+
+// QUALITY IS A GATE, NOT A WEIGHT, AND THIS BRANCH RECORDS THAT IT ALREADY DEPENDS ON THAT SHAPE.
+// gunbc.spark.serving_arm admits a tuple only when the runtime registers the checkpoint's
+// architecture -- a hard constraint, not a score that throughput could outweigh. The EXL3 2.05bpw
+// canary is a DIFFERENT ARTIFACT rather than a lower-quality variant of the native checkpoint, so it
+// must not enter one candidate field alongside it and lose on a quality weight; under an exact-artifact
+// requirement it is absent, not defeated.
+data quality_is_a_hard_constraint_here: Bool = true
+
+// WHAT WOULD MAKE THIS MODULE DELETABLE: `std.decision.select_realization` consumed by the serving
+// launch plan, such that a launch profile can be constructed ONLY from a selected arm and every other
+// result -- needs-evidence, needs-policy, no-feasible, refused -- refuses to launch and reports its
+// obligations. At that point each row above is either a decision variable inside the candidate field
+// or an explicit context parameter, and none of them is a literal anybody may quietly retune.
+data dissolution_trigger: NonEmptyStr = "the serving launch plan consumes std.decision.select_realization and can construct a launch profile from no other result" as NonEmptyStr
