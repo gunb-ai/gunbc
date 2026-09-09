@@ -24,7 +24,7 @@ fn w_digest(hex: String) -> ContentHash {
 data w_exe: String = "1111111111111111111111111111111111111111111111111111111111111111"
 data w_unit: String = "3333333333333333333333333333333333333333333333333333333333333333"
 
-fn w_inc_on(group: FabricGroup, invocation: String) -> VllmServingLaunch {
+fn w_launch_on(group: FabricGroup, invocation: String) -> VllmServingLaunch {
   vllm_serving_launch(
     group: group,
     head: spark_pair_serving_head(group: group),
@@ -36,13 +36,13 @@ fn w_inc_on(group: FabricGroup, invocation: String) -> VllmServingLaunch {
   )
 }
 
-fn w_inc(invocation: String) -> VllmServingLaunch {
-  w_inc_on(group: FabricGroupA, invocation: invocation)
+fn w_launch(invocation: String) -> VllmServingLaunch {
+  w_launch_on(group: FabricGroupA, invocation: invocation)
 }
 
 fn w_attempt_from(group: FabricGroup, invocation: String, n: Nat, terminal: LaunchTerminal, digest_hex: String) -> PairServingLaunchAttempt {
   PairServingLaunchAttempt {
-    incarnation: w_inc_on(group: group, invocation: invocation),
+    launch: w_launch_on(group: group, invocation: invocation),
     desired_digest: w_digest(hex: digest_hex),
     attempt_number: n,
     started_at: 1788000000,
@@ -84,7 +84,7 @@ test fn a_signal_kill_without_an_oom_observation_is_not_an_oom_kill() -> Bool {
 test fn a_joined_oom_observation_promotes_the_kill() -> Bool {
   let killed = w_attempt(invocation: "inv-15-42", n: 8, terminal: launch_terminal_from_exit(code: 137))
   let observed = OomObservation {
-    incarnation: w_inc(invocation: "inv-15-42"),
+    launch: w_launch(invocation: "inv-15-42"),
     source: CgroupMemoryEvent,
     detail: "memory.events oom_kill incremented" as NonEmptyStr,
   }
@@ -99,7 +99,7 @@ test fn a_joined_oom_observation_promotes_the_kill() -> Bool {
 test fn an_oom_observation_from_another_launch_does_not_attribute() -> Bool {
   let killed = w_attempt(invocation: "inv-15-42", n: 8, terminal: launch_terminal_from_exit(code: 137))
   let elsewhere = OomObservation {
-    incarnation: w_inc(invocation: "inv-15-35"),
+    launch: w_launch(invocation: "inv-15-35"),
     source: KernelRingBuffer,
     detail: "Out of memory: Killed process" as NonEmptyStr,
   }
@@ -120,12 +120,12 @@ test fn a_recovered_bring_up_is_distinguishable_from_a_clean_one() -> Bool {
   )
   let clean = [w_attempt(invocation: "inv-16-40", n: 1, terminal: LaunchServing)]
   (match serving_standing(attempts: flapped) {
-     ServingRecoveredAfterFailures { incarnation: _, failed_attempts: n, terminals: ts } =>
+     ServingRecoveredAfterFailures { launch: _, failed_attempts: n, terminals: ts } =>
        n == 8 && length(ts) == 8
          && (match ts.first() { LaunchKilled { signal: s } => s == 9  _ => false })
      _ => false
    })
-    && (match serving_standing(attempts: clean) { ServingOnFirstAttempt { incarnation: _ } => true  _ => false })
+    && (match serving_standing(attempts: clean) { ServingOnFirstAttempt { launch: _ } => true  _ => false })
     && !bring_up_was_clean(s: serving_standing(attempts: flapped))
     && bring_up_was_clean(s: serving_standing(attempts: clean))
     && string_contains(s: serving_standing_wire(s: serving_standing(attempts: flapped)), pattern: "8 failed attempt")
