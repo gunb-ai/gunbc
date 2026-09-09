@@ -13,9 +13,9 @@ import extdeps.colo.types {
 }
 import extdeps.colo.databank {
   databank_lga4_density, databank_lga4_retail_grain,
-  databank_ewr1_newark, databank_ewr1_density, databank_ewr1_retail_grain,
+  databank_ewr1_newark, databank_ewr1_retail_grain,
 }
-import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_density, hivelocity_jfk1_retail_grain }
+import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_retail_grain }
 import extdeps.colo.centersquare { centersquare_retail_grain }
 import extdeps.colo.coresite { coresite_secaucus_retail_grain }
 import extdeps.colo.dataverge { dataverge_retail_grain }
@@ -259,12 +259,32 @@ fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
 // by construction, one published and one unread - so the count is checked against a fact about the
 // claims rather than against a copy of itself. It reds if density_claim_is_read ever answers on the
 // wrong arm, which is the only way the derived count can now be wrong.
+//
+// ITS CLAIMS ARE CONSTRUCTED HERE RATHER THAN BORROWED FROM THE CENSUS, WHICH THEY WERE UNTIL
+// review 62966. It read databank_ewr1_density and hivelocity_jfk1_density - live production rows -
+// so the word "fixture" was doing work the declaration did not: a universe built from the corpus is
+// not controlled, and section 5's grounding requirement is precisely that the literal be checked
+// against something the corpus cannot move. The coupling was not hypothetical. databank_ewr1_density
+// is the corridor's only read density and is the row under an operator HOLD; had it been demoted,
+// this witness would have changed what it proves without anyone editing it, and the fold's proof
+// would have moved for a reason that has nothing to do with the fold. The two arms are what this
+// tests, so the two arms are what it constructs.
+data fixture_published_claim: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 7000) },
+  claim_wording: "witness fixture: a published air-cooled cabinet maximum",
+  citation: "witness fixture, constructed here rather than read from any operator - its only job is to inhabit the published arm so the counting fold has something to count",
+}
+
+data fixture_unread_claim: CabinetDensityClaim = DensityUnread {
+  obligation: "witness fixture: a claim nobody read, constructed here so the fold has an unread arm to skip",
+}
+
 data two_claim_fixture: RegionCoverage = RegionCoverage {
   region_label: "witness fixture: one read claim and one unread claim",
   region_code: "XX",
   outcome: FacilitiesModelled {
     facilities: [databank_ewr1_newark, hivelocity_jfk1],
-    densities: [databank_ewr1_density, hivelocity_jfk1_density],
+    densities: [fixture_published_claim, fixture_unread_claim],
   },
 }
 
