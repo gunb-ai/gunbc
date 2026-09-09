@@ -56,7 +56,15 @@ data qts_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // jersey-city paths under q.com 404. Until an operator surface names it, this census carries no
 // Jersey City row for QTS - and if the site was exited, the registry entry is what a later sweep
 // will trip over, so record the resolution here rather than silently dropping it.
-
+//
+// DECLARED FRONTIER, NOT A CONSUMER (DESIGN 3c). Nothing reads this row and nothing can yet: the
+// corridor coverage roster joins densities to facilities, and this operator has no facility in the
+// corridor - qts_piscataway is Middlesex County, and QTS Jersey City is recorded above as a
+// registry-versus-operator disagreement rather than a row. So the density is an orphan by the same
+// rule that removed and later restored Colocation America's: a density is a claim ABOUT a facility
+// and joins to nothing without one. NAMED CONSUMER: the region roster in gunbc.colo_census_coverage.
+// TRIGGER: QTS Jersey City resolving into a facility row, or a Middlesex region row existing for
+// Piscataway. Until one of those, this is state two of 3c and not state three.
 data qts_cabinet_density: CabinetDensityClaim = DensityUnread {
   obligation: "q.com's data-centers index read 2026-09-08 publishes acreage and site megawatts - 38 acres and 65 MW+ at Piscataway - and no per-cabinet or per-rack kW figure at any site. Site megawatts is not cabinet density. Resolve by quote; note that this operator has no facility in the Hudson-Bergen-Essex corridor that it currently claims.",
 }
