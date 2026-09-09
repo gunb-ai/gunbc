@@ -1,7 +1,9 @@
 module gunbc.runner.runner_cgroup_placement_receipt
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, FilePath }
+import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 
 // THE ATTEMPT IS BOUNDED NOW, AND THE BOUND WAS OBSERVED FROM BOTH SIDES WHILE IT HELD. Attempt
 // slice5b-cgroup-77e659df on the Mt. Collins unit, 2026-09-06. The live census had found the VMM
@@ -15,8 +17,10 @@ import std.measure { ByteSize, byte_size }
 // running Firecracker is already inside the bound. There is no window in which the VMM runs
 // unbounded.
 data placement_attempt: NonEmptyStr = "slice5b-cgroup-77e659df"
-data placement_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-cgroup-placement.log"
-data placement_evidence_sha256: NonEmptyStr = "d3445167c1cc22d9dc3607374c402407f7fb37e23ce15a5428368d0f2281504d"
+data placement_evidence: FilePath = "artifacts/bmc/mtcollins1-cgroup-placement.log" as FilePath
+data placement_evidence_sha256: Sha256Digest = Sha256Digest {
+  hex: "d3445167c1cc22d9dc3607374c402407f7fb37e23ce15a5428368d0f2281504d" as Sha256DigestHex,
+}
 data placement_evidence_byte_count: ByteSize = byte_size(7931)
 
 // ── placement, read from both ends ──────────────────────────────────────────────────────────────
@@ -25,7 +29,7 @@ data placement_evidence_byte_count: ByteSize = byte_size(7931)
 // listing the process are different readings, and only the pair rules out a stale or root
 // placement. Both were taken while the guest was alive; neither can be taken afterwards.
 type CgroupPlacementVerdict
-  = PlacementBidirectional { cgroup_path: NonEmptyStr, pid: Int }
+  = PlacementBidirectional { cgroup_path: NonEmptyStr, pid: Nat }
   | PlacementForwardOnly { detail: String }
   | PlacementReverseOnly { detail: String }
   | PlacementNotEstablished { detail: String }
@@ -41,7 +45,7 @@ data placement_verdict: CgroupPlacementVerdict = PlacementBidirectional {
 type CgroupAccounting {
   memory_current: ByteSize
   memory_max: ByteSize
-  pids_max: Int
+  pids_max: Nat
 }
 
 data placement_accounting: CgroupAccounting = CgroupAccounting {
@@ -91,7 +95,7 @@ data placement_retirement: CgroupRetirement = CgroupRetirement {
 // process that runs the VMM.
 type PlacementDefect {
   attempt: NonEmptyStr
-  written_pid: Int
+  written_pid: Nat
   intended_pid: NonEmptyStr
   found_by: NonEmptyStr
 }

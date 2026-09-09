@@ -1,7 +1,8 @@
 module gunbc.runner.runner_guest_egress_attempt
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { ByteSize, byte_size }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.measure { ByteSize, byte_size, Bandwidth, bandwidth }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 
 // AN ATTEMPT THAT DID NOT REACH ITS GOAL, recorded because two of its by-products are worth more
 // than the goal was. Attempt slice7c-bridge-e6a5b5c2 on the Mt. Collins unit, 2026-09-07. The aim
@@ -12,8 +13,10 @@ import std.measure { ByteSize, byte_size }
 // guest have egress" must find the answer no, and because the two findings below were produced by
 // this run and would otherwise be attributed to whichever later run happens to succeed.
 data egress_attempt: NonEmptyStr = "slice7c-bridge-e6a5b5c2"
-data egress_attempt_evidence: NonEmptyStr = "artifacts/bmc/mtcollins1-bridge-egress-attempt.log"
-data egress_attempt_evidence_sha256: NonEmptyStr = "694f5a64bcd8f3739091f28a0b1f4bdfde94e0c144d0bf9c6efa43e87bf688a9"
+data egress_attempt_evidence: FilePath = "artifacts/bmc/mtcollins1-bridge-egress-attempt.log" as FilePath
+data egress_attempt_evidence_sha256: Sha256Digest = Sha256Digest {
+  hex: "694f5a64bcd8f3739091f28a0b1f4bdfde94e0c144d0bf9c6efa43e87bf688a9" as Sha256DigestHex,
+}
 data egress_attempt_evidence_byte_count: ByteSize = byte_size(225444)
 
 type EgressAttemptOutcome
@@ -40,12 +43,14 @@ data egress_outcome: EgressAttemptOutcome = GuestEgressNotEstablished {
 // this boot. Carrier is not a data plane, and promoting one to the other is how a layer-1 reading
 // becomes a reachability claim.
 type LinkObservation
-  = PhysicalLinkNegotiated { interface: NonEmptyStr, speed: NonEmptyStr, duplex: NonEmptyStr }
+  = PhysicalLinkNegotiated { interface: NonEmptyStr, speed: Bandwidth, duplex: NonEmptyStr }
   | InterfaceCarriedTraffic { evidence: NonEmptyStr }
 
+// eth0 is the fleet-facing port. Duplex has no corpus home (no Full/Half coproduct in std or
+// extdeps); the PHY log said Full Duplex. Speed is std.measure Bandwidth in bit/s: 1000 Mbps.
 data nic_link_observed: LinkObservation = PhysicalLinkNegotiated {
-  interface: "eth0, the fleet-facing port",
-  speed: "1000 Mbps",
+  interface: "eth0",
+  speed: bandwidth(1000000000),
   duplex: "full",
 }
 
@@ -115,7 +120,7 @@ type CpuBoundFailure
   | CpuBoundRefusedWithErrno { errno: NonEmptyStr, path_shape: NonEmptyStr, root_subtree: NonEmptyStr }
 
 data cpu_bound_failure: CpuBoundFailure = CpuBoundRefusedWithErrno {
-  errno: "EPERM -- the file does not exist and cgroupfs refuses its creation, because CONFIG_CFS_BANDWIDTH is not set in this kernel",
+  errno: "EPERM",
   path_shape: "the attempt leaf's cpu.max",
   root_subtree: "cpu memory pids -- the controller is delegated, and weight control is not bandwidth control",
 }
