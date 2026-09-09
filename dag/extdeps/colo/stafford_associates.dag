@@ -57,7 +57,7 @@ data stafford_density: CabinetDensityClaim = DensityUnread {
 
 data stafford_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "1u, 2u, 1/4, 1/2 to a full locking cabinet, to customized cages",
-  citation: "staffordnet.com colocation page, read 2026-09-08. The fraction glyphs on the page are rendered here as ASCII fractions; the enumeration is otherwise the page's own.",
+  citation: "staffordnet.com colocation page, read 2026-09-08 and confirmed against raw HTML 2026-09-09, where the full sentence reads: Sizes include 1u, 2u, 1/4, 1/2 to a full locking cabinet, to customized cages. The fraction glyphs on the page are rendered here as ASCII fractions; the enumeration is otherwise the page's own.",
 }
 
 data stafford_retail_rates: RetailRateStanding = RatesQuoteOnly {

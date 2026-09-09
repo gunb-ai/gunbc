@@ -1,10 +1,11 @@
 module extdeps.colo.hivelocity
 
 import std.types { NonEmptyStr }
+import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
   RetailGrainStanding, RetailGrainUnread,
 }
 
@@ -47,27 +48,41 @@ data hivelocity_retail_rates: RetailRateStanding = RatesQuoteOnly {
   obligation: "Hivelocity publishes instant pricing for dedicated servers but its Newark colocation is quote-only on the pages read 2026-08-18.",
 }
 
-// A ROCKLAND COUNTY PRESENCE THIS OPERATOR ACQUIRED RATHER THAN BUILT, and the acquisition is why
-// the census nearly missed it. The Orangeburg facility marketed by ColoHouse at 1 Ramland Road -
-// the building 1547 operates as ORNY1 (extdeps.colo.critical_systems_realty) - now answers as
-// Hivelocity: colohouse.com/data-centers/new-york/ returns a 301 permanent redirect to
+// A ROCKLAND COUNTY PRESENCE THIS OPERATOR ACQUIRED RATHER THAN BUILT, AND ITS DENSITY PAGE HIDES
+// BEHIND A SECOND NAME FOR THE SAME BUILDING. The acquisition is why the census nearly missed the
+// site at all: colohouse.com/data-centers/new-york/ returns a 301 permanent redirect to
 // hivelocity.net (read 2026-09-08), so the ColoHouse rows a directory still shows are this
-// operator's rows. Hivelocity's own location list names OGB1 Orangeburg as a CORE site.
+// operator's. The SECOND name is why the first read of this row carried no density. The operator's
+// location index lists the site as "Orangeburg (OGB1)" and publishes no figures; the colocation
+// product page for the same building is titled "New York 4" / "NYC4 Colo Data Center", lives under
+// /products/colocation/new-york-city-4/, and is where the density is printed. Searching the
+// location code against the product pages never reaches it. The cross-name was found by
+// silent-heron-303 while reading Newark and re-read here on 2026-09-09 before being carried.
 data hivelocity_ogb1_orangeburg: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Hivelocity",
-  facility_label: "Hivelocity OGB1 Orangeburg (legacy ColoHouse)",
-  address: AddressUnread {
-    obligation: "Hivelocity's location list names OGB1 Orangeburg but publishes no street address for it (read 2026-09-08). The predecessor ColoHouse marketed 1 Ramland Road, Orangeburg with roughly 15,000 square feet and over 1 MW; that is a pre-acquisition claim from a press release, not a current operator reading, and the building it names is 1547's ORNY1. Confirm the street address and whether the suite survived the acquisition.",
+  facility_label: "Hivelocity New York 4 / OGB1 Orangeburg (legacy ColoHouse)",
+  address: AddressListed {
+    street: "1 Ramland Rd, Orangeburg, NY 10962",
+    citation: "hivelocity.net New York 4 colocation page, read 2026-09-09. The operator's own location index names the same site Orangeburg (OGB1) and gives no address; the two names are one building.",
   },
   municipality: "Orangeburg",
   region_code: "NY",
-  facility_note: "Rockland County, in-building retail on the same pattern as this operator's JFK1 suite at 165 Halsey. It is the only route found in this survey by which a Rockland County cabinet might be bought from a host with published dedicated-server pricing rather than from a multi-megawatt landlord.",
+  facility_note: "Rockland County, in-building retail on the same pattern as this operator's JFK1 suite at 165 Halsey - and the building is 1 Ramland Road, which 1547 operates as ORNY1 (extdeps.colo.critical_systems_realty). NOT the DataBank campus: that is 2000 Corporate Drive, a different building in the same village. Operator page (read 2026-09-09): 24 MW provisioned with 2N distribution, a pre-approved on-site 50 MW substation with diverse feeds from New York and New Jersey, FEMA Zone X, sub-millisecond latency claimed to 60 Hudson, 111 8th Avenue and 165 Halsey, and a transit list of fourteen named carriers. The 24 MW is the LANDLORD's building figure repeated on the tenant's page - 1547 publishes the same 24 MW provisioned in N+2 - so it says nothing about how much of the building this operator sells.",
 }
 
-data hivelocity_ogb1_density: CabinetDensityClaim = DensityUnread {
-  obligation: "No per-cabinet power figure appears on hivelocity.net's location list or data-center pages for OGB1 (read 2026-09-08). The landlord's ORNY1 page claims 10 kW+ per cabinet for the building; a landlord's building claim is not this tenant's sellable density and is not transferred here.",
+// TWO OPERATORS PUBLISH A DENSITY FOR ONE BUILDING AND THE FIGURES DISAGREE BY A FACTOR OF TWO.
+// Hivelocity's page says 20 kW+ per cabinet; the landlord 1547 says "High density 10KW + per
+// cabinets" for the same 1 Ramland Road. Both are carried on their own operator's row because each
+// is a reading of that operator's own surface, and neither is corrected against the other: a
+// reseller may well sell a denser cabinet than the landlord's general marketing claims, and a
+// landlord may be describing a different hall. What a consumer may NOT do is treat the pair as
+// corroboration - they are two claims, and the quote decides which is purchasable.
+data hivelocity_ogb1_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 20000) },
+  claim_wording: "High density raised floor environment, 20 kW+ per cabinet",
+  citation: "hivelocity.net New York 4 colocation page (/products/colocation/new-york-city-4/), read 2026-09-09. The plus sign is the operator's, so this is a marketed floor on a maximum rather than a ceiling. THE PAGE DOES NOT STATE A COOLING MEDIUM: recorded on the air arm because it is printed beside 'raised floor environment' and no liquid figure is published. One path caution from the lane that found it and confirmed here: /products/colocation/new-york-city-3/ served the same New York 4 content and the same address, so cite the -4 path.",
 }
 
 data hivelocity_ogb1_retail_grain: RetailGrainStanding = RetailGrainUnread {
-  obligation: "Hivelocity's location list marks OGB1 as offering dedicated servers, while its NYC1 entry additionally names colocation (read 2026-09-08). Whether a colocation cabinet is sellable at OGB1 at all is therefore genuinely open, and reading the NYC1 product set onto OGB1 would be exactly the peer-site inference this census refuses.",
+  obligation: "The New York 4 page is a COLOCATION product page for this building and states density per cabinet, but no sentence on it read 2026-09-09 says a single cabinet is a sellable unit, and no rack-unit or partial-cabinet product is named. A peer lane reported reading a cabinet-level availability sentence on the same page; it could not be reproduced in this read, so it is recorded as the thing to confirm rather than carried. Ask whether one cabinet at 20 kW is sold here, and at what price.",
 }

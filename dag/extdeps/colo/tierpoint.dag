@@ -132,5 +132,5 @@ data tierpoint_hawthorne_density: CabinetDensityClaim = DensityUnread {
 
 data tierpoint_hawthorne_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "Cabinets and cages available",
-  citation: "tierpoint.com New York Hawthorne page, read 2026-09-08; the wording appears against both 11 Skyline and 17 Skyline.",
+  citation: "tierpoint.com New York Hawthorne page, read 2026-09-08 THROUGH A RENDERING FETCH, against both 11 Skyline and 17 Skyline. A raw re-fetch on 2026-09-09 to confirm the wording verbatim was refused - tierpoint.com answers HTTP 403 to a plain client with a 4.5 KB block page - so this string is a rendered reading and has NOT been checked against the page's own bytes, unlike every density figure in this expansion. The square footages in the two facility rows above come from the same rendered read.",
 }

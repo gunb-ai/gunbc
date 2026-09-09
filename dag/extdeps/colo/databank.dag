@@ -99,8 +99,8 @@ data databank_lga3_orangeburg: ColoFacilityRow = ColoFacilityRow {
 data databank_lga3_density: CabinetDensityClaim = DensityMarketedMax {
   air_cooled: PublishedRealPower { power: watt(count: 35000) },
   liquid_cooled: PublishedRealPower { power: watt(count: 100000) },
-  claim_wording: "35kW+ Cab Density Air, 100kW+ Cab Density Liquid",
-  citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08. Identical figures to LGA4 and stated in the operator's own spec strip. This is a SECOND facility carrying the claim, not a second reading of the same facility - the two buildings are separately marketed with separate critical loads.",
+  claim_wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liquid",
+  citation: "databank.com Orangeburg campus LGA3 page, confirmed against raw HTML 2026-09-09. THE TWO FIGURES ARE SEPARATE SPEC CELLS, NOT ONE SENTENCE: the page emits '35kW+ Cab Density Air' and '100kW+ Cab Density Liquid' as adjacent cells, and the slash here is this row's separator rather than the operator's punctuation. Recorded that way because a wording field whose job is to let a later reader re-derive the number is worthless if it holds a sentence the operator never wrote. Identical figures to LGA4, and this is a SECOND facility carrying the claim rather than a second reading of the same one - the two buildings are separately marketed with separate critical loads.",
 }
 
 data databank_lga3_retail_grain: RetailGrainStanding = SingleCabinetOffered {
