@@ -22,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.equinix",
-      decl_name: "equinix_secaucus_campus",
+      decl_name: "equinix_facilities",
       field: WholeDeclaration
     }
   },
@@ -88,6 +88,14 @@ data equinix_ny9_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   wording: "Secure Cabinet Express",
   citation: "equinix.com NY9 products table, read 2026-09-08",
 }
+
+data equinix_facilities: List<ColoFacilityRow> = [
+  equinix_ny2,
+  equinix_ny4,
+  equinix_ny5,
+  equinix_ny6,
+  equinix_ny9,
+]
 
 data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "equinix.com sales",
