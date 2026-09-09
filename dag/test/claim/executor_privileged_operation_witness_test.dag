@@ -15,7 +15,14 @@ import gunbc.generated_artifact_emit {
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_host_grants { runner_slot_teardown_grant_index_bound, runner_slot_grammar_dirs_to_bound, fabric_allocation_store_privileged_operations }
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slots_per_host,
+  gunbc_runner_slot_cpu_quota,
+  CpuQuotaResolved,
+  CpuQuotaRefused,
+}
+import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives }
+import extdeps.systemd.unit_file { slice_cpu_quota, systemd_slice_directive_line }
 import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -139,6 +146,29 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
     && activation == slots * 2
     && slots > 0
     && fabric_slots > 0
+}
+
+// THE CPUQuota GRANT IS THE SURVEYED DIRECTIVE, NOT A TRANSCRIBED PERCENTAGE. The generated
+// sudoers body is `artifact_generate` of this host's row; the assignment word is
+// `systemd_slice_directive_line(slice_cpu_quota(threads))` for the same
+// `gunbc_runner_slot_cpu_quota` the effect emits. RED: hand-insert `CPUQuota=600%` into the
+// committed file without the survey resolving, or resolve to a different thread count than the
+// committed projection, and either this or the generated-artifact gate goes false. A refused
+// survey must leave no `CPUQuota=` grant, because there is then no argv to authorize.
+test fn witness_fabric_slice_cpu_quota_grant_is_the_surveyed_directive() -> Bool {
+  match gunbc_runner_slot_cpu_quota() {
+    CpuQuotaResolved { threads: t } => {
+      let assignment = systemd_slice_directive_line(directive: slice_cpu_quota(threads: t))
+      let desired_lines = join(
+        map(fabric_cell_slice_desired_directives(), d => systemd_slice_directive_line(directive: d)),
+        "\n",
+      )
+      string_contains(s: srv3_runner_host_sudoers(), pattern: assignment)
+        && string_contains(s: desired_lines, pattern: assignment)
+    }
+    CpuQuotaRefused { cause: _ } =>
+      !string_contains(s: srv3_runner_host_sudoers(), pattern: "CPUQuota=")
+  }
 }
 
 // THE TEARDOWN GRANT COVERS EVERY WIDTH THE FLEET COMMITS TO, with the bound pinned above each

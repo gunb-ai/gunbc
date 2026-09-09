@@ -146,6 +146,16 @@ fn fabric_cell_slice_property_operations(
   )
 }
 
+// CPUQuota IS NOT A SEPARATE GRANT CONSTRUCTOR IN THIS MODULE. A grep here finds no
+// `CPUQuota=600%` literal because the assignment is not a second authority: this function maps
+// `fabric_cell_slice_desired_directives`, and that list already concatenates `slice_cpu_quota`
+// when `gunbc_runner_slot_cpu_quota` is `CpuQuotaResolved`. A refused survey emits five
+// directives and no `CPUQuota=` argv, so the allowlist cannot authorize a ceiling the model
+// refused to write. The magnitude in the generated sudoers file is
+// `systemd_slice_directive_line` of that directive -- two projections of one survey, the same
+// invariant `gunbc.fabric_cell_effect` states for the effect itself. Hand-editing
+// `provisioning/*/gunbc-ghrunner.sudoers` is the DESIGN §6 tell; regenerate through
+// `gunbc.generated_artifact_emit` `artifact_generate`.
 fn fabric_cell_slice_operations(slot: RunnerSlotIdentity) -> List<ExecutorPrivilegedOperation> {
   fabric_cell_slice_property_operations(
     unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
