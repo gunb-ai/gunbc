@@ -212,9 +212,28 @@ import v2.std.collection { List }
 // the roster, and withdrawn anyway. A row earns its place by measured recompute AND measured
 // sharing AND a serve below that recompute, and it is the third conjunct that refused all
 // three.
+// dag_prepared_grammar EARNS ITS ROW ON THE FILL THAT COULD NEVER LAND. `prepare_grammar` is the
+// tier's built-in admitted arm, so admission was never its question; the v2-self-host branch's
+// required-witnesses-floor lane measured the failure shape directly — twelve claims refused with
+// cause=FillBudgetExceeded, every one dying mid-flight inside the SAME in-flight shared fill, and
+// the run's cross-claim demand census names `prepare_grammar` at evals=12 with no store ever
+// landing. Two independent defects composed into that cascade, and both are repaired at source,
+// not budgeted around: (1) the fill's VALUE was not portable — `GrammarFirstAnalysis.nullable_set`
+// was a `PointwisePower<Symbol>` closure tower, which publication refuses totally
+// (ServeCacheValueNotPortable), so no completed fill could ever store; the carrier is now the
+// enumeration it always was (`List<Symbol>`, the `sync_tokens` repair's own precedent); (2) the
+// fill costs more than one claim's CPU budget on the lane's runner, so an in-fold first touch can
+// never complete — the nullary producer moves that first touch to strict preparation, where this
+// roster's warm path already forces the bash rows, and every claim then serves the landed fill.
+// The instruments, re-derived rather than transcribed: the required floor's own
+// required_floor_claim_cost.tsv outcome column (the twelve refusals) and its cross-claim demand
+// census (the demand concentration), plus this run's `[floor-shared-fill]` ledger, which must now
+// show the fill landing at preparation with disposition=Stored and the twelve former fillers
+// serving hits.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
+  "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
+  "v2.compiler.program_assembly.dag_prepared_grammar"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
