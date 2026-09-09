@@ -168,6 +168,16 @@ fn refuse_slot(name: ProbeFieldName) -> CapacityProbeRead {
   ProbeUnreadable { detail: slot_missing(name: name) }
 }
 
+// EpochSecs is `Int where range(min: 0)`. A parsed Int cannot be cast; after the negative check the
+// expected type of Present is what mints it (same shape as json_number_as_epoch_secs).
+fn epoch_secs_from_non_negative(n: Int) -> EpochSecs? {
+  if n < 0 {
+    none
+  } else {
+    Present { value: n }
+  }
+}
+
 fn decode_probe(stdout: String) -> CapacityProbeRead {
   let lines = split(s: trim(s: stdout), delimiter: "\n")
   let expected = list_length(items: capacity_probe_slots())
@@ -176,10 +186,10 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
   } else {
     match int_named(lines: lines, name: StartedAt) {
       Absent => refuse_slot(name: StartedAt)
-      Present { value: started } =>
-        if started < 0 {
-          refuse_slot(name: StartedAt)
-        } else {
+      Present { value: started_raw } =>
+        match epoch_secs_from_non_negative(n: started_raw) {
+          Absent => refuse_slot(name: StartedAt)
+          Present { value: started } => {
         match captured_named(lines: lines, name: PoolLine) {
           Absent => refuse_slot(name: PoolLine)
           Present { value: pool_line } =>
@@ -212,7 +222,7 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                                                       unit_sha: unit_sha,
                                                       container: container,
                                                       image_sha: image_sha,
-                                                      started_at: started as EpochSecs,
+                                                      started_at: started,
                                                       pool_line: pool_line,
                                                       concurrency_line: conc_line,
                                                       allocator_blocks: allocator_block_count(count: blocks),
@@ -227,6 +237,7 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                     }
                 }
             }
+        }
         }
         }
     }
