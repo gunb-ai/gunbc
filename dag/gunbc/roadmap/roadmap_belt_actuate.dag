@@ -140,6 +140,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider,
   dispatch_provider_label, dispatch_codex_home,
   dispatch_actuator_selection,
+  DispatchActuatorSelection,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
   dispatch_tmux_session_name,
@@ -1554,6 +1555,13 @@ fn belt_footprint_admission_for_instance(
   )
 }
 
+// ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider
+// from one live selection, and belt_resolved_spawn_plan then read the roster AGAIN beneath it -- and
+// it was that second answer whose model reached the process. If the roster moved between the two, a
+// replica dropping out being exactly the event this fleet sees, the preflighted provider and the
+// spawned one could disagree with nothing recording it. That is the same class the observe fold
+// closed, sitting on the one route where the model actually reaches a process, and this module's own
+// rule is that the fix is the carrier rather than the call.
 fn belt_actuate_spawn_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -1588,8 +1596,9 @@ fn belt_actuate_spawn_for_instance(
         provider: belt_dispatch_spawn_unselected_provider_wire_label(),
         launch: launch,
       }
-    EnvironmentAdmitted { receipts, validation_summary } =>
-      match dispatch_actuator_selection(node_sizing: node.sizing) {
+    EnvironmentAdmitted { receipts, validation_summary } => {
+      let selection = dispatch_actuator_selection(node_sizing: node.sizing)
+      match selection {
         DispatchActuatorSelectionRefused { reason } =>
           SpawnFailed {
             node_id: node.node as String,
@@ -1624,9 +1633,11 @@ fn belt_actuate_spawn_for_instance(
                 ),
                 provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
                 launch: launch,
+                selection: selection,
               )
           }
       }
+    }
   }
   }
 }
@@ -1638,6 +1649,7 @@ fn belt_actuate_spawn_exec_for_instance(
   admission_receipt: String,
   provider_wire_label: String,
   launch: LaunchIdentity,
+  selection: DispatchActuatorSelection,
 ) -> BeltSpawnOutcome {
   belt_actuate_spawn_exec_modeled(
     instance: instance,
@@ -1647,6 +1659,7 @@ fn belt_actuate_spawn_exec_for_instance(
     admission_receipt: admission_receipt,
     provider_wire_label: provider_wire_label,
     launch: launch,
+    selection: selection,
   )
 }
 
@@ -1664,6 +1677,7 @@ fn belt_actuate_spawn_exec_modeled(
   admission_receipt: String,
   provider_wire_label: String,
   launch: LaunchIdentity,
+  selection: DispatchActuatorSelection,
 ) -> BeltSpawnOutcome {
   let attempt_key = dispatch_attempt_key(
     node_id: node.node,
@@ -1692,12 +1706,14 @@ fn belt_actuate_spawn_exec_modeled(
         instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
         provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
         attempt_key: attempt_key, session_name: session_name, origin: FreshFromBase,
+        selection: selection,
       )
     ContinuationContinue { origin } =>
       belt_actuate_spawn_with_origin(
         instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
         provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
         attempt_key: attempt_key, session_name: session_name, origin: origin,
+        selection: selection,
       )
   }
 }
@@ -1765,6 +1781,7 @@ fn belt_actuate_spawn_with_origin(
   attempt_key: String,
   session_name: String,
   origin: AttemptOrigin,
+  selection: DispatchActuatorSelection,
 ) -> BeltSpawnOutcome {
   match belt_resolved_spawn_plan(
     instance: instance,
@@ -1772,6 +1789,7 @@ fn belt_actuate_spawn_with_origin(
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
     attempt_key: attempt_key,
     origin: origin,
+    selection: selection,
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -1898,6 +1916,13 @@ fn belt_actuate_spawn_with_origin(
 }
 }
 
+// ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider
+// from one live selection, and belt_resolved_spawn_plan then read the roster AGAIN beneath it -- and
+// it was that second answer whose model reached the process. If the roster moved between the two, a
+// replica dropping out being exactly the event this fleet sees, the preflighted provider and the
+// spawned one could disagree with nothing recording it. That is the same class the observe fold
+// closed, sitting on the one route where the model actually reaches a process, and this module's own
+// rule is that the fix is the carrier rather than the call.
 fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
   let instance = srv1_live_dashboard_instance()
   match dispatch_environment_admit(
@@ -1918,8 +1943,9 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
         provider: belt_dispatch_spawn_unselected_provider_wire_label(),
         launch: launch,
       }
-    EnvironmentAdmitted { receipts, validation_summary } =>
-      match dispatch_actuator_selection(node_sizing: node.sizing) {
+    EnvironmentAdmitted { receipts, validation_summary } => {
+      let selection = dispatch_actuator_selection(node_sizing: node.sizing)
+      match selection {
         DispatchActuatorSelectionRefused { reason } =>
           SpawnFailed {
             node_id: node.node as String,
@@ -1951,9 +1977,11 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
                 ),
                 provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
                 launch: launch,
+                selection: selection,
               )
           }
       }
+    }
   }
 }
 
@@ -1964,6 +1992,7 @@ fn belt_actuate_spawn_exec(
   admission_receipt: String,
   provider_wire_label: String,
   launch: LaunchIdentity,
+  selection: DispatchActuatorSelection,
 ) -> BeltSpawnOutcome {
   belt_actuate_spawn_exec_modeled(
     instance: srv1_live_dashboard_instance(),
@@ -1973,6 +2002,7 @@ fn belt_actuate_spawn_exec(
     admission_receipt: admission_receipt,
     provider_wire_label: provider_wire_label,
     launch: launch,
+    selection: selection,
   )
 }
 
@@ -2072,8 +2102,9 @@ fn belt_resolved_spawn_plan(
   session_uuid: String,
   attempt_key: String,
   origin: AttemptOrigin,
+  selection: DispatchActuatorSelection,
 ) -> DispatchSpawnPlan {
-  match dispatch_actuator_selection(node_sizing: node.sizing) {
+  match selection {
     DispatchActuatorSelectionRefused { reason } =>
       DispatchSpawnRefused {
         step: "dispatch-selection" as NonEmptyStr,
