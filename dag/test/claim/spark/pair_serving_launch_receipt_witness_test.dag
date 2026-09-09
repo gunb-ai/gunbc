@@ -131,6 +131,19 @@ test fn a_recovered_bring_up_is_distinguishable_from_a_clean_one() -> Bool {
     && string_contains(s: serving_standing_wire(s: serving_standing(attempts: flapped)), pattern: "8 failed attempt")
 }
 
+test fn a_serve_then_fail_run_is_not_serving_rather_than_recovered() -> Bool {
+  let reversed = [
+    w_attempt(invocation: "inv-16-40", n: 1, terminal: LaunchServing),
+    w_attempt(invocation: "inv-15-3", n: 2, terminal: launch_terminal_from_exit(code: 137)),
+  ]
+  (match serving_standing(attempts: reversed) {
+     NotServing { failed_attempts: n, terminals: ts } =>
+       n == 1 && (match ts.first() { LaunchKilled { signal: s } => s == 9  _ => false })
+     _ => false
+   })
+    && !bring_up_was_clean(s: serving_standing(attempts: reversed))
+}
+
 // NO ATTEMPTS IS UNOBSERVED, NOT NOT-SERVING. An empty list is the absence of evidence, and reading
 // it as a failure would make an unconverged host indistinguishable from a broken one.
 test fn no_recorded_attempts_is_unobserved_rather_than_not_serving() -> Bool {

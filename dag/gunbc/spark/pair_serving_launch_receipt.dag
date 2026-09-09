@@ -189,6 +189,8 @@ fn run_homogeneity(attempts: List<PairServingLaunchAttempt>) -> RunHomogeneity {
 
 // ORDER IS THE CALLER'S, oldest first, because attempt_number is the convergence run's own counter
 // and a fold that re-sorted by it would be inventing an order the observations did not carry.
+// Standing follows whether the run ENDS serving: a serving row followed by a kill is NotServing,
+// not a recovery that used the first serving row as a winner.
 fn serving_standing(attempts: List<PairServingLaunchAttempt>) -> ServingStanding {
   if length(attempts) == 0 {
     ServingStandingUnobserved { cause: "no launch attempt was recorded for this unit, so whether it is serving is unobserved rather than false" as NonEmptyStr }
@@ -198,19 +200,26 @@ fn serving_standing(attempts: List<PairServingLaunchAttempt>) -> ServingStanding
         ServingStandingUnobserved { cause: "the attempt list mixes desired_digest values, so it is not one convergence decision and standing is unobserved rather than folded across them" as NonEmptyStr }
       MixedHost =>
         ServingStandingUnobserved { cause: "the attempt list mixes heads, so standing is unobserved rather than attributing another host's terminals to this one" as NonEmptyStr }
-      OneRun => {
-        let failures = filter(attempts, a => !attempt_is_serving(a: a))
-        let terminals = map(failures, a => a.terminal)
-        match first(filter(attempts, a => attempt_is_serving(a: a))) {
-          Absent => NotServing { failed_attempts: length(failures), terminals: terminals }
-          Present { value: winner } =>
-            if length(failures) == 0 {
-              ServingOnFirstAttempt { incarnation: winner.incarnation }
+      OneRun =>
+        match attempts.last() {
+          Absent => ServingStandingUnobserved { cause: "no launch attempt was recorded for this unit, so whether it is serving is unobserved rather than false" as NonEmptyStr }
+          Present { value: latest } =>
+            if attempt_is_serving(a: latest) {
+              let prior_failures = filter(attempts.take(n: length(attempts) - 1), a => !attempt_is_serving(a: a))
+              if length(prior_failures) == 0 {
+                ServingOnFirstAttempt { incarnation: latest.incarnation }
+              } else {
+                ServingRecoveredAfterFailures {
+                  incarnation: latest.incarnation,
+                  failed_attempts: length(prior_failures),
+                  terminals: map(prior_failures, a => a.terminal),
+                }
+              }
             } else {
-              ServingRecoveredAfterFailures { incarnation: winner.incarnation, failed_attempts: length(failures), terminals: terminals }
+              let failures = filter(attempts, a => !attempt_is_serving(a: a))
+              NotServing { failed_attempts: length(failures), terminals: map(failures, a => a.terminal) }
             }
         }
-      }
     }
   }
 }
