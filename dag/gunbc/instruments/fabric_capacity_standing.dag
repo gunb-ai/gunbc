@@ -1,6 +1,6 @@
 module gunbc.instruments.fabric_capacity_standing
 
-import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.algebra { trim }
@@ -118,7 +118,7 @@ type CapacityProbeFields {
   unit_sha: String
   container: String
   image_sha: String
-  started_at: Int
+  started_at: EpochSecs
   pool_line: String
   concurrency_line: String
   allocator_blocks: AllocatorBlockCount
@@ -175,6 +175,9 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
     match int_named(lines: lines, name: StartedAt) {
       Absent => refuse_slot(name: StartedAt)
       Present { value: started } =>
+        if started < 0 {
+          refuse_slot(name: StartedAt)
+        } else {
         match captured_named(lines: lines, name: PoolLine) {
           Absent => refuse_slot(name: PoolLine)
           Present { value: pool_line } =>
@@ -196,16 +199,16 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                                 match int_named(lines: lines, name: Waiting) {
                                   Absent => refuse_slot(name: Waiting)
                                   Present { value: waiting } =>
-                                    match field_named(lines: lines, name: Invocation) {
+                                    match captured_named(lines: lines, name: Invocation) {
                                       Absent => refuse_slot(name: Invocation)
                                       Present { value: invocation } =>
-                                        match field_named(lines: lines, name: UnitSha) {
+                                        match captured_named(lines: lines, name: UnitSha) {
                                           Absent => refuse_slot(name: UnitSha)
                                           Present { value: unit_sha } =>
-                                            match field_named(lines: lines, name: Container) {
+                                            match captured_named(lines: lines, name: Container) {
                                               Absent => refuse_slot(name: Container)
                                               Present { value: container } =>
-                                                match field_named(lines: lines, name: ImageSha) {
+                                                match captured_named(lines: lines, name: ImageSha) {
                                                   Absent => refuse_slot(name: ImageSha)
                                                   Present { value: image_sha } =>
                                                     ProbeFields { fields: CapacityProbeFields {
@@ -213,7 +216,7 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                                                       unit_sha: unit_sha,
                                                       container: container,
                                                       image_sha: image_sha,
-                                                      started_at: started,
+                                                      started_at: started as EpochSecs,
                                                       pool_line: pool_line,
                                                       concurrency_line: conc_line,
                                                       allocator_blocks: allocator_block_count(count: blocks),
@@ -232,6 +235,7 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
                     }
                 }
             }
+        }
         }
     }
   }

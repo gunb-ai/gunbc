@@ -8,7 +8,7 @@ import gunbc.instruments.fabric_capacity_standing {
   CapacityProbeRead, ProbeFields, ProbeUnreadable, decode_probe,
   ProbeReadings, ProbeReadingsReady, ProbeReadingsRefused, readings_from_fields,
   tokens_from_gpu_kv_cache_size_line, hundredths_from_maximum_concurrency_line,
-  capacity_probe_slots,
+  capacity_probe_slots, probe_field_key,
   ProbeFieldName, Invocation, UnitSha, Container, ImageSha, StartedAt, PoolLine, ConcurrencyLine,
   AllocatorBlocks, BlockSize, MaxModelLen, Running, Waiting,
 }
@@ -57,6 +57,34 @@ test fn a_metrics_dash_for_running_or_waiting_refuses_rather_than_reading_as_idl
     && (match decode_probe(stdout: w_lines(running: "0", waiting: "0")) {
           ProbeFields { fields: f } => f.running == 0 && f.waiting == 0
           ProbeUnreadable { detail: _ } => false
+        })
+}
+
+fn w_identity_dash(which: ProbeFieldName) -> String {
+  join(map(capacity_probe_slots(), s =>
+    if probe_field_key(n: s.name) == probe_field_key(n: which) {
+      "-"
+    } else {
+      w_cell(name: s.name, running: "0", waiting: "0")
+    }), "\n")
+}
+
+test fn a_dash_for_launch_identity_refuses_rather_than_decoding_as_a_join_key() -> Bool {
+  (match decode_probe(stdout: w_identity_dash(which: Invocation)) {
+     ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "systemd invocation")
+     ProbeFields { fields: _ } => false
+   })
+    && (match decode_probe(stdout: w_identity_dash(which: UnitSha)) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "unit text digest")
+          ProbeFields { fields: _ } => false
+        })
+    && (match decode_probe(stdout: w_identity_dash(which: Container)) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "container id")
+          ProbeFields { fields: _ } => false
+        })
+    && (match decode_probe(stdout: w_identity_dash(which: ImageSha)) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "container image digest")
+          ProbeFields { fields: _ } => false
         })
 }
 
