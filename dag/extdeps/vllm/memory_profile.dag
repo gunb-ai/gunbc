@@ -1,0 +1,100 @@
+module extdeps.vllm.memory_profile
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { BasisPoint, ByteSize }
+import extdeps.vllm.server { VllmSourceRevision }
+
+// THE MEMORY-PROFILE LINE PRINTS TWO KINDS OF NUMBER, AND TYPING THEM ALIKE WOULD FABRICATE
+// PRECISION. Measured on the GLM canary's line, exactly two figures are exact: the byte arguments of
+// the two `--kv-cache-memory` recommendations. Every other term -- device total, startup availability,
+// requested envelope, consumed, peak activation, graph, current KV -- is printed as a rounded GiB
+// value with two decimals, and there is no byte figure behind them anywhere in the log.
+//
+// THE ROUNDED TERMS DO NOT RECONCILE, AND THAT IS EXPECTED RATHER THAN A DEFECT. On this launch
+// 82.52 + 7.42 + 0.1 + 22.02 = 112.06 against a stated envelope of 111.95. The residual is real but
+// the arithmetic is performed upstream in bytes and only then rounded for display, so a consumer that
+// summed these and refused on the mismatch would be refusing the ROUNDING, not the engine. Any
+// admission arithmetic must therefore run on the exact recommendation bytes or on separately observed
+// device totals -- never on these readings.
+//
+// SO THE ROUNDED HALF IS CARRIED AS WHAT IT IS: a printed reading, in hundredths of a gibibyte,
+// beside the literal text it came from. It is comparable and orderable, which is all a rounded figure
+// honestly supports, and it cannot be mistaken for a byte count by any consumer because it is not one.
+type GibibyteReading sole_constructor {
+  hundredths: Nat
+}
+
+fn gibibyte_reading(hundredths: Nat) -> GibibyteReading {
+  GibibyteReading { hundredths: hundredths }
+}
+
+fn gibibyte_reading_hundredths(r: GibibyteReading) -> Nat {
+  r.hundredths
+}
+
+// ── THE READING ────────────────────────────────────────────────────────────────────────────────
+//
+// EVERY FIELD NAME CARRIES ITS TEMPORAL MEANING, because the terms are not the same KIND of quantity
+// and the earlier report treated them as one table of comparable numbers. `startup_available` is an
+// instantaneous allocatability estimate -- on unified memory this vLLM reads host MemAvailable, which
+// includes reclaimable memory and is NOT an inventory of resident bytes. `peak_activation` is a
+// headroom figure, not a persistent allocation. `current_kv` is an allocated pool. The two
+// recommendations are derived candidates, not settings.
+//
+// THE CAPTURED TEXT IS RETAINED, not summarised. A receipt that kept only the parsed fields could not
+// be re-read when a later revision reworded the line, and the digest of the capture is what lets a
+// consumer decide whether two receipts describe the same observation.
+type VllmMemoryProfileReading sole_constructor {
+  device_total: GibibyteReading
+  startup_available: GibibyteReading
+  requested_utilization: BasisPoint
+  requested_envelope: GibibyteReading
+  persistent_consumed: GibibyteReading
+  peak_activation_headroom: GibibyteReading
+  cudagraph_allocated: GibibyteReading
+  current_kv: GibibyteReading
+  recommended_kv_within_requested_envelope: ByteSize
+  recommended_kv_using_startup_availability: ByteSize
+  captured_text: NonEmptyStr
+  observed_at_revision: VllmSourceRevision
+}
+
+// THE RECOMMENDATIONS ARE THE ONLY EXACT TERMS, AND NEITHER IS A POLICY. The larger one is what the
+// engine calculates would fully use the device given the availability IT OBSERVED AT THAT LAUNCH; the
+// smaller is what fits inside the requested envelope. Reading either as capacity, as proven-safe, or
+// as an amount permanently unused is the error this type exists to prevent -- they are candidates for
+// a selection decision that has not been made, bound to one launch's snapshot.
+type VllmKvRecommendation
+  = KvRecommendationWithinRequestedEnvelope
+  | KvRecommendationUsingStartupAvailability
+
+fn vllm_kv_recommendation_bytes(r: VllmMemoryProfileReading, which: VllmKvRecommendation) -> ByteSize {
+  match which {
+    KvRecommendationWithinRequestedEnvelope => r.recommended_kv_within_requested_envelope
+    KvRecommendationUsingStartupAvailability => r.recommended_kv_using_startup_availability
+  }
+}
+
+// ── WHAT IS NOT BUILT HERE, STATED RATHER THAN IMPLIED ─────────────────────────────────────────
+//
+// THERE IS NO PARSER YET. This module types the reading and the exactness boundary; it does not turn
+// the captured line into one. A caller must supply the fields, which means the current path from log
+// to receipt is a person reading a line -- and a hand-typed receipt is exactly the rounded
+// transcription this module argues against, so the constructor being available is not the same as the
+// class being modelled.
+//
+// THE HONEST NEXT STEP is a total parse of the captured text that refuses rather than partially
+// filling, so a reworded upstream line produces VllmMemoryProfileUnreadable instead of a receipt with
+// plausible fields. Until that lands, no positive receipt should be enrolled as evidence of anything.
+type VllmMemoryProfileParse
+  = VllmMemoryProfileParsed { reading: VllmMemoryProfileReading }
+  | VllmMemoryProfileUnreadable { captured_text: String, cause: NonEmptyStr }
+  | VllmMemoryProfileParserUnbuilt { captured_text: String }
+
+// THE UNBUILT ARM IS A REFUSAL, NOT A PLACEHOLDER, and it is reachable today because the parser is
+// not written. A consumer that receives it has learned something true -- this text was captured and
+// has not been interpreted -- which is different from receiving fields somebody typed by eye.
+fn vllm_parse_memory_profile(captured_text: String) -> VllmMemoryProfileParse {
+  VllmMemoryProfileParserUnbuilt { captured_text: captured_text }
+}
