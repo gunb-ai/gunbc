@@ -4,6 +4,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.algebra { trim }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
@@ -178,6 +179,27 @@ fn epoch_secs_from_non_negative(n: Int) -> EpochSecs? {
   }
 }
 
+// Nat constructors refuse a computed Int→Nat cast. A negative probe line is not a count.
+// checked_int_magnitude is the sanctioned crossing; the negative arm must fire first because that
+// fold reports a magnitude for a < 0.
+fn nat_from_non_negative(n: Int) -> Nat? {
+  if n < 0 {
+    none
+  } else {
+    match checked_int_magnitude(a: n) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: v } => Present { value: v }
+    }
+  }
+}
+
+fn nat_named(lines: List<String>, name: ProbeFieldName) -> Nat? {
+  match int_named(lines: lines, name: name) {
+    Absent => none
+    Present { value: n } => nat_from_non_negative(n: n)
+  }
+}
+
 fn decode_probe(stdout: String) -> CapacityProbeRead {
   let lines = split(s: trim(s: stdout), delimiter: "\n")
   let expected = list_length(items: capacity_probe_slots())
@@ -196,13 +218,13 @@ fn decode_probe(stdout: String) -> CapacityProbeRead {
             match captured_named(lines: lines, name: ConcurrencyLine) {
               Absent => refuse_slot(name: ConcurrencyLine)
               Present { value: conc_line } =>
-                match int_named(lines: lines, name: AllocatorBlocks) {
+                match nat_named(lines: lines, name: AllocatorBlocks) {
                   Absent => refuse_slot(name: AllocatorBlocks)
                   Present { value: blocks } =>
-                    match int_named(lines: lines, name: BlockSize) {
+                    match nat_named(lines: lines, name: BlockSize) {
                       Absent => refuse_slot(name: BlockSize)
                       Present { value: bs } =>
-                        match int_named(lines: lines, name: MaxModelLen) {
+                        match nat_named(lines: lines, name: MaxModelLen) {
                           Absent => refuse_slot(name: MaxModelLen)
                           Present { value: ctx } =>
                                     match captured_named(lines: lines, name: Invocation) {
@@ -269,7 +291,46 @@ fn hundredths_from_maximum_concurrency_line(line: String) -> Int? {
       if list_length(items: segs) < 2 {
         none
       } else {
-        parse_int(s: replace(s: replace(s: trim(s: field_at(lines: segs, n: list_length(items: segs) - 1)), from: "x", to: ""), from: ".", to: ""))
+        hundredths_from_two_digit_x(lexeme: field_at(lines: segs, n: list_length(items: segs) - 1))
+      }
+    }
+  }
+}
+
+// THE PRINT IS HUNDREDTHS ONLY WHEN IT CARRIES EXACTLY TWO FRACTION DIGITS. Deleting "." and "x"
+// then parse_int treats digit count as the scale, so 8.5x becomes 85 (tenths) and 12.345x
+// becomes 12345 (thousandths). Require `<int>.<two digits>x` and refuse every other precision.
+fn hundredths_from_two_digit_x(lexeme: String) -> Int? {
+  let t = trim(s: lexeme)
+  let n = string_length(s: t)
+  if n < 5 {
+    none
+  } else {
+    if substring(s: t, start: n - 1, end: n) != "x" {
+      none
+    } else {
+      let parts = split(s: substring(s: t, start: 0, end: n - 1), delimiter: ".")
+      if list_length(items: parts) != 2 {
+        none
+      } else {
+        let frac = field_at(lines: parts, n: 1)
+        if string_length(s: frac) != 2 {
+          none
+        } else {
+          match parse_int(s: field_at(lines: parts, n: 0)) {
+            Absent => none
+            Present { value: whole } =>
+              match parse_int(s: frac) {
+                Absent => none
+                Present { value: fraction } =>
+                  if whole < 0 || fraction < 0 || fraction > 99 {
+                    none
+                  } else {
+                    Present { value: whole * 100 + fraction }
+                  }
+              }
+          }
+        }
       }
     }
   }
@@ -290,8 +351,11 @@ fn pool_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision) -> Vll
   match tokens_from_gpu_kv_cache_size_line(line: f.pool_line) {
     Absent => none
     Present { value: tokens } =>
+      match nat_from_non_negative(n: tokens) {
+        Absent => none
+        Present { value: n } =>
       match vllm_observed_kv_pool_from_reading(
-        tokens: token_count(count: tokens),
+        tokens: token_count(count: n),
         reading: vllm_startup_reading(
           line: GpuKvCacheSize,
           captured_text: f.pool_line as NonEmptyStr,
@@ -301,6 +365,7 @@ fn pool_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision) -> Vll
         KvPoolAdmitted { pool: p } => Present { value: p }
         KvPoolRefused { cause: _ } => none
       }
+      }
   }
 }
 
@@ -308,9 +373,12 @@ fn reported_from_fields(pool: VllmObservedKvPool, f: CapacityProbeFields, revisi
   match hundredths_from_maximum_concurrency_line(line: f.concurrency_line) {
     Absent => none
     Present { value: hundredths } =>
+      match nat_from_non_negative(n: hundredths) {
+        Absent => none
+        Present { value: n } =>
       match vllm_reported_capacity(
         pool: pool,
-        max_concurrency: concurrent_request_hundredths(count: hundredths),
+        max_concurrency: concurrent_request_hundredths(count: n),
         reading: vllm_startup_reading(
           line: MaximumConcurrency,
           captured_text: f.concurrency_line as NonEmptyStr,
@@ -319,6 +387,7 @@ fn reported_from_fields(pool: VllmObservedKvPool, f: CapacityProbeFields, revisi
       ) {
         ReportedCapacityAdmitted { capacity: c } => Present { value: c }
         ReportedCapacityRefused { cause: _ } => none
+      }
       }
   }
 }
