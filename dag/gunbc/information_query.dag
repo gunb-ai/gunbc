@@ -31,6 +31,8 @@ import std.claim_evidence {
   EvidenceInference,
   EvidenceApplicable,
   EvidenceInsufficient,
+  EvidenceInferenceFold,
+  evidence_inference_fold,
 }
 
 // THE CANONICAL EVIDENCE PATH, AND DELIBERATELY NOT THE ONLY NETWORK PATH. The harness worker's one
@@ -46,17 +48,6 @@ import std.claim_evidence {
 // inspire an information need, but cannot construct admissible evidence. The fact is reacquired
 // here or it does not count.
 
-// WHAT THE MODEL ASKS FOR IS A NEED, NOT A QUERY STRING. The caller states what it must know and
-// why. It does NOT choose the search provider, the number of sources, a credibility threshold,
-// whether first-party evidence suffices, the retry count, or whether a snippet counts as a fact --
-// every one of those is workflow policy, and handing them to the model is how ad-hoc research
-// becomes unauditable. EvaluateClaim carries needed_for because sufficiency is claim-relative:
-// there is no answer to "is this source good" that is not "good FOR what".
-
-type InformationNeed
-  = ExploreQuestion { question: NonEmptyStr }
-  | EvaluateClaim { claim: NonEmptyStr, needed_for: NonEmptyStr }
-
 // Freshness is a property of the CLAIM the evidence is offered for, not of the document. A
 // time-invariant proposition is not stale because the page is old; a current-state proposition is
 // stale the moment it is observed. This inhabits EvidenceFreshness's conclusion parameter.
@@ -66,11 +57,6 @@ type InformationTemporalScope
   | TimeInvariant
   | AsOf { instant: EpochMs }
   | During { start: EpochMs, end: EpochMs }
-
-type InformationQueryRequest {
-  need: InformationNeed
-  temporal_scope: InformationTemporalScope
-}
 
 // A SEARCH LEAD IS NAVIGATION AND CAN NEVER SUPPORT A CLAIM. A snippet is a query-dependent
 // projection chosen by a ranking provider: it is not the cited source representation, it was
@@ -215,10 +201,13 @@ fn information_evidence_from_verification(
 fn information_evidence_is_admissible(evidence: InformationEvidence) -> Bool {
   match evidence {
     InformationEvidenceInferred { inference } =>
-      match inference {
-        EvidenceApplicable { link: _ } => true
-        EvidenceInsufficient { insufficiency: _ } => false
-      }
+      evidence_inference_fold(
+        inference: inference,
+        fold: EvidenceInferenceFold {
+          applicable: fn(_) { true },
+          insufficient: fn(_) { false },
+        },
+      )
     InformationEvidenceUnavailable { cause: _ } => false
   }
 }
