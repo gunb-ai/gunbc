@@ -36,11 +36,24 @@ pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
 /// Module path of the DERIVED roster: `ROW_MODULE` plus the `ROSTER_BASENAME` stem.
 ///
-/// ONE SPELLING, BECAUSE THE WAVE FINDS THIS FILE BY MODULE IDENTITY. `run_required_wave_admission`
-/// excludes the derived roster from the carried-forward baseline and re-derives its base side by
-/// locating it under this name. A second spelling anywhere makes that find MISS, the skip never
-/// fires, and the silently HEAD-inherited base that the exclusion exists to remove comes back WITH
-/// NO DIAGNOSTIC -- the repair defeated by a copy of its own name, and no run goes red to say so.
+/// ONE SPELLING, BECAUSE `rostered_row_join` LOOKS THIS MODULE UP BY NAME. `ENROLLED_ROW_TYPES`
+/// carries the roster's module identity and `run_rostered_row_join` resolves it with
+/// `index_get(index, enrolled.roster_module)`. `render_roster` WRITES that module header. Those
+/// two are the only speller pair that must agree, and before this const they agreed only by hand.
+///
+/// A DIVERGENCE HERE FAILS CLOSED, which is why this is single authority (DESIGN section 3) and
+/// not a safety fix: the lookup misses, and the miss is the typed, located `RosterModuleAbsent`
+/// finding -- "the roster module is absent from the index, so no membership can be read and every
+/// declared row of that type is unanswered". The run goes red and says exactly what is wrong. The
+/// cost of two spellings is a confusing refusal naming a module that appears to exist, not a
+/// silent one.
+///
+/// NOT THE WAVE. `run_required_wave_admission` finds this file by PATH -- `is_derived_roster_path`
+/// and `roster_root_prefix`, both composed from `ROW_DIR_REL` and `ROSTER_BASENAME` -- and never
+/// reads this constant. An earlier draft of this comment claimed the wave found it by module
+/// identity and would silently inherit the HEAD baseline on a miss. Both halves were false, and
+/// the false version was the stated reason for the change.
+///
 /// It cannot be `concat!` of the parts because `ROW_MODULE` is a `const` and not a literal token,
 /// so the composition is ASSERTED by `the_roster_module_is_the_row_module_plus_the_roster_stem`
 /// rather than constructed.
