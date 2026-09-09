@@ -537,14 +537,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut measurement_blockers: Vec<RequiredCiBlocker> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
-        // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The wave-admission phase below reads
-        // the index the parse phase built rather than acquiring the corpus again; holding it
-        // in an `Option` also keeps `the parse refused` distinguishable from `the parse ran
-        // and found nothing`, which is what the wall's own `NotEvaluated` arm exists to keep
-        // apart one level down.
-        let mut head_index: Option<v1_compiler::cli_run::declaration_index::DeclarationIndex> =
-            None;
-
         // THE ROSTER IS ANNOUNCED BEFORE ANY PHASE RUNS, whole, with each phase's owning lane.
         // A reader of one job's log sees the complete required roster and where the phases this
         // job does not own are being measured, so a lane's coverage is legible from inside it
@@ -583,7 +575,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                         "required-ci: parse OK {} file(s) parse-clean",
                         sweep.parse_clean
                     );
-                    head_index = Some(sweep.index.clone());
                     // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
                     //
                     // They are reported inside this phase rather than as a phase of their own
