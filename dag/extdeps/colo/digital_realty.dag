@@ -2,7 +2,11 @@ module extdeps.colo.digital_realty
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -50,7 +54,63 @@ data digital_realty_ewr20: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Seven-story roughly 183,000 square foot building with about 33 MW marketed per directory profiles read 2026-08-18; legacy Telx NJR2/NJR3 lineage. Multi-operator building: Colocation America resells retail space here under its own module.",
 }
 
-data digital_realty_facilities: List<ColoFacilityRow> = [digital_realty_ewr10, digital_realty_ewr20]
+// THE PISCATAWAY CAMPUS, ABSENT FROM THE CENSUS UNTIL NOW. This operator was carried by its two
+// Hudson-waterfront-adjacent buildings only, which read as though Digital Realty's New Jersey
+// footprint stopped at Clifton. It does not: the campus below is in Middlesex County, and one of
+// its two modelled buildings is larger than either northern site.
+data digital_realty_ewr11: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Digital Realty",
+  facility_label: "Digital Realty EWR11 Piscataway",
+  address: AddressListed {
+    street: "3 Corporate Place, Piscataway Township, NJ 08854",
+    citation: "digitalrealty.com EWR11 page, read 2026-09-08",
+  },
+  municipality: "Piscataway",
+  region_code: "NJ",
+  facility_note: "Operator page (read 2026-09-08): 207,500 square feet across three stories, marketed as versatile and scalable colocation environments. The page states no critical IT load and no carrier list. Part of the operator's Piscataway campus alongside EWR12; a third building, EWR19, is named in campus material and has no readable operator page (see digital_realty_ewr19_obligation).",
+}
+
+data digital_realty_ewr11_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The EWR11 page read 2026-09-08 states no per-cabinet or per-rack kilowatt figure. Read the building's spec sheet or ask the quote for the marketed cabinet maximum. Do not read the campus square footage as a density.",
+}
+
+data digital_realty_ewr11_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The EWR11 page read 2026-09-08 names colocation environments without stating a minimum commitment. Its campus sibling EWR12 explicitly offers single cabinets, which is a fact about EWR12 and not about this building; establish EWR11's own minimum before assuming the campus sells uniformly.",
+}
+
+data digital_realty_ewr12: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Digital Realty",
+  facility_label: "Digital Realty EWR12 Piscataway",
+  address: AddressListed {
+    street: "365 S. Randolphville Road, Piscataway Township, NJ 08854",
+    citation: "digitalrealty.com EWR12 page, read 2026-09-08",
+  },
+  municipality: "Piscataway",
+  region_code: "NJ",
+  facility_note: "Operator page (read 2026-09-08): 323,000 square feet total building size, the largest Digital Realty building carried in this census. The page states no critical IT load. This is the address directory profiles attach to the legacy Atlantic Metro Piscataway facility, so a quote should establish who sells what at 365 S. Randolphville Road today - the same multi-operator-building question the census already carries for 300 JFK Boulevard East and 1 Enterprise Avenue N.",
+}
+
+data digital_realty_ewr12_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The EWR12 page read 2026-09-08 states no per-cabinet or per-rack kilowatt figure, only building square footage. Read the spec sheet or ask the quote. The 323,000 square feet is a fact about the building and must not be read as a density.",
+}
+
+// THE ONLY DIGITAL REALTY BUILDING IN THIS CENSUS THAT STATES ITS RETAIL GRAIN, and it flatly
+// contradicts the operator-level rate note below, which had recorded a lean toward interconnection
+// and multi-cabinet deployments. A single-cabinet offer is published for this building; whether it
+// is published for the others is unread rather than answered by this one.
+data digital_realty_ewr12_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "From single cabinets to full suites, we have space solutions as diverse as your needs.",
+  citation: "digitalrealty.com EWR12 page, read 2026-09-08",
+}
+
+
+// A THIRD BUILDING ON THIS CAMPUS THAT CONTRIBUTES NO ROW. Digital Realty campus material names
+// EWR19 alongside the two buildings above. The operator page under the EWR19 path on the same URL
+// pattern that serves EWR11 and EWR12 returned HTTP 404 on 2026-09-08, so no address, size, density
+// or grain is readable and no row is written from the campus material alone. This operator's
+// Piscataway campus is therefore modelled at two buildings of three, and the missing one needs a
+// live page or a spec sheet rather than an inference from its siblings.
+data digital_realty_facilities: List<ColoFacilityRow> = [digital_realty_ewr10, digital_realty_ewr20, digital_realty_ewr11, digital_realty_ewr12]
 
 data digital_realty_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "digitalrealty.com sales",

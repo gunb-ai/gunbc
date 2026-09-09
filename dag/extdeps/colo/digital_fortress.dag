@@ -1,0 +1,70 @@
+module extdeps.colo.digital_fortress
+
+import std.types { NonEmptyStr }
+import std.measure { watt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityMarketedAirOnly,
+  CabinetPowerFigure, PublishedRealPower,
+  RetailGrainStanding, SingleCabinetOffered,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "digital-fortress.com/piscataway-data-center/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.digital_fortress",
+      decl_name: "digital_fortress_piscataway",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE SMALLEST FACILITY IN THIS CENSUS THAT PUBLISHES BOTH FACTS THE CENSUS EXISTS TO COLLECT.
+// Its UPS plant is 1.8 MW - two orders of magnitude under the campuses that dominate the roster -
+// and it is nonetheless a better-answered candidate than any of them, because it states a
+// per-cabinet density and states that one cabinet is a thing it sells. That is the shape of the
+// finding: marketed megawatts and answerable retail are close to uncorrelated in this market.
+data digital_fortress_piscataway: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Digital Fortress",
+  facility_label: "Digital Fortress PNJ Piscataway",
+  address: AddressUnread {
+    obligation: "The operator's own facility page (digital-fortress.com/piscataway-data-center/, read 2026-09-08) carries no street address, and the operator's data-centers index 404s. Directory profiles assert 201 Centennial Avenue, Piscataway - that is a directory claim, not the operator's, and it is recorded here rather than in the address field. Read an address off an operator surface, a spec sheet or the quote before treating this as located.",
+  },
+  municipality: "Piscataway",
+  region_code: "NJ",
+  facility_note: "Operator page (read 2026-09-08): 96,500 square feet total, of which 9,700 square feet white space and 14,000 square feet shell; 1.8 MW UPS in N+1; direct connectivity to multiple regional and global service providers, none of them named on the page. Middlesex County, sharing a municipality with QTS PNJ1, DataBank EWR2 and the Digital Realty Piscataway campus - four operators in one township, which makes Piscataway the densest cluster in this census outside the Secaucus corridor.",
+}
+
+// A READ DENSITY WITH A CONDITION ATTACHED, AND THE CONDITION IS PART OF THE CLAIM. The operator
+// does not say cabinets ARE 15 kW; it says 15 kW is available without significant redesign. That
+// is a statement about what the room can be made to do, one step weaker than a marketed maximum
+// and several steps weaker than a price. It is still a reading and not an inference, so it enters
+// the census - with the operator's qualifying words carried verbatim beside the numeral, which is
+// the whole reason claim_wording exists.
+data digital_fortress_piscataway_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 15000) },
+  claim_wording: "15kW per cabinet available without any significant redesign",
+  citation: "digital-fortress.com Piscataway data center page, read 2026-09-08, and the wording verified against the raw bytes 2026-09-09 (HTTP 200, 481600 bytes, the sentence occurs literally). Scope check: the sentence is a bullet in the Reliability block under the page's own h1, Piscataway, New Jersey Data Center, in the same list as the 1.8 MW UPS figure. This operator also runs Seattle and Chicago sites and names them on this page, but every such mention is in navigation above or below the block, never inside it, and there is no promotional banner scoping the figure to another product. Element boundary: the wording is one complete <li> element, so it is a single authored string rather than adjacent cells joined by a reader. Positive control in the same pass: Piscataway is present in the same stripped text. No liquid-cooled claim appears on the page. Note the qualifier: this is availability-on-request wording, not a standing per-cabinet maximum, and a quote must confirm it for the specific cabinet offered.",
+}
+
+data digital_fortress_piscataway_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Whether you need a rack, a cabinet, or a full cage",
+  citation: "digital-fortress.com Piscataway data center page, read 2026-09-08",
+}
+
+data digital_fortress_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "digital-fortress.com sales",
+  obligation: "No pricing is published on the facility page read 2026-09-08. The quote must establish the street address, whether the 15 kW figure applies to a cabinet sold today or only after the redesign the page's wording contemplates, and what that redesign costs.",
+}

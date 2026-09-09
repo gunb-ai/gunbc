@@ -118,6 +118,35 @@ data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
   },
 }
 
+// THE FIRST NON-EMPTY ROW, AND THE ARM THAT MAKES THE OTHER TWO LEGIBLE. Southern New Jersey and
+// the Hudson Valley are only interesting as measurements beside a region that was surveyed and DID
+// yield facilities; without one, FacilitiesModelled is an arm nothing inhabits and the module reads
+// as a ledger of failures. Central New Jersey is that region, and it is the same lane and the same
+// day as the southern row below - one sweep, two outcomes, which is what a survey looks like when
+// the emptiness is a property of the territory rather than of the effort.
+//
+// The counts are REGIONAL, not per-lane. Four densities are read here and this lane read three of
+// them; the fourth is Iron Mountain NJE-1 Edison, which the carrier commit landed. A coverage row
+// answers what the census knows about a region, so attributing it to whoever typed it would make
+// the number depend on the reading order of the lanes.
+//
+// FOUR IS NOT FOUR VERIFIED. Three of these four wordings were confirmed against the operators'
+// raw bytes at markup grain - NJFX, Digital Fortress and DataBank EWR2, each a single authored
+// element under a heading that scopes it to the facility. The fourth, Iron Mountain NJE-1, sits
+// behind a security interstitial that returns an interstitial document instead of the page, so its
+// 30 kW has one summarizing source and nobody has reproduced it. The count does not carry that
+// distinction because the outcome type has no field for it, and minting one for a single row would
+// be worse than saying it here: a reader ranking this region on density should treat three of the
+// four as reproducible and go and re-read the fourth.
+data central_new_jersey: RegionCoverage = RegionCoverage {
+  region_label: "Central New Jersey",
+  region_code: "NJ",
+  outcome: FacilitiesModelled {
+    facility_count: 8,
+    density_read_count: 4,
+  },
+}
+
 data southern_new_jersey: RegionCoverage = RegionCoverage {
   region_label: "Southern New Jersey",
   region_code: "NJ",
@@ -158,4 +187,5 @@ data hudson_valley: RegionCoverage = RegionCoverage {
 // section 4c an ordinary String declaration whose sole purpose is commentary is misplaced or dead
 // data, and // is the explicit quarantine boundary for exactly this.
 data census_regions: List<RegionCoverage> = [nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
+data census_regions: List<RegionCoverage> = [central_new_jersey, nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley]
 
