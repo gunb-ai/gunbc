@@ -28,7 +28,10 @@ import extdeps.cloudflare.account_api_tokens {
   AccountTokenPolicy,
   PermissionGroupRef,
   admit_account_token_api_mint,
-  account_token_policy_create_wire
+  account_token_policy_create_wire,
+  CreateAccountOwnedToken,
+  credential_supports,
+  cloudflare_account_api_tokens_frontier_rows
 }
 import extdeps.cloudflare.r2 {
   R2S3Endpoint,
@@ -40,21 +43,30 @@ import extdeps.cloudflare.r2 {
   r2_object_read_token_policy,
   r2_object_read_create_request,
   r2_s3_access_pair_from_created_token,
-  workers_r2_storage_bucket_item_read_permission_group_id
+  workers_r2_storage_bucket_item_read_permission_group_id,
+  shape_grants_include_r2_object_read,
+  cloudflare_r2_frontier_rows
 }
-import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed }
+import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed, frontier_subject_eq }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.human_intervention {
+  FleetOnce,
+  ProvisioningHumanBurden,
+  human_intervention_count_at
+}
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.cloudflare.r2_token_mint {
-  bootstrap_can_mint_account_tokens,
-  minted_r2_token_can_read_objects,
-  bootstrap_is_not_the_r2_object_token,
-  subsequent_r2_tokens_are_not_a_human_provision,
   cloudflare_bootstrap_token_shape,
   cloudflare_r2_object_read_token_shape,
   admit_r2_object_read_api_mint,
   cloudflare_r2_token_mint_frontier_rows,
-  vendor_cloudflare_frontier_rows
+  vendor_cloudflare_frontier_rows,
+  cloudflare_account_token_bootstrap_intervention
 }
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn cloudflare_client_v4_base_is_the_documented_host() -> Bool {
   (cloudflare_client_v4_edition as String) == "v4"
@@ -174,10 +186,18 @@ test fn r2_s3_access_key_id_is_the_created_token_id() -> Bool {
 }
 
 test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Bool {
-  bootstrap_can_mint_account_tokens()
-    && minted_r2_token_can_read_objects()
-    && bootstrap_is_not_the_r2_object_token()
-    && subsequent_r2_tokens_are_not_a_human_provision()
+  credential_supports(
+    shape: cloudflare_bootstrap_token_shape(),
+    capability: CreateAccountOwnedToken
+  )
+    && shape_grants_include_r2_object_read(shape: cloudflare_r2_object_read_token_shape())
+    && !shape_grants_include_r2_object_read(shape: cloudflare_bootstrap_token_shape())
+    && human_intervention_count_at(
+      burden: ProvisioningHumanBurden {
+        interventions: [cloudflare_account_token_bootstrap_intervention()]
+      },
+      frequency: FleetOnce
+    ) == 1
     && cloudflare_bootstrap_token_shape().acquisition == HumanDashboardAcquired
     && cloudflare_r2_object_read_token_shape().acquisition == CreatedViaAccountTokensApi
 }
@@ -265,6 +285,10 @@ test fn api_mint_refuses_when_create_policies_cite_a_different_permission_group(
   }
 }
 
+fn census_contains_frontier_subject(row: FrontierRow) -> Bool {
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
+}
+
 fn frontier_row_names_decl(row: FrontierRow, ref: DeclarationRef) -> Bool {
   match row.subject {
     DeclSubject { ref: r } => declaration_ref_eq(a: r, b: ref)
@@ -298,4 +322,11 @@ test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
         row: row,
         ref: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
       ))
+}
+
+test fn cloudflare_frontier_rows_are_in_the_census() -> Bool {
+  all(cloudflare_r2_token_mint_frontier_rows, row => census_contains_frontier_subject(row: row))
+    && all(vendor_cloudflare_frontier_rows, row => census_contains_frontier_subject(row: row))
+    && all(cloudflare_account_api_tokens_frontier_rows, row => census_contains_frontier_subject(row: row))
+    && all(cloudflare_r2_frontier_rows, row => census_contains_frontier_subject(row: row))
 }

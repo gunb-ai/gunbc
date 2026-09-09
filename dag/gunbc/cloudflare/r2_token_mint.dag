@@ -1,16 +1,14 @@
 module gunbc.cloudflare.r2_token_mint
 
-import std.types { String, Bool, NonEmptyStr }
+import std.types { String, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
-  ProvisioningHumanBurden,
   FleetOnce,
   NoDischargeSiteModeled,
-  human_intervention_count_at,
 }
 import extdeps.cloudflare.account_api_tokens {
   CloudflareAccountTokenShape,
@@ -20,8 +18,6 @@ import extdeps.cloudflare.account_api_tokens {
   CreatedViaAccountTokensApi,
   NoExpiryUntilRevoked,
   AccountApiTokensSurface,
-  CreateAccountOwnedToken,
-  credential_supports,
   admit_account_token_api_mint,
   AccountTokenApiMintStanding,
   account_api_tokens_write_permission_name
@@ -29,8 +25,7 @@ import extdeps.cloudflare.account_api_tokens {
 import extdeps.cloudflare.r2 {
   R2Jurisdiction,
   r2_object_read_create_request,
-  r2_object_read_grant,
-  shape_grants_include_r2_object_read
+  r2_object_read_grant
 }
 
 // POLICY, NOT UPSTREAM. The GitHub org-admin lane
@@ -99,21 +94,6 @@ fn cloudflare_r2_object_read_token_shape() -> CloudflareAccountTokenShape {
   }
 }
 
-fn bootstrap_can_mint_account_tokens() -> Bool {
-  credential_supports(
-    shape: cloudflare_bootstrap_token_shape(),
-    capability: CreateAccountOwnedToken
-  )
-}
-
-fn minted_r2_token_can_read_objects() -> Bool {
-  shape_grants_include_r2_object_read(shape: cloudflare_r2_object_read_token_shape())
-}
-
-fn bootstrap_is_not_the_r2_object_token() -> Bool {
-  !shape_grants_include_r2_object_read(shape: cloudflare_bootstrap_token_shape())
-}
-
 data cloudflare_account_token_bootstrap_intervention_identity: String = "cloudflare-account-token-bootstrap"
 
 fn cloudflare_account_token_bootstrap_intervention() -> HumanIntervention {
@@ -134,19 +114,6 @@ fn cloudflare_account_token_bootstrap_intervention() -> HumanIntervention {
     ) as NonEmptyStr,
     completion_evidence: NoDischargeSiteModeled
   }
-}
-
-fn cloudflare_r2_token_human_burden() -> ProvisioningHumanBurden {
-  ProvisioningHumanBurden {
-    interventions: [cloudflare_account_token_bootstrap_intervention()]
-  }
-}
-
-fn subsequent_r2_tokens_are_not_a_human_provision() -> Bool {
-  human_intervention_count_at(
-    burden: cloudflare_r2_token_human_burden(),
-    frequency: FleetOnce
-  ) == 1
 }
 
 fn admit_r2_object_read_api_mint(
