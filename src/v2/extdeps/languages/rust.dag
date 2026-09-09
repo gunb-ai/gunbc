@@ -2049,13 +2049,16 @@ fn rust_visibility_public_lex_rule() -> LexRule {
   rust_lex_rule(token_class: ^rust_token_kw_pub, text: "pub ")
 }
 
-// WHICH RUST INTEGER CARRIES THE LANGUAGE'S Int IS A TARGET-PROFILE CHOICE, NOT A RUST FACT, and
-// this map carries the choice THIS target makes rather than a universal one. Rust has ten integer
-// primitives and this module declares facts for each (rust_facts_i8 .. rust_facts_u128); a second
-// emission boundary selects a different one by overlaying this map, never by re-spelling it here
-// (v2.compiler.self_host.stage0_production_target, whose crate ABI is i64). The map is left
-// byte-for-byte as it was so that every claim already sharing an evaluation of it keeps sharing
-// the same one: a profile's delta belongs to the profile.
+// THE ^dag_binding_type_int ROW IS THE SPELLING ONE EMISSION ROUTE READS, NOT RUST'S REALIZATION
+// OF THE LANGUAGE'S Int. Rust's representation authority for a type atom is
+// rust_target_atom_realization_catalog; the produced-declaration type-reference route does not
+// consult it and renders this map instead, which makes this row a second and weaker home for a
+// fact that catalog owns (the duplicate `bool` spelling is the same fork seen from the other
+// side). Until produced-declaration type references resolve through TargetAtomRealization, an
+// emission boundary needing a different spelling overlays this map rather than re-spelling it
+// here (v2.compiler.self_host.stage0_production_target, whose crate ABI is spelled i64), and the
+// map is left byte-for-byte as it was so that every claim already sharing an evaluation of it
+// keeps sharing the same one: a profile's delta belongs to the profile.
 fn rust_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
   let ma2 = map_insert(m0, ^rust_binding_fn_add2, "add2")

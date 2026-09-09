@@ -37,16 +37,20 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // rust_target_atom_realization_catalog, so what these claims establish is that the stage0 profile
 // overrides the spelling that route emits. They do NOT establish that Rust's realization of the
 // language's Int is selected as i64 -- the catalog owns that proposition and did not produce this
-// result. Stating it the stronger way would credit an authority that never ran. v2.compiler.self_host.stage0_production_target is the
-// profile that selects both AT THIS BOUNDARY, and these claims are what make the selections
-// load-bearing rather than decorative.
+// result. Stating it the stronger way would credit an authority that never ran.
 //
-// The two negative arms are discriminating controls, one per capability class, not one generic
+// v2.compiler.self_host.stage0_production_target is the profile that selects both AT THIS
+// BOUNDARY, and these claims are what make the selections load-bearing rather than decorative.
+//
+// The negative arms are discriminating controls, ONE PER CAPABILITY CLASS, not one generic
 // malformed-output check: the visibility control observes the base target emitting an item with
 // no `pub` (which the crate's real consumer of gunbc_rust_decl_type_overlay could not resolve
 // across the module boundary), and the spelling control observes the base target emitting i32 at
-// the exact position the stage0 ABI requires i64. Each fails for its own reason, so a regression
-// in one cannot be masked by the other. They also pin that the profile did not globally relabel
+// the exact position the stage0 ABI requires i64, asking about the spellings alone. Each fails
+// for its own reason and neither can be reddened by the other class's regression, which is why
+// the whole-text equality pin is not either class's only witness: that assertion is satisfied by
+// both facts together, so on its own it could not tell a visibility regression from a spelling
+// one. They also pin that the profile did not globally relabel
 // the base target: the direct-door fixtures stay organized around an i32, visibility-free Rust
 // realization.
 //
@@ -67,7 +71,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // expectation, and a sentinel differs from everything. A control that passes when nothing was
 // emitted is permanently green on the failure it names, which DESIGN section 4b calls worse than
 // absent because it is cited as coverage. Every claim below now requires a PRODUCED emission
-// before it asks anything about the text, so a route that stopped reds all three.
+// before it asks anything about the text, so a route that stopped reds every one of them.
 type Stage0BoundaryEmission
   = Stage0EmissionRefused
   | Stage0EmissionProduced { source: String }
@@ -90,13 +94,21 @@ fn stage0_boundary_emitted_source_for(target: TargetModel) -> Stage0BoundaryEmis
 
 data stage0_boundary_expected_source: String = "pub fn add(x: i64, y: i64) -> i64 { x + y }"
 
-data stage0_boundary_base_target_source: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
-
 data stage0_boundary_visibility_keyword: String = "pub "
+
+// The type spellings at the boundary, authored here as fixture literals rather than imported from
+// the profile under test: a control that read its expected spelling from the authority it is
+// discriminating would move with that authority and stop discriminating. The base marker is the
+// whole signature rather than the bare token so that it pins all three type positions the stage0
+// ABI fixes, and it deliberately carries no visibility, which is what keeps this class's control
+// unreddenable by a visibility change.
+data stage0_boundary_base_int_signature: String = "(x: i32, y: i32) -> i32"
+
+data stage0_boundary_profile_int_spelling: String = "i64"
 
 // THE TWO EMISSIONS ARE NULLARY PRODUCERS, one per target, and both are warm-enrolled in
 // v2.workflow.floor_pure_producer_share. Three claims read two emissions -- the base target's is
-// read twice, by the visibility control and the spelling control -- and an emission is infer plus
+// read twice, by the two per-class controls -- and an emission is infer plus
 // emit over the shared specimen, which unshared costs each claim more than the floor's per-claim
 // ceiling. The measurement and the ceiling arithmetic are argued once, at the enrolment row in
 // v2.workflow.floor_pure_producer_share, and are deliberately not restated here: a figure copied
@@ -142,11 +154,10 @@ test fn stage0_production_target_emits_boundary_compatible_source_holds() -> Boo
 }
 
 // THE VISIBILITY CONTROL, ASKING ABOUT VISIBILITY. Its predecessor asked only that the base
-// emission differ from the profile's expected text, which the spelling control's equality already
-// implies and which a refusal satisfies for free. It now requires a produced emission and asks
-// the one thing this capability class is about: the base target, which selects no visibility,
-// emits no visibility keyword. The profile's side of the same fact is the positive claim above,
-// whose expected text leads with that keyword.
+// emission differ from the profile's expected text, which a refusal satisfies for free. It now
+// requires a produced emission and asks the one thing this capability class is about: the base
+// target, which selects no visibility, emits no visibility keyword. The profile's side of the
+// same fact is the positive claim above, whose expected text leads with that keyword.
 test fn stage0_visibility_selection_is_load_bearing_holds() -> Bool {
   stage0_emission_produced(emission: stage0_boundary_base_emitted_source())
     && stage0_emission_source_contains(
@@ -155,11 +166,27 @@ test fn stage0_visibility_selection_is_load_bearing_holds() -> Bool {
     ) == false
 }
 
-test fn stage0_base_target_stays_private_and_i32_holds() -> Bool {
-  stage0_emission_source_equals(
-    emission: stage0_boundary_base_emitted_source(),
-    expected: stage0_boundary_base_target_source
-  )
+// THE SPELLING CONTROL, ASKING ABOUT THE SPELLING AND NOTHING ELSE. Its predecessor compared the
+// base emission's WHOLE TEXT against "fn add(x: i32, y: i32) -> i32 { x + y }", which is
+// satisfied by the visibility fact and the spelling fact TOGETHER: adding `pub ` to the base
+// output reddened it and reddened the visibility control at the same time, so the two controls
+// did not in fact fail for their own reasons and the spelling class had no arm that isolated it.
+// This one asks only what the base target spells at the three type positions the stage0 ABI
+// fixes, and that the stage0 spelling is absent. Both conjuncts are blind to visibility, so a
+// visibility-only mutation cannot redden it -- verified by executing exactly that mutation, and
+// its converse, one axis at a time. The whole-text pin that remains is the PROFILE's, in the
+// positive claim above, where an exact expected output is a fixture golden rather than one
+// class's only witness.
+test fn stage0_integer_spelling_selection_is_load_bearing_holds() -> Bool {
+  stage0_emission_produced(emission: stage0_boundary_base_emitted_source())
+    && stage0_emission_source_contains(
+      emission: stage0_boundary_base_emitted_source(),
+      marker: stage0_boundary_base_int_signature
+    )
+    && stage0_emission_source_contains(
+      emission: stage0_boundary_base_emitted_source(),
+      marker: stage0_boundary_profile_int_spelling
+    ) == false
 }
 
 // THE READ, CLAIMED SEPARATELY BECAUSE IT IS A SEPARATE FACT. A module reaching the production
