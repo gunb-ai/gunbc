@@ -94,9 +94,11 @@ type MergeSideName
 //                                   a missing object while "occupied by an authored source" is an
 //                                   identity collision or a corrupt row -- different damage,
 //                                   different investigation.
-//   SquashMergeCommitMissing        a reference naming no commit. Reachable BEFORE any history is
-//                                   walked, so it is not a merge_base refusal and must not be
-//                                   reported as one.
+//   SquashMergeCommitMissing        a reference naming no commit. NO LONGER PRODUCED WHEN READING A
+//                                   SIDE: `ResolvedMergeAnchors` hands back the three rows the walk
+//                                   already found, so that question is absent rather than asked and
+//                                   refused. It survives only on the post-store basis admission,
+//                                   whose arms this route cannot reach -- see the note there.
 //   SquashMergeResult*              the merged manifest would not store. Kept apart from the mint
 //                                   arms below because this happens before any commit is proposed:
 //                                   the corpus itself could not be written down.
@@ -143,29 +145,31 @@ type MergeSideManifest
   = MergeSideManifestRead { record: CorpusManifestRecord }
   | MergeSideManifestRefused { outcome: SquashMergeOutcome }
 
+// IT TAKES THE RESOLVED ROW, SO THE COMMIT QUESTION IS ABSENT RATHER THAN UNREACHABLE.
+//
+// This function used to look the reference up in `repository.commits` and carry a commit-missing arm
+// for an answer `merge_base` had already excluded -- it walked that same list to succeed at all. The
+// row now arrives inside `ResolvedMergeAnchors`, minted only on the derived-base path, so there is
+// nothing left to ask and `SquashMergeCommitMissing` is DELETED rather than reported from a branch no
+// caller could reach. What REMAINS is this function's real question: whether the root that commit
+// names is a manifest this store holds. Those three wrong-kind refusals have a genuine producer here
+// and are untouched. Ruled by external review.
 fn read_side_manifest(
   repository: RepositoryEnvelope,
   side: MergeSideName,
-  reference: RepositoryCommitRef,
+  commit: RepositoryCommit,
 ) -> MergeSideManifest {
-  match commit_at_reference(commits: repository.commits, reference: reference) {
-    Absent =>
+  match find_corpus_manifest_record(store: repository.store, identity: commit.root.locator) {
+    CorpusManifestFound(record) => MergeSideManifestRead { record: record }
+    CorpusManifestAbsent { identity: r } =>
+      MergeSideManifestRefused { outcome: SquashMergeRootMissing { side: side, root: r } }
+    CorpusManifestIsAuthoredSource { identity: r } =>
       MergeSideManifestRefused {
-        outcome: SquashMergeCommitMissing { side: side, reference: reference },
+        outcome: SquashMergeRootIsAuthoredSource { side: side, root: r },
       }
-    Present { value: commit } =>
-      match find_corpus_manifest_record(store: repository.store, identity: commit.root.locator) {
-        CorpusManifestFound(record) => MergeSideManifestRead { record: record }
-        CorpusManifestAbsent { identity: r } =>
-          MergeSideManifestRefused { outcome: SquashMergeRootMissing { side: side, root: r } }
-        CorpusManifestIsAuthoredSource { identity: r } =>
-          MergeSideManifestRefused {
-            outcome: SquashMergeRootIsAuthoredSource { side: side, root: r },
-          }
-        CorpusManifestIsSemanticNode { identity: r } =>
-          MergeSideManifestRefused {
-            outcome: SquashMergeRootIsSemanticNode { side: side, root: r },
-          }
+    CorpusManifestIsSemanticNode { identity: r } =>
+      MergeSideManifestRefused {
+        outcome: SquashMergeRootIsSemanticNode { side: side, root: r },
       }
   }
 }
@@ -249,9 +253,19 @@ fn carry_ancestral_mint(
 // possible meanings, and all three are wrong: skip the check and recreate the forge, run it and re-ask
 // a settled question, or deduplicate silently and invent merge policy. Ruled by external review.
 //
-// `SquashMergeCommitMissing` now HAS a producer on this route -- two, one per side -- rather than
-// being an unreachable arm carried for shape. Whether it should instead be absent, via a
-// merge-specific resolved topology minted on the successful merge-base path, remains the open ruling.
+// `SquashMergeCommitMissing` NO LONGER HAS A REACHABLE PRODUCER, AND SAYING SO PRECISELY MATTERS
+// BECAUSE I PREVIOUSLY SAID THE OPPOSITE. An earlier revision of this note claimed the arm had gained
+// two real producers, one per side; review corrected it, and the correction was right --
+// `repository_root_by_storing_unique` advances the STORE while preserving the commit population, and
+// target and source were established by successful walks, so `admit_merge_basis` cannot refuse here.
+//
+// The read side is now genuinely absent: `ResolvedMergeAnchors` carries the rows, so nothing re-asks
+// whether those commits exist. What remains is the POST-STORE admission, which re-establishes the two
+// anchors against the advanced repository because the sealed basis may not be minted from rows a
+// caller supplied -- that is exactly the cross-repository mis-pairing this stack closed one round ago.
+// Removing the last two arms therefore needs a store-only advance that PRESERVES the established
+// presence into the new repository, which is the remaining ruled work and is deliberately not
+// half-built here.
 type AdmittedMergeSubject sole_constructor {
   repository: RepositoryEnvelope
   target: RepositoryCommitRef
@@ -307,21 +321,25 @@ fn squash_merge(
       SquashMergeBaseRefused { refusal: MergeBaseHistoriesDisjoint { target: t, source: s } }
     MergeBaseSourceIsAncestorOfTarget { target: t, source: s } =>
       SquashMergeBaseRefused { refusal: MergeBaseSourceIsAncestorOfTarget { target: t, source: s } }
-    MergeBaseDerived { base: base_ref } =>
-      match read_side_manifest(repository: repository, side: MergeBaseCommit, reference: base_ref) {
+    MergeBaseDerived { anchors: anchors } =>
+      match read_side_manifest(
+        repository: repository,
+        side: MergeBaseCommit,
+        commit: anchors.base,
+      ) {
         MergeSideManifestRefused { outcome: o } => o
         MergeSideManifestRead { record: base_manifest } =>
           match read_side_manifest(
             repository: repository,
             side: MergeSourceCommit,
-            reference: source,
+            commit: anchors.source,
           ) {
             MergeSideManifestRefused { outcome: o } => o
             MergeSideManifestRead { record: source_manifest } =>
               match read_side_manifest(
                 repository: repository,
                 side: MergeTargetCommit,
-                reference: target,
+                commit: anchors.target,
               ) {
                 MergeSideManifestRefused { outcome: o } => o
                 MergeSideManifestRead { record: target_manifest } =>

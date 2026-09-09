@@ -88,8 +88,31 @@ import gunbc.scm.repository_envelope {
 // nothing (`gunbc.scm.write_spine`); the merge path did not, and nothing joined the two rules.
 //
 // Found by probing degenerate topology after external review asked whether the seals held there.
+// THE SUCCESSFUL OUTCOME CARRIES THE THREE RESOLVED ROWS, NOT THE BASE REFERENCE ALONE.
+//
+// A consumer of a derived base needs the same three commits this function has just proven present:
+// `squash_merge` read each side's manifest and, to do so, looked each reference up AGAIN in the very
+// commit list this module walked -- and carried a commit-missing arm for an answer its own success
+// had already excluded. That is the `carry_mint` shape, and the repair is not to translate the arm but
+// to make the question ABSENT downstream by handing back what was found.
+//
+// THE ROWS ARE FREE HERE AND NOWHERE ELSE. `commits` is in scope; the walks proved target and source
+// resolve; the base is in BOTH traced chains, so it is a member of this history by construction. A
+// consumer holding only references cannot re-establish any of that without asking again.
+//
+// THIS MODULE STAYS PURE OVER `commits` AND DOES NOT TAKE THE STORE. Carrying resolved MANIFESTS
+// instead of rows was the alternative, and it would give a function that answers "what is the base"
+// a store dependency and refusal reasons about manifest integrity, which is a different question with
+// different blame. The rows carry `root`, so the consumer that DOES own the store resolves manifests
+// itself and keeps its own wrong-kind refusals, which are real and stay.
+type ResolvedMergeAnchors sole_constructor {
+  base: RepositoryCommit
+  source: RepositoryCommit
+  target: RepositoryCommit
+}
+
 type MergeBaseOutcome
-  = MergeBaseDerived { base: RepositoryCommitRef }
+  = MergeBaseDerived { anchors: ResolvedMergeAnchors }
   | MergeBaseSourceIsAncestorOfTarget {
       target: RepositoryCommitRef,
       source: RepositoryCommitRef,
@@ -197,6 +220,54 @@ fn nearest_common_ancestor(
 // mean the unsafe value was constructed and discarded, which is a weaker guarantee than never
 // constructing it -- and the shape that invites a later author to return it "since we already have
 // it".
+// THE THREE LOOKUPS CANNOT FAIL HERE, AND THE ARM THEY GET IS THE ONE THAT IS TRUE IF THEY DO.
+//
+// Target and source were traced by walks that already refused when a start was not in this history;
+// the base was returned by `nearest_common_ancestor`, which selects only from the two traced chains.
+// So each row IS present. What the impossible branch must not do is invent a cause: an
+// `AncestryStartNotInHistory` walk is precisely the fact a failed lookup would establish -- that this
+// reference names no commit in this history -- and it is the same cause the walk itself reports for
+// the same condition. Naming it here is therefore accurate rather than a widening, and it introduces
+// no vocabulary a caller has not already had to handle.
+fn resolve_merge_anchors(
+  commits: List<RepositoryCommit>,
+  base: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+  target: RepositoryCommitRef,
+) -> MergeBaseOutcome {
+  match commit_at_reference(commits: commits, reference: base) {
+    Absent =>
+      MergeBaseHistoryUnwalkable {
+        side: MergeBaseTargetSide,
+        walk: AncestryStartNotInHistory { start: base },
+      }
+    Present { value: base_row } =>
+      match commit_at_reference(commits: commits, reference: source) {
+        Absent =>
+          MergeBaseHistoryUnwalkable {
+            side: MergeBaseSourceSide,
+            walk: AncestryStartNotInHistory { start: source },
+          }
+        Present { value: source_row } =>
+          match commit_at_reference(commits: commits, reference: target) {
+            Absent =>
+              MergeBaseHistoryUnwalkable {
+                side: MergeBaseTargetSide,
+                walk: AncestryStartNotInHistory { start: target },
+              }
+            Present { value: target_row } =>
+              MergeBaseDerived {
+                anchors: ResolvedMergeAnchors {
+                  base: base_row,
+                  source: source_row,
+                  target: target_row,
+                },
+              }
+          }
+      }
+  }
+}
+
 fn merge_base(
   commits: List<RepositoryCommit>,
   target: RepositoryCommitRef,
@@ -220,7 +291,12 @@ fn merge_base(
                   if repository_commit_ref_eq(left: base, right: source) {
                     MergeBaseSourceIsAncestorOfTarget { target: target, source: source }
                   } else {
-                    MergeBaseDerived { base: base }
+                    resolve_merge_anchors(
+                      commits: commits,
+                      base: base,
+                      source: source,
+                      target: target,
+                    )
                   }
                 Absent => MergeBaseHistoriesDisjoint { target: target, source: source }
               }

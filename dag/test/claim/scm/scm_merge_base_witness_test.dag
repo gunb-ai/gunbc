@@ -201,7 +201,7 @@ test fn scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base() ->
           repository_commit_ref_eq(left: at, right: m1)
             && repository_commit_ref_eq(left: c, right: s1)
             && repository_commit_ref_eq(left: s, right: s2)
-        MergeBaseDerived { base: _ } => false
+        MergeBaseDerived { anchors: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
         MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false
@@ -218,7 +218,7 @@ test fn scm_mb_an_independent_lineage_sharing_content_still_derives_its_base() -
     MbSceneUnavailable => false
     MbScene { repository: r, c0: c0, s1: _, m1: _, t1: t1, s2: _, i1: i1 } =>
       match merge_base(commits: r.commits, target: t1, source: i1) {
-        MergeBaseDerived { base: base } => repository_commit_ref_eq(left: base, right: c0)
+        MergeBaseDerived { anchors: a } => repository_commit_ref_eq(left: a.base.reference, right: c0)
         MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
@@ -239,7 +239,7 @@ test fn scm_mb_replaying_the_consumed_source_itself_has_no_valid_base() -> Bool 
           repository_commit_ref_eq(left: at, right: m1)
             && repository_commit_ref_eq(left: c, right: s1)
             && repository_commit_ref_eq(left: s, right: s1)
-        MergeBaseDerived { base: _ } => false
+        MergeBaseDerived { anchors: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
         MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false
@@ -302,7 +302,7 @@ test fn scm_mb_the_integration_record_survives_a_document_round_trip() -> Bool {
                 MergeBaseSourceAlreadyConsumed { recorded_at: at, consumed: c, source: _ } =>
                   repository_commit_ref_eq(left: at, right: m1)
                     && repository_commit_ref_eq(left: c, right: s1)
-                MergeBaseDerived { base: _ } => false
+                MergeBaseDerived { anchors: _ } => false
                 MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
                 MergeBaseHistoriesDisjoint { target: _, source: _ } => false
                 MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false
@@ -460,7 +460,7 @@ test fn scm_mb_merging_a_commit_into_itself_has_nothing_to_integrate() -> Bool {
         MergeBaseSourceIsAncestorOfTarget { target: t, source: s } =>
           repository_commit_ref_eq(left: t, right: t1)
             && repository_commit_ref_eq(left: s, right: t1)
-        MergeBaseDerived { base: _ } => false
+        MergeBaseDerived { anchors: _ } => false
         MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false
@@ -478,7 +478,7 @@ test fn scm_mb_squashing_an_ancestor_into_its_descendant_has_nothing_to_integrat
         MergeBaseSourceIsAncestorOfTarget { target: t, source: s } =>
           repository_commit_ref_eq(left: t, right: t1)
             && repository_commit_ref_eq(left: s, right: c0)
-        MergeBaseDerived { base: _ } => false
+        MergeBaseDerived { anchors: _ } => false
         MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } => false
         MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
         MergeBaseHistoriesDisjoint { target: _, source: _ } => false

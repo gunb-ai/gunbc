@@ -761,7 +761,7 @@ fn squash_outcome_wire(outcome: SquashMergeOutcome) -> String {
 
 fn merge_base_refusal_wire(refusal: MergeBaseOutcome) -> String {
   match refusal {
-    MergeBaseDerived { base: _ } => "derived"
+    MergeBaseDerived { anchors: _ } => "derived"
     MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } =>
       "source-already-consumed"
     MergeBaseHistoryUnwalkable { side: side, walk: walk } =>
