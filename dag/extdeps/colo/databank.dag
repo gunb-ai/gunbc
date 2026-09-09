@@ -99,7 +99,7 @@ data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
 data databank_ewr1_density: CabinetDensityClaim = DensityMarketedAirOnly {
   air_cooled: PublishedRealPower { power: watt(count: 10000) },
   claim_wording: "10kW+ Cab Density Air",
-  citation: "databank.com Newark 165 Halsey Street suite page, read 2026-09-08 and re-read from raw HTML 2026-09-09. The wording is the literal spec-table cell, which pairs the row \"Cooling: N+1 Cooling Design\" with \"10kW+ Cab Density Air\"; an earlier capture of this row paraphrased the two cells into one sentence and the paraphrase is corrected here. The operator's own word is AIR, which is why this is DensityMarketedAirOnly and not a maximum with a liquid arm.",
+  citation: "databank.com Newark 165 Halsey Street suite page, read 2026-09-08 and verified in raw HTML 2026-09-09 at markup grain: the page emits <li><strong>10kW+</strong> Cab Density Air</li> as ONE list item inside the column whose heading is Cooling, beside a sibling item reading N+1 Cooling Design. So this wording is a single authored cell rather than two cells fused - the distinction matters because an earlier summarized capture of this row DID fuse the two into one invented sentence, and the same fusion has now been found on three DataBank facilities by three readers. The operator's own word is AIR, which is why this is DensityMarketedAirOnly and not a maximum with a liquid arm.",
 }
 
 data databank_ewr1_retail_grain: RetailGrainStanding = RetailGrainUnread {
