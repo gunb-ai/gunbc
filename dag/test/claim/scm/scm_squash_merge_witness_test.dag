@@ -19,7 +19,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.object_store { ObjectId, object_id_eq }
 import gunbc.scm.integration { NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
+import gunbc.scm.repository_envelope {
+  MergeSideName, MergeBaseCommit, MergeSourceCommit, MergeTargetCommit, RepositoryEnvelope, commit_at_reference }
 import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
 import gunbc.scm.repository_envelope {
   MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
@@ -36,7 +37,6 @@ import gunbc.scm.squash_merge {
   SquashMergeRootIsSemanticNode,
   SquashMergeResultLocatorCollision,
   SquashMergeAllocatorInvalid,
-  MergeSideName, MergeBaseCommit, MergeSourceCommit, MergeTargetCommit,
   squash_merge,
 }
 import test.fixture.scm_repository_builder {
