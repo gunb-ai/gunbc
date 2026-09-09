@@ -145,12 +145,15 @@ type CabinetPowerFigure
 
 // DensityUnread fuses two facts in one String: an observation (we read these pages on this date
 // and found no marketed cabinet figure) and a coverage obligation (we still owe a quote or a later
-// spec). Both are OUR state, not the operator's - the same layer error as putting a fetch-grade on
-// CabinetDensityClaim. READ arms (DensityMarketedMax / DensityMarketedAirOnly) stay upstream.
-// Follow-up is a SPLIT, not a rehome of one fused string: gunbc.colo_census_coverage carries the
-// observation and the obligation as two typed fields; a quote arriving discharges the obligation
-// while the observation stays true. Trigger: that split, census-wide, one motion, so this carrier
-// is not left with two shapes.
+// spec). Both are OUR state, not the operator's. READ arms stay upstream. Follow-up is a SPLIT, not
+// a rehome of one fused string, census-wide in one motion so this carrier is not left with two
+// shapes. Do not mint two new fields on colo_census_coverage for that split: WE READ IT AND IT SAID
+// NOTHING versus WE FAILED TO READ IT is already CitationRetrievalObservation in std.citation
+// (HttpAccessRefused carrying the status). keen-newt-324's PR is the dependency. The fused string
+// makes a false observation expensive to retract - correcting a bogus block must not rewrite an
+// independent quote obligation. Trigger: that split onto std.citation's observation arms plus a
+// separate coverage obligation, over the merged corpus (sized by re-derivation, not a transcribed
+// file count).
 type CabinetDensityClaim
   = DensityMarketedMax {
       air_cooled: CabinetPowerFigure
@@ -243,8 +246,9 @@ fn ceiling_refuses(c: CabinetPowerCeiling, required: Watt) -> Bool {
 // refusal from an unread density - so it is a different fact.
 //
 // RetailGrainUnread is the same fused-string defect as DensityUnread: observation of an unpublished
-// grain plus the obligation to confirm it. Split follows with density - observation and obligation
-// as two fields on gunbc.colo_census_coverage; SingleCabinetOffered and CageOrSuiteMinimum stay.
+// grain plus the obligation to confirm it. Split follows with density onto std.citation's retrieval
+// observation (read-and-absent vs failed-to-read) and a separate coverage obligation; do not mint a
+// third answer. SingleCabinetOffered and CageOrSuiteMinimum stay.
 type RetailGrainStanding
   = SingleCabinetOffered { wording: NonEmptyStr, citation: NonEmptyStr }
   | CageOrSuiteMinimum { wording: NonEmptyStr, citation: NonEmptyStr }
@@ -256,8 +260,8 @@ type RetailGrainStanding
 // never as zero or as an average of the published ones.
 //
 // RatesQuoteOnly.obligation fuses "no price on the pages we read" with "a quote is required".
-// Same split as DensityUnread: the observation and the outstanding quote are two fields
-// downstream; this arm is not the home of either once that lands.
+// Same split as DensityUnread onto std.citation plus a remaining quote obligation; this arm is not
+// the home of either once that lands.
 type RetailRateStanding
   = RatesPublished { plans_note: NonEmptyStr }
   | RatesQuoteOnly { contact_route: NonEmptyStr, obligation: NonEmptyStr }
