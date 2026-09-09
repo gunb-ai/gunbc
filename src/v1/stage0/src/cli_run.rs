@@ -8654,11 +8654,9 @@ fn module_self_declared_names(content: &str) -> BTreeSet<String> {
             "pub type ",
             "pub data ",
             "pub fn ",
-            "pub func ",
             "type ",
             "data ",
             "fn ",
-            "func ",
             "test fn ",
             "test data ",
         ]
@@ -20978,10 +20976,9 @@ fn entry_likely_has_unified_claim_owned_data(content: &str) -> bool {
 }
 
 fn top_level_decl_names(content: &str) -> Vec<String> {
-    const ITEM_KEYWORDS: [&str; 8] = [
+    const ITEM_KEYWORDS: [&str; 7] = [
         "data ",
         "fn ",
-        "func ",
         "type ",
         "service ",
         "const ",
@@ -30550,10 +30547,9 @@ pub fn layer_import_facts(
 // verdict logic; this bridge only projects top-level decl keys + content hashes from the
 // witness-layer trees. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared
 // host seam (Chunk D).
-const FACT_CARDINALITY_ITEM_KEYWORDS: [&str; 8] = [
+const FACT_CARDINALITY_ITEM_KEYWORDS: [&str; 7] = [
     "data ",
     "fn ",
-    "func ",
     "type ",
     "service ",
     "const ",
