@@ -1,8 +1,9 @@
 module extdeps.vllm.memory_profile
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.algebra { trim }
 import std.nat { Nat }
-import std.measure { BasisPoint, ByteSize }
+import std.measure { BasisPoint, ByteSize, byte_size }
 import extdeps.vllm.server { VllmSourceRevision }
 
 // THE MEMORY-PROFILE LINE PRINTS TWO KINDS OF NUMBER, AND TYPING THEM ALIKE WOULD FABRICATE
@@ -76,25 +77,156 @@ fn vllm_kv_recommendation_bytes(r: VllmMemoryProfileReading, which: VllmKvRecomm
   }
 }
 
-// ── WHAT IS NOT BUILT HERE, STATED RATHER THAN IMPLIED ─────────────────────────────────────────
+// ── THE PARSE ──────────────────────────────────────────────────────────────────────────────────
 //
-// THERE IS NO PARSER YET. This module types the reading and the exactness boundary; it does not turn
-// the captured line into one. A caller must supply the fields, which means the current path from log
-// to receipt is a person reading a line -- and a hand-typed receipt is exactly the rounded
-// transcription this module argues against, so the constructor being available is not the same as the
-// class being modelled.
+// TOTAL AND REFUSING: every term is required, and a line missing any one of them yields Unreadable
+// rather than a receipt with plausible fields. That is the whole reason to parse rather than transcribe
+// -- a hand-filled receipt cannot tell "the engine did not print this" from "nobody typed it".
 //
-// THE HONEST NEXT STEP is a total parse of the captured text that refuses rather than partially
-// filling, so a reworded upstream line produces VllmMemoryProfileUnreadable instead of a receipt with
-// plausible fields. Until that lands, no positive receipt should be enrolled as evidence of anything.
+// THE ANCHORS ARE THE LINE'S OWN PUNCTUATION, not offsets. A position would rot the first time upstream
+// added a clause; the delimiters below are the phrases the sentence is built from, and their ABSENCE is
+// what a reworded line produces -- which refuses, loudly, instead of silently reading the wrong number.
 type VllmMemoryProfileParse
   = VllmMemoryProfileParsed { reading: VllmMemoryProfileReading }
   | VllmMemoryProfileUnreadable { captured_text: String, cause: NonEmptyStr }
-  | VllmMemoryProfileParserUnbuilt { captured_text: String }
 
-// THE UNBUILT ARM IS A REFUSAL, NOT A PLACEHOLDER, and it is reachable today because the parser is
-// not written. A consumer that receives it has learned something true -- this text was captured and
-// has not been interpreted -- which is different from receiving fields somebody typed by eye.
-fn vllm_parse_memory_profile(captured_text: String) -> VllmMemoryProfileParse {
-  VllmMemoryProfileParserUnbuilt { captured_text: captured_text }
+// A ROUNDED GIB FIGURE BECOMES HUNDREDTHS, and the decimal places vary. The line prints 114.93, 82.52
+// and also 0.1 -- one digit, not two -- so a parse that assumed two places would read 0.1 as 0.01 and
+// under-report CUDAGraph memory by a factor of ten. The fractional part is scaled by its own length.
+fn parse_gib_hundredths(text: String) -> Nat? {
+  let fields = split(s: trim(s: text), delimiter: ".")
+  if fields.length() == 1 {
+    match parse_int(s: fields.first()) {
+      Absent => none
+      Present { value: whole } => if whole < 0 { none } else { Present { value: whole * 100 } }
+    }
+  } else if fields.length() == 2 {
+    match parse_int(s: fields.first()) {
+      Absent => none
+      Present { value: whole } =>
+        match parse_int(s: fields.skip(n: 1).first()) {
+          Absent => none
+          Present { value: frac } => parse_gib_combine(whole: whole, frac: frac, digits: length(fields.skip(n: 1).first()))
+        }
+    }
+  } else { none }
+}
+
+fn parse_gib_combine(whole: Int, frac: Int, digits: Int) -> Nat? {
+  if whole < 0 || frac < 0 { none }
+  else if digits == 1 { Present { value: whole * 100 + frac * 10 } }
+  else if digits == 2 { Present { value: whole * 100 + frac } }
+  else { none }
+}
+
+// THE TEXT BETWEEN TWO ANCHORS, or nothing. Both anchors must be present and in order; a caller
+// receiving `none` has learned the line does not have the shape this parser was written against.
+fn between(text: String, open: String, close: String) -> String? {
+  let after = split(s: text, delimiter: open)
+  if after.length() < 2 { none }
+  else {
+    let tail = split(s: after.skip(n: 1).first(), delimiter: close)
+    if tail.length() < 2 { none } else { Present { value: tail.first() } }
+  }
+}
+
+fn parse_gib_between(text: String, open: String, close: String) -> Nat? {
+  match between(text: text, open: open, close: close) {
+    Absent => none
+    Present { value: inner } => parse_gib_hundredths(text: inner)
+  }
+}
+
+// THE TWO EXACT FIGURES. These are the only byte counts the line prints, and the only terms any
+// admission arithmetic may use -- every other number in the sentence is a rounded rendering whose sum
+// deliberately does not reconcile.
+fn parse_kv_recommendation_bytes(text: String, occurrence: Nat) -> Nat? {
+  let parts = split(s: text, delimiter: "--kv-cache-memory=")
+  if parts.length() < occurrence + 1 { none }
+  else {
+    match parse_int(s: split(s: parts.skip(n: occurrence).first(), delimiter: "`").first()) {
+      Absent => none
+      Present { value: b } => if b < 0 { none } else { Present { value: b } }
+    }
+  }
+}
+
+fn vllm_parse_memory_profile(
+  captured_text: String,
+  requested_utilization: BasisPoint,
+  observed_at_revision: VllmSourceRevision,
+) -> VllmMemoryProfileParse {
+  match parse_gib_between(text: captured_text, open: "Free memory on device (", close: "/") {
+    Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no startup-available figure in `Free memory on device (`" as NonEmptyStr }
+    Present { value: avail } =>
+      match parse_gib_between(text: captured_text, open: "/", close: " GiB) on startup") {
+        Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no device-total figure before ` GiB) on startup`" as NonEmptyStr }
+        Present { value: total } =>
+          match parse_gib_between(text: captured_text, open: "Actual usage is ", close: " GiB for consumed memory") {
+            Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no consumed-memory figure after `Actual usage is `" as NonEmptyStr }
+            Present { value: consumed } => vllm_parse_memory_profile_rest(
+              captured_text: captured_text, requested_utilization: requested_utilization,
+              observed_at_revision: observed_at_revision, avail: avail, total: total, consumed: consumed)
+          }
+      }
+  }
+}
+
+fn vllm_parse_memory_profile_rest(
+  captured_text: String,
+  requested_utilization: BasisPoint,
+  observed_at_revision: VllmSourceRevision,
+  avail: Nat,
+  total: Nat,
+  consumed: Nat,
+) -> VllmMemoryProfileParse {
+  match parse_gib_between(text: captured_text, open: "), ", close: " GiB for peak activation") {
+    Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no peak-activation figure before ` GiB for peak activation`" as NonEmptyStr }
+    Present { value: activation } =>
+      match parse_gib_between(text: captured_text, open: "and ", close: " GiB for CUDAGraph memory") {
+        Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no CUDAGraph figure before ` GiB for CUDAGraph memory`" as NonEmptyStr }
+        Present { value: graph } =>
+          match parse_gib_between(text: captured_text, open: "Current kv cache memory in use is ", close: " GiB") {
+            Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no current-KV figure after `Current kv cache memory in use is `" as NonEmptyStr }
+            Present { value: kv } => vllm_parse_memory_profile_recommendations(
+              captured_text: captured_text, requested_utilization: requested_utilization,
+              observed_at_revision: observed_at_revision, avail: avail, total: total,
+              consumed: consumed, activation: activation, graph: graph, kv: kv)
+          }
+      }
+  }
+}
+
+fn vllm_parse_memory_profile_recommendations(
+  captured_text: String,
+  requested_utilization: BasisPoint,
+  observed_at_revision: VllmSourceRevision,
+  avail: Nat, total: Nat, consumed: Nat, activation: Nat, graph: Nat, kv: Nat,
+) -> VllmMemoryProfileParse {
+  match parse_gib_between(text: captured_text, open: ", ", close: " GiB). Actual usage") {
+    Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no requested-envelope figure before ` GiB). Actual usage`" as NonEmptyStr }
+    Present { value: envelope } =>
+  match parse_kv_recommendation_bytes(text: captured_text, occurrence: 1) {
+    Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no first --kv-cache-memory recommendation" as NonEmptyStr }
+    Present { value: fit } =>
+      match parse_kv_recommendation_bytes(text: captured_text, occurrence: 2) {
+        Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no second --kv-cache-memory recommendation" as NonEmptyStr }
+        Present { value: full } =>
+          VllmMemoryProfileParsed { reading: VllmMemoryProfileReading {
+            device_total: gibibyte_reading(hundredths: total),
+            startup_available: gibibyte_reading(hundredths: avail),
+            requested_utilization: requested_utilization,
+            requested_envelope: gibibyte_reading(hundredths: envelope),
+            persistent_consumed: gibibyte_reading(hundredths: consumed),
+            peak_activation_headroom: gibibyte_reading(hundredths: activation),
+            cudagraph_allocated: gibibyte_reading(hundredths: graph),
+            current_kv: gibibyte_reading(hundredths: kv),
+            recommended_kv_within_requested_envelope: byte_size(count: fit),
+            recommended_kv_using_startup_availability: byte_size(count: full),
+            captured_text: captured_text as NonEmptyStr,
+            observed_at_revision: observed_at_revision,
+          } }
+      }
+  }
+  }
 }
