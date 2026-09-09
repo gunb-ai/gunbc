@@ -292,14 +292,28 @@ test fn emit_host_native_only_complement_wrong_octet_mismatch_detected_holds() -
 // to break, so this arm's broken control breaks the EXPECTATION side: octet 0 is each member's
 // alt byte and can never match the primary runs, and the comparator mocks above pin the
 // comparator itself.
-test fn emit_host_native_only_meet_join_holds() -> Bool {
+//
+// ONE MEMBER PER CLAIM (2026-09-08): the two-member shape put TWO native-run verdicts inside one
+// claim's 500ms CPU budget — emit of the family crate plus the cached-run receipt walk, twice over
+// — and the required floor measured both arms over the line. The ceiling is the floor's own and
+// does not move to admit a claim shape; the arm splits by member instead, the grain the family's
+// equals_eval pair already claims at (emit_host_meet_equals_eval_holds /
+// emit_host_join_equals_eval_holds). Each claim now pays one native run; the family crate build
+// stays shared through the same one-build cache key either way.
+test fn emit_host_native_only_meet_holds() -> Bool {
   logic_family_native_only_matches_expected(member_id: "meet", expected_octet: 1)
-    && logic_family_native_only_matches_expected(member_id: "join", expected_octet: 1)
 }
 
-test fn emit_host_native_only_meet_join_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_join_holds() -> Bool {
+  logic_family_native_only_matches_expected(member_id: "join", expected_octet: 1)
+}
+
+test fn emit_host_native_only_meet_wrong_octet_mismatch_detected_holds() -> Bool {
   logic_family_native_only_matches_expected(member_id: "meet", expected_octet: 0) == false
-    && logic_family_native_only_matches_expected(member_id: "join", expected_octet: 0) == false
+}
+
+test fn emit_host_native_only_join_wrong_octet_mismatch_detected_holds() -> Bool {
+  logic_family_native_only_matches_expected(member_id: "join", expected_octet: 0) == false
 }
 
 // FIELD-ACCESS-FAMILY ARM: the same native-only verdict shape for the emit_host_field_access
