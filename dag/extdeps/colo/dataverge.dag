@@ -41,7 +41,7 @@ data dataverge_brooklyn: ColoFacilityRow = ColoFacilityRow {
   },
   municipality: "Brooklyn",
   region_code: "NY",
-  facility_note: "The operator's flagship five-borough site and the only independently cited carrier-neutral colo facility found in Brooklyn on 2026-09-08: 50,000 square feet with 40,000 raised floor and 35,000 available for expansion; locking cabinets, cages and private suites; N+1 cooling; 1.75 MW generator backup; 40-plus carriers named including AT&T, Charter, Cogent, Crown Castle, Lightpath, Lumen, Verizon, Zayo, Zenfi. The page claims this MMR underpins Brooklyn, Queens and Long Island - that is a connectivity claim, not a second facility in Queens. No independently cited Queens or Bronx colo operator page was found in this sweep.",
+  facility_note: "50,000 square feet with 40,000 raised floor and 35,000 available for expansion; locking cabinets, cages and private suites; N+1 cooling; 1.75 MW generator backup; 40-plus carriers named including AT&T, Charter, Cogent, Crown Castle, Lightpath, Lumen, Verizon, Zayo, Zenfi per the operator page read 2026-09-08. The page claims this MMR underpins Brooklyn, Queens and Long Island.",
 }
 
 data dataverge_brooklyn_density: CabinetDensityClaim = DensityUnread {

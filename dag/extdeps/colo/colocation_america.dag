@@ -51,7 +51,7 @@ data colocation_america_nydc1: ColoFacilityRow = ColoFacilityRow {
   },
   municipality: "New York",
   region_code: "NY",
-  facility_note: "Retail reseller selling from the 60 Hudson carrier hotel. Digital Realty JFK12 and DataBank LGA1 occupy the same building under their own modules. Hawthorne NYDC3 is in Westchester, outside the five boroughs, and is not modelled here.",
+  facility_note: "Retail reseller selling from the 60 Hudson carrier hotel. Digital Realty JFK12 and DataBank LGA1 occupy the same building under their own modules.",
 }
 
 data colocation_america_nydc1_density: CabinetDensityClaim = DensityUnread {
