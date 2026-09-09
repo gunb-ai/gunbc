@@ -29,7 +29,7 @@ import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { SatisfactionRequirement }
 import product.fabric.supply {
-  SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply,
+  SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply, PlacementAffinityKey,
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
@@ -41,7 +41,7 @@ import product.fabric.selection {
   TransitionCostObservation, NoTransitionRequired,
   OperatingCostObservation, OperatingCostMeasured,
   OpportunityCostObservation, NoFeasibleAlternativeUse,
-  SupplySelection, OfferSelected, NoAdmissibleOffer,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
 }
 import gunbc.fabric_floor_dispatch {
   floor_demand, floor_supply_selection, floor_selection_selected_offer_count,
@@ -124,13 +124,15 @@ fn d_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<No
     candidates: candidates,
     maximum_buy_order: money_amount_micro(count: 1000000),
     delay_valuation: d_no_delay_valuation(),
+    affinity: "test.floor-demand" as PlacementAffinityKey,
   )
 }
 
 fn d_considered_count(selection: SupplySelection<NonEmptyStr>) -> Int {
   match selection {
-    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: c } => list_length(items: c)
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: c, tie_policy: _ } => list_length(items: c)
     NoAdmissibleOffer { considered: c } => list_length(items: c)
+    EqualCostTieUnresolved { digest: _, cause: _, considered: c } => list_length(items: c)
   }
 }
 

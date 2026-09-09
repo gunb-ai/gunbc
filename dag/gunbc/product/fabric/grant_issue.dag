@@ -27,7 +27,7 @@ import product.fabric.supply {
 import product.fabric.work { Work }
 import product.fabric.budget {
   MoneyAccount, MoneyReservationRequest, MoneyRefusal,
-  AccountAdvanced, MoneyRefused, reserve_money,
+  AccountAdvanced, MoneyRefused, reserve_money, fence_admits,
 }
 import extdeps.accounting.encumbrance {
   EncumbranceLedger, EncumbranceRefusal,
@@ -515,5 +515,78 @@ fn issue_grant<P, Q, S>(
         }
     }
     }
+  }
+}
+
+// DECLARED FRONTIER (DESIGN 3c). grant_authorizes_reservation has NO production consumer in this
+// change: its only caller is test.claim.fabric_grant_authorization_witness, which exercises it
+// rather than asserting it exists. NAMED CONSUMER: the FCI-3 executor, whose exit predicate in
+// gunbc.fabric_ci_program is that a persistent executor re-reads the committed Grant before
+// starting and that an absent, corrupt or expired Grant yields zero target processes -- this rule
+// is the agreement half of that re-read. TRIGGER, stated because a frontier without one is a
+// dangling declaration: the rule stays uncalled until FCI-3 lands an executor that re-reads a
+// committed grant. It is homed here, beside issue_grant, so that consumer imports one fabric
+// module rather than reaching into a runner-layer module for fabric vocabulary.
+
+// THE AGREEMENT COUNTERPART OF issue_grant, HOMED BESIDE THE ISSUER RATHER THAN AT A CONSUMER.
+// A grant that fences money proves the money; it proves nothing about WHICH execution was
+// authorized. Presented against another cell's reservation it would pass whenever the supplied
+// account fenced -- and that is worse than no grant, because the grant's presence reads as
+// authorization while authorizing nothing about the subject. The grant carries work, demand and
+// offer, and a reserved cell carries its own, so the join is available and is made here.
+
+// THE MONEY GENERATION IS PRESENTED, NOT READ OFF THE GRANT, BECAUSE THE GRANT DOES NOT CARRY IT.
+// ExecutionGrant.money_reservation is a bare ReservationRef; the counter the account holds for that
+// reference was recorded from the MONEY request (product.fabric.budget reserve_money writes
+// `generation: request.generation`), while grant_lease_generation answers the RESOURCE lease's
+// counter. Those are two independently advancing counters, and an earlier revision of this rule
+// fenced the money reservation with the lease generation -- so a grant authorized whenever the two
+// happened to coincide, and a legitimate grant whose counters had diverged was refused with a cause
+// naming the wrong fact. product.fabric.execution already records that class one authority over:
+// comparing generations alone was a real fencing hole, and it made prose describe a wall the code
+// did not build. Presenting it keeps the join between two independently authored facts -- what the
+// issuer requested against what the account recorded -- rather than between one fact and itself.
+
+// IT TAKES THE COORDINATES RATHER THAN A SNAPSHOT, AND THAT IS WHAT MAKES ITS RED AUTHORABLE.
+// RequiredBuildCellSnapshot is sole_constructor, so no witness outside its module can build a
+// DISAGREEING one; a rule reading the snapshot directly would have an unauthorable RED and be a
+// DESIGN 4b decoration -- permanently green and cited as coverage. FabricIdentity is an ordinary
+// record, so over coordinates the disagreement is writable, and four claims write it.
+
+// WHAT THIS DOES NOT ESTABLISH, stated because the name would otherwise read as more than it is:
+// ExecutionGrant is an ordinary constructible record, so a caller can author one. This proves
+// AGREEMENT between a presented grant and a presented reservation, not that fabric issuance
+// durably committed either. The unforgeable form re-reads the committed grant from durable storage
+// after the submitter terminates -- FCI-3's own exit predicate, and not something a pure rule can
+// assert about itself.
+type GrantAuthorization
+  = GrantAuthorizes
+  | GrantFenceRefused
+  | GrantAuthorizesDifferentWork
+  | GrantAnswersDifferentDemand
+  | GrantIssuedAgainstDifferentOffer
+
+fn grant_authorizes_reservation(
+  grant: ExecutionGrant<NonEmptyStr>,
+  account: MoneyAccount,
+  money_generation: Int,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> GrantAuthorization {
+  if !fence_admits(
+    a: account,
+    reference: grant.money_reservation,
+    presented: money_generation,
+  ) {
+    GrantFenceRefused
+  } else if !fabric_identity_eq(left: grant.context.work, right: work) {
+    GrantAuthorizesDifferentWork
+  } else if !fabric_identity_eq(left: grant.context.demand, right: demand) {
+    GrantAnswersDifferentDemand
+  } else if !fabric_identity_eq(left: grant.object.offer, right: offer) {
+    GrantIssuedAgainstDifferentOffer
+  } else {
+    GrantAuthorizes
   }
 }

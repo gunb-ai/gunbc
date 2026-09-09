@@ -215,6 +215,54 @@ type SupplierOffer<P> {
 // explicit-zero rule above exists to prevent. What is actually a consequence is
 // only this: nothing in the ranking knows which offers are ours.
 
+// ── THE EQUAL-COST ARM WAS ALREADY A POLICY, AND IT WAS ROSTER ORDER ──────────────────────────
+//
+// selection.dag's comparator replaces the held candidate only on strict less-than, and the ranking
+// fold walks the candidate population in the order it was given. So the first candidate is held first
+// and never displaced by an equal-cost challenger: ROSTER ORDER ALREADY DECIDES TIES. Omitting an
+// explicit tie policy was never neutral; it was one particular policy, chosen implicitly and
+// invisible to anyone reading the outcome.
+//
+// WHY THAT IS NOT MERELY UNTIDY, on a fleet of identical owned offers. Two Spark serving groups quote
+// zero, start at zero, and price the same transition and opportunity for a fresh demand, so their
+// totals tie exactly. Sequential fresh demands then all select the roster-first offer -- no
+// compare-and-set conflict ever occurs, because each finishes and releases before the next arrives --
+// and each retains that offer as its incumbent. The second group receives nothing, and later several
+// incumbent turns queue on the first while the second sits free.
+//
+// A CAPACITY WALL CANNOT SUBSTITUTE. Exclusivity is a different question from preference: a seat pool
+// establishes that two demands cannot both hold one seat, and says nothing about which of two FREE
+// offers a demand should try. Relying on a one-seat ceiling to spread load would make workload timing
+// the hidden tie policy -- it spreads overlapping demands, because the first offer is occupied when
+// the second selection runs, and cannot spread sequential ones at all.
+//
+// So the arm is named. Existing consumers keep the behaviour they have; a consumer that wants spread
+// asks for it, and the outcome says which policy decided.
+//
+// AND IT IS AFFINITY-KEYED, NOT DEMAND-KEYED, WHICH IS A CORRECTION RATHER THAN A RENAME. The arm was
+// first called DemandKeyedRendezvous, and it never consumed a Demand: it takes a string, and
+// identity.dag is explicit that a fabric identity is the PAIR of principal and key, so a bare key is
+// not an identity of anything. Two things follow that the old name concealed. A caller supplies its
+// own affinity value -- the harness passes its actor -- so a caller can choose one that lands it on a
+// particular group among the equals, which is spread preference and never admission: an inadmissible
+// group is refused before any tie is considered. And the offers are keyed the same way, so two offers
+// whose keys agree while their principals differ are one subject to this policy; that case is not
+// silently merged, because two identical digests in one cohort are a duplicate and the selection
+// REFUSES rather than choosing. Hashing sealed identities instead needs a rendering of the principal
+// type, which the fabric core deliberately does not have -- P is a parameter and this module imports
+// no closed principal. That rendering is the trigger; until it exists the name says what is hashed.
+type PlacementAffinityKey = NonEmptyStr where brand("PlacementAffinityKey")
+
+type EqualCostOfferTieBreak
+  = StableRosterOrder
+  | AffinityKeyedRendezvous
+
+// THE POLICY NAME DOES NOT CARRY THE TIE ARM, AND THAT IS A CORRECTION OF THIS COMMIT'S FIRST
+// SHAPE. It read `CheapestFungibleWithDelayValuation { equal_cost: EqualCostOfferTieBreak }`, while
+// the arm that actually decides is the one select_supply is given and echoes back on the outcome. Two
+// places to write one fact, free to disagree, and nothing constructs this type -- so the field would
+// have been an unconsumed second authority from the day it landed. The tie arm stays where it is
+// consumed.
 type SupplySelectionPolicy =
   | CheapestFungibleWithDelayValuation
 

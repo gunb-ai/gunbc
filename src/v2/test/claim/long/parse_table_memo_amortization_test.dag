@@ -100,7 +100,7 @@ fn memo_amort_single_root_content_hash(ingest: SourceRootIngest) -> Outcome<Hash
             xs: roots,
             empty: memo_amort_not_single_root_rejection(),
             cons: fn(_acc, root) {
-              outcome_accepted(value: content_hash(n: root))
+              outcome_accepted(value: content_hash(n: root.root))
             }
           )
         false =>
