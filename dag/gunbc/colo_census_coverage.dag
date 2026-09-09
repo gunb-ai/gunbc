@@ -246,20 +246,31 @@ fn coverage_density_read_count(c: RegionCoverage) -> Int? {
   }
 }
 
-// THE CORRIDOR ROW, AND THE NUMBER THAT SHOULD WORRY A READER MOST. The facility rows below are the densest colocation market in the
-// region, and exactly ONE of them publishes a cabinet density anybody has verified against page
-// bytes - a ratio the fold derives rather than this paragraph asserting it. That ratio is the census's real finding about
-// the corridor: the facilities are there, the retail density figures are not published, and a
-// planner who wanted a dense cabinet in Hudson-Bergen-Essex would be negotiating rather than
-// shopping.
+// THE CORRIDOR ROW, AND THE RATIO THAT SHOULD WORRY A READER MOST. The facility rows below are the
+// densest colocation market in the region, and almost none of them publishes a cabinet density
+// anybody has verified against page bytes. Ask coverage_density_read_count against
+// coverage_facility_count for the ratio; this paragraph does not carry it, and the sentence that
+// used to sit here transcribed the very numeral it claimed the fold derived - review 62961 caught
+// that, one paragraph above the edit that removed the transcribed counts for the same reason.
+// That ratio, whatever it reads today, is the census's real finding about the corridor: the
+// facilities are there, the retail density figures are not published, and a planner who wanted a
+// dense cabinet in Hudson-Bergen-Essex would be negotiating rather than shopping.
 //
-// The count is one AFTER an audit, not before it. This region briefly read two: a Summit Secaucus
+// THE FIGURE IS POST-AUDIT, NOT PRE-AUDIT, and the audit is the part worth reading. This region
+// briefly read one more than it does now: a Summit Secaucus
 // row citing 12 kW in a 42U cabinet, whose wording reproduced in the page bytes exactly and which
 // sat under a block headed "Limited Time: Chicago-Area Facility". Real figure, published price,
 // wrong metro. The withdrawal is recorded in
 // gunbc.recurring_failure_mode.citation_verified_against_a_rendering_that_destroyed_its_scope,
 // because a citation confirmed by string occurrence alone cannot fail on correct text attached to
 // the wrong subject.
+//
+// THE NUMERALS THAT REMAIN BELOW ARE HISTORY, NOT MEASUREMENT, and the distinction is what decides
+// whether prose rots. A sentence asserting what the corpus reads TODAY is falsified by the next row
+// that lands, so it must name the producer instead. A sentence recording what was once typed, what
+// it was corrected to, and why, is a receipt about a past event: no future row can make it wrong,
+// and dropping its numerals would destroy the only evidence that the derivation ever caught
+// anything. So the paragraphs below keep theirs deliberately.
 //
 // THE COUNTS ARE GONE AND THE ROWS ARE HERE INSTEAD, which is review 62780's finding fixed at the
 // root: 28 and 1 were hand-transcribed measurements of the repo's own live corpus, and DESIGN
