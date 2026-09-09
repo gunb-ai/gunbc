@@ -2,8 +2,7 @@ module gunbc.information_query
 
 import std.types { String, NonEmptyStr, List, Bool, EpochMs }
 import std.nat { Nat }
-import std.decl_ref { decl_ref }
-import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri }
 import extdeps.external_authority { ExternalAuthority }
 import std.citation {
@@ -71,18 +70,18 @@ import std.claim_evidence {
 
 // THE DISSOLUTION CONDITION, IN A CARRIER RATHER THAN IN THE PROSE ABOVE. DESIGN 4c puts a
 // dissolution condition in a typed home because no Accepted program can read an annotation, and the
-// admission of this pair as a frontier rests entirely on the trigger being real. It is BOUND rather
-// than described: the debt ends exactly when the harness declares the tool that routes an
-// information need here, which dissolution_trigger_fired can decide against the present declaration
-// set. If that declaration never appears, this pair is deleted.
-data information_query_frontier_dissolution: DissolutionCondition = BoundDissolution {
-  trigger: DeclarationAppears {
-    ref: decl_ref(
-      module_path: "gunbc.harness.harness_tool",
-      decl_name: "QueryInformationTool",
-    ),
-  },
-}
+// admission of this pair as a frontier rests on the trigger being real.
+//
+// IT IS UNBOUND, AND THAT IS FORCED RATHER THAN CHOSEN. A BoundDissolution names a DeclarationRef,
+// and the declarations gate refuses a citation to a declaration that does not exist -- correctly:
+// binding this to the harness tool declaration was refused as CITED-DECLARATION-ABSENT, because the
+// harness declares no such tool yet. A forward trigger cannot cite the thing whose
+// absence is the debt, so the honest carrier is the unbound one, and dissolution_status reads
+// DissolutionUnbound rather than a pending trigger that no mechanism could decide. It binds the
+// moment that declaration lands, which is the same event that discharges the frontier.
+data information_query_frontier_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "the harness declares a tool that routes a stated information need through gunbc.information_retrieval, at which point this pair has a consumer outside itself and this condition can be rebound to that declaration; if it does not land, both modules are deleted rather than left standing" as NonEmptyStr,
+)
 
 // Freshness is a property of the CLAIM the evidence is offered for, not of the document. A
 // time-invariant proposition is not stale because the page is old; a current-state proposition is
