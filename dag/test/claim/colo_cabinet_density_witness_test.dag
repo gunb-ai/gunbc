@@ -18,7 +18,8 @@ import extdeps.colo.iron_mountain {
 import gunbc.colo_census_coverage {
   RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
   coverage_facility_count,
-  nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley, census_regions,
+  nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley,
+  nyc_five_boroughs, nyc_queens_and_bronx, census_regions,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -144,7 +145,7 @@ fn facility_count_or_sentinel(c: RegionCoverage) -> Int {
 }
 
 // A FIXTURE FOR THE UNSURVEYED ARM, AND THE REASON IT HAD TO BE ONE. Writing this witness is what
-// established that `RegionUnsurveyed` HAS NO INHABITANT in the live roster - all three rows are
+// established that `RegionUnsurveyed` HAS NO INHABITANT in the live roster - every rostered row is
 // surveyed - so the distinction the module exists to draw could not be discriminated by any test
 // over the census as it stands. DESIGN section 4b: where the forbidden state is unauthorable on
 // the live corpus, the fixture is where the RED becomes expressible, and declining to write one
@@ -212,4 +213,6 @@ fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
 test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bool {
   all(census_regions, c => density_reads_never_exceed_facilities(c: c))
     && facility_count_or_sentinel(c: nj_hudson_bergen_essex_corridor) > 0
+    && facility_count_or_sentinel(c: nyc_five_boroughs) > 0
+    && facility_count_or_sentinel(c: nyc_queens_and_bronx) == 0
 }

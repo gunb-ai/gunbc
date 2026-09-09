@@ -77,7 +77,7 @@ data equinix_ny9: ColoFacilityRow = ColoFacilityRow {
   },
   municipality: "New York",
   region_code: "NY",
-  facility_note: "The operator's only live Manhattan IBX on the New York campus listing read 2026-09-08: 35,898 square feet of colocation, N+1 UPS and generators, N+2 cooling, 120/208 V distribution. Adjacent IBX NY8 is named on a 2021 spec sheet as also at a Manhattan carrier hotel but is absent from the live campus listing; it is not modelled as a current facility.",
+  facility_note: "35,898 square feet of colocation, N+1 UPS and generators, N+2 cooling, 120/208 V distribution per the New York campus listing read 2026-09-08. Adjacent IBX NY8 is named on a 2021 spec sheet as also at a Manhattan carrier hotel but is absent from that live campus listing.",
 }
 
 data equinix_ny9_density: CabinetDensityClaim = DensityUnread {

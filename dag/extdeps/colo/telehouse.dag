@@ -64,7 +64,7 @@ data telehouse_teleport: ColoFacilityRow = ColoFacilityRow {
   },
   municipality: "Staten Island",
   region_code: "NY",
-  facility_note: "162,000 square feet on the Port Authority Teleport campus, opened 1989, home of NYIIX, with diverse NY and NJ utility feeds and 10 MW available power per the operator page read 2026-09-08. The only independently cited building-operator colo found in Staten Island in this sweep. 365 Data Centers lists an in-building POP here under its own module.",
+  facility_note: "162,000 square feet on the Port Authority Teleport campus, opened 1989, home of NYIIX, with diverse NY and NJ utility feeds and 10 MW available power per the operator page read 2026-09-08. 365 Data Centers lists an in-building POP here under its own module.",
 }
 
 data telehouse_teleport_density: CabinetDensityClaim = DensityMarketedAirOnly {
