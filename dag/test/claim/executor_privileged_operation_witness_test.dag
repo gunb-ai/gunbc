@@ -14,7 +14,12 @@ import gunbc.generated_artifact_emit {
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import product.placement_supply { HostIdentity }
-import gunbc.runner_host_grants { runner_slot_teardown_grant_index_bound, runner_slot_grammar_dirs_to_bound, fabric_allocation_store_privileged_operations }
+import gunbc.runner_host_grants {
+  runner_slot_teardown_grant_index_bound,
+  runner_slot_grammar_dirs_to_bound,
+  fabric_allocation_store_privileged_operations,
+  runner_host_wide_privileged_operations,
+}
 import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host,
   gunbc_runner_slot_cpu_quota,
@@ -118,10 +123,7 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // THE PER-SLOT GITHUB FACTOR IS THREE IN THIS SUM, SPLIT FOR DISCRIMINATION. Teardown is the
 // grammar bound, not the desired width. Each desired slot then contributes one install
 // directory and two service transitions (enable, start). `slots * 3` is install+activation;
-// `activation == slots * 2` is the transition half. The +5 tail is host-wide: converge state
-// directory, runner base, runner cache, kvm supplementary group, and daemon-reload. A +4
-// here stayed green only while this module was off the required changed-witness set; the kvm
-// grant is a real fifth host-wide operation in `runner_host_privileged_operations`.
+// `activation == slots * 2` is the transition half.
 //
 // THE FACTOR IS ASSERTED IN TWO PIECES RATHER THAN AS ONE PRODUCT, because `slots * 4` alone would
 // stay green if the two halves drifted in opposite directions -- four directory operations and no
@@ -133,6 +135,18 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // fabric_execution_slot_identities and fabric_cell_slice_desired_directives -- so a second fabric
 // cell or a sixth directive moves this row without an edit, and a roster that dropped the fabric
 // grants goes red.
+// THE HOST-WIDE TERM IS runner_host_wide_privileged_operations(deploy).length(), NOT A LITERAL.
+// On main the same list has five members (converge dir, runner base, runner cache, kvm
+// supplementary group, daemon-reload) while this witness transcribed `+ 4` and named four of
+// them, omitting kvm -- false from birth in ea22499df2, the commit that added both the list and
+// the witness. test.claim.executor_privileged_operation_witness is not in
+// v2.workflow.required_floor required_gate_prefixes, so the required floor never executes it;
+// it reddened here only because touching this file enrolled it as a changed witness. That is an
+// inert lens on main (DESIGN §6), not a defect this CPU-quota diff introduced. The fabric term
+// already derived from desired_directives length; this term now does the same from the named
+// host-wide list. `allocation_store == 2` remains a transcribed count of
+// fabric_allocation_store_privileged_operations on a fabric host -- deriving that chain is
+// out of scope here.
 test fn witness_population_tracks_the_slot_roster() -> Bool {
   match fabric_cell_slice_desired_directives() {
     SliceDirectivesQuotaSurveyRefused { cause: _ } => false
@@ -143,13 +157,15 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
       let directives = ds.length()
       let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
       let allocation_store = fabric_allocation_store_privileged_operations(deploy: srv3_runner_host_deploy).length()
+      let host_wide = runner_host_wide_privileged_operations(deploy: srv3_runner_host_deploy).length()
       runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
-        == runner_slot_teardown_grant_index_bound + (slots * 3) + 5 + fabric_expected + allocation_store
+        == runner_slot_teardown_grant_index_bound + (slots * 3) + host_wide + fabric_expected + allocation_store
         && allocation_store == 2
         && fabric_cell_privileged_operations(deploy: srv3_runner_host_deploy).length() == fabric_expected
         && activation == slots * 2
         && slots > 0
         && fabric_slots > 0
+        && host_wide > 0
     }
   }
 }
