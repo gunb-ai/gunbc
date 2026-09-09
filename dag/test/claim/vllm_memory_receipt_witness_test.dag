@@ -1,0 +1,117 @@
+module test.claim.vllm_memory_receipt
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, EpochSecs }
+import std.measure { basis_point }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import gunbc.spark.serving_deployment_selection { ServingExecutionProfile }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import extdeps.vllm.server { vllm_source_revision }
+import extdeps.vllm.memory_profile { vllm_parse_memory_profile }
+import gunbc.spark.vllm_memory_receipt {
+  VllmMemoryReceiptAdmission, MemoryReceiptAdmitted, MemoryReceiptRefusedUnreadable,
+  MemoryReceiptRefusedForeignLaunch, MemoryReceiptRefusedIncomparableLaunch,
+  admit_memory_receipt,
+}
+
+data w_captured: String = "Free memory on device (114.93/121.69 GiB) on startup. Desired GPU memory utilization is (0.92, 111.95 GiB). Actual usage is 82.52 GiB for consumed memory (weights + non-torch), 7.42 GiB for peak activation, and 0.1 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=23372437156` (21.77 GiB) to fit into requested memory, or `--kv-cache-memory=26572776960` (24.75 GiB) to fully utilize gpu memory. Current kv cache memory in use is 22.02 GiB."
+
+fn w_sha256(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+data w_digest_hex: String = "4444444444444444444444444444444444444444444444444444444444444444"
+
+fn w_launch(invocation: String) -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupA,
+    head: operator_host_srv9,
+    systemd_invocation: invocation as NonEmptyStr,
+    container_id: "glm-canary" as NonEmptyStr,
+    executable_digest: w_sha256(hex: w_digest_hex),
+    unit_digest: w_sha256(hex: w_digest_hex),
+    started_at: 1788907506 as EpochSecs,
+  )
+}
+
+data w_profile: ServingExecutionProfile = ServingExecutionProfile {
+  artifact: decl_ref(module_path: "gunbc.spark.serving_arm", decl_name: "glm53_exl3_205_row"),
+  tensor_parallel_degree: 1,
+  parameters_digest: "witness-fixture" as String,
+}
+
+fn w_admit(observed: String, claimed: String, text: String) -> VllmMemoryReceiptAdmission {
+  admit_memory_receipt(
+    profile: w_profile,
+    observed_on: w_launch(invocation: observed),
+    claimed_for: w_launch(invocation: claimed),
+    capture_digest: w_sha256(hex: w_digest_hex),
+    parse: vllm_parse_memory_profile(
+      captured_text: text,
+      requested_utilization: basis_point(count: 9200),
+      observed_at_revision: vllm_source_revision(
+        repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+        full_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
+      ),
+    ),
+  )
+}
+
+// ── THE ADMITTED CASE ──────────────────────────────────────────────────────────────────────────
+//
+// One launch, a readable line: a receipt exists. Without this the refusals below are satisfied by a
+// function that refuses everything.
+test fn a_readable_line_observed_on_the_claimed_launch_is_admitted() -> Bool {
+  match w_admit(observed: "inv-A", claimed: "inv-A", text: w_captured) {
+    MemoryReceiptAdmitted { receipt: _ } => true
+    MemoryReceiptRefusedUnreadable { cause: _ } => false
+    MemoryReceiptRefusedForeignLaunch { observed: _, claimed: _ } => false
+    MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
+  }
+}
+
+// ── THE WALL ───────────────────────────────────────────────────────────────────────────────────
+//
+// THE DISCRIMINATING RED OF THIS MODULE. The line is identical and perfectly readable; only the
+// incarnation differs. A model that let this through would let a figure measured before a restart
+// authorise a decision about the engine that replaced it -- which is not hypothetical on this branch,
+// where the canary's container was replaced once already and every memory figure in this program
+// predates or postdates that boundary.
+test fn a_reading_observed_on_another_launch_is_refused() -> Bool {
+  match w_admit(observed: "inv-A", claimed: "inv-B", text: w_captured) {
+    MemoryReceiptRefusedForeignLaunch { observed: o, claimed: c } =>
+      (o as String) == "inv-A" && (c as String) == "inv-B"
+    MemoryReceiptAdmitted { receipt: _ } => false
+    MemoryReceiptRefusedUnreadable { cause: _ } => false
+    MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
+  }
+}
+
+// ── AN UNREADABLE LINE HAS NO POSITIVE ARM ─────────────────────────────────────────────────────
+//
+// Even on the right launch. There is no constructor taking hand-read fields, so the only route to a
+// receipt is a parse that succeeded against the captured text -- which is what stops a person reading
+// figures off a log and calling the result evidence.
+test fn an_unreadable_line_on_the_right_launch_is_still_refused() -> Bool {
+  match w_admit(observed: "inv-A", claimed: "inv-A", text: "INFO 09-08 22:43:46 init engine took 110.84 s") {
+    MemoryReceiptRefusedUnreadable { cause: _ } => true
+    MemoryReceiptAdmitted { receipt: _ } => false
+    MemoryReceiptRefusedForeignLaunch { observed: _, claimed: _ } => false
+    MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
+  }
+}
+
+// BOTH FAILURES AT ONCE STILL REFUSE, and the launch check runs first because "this is about another
+// engine" is the more fundamental objection: a reading that survives parsing but describes the wrong
+// incarnation is more dangerous than one that never parsed, because it looks like evidence.
+test fn a_foreign_launch_with_an_unreadable_line_refuses_on_the_launch() -> Bool {
+  match w_admit(observed: "inv-A", claimed: "inv-B", text: "nothing resembling the line") {
+    MemoryReceiptRefusedForeignLaunch { observed: _, claimed: _ } => true
+    MemoryReceiptAdmitted { receipt: _ } => false
+    MemoryReceiptRefusedUnreadable { cause: _ } => false
+    MemoryReceiptRefusedIncomparableLaunch { invocation: _, field: _ } => false
+  }
+}

@@ -1,0 +1,106 @@
+module gunbc.spark.vllm_memory_receipt
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.content_hash { ContentHash }
+import gunbc.spark.vllm_serving_launch {
+  VllmServingLaunch, LaunchJoin, SameLaunch, DifferentLaunch, LaunchContradiction, same_launch,
+}
+import gunbc.spark.serving_deployment_selection { ServingExecutionProfile }
+import extdeps.vllm.memory_profile {
+  VllmMemoryProfileParse, VllmMemoryProfileParsed, VllmMemoryProfileUnreadable,
+  VllmMemoryProfileReading,
+}
+
+// A PARSED READING IS NOT YET EVIDENCE ABOUT ANYTHING. extdeps.vllm.memory_profile turns a captured
+// line into typed terms; it cannot say WHICH engine emitted them, on which host, under which selected
+// profile, or from which captured bytes. A reading with no subject is a well-typed reading of a
+// string, and treating one as a measurement of a running service is how a figure from one launch comes
+// to authorise a decision about its successor.
+//
+// THE BINDING IS THE PRODUCT LAYER'S, NOT extdeps'. The line's SHAPE is upstream's and belongs beside
+// the runtime that prints it; WHICH incarnation a reading describes is a fact about this fleet's
+// deployment. DESIGN section 3 puts the interface in extdeps and the join here.
+//
+// THE LAW IT ENFORCES is the one gunbc.spark.vllm_serving_launch already states for the KV layout: a
+// reading from one launch cannot authorise a request against another. Every memory figure this
+// program has produced -- 22.02 GiB, the two recommendations, the 111.95 GiB envelope -- is a fact
+// about ONE incarnation, and the engine restarts often enough that the distinction is operational
+// rather than theoretical: this branch replaced the canary's container once already.
+type VllmMemoryProfileReceipt sole_constructor {
+  profile: ServingExecutionProfile
+  launch: VllmServingLaunch
+  capture_digest: ContentHash
+  reading: VllmMemoryProfileReading
+}
+
+// THE ONLY MINT, AND IT REFUSES MORE OFTEN THAN IT ADMITS. A receipt may be built only from a parse
+// that SUCCEEDED and a launch the observer actually observed -- never from a reading handed in beside
+// a launch someone believed it came from.
+type VllmMemoryReceiptAdmission
+  = MemoryReceiptAdmitted { receipt: VllmMemoryProfileReceipt }
+  | MemoryReceiptRefusedUnreadable { cause: NonEmptyStr }
+  | MemoryReceiptRefusedForeignLaunch { observed: NonEmptyStr, claimed: NonEmptyStr }
+  | MemoryReceiptRefusedIncomparableLaunch { invocation: NonEmptyStr, field: NonEmptyStr }
+
+// THE OBSERVING LAUNCH AND THE CLAIMED LAUNCH ARE SEPARATE ARGUMENTS ON PURPOSE. Passing one value
+// twice would make the check vacuous; the caller must supply the launch it OBSERVED the line on and
+// the launch it intends the receipt to describe, and this refuses when they are not the same
+// incarnation. That is the whole wall: it is trivially satisfiable by an honest caller and
+// unsatisfiable by one attributing an old capture to a new engine.
+fn admit_memory_receipt(
+  profile: ServingExecutionProfile,
+  observed_on: VllmServingLaunch,
+  claimed_for: VllmServingLaunch,
+  capture_digest: ContentHash,
+  parse: VllmMemoryProfileParse,
+) -> VllmMemoryReceiptAdmission {
+  match same_launch(a: observed_on, b: claimed_for) {
+    DifferentLaunch { left: l, right: r } =>
+      MemoryReceiptRefusedForeignLaunch { observed: l, claimed: r }
+    LaunchContradiction { invocation: i, field: f } =>
+      MemoryReceiptRefusedIncomparableLaunch { invocation: i, field: f }
+    SameLaunch => admit_memory_receipt_for_launch(
+      profile: profile, launch: observed_on, capture_digest: capture_digest, parse: parse)
+  }
+}
+
+// AN UNREADABLE PARSE HAS NO POSITIVE ARM, which is what makes the refusing parser worth having. A
+// receipt cannot be assembled from fields a person read off a log, because there is no constructor
+// that takes them -- the only route in is a parse that succeeded against the captured text.
+fn admit_memory_receipt_for_launch(
+  profile: ServingExecutionProfile,
+  launch: VllmServingLaunch,
+  capture_digest: ContentHash,
+  parse: VllmMemoryProfileParse,
+) -> VllmMemoryReceiptAdmission {
+  match parse {
+    VllmMemoryProfileUnreadable { captured_text: _, cause: c } =>
+      MemoryReceiptRefusedUnreadable { cause: c }
+    VllmMemoryProfileParsed { reading: r } =>
+      MemoryReceiptAdmitted { receipt: VllmMemoryProfileReceipt {
+        profile: profile,
+        launch: launch,
+        capture_digest: capture_digest,
+        reading: r,
+      } }
+  }
+}
+
+// ── WHAT A HELD RECEIPT MAY BE ASKED ───────────────────────────────────────────────────────────
+//
+// A CONSUMER ASKS THE RECEIPT WHETHER IT DESCRIBES THE ENGINE IT IS ABOUT TO ACT ON, and gets a
+// three-valued answer rather than a Bool. "This receipt is about a different launch" and "these two
+// launches cannot be compared" are different facts with different remedies -- re-observe, versus
+// reconcile two observers who digested one launch under different hash families.
+fn receipt_describes(receipt: VllmMemoryProfileReceipt, launch: VllmServingLaunch) -> LaunchJoin {
+  same_launch(a: receipt.launch, b: launch)
+}
+
+// THE RECOMMENDATIONS ARE REACHABLE ONLY THROUGH A RECEIPT, so no consumer can read the engine's
+// suggested KV bytes without having named the launch and profile they came from. That is the whole
+// reason the exact figures were separated from the rounded ones: they are the terms an admission
+// decision could actually use, and an admission decision that does not know which incarnation it is
+// admitting against is the defect this module exists to prevent.
+fn receipt_reading(receipt: VllmMemoryProfileReceipt) -> VllmMemoryProfileReading {
+  receipt.reading
+}
