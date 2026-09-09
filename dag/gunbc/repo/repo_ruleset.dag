@@ -74,13 +74,14 @@ import extdeps.transports.rest {
 }
 import v2.std.collection { Absent, Present }
 import extdeps.github.github { Repository }
-import gunbc.world_converge {
-  WorldObservation, WorldObserved, WorldUnobservable,
-  WorldDifference, WorldInAgreement, WorldDiverged,
-  WorldActuation, WorldActuationRefused,
-  WorldConvergenceHandler,
-  WorldConverged, WorldNotConverged,
-  world_converge,
+import v2.std.algebra { non_empty_to_list }
+import v2.std.cardinality { Never }
+import std.goal_assessment {
+  ObservationAttempt, ObservationEstablished, ObservationRefused,
+  GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+  GoalInspected, GoalObservationRefused,
+  assess_by_deviations_and_unknowns,
+  inspect_goal,
 }
 
 // WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A DOCUMENTATION FIX.
@@ -100,20 +101,21 @@ import gunbc.world_converge {
 // gates, flips enforcement to `evaluate`, or grants a bypass role, every gate inside this
 // repository stays green while nothing it produces can block a merge any more.
 //
-// This module binds the repository subject to gunbc.world_converge: DESIRED state is declared, the
-// live state is OBSERVED, and the two are RECONCILED through the one global convergence shape. Live
-// drift currently reaches a typed actuation hold because the API read cannot carry the bypass-actor
-// roster that a whole-ruleset PUT would overwrite. Until then this binding is read-only by
-// construction.
+// This module binds the repository subject to std.goal_assessment `inspect_goal`: DESIRED state is
+// declared, the live state is OBSERVED without reference to it, and the two are ASSESSED. The
+// binding is inspect-only and carries no actuator at all -- not an actuator that refuses. It
+// cannot write because the API read cannot carry the bypass-actor roster that a whole-ruleset PUT
+// would overwrite, so the assessment reports and the operator repairs.
 //
 // DISSOLVE-ON, NAMED AS A CAPABILITY AND NOT AS THE CHANGE EXPECTED TO CARRY IT: an admitted
 // actuation realization that writes the desired ruleset WITHOUT destroying the live bypass-actor
 // roster, and a post-apply read-back that observes the roster survived. #10204 is where that work
 // is signed, and #10204 MERGING IS NOT THE TRIGGER -- it retires this standing only if it delivers
 // that capability. A write that preserves the roster but cannot read back afterwards leaves the
-// hazard unobserved and does not retire it either. This grain is stated because the note above
-// `merge_queue_projection_refusal` in this same module records what the other grain cost: a trigger
-// naming less than the capability it governs, satisfied while the capability stayed dead.
+// hazard unobserved and does not retire it either. This grain is stated because a trigger naming
+// less than the capability it governs gets satisfied while the capability stays dead -- the exact
+// failure the two deleted projection-refusal helpers recorded against themselves, one of them
+// having watched its own trigger fire without retiring anything.
 //
 // THE ONE FACT THAT STOPS BEING A NICKNAME. The required context's name is imported from
 // gunbc.witness_floor_workflow witness_floor_workflow_job_id -- the same row the emitted workflow
@@ -128,7 +130,7 @@ import gunbc.world_converge {
 // WHY THE RULESET IS ADDRESSED BY ID RATHER THAN BY NAME. GitHub's update endpoint is
 // PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}; the name is a mutable label and two rulesets may
 // carry the same one. The id is the identity the API itself uses, so addressing by it is what makes
-// "the ruleset we converge" and "the ruleset GitHub updates" the same subject rather than two
+// "the ruleset we assess" and "the ruleset GitHub serves" the same subject rather than two
 // lookups that happen to agree. The name is still declared and still verified -- a live ruleset at
 // this id under a different name is drift this module reports, not a subject it silently accepts.
 data gunbc_passing_ci_ruleset_id: Int = 16178731
@@ -216,15 +218,17 @@ fn desired_ruleset_conditions() -> RulesetConditionsWire {
 // exactly the condition this module exists to end for the required context.
 //
 // It is NOT declared as plain desired state, and the difference is the whole safety content.
-// Desired state here is ACTUATED: converge PUTs the whole ruleset. Writing the queue into
-// `desired_ruleset_rules` would mean the next converge run silently enables a merge queue on a
-// live repository on the strength of one worker's edit. Enabling it changes how every author
+// The reason is stated for the writer this module does not currently have: a desired-state
+// authority of this shape is consumed by a WHOLE-RULESET PUT, so writing the queue into
+// `desired_ruleset_rules` would mean the first run of any such writer silently enables a merge
+// queue on a live repository on the strength of one worker's edit. No writer is bound today, which
+// makes this a property the sign-off must keep rather than a hazard that has gone away. Enabling it changes how every author
 // publishes, so it is an operator decision (DESIGN section 6: no scaffold, and no outward-facing
 // change, lands by author declaration alone).
 //
 // So the desire is a coproduct with the sign-off IN IT. Under MergeQueueUnsigned the proposal is
 // declared, readable, and diffable against the live ruleset, and contributes NO rule to the
-// projection converge sends -- the settings are visible without being applied. Under
+// projection -- the settings are visible without being desired. Under
 // MergeQueueSignedOff the operator's ruling is a required field, so the arm cannot be entered
 // without recording who decided; that arm is what a later change flips, and flipping it is a
 // one-row edit in this file rather than a web form.
@@ -335,19 +339,24 @@ data gunbc_merge_queue_proposal: MergeQueuePolicy = MergeQueuePolicy {
   min_entries_to_merge_wait: minute(count: 5),
 }
 
-// DO NOT ENABLE THE QUEUE IN THE GITHUB WEB UI. THE FLIP WOULD REVERSE ITSELF.
+// DO NOT ENABLE THE QUEUE IN THE GITHUB WEB UI. THE FLIP WOULD BE PERMANENTLY UNMODELED.
 //
-// This is sharper than the ordinary objection to out-of-band actuation, and it is stated at the
-// sign-off row because that is where a future operator will be tempted to take the shortcut. This
-// module emits the ruleset as a WHOLE-RULESET PUT of exactly the rules it declares. A merge_queue
-// rule enabled through the web form is therefore unmodeled, and the next converge run would send a
-// ruleset without it -- deleting it. A UI flip is not a change that skips the model; it is a change
-// with a SCHEDULED, SILENT SELF-REVERSAL. (The actuation refusal below now stops that specific
-// deletion from happening quietly, which turns the reversal into a stopped line -- but a stopped
-// converge is not the queue being configured either. The route that works is signing this row.)
+// It is stated at the sign-off row because that is where a future operator will be tempted to take
+// the shortcut, and the hazard it names CHANGED when this module lost its writer. It previously
+// read: the module PUTs the whole ruleset, so a rule added through the web form would be deleted by
+// the next run -- a change with a scheduled, silent self-reversal. That is no longer true and the
+// sentence was left standing describing a mechanism this branch deleted, which is exactly the dead
+// assumption DESIGN section 3 calls an attractor. Review 62605 found it.
+//
+// WHAT IS TRUE NOW IS NOT MILDER, IT IS THE OPPOSITE FAILURE. Nothing here writes, so a UI flip is
+// not reversed -- it PERSISTS, unmodeled, and this module reports it as a divergence on every
+// assessment forever, because the desire below is unsigned and no writer exists to reconcile the
+// two. The operator sees a configured queue; the assessment sees drift it can never clear. The
+// route that works is still signing this row, and it is now the only route, because a flip cannot
+// be undone by anything in this repository either.
 data desired_merge_queue: MergeQueueDesire = MergeQueueUnsigned {
   proposal: gunbc_merge_queue_proposal,
-  awaiting: unbound_dissolution(description: "DISSOLVE-ON: the operator rules on enabling the merge queue for gunb-ai/gunbc. The ruling replaces this arm with MergeQueueSignedOff carrying the ruling text, at which point gunbc_merge_queue_proposal becomes actuated desired state and a live ruleset without the rule is a divergence converge repairs. Until then the proposal is declared and diffed and never written, and converge REFUSES to actuate at all while the live ruleset carries a merge_queue rule this projection cannot express -- see merge_queue_projection_refusal. AND SIGNING THIS ROW DOES NOT BY ITSELF MAKE CONVERGE ACTUATE: the bypass-actor gate is checked first and, under the credential available to this repository, returns BypassRosterUnavailable on every live read -- GitHub omits bypass_actors both when the roster is empty and when the reader may not see it -- so converge is unconditionally held today for a reason that has nothing to do with this ruling. Discharging it needs a credential whose ruleset GET returns bypass_actors; a retry does not, because the observation is a property of the credential and not of the moment. See bypass_roster_projection_refusal."),
+  awaiting: unbound_dissolution(description: "DISSOLVE-ON: the operator rules on enabling the merge queue for gunb-ai/gunbc. The ruling replaces this arm with MergeQueueSignedOff carrying the ruling text, at which point gunbc_merge_queue_proposal becomes signed desired state and a live ruleset without the rule is a divergence this module REPORTS -- there is no repair, because there is no writer. Until then the proposal is declared and diffed and never written, and a live merge_queue rule this projection cannot express is reported as a divergence rather than repaired. AND SIGNING THIS ROW ACTUATES NOTHING, because this module actuates nothing: it binds std.goal_assessment inspect_goal and has no writer at all. Under the credential available to this repository the bypass-actor roster additionally returns BypassRosterUnavailable on every live read -- GitHub omits bypass_actors both when the roster is empty and when the reader may not see it -- so every assessment reaches GoalIndeterminate today for a reason that has nothing to do with this ruling, and carries the proved drift beside it. Discharging that needs a credential whose ruleset GET returns bypass_actors; a retry does not, because the observation is a property of the credential and not of the moment. See ruleset_unknowns."),
 }
 
 fn desired_merge_queue_policy() -> MergeQueuePolicy? {
@@ -436,7 +445,7 @@ fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> Ruleset
 
 // EVERY WAY THE LIVE RULESET CAN DISAGREE WITH DESIRED, AS A VALUE. A Bool verdict here would be
 // the collapse DESIGN keeps recording: "the ruleset is wrong" carries no remedy, and the remedies
-// differ completely -- a missing context is fixed by an apply, a granted bypass role is fixed by a
+// differ completely -- a missing context is fixed by a write, a granted bypass role is fixed by a
 // person, and an unrecognized enforcement string means GitHub's vocabulary moved and this module's
 // reading is no longer established.
 type RulesetDivergence
@@ -457,7 +466,6 @@ type RulesetDivergence
   | DoNotEnforceOnCreateDrift { observed: Bool }
   | RulesetRuleUnexpected { rule: String }
   | RulesetBypassActorUnexpected { actor: String }
-  | RulesetBypassRosterUnobserved { reader: String }
   | MergeQueueUndeclared { grouping_strategy: String, merge_method: String }
   | MergeQueueRuleAbsent
   | MergeQueueRuleAmbiguous { count: Int }
@@ -524,9 +532,10 @@ fn rule_presence_divergences(observed: List<RulesetRuleType>) -> List<RulesetDiv
 
 // THE UNEXPECTED DIRECTION, WHICH WAS MISSING AND IS NOT COSMETIC. The fold above answers "is
 // every rule we declared present". Nothing answered "is every rule present one we declared", and
-// the PUT is a WHOLE-RULESET REPLACE: a rule that exists live and is absent from
-// desired_ruleset_rules is DELETED by the next converge run, with no divergence reported before or
-// after, because the read-back compares against the same desired that dropped it. That is the
+// a WHOLE-RULESET REPLACE is what such a projection is for: under any writer consuming it, a rule
+// that exists live and is absent from desired_ruleset_rules is DELETED, with no divergence
+// reported before or after, because the read-back compares against the same desired that dropped
+// it. That is the
 // read-modify-write hazard the module annotation says a desired-state authority exists to remove,
 // left open in the one direction nobody had a live example of -- until the merge queue became a
 // rule this repository might carry.
@@ -547,14 +556,18 @@ fn rule_unexpected_divergences(observed: List<RulesetRuleType>) -> List<RulesetD
 // there. The rule side has both halves (`RulesetRuleUnexpected` reported, actuation refused) and
 // this is that pair completed for actors.
 //
-// AN UNOBSERVED ROSTER IS ITS OWN DIVERGENCE RATHER THAN SILENCE, because "we could not see whether
-// a bypass exists" and "no bypass exists" are the distinction this module's reader-versus-roster
-// split was built to keep, and verify reporting nothing would collapse them at exactly the moment a
-// reader wants to know.
+// AN UNOBSERVED ROSTER IS NOT SILENT AND IS NOT A DIVERGENCE EITHER, and the second half of that
+// sentence is what changed when this module moved onto std.goal_assessment. "We could not see
+// whether a bypass exists" and "no bypass exists" are the distinction this module's
+// reader-versus-roster split was built to keep -- but the earlier repair kept it by adding a
+// RulesetBypassRosterUnobserved arm to the DIVERGENCE coproduct, which kept the fact visible by
+// misfiling it: an unread fact reported as a proved mismatch. It is now an unknown
+// (`ruleset_unknowns`), it reaches GoalIndeterminate rather than GoalDiverged, and the arm it used
+// to occupy no longer exists, so the misfiling has no spelling. This function answers only the
+// half it can prove.
 fn bypass_actor_unexpected_divergences(roster: BypassActorRosterObservation) -> List<RulesetDivergence> {
   match roster {
-    BypassRosterUnavailable { reader: r, cause: _ } =>
-      [RulesetBypassRosterUnobserved { reader: r as String }]
+    BypassRosterUnavailable { reader: _, cause: _ } => []
     BypassRosterObserved { actors: as_ } =>
       map(as_, a => RulesetBypassActorUnexpected {
         actor: concat(concat(concat(a.actor_type, "/"), to_string(a.actor_id)), concat(" mode=", a.bypass_mode)),
@@ -562,20 +575,24 @@ fn bypass_actor_unexpected_divergences(roster: BypassActorRosterObservation) -> 
   }
 }
 
-// A LIVE RULE THIS PROJECTION CANNOT EXPRESS IS AN ACTUATION REFUSAL, NOT A DIVERGENCE TO REPAIR.
-// A divergence means "the world is not what we declared, apply desired". For an unexpected rule
-// that reading is exactly backwards: applying desired is what DESTROYS it. So converge stops the
-// line here rather than repairing anything -- the DESIGN section 5 factory model, where a deficit
-// halts the run and analysis precedes restart. `verify` still reports it as a divergence, because
-// reporting is what verify is for.
-// A SIGNED DESIRE THIS PROJECTION CANNOT BUILD IS ALSO AN ACTUATION REFUSAL, and it is here rather
+// A LIVE RULE THIS PROJECTION CANNOT EXPRESS IS REPORTED, AND A WRITER WOULD HAVE TO REFUSE IT.
+// A divergence ordinarily means "the world is not what we declared, apply desired". For an
+// unexpected rule that reading is exactly backwards: applying desired is what DESTROYS it. This
+// module reports the rule and names it, which is all an inspect-only binding can do and is what
+// this branch preserved when it deleted the holds. The refusal that used to sit beside the report
+// is gone with the writer that needed it, so the obligation is now on whatever writer is bound
+// next: it may not consume this projection without stopping the line on an unexpected rule --
+// DESIGN section 5's factory model, where a deficit halts the run and analysis precedes restart.
+// A SIGNED DESIRE THIS PROJECTION CANNOT BUILD CARRIES THE SAME OBLIGATION, and it is here rather
 // than in a follow-up note because the trap is otherwise latent. desired_ruleset_rules returns the
 // three declared rules and appends NO merge_queue rule under either arm -- wiring that projection
-// is the increment after sign-off, because the queue rule must send its own parameter keys without
-// the required_status_checks keys beside it. So the day the arm flips to MergeQueueSignedOff and
-// nothing else changes, converge would PUT a ruleset with no queue in it while verify reported a
-// MergeQueueRuleAbsent divergence no apply could ever clear: a signed policy silently not in
-// force, which is the worst of the available states.
+// is the increment after sign-off, because the queue rule must carry its own parameter keys
+// without the required_status_checks keys beside it. So on the day the arm flips to
+// MergeQueueSignedOff with nothing else changed, the projection would carry no queue while the
+// assessment reported a MergeQueueRuleAbsent divergence -- and once a writer exists, one no apply
+// could ever clear: a signed policy silently not in force, which is the worst of the available
+// states. That is why the gap is an unknown on this dimension today rather than a wait for a
+// writer to expose it.
 //
 // Refusing instead makes the flip fail LOUDLY the moment it happens, naming what is missing --
 // which turns "do not forget the follow-up" from a comment somebody must read into a line-stop the
@@ -590,7 +607,7 @@ fn bypass_actor_unexpected_divergences(roster: BypassActorRosterObservation) -> 
 // THE WALL READS THE PROJECTED RULES THEMSELVES, NOT A ROSTER THAT TRACKS THEM.
 //
 // Its first form asked whether `desired_ruleset_rule_types()` contained a merge_queue entry. That
-// question was answerable without ever touching what converge would send: the roster was a second
+// question was answerable without ever touching what the projection carries: the roster was a second
 // hand-maintained list, so the check passed or failed on the agreement between two authorities
 // rather than on the projection. Even with the roster now derived, a rule TYPE says nothing about
 // the seven parameters that decide what the queue actually does -- a merge_queue rule projected
@@ -719,7 +736,7 @@ fn signed_desire_projection_refusal_for(
         none
       } else {
         Present { value: concat(
-          "the merge queue is signed off but the desired projection does not carry the signed policy, so converge would send a ruleset that cannot converge. Refusing rather than actuating. ",
+          "the merge queue is signed off but the desired projection does not carry the signed policy, so the goal states this dimension two ways and which one is the desire is undetermined. ",
           join(map(drift, d => render_signed_projection_refusal(r: d)), "; "),
         ) as NonEmptyStr }
       }
@@ -727,94 +744,28 @@ fn signed_desire_projection_refusal_for(
   }
 }
 
-fn signed_desire_projection_refusal() -> NonEmptyStr? {
-  signed_desire_projection_refusal_for(policy: desired_merge_queue_policy(), rules: desired_ruleset_rules())
-}
-
-// A BYPASS ACTOR THE PROJECTION DOES NOT CARRY IS THE SAME DESTRUCTIVE WRITE AS AN UNEXPECTED RULE,
-// AND IT WAS OPEN WHILE THE RULE HALF WAS CLOSED.
+// THE DELETE HAZARD, KEPT AS THE STANDING IT IS RATHER THAN AS TWO FUNCTIONS NOTHING CALLS.
 //
-// `desired_ruleset_rules` projects no bypass_actors at all, and converge sends the WHOLE ruleset.
-// So an apply against a live ruleset carrying an actor grant DELETES that grant, and nothing in the
-// divergence fold reports it -- the fold compares rules and required contexts, and a bypass actor
-// is neither. That is a silent destructive write on a live repository setting, which is precisely
-// the class `rule_unexpected_divergences` closes one field over. The two halves were written days
-// apart and only one of them was closed; the asymmetry is the defect, not the actor.
+// Two helpers stood here -- bypass_roster_projection_refusal and merge_queue_projection_refusal --
+// each answering "may converge actuate at all" with one refusal. Both already recorded, in their
+// own annotations, that no production path called them: their consumer was the whole-ruleset
+// actuate root, and world convergence had already replaced it. They were kept alive by the claims
+// that read them, which is the unconsumed-declaration state DESIGN section 3c reds, and this
+// migration deletes the last thing that could be mistaken for their consumer.
 //
-// IT REFUSES RATHER THAN REPAIRING, for the reason the rule half does: "the world is not what we
-// declared, apply desired" is exactly backwards when applying desired is what destroys the thing.
+// THE FACT THEY CARRIED IS NOT DELETED WITH THEM, because it is the reason this binding is
+// inspect-only. `desired_ruleset_rules` projects no bypass_actors and no undeclared rules, and a
+// whole-ruleset PUT sends the projection: applying desired against a live ruleset carrying either
+// would DELETE it. An unreadable roster is the same hazard with the count unknown -- GitHub omits
+// bypass_actors both when the roster is empty and when the credential may not see it, and this
+// repository's credential is the second case, so every live read returns BypassRosterUnavailable.
+// Treating unavailable as empty would let an empty observation decide a destructive write.
 //
-// AND AN UNREADABLE ROSTER REFUSES TOO, which is the arm that matters most. `BypassRosterUnavailable`
-// means GitHub omitted the key -- indistinguishably because the roster is EMPTY or because this
-// credential may not see it -- so an apply would either delete nothing or delete an unknown number
-// of grants, and the observation cannot say which. Treating unavailable as empty here would be the
-// empty-observation narrow deciding a destructive write, so it is refused instead.
-//
-// THE OPERATIONAL CONSEQUENCE, WHICH IS NOT THE MECHANISM ABOVE: every live read taken from this
-// repository so far has returned `BypassRosterUnavailable`, because GitHub omits `bypass_actors`
-// both when the roster is empty AND when the reading credential may not see it, and the credential
-// available here is the second case. So this is not a rare arm guarding an unlikely world -- it is
-// the arm that fires EVERY TIME, and converge is therefore UNCONDITIONALLY HELD today, before any
-// question about the merge_queue rule is even reached. A reader who takes this for a defensive
-// branch will read a held converge as a transient and retry it; retrying changes nothing, because
-// the observation is a property of the credential and not of the moment. THE REMEDY IS AN
-// AUTHORIZED BYPASS-ROSTER READ -- a credential whose ruleset GET returns `bypass_actors` -- and
-// nothing else discharges it: not a retry, not a wait, and not signing the row below.
-fn bypass_roster_projection_refusal(roster: BypassActorRosterObservation) -> NonEmptyStr? {
-  match roster {
-    BypassRosterUnavailable { reader: r, cause: _ } =>
-      Present { value: concat(concat(
-        "the bypass-actor roster could not be observed by this reader (",
-        r as String),
-        "), and converge sends the WHOLE ruleset: applying desired would delete every bypass actor the ruleset carries, and this observation cannot say whether that is none or several. Refusing rather than writing blind.") as NonEmptyStr }
-    BypassRosterObserved { actors: as_ } =>
-      if length(as_) == 0 {
-        none
-      } else {
-        Present { value: concat(
-          "the live ruleset carries bypass actors this repository's desired projection does not declare, and converge sends the WHOLE ruleset: applying desired would DELETE them with no divergence reporting it. Refusing rather than repairing. ",
-          join(map(as_, a => concat(concat(concat(a.actor_type, "/"), to_string(a.actor_id)), concat(" mode=", a.bypass_mode))), "; "),
-        ) as NonEmptyStr }
-      }
-  }
-}
-
-// STANDING, RECORDED SO THE NEXT READER DOES NOT MISTAKE THIS FOR THE ACTUATION GATE: no production
-// path calls this any more. Its consumer was the whole-ruleset actuate root, which world
-// convergence replaced, and repo_ruleset_actuation_admission deliberately does NOT route through
-// it -- folding two facts into one Present is what inverted two causes, and the admission must name
-// WHICH fact holds actuation rather than only THAT one does.
-//
-// AN EARLIER VERSION OF THIS NOTE CARRIED A TRIGGER THAT HAS SINCE FIRED WITHOUT RETIRING ANYTHING,
-// which is recorded rather than quietly replaced, because a trigger nobody re-reads after the event
-// that fires it is the failure this repository keeps paying for -- usually as a trigger naming less
-// than the capability it governs and being satisfied while that capability stays dead, and here as
-// its mirror. It read: dissolve-on the admission constructing its own located causes, at which
-// point this prose either has a consumer again or has nothing left to say. The admission now does
-// construct its own located causes, and NEITHER arm is what happened. The helper did not get a
-// consumer back, by design. But it does not have nothing left to say either: it answers a coarser
-// question -- may converge actuate AT ALL -- for which one refusal genuinely suffices, and it says
-// so in prose no cause carries, that applying desired would DELETE what the projection omits.
-//
-// SO THE HONEST STANDING IS THE THIRD ONE: a correct answer to a question no production path
-// currently asks, kept alive by the two claims that execute over it and by nothing else. That is
-// admissible only while it cannot be mistaken for the gate, which is what this note is for.
-// dissolve-on, named as a capability rather than an event this time: an executing claim asserting
-// the DELETE-hazard prose through repo_ruleset_actuation_admission's own located causes. At that
-// point the last thing this helper says uniquely is said on the production path, and the helper
-// goes with the two claims that read it. Nothing smaller retires it -- in particular, the admission
-// merely HAVING located causes does not, which is exactly the mistake the fired trigger made.
-fn merge_queue_projection_refusal(rule_types: List<RulesetRuleType>) -> NonEmptyStr? {
-  let unexpected = rule_unexpected_divergences(observed: rule_types)
-  if length(unexpected) == 0 {
-    signed_desire_projection_refusal()
-  } else {
-    Present { value: concat(
-      "the live ruleset carries rules this repository's desired projection does not declare, and converge sends the WHOLE ruleset: applying desired would delete them. Refusing rather than repairing. ",
-      render_divergences(ds: unexpected),
-    ) as NonEmptyStr }
-  }
-}
+// SO THE HAZARD IS AN OBLIGATION ON THE WRITER THAT DOES NOT EXIST YET, not a refusal a reader
+// owes. It is stated in the inspect-only standing below, and it is what the deferred effectful
+// binding must discharge -- a write that preserves the roster AND a read-back proving it survived.
+// A reader cannot destroy anything, so a reader refusing on this hazard was refusing on behalf of
+// a caller that was never coming.
 
 fn ref_name_divergences(include: List<String>, exclude: List<String>) -> List<RulesetDivergence> {
   let want = [default_branch_ref_alias]
@@ -1031,8 +982,6 @@ fn render_divergence(d: RulesetDivergence) -> String {
       concat("do_not_enforce_on_create is ", to_string(o))
     RulesetRuleUnexpected { rule: r } => concat("undeclared rule present: ", r)
     RulesetBypassActorUnexpected { actor: a } => concat("undeclared bypass actor present: ", a)
-    RulesetBypassRosterUnobserved { reader: r } =>
-      concat("the bypass-actor roster was not observed by this reader, so whether the ruleset grants a bypass is UNKNOWN rather than none: ", r)
     MergeQueueUndeclared { grouping_strategy: g, merge_method: m } =>
       join(["a merge queue is configured that no signed desire declares: grouping ", g, ", merge method ", m], "")
     MergeQueueRuleAbsent => "merge_queue rule absent while the merge queue is signed off"
@@ -1144,131 +1093,72 @@ type RepositoryRulesetConvergenceSubject {
   ruleset_id: Int
 }
 
-// FIVE HELD STANDINGS, NOT ONE HELD FLAG, AND THE SPLIT IS A CORRECTNESS FIX RATHER THAN DETAIL.
-// An earlier shape folded the bypass halves into one cause and mapped the signed-projection half
-// onto an unsigned-desire cause, which INVERTED both: it reported that a live bypass actor EXISTS
-// where the truth is that this reader CANNOT SEE whether any do -- top-as-answer standing in for
-// top-as-ignorance, the conflation DESIGN section 5 names -- and it told an operator to sign a
-// desire that is already signed and merely unprojectable. A refusal that misnames its own cause
-// sends the reader to fix the wrong thing, which is worse than a refusal that says less.
-type RepositoryRulesetConvergenceRefusal
-  = RepositoryRulesetObservationRefused { cause: RulesetReadRefusal }
-  | RepositoryRulesetActuationRealizationUnbound { ruleset_id: Int }
-  | RepositoryRulesetUnexpectedLiveRule { ruleset_id: Int, detail: NonEmptyStr }
-  | RepositoryRulesetBypassRosterUnobservable { ruleset_id: Int, reader: NonEmptyStr, detail: NonEmptyStr }
-  | RepositoryRulesetObservedLiveBypassActors { ruleset_id: Int, detail: NonEmptyStr }
-  | RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: Int, detail: NonEmptyStr }
-  | RepositoryRulesetDriftUnrepaired { ruleset_id: Int, drift: NonEmptyStr }
+// WHAT REPLACED THE FIVE HELD STANDINGS, AND WHY THE REPLACEMENT IS SMALLER RATHER THAN RICHER.
+//
+// This module used to answer through gunbc.world_converge, whose handler had an `apply` stage. It
+// had no writer and never will have one at this rung, so the binding supplied an actuator whose
+// every arm was a refusal, and the refusal vocabulary grew to carry the reasons that actuator
+// declined: an unbound realization, a live rule a PUT would delete, a bypass roster a PUT would
+// overwrite. Those are facts about a WRITE THAT DOES NOT EXIST. Modelling read-only policy as an
+// actuator that always refuses is the parallel-authority tell DESIGN section 6 names, and it cost
+// a real distinction: because the hold arms were ordered above the drift, an unreadable bypass
+// roster SUPPRESSED the drift list, so an operator was told the roster could not be read and never
+// told the enforcement had also changed.
+//
+// The replacement asks the only question a reader can answer -- does the live ruleset satisfy the
+// declared goal -- through std.goal_assessment `inspect_goal`, and the five held standings
+// redistribute onto the three facts they always were:
+//
+//   the read failed entirely            -> the observation layer (RulesetReadRefusal)
+//   the desire disagrees with itself    -> RulesetUnknown on THAT dimension only: the goal states
+//                                          the merge queue twice and the two disagree, so which one
+//                                          is the desire is undetermined -- and every OTHER
+//                                          dimension is still compared
+//   the roster could not be read        -> RulesetUnknown: reached, unread, and now carried
+//                                          ALONGSIDE the proved drift instead of hiding it
+//   the live state differs              -> deviations, each already located by render_divergence
+//
+// TWO CAUSES ARE DELETED RATHER THAN MOVED, which is the point of a replacement migration.
+// RepositoryRulesetActuationRealizationUnbound said "no admitted writer exists" -- true, and no
+// longer a refusal about the world, because nothing here claims to write.
+// RepositoryRulesetUnexpectedLiveRule said a live rule this projection cannot express blocks the
+// write; with no write, an undeclared live rule is exactly a deviation, and it was already
+// reported as one (`RulesetRuleUnexpected`) -- so the actuation cause was a SECOND representation
+// of a divergence the list already carried.
+//
+// WHAT IS PRESERVED, stated because a replacement that drops a refusal has erased a correctness
+// distinction rather than completed a migration (DESIGN section 3). Every state that made `verify`
+// exit non-zero still does: unreadable read, proved drift, an undeclared bypass actor, an
+// undeclared live rule, an unreadable roster, an unprojectable signed policy. What changed is that
+// the drift list is no longer discarded when one of the holds fires.
+//
+// THE #10204 STANDING IS UNCHANGED AND STILL NAMES A CAPABILITY. This binding is inspect-only, and
+// it becomes an effectful one -- std.goal_assessment's deferred `reconcile_once`, with a planner,
+// an admission boundary and an independent post-apply read-back -- when an actuation realization
+// can write the desired ruleset WITHOUT destroying the live bypass-actor roster AND read back that
+// the roster survived. A write that preserves the roster but cannot read back afterwards leaves
+// the hazard unobserved and does not retire it. The trigger is that capability, not the merge of
+// any particular change.
 
-type RepositoryRulesetActuationAdmission
-  = RepositoryRulesetActuationAdmitted
-  | RepositoryRulesetActuationRefused { cause: RepositoryRulesetConvergenceRefusal }
+// THE ONE UNKNOWN THIS ASSESSMENT CAN REACH. It is a property of the CREDENTIAL rather than of the
+// moment -- under the token this repository holds, a live ruleset GET omits bypass_actors on every
+// read, and GitHub omits that field both when the roster is empty and when the reader may not see
+// it -- so a retry cannot discharge it and it must never be read as "no actors".
+type RulesetUnknown
+  = RulesetBypassRosterUnobservable { reader: NonEmptyStr, detail: NonEmptyStr }
+  | RulesetMergeQueueDesireSelfInconsistent { detail: NonEmptyStr }
 
-// THE ORDERED CAUSE MAPPING FOR AN OBSERVED RULESET, SPLIT OUT SO THAT EVERY ARM IS REACHABLE BY AN
-// EXECUTING CLAIM. This is not a second authority and not a test double: it is the mapping, and
-// `repo_ruleset_actuation_admission` above has no copy of it -- that function now only decides
-// readable-versus-unreadable and hands the observed case here. A fixture-only reimplementation
-// would have proved a duplicate rather than this.
-//
-// WHY THE SIGNED REFUSAL ARRIVES AS A PARAMETER AND THE REST DO NOT. The other three arms are
-// decided by values a caller already supplies through the observation, so a claim can reach them by
-// varying the observation. The signed-policy arm is not: `signed_desire_projection_refusal` is
-// nullary and folds two module-scope globals, so while this repository's merge queue is unsigned
-// that arm is unreachable through ANY observation and no claim could discriminate it.
-//
-// AN UNREACHABLE ARM IS EXACTLY THE ARM THAT NEEDS ONE. This branch was WRONG while it was
-// unreachable -- it reported a signed-but-unprojectable policy as "not signed", sending an operator
-// to sign what was already signed -- and it was unreachability that let the inversion sit. "The
-// source reads correctly today" is not a wall against the same inversion returning at the first
-// sign-off, which is the moment the arm goes live and the moment it is first read.
-//
-// The parameter is therefore the seam that makes the arm testable WITHOUT relocating the policy:
-// production passes `signed_desire_projection_refusal()` and nothing about which policy is signed
-// moves out of this module.
-fn repo_ruleset_observed_actuation_admission(
-  ruleset_id: Int,
-  bypass_roster: BypassActorRosterObservation,
-  rule_types: List<RulesetRuleType>,
-  signed_projection_refusal: NonEmptyStr?,
-) -> RepositoryRulesetActuationAdmission {
-  match bypass_roster {
-    BypassRosterUnavailable { reader: r, cause: rc } => RepositoryRulesetActuationRefused {
-      cause: RepositoryRulesetBypassRosterUnobservable {
-        ruleset_id: ruleset_id,
-        reader: r,
-        detail: rc,
-      },
-    }
-    BypassRosterObserved { actors: actors } =>
-      if length(actors) > 0 {
-        RepositoryRulesetActuationRefused {
-          cause: RepositoryRulesetObservedLiveBypassActors {
-            ruleset_id: ruleset_id,
-            detail: join(map(actors, a => concat(
-              concat(concat(a.actor_type, "/"), to_string(a.actor_id)),
-              concat(" mode=", a.bypass_mode),
-            )), "; ") as NonEmptyStr,
-          },
-        }
-      } else {
-        let unexpected = rule_unexpected_divergences(observed: rule_types)
-        if length(unexpected) > 0 {
-          RepositoryRulesetActuationRefused {
-            cause: RepositoryRulesetUnexpectedLiveRule {
-              ruleset_id: ruleset_id,
-              detail: render_divergences(ds: unexpected) as NonEmptyStr,
-            },
-          }
-        } else {
-          match signed_projection_refusal {
-            Present { value: detail } => RepositoryRulesetActuationRefused {
-              cause: RepositoryRulesetSignedPolicyProjectionUnrepresentable {
-                ruleset_id: ruleset_id,
-                detail: detail,
-              },
-            }
-            Absent => RepositoryRulesetActuationRefused {
-              cause: RepositoryRulesetActuationRealizationUnbound { ruleset_id: ruleset_id },
-            }
-          }
-        }
-      }
+fn ruleset_unknowns(roster: BypassActorRosterObservation) -> List<RulesetUnknown> {
+  match roster {
+    BypassRosterUnavailable { reader: r, cause: c } =>
+      [RulesetBypassRosterUnobservable { reader: r, detail: c }]
+    BypassRosterObserved { actors: _ } => []
   }
 }
 
-// This is the permanent gate in front of the bare whole-ruleset PUT, not a handler binding that a
-// later change swaps out. It decides ONE question -- may this tree actuate -- and it answers with
-// the fact that holds it, because for a refusal the cause IS the answer: an operator reads it to
-// learn what to go and change, and every one of these five states has a different remedy.
-//
-// IT READS THE OBSERVED VALUES DIRECTLY RATHER THAN THROUGH THE COMBINED HELPERS, and that is the
-// correctness point rather than a stylistic one. bypass_roster_projection_refusal answers Present
-// for BOTH an unreadable roster and an observed non-empty one, and merge_queue_projection_refusal
-// answers Present for BOTH an unexpected live rule and a signed policy the projection cannot carry.
-// Each helper is right for the question IT asks -- may converge actuate at all -- where one refusal
-// suffices. Routing a CAUSE through them inverts two facts. It reports that a live bypass actor
-// EXISTS when the truth is that this reader CANNOT SEE whether any do, which is top-as-answer
-// standing in for top-as-ignorance and is asserted rather than merely widened; and it tells an
-// operator that a desire is UNSIGNED when the refusal exists precisely BECAUSE it is signed and
-// unprojectable, sending them to sign something already signed.
-//
-// THE UNOBSERVABLE ARM IS THE ONE THAT MATTERS TODAY, not a latent case: under the credential this
-// repository has, a live ruleset GET omits bypass_actors on every read, and GitHub omits that field
-// both when the roster is empty and when the reader may not see it. So the live path is exactly the
-// one the inverted cause was lying about. It carries the reader identity, because the refusal is a
-// property of the credential rather than of the moment, and a retry cannot discharge it.
-//
-// The terminal arm is RepositoryRulesetActuationRealizationUnbound: with nothing held, this tree
-// still carries no admitted write realization, and admission may never silently become a write.
-// #10204 owns the read-back transaction after operator sign-off.
-fn repo_ruleset_actuation_admission(
-  subject: RepositoryRulesetConvergenceSubject,
-  observed: RulesetObservation,
-) -> RepositoryRulesetActuationAdmission {
-  match observed {
-    RulesetUnreadable { cause: c } => RepositoryRulesetActuationRefused {
-      cause: RepositoryRulesetObservationRefused { cause: c },
-    }
+fn observation_unknowns(observation: RulesetObservation) -> List<RulesetUnknown> {
+  match observation {
+    RulesetUnreadable { cause: _ } => []
     RulesetObserved {
       name: _,
       enforcement: _,
@@ -1276,26 +1166,95 @@ fn repo_ruleset_actuation_admission(
       bypass: _,
       include: _,
       exclude: _,
-      rule_types: rt,
+      rule_types: _,
       standing: _,
       merge_queue: _,
       bypass_roster: br,
-    } => repo_ruleset_observed_actuation_admission(
-      ruleset_id: subject.ruleset_id,
-      bypass_roster: br,
-      rule_types: rt,
-      signed_projection_refusal: signed_desire_projection_refusal(),
-    )
+    } => ruleset_unknowns(roster: br)
   }
 }
 
-fn world_repo_ruleset_observation(
+// THE ASSESSOR, AND THE ONLY PLACE THE GOAL IS READ.
+//
+// IT HAS NO SHORT-CIRCUIT, AND THAT IS THE SECOND HALF OF THIS MIGRATION RATHER THAN A DETAIL.
+// An earlier revision answered `signed_desire_projection_refusal` FIRST and returned a whole-
+// assessment refusal, so a defect in ONE dimension of the desire suppressed the comparison of
+// every other -- a live enforcement, target, name or required-context drift went unreported
+// because of a merge-queue projection gap that has nothing to do with any of them. That is the
+// exact ordering harm this branch deleted the actuation holds to fix, reproduced one layer down
+// on the arm that was left, and it is the class rostered as
+// gunbc.recurring_failure_mode.read_only_policy_bound_as_an_actuator_that_only_refuses. The helper
+// it called still carried actuation prose -- "Refusing rather than actuating" -- which is what it
+// was written for; that sentence is gone with the actuation. Review 62287 found it.
+//
+// SO THE PROJECTION GAP IS AN UNKNOWN ON ONE DIMENSION, and it is genuinely unknown rather than
+// merely awkward: the goal states the merge-queue desire TWICE -- once as the signed policy, once
+// as the rules wire the projection carries -- and when those two disagree, WHICH ONE IS THE GOAL is
+// undetermined. `merge_queue_divergences` can still compare the live queue against the signed
+// policy, so the dimension is not unassessable for want of a comparison; it is unassessable for
+// want of an unambiguous goal. Every other dimension is unaffected and is still compared.
+//
+// THERE IS THEREFORE NO WHOLE-ASSESSMENT REFUSAL LEFT FOR THIS SUBJECT, and the type says so:
+// AssessRefusal is v2.std.cardinality Never, which has no constructor. That is not a placeholder --
+// it is the claim, checked, that no state of this subject leaves its inputs incomparable. The arm
+// stays in `verify`'s match because the coproduct is closed, and it is unreachable by
+// construction rather than by convention.
+//
+// Deviations and unknowns go to the mint together and the mint decides the arm: unknowns outrank
+// deviations, and the deviations survive into GoalIndeterminate rather than being dropped.
+fn ruleset_assess(
   observed: RulesetObservation,
-) -> WorldObservation<RulesetObservation, RepositoryRulesetConvergenceRefusal> {
+) -> GoalAssessment<RepoRulesetConvergedEvidence, RulesetDivergence, RulesetUnknown, Never> {
+  assess_by_deviations_and_unknowns(
+    evidence: converged_evidence_of(writes: 0, removals: 0, observation: observed),
+    deviations: observation_divergences(observation: observed),
+    unknowns: append(
+      observation_unknowns(observation: observed),
+      items: merge_queue_desire_unknowns(
+        policy: desired_merge_queue_policy(),
+        rules: desired_ruleset_rules(),
+      ),
+    ),
+  )
+}
+
+// The goal's own self-consistency on the merge-queue dimension, read from the two places the desire
+// states it. This is a fact about the DESIRE and not about the live ruleset, which is why it does
+// not come from the observation.
+//
+// IT TAKES THE POLICY AND THE RULES AS OPERANDS RATHER THAN READING THE DECLARED ROWS ITSELF, and
+// that is the difference between a check and a decoration. This repository's merge queue is
+// unsigned today, so a nullary fold answers Absent on every input the corpus can produce: the
+// Present arm, and the renderer it feeds, would be unreachable and permanently green. DESIGN
+// section 4b asks whether the forbidden state is authorable AS A FIXTURE, and it is -- so the seam
+// is a parameter and the RED lives in
+// test.claim.repo_ruleset_goal_assessment_witness. The deleted actuation admission carried this
+// same seam for this same reason, and losing it would have erased a required refusal rather than
+// replaced it. Review 62379 found it.
+fn merge_queue_desire_unknowns(
+  policy: MergeQueuePolicy?,
+  rules: List<RulesetRuleWire>,
+) -> List<RulesetUnknown> {
+  match signed_desire_projection_refusal_for(policy: policy, rules: rules) {
+    Absent => []
+    Present { value: detail } =>
+      [RulesetMergeQueueDesireSelfInconsistent { detail: detail }]
+  }
+}
+
+// THE OBSERVER, WHICH DOES NOT RECEIVE THE GOAL. It takes the subject and reads; nothing about the
+// desired ruleset reaches it, so it cannot narrow what it looks at to what the desire mentions.
+fn observe_repo_ruleset_attempt(
+  subject: RepositoryRulesetConvergenceSubject,
+  _: Bool,
+) -> ObservationAttempt<RulesetObservation, RulesetReadRefusal> {
+  let observed = observe_repo_ruleset(
+    owner: subject.repository.owner,
+    repo: subject.repository.name,
+    ruleset_id: subject.ruleset_id,
+  )
   match observed {
-    RulesetUnreadable { cause: cause } => WorldUnobservable {
-      cause: RepositoryRulesetObservationRefused { cause: cause },
-    }
+    RulesetUnreadable { cause: cause } => ObservationRefused { cause: cause }
     RulesetObserved {
       name: _,
       enforcement: _,
@@ -1307,159 +1266,81 @@ fn world_repo_ruleset_observation(
       standing: _,
       merge_queue: _,
       bypass_roster: _,
-    } => WorldObserved { value: observed }
+    } => ObservationEstablished { observed: observed }
   }
 }
 
-fn world_observe_repo_ruleset(
-  subject: RepositoryRulesetConvergenceSubject,
-  _: Bool,
-) -> WorldObservation<RulesetObservation, RepositoryRulesetConvergenceRefusal> {
-  let observed = observe_repo_ruleset(
-    owner: subject.repository.owner,
-    repo: subject.repository.name,
-    ruleset_id: subject.ruleset_id,
-  )
-  world_repo_ruleset_observation(observed: observed)
-}
-
-fn world_repo_ruleset_differences(
-  _: RepositoryRulesetConvergenceSubject,
-  _: Bool,
-  observed: RulesetObservation,
-) -> WorldDifference<RulesetDivergence> {
-  let divergences = observation_divergences(observation: observed)
-  if length(divergences) == 0 {
-    WorldInAgreement
-  } else {
-    WorldDiverged { differences: divergences }
+fn render_unknown(u: RulesetUnknown) -> String {
+  match u {
+    RulesetBypassRosterUnobservable { reader: r, detail: d } =>
+      join(
+        [
+          "this reader (",
+          r as String,
+          ") CANNOT SEE whether the ruleset grants any bypass actor -- not an observation that none exists -- ",
+          d as String,
+        ],
+        "",
+      )
+    RulesetMergeQueueDesireSelfInconsistent { detail: d } =>
+      concat(
+        "the merge queue IS signed off and the desired projection does not carry the signed policy, so the goal states this dimension two ways and WHICH ONE IS THE DESIRE is undetermined -- signing again fixes nothing -- ",
+        d as String,
+      )
   }
 }
 
-// An admitted subject still refuses here, and the cause it refuses with must name the state the
-// admission ESTABLISHED rather than one it ruled out. Admission is reached only once the bypass
-// roster projects, no live rule is unexpected, and no signed policy is left unrepresented -- so a
-// cause asserting any of those would assert the negation of what was just decided. No such cause
-// remains constructible: the five located causes carry no unsigned-desire standing at all, which
-// is the earlier inversion having been fixed in the type rather than in the arm. The honest cause
-// is RepositoryRulesetDriftUnrepaired, AND IT CARRIES THE DRIFT RATHER THAN NAMING ONLY THE MISSING
-// WRITER. This function is reached only when the difference step already found divergences -- the
-// fold routes agreement to the unchanged receipt and never calls apply -- so EVERY refusal returned
-// here is returned in the presence of a computed, discarded-if-unused divergence list. An earlier
-// revision took `_: List<RulesetDivergence>` and answered
-// RepositoryRulesetActuationRealizationUnbound, which reported a name, enforcement, target or
-// required-context drift as "no admitted actuation realization": the failure status survived and the
-// LOCATED CAUSE did not, which is §5's typed-and-located diagnostic losing its located half, and §3's
-// replacement erasing a distinction the thing it replaced preserved -- the former verifier rendered
-// the concrete divergences. Review 60298 caught it. #10204 owns the read-back transaction after
-// operator sign-off; admission still cannot silently become a write, and this arm still refuses.
+fn render_unknowns(us: List<RulesetUnknown>) -> String {
+  join(map(us, u => render_unknown(u: u)), "; ")
+}
+
+// The repository binding. There is no mutating entry point beside it, and -- unlike the shape it
+// replaces -- there is no stage that could become one by having its refusal edited: this closure
+// carries an observer and an assessor and nothing else.
 //
-// THE HOLD ARMS DELIBERATELY STILL WIN OVER THE DRIFT, and that is not the same concealment. A hold
-// means the admission question could not be answered safely at all -- an unobservable bypass roster,
-// an unexpected live rule, a signed policy this projection cannot carry. Those are typed and located
-// about their own subject, and reporting drift instead of them would answer a question nobody asked
-// while suppressing a safety refusal. What §5 forbids is losing the located cause, not ordering two
-// located causes.
-// THE NAMED KERNEL, SPLIT OUT SO A CLAIM CAN REACH IT. The handler adapter below takes the context
-// positionally as `_: Bool`, which no witness can supply by name, so the decision would otherwise be
-// reachable only through a live read. This is the same split `world_repo_ruleset_observation`
-// already carries behind `world_observe_repo_ruleset`, and it exists for the same reason: a
-// diagnostic with no way to be asserted is a diagnostic nobody can hold to its claim.
-// NOTHING IS HELD AND THE ONLY OBJECTION IS THE MISSING WRITER. Enumerated rather than written as a
-// wildcard so that a seventh cause cannot silently join the drift-reporting branch: a new hold added
-// later must be classified here by hand, which is the fail-closed direction.
-fn repo_ruleset_hold_is_only_the_unbound_writer(
-  cause: RepositoryRulesetConvergenceRefusal,
-) -> Bool {
-  match cause {
-    RepositoryRulesetActuationRealizationUnbound { ruleset_id: _ } => true
-    RepositoryRulesetObservationRefused { cause: _ } => false
-    RepositoryRulesetUnexpectedLiveRule { ruleset_id: _, detail: _ } => false
-    RepositoryRulesetBypassRosterUnobservable { ruleset_id: _, reader: _, detail: _ } => false
-    RepositoryRulesetObservedLiveBypassActors { ruleset_id: _, detail: _ } => false
-    RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: _, detail: _ } => false
-    RepositoryRulesetDriftUnrepaired { ruleset_id: _, drift: _ } => false
-  }
-}
-
-fn repo_ruleset_drift_actuation(
-  subject: RepositoryRulesetConvergenceSubject,
-  observed: RulesetObservation,
-  differences: List<RulesetDivergence>,
-) -> WorldActuation<RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal> {
-  let drift_refusal = WorldActuationRefused {
-    cause: RepositoryRulesetDriftUnrepaired {
-      ruleset_id: subject.ruleset_id,
-      drift: render_divergences(ds: differences) as NonEmptyStr,
-    },
-  }
-  match repo_ruleset_actuation_admission(subject: subject, observed: observed) {
-    RepositoryRulesetActuationAdmitted => drift_refusal
-    RepositoryRulesetActuationRefused { cause: cause } =>
-      if repo_ruleset_hold_is_only_the_unbound_writer(cause: cause) {
-        drift_refusal
-      } else {
-        WorldActuationRefused { cause: cause }
-      }
-  }
-}
-
-fn world_repo_ruleset_apply(
-  subject: RepositoryRulesetConvergenceSubject,
-  _: Bool,
-  observed: RulesetObservation,
-  differences: List<RulesetDivergence>,
-) -> WorldActuation<RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal> {
-  repo_ruleset_drift_actuation(subject: subject, observed: observed, differences: differences)
-}
-
-fn world_repo_ruleset_unchanged_receipt(
-  _: RepositoryRulesetConvergenceSubject,
-  _: Bool,
-  observed: RulesetObservation,
-) -> RepoRulesetConvergedEvidence {
-  converged_evidence_of(writes: 0, removals: 0, observation: observed)
-}
-
-type RepoRulesetWorldConvergenceHandler = WorldConvergenceHandler<RepositoryRulesetConvergenceSubject, Bool, RulesetObservation, RulesetDivergence, RepoRulesetConvergedEvidence, RepositoryRulesetConvergenceRefusal>
-
-data repo_ruleset_world_convergence_handler: RepoRulesetWorldConvergenceHandler = WorldConvergenceHandler {
-  observe: world_observe_repo_ruleset,
-  differences: world_repo_ruleset_differences,
-  apply: world_repo_ruleset_apply,
-  unchanged_receipt: world_repo_ruleset_unchanged_receipt,
-}
-
-// The repository binding is read-only until an actuation realization can write the desired ruleset
-// while preserving every live bypass actor AND read back that it survived -- the capability stated
-// at the module note above, not the merge of the change expected to carry it. Drift reaches one of
-// the located causes of
-// RepositoryRulesetConvergenceRefusal, terminating at RepositoryRulesetDriftUnrepaired -- which
-// RENDERS THE DIVERGENCES -- when no earlier hold fires; there is no mutating entry point beside
-// the world-convergence root.
+// EVERY NON-SATISFIED ARM EXITS FAILURE, and each renders the located facts it holds rather than a
+// summary. The indeterminate arm renders BOTH sides deliberately: the unknown says what could not
+// be read, and the drift beside it is what the previous shape suppressed.
+//
+// THE GoalAssessmentRefused ARM BELOW IS UNREACHABLE BY CONSTRUCTION, not by convention: this
+// assessment instantiates AssessRefusal at v2.std.cardinality Never, which has no constructor
+// anywhere, so no value can arrive there. It is written because the coproduct is CLOSED -- the
+// property that makes a fifth assessment arm a compile error rather than a silent fall-through --
+// and its reason is stated here rather than beside it because DESIGN section 4c models annotations
+// at module-item grain only. An annotation inside a body is a parse refusal, which is how this
+// note came to be here.
 func verify() -> ProcessExit {
-  match world_converge(
+  match inspect_goal(
     subject: RepositoryRulesetConvergenceSubject {
       repository: gunbc_repository,
       ruleset_id: gunbc_passing_ci_ruleset_id,
     },
-    context: false,
-    handler: repo_ruleset_world_convergence_handler,
+    scope: false,
+    observe: observe_repo_ruleset_attempt,
+    assess: ruleset_assess,
   ) {
-    WorldConverged { subject: _, observed: _, receipt: _ } => ExitSuccess
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetObservationRefused { cause: cause } } =>
+    GoalInspected { subject: _, observed: _, assessment: GoalSatisfied { evidence: _ } } => ExitSuccess
+    GoalObservationRefused { subject: _, cause: cause } =>
       exit_failure(reason: concat("repo ruleset verify refused: ", render_read_refusal(cause: cause)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetActuationRealizationUnbound { ruleset_id: id } } =>
-      exit_failure(reason: concat("repo ruleset verify refused: no admitted actuation realization for ruleset ", to_string(id)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetDriftUnrepaired { ruleset_id: id, drift: drift } } =>
-      exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset has drifted from the desired projection, for ruleset ", to_string(id)), concat(" -- ", drift as String)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetUnexpectedLiveRule { ruleset_id: id, detail: detail } } =>
-      exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset carries a rule this projection cannot express, for ruleset ", to_string(id)), concat(" -- ", detail as String)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetBypassRosterUnobservable { ruleset_id: id, reader: reader, detail: detail } } =>
-      exit_failure(reason: concat(concat(concat("repo ruleset verify refused: this reader (", reader as String), concat(") CANNOT SEE whether the ruleset grants any bypass actor, for ruleset ", to_string(id))), concat(" -- not an observation that one exists -- ", detail as String)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetObservedLiveBypassActors { ruleset_id: id, detail: detail } } =>
-      exit_failure(reason: concat(concat("repo ruleset verify refused: the live ruleset grants bypass actors the desired projection does not declare, for ruleset ", to_string(id)), concat(" -- ", detail as String)))
-    WorldNotConverged { subject: _, refusal: RepositoryRulesetSignedPolicyProjectionUnrepresentable { ruleset_id: id, detail: detail } } =>
-      exit_failure(reason: concat(concat("repo ruleset verify refused: the merge queue IS signed off and the desired projection cannot carry the signed policy, for ruleset ", to_string(id)), concat(" -- signing again fixes nothing -- ", detail as String)))
+    GoalInspected { subject: _, observed: _, assessment: GoalDiverged { deviations: ds } } =>
+      exit_failure(reason: concat(
+        "repo ruleset verify refused: the live ruleset has drifted from the desired projection -- ",
+        render_divergences(ds: non_empty_to_list(xs: ds)),
+      ))
+    GoalInspected {
+      subject: _,
+      observed: _,
+      assessment: GoalIndeterminate { known_deviations: ds, unknowns: us },
+    } =>
+      exit_failure(reason: join(
+        [
+          "repo ruleset verify refused: the live ruleset could not be fully assessed -- ",
+          render_unknowns(us: non_empty_to_list(xs: us)),
+          if length(ds) == 0 { "" } else { concat(" -- and it has ALSO drifted: ", render_divergences(ds: ds)) },
+        ],
+        "",
+      ))
+    GoalInspected { subject: _, observed: _, assessment: GoalAssessmentRefused { cause: _ } } =>
+      exit_failure(reason: "repo ruleset verify refused: unreachable assessment refusal")
   }
 }

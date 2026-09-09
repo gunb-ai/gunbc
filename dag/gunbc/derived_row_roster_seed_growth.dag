@@ -22,6 +22,7 @@ data derived_row_roster_seed_growth_justification: SeedGrowthJustification = See
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROSTER_BASENAME", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROW_MODULE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROSTER_MODULE", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ROW_DIR_REL", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "is_recurring_failure_mode_row_dir", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "ensure_if_row_dir", field: WholeDeclaration },
@@ -30,6 +31,7 @@ data derived_row_roster_seed_growth_justification: SeedGrowthJustification = See
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "write_atomically", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "row_stems", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "render_roster", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster.tests", decl_name: "the_roster_module_is_the_row_module_plus_the_roster_stem", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "is_derived_roster_path", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "roster_root_prefix", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.derived_row_roster", decl_name: "roster_from_path_listing", field: WholeDeclaration },

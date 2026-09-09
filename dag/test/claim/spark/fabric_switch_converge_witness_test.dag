@@ -18,10 +18,13 @@ import gunbc.spark.fabric_switch_converge {
   crs812_lane_speed_eq,
   LaneSpeedDisagrees, LaneFecDisagrees,
   LaneShouldCarryLegButIsDisabled, LaneShouldBeOwnedByItsPairButIsEnabled, LaneIsNotInTheIntent,
-  SwitchIntentUndecidedHere, SwitchLaneNeverRead, SwitchHoldsNoLanes, SwitchCannotBeActuatedHere,
-  converge_fabric_switch, fabric_switch_convergence,
+  SwitchIntentUndecidedHere, SwitchLaneNeverRead, SwitchHoldsNoLanes, 
+  inspect_fabric_switch, fabric_switch_convergence,
 }
-import gunbc.world_converge { WorldConverged, WorldNotConverged }
+import std.goal_assessment {
+  GoalInspected, GoalObservationRefused,
+  GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE SWITCH SUBJECT. `cable_plant_converge_witness` holds the CABLES to
@@ -78,11 +81,17 @@ data switch_with_an_unmodelled_lane: Crs812ConvergenceSubject = subject_with(rea
 data switch_with_no_lanes: Crs812ConvergenceSubject = subject_with(readings: [])
 
 // THE POSITIVE CONTROL, FIRST. Every refusal below is only informative because this one converges:
-// a handler that never returns WorldConverged would satisfy all of them and check nothing.
+// an assessor that never returns GoalSatisfied would satisfy all of them and check nothing.
 test fn a_correctly_configured_switch_converges() -> Bool {
-  match converge_fabric_switch(subject: configured_switch) {
-    WorldConverged { subject: s, observed: o, receipt: r } => r.lanes_read == 2
-    WorldNotConverged { subject: s, refusal: f } => false
+  match inspect_fabric_switch(subject: configured_switch) {
+    GoalObservationRefused { subject: s, cause: f } => false
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalSatisfied { evidence: e } => e.lanes_read == 2
+        GoalDiverged { deviations: ds } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
   }
 }
 
@@ -90,13 +99,12 @@ test fn a_correctly_configured_switch_converges() -> Bool {
 // and the reported one, not the fact that they differ -- a divergence carrying only "lane 1 is
 // wrong" is a diagnostic without the information needed to act on it.
 test fn a_lane_at_the_wrong_speed_diverges_and_names_both_modes() -> Bool {
-  match converge_fabric_switch(subject: switch_running_at_half_rate) {
-    WorldNotConverged { subject: s, refusal: f } =>
-      match f {
-        SwitchCannotBeActuatedHere { divergences: ds } =>
-          match ds.first() {
-            Present { value: d } =>
-              match d.cause {
+  match inspect_fabric_switch(subject: switch_running_at_half_rate) {
+    GoalObservationRefused { subject: s, cause: f } => false
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: dsn } =>
+          match dsn.head.cause {
                 LaneSpeedDisagrees { desired: want, reported: got } =>
                   crs812_lane_speed_eq(a: want, b: Lane100GCr2)
                     && crs812_lane_speed_eq(a: got, b: Lane50GCr2)
@@ -105,13 +113,10 @@ test fn a_lane_at_the_wrong_speed_diverges_and_names_both_modes() -> Bool {
                 LaneShouldBeOwnedByItsPairButIsEnabled => false
                 LaneIsNotInTheIntent => false
               }
-            Absent => false
-          }
-        SwitchIntentUndecidedHere { cause: c } => false
-        SwitchLaneNeverRead { interface: n } => false
-        SwitchHoldsNoLanes { switch: sw } => false
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
       }
-    WorldConverged { subject: s, observed: o, receipt: r } => false
   }
 }
 
@@ -119,15 +124,14 @@ test fn a_lane_at_the_wrong_speed_diverges_and_names_both_modes() -> Bool {
 // handler that reported over its read subset would converge -- and an uncaptured switch would be
 // indistinguishable from a correct one.
 test fn one_unread_lane_refuses_the_whole_switch() -> Bool {
-  match converge_fabric_switch(subject: switch_with_one_unread_lane) {
-    WorldNotConverged { subject: s, refusal: f } =>
+  match inspect_fabric_switch(subject: switch_with_one_unread_lane) {
+    GoalObservationRefused { subject: s, cause: f } =>
       match f {
         SwitchLaneNeverRead { interface: n } => n == lane_a_pair
         SwitchIntentUndecidedHere { cause: c } => false
         SwitchHoldsNoLanes { switch: sw } => false
-        SwitchCannotBeActuatedHere { divergences: ds } => false
       }
-    WorldConverged { subject: s, observed: o, receipt: r } => false
+    GoalInspected { subject: s, observed: o, assessment: a } => false
   }
 }
 
@@ -136,42 +140,37 @@ test fn one_unread_lane_refuses_the_whole_switch() -> Bool {
 // lanes the intent happens to mention would make the switch converge MORE easily the more of it
 // went unmodelled.
 test fn a_lane_outside_the_intent_diverges() -> Bool {
-  match converge_fabric_switch(subject: switch_with_an_unmodelled_lane) {
-    WorldNotConverged { subject: s, refusal: f } =>
-      match f {
-        SwitchCannotBeActuatedHere { divergences: ds } =>
-          match ds.first() {
-            Present { value: d } =>
-              d.interface == lane_b
-                && match d.cause {
-                     LaneIsNotInTheIntent => true
-                     LaneSpeedDisagrees { desired: a, reported: b } => false
-                     LaneFecDisagrees { desired: a, reported: b } => false
-                     LaneShouldCarryLegButIsDisabled => false
-                     LaneShouldBeOwnedByItsPairButIsEnabled => false
-                   }
-            Absent => false
-          }
-        SwitchIntentUndecidedHere { cause: c } => false
-        SwitchLaneNeverRead { interface: n } => false
-        SwitchHoldsNoLanes { switch: sw } => false
+  match inspect_fabric_switch(subject: switch_with_an_unmodelled_lane) {
+    GoalObservationRefused { subject: s, cause: f } => false
+    GoalInspected { subject: s, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: dsn } =>
+          dsn.head.interface == lane_b
+            && match dsn.head.cause {
+                 LaneIsNotInTheIntent => true
+                 LaneSpeedDisagrees { desired: a, reported: b } => false
+                 LaneFecDisagrees { desired: a, reported: b } => false
+                 LaneShouldCarryLegButIsDisabled => false
+                 LaneShouldBeOwnedByItsPairButIsEnabled => false
+               }
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
       }
-    WorldConverged { subject: s, observed: o, receipt: r } => false
   }
 }
 
 // A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE. Zero lanes agree trivially, and a green derived
 // from an empty population is the vacuous pass DESIGN section 5 refuses by name.
 test fn a_switch_with_no_lanes_does_not_converge() -> Bool {
-  match converge_fabric_switch(subject: switch_with_no_lanes) {
-    WorldNotConverged { subject: s, refusal: f } =>
+  match inspect_fabric_switch(subject: switch_with_no_lanes) {
+    GoalObservationRefused { subject: s, cause: f } =>
       match f {
         SwitchHoldsNoLanes { switch: sw } => true
         SwitchIntentUndecidedHere { cause: c } => false
         SwitchLaneNeverRead { interface: n } => false
-        SwitchCannotBeActuatedHere { divergences: ds } => false
       }
-    WorldConverged { subject: s, observed: o, receipt: r } => false
+    GoalInspected { subject: s, observed: o, assessment: a } => false
   }
 }
 
@@ -185,14 +184,13 @@ test fn a_switch_with_no_lanes_does_not_converge() -> Bool {
 // its intent is undecided -- it does not retire.
 test fn the_fleet_switch_refuses_because_its_cables_do() -> Bool {
   match fabric_switch_convergence() {
-    WorldNotConverged { subject: s, refusal: f } =>
+    GoalObservationRefused { subject: s, cause: f } =>
       match f {
         SwitchIntentUndecidedHere { cause: c } => true
         SwitchLaneNeverRead { interface: n } => false
         SwitchHoldsNoLanes { switch: sw } => false
-        SwitchCannotBeActuatedHere { divergences: ds } => false
       }
-    WorldConverged { subject: s, observed: o, receipt: r } => false
+    GoalInspected { subject: s, observed: o, assessment: a } => false
   }
 }
 
