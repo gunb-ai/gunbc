@@ -4272,7 +4272,17 @@ fn run_built_seed_regen(
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let shown = exe.to_string_lossy().into_owned();
     let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
-    let observed_executable_digest = path_digest(&on_disk)?;
+    // The executable-digest authority is the BARE identity hash: `current_exe_digest`,
+    // `next_pass_executable_digest`, and every receipt field (`producer_seed_digest`,
+    // `output_seed_digest`) carry `v1_rt::bytes_identity_hash` with no algorithm tag, and the
+    // .dag admission (`regen_admit_candidate_generation`) string-compares that family. This
+    // check admitted the bare form against `path_digest`'s `fnv1a64:`-prefixed form from its
+    // birth in #9771, so no staged install+rebuild+re-emit round could ever pass it -- the
+    // refusal below fired on every non-trivial convergence, with the two strings differing only
+    // by the tag. Read the same authority here; `path_digest` stays for artifact surfaces.
+    let observed_executable_digest = fs::read(&on_disk)
+        .map(|bytes| v1_rt::bytes_identity_hash(&bytes))
+        .map_err(|e| format!("read {} for digest: {e}", on_disk.display()))?;
     if observed_executable_digest != admitted_executable_digest {
         return Err(format!(
             "CandidateGeneratedByDifferentSeed: stage admitted executable {} but next generation would run {} at {}",
