@@ -96,20 +96,33 @@ type VllmMemoryProfileParse
 fn parse_gib_hundredths(text: String) -> Nat? {
   let fields = split(s: trim(s: text), delimiter: ".")
   if fields.length() == 1 {
-    match parse_int(s: fields.first()) {
-      Absent => none
-      Present { value: whole } => if whole < 0 { none } else { Present { value: whole * 100 } }
-    }
+    parse_gib_whole_only(whole_text: fields.first())
   } else if fields.length() == 2 {
-    match parse_int(s: fields.first()) {
-      Absent => none
-      Present { value: whole } =>
-        match parse_int(s: fields.skip(n: 1).first()) {
-          Absent => none
-          Present { value: frac } => parse_gib_combine(whole: whole, frac: frac, digits: length(fields.skip(n: 1).first()))
-        }
-    }
-  } else { none }
+    parse_gib_whole_and_fraction(whole_text: fields.first(), fraction_text: fields.skip(n: 1).first())
+  } else {
+    none
+  }
+}
+
+fn parse_gib_whole_only(whole_text: String) -> Nat? {
+  match parse_int(s: whole_text) {
+    Absent => none
+    Present { value: whole } => parse_gib_combine(whole: whole, frac: 0, digits: 2)
+  }
+}
+
+fn parse_gib_whole_and_fraction(whole_text: String, fraction_text: String) -> Nat? {
+  match parse_int(s: whole_text) {
+    Absent => none
+    Present { value: whole } => parse_gib_with_whole(whole: whole, fraction_text: fraction_text)
+  }
+}
+
+fn parse_gib_with_whole(whole: Int, fraction_text: String) -> Nat? {
+  match parse_int(s: fraction_text) {
+    Absent => none
+    Present { value: frac } => parse_gib_combine(whole: whole, frac: frac, digits: length(fraction_text))
+  }
 }
 
 fn parse_gib_combine(whole: Int, frac: Int, digits: Int) -> Nat? {
