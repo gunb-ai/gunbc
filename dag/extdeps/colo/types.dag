@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.measure {
   MoneyPerMonth, MoneyOnce, MoneyPerHour,
   Watt, VoltAmpere, Ampere, Volt, RackUnit, Bandwidth, ByteSize,
-  watt, volt_ampere_count,
+  watt, watt_count, volt_ampere_count,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -185,23 +185,48 @@ fn cabinet_power_established(f: CabinetPowerFigure) -> Watt? {
   }
 }
 
-// AN UPPER BOUND, WHICH IS A WEAKER CLAIM AND IS SOUND FOR EXACTLY ONE USE. Because kW <= kVA, an
-// apparent-power publication bounds real power from above, so a candidate too small even at this
-// bound can be REJECTED without a power factor. It must never admit one: the bound is what the
-// cabinet certainly cannot exceed, not what it can deliver. The crossing from ApparentPower to
-// Power happens here and only here, justified by that inequality and by nothing else.
-fn cabinet_density_air_upper_bound(d: CabinetDensityClaim) -> Watt? {
+// A CEILING IS NOT A READING, AND AFTER THIS IT CANNOT BE HANDED TO ANYTHING THAT WANTS ONE.
+// Because kW <= kVA, an apparent-power publication bounds real power from above, so a candidate too
+// small even at this bound can be REJECTED without a power factor. It must never ADMIT one - the
+// bound is what the cabinet certainly cannot exceed, not what it can deliver.
+//
+// That distinction used to be carried by this comment while the function returned `Watt?`, the same
+// type as the established reading. Review 62791: a consumer could not tell the two apart, and the
+// only thing standing between them was prose telling callers what not to do - which is the exact
+// shape the accessor two functions above was rewritten to escape, one function later. Same axis,
+// same defence, and the crossing at `watt(count: volt_ampere_count(...))` is the constructor of the
+// confusable value.
+//
+// So the ceiling now has its OWN carrier. Passing it where a reading is wanted is ill-typed rather
+// than discouraged, and the sound use is the only operation offered: ask whether a requirement is
+// refused, never what the cabinet can supply. RESIDUE, STATED RATHER THAN CLAIMED AWAY: `at_most`
+// is still reachable by a caller who destructures the arm, so this is a distinct TYPE and not yet
+// an inaccessible one. Next capability: field visibility sufficient to make the Watt unreadable
+// outside this module, at which point admitting on a ceiling has no constructor at all.
+type CabinetPowerCeiling = CeilingAt { at_most: Watt }
+
+fn cabinet_density_air_ceiling(d: CabinetDensityClaim) -> CabinetPowerCeiling? {
   match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Present { value: cabinet_power_upper_bound(f: air_cooled) },
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Present { value: cabinet_power_upper_bound(f: air_cooled) },
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
     DensityUnread { obligation } => Absent,
   }
 }
 
-fn cabinet_power_upper_bound(f: CabinetPowerFigure) -> Watt {
+fn cabinet_power_ceiling(f: CabinetPowerFigure) -> CabinetPowerCeiling {
   match f {
-    PublishedRealPower { power } => power,
-    PublishedApparentPower { power } => watt(count: volt_ampere_count(v: power)),
+    PublishedRealPower { power } => CeilingAt { at_most: power },
+    PublishedApparentPower { power } => CeilingAt { at_most: watt(count: volt_ampere_count(v: power)) },
+  }
+}
+
+// THE ONE OPERATION A CEILING SOUNDLY SUPPORTS. True means the requirement exceeds what the cabinet
+// can possibly draw, so the candidate is refused on published evidence alone. FALSE MEANS
+// UNDETERMINED, NEVER ADMITTED: a requirement under the ceiling has not been shown to fit, because
+// the ceiling is an inequality and not a measurement.
+fn ceiling_refuses(c: CabinetPowerCeiling, required: Watt) -> Bool {
+  match c {
+    CeilingAt { at_most } => watt_count(w: required) > watt_count(w: at_most),
   }
 }
 

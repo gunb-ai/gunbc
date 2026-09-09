@@ -3,14 +3,14 @@ module gunbc.spark.fabric_switch_converge
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import extdeps.mikrotik.crs812 { Crs812LaneSpeed, Crs812FecMode }
-import gunbc.world_converge {
-  WorldObservation, WorldObserved, WorldUnobservable,
-  WorldDifference, WorldInAgreement, WorldDiverged,
-  WorldActuation, WorldActuationRefused,
-  WorldConvergenceHandler,
-  WorldConvergenceResult,
-  world_converge,
+import std.goal_assessment {
+  ObservationAttempt, ObservationEstablished, ObservationRefused,
+  GoalAssessment,
+  GoalInspection,
+  inspect_goal,
+  assess_by_deviations,
 }
+import v2.std.cardinality { Never }
 import gunbc.spark.fabric_switch_desired {
   DesiredSpeedUndecidedCause,
   Crs812SwitchIntent, SwitchIntent, SwitchIntentUndecided,
@@ -22,7 +22,7 @@ import gunbc.spark.fabric_switch_desired {
 //
 // `product.cable_plant_converge` answers whether the CABLES can carry the required mode.
 // This module answers whether the SWITCH is configured the way the cable plant's answer says it
-// must be. They are two subjects, so they are two bindings of the one `gunbc.world_converge`
+// must be. They are two subjects, so they are two bindings of the one `std.goal_assessment`
 // authority rather than one widened handler -- adding the switch adds a binding here and does not
 // touch the convergence authority, which is the property that authority was shaped for.
 //
@@ -93,7 +93,6 @@ type Crs812SwitchRefusal
   = SwitchIntentUndecidedHere { cause: DesiredSpeedUndecidedCause }
   | SwitchLaneNeverRead { interface: NonEmptyStr }
   | SwitchHoldsNoLanes { switch: NonEmptyStr }
-  | SwitchCannotBeActuatedHere { divergences: List<Crs812LaneDivergence> }
 
 type Crs812SwitchReceipt sole_constructor {
   lanes_read: Nat
@@ -208,22 +207,22 @@ fn switch_read_lanes(subject: Crs812ConvergenceSubject) -> List<ObservedLane> {
 // meaningless without the earlier one. Comparing readings against an undecided intent would produce
 // divergences whose desired side does not exist, and reporting on the lanes that happened to answer
 // makes an uncaptured switch indistinguishable from a correctly configured one.
-fn world_observe_fabric_switch(
+fn observe_fabric_switch_attempt(
   subject: Crs812ConvergenceSubject,
-  context: Bool,
-) -> WorldObservation<Crs812SwitchObserved, Crs812SwitchRefusal> {
+  _: Bool,
+) -> ObservationAttempt<Crs812SwitchObserved, Crs812SwitchRefusal> {
   match subject.intent {
-    SwitchIntentUndecided { cause: c } => WorldUnobservable { cause: SwitchIntentUndecidedHere { cause: c } }
+    SwitchIntentUndecided { cause: c } => ObservationRefused { cause: SwitchIntentUndecidedHere { cause: c } }
     SwitchIntent {
       identity: id, board_name: b, management_interface: m, bridge: br, lanes: ls,
     } =>
       match switch_unread_interfaces(subject: subject).first() {
-        Present { value: n } => WorldUnobservable { cause: SwitchLaneNeverRead { interface: n } }
+        Present { value: n } => ObservationRefused { cause: SwitchLaneNeverRead { interface: n } }
         Absent => {
           let lanes = switch_read_lanes(subject: subject)
           match lanes.first() {
-            Absent => WorldUnobservable { cause: SwitchHoldsNoLanes { switch: subject.switch } }
-            Present { value: l } => WorldObserved { value: Crs812SwitchObserved { lanes: lanes } }
+            Absent => ObservationRefused { cause: SwitchHoldsNoLanes { switch: subject.switch } }
+            Present { value: l } => ObservationEstablished { observed: Crs812SwitchObserved { lanes: lanes } }
           }
         }
       }
@@ -237,53 +236,39 @@ fn switch_divergences(
   flat_map(observed.lanes, l => lane_divergences(intent: subject.intent, lane: l))
 }
 
-fn world_fabric_switch_differences(
+// THERE IS NO ACTUATION STAGE, AND ITS ABSENCE SAYS MORE THAN ITS REFUSAL DID. Writing a RouterOS
+// lane configuration is an effect on a device this repository has no modelled transport to, so the
+// shape this module used to bind -- which DEMANDED an apply -- could only be satisfied by a stage
+// that refused. That refusal then had to inhabit the same coproduct as the three causes meaning the
+// switch could not be OBSERVED, so "we never read this lane" and "we read it and it is wrong"
+// arrived as one verdict. The divergent lanes are deviations now, which is where they always
+// belonged: `SwitchCannotBeActuatedHere` restated as a REFUSAL what the difference list already
+// carried as a VALUE, and the weaker copy was the arm a reader reached first.
+//
+// WHEN A TRANSPORT IS MODELLED it is a new stage over this assessment, not an arm reinstated here.
+fn assess_fabric_switch(
   subject: Crs812ConvergenceSubject,
-  context: Bool,
   observed: Crs812SwitchObserved,
-) -> WorldDifference<Crs812LaneDivergence> {
-  let divergences = switch_divergences(subject: subject, observed: observed)
-  match divergences.first() {
-    Absent => WorldInAgreement
-    Present { value: d } => WorldDiverged { differences: divergences }
-  }
+) -> GoalAssessment<Crs812SwitchReceipt, Crs812LaneDivergence, Never, Never> {
+  assess_by_deviations(
+    evidence: fabric_switch_agreement_receipt(observed: observed),
+    deviations: switch_divergences(subject: subject, observed: observed),
+  )
 }
 
-// ACTUATION REFUSES HERE, AND THE REFUSAL IS THE POINT. Writing a RouterOS lane configuration is an
-// effect on a device this repository has no modelled transport to, so an apply stage that returned a
-// receipt would be fabricating the one thing convergence exists to prove. The refusal carries the
-// full divergence list, so the operator gets the exact edit rather than a bare failure -- and when a
-// transport is modelled, THIS is the arm that gains it, with no consumer changing shape.
-fn world_fabric_switch_apply(
-  subject: Crs812ConvergenceSubject,
-  context: Bool,
-  observed: Crs812SwitchObserved,
-  differences: List<Crs812LaneDivergence>,
-) -> WorldActuation<Crs812SwitchReceipt, Crs812SwitchRefusal> {
-  WorldActuationRefused { cause: SwitchCannotBeActuatedHere { divergences: differences } }
-}
-
-fn world_fabric_switch_unchanged_receipt(
-  subject: Crs812ConvergenceSubject,
-  context: Bool,
-  observed: Crs812SwitchObserved,
-) -> Crs812SwitchReceipt {
+fn fabric_switch_agreement_receipt(observed: Crs812SwitchObserved) -> Crs812SwitchReceipt {
   Crs812SwitchReceipt { lanes_read: list_length(items: observed.lanes) }
 }
 
-type Crs812SwitchConvergenceHandler = WorldConvergenceHandler<Crs812ConvergenceSubject, Bool, Crs812SwitchObserved, Crs812LaneDivergence, Crs812SwitchReceipt, Crs812SwitchRefusal>
+type Crs812SwitchInspection = GoalInspection<Crs812ConvergenceSubject, Crs812SwitchObserved, Crs812SwitchReceipt, Crs812LaneDivergence, Never, Crs812SwitchRefusal, Never>
 
-data fabric_switch_convergence_handler: Crs812SwitchConvergenceHandler = WorldConvergenceHandler {
-  observe: world_observe_fabric_switch,
-  differences: world_fabric_switch_differences,
-  apply: world_fabric_switch_apply,
-  unchanged_receipt: world_fabric_switch_unchanged_receipt,
-}
-
-type Crs812SwitchConvergence = WorldConvergenceResult<Crs812ConvergenceSubject, Crs812SwitchObserved, Crs812SwitchReceipt, Crs812SwitchRefusal>
-
-fn converge_fabric_switch(subject: Crs812ConvergenceSubject) -> Crs812SwitchConvergence {
-  world_converge(subject: subject, context: true, handler: fabric_switch_convergence_handler)
+fn inspect_fabric_switch(subject: Crs812ConvergenceSubject) -> Crs812SwitchInspection {
+  inspect_goal(
+    subject: subject,
+    scope: true,
+    observe: observe_fabric_switch_attempt,
+    assess: o => assess_fabric_switch(subject: subject, observed: o),
+  )
 }
 
 // ================= THE FLEET'S OWN SWITCH =================
@@ -310,6 +295,6 @@ fn fabric_switch_subject() -> Crs812ConvergenceSubject {
   )
 }
 
-fn fabric_switch_convergence() -> Crs812SwitchConvergence {
-  converge_fabric_switch(subject: fabric_switch_subject())
+fn fabric_switch_convergence() -> Crs812SwitchInspection {
+  inspect_fabric_switch(subject: fabric_switch_subject())
 }

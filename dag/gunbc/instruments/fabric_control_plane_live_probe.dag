@@ -44,7 +44,7 @@ import std.content_hash { content_hash_of_value, serialize_content_hash }
 import gunbc.fabric_executor_class { ExecutorSanction, fleet_cell_sanction, capacity_admission_wire }
 import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
-  CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
+  CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, ReservationLost,
   StoreUnavailable, AttemptRefused, BudgetRefused,
   CellHoldEnd, CellHoldEnded, HoldEndBudgetRefused, HoldEndSlotNotHeld,
   HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused, release_reserved_cell_at,
@@ -244,6 +244,7 @@ fn cp_probe_code(r: CellReservation) -> Int {
     AttemptRefused { slot_key: _, detail: _ } => 4
     NoCellAdmissible { considered: c, refused: f } =>
       if f.length() != 0 { 52 } else { if c.length() == 0 { 50 } else { 51 } }
+    CellSelectionTieUnresolved { digest: _, considered: _ } => 53
   }
 }
 
@@ -493,6 +494,11 @@ fn fci1_cell_reservation_wire(reservation: CellReservation) -> String {
       "|generation=", to_string(generation),
       "|offer=", offer.key as String,
     ], "")
+    CellSelectionTieUnresolved { digest: digest, considered: considered } => join([
+      "reservation-tie-unresolved|digest=", digest as String,
+      "|considered=",
+      serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(considered, c => fci1_offer_candidacy_wire(candidacy: c)))) as String,
+    ], "")
     NoCellAdmissible { considered: considered, refused: refused } => join([
       "reservation-no-cell-admissible|considered=",
       serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(considered, c => fci1_offer_candidacy_wire(candidacy: c)))) as String,
@@ -730,6 +736,7 @@ func fci1_live_reserve_and_observe_available(
       }
     } }
     NoCellAdmissible { considered: _, refused: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
+    CellSelectionTieUnresolved { digest: _, considered: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     BudgetRefused { slot_key: _, refusal: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     ReservationLost { slot_key: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     StoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
