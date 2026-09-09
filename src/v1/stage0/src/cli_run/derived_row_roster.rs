@@ -43,21 +43,11 @@ pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
 /// `RosterModuleAbsent` finding, and the run goes red naming the module. The cost of a second
 /// spelling is a confusing refusal about a module that appears to exist, not a silent one.
 ///
-/// NOT THE NAMESPACE WAVE'S DISCOVERY, BUT NOW ONE OF ITS CLASSIFIERS.
-/// `run_required_wave_admission` still finds this file by PATH -- `is_derived_roster_path` and
-/// `roster_root_prefix`, both composed from `ROW_DIR_REL` and `ROSTER_BASENAME` -- and no
-/// discovery path reads this constant. An earlier version of this comment said the const was
-/// consumed by "the namespace wave's base reconstruction"; that was false and the correction
-/// stays, because the true consumer is narrower and later: `derived_generator_input_binding`
-/// reads it to decide whether the module being classified IS this generator, and reads
-/// `ROW_MODULE` to decide whether what it binds to is one of this generator's declared inputs.
-///
-/// THAT CONSUMER IS WHY THIS IS A CONSTANT AND NOT A STRIP OF `ROSTER_BASENAME`. Recovering the
-/// name from the filename means stripping `.dag` and choosing what to do when the suffix is
-/// absent, and every such choice is a guess about a name this module owns. The guess would sit
-/// on an AUTO-ADMISSION path, where a fabricated fallback keeps comparing against a plausible
-/// name instead of refusing -- the fabricated-plausible-output DESIGN section 5 forbids.
-/// Declaring it once leaves no default to guess.
+/// NOT THE NAMESPACE WAVE. `run_required_wave_admission` finds this file by PATH --
+/// `is_derived_roster_path` and `roster_root_prefix`, both composed from `ROW_DIR_REL` and
+/// `ROSTER_BASENAME` -- and never reads this constant. An earlier version of this comment said
+/// the const was consumed by "the namespace wave's base reconstruction"; that is false, and the
+/// note stays so the next reader does not re-derive it from the diff.
 ///
 /// It cannot be `concat!` of its parts because `ROW_MODULE` is a `const` and not a literal token,
 /// so the composition is ASSERTED by `the_roster_module_is_the_row_module_plus_the_roster_stem`

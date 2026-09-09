@@ -134,7 +134,7 @@ import v1.compiler.coercion {
   coerce_primitive_type, is_copy, target_callable, rust_lookup_exact_binding,
   declaration_realizes_natively_on_rust, type_reference_realization, declaration_realization,
   type_realization_decision, realized_checkpoint, realization_host_numeric_spelling,
-  realization_is_host_numeric
+  realization_is_host_numeric, provenance_declares_structurally
 }
 import std.coercion {
   TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent,
@@ -361,6 +361,45 @@ fn render_rust_arrow_type_in_scope(n: Node, generic_param_names: List<String>, s
 // otherwise renders `predecessor: Nat` as `Rc<Nat>` at a variant record field while the
 // constructor passes i64 -- a layer below the field-carrier decision
 // rust_field_carrier_final_type projects (E0308 x2, E0369 x1).
+// PEEL, DO NOT NAME, at an overlay-less QUALIFIED String-spelled alias leaf. A field authored
+// `v2.std.text.String` reaches this renderer as the RESOLVED reference leaf -- no children, no
+// __applied_type_args overlay (nothing in the current tree writes that channel; the readers are
+// legacy), and a provenance that answers the reference's own file (type_reference_provenance's
+// documented unresolved-reference shape), so every identity-keyed arm ahead of this one answers
+// about the wrong declaration. Rendering the bare name can only bind where the emitted module
+// declares or imports that name, and for the String spelling neither holds: kernel names are never
+// overridden by imports (#9813, v1.compiler.infer overlay_skips_kernel_name), so the use-line that
+// would bind the alias is dropped by import_name_resolves_to_host_realized_kernel_scalar and the
+// bare token binds the prelude String -- while every value position renders the same carrier
+// Rc<Vec<i64>>. That is the v2_compiler_tokenize.rs E0308 family on the XL-N board (41 of 72),
+// and post-#9907 the whole cross-module population is authored QUALIFIED, which is what the
+// contains(".") conjunct keys on. The fn-signature positions peel this population by consulting
+// the env-resolved alias binding; this arm asks the same question of the same authority
+// (closed_alias_peel_verdict) and renders the alias declaration's resolved right-hand side, so
+// both positions project one realization.
+// THE QUALIFIED GATE IS LOAD-BEARING, NOT A NARROWING TASTE. Inside the declaring module itself
+// (src/v2/std/text.dag authors `text: String` bare) the bare terminal name is the CORRECT render:
+// the emitted module carries `pub type String = Rc<Vec<i64>>;` and the bare token binds it.
+// Peeling there is not merely redundant -- the local declaration's env binding resolves to a node
+// whose resolved_type drops the RHS type argument, so an ungated peel rendered `Rc<FreeMonoid>`
+// there (E0107 x13, E0282 x2 in emitted v2_std_text.rs, measured on the probe7 emission). A
+// module-local `type String = ...` referenced bare likewise keeps its bare name and binds its own
+// declaration, and the kernel scalar never reaches the peel either: a bare `String` outside the
+// declaring module denotes the kernel post-#9813, which the host-carrier arm ahead of this one
+// answers. SCOPE: keyed to
+// the String spelling because String is the kernel-named STRUCTURAL text carrier with a measured
+// error population; std.integer Int and std.float Float realize NATIVELY via
+// numeric_realization_declaring_modules, so peeling them would render the algebra structure
+// against i64 values -- their field-position rendering is a separate class with its own evidence.
+fn rust_overlayless_alias_leaf_requires_peel(env: TypeEnv, n: Node) -> Bool {
+  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  n.connective == NoConnective
+    && (n.children |> count) == 0
+    && contains(name, ".")
+    && qualified_last_segment(name: name) == "String"
+    && closed_alias_peels_zero_param(env: env, n: n)
+}
+
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
@@ -428,6 +467,11 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
       "_"
     } else if is_host_text_carrier_type(n: n, source_indices: source_indices) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
+    } else if rust_overlayless_alias_leaf_requires_peel(env: emit_info.fn_type_env, n: n) {
+      match lookup_type_for(env: emit_info.fn_type_env, node: n) {
+        Present { value: binding } => render_rust_type(n: resolved_type(n: binding), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+        Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      }
     } else {
       match realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: n, dag_name: qualified_last_segment(name: tn), env: emit_info.fn_type_env, source_indices: source_indices)) {
         Present { value: host } => rust_carrier_optional_wrap(n: n, rendered: host)
@@ -693,10 +737,28 @@ data rust_checkpoint_scalar_phantom_params_note: String = "Construction wall for
 // binding is still decidable from the env: the reference's leaf name resolves to one declaration
 // in the referencing module's scope. Accepted only when that declaration IS named by the leaf,
 // so an alias's right-hand side node can never stand in for the alias.
+// A node that IS its own declaration carries its provenance on its own span, and the env
+// bare-leaf lookup must not pre-empt it. Inference substitutes the RESOLVED declaration into a
+// data annotation's type-argument position, so `BooleanAlgebra<v2.std.logic.Bool>` reaches the
+// emitter with the arg BEING the `type Bool = True | False` declaration itself -- Disj
+// connective, True/False children, ident_span in src/v2/std/logic.dag, no Resolved wrapper
+// (measured on the XL-N probe closure; the python.rs:328 / typescript.rs:177 E0308 pair on the
+// self-host compile-phase frontier). The bare-leaf arm re-resolves that leaf in the REFERENCING
+// module's scope, where post-#9813 a kernel-shadowed spelling answers the KERNEL declaration
+// (lookup_type_by_name "Bool" binds the kernel Bool), so the structural enum rendered as host
+// `bool` against a value of BooleanAlgebra<Bool>. The connective is the discriminator: a
+// reference node is a bare name (NoConnective), while a node carrying Conj/Disj structure IS
+// the declaration, and type_reference_provenance's own-span fallback (v1.compiler.core
+// declaration_provenance_of) already answers that shape correctly -- CorpusDeclared on the
+// span's own file, which structural_declaration_modules_for then matches.
 fn type_reference_provenance_in_env(n: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> TypeDeclarationProvenance {
   match n.inferred {
     Present { value: Resolved { node: _ } } => type_reference_provenance(n: n)
     _ =>
+      let node_is_own_declaration = n.connective == Conj || n.connective == Disj
+      if node_is_own_declaration {
+        type_reference_provenance(n: n)
+      } else {
       let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       if leaf == "" { type_reference_provenance(n: n) }
       else {
@@ -707,6 +769,7 @@ fn type_reference_provenance_in_env(n: Node, env: TypeEnv, source_indices: Map<S
             } else { type_reference_provenance(n: n) }
           Absent => type_reference_provenance(n: n)
         }
+      }
       }
   }
 }
@@ -824,13 +887,48 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
 // An arrow is never a text carrier, whatever its authored name resolves to: `fn(String) -> String`
 // answered true here (its name reads as its return leaf) ahead of every Arrow arm, so the type
 // argument rendered `String` (E0277 x2 at v2.std.compilers.target_model).
+//
+// The String arm is keyed on the resolved declaration's PROVENANCE, never on the spelling alone
+// (DESIGN section 3, and gunbc.recurring_failure_mode
+// alias_resolution_collides_with_kernel_spelling): v2.std.text declares `type String =
+// FreeMonoid<Char>`, a structural alias whose spelling collides with the kernel scalar, and the
+// namespace lane (gunbc#9907) requalified the v2 corpus's text-carrier fields to
+// `v2.std.text.String` on that basis. A spelling-keyed arm renders every one of those references
+// as the host String while every value-position consumer renders the structure -- the E0308
+// family dominating the self-host compile-phase frontier (receipt_1_eced9d24's successor board:
+// 64 E0308, 41 of them in v2_compiler_tokenize.rs). The structural roster the answer is read from
+// is v1.compiler.coercion structural_declaration_modules_for, the same authority
+// type_realization_decision consults, so this arm and the strict decision cannot diverge on one
+// node. Kernel mints and unresolved references keep the host answer exactly as before.
+//
+// The FreeMonoid/List arm carries the same gate one peel later: the record-field path renders the
+// RESOLVED type node (src/v1/04_types.dag resolved_type), so a field authored
+// `v2.std.text.String` arrives here as the alias's right-hand side -- a `FreeMonoid<Char>`
+// application whose spelling no longer mentions String at all. Keying that arm on spelling +
+// Char element alone re-attributes the corpus-declared std.algebra FreeMonoid to the host text
+// carrier, which is the same alias_resolution_collides_with_kernel_spelling class wearing the
+// peeled spelling: the type position rendered host `String` while the value position rendered
+// `Rc<Vector<i64>>` (the 41 v2_compiler_tokenize.rs E0308s on the successor board). The arm
+// therefore fires only where the resolved declaration is NOT corpus-declared -- a kernel mint or
+// an unresolved reference, the population the arm was authored for -- and a corpus-declared
+// FreeMonoid/List over Char renders the structure, agreeing with type_realization_decision on the
+// same node (measured by gunbc.instruments.carrier_realization_census as DivergesWithExactIdentity
+// before this gate, Agrees after).
 fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.connective == Arrow { return false }
   let nm = authored_name_at(source_indices: source_indices, node: n)
   if nm == "String" {
-    true
+    !provenance_declares_structurally(dag_name: "String", p: type_reference_provenance(n: n))
   } else if nm == "FreeMonoid" || nm == "List" {
-    rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
+    if rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) != "Char" {
+      false
+    } else {
+      match type_reference_provenance(n: n) {
+        CorpusDeclared { decl_file: _ } => false
+        KernelMinted { minted_name: _ } => true
+        DeclarationIdentityAbsent => true
+      }
+    }
   } else {
     false
   }
@@ -1089,9 +1187,18 @@ fn closed_alias_verdict_do_not_peel() -> ClosedAliasPeelVerdict {
   ClosedAliasHasParams
 }
 
+// The String spelling guard is provenance-gated for the same reason is_host_text_carrier_type's
+// String arm is: a STRUCTURAL String alias (v2.std.text, std.string_type) is a zero-parameter
+// closed alias and must be eligible for ClosedAliasPeelZeroParam, or a reference carrying the
+// resolved definition's type arguments renders `String<i64>` -- name plus resolved children --
+// against a Rust alias declared with no parameters (the E0107 family the host-carrier provenance
+// gate surfaces in v2_std_text.rs once the String arm stops short-circuiting those references to
+// the host spelling). The kernel scalar keeps the historical do-not-peel answer exactly: its
+// provenance is never structurally declared, so the guard still fires for it on every path that
+// reaches this verdict without an upstream host-carrier short-circuit.
 fn closed_alias_peel_verdict(env: TypeEnv, n: Node) -> ClosedAliasPeelVerdict {
   let name = authored_name_at(source_indices: env.source_indices, node: n)
-  if name == "String" {
+  if name == "String" && !provenance_declares_structurally(dag_name: "String", p: type_reference_provenance(n: n)) {
     return closed_alias_verdict_do_not_peel()
   }
   let binding = match lookup_type_for(env: env, node: n) {
@@ -2538,6 +2645,175 @@ fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants
   }
 }
 
+// THE ONE POLICY DECISION FOR AN EMITTED COPRODUCT, extracted so the type side and the data-path
+// index ask the same question of the same authority (DESIGN section 2 -- one derivation, two call
+// sites). The answer order is: a CoproductWireContract row in the coproduct's own module or its
+// `_contracts` sibling (resolve_local_coproduct_wire_policy scans the concatenated context); then,
+// for a nullary-only coproduct, the module's legacy `wire_contract` data item; otherwise the
+// internal-tag default. The wire_items/wire_imports arguments ARE the emitting module's items and
+// imports concatenated with its contracts sibling's (contracts_items_for_module /
+// contracts_imports_for_module), and scoped_data_items is the module's scoped data index augmented
+// with the contracts sibling's imports -- both call sites build them identically.
+fn resolve_emission_coproduct_wire_policy(coproduct_name: String, item: Node, wire_items: List<Node>, wire_imports: List<Node>, wire_contract_item: Node?, scoped_data_items: Map<String, List<Node>>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
+  let all_unit_variants = item.children |> all(child => child.children |> count == 0)
+  match resolve_local_coproduct_wire_policy(coproduct_name: coproduct_name, all_unit_variants: all_unit_variants, module_items: wire_items, imports: wire_imports, source_indices: source_indices) {
+    Present { value: local_policy } => local_policy
+    Absent =>
+      if all_unit_variants {
+        match wire_contract_item {
+          Present { value: _ } => resolve_wire_serde_policy_for_coproduct(wire_contract_item: wire_contract_item, source_indices: source_indices, data_items: scoped_data_items)
+          Absent => rust_tagged_object_policy()
+        }
+      } else {
+        rust_tagged_object_policy()
+      }
+  }
+}
+
+// THE TOTAL WIRE-TAG QUESTION. wire_variant_tag_for_policy answers the ATTRIBUTE question -- does
+// this variant need a per-variant #[serde(rename)] -- and its `none` means "no attr needed", which
+// conflates "renamed by the container's rename_all" with "as authored". The data path needs the
+// TAG itself: the exact string serde places on the wire, which under a container rename_all is the
+// renamed spelling and under no renaming is the authored one. The two functions read the same
+// policy fields in the same order so the answers cannot drift: StripAffix style defers to the
+// attribute function's computation (its none -- a failed strip the type side already refuses --
+// propagates as none here), then rename_all snake_case / SCREAMING_SNAKE_CASE, then as-authored.
+fn data_path_wire_variant_tag(authored: String, policy: RustEnumWireSerde) -> String? {
+  if policy.error_message != none {
+    none
+  } else {
+    match policy.rename_style {
+      Present { value: _ } => wire_variant_tag_for_policy(authored: authored, policy: policy)
+      Absent =>
+        if contains(policy.enum_attr, "rename_all = \"snake_case\"") {
+          Present { value: to_snake(name: authored) }
+        } else if contains(policy.enum_attr, "rename_all = \"SCREAMING_SNAKE_CASE\"") {
+          Present { value: to_screaming_snake(name: authored) }
+        } else {
+          Present { value: authored }
+        }
+    }
+  }
+}
+
+// Projection from the Rust policy carrier to the language-general spelling the data path reads
+// (the type's comment at v1.compiler.infer_emit_info DataVariantWireSpelling names why the
+// projection exists). Untagged is tested FIRST: policy_is_string_variant's shape test (no
+// "tag =" substring) also matches the untagged attribute, so the order is load-bearing.
+fn project_data_variant_spelling(authored_variant: String, policy: RustEnumWireSerde) -> DataVariantWireSpelling {
+  match policy.error_message {
+    Present { value: message } => DataVariantSpellingRefused { reason: message }
+    Absent =>
+      if policy_is_untagged(policy: policy) {
+        DataVariantUntagged
+      } else {
+        match data_path_wire_variant_tag(authored: authored_variant, policy: policy) {
+          Absent => DataVariantSpellingRefused { reason: concat("no wire tag derivable for variant ", authored_variant, " under the parent coproduct's naming policy") }
+          Present { value: tag } =>
+            if policy_is_string_variant(policy: policy) {
+              DataVariantBareString { tag: tag }
+            } else {
+              match policy_serde_tag_field(policy: policy) {
+                Present { value: tag_field } => DataVariantInternalTagged { tag_field: tag_field, tag: tag }
+                Absent => DataVariantSpellingRefused { reason: concat("wire policy for variant ", authored_variant, " carries no tag field and is neither untagged nor string-variant") }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn data_variant_wire_spelling_eq(a: DataVariantWireSpelling, b: DataVariantWireSpelling) -> Bool {
+  match a {
+    DataVariantInternalTagged { tag_field: a_tf, tag: a_t } =>
+      match b {
+        DataVariantInternalTagged { tag_field: b_tf, tag: b_t } => a_tf == b_tf && a_t == b_t
+        _ => false
+      }
+    DataVariantBareString { tag: a_t } =>
+      match b {
+        DataVariantBareString { tag: b_t } => a_t == b_t
+        _ => false
+      }
+    DataVariantUntagged =>
+      match b {
+        DataVariantUntagged => true
+        _ => false
+      }
+    DataVariantSpellingRefused { reason: a_r } =>
+      match b {
+        DataVariantSpellingRefused { reason: b_r } => a_r == b_r
+        _ => false
+      }
+  }
+}
+
+// The index is keyed by BARE coproduct and variant names because that is what a variant record
+// literal carries: infer stamps parent_enum as the parent declaration's authored name
+// (lookup_variant_parent_enum), never module-qualified. Two modules in one closure declaring the
+// same coproduct leaf therefore share a key. Where their resolved policies agree the answer is one
+// fact and either row serves; where they differ the key is POISONED with a stored refusal, so the
+// data path fails closed with the cause instead of silently serving whichever module folded last.
+fn insert_data_variant_spelling(index: Map<String, DataVariantWireSpelling>, key: String, spelling: DataVariantWireSpelling, coproduct_name: String) -> Map<String, DataVariantWireSpelling> {
+  match map_get(index, key) {
+    Absent => map_insert(index, key, spelling)
+    Present { value: existing } =>
+      if data_variant_wire_spelling_eq(a: existing, b: spelling) {
+        index
+      } else {
+        map_insert(index, key, DataVariantSpellingRefused { reason: concat("ambiguous wire policy for coproduct ", coproduct_name, ": two modules in the emission closure declare it and their resolved policies differ, so a bare parent_enum cannot name one policy") })
+      }
+  }
+}
+
+// THE CLOSURE-WIDE WIRE-POLICY INDEX the variant arm of emit_data_value_json reads. Built once per
+// emission root from the same inputs the type side resolves against, one row per (coproduct,
+// variant) pair, beside EmitGraphInfo.type_decl_items. This is the trigger the fail-closed
+// variant refusal named on 2026-09-08, landed the same day its first real population measured out:
+// five sites in the 00_compile closure (SugarKey x2 in v2.std.compilers.sugar,
+// CopiedPortCitationFrontierDisposition x3 in v2.lens.cost.copied_port_citations).
+fn build_data_variant_wire_spellings(modules: List<TypedModule>, data_items: Map<String, Node>, module_index: ModuleIndex) -> Map<String, DataVariantWireSpelling> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let si = tm.type_env.source_indices
+    let module_name = authored_name_at(source_indices: si, node: tm.module)
+    let contracts_imports = contracts_imports_for_module(module_name: module_name, typed_modules: modules, source_indices: si, module_index: module_index)
+    let wire_items = concat(tm.items, contracts_items_for_module(module_name: module_name, typed_modules: modules, source_indices: si, module_index: module_index))
+    let wire_imports = concat(module_imports(n: tm.module), contracts_imports)
+    let scoped_data = augment_scoped_data_item_index_with_imports(
+      scoped: build_scoped_data_item_index(typed_module: tm, data_items: data_items),
+      imports: contracts_imports,
+      source_indices: si,
+      data_items: data_items
+    )
+    let wire_contract_item = wire_items
+      |> filter(i => i.module_item_kind == ModuleItemDataValue && authored_name_at(source_indices: si, node: i) == "wire_contract")
+      |> first
+    tm.items
+      |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
+      |> fold(init: acc, f: (item_acc, item) =>
+        let coproduct_name = authored_name_at(source_indices: si, node: item)
+        let policy = resolve_emission_coproduct_wire_policy(
+          coproduct_name: coproduct_name,
+          item: item,
+          wire_items: wire_items,
+          wire_imports: wire_imports,
+          wire_contract_item: wire_contract_item,
+          scoped_data_items: scoped_data,
+          source_indices: si
+        )
+        item.children |> fold(init: item_acc, f: (variant_acc, variant) =>
+          let variant_name = authored_name_at(source_indices: si, node: variant)
+          insert_data_variant_spelling(
+            index: variant_acc,
+            key: concat(coproduct_name, ".", variant_name),
+            spelling: project_data_variant_spelling(authored_variant: variant_name, policy: policy),
+            coproduct_name: coproduct_name
+          )
+        )
+      )
+  )
+}
+
 fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
@@ -3059,10 +3335,13 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: typed.modules)
   )
+  let data_items = build_data_item_index(modules: typed.modules)
+  let module_index = build_module_index(modules: typed.modules, leaf_owner_modules: base_info.item_leaf_owner_modules)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: base_info.item_leaf_owner_modules,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
+    data_variant_wire_spellings: build_data_variant_wire_spellings(modules: typed.modules, data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
@@ -3083,7 +3362,6 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     expected_type: none
   }
   let registry = typed.item_registry
-  let data_items = build_data_item_index(modules: typed.modules)
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
@@ -3096,7 +3374,6 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   )
   let test_projections = extract_test_projections(typed: typed)
   let export_sets = build_module_export_sets(modules: typed.modules)
-  let module_index = build_module_index(modules: typed.modules, leaf_owner_modules: emit_info.item_leaf_owner_modules)
   let unlisted_type_names_by_module = group_unlisted_type_names(diags: typed.diagnostics)
   EmitRustContext {
     emit_info: emit_info,
@@ -3709,10 +3986,13 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
+  let data_items = build_data_item_index(modules: [typed_module])
+  let module_index = build_module_index(modules: [typed_module], leaf_owner_modules: base_info.item_leaf_owner_modules)
   let emit_info = EmitGraphInfo {
     item_leaf_owner_modules: base_info.item_leaf_owner_modules,
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
+    data_variant_wire_spellings: build_data_variant_wire_spellings(modules: [typed_module], data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
@@ -3734,8 +4014,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
-  let module_index = build_module_index(modules: [typed_module], leaf_owner_modules: emit_info.item_leaf_owner_modules)
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: []).file
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: data_items, export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: []).file
 }
 
 fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
@@ -5019,6 +5298,17 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
 // the named qualifier before any line is synthesized; every other qualified name is the value
 // route's, and this route says nothing about it. Each decision this route does take is a census row
 // beside the bare-name rows -- the qualified spelling is the row's name, so the two never collide.
+//
+// THE QUALIFIER IS THE DISAMBIGUATOR. The leaf index is global: `LeafAmbiguous` says two modules in
+// the closure declare the leaf, and this route used to decline to the ambiguous row on that answer
+// alone. A QUALIFIED reference already names its provider in its own spelling, so the global
+// ambiguity never attaches to it -- the question is only whether the named qualifier declares the
+// leaf as a type and exports it, the same construction wall the ItemFound arm passes, now asked by
+// identity lookup at the qualifier. Declining used to drop the use-line for a reference the author
+// had fully resolved: measured as the eight E0425/E0433 `Nat` sites in v2_lens_fact_density.rs,
+// whose `v2.std.nat.Nat` co-resides with the std.nat alias in the 00_compile closure. The ambiguous
+// row still stands for the reference whose qualifier does NOT declare the leaf -- that one is
+// genuinely unresolvable here.
 fn qualified_type_reference_rows(names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<ReferenceDerivedCandidateRow> {
   let leaves_done = names_already_in_lines |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
   names |> flat_map(name =>
@@ -5031,19 +5321,31 @@ fn qualified_type_reference_rows(names: List<String>, this_module_name: String, 
       } else {
         match lookup_item_by_leaf(leaf: leaf, registry: registry, emit_info: emit_info) {
           ItemNotFound => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateRegistryAbsent }]
-          ItemLeafAmbiguous { leaf: _ } => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateLeafAmbiguous }]
-          ItemFound { info: info } =>
-            if !(registry_row_is_type_declared_in(info: info, module_name: qualifier)) {
-              []
-            } else if provider_proven_exports_symbol(name: leaf, provider_module: qualifier, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
-              [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateSurvived { provider_module: qualifier } }]
-            } else {
-              [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateExportProofFailed { provider_module: qualifier } }]
+          ItemLeafAmbiguous { leaf: _ } =>
+            match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: qualifier, decl_name: leaf }) {
+              Present { value: info } =>
+                qualified_type_reference_row_for_info(name: name, leaf: leaf, qualifier: qualifier, this_module_name: this_module_name, info: info, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+              Absent => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateLeafAmbiguous }]
             }
+          ItemFound { info: info } =>
+            qualified_type_reference_row_for_info(name: name, leaf: leaf, qualifier: qualifier, this_module_name: this_module_name, info: info, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
         }
       }
     }
   )
+}
+
+// The qualifier-keyed decision both lookup arms share (DESIGN section 2 -- one derivation, two
+// call sites): the leaf must be a TYPE the qualifier declares, and the qualifier must prove it
+// exports the symbol, before any use-line is synthesized.
+fn qualified_type_reference_row_for_info(name: String, leaf: String, qualifier: String, this_module_name: String, info: ItemInfo, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<ReferenceDerivedCandidateRow> {
+  if !(registry_row_is_type_declared_in(info: info, module_name: qualifier)) {
+    []
+  } else if provider_proven_exports_symbol(name: leaf, provider_module: qualifier, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateSurvived { provider_module: qualifier } }]
+  } else {
+    [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateExportProofFailed { provider_module: qualifier } }]
+  }
 }
 
 // Named because `info.kind == TypeItem` is a comparison the .dag surface reads as a record literal.
@@ -5113,6 +5415,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
+    data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
@@ -5905,6 +6208,17 @@ fn alias_rhs_rust_qualify_module_filename(name: String, alias_module: String, im
 
 // The leaf index says which module owns the spelling; the ROW still comes from the registry, by the
 // identity that index just completed. Two lookups, one authority.
+//
+// THE INDEX IS GLOBAL AND THE RESOLUTION IS MODULE-LOCAL. `LeafAmbiguous` records that two modules
+// in the closure declare the spelling; it does NOT record that the module under emission is one of
+// them, and when it is, the question is not ambiguous at all: source resolution binds an
+// unqualified reference to the module's own declaration before any cross-module lookup, so the
+// local declaration shadows every foreign declarer of the same leaf. Answering
+// `ambiguous_leaf_module_refusal` there poisons a reference the source resolved exactly -- measured
+// on the 00_compile closure as twelve E0433 sites in v2_std_integer.rs, whose `Compose` is declared
+// by v2.std.integer itself and shadowed nothing else. The refusal still stands when the module
+// under emission has no claim: a leaf two FOREIGN modules declare has no resolution here, and the
+// import-or-registry arm below still ends at the poison marker for it.
 fn alias_rhs_base_module_filename(name: String, alias_module: String, imports: List<Node>, source_indices: Map<String, NewlineIndex>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> String {
   let local_mod = module_to_filename(name: alias_module)
   let owner_info = match map_get(module_index.leaf_owner_modules, name) {
@@ -5924,7 +6238,11 @@ fn alias_rhs_base_module_filename(name: String, alias_module: String, imports: L
         alias_rhs_base_module_from_import_or_registry(name: name, imports: imports, source_indices: source_indices, registry: registry, local_mod: local_mod, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index)
       }
     Absent =>
-      alias_rhs_base_module_from_import_or_registry(name: name, imports: imports, source_indices: source_indices, registry: registry, local_mod: local_mod, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index)
+      if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: local_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+        local_mod
+      } else {
+        alias_rhs_base_module_from_import_or_registry(name: name, imports: imports, source_indices: source_indices, registry: registry, local_mod: local_mod, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index)
+      }
   }
 }
 
@@ -7162,6 +7480,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
             type_summaries: emit_info.type_summaries,
             type_decl_items: emit_info.type_decl_items,
+            data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
             fn_decl_items: emit_info.fn_decl_items,
             recursive_type_set: emit_info.recursive_type_set,
             fielded_variants: emit_info.fielded_variants,
@@ -7209,7 +7528,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       if item.children |> count == 0 {
         emit_rust_item_refusal(item_text: item_text, reason: "service declares no operations")
       } else {
-        emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env)
+        emit_service_def(item: item, registry: registry, shared_types: shared_types, env: env, emit_info: emit_info)
       }
     ModuleItemResource =>
       emit_resource_def(item: item, shared_types: shared_types, env: env)
@@ -7508,19 +7827,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = ", render_rust_diagnostics_carrier_applied(shared_types: shared_types), ";")
   } else {
-    let all_unit_variants = item.children |> all(child => child.children |> count == 0)
-    let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: module_items, imports: imports, source_indices: env.source_indices) {
-      Present { value: local_policy } => local_policy
-      Absent =>
-        if all_unit_variants {
-          match wire_contract_item {
-            Present { value: _ } => resolve_wire_serde_policy_for_coproduct(wire_contract_item: wire_contract_item, source_indices: env.source_indices, data_items: data_items)
-            Absent => rust_tagged_object_policy()
-          }
-        } else {
-          rust_tagged_object_policy()
-        }
-    }
+    let serde_policy = resolve_emission_coproduct_wire_policy(coproduct_name: item_text, item: item, wire_items: module_items, wire_imports: imports, wire_contract_item: wire_contract_item, scoped_data_items: data_items, source_indices: env.source_indices)
     let rename_validations = variant_rename_validations_for_policy(children: item.children, env: env, serde_policy: serde_policy)
     let policy_validation = match serde_policy.error_message {
       Present { value: message } => emit_rust_compile_error_item(message: message)
@@ -8419,7 +8726,8 @@ fn v1_call_forwarding_clone_bound_param_names(
   fn_decl_items: Map<String, Node>,
   emit_info: EmitGraphInfo,
   shared_types: Set<String>,
-  source_indices: Map<String, NewlineIndex>
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
 ) -> List<String> {
   if (generic_param_names |> count) == 0 {
     return []
@@ -8431,7 +8739,8 @@ fn v1_call_forwarding_clone_bound_param_names(
       fn_decl_items: fn_decl_items,
       emit_info: emit_info,
       shared_types: shared_types,
-      source_indices: source_indices
+      source_indices: source_indices,
+      visited: visited
     )
     _ => []
   }
@@ -8444,25 +8753,44 @@ fn v1_call_forwarding_clone_bound_param_names(
         fn_decl_items: fn_decl_items,
         emit_info: emit_info,
         shared_types: shared_types,
-        source_indices: source_indices
+        source_indices: source_indices,
+        visited: visited
       )
     )
   )
 }
 
-// One call site: resolve the callee's declaration, re-derive the callee's OWN clone bound with the
+// One call site: resolve the callee's declaration, re-derive the callee's clone bound with the
 // same derivation emit_fn_def runs on itself (DESIGN.md S2 -- one derivation, two call sites, never
 // a re-implementation), then forward it onto the wrapper's params.
+//
+// THE DERIVATION IS THE FULL ONE, TRANSITIVE OVER THE CALL GRAPH. It was previously the
+// self-derived half only (v1_fn_body_derived_clone_param_names), declared one-hop: a callee whose
+// own bound is itself only FORWARDED re-derived to empty here, and the wrapper emitted bare. The
+// specimen arrived in the 00_compile closure: std.realization_measurement
+// witness_measured_rollup_differs_from_predicted_zero<S> calls std.realization_schedule
+// cost_account_time_count<S>, whose S: Clone is itself forwarded from cost_time_axis_established's
+// match-scrutinee clone -- two hops, so the wrapper's E0277 was the one-hop boundary firing, not a
+// new class. The recursion is the same walk this module already runs, applied to the callee's body
+// exactly as emit_fn_def applies it to its own. Termination is the visited set every cyclic-graph
+// walk in this module already carries (name_in_transitive_export_surface): a recursive callee
+// answers its self-derived half alone, which is the pre-existing reading of a cycle and stands.
+// THE EQUALITY HALF BELOW STAYS ONE-HOP: no specimen has needed its second hop, and widening it
+// without one is the hypothetical-arity move v1_call_forwarding_bound_wrapper_param_names refuses.
 fn v1_call_site_clone_forwarded_param_names(
   call: Node,
   generic_param_names: List<String>,
   fn_decl_items: Map<String, Node>,
   emit_info: EmitGraphInfo,
   shared_types: Set<String>,
-  source_indices: Map<String, NewlineIndex>
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
 ) -> List<String> {
   let si = source_indices
   let callee_name = expr_call_func_at(texpr: call, source_indices: si)
+  if visited |> any(v => v == callee_name) {
+    return []
+  }
   match map_get(fn_decl_items, callee_name) {
     Absent => []
     Present { value: callee_item } =>
@@ -8472,13 +8800,24 @@ fn v1_call_site_clone_forwarded_param_names(
           let callee_params = callee_item.params
           let callee_type_params = function_type_params(params: callee_params)
           let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
-          let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
-            params: callee_params,
-            inferred: resolved_type(n: callee_item),
-            body: callee_body,
-            emit_info: emit_info,
-            shared_types: shared_types,
-            source_indices: si
+          let callee_clone_param_names = v1_union_bound_param_names(
+            base: v1_fn_body_derived_clone_param_names(
+              params: callee_params,
+              inferred: resolved_type(n: callee_item),
+              body: callee_body,
+              emit_info: emit_info,
+              shared_types: shared_types,
+              source_indices: si
+            ),
+            extra: v1_call_forwarding_clone_bound_param_names(
+              generic_param_names: callee_generic_param_names,
+              body: callee_body,
+              fn_decl_items: fn_decl_items,
+              emit_info: emit_info,
+              shared_types: shared_types,
+              source_indices: si,
+              visited: concat(visited, [callee_name])
+            )
           )
           v1_call_forwarding_forwarded_param_names(
             call: call,
@@ -8523,9 +8862,11 @@ fn v1_call_site_clone_forwarded_param_names(
 // BoundedToDirectSingleCallLambdaBody already names and is measured on its own regen, not smuggled
 // in beside an equality fix.
 //
-// ONE HOP, DECLARED. A callee that earns its own bound only by forwarding two hops up is not
-// bounded here in one pass; it is discovered as each intermediate fn is itself re-emitted, exactly
-// as the clone half's note describes, and a specimen needing a fixpoint over the call graph is the
+// ONE HOP, DECLARED -- and now the equality half alone. The Clone half above went transitive over
+// the call graph when its two-hop specimen arrived (std.realization_measurement's witness wrapper
+// through cost_account_time_count, named in v1_call_site_clone_forwarded_param_names). This half
+// keeps the boundary: a callee that earns its own equality bound only by forwarding two hops up is
+// not bounded here in one pass, and a specimen needing the same transitivity for equality is the
 // next-rung trigger rather than a silent gap.
 fn v1_call_forwarding_equality_bound_param_names(
   generic_param_names: List<String>,
@@ -8701,7 +9042,8 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     fn_decl_items: emit_info.fn_decl_items,
     emit_info: emit_info,
     shared_types: shared_types,
-    source_indices: si
+    source_indices: si,
+    visited: [name]
   )
   let derived_clone_param_names_with_rc_match = v1_union_bound_param_names(
     base: self_derived_clone_param_names,
@@ -11649,6 +11991,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
+              data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
@@ -11682,6 +12025,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
               type_summaries: emit_info.type_summaries,
               type_decl_items: emit_info.type_decl_items,
+              data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
@@ -13830,13 +14174,14 @@ fn emit_service_def(
   item: Node,
   registry: Map<String, ItemInfo>,
   shared_types: Set<String>,
-  env: TypeEnv
+  env: TypeEnv,
+  emit_info: EmitGraphInfo
 ) -> String {
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
   let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children, service_item: item, source_indices: env.source_indices)
-  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, shared_types: shared_types, env: env, service_item: item)
+  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, shared_types: shared_types, env: env, service_item: item, emit_info: emit_info)
   concat(struct_def, "\n\n", impl_block)
 }
 
@@ -13857,11 +14202,11 @@ fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>,
   else { decls |> join(separator: "") }
 }
 
-fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, env: TypeEnv, service_item: Node) -> String {
+fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, env: TypeEnv, service_item: Node, emit_info: EmitGraphInfo) -> String {
   let depth = 0
   let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children, service_item: service_item, source_indices: env.source_indices)
   let method_strs = op_children |> map(op_node =>
-    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, env: env, service_item: service_item)
+    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, env: env, service_item: service_item, emit_info: emit_info)
   )
   let all_methods = concat([new_method], method_strs)
   let methods_str = all_methods |> join(separator: "\n\n")
@@ -13944,7 +14289,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_indices: Map<Stri
   }
 }
 
-fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node) -> String {
+fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node, emit_info: EmitGraphInfo) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
     concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, enclosing_returns_arrow: false))
@@ -13960,7 +14305,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let bound = bind_operation_transport(t: eff_transport, op_node: op_node, source_indices: env.source_indices)
   let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, emit_info: emit_info)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -13974,12 +14319,12 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     make_indent(level: depth + 1),body, "\n}")
 }
 
-fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, op_node: Node, env: TypeEnv, shared_types: Set<String>) -> String {
+fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, op_node: Node, env: TypeEnv, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
     let first_mock = mock_props |> first
     match first_mock {
-      Present { value: mp } => match emit_data_value_json(value: field_init_node_value(n: mp), source_indices: source_indices) {
+      Present { value: mp } => match emit_data_value_json(value: field_init_node_value(n: mp), source_indices: source_indices, variant_wire: emit_info.data_variant_wire_spellings) {
         Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", escape_string_literal_body(s: r), "\");")
         Emitted { json: mock_json } => {
         let is_multi_field_conj = inferred.connective == Conj && inferred.children |> count > 1
@@ -15153,7 +15498,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
   } else if match value.expr_data { ExprElaboratedLiteral { value: _, elaboration: _ } => true _ => false } {
     concat("            ", emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
-    match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices) {
+    match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices, variant_wire: emit_info.data_variant_wire_spellings) {
       Refused { reason: r } => concat("            compile_error!(\"", escape_string_literal_body(s: r), "\")")
       Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
         "                .expect(\"valid data definition\")")

@@ -250,7 +250,7 @@ data ts_facts_boolean: TsBooleanPrimitiveFacts = TsBooleanPrimitiveFacts {
   encoding: ^ts_repr_boolean_ecma_boolean,
 }
 
-data ts_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data ts_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
 
 data ts_numeric_facts_catalog: List<TsEcma262NumericPrimitiveFactsUnion> = [
   TsNumericFactsNumber { facts: ts_facts_number },
@@ -2054,7 +2054,7 @@ fn ts_fn_add_target_model() -> Node {
 fn ts_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: text }
+    pattern: LiteralPattern { text: chars(s: text) }
   }
 }
 
