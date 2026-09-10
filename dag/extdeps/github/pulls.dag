@@ -333,6 +333,9 @@ service github.Pulls {
     output {
       number: Int from "number"
       html_url: NonEmptyStr from "html_url"
+      user: GitHubUser from "user"
+      head: PullRequestRef from "head"
+      base: PullRequestRef from "base"
       outcome: RestOutcome
     }
     transport rest {
@@ -343,6 +346,34 @@ service github.Pulls {
     response {
       201 => PullRequest
       401 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation SetState {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      pull_number: Int
+      state: PullRequestState
+    }
+    output {
+      number: Int from "number"
+      state: PullRequestState from "state"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: PATCH,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}",
+      body: { state: state }
+    }
+    response {
+      200 => PullRequest
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
