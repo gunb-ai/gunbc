@@ -59,7 +59,8 @@ import gunbc.cloudflare.r2_token_mint_run {
   R2MintAdmissionRefused,
   bootstrap_burden_text,
   r2_object_read_token_mint_receipt,
-  object_read_token_id_is_held_in_custody,
+  r2_object_read_tokens_revoked_before_store,
+  origin_read_pin_is_exact,
 }
 
 // THE CUSTODY RED, NOW BORNE BY A FIXTURE RATHER THAN BY THE DECLARATIONS -- AND THE MOVE IS
@@ -269,11 +270,10 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
   }
 }
 
-// THE RECEIPT IS JOINED TO THE ORIGIN PIN, not checked against itself. The grain booleans and
-// token_id == s3_access_key_id live on one authored row; asserting them is measure() == measure().
-// version_resource is an observation of Secret Manager; the origin's read_credential is the
-// declared pin. gcp_resource_names_this_version is the same identity join the fetch uses, so a
-// receipt that names another project, secret, or version fails while the pin stays put.
+// THE RECEIPT IS JOINED TO THE ORIGIN PIN, not checked against itself. version_resource is an
+// observation of Secret Manager; the origin's read_credential is the declared pin.
+// gcp_resource_names_this_version is the same identity join the fetch uses, so a receipt that names
+// another project, secret, or version fails while the pin stays put.
 test fn r2_object_read_mint_receipt_names_the_origin_read_pin() -> Bool {
   match fabric_durable_origin_standing() {
     DurableOriginUnallocated { purpose: _ } => false
@@ -286,13 +286,16 @@ test fn r2_object_read_mint_receipt_names_the_origin_read_pin() -> Bool {
   }
 }
 
-test fn revoke_unheld_refuses_the_held_mint_id() -> Bool {
-  object_read_token_id_is_held_in_custody(
-    token_id: r2_object_read_token_mint_receipt.token_id as String,
+test fn revoke_unheld_refuses_when_origin_read_is_pinned() -> Bool {
+  origin_read_pin_is_exact()
+    && (fabric_durable_origin_read_secret_version as String) != "latest"
+}
+
+test fn surviving_mint_id_is_not_a_revoked_unread_create() -> Bool {
+  all(
+    r2_object_read_tokens_revoked_before_store,
+    id => (id as String) != (r2_object_read_token_mint_receipt.token_id as String),
   )
-    && !object_read_token_id_is_held_in_custody(
-      token_id: "3cbb99f150c4daec03ab6a8458a2440f",
-    )
 }
 
 // THE BURDEN IS PRICED BY THE ENTRY, which is the dissolution this change claims for
