@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.toolchain.types { Architecture }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import std.measure {
   ByteSize,
   Gibibyte,
@@ -166,4 +167,61 @@ fn runner_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerShap
 
 fn shape_is_architecture(row: RunnerShapeRow, architecture: Architecture) -> Bool {
   row.architecture == architecture
+}
+
+// -------------------------------------------------------------------------------------
+// THE LABEL SIDE OF A CATALOG, AND WHY IT IS A NARROWER ROW THAN A SHAPE.
+//
+// A `runs-on` label answers two questions of very different difficulty. WHICH VENDOR AND
+// WHICH ARCHITECTURE is a fact every vendor's own page states unambiguously and which does
+// not vary with anything else. HOW MANY vCPU AND HOW MUCH MEMORY is not: GitHub publishes
+// ubuntu-24.04-arm at 4 vCPU / 16 GB for a PUBLIC repository and 2 vCPU / 8 GB for a private
+// one, on the same page, under the same label. A RunnerShapeRow has nowhere to put that, so a
+// standard-runner row could only be added to a shape catalog by picking one of the two
+// numbers, which is a fabricated fact rather than a modelled one.
+//
+// So the label roster is its own carrier. Every sized shape yields a label row by projection -
+// the sizes are additional, never contradictory - and a vendor may additionally publish labels
+// whose size this repository cannot state visibility-free. Nothing is duplicated: a label
+// appears here once, either projected from its shape or authored because no shape exists.
+type RunnerLabelRow {
+  provider: DeclarationRef
+  label: NonEmptyStr
+  architecture: Architecture
+}
+
+fn label_row_of_shape(row: RunnerShapeRow) -> RunnerLabelRow {
+  RunnerLabelRow { provider: row.provider, label: row.label, architecture: row.architecture }
+}
+
+// WHEN THIS REPOSITORY LOOKED, AND WHAT IT CLAIMED TO BE LOOKING AT. Both fields exist because
+// a catalog MISS is otherwise two different facts wearing one shape: the vendor does not
+// publish that label, or OUR SNAPSHOT is too old or too narrow to know. Those point at
+// opposite remedies - report the finding, versus go and re-fetch - and a consumer that cannot
+// tell them apart reads a deficit in our own data as a property of somebody else's repository.
+// fetched_at decides the first split by construction; declared_scope carries the second, which
+// is a claim about our own coverage and can only be authored.
+type CatalogSnapshot {
+  fetched_at: Rfc3339Timestamp
+  declared_scope: NonEmptyStr
+}
+
+type RunnerLabelCatalog {
+  provider: DeclarationRef
+  snapshot: CatalogSnapshot
+  rows: List<RunnerLabelRow>
+}
+
+// The projection every provider whose published sizes are visibility-free uses, so that
+// enrolling a provider's labels is one line in that provider's own module and no second list.
+fn label_catalog_of_shapes(
+  provider: DeclarationRef,
+  snapshot: CatalogSnapshot,
+  availability: RunnerCatalogAvailability,
+) -> RunnerLabelCatalog {
+  RunnerLabelCatalog {
+    provider: provider,
+    snapshot: snapshot,
+    rows: map(runner_shape_rows(availability: availability), r => label_row_of_shape(row: r)),
+  }
 }

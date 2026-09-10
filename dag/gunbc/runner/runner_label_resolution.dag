@@ -1,0 +1,232 @@
+module gunbc.runner_label_resolution
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef }
+import extdeps.toolchain.types { Aarch64, Architecture }
+import extdeps.ci_runner.types { CatalogSnapshot, RunnerLabelCatalog, RunnerLabelRow }
+import extdeps.time.rfc3339 {
+  Rfc3339Timestamp,
+  Rfc3339Comparison, Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable,
+  rfc3339_compare,
+}
+import gunbc.runner_provider_survey { surveyed_label_catalogs }
+
+// WHAT A `runs-on` LABEL IS, ANSWERED FROM THE VENDOR CATALOGS RATHER THAN FROM ITS SPELLING.
+//
+// The question this module answers is the one every CI-workload census asks first: given the
+// label a workflow job selects, which provider runs it and on which architecture. The obvious
+// implementation is a string grammar - split on "-", look for an "arm" segment, read a provider
+// from the prefix - and that is exactly what DESIGN section 4 says is never necessary in a closed
+// system: "a heuristic is never necessary: the richer source always exists or can be written."
+// It exists here. Depot, Blacksmith, WarpBuild, CircleCI, GitHub and Ubicloud each publish a
+// runner catalog, this repository already models all six under extdeps, and every one of those
+// catalogs states the architecture of every label it publishes. So the answer is a LOOKUP in a
+// cited authority, not an inference from characters.
+//
+// THE PAYOFF IS NOT TIDINESS, IT IS THE SHAPE OF THE FAILURE. A string grammar answers every
+// input, including inputs it has never seen: an unknown provider's label reads as whichever
+// prefix arm was written last, and any label without an "arm" segment reads as x64 - so
+// blacksmith-16vcpu-ubuntu-2404-arm, warp-ubuntu-latest-arm64-8x and a self-hosted label all
+// receive confident wrong answers, and nothing anywhere goes red. A lookup cannot do that. A
+// label the catalogs do not carry produces no row, so the unresolved arms below arrive BY
+// CONSTRUCTION rather than as defensive arms an author has to remember to widen when a new
+// provider shows up. The arm that depends on being remembered is the one that is not there when
+// it matters.
+//
+// WHAT THIS MODULE DOES NOT DECIDE. A `runs-on` value is not always a label: it can be a
+// sequence of self-hosted labels, or a GitHub Actions expression resolved at dispatch. Those are
+// facts about workflow SYNTAX and they are extdeps.github.actions RunnerSpec's to hold; a caller
+// that has one of those has not got a label to look up and must say so in its own vocabulary.
+// This module takes the label and the time it was observed, and nothing else.
+
+// -------------------------------------------------------------------------------------
+// A CATALOG MISS IS TWO DIFFERENT FACTS, AND FUSING THEM IS AN ABSORBING FALLBACK IN MINIATURE.
+//
+//   (a) the vendor does not publish that label - a finding about the repository we scanned.
+//   (b) OUR SNAPSHOT does not know it - a coverage obligation about us: the vendor shipped a
+//       size after we last read the page, or the page has families we never modelled.
+//
+// Both produce an empty lookup. They point at opposite remedies - report it, versus go and
+// re-fetch - so a single Unresolved arm covering both is a deficit in our own data wearing the
+// costume of a property of somebody else's repository, and it never ranks for fixing because
+// nothing distinguishes it from the ordinary case. DESIGN section 5 names the pattern: a failure
+// arm must refuse, never widen.
+//
+// THE SPLIT IS DECIDED BY CONSTRUCTION, from data the catalogs carry. If ANY surveyed snapshot
+// was fetched BEFORE the observation, then some catalog could have gained the label in between
+// and the miss is ours to close by re-fetching. Only when EVERY snapshot post-dates the
+// observation has this repository actually looked, at a time later than the thing it is looking
+// at, and found nothing - which is a finding about the observed repository. The residual, named
+// rather than hidden: a snapshot that post-dates the observation still cannot distinguish a
+// label the vendor never published from one it RETIRED in between, and it cannot see a family
+// this repository never modelled at all. The snapshot's declared_scope is what a reader consults
+// for the second; separating them mechanically needs a vendor-side family recognizer homed in
+// each provider's own module, which is this class's next-rung trigger and is not built here.
+type RunnerLabelResolution
+  = RunnerLabelResolved {
+      row: RunnerLabelRow
+      snapshot: CatalogSnapshot
+    }
+  | RunnerLabelSnapshotStale {
+      label: String
+      observed_at: Rfc3339Timestamp
+      stale_snapshots: List<CatalogSnapshot>
+      cause: NonEmptyStr
+    }
+  | RunnerLabelAbsentFromSurvey {
+      label: String
+      observed_at: Rfc3339Timestamp
+      snapshots_consulted: List<CatalogSnapshot>
+      cause: NonEmptyStr
+    }
+
+// A match carries the snapshot it came from, so the provenance of an answer is produced by the
+// same pass that produced the answer. Looking the snapshot up again afterwards would be a second
+// traversal that could disagree with the first.
+type LabelMatch {
+  row: RunnerLabelRow
+  snapshot: CatalogSnapshot
+}
+
+fn catalog_matches(catalog: RunnerLabelCatalog, label: String) -> List<LabelMatch> {
+  map(filter(catalog.rows, r => r.label == label), r => LabelMatch { row: r, snapshot: catalog.snapshot })
+}
+
+fn surveyed_matches(label: String) -> List<LabelMatch> {
+  fold(surveyed_label_catalogs(), init: [], f: (acc, c) => concat(acc, catalog_matches(catalog: c, label: label)))
+}
+
+// A snapshot is STALE RELATIVE TO AN OBSERVATION when it was fetched before it. An undecidable
+// comparison counts as stale, and that direction is deliberate: it routes the miss to "go and
+// look again", which is work on our side, rather than to "the vendor does not publish this",
+// which is a claim about someone else. When the instrument cannot say, the arm that costs us
+// effort is the honest one.
+fn snapshot_is_stale_for(snapshot: CatalogSnapshot, observed_at: Rfc3339Timestamp) -> Bool {
+  match rfc3339_compare(left: snapshot.fetched_at, right: observed_at) {
+    Rfc3339Precedes => true
+    Rfc3339Follows => false
+    Rfc3339Simultaneous => false
+    Rfc3339OrderUndecidable { cause } => true
+  }
+}
+
+fn surveyed_snapshots() -> List<CatalogSnapshot> {
+  fold(surveyed_label_catalogs(), init: [], f: (acc, c) => concat(acc, [c.snapshot]))
+}
+
+fn stale_snapshots_for(observed_at: Rfc3339Timestamp) -> List<CatalogSnapshot> {
+  filter(surveyed_snapshots(), s => snapshot_is_stale_for(snapshot: s, observed_at: observed_at))
+}
+
+data label_miss_next_rung_trigger: NonEmptyStr = "A vendor-side label-family recognizer, homed in each provider's own extdeps module and cited to that vendor's own documented naming scheme, would separate 'this label belongs to a family we never modelled' from 'this vendor does not publish this label'. Until it exists, consult the snapshot's declared_scope."
+
+fn resolve_runner_label(label: String, observed_at: Rfc3339Timestamp) -> RunnerLabelResolution {
+  let matches = surveyed_matches(label: label)
+  if count(matches) > 0 {
+    let hit = first(matches)
+    RunnerLabelResolved { row: hit.row, snapshot: hit.snapshot }
+  } else {
+    let stale = stale_snapshots_for(observed_at: observed_at)
+    if count(stale) > 0 {
+      RunnerLabelSnapshotStale {
+        label: label,
+        observed_at: observed_at,
+        stale_snapshots: stale,
+        cause: join(["no surveyed runner catalog carries the label '", label,
+          "', and this repository's snapshot of at least one provider was fetched BEFORE the observation at ", observed_at,
+          ", so a catalog could have gained the label in between. This is a coverage obligation on us and the remedy is to re-fetch those vendor pages, NOT a finding about the observed repository."], ""),
+      }
+    } else {
+      RunnerLabelAbsentFromSurvey {
+        label: label,
+        observed_at: observed_at,
+        snapshots_consulted: surveyed_snapshots(),
+        cause: join(["no surveyed runner catalog carries the label '", label,
+          "', and every snapshot consulted post-dates the observation at ", observed_at,
+          ", so this repository looked later than the thing it was looking at and found nothing. Residual: a snapshot cannot distinguish a label never published from one retired in between, and it cannot see a family this repository never modelled - read the snapshot's declared_scope. ", label_miss_next_rung_trigger], ""),
+      }
+    }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// THE TWO READINGS, DERIVED FROM ONE RESOLUTION AND NEVER FROM A SECOND LOOKUP. Provider and
+// architecture are separate questions with separate answers - an expression-valued runs-on
+// establishes an architecture while leaving the provider open, which is a real row in the
+// existing workload census - so they are separate carriers rather than one qualified reading.
+// Both are derived from the SAME resolution value, so they cannot disagree about whether the
+// label was found.
+// -------------------------------------------------------------------------------------
+
+type ArchitectureReading
+  = ArchitectureFromCatalog {
+      architecture: Architecture
+      label: String
+      provider: DeclarationRef
+      snapshot: CatalogSnapshot
+    }
+  | ArchitectureUnresolved { label: String, cause: NonEmptyStr }
+
+type ProviderReading
+  = ProviderFromCatalog {
+      provider: DeclarationRef
+      label: String
+      snapshot: CatalogSnapshot
+    }
+  | ProviderUnresolved { label: String, cause: NonEmptyStr }
+
+fn resolution_cause(r: RunnerLabelResolution) -> NonEmptyStr {
+  match r {
+    RunnerLabelResolved { row, snapshot } => "resolved"
+    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => cause
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => cause
+  }
+}
+
+fn resolution_label(r: RunnerLabelResolution) -> String {
+  match r {
+    RunnerLabelResolved { row, snapshot } => row.label
+    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => label
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => label
+  }
+}
+
+fn architecture_reading(r: RunnerLabelResolution) -> ArchitectureReading {
+  match r {
+    RunnerLabelResolved { row, snapshot } => ArchitectureFromCatalog {
+      architecture: row.architecture, label: row.label, provider: row.provider, snapshot: snapshot,
+    }
+    other => ArchitectureUnresolved { label: resolution_label(r: r), cause: resolution_cause(r: r) }
+  }
+}
+
+fn provider_reading(r: RunnerLabelResolution) -> ProviderReading {
+  match r {
+    RunnerLabelResolved { row, snapshot } => ProviderFromCatalog {
+      provider: row.provider, label: row.label, snapshot: snapshot,
+    }
+    other => ProviderUnresolved { label: resolution_label(r: r), cause: resolution_cause(r: r) }
+  }
+}
+
+// THE ARM QUESTION, ASKED SO THAT UNRESOLVED IS NOT SILENTLY NO. A workload census wants to know
+// whether a job ran on arm64, and the tempting shape is a Bool - which fuses "the catalog says
+// x64" with "we do not know", and a census built on that fusion reports an unresolved label as
+// x64 evidence, which is precisely the promotion this repository's workload census exists to
+// forbid in the other direction.
+type ArmStanding
+  = ArmConfirmed { label: String, snapshot: CatalogSnapshot }
+  | NotArmConfirmed { label: String, architecture: Architecture, snapshot: CatalogSnapshot }
+  | ArmUndetermined { label: String, cause: NonEmptyStr }
+
+fn arm_standing(r: RunnerLabelResolution) -> ArmStanding {
+  match architecture_reading(r: r) {
+    ArchitectureFromCatalog { architecture, label, provider, snapshot } =>
+      if architecture == Aarch64 {
+        ArmConfirmed { label: label, snapshot: snapshot }
+      } else {
+        NotArmConfirmed { label: label, architecture: architecture, snapshot: snapshot }
+      }
+    ArchitectureUnresolved { label, cause } => ArmUndetermined { label: label, cause: cause }
+  }
+}

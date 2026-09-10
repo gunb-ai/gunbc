@@ -1,0 +1,237 @@
+module test.claim.runner_label_resolution_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { declaration_ref_eq }
+import extdeps.toolchain.types { Aarch64, X86_64 }
+import extdeps.ci_runner.types { CatalogSnapshot, RunnerLabelRow }
+import extdeps.ci_runner.depot { depot_provider_identity }
+import extdeps.ci_runner.github_actions { github_actions_provider_identity }
+import extdeps.time.rfc3339 {
+  Rfc3339Timestamp, Rfc3339Comparison, Rfc3339Precedes, Rfc3339Follows,
+  Rfc3339Simultaneous, Rfc3339OrderUndecidable, rfc3339_compare,
+}
+import gunbc.runner_label_resolution {
+  RunnerLabelResolution, RunnerLabelResolved, RunnerLabelSnapshotStale, RunnerLabelAbsentFromSurvey,
+  resolve_runner_label,
+  ArchitectureReading, ArchitectureFromCatalog, ArchitectureUnresolved, architecture_reading,
+  ProviderReading, ProviderFromCatalog, ProviderUnresolved, provider_reading,
+  ArmStanding, ArmConfirmed, NotArmConfirmed, ArmUndetermined, arm_standing,
+}
+
+// THE FROZEN ACCEPTANCE FIXTURE. biomejs/biome at 47d7383d, .github/workflows/main.yml, job
+// `test`, runner label depot-ubuntu-24.04-arm-16 - the row the private workload census already
+// carries, restated here as the label question alone so this repository's resolver is checked
+// against it without the census being in scope.
+data biome_selected_label: String = "depot-ubuntu-24.04-arm-16"
+
+// The mutation the brief names, and the one the whole catalog design exists to get right: the
+// SAME provider, the SAME family, one segment removed, and the answer must flip to x64.
+data biome_x64_mutation_label: String = "depot-ubuntu-24.04-16"
+
+// The observation time of the Biome run the census admitted as its baseline (run 33892992396,
+// job 101088906536, 2026-09-04).
+data biome_observed_at: Rfc3339Timestamp = "2026-09-04T16:04:06Z"
+
+fn resolved_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    ArmConfirmed { label, snapshot } => true
+    NotArmConfirmed { label, architecture, snapshot } => false
+    ArmUndetermined { label, cause } => false
+  }
+}
+
+fn resolved_not_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    ArmConfirmed { label, snapshot } => false
+    NotArmConfirmed { label, architecture, snapshot } => architecture == X86_64
+    ArmUndetermined { label, cause } => false
+  }
+}
+
+fn arm_undetermined(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    ArmConfirmed { label, snapshot } => false
+    NotArmConfirmed { label, architecture, snapshot } => false
+    ArmUndetermined { label, cause } => true
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// THE FIXTURE, AND ITS MUTATION. Both directions, because a resolver that answered Arm to
+// everything would pass the first claim alone.
+// -------------------------------------------------------------------------------------
+
+test fn witness_biome_selected_label_resolves_arm_from_depots_catalog() -> Bool {
+  let arm = resolved_arm(label: biome_selected_label, observed_at: biome_observed_at)
+  let from_depot = match provider_reading(r: resolve_runner_label(label: biome_selected_label, observed_at: biome_observed_at)) {
+    ProviderFromCatalog { provider, label, snapshot } => declaration_ref_eq(a: provider, b: depot_provider_identity)
+    ProviderUnresolved { label, cause } => false
+  }
+  arm && from_depot
+}
+
+test fn witness_the_unsuffixed_depot_label_derives_x64() -> Bool {
+  resolved_not_arm(label: biome_x64_mutation_label, observed_at: biome_observed_at)
+    && resolved_arm(label: biome_x64_mutation_label, observed_at: biome_observed_at) == false
+}
+
+// EVERY OTHER PROVIDER'S ARM LABEL, IN BOTH DIRECTIONS. These are the labels a string grammar
+// answers confidently and wrongly - blacksmith and warp put their architecture segment in a
+// different position, and GitHub's standard arm label has no provider prefix at all.
+test fn witness_each_surveyed_providers_arm_and_x64_labels_resolve() -> Bool {
+  let arm_labels = [
+    "depot-ubuntu-24.04-arm",
+    "depot-ubuntu-24.04-arm-64",
+    "blacksmith-16vcpu-ubuntu-2404-arm",
+    "warp-ubuntu-latest-arm64-8x",
+    "ubicloud-standard-16-arm",
+    "ubuntu-24.04-arm",
+    "ubuntu-latest-arm-64core",
+  ]
+  let x64_labels = [
+    "depot-ubuntu-24.04",
+    "depot-ubuntu-24.04-64",
+    "blacksmith-16vcpu-ubuntu-2404",
+    "warp-ubuntu-latest-x64-8x",
+    "ubicloud-standard-16",
+    "ubuntu-24.04",
+    "ubuntu-latest",
+    "ubuntu-latest-64core",
+  ]
+  count(filter(arm_labels, l => resolved_arm(label: l, observed_at: biome_observed_at) == false)) == 0
+    && count(filter(x64_labels, l => resolved_not_arm(label: l, observed_at: biome_observed_at) == false)) == 0
+}
+
+// -------------------------------------------------------------------------------------
+// THE UNRESOLVED ARMS, WHICH ARE THE POINT. A label no vendor catalog carries must not receive
+// an architecture, and the two shapes below are exactly the ones a string grammar answers with
+// confident nonsense: a self-hosted label, and a label from a provider family this repository
+// has never modelled.
+// -------------------------------------------------------------------------------------
+
+test fn witness_a_label_outside_every_catalog_yields_no_architecture() -> Bool {
+  let unknown_labels = [
+    "self-hosted",
+    "srv1",
+    "namespace-profile-default-arm64",
+    "depot-ubuntu-24.04-arm-small",
+    "ubicloud-standard-8-ubuntu-2404",
+  ]
+  count(filter(unknown_labels, l => arm_undetermined(label: l, observed_at: biome_observed_at) == false)) == 0
+    && count(filter(unknown_labels, l => resolved_arm(label: l, observed_at: biome_observed_at))) == 0
+    && count(filter(unknown_labels, l => resolved_not_arm(label: l, observed_at: biome_observed_at))) == 0
+}
+
+test fn witness_an_unresolved_label_carries_both_readings_unresolved() -> Bool {
+  let r = resolve_runner_label(label: "namespace-profile-default-arm64", observed_at: biome_observed_at)
+  let arch_unresolved = match architecture_reading(r: r) {
+    ArchitectureFromCatalog { architecture, label, provider, snapshot } => false
+    ArchitectureUnresolved { label, cause } => label == "namespace-profile-default-arm64"
+  }
+  let provider_unresolved = match provider_reading(r: r) {
+    ProviderFromCatalog { provider, label, snapshot } => false
+    ProviderUnresolved { label, cause } => true
+  }
+  arch_unresolved && provider_unresolved
+}
+
+// -------------------------------------------------------------------------------------
+// THE TWO-ARM MISS. A catalog miss must say whether it is a finding about the scanned
+// repository or a coverage obligation on us, and the split is decided by snapshot time.
+//
+// Both arms are exercised with the SAME label, so what is being measured is the observation
+// time and nothing else. 2026-09-04 post-dates four of the six snapshots, so the miss is ours to
+// close by re-fetching; 2026-06-01 pre-dates all six, so the survey looked later than the thing
+// it was looking at.
+// -------------------------------------------------------------------------------------
+
+data observation_before_every_snapshot: Rfc3339Timestamp = "2026-06-01T00:00:00Z"
+
+test fn witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation() -> Bool {
+  match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: biome_observed_at) {
+    RunnerLabelResolved { row, snapshot } => false
+    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => count(stale_snapshots) > 0
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
+  }
+}
+
+test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> Bool {
+  match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: observation_before_every_snapshot) {
+    RunnerLabelResolved { row, snapshot } => false
+    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => false
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => count(snapshots_consulted) == 6
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// THE COMPARATOR THE SPLIT RESTS ON, AND ITS REFUSAL. RFC 3339 section 5.1 admits string sorting
+// only at one timezone spelling and one fractional precision; a comparator that answered anyway
+// would silently mis-order the very case the RFC warns about, and mis-ordering here flips a
+// coverage obligation into a finding about somebody else's repository.
+// -------------------------------------------------------------------------------------
+
+test fn witness_rfc3339_comparison_orders_utc_values_of_equal_precision() -> Bool {
+  let precedes = match rfc3339_compare(left: "2026-07-11T00:00:00Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339Precedes => true
+    other => false
+  }
+  let follows = match rfc3339_compare(left: "2026-09-10T00:00:00Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339Follows => true
+    other => false
+  }
+  let same = match rfc3339_compare(left: "2026-09-04T16:04:06Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339Simultaneous => true
+    other => false
+  }
+  precedes && follows && same
+}
+
+// The mixed-precision pair is the exact one the rfc3339 row names: a fractional component sorts
+// BELOW the Z designator, so lexical order would put the later instant first.
+test fn witness_rfc3339_comparison_refuses_mixed_precision_and_offsets() -> Bool {
+  let mixed_precision = match rfc3339_compare(left: "2026-09-04T16:04:06.1Z", right: "2026-09-04T16:04:06Z") {
+    Rfc3339OrderUndecidable { cause } => true
+    other => false
+  }
+  let numeric_offset = match rfc3339_compare(left: "2026-09-04T16:04:06+01:00", right: "2026-09-04T16:04:06Z") {
+    Rfc3339OrderUndecidable { cause } => true
+    other => false
+  }
+  mixed_precision && numeric_offset
+}
+
+// -------------------------------------------------------------------------------------
+// THE SNAPSHOT IS NOT DECORATION. A resolved label carries the catalog reading that produced it,
+// so a consumer can say WHEN the answer was true and what the snapshot claimed to cover. A
+// resolver that returned an architecture with no provenance would be indistinguishable from one
+// that guessed.
+// -------------------------------------------------------------------------------------
+
+test fn witness_a_resolved_label_carries_its_snapshot_provenance() -> Bool {
+  match resolve_runner_label(label: biome_selected_label, observed_at: biome_observed_at) {
+    RunnerLabelResolved { row, snapshot } =>
+      row.label == biome_selected_label
+        && row.architecture == Aarch64
+        && snapshot.fetched_at == "2026-09-10T00:00:00Z"
+        && string_length(s: snapshot.declared_scope) > 0
+    other => false
+  }
+}
+
+fn all_claims_hold() -> Bool {
+  witness_biome_selected_label_resolves_arm_from_depots_catalog()
+    && witness_the_unsuffixed_depot_label_derives_x64()
+    && witness_each_surveyed_providers_arm_and_x64_labels_resolve()
+    && witness_a_label_outside_every_catalog_yields_no_architecture()
+    && witness_an_unresolved_label_carries_both_readings_unresolved()
+    && witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation()
+    && witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding()
+    && witness_rfc3339_comparison_orders_utc_values_of_equal_precision()
+    && witness_rfc3339_comparison_refuses_mixed_precision_and_offsets()
+    && witness_a_resolved_label_carries_its_snapshot_provenance()
+}
+
+fn runner_label_resolution_witness_main() -> ProcessExit {
+  if all_claims_hold() { ExitSuccess } else { ExitFailure { code: 1, reason: "one or more runner-label resolution claims did not hold" } }
+}

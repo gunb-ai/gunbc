@@ -6,6 +6,9 @@ import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
+  CatalogSnapshot,
+  label_catalog_of_shapes,
+  RunnerLabelCatalog,
   EntitlementUnstated,
   RunnerCatalogAvailability,
   QuotedWithoutBasis,
@@ -76,3 +79,17 @@ data warpbuild_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
     warpbuild_shape(label: "warp-ubuntu-latest-x64-32x", architecture: X86_64, vcpus: 32, quoted_numeral: 128),
   ],
 }
+
+// The label roster and its snapshot. See extdeps.ci_runner.types CatalogSnapshot for why the
+// fetch time and the declared scope both have to be carried: a consumer that meets a label this
+// catalog lacks must be able to tell a finding about the observed repository from a gap in ours.
+data warpbuild_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-08-18T00:00:00Z",
+  declared_scope: "Linux ubuntu-latest cloud-runner families only, both architectures, from the cloud-runners documentation cited above. Any other family that documentation publishes is absent from this catalog because this repository has not read it.",
+}
+
+data warpbuild_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  provider: warpbuild_provider_identity,
+  snapshot: warpbuild_catalog_snapshot,
+  availability: warpbuild_runner_catalog,
+)

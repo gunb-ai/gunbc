@@ -13,6 +13,9 @@ import std.measure {
 }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.ci_runner.types {
+  CatalogSnapshot,
+  label_catalog_of_shapes,
+  RunnerLabelCatalog,
   CpuEntitlement,
   DedicatedPhysicalCore,
   EntitlementUnstated,
@@ -264,3 +267,22 @@ fn ubicloud_runner_shape(row: UbicloudRunnerCatalogRow) -> RunnerShapeRow {
 data ubicloud_runner_catalog_shapes: RunnerCatalogAvailability = RunnerShapesCited {
   rows: map(ubicloud_runner_catalog(), r => ubicloud_runner_shape(row: r)),
 }
+
+// The label roster and its snapshot. See extdeps.ci_runner.types CatalogSnapshot for why the
+// fetch time and the declared scope both have to be carried: a consumer that meets a label this
+// catalog lacks must be able to tell a finding about the observed repository from a gap in ours.
+//
+// THIS SCOPE NOTE EARNED ITSELF ON A REAL LABEL. PowerDNS/pdns runs jobs on
+// ubicloud-standard-8-ubuntu-2404, and the ten rows above carry the bare ubicloud-standard-N and
+// ubicloud-standard-N-arm spellings only. The OS-suffixed spelling is therefore a MISS, and it is
+// a miss of this repository's coverage rather than a label Ubicloud does not publish.
+data ubicloud_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-07-11T00:00:00Z",
+  declared_scope: "The bare ubicloud-standard-N and ubicloud-standard-N-arm runner-type spellings only, from the runner-types page cited above. The OS-suffixed spellings Ubicloud also accepts (ubicloud-standard-8-ubuntu-2404 and its siblings) are NOT modelled here: such a label is absent from this catalog because this repository has not read that surface, not because Ubicloud does not publish it.",
+}
+
+data ubicloud_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  provider: ubicloud_provider_identity,
+  snapshot: ubicloud_catalog_snapshot,
+  availability: ubicloud_runner_catalog_shapes,
+)

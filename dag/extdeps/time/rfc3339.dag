@@ -1,6 +1,8 @@
 module extdeps.time.rfc3339
 
-import std.types { String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { Less, Equal, Greater }
+import std.string_type { string_lex_compare }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -15,3 +17,57 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type Rfc3339Timestamp = NonEmptyStr where brand("Rfc3339Timestamp")
 
 data rfc3339_utc_designator: String = "Z"
+
+// THE COMPARATOR THE ROW ABOVE ALREADY DESCRIBES, WITH ITS PRECONDITIONS CHECKED RATHER THAN
+// ASSUMED. RFC 3339 section 5.1 states the property and its conditions in one sentence:
+// "Assuming that the time zones of the dates and times are the same (e.g., all in UTC),
+// expressed using the same string (e.g., all "Z" or all "+00:00"), and all times have the same
+// number of fractional second digits, then the date and time strings may be sorted as strings
+// (e.g., using the strcmp() function in C) and a time-ordered sequence will result."
+//
+// So lexical comparison is not a trick and it is not general: it is a CONDITIONAL property, and
+// the conditions are the whole content. This function answers the ordering question only where
+// they hold and refuses where they do not, which is the difference between using the RFC's
+// property and using the coincidence that strings compare.
+//
+// The two conditions are checked as: both values carry the "Z" designator, and both are the same
+// length. Equal length is a sufficient stand-in for "the same number of fractional second
+// digits" among Z-designated values, because the fixed part of the format is fixed-width and the
+// fractional part is the only thing that can vary it. It is deliberately sufficient rather than
+// exact: a stricter reading refuses more, and every refusal here is a caller who must supply a
+// real parse rather than a caller who gets a wrong answer.
+//
+// THE ORDER IS NOT A Bool, because "not before" fuses two facts a caller acts on differently:
+// the instants are ordered the other way, and the comparison could not be made at all.
+type Rfc3339Comparison
+  = Rfc3339Precedes
+  | Rfc3339Follows
+  | Rfc3339Simultaneous
+  | Rfc3339OrderUndecidable { cause: NonEmptyStr }
+
+fn rfc3339_is_utc_designated(value: Rfc3339Timestamp) -> Bool {
+  let len = string_length(s: value)
+  len > 0 && substring(s: value, start: len - 1, end: len) == rfc3339_utc_designator
+}
+
+fn rfc3339_lexically_comparable(left: Rfc3339Timestamp, right: Rfc3339Timestamp) -> Bool {
+  rfc3339_is_utc_designated(value: left)
+    && rfc3339_is_utc_designated(value: right)
+    && string_length(s: left) == string_length(s: right)
+}
+
+fn rfc3339_compare(left: Rfc3339Timestamp, right: Rfc3339Timestamp) -> Rfc3339Comparison {
+  if rfc3339_lexically_comparable(left: left, right: right) == false {
+    Rfc3339OrderUndecidable {
+      cause: join(["RFC 3339 section 5.1 admits string sorting only for values at the same time zone spelling with the same number of fractional second digits; '",
+        left, "' and '", right,
+        "' do not both carry the Z designator at the same total length, so ordering them lexically would be reading the format's coincidence rather than its stated property. A caller that must order these needs a real parse."], "")
+    }
+  } else {
+    match string_lex_compare(left: left, right: right) {
+      Less => Rfc3339Precedes
+      Greater => Rfc3339Follows
+      Equal => Rfc3339Simultaneous
+    }
+  }
+}

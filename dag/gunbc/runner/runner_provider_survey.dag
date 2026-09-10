@@ -1,0 +1,47 @@
+module gunbc.runner_provider_survey
+
+import std.types { List }
+import extdeps.ci_runner.types { RunnerCatalogAvailability, RunnerLabelCatalog }
+import extdeps.ci_runner.blacksmith { blacksmith_runner_catalog, blacksmith_label_catalog }
+import extdeps.ci_runner.circleci { circleci_runner_catalog, circleci_label_catalog }
+import extdeps.ci_runner.depot { depot_runner_catalog, depot_label_catalog }
+import extdeps.ci_runner.github_actions { github_actions_runner_catalog, github_actions_label_catalog }
+import extdeps.ci_runner.warpbuild { warpbuild_runner_catalog, warpbuild_label_catalog }
+import extdeps.cloud.ubicloud { ubicloud_runner_catalog_shapes, ubicloud_label_catalog }
+
+// WHICH CI RUNNER PROVIDERS THIS REPOSITORY HAS READ. One roster, and it lives here rather than
+// in the extdeps hub for the reason gunbc.runner_shape_census already gives: which providers we
+// looked at is an observation this repository made, a receipt in the observing layer, and
+// DESIGN's external-upstream decomposition rule forbids a generic hub from enumerating concrete
+// products or dispatching among their authorities.
+//
+// IT LIVES IN ITS OWN MODULE BECAUSE IT HAS TWO CONSUMERS. The shape census reads these
+// providers to derive memory-per-vCPU; the label resolution reads them to answer what a
+// runs-on label is. Those are different questions over the SAME roster, and a roster copied
+// into the second consumer would be a fork that goes stale the first time a provider is added
+// to one list and not the other. Adding a provider is one module beside its peers and one line
+// in each list below - never a second enumeration somewhere else.
+fn surveyed_runner_catalogs() -> List<RunnerCatalogAvailability> {
+  [
+    ubicloud_runner_catalog_shapes,
+    blacksmith_runner_catalog,
+    github_actions_runner_catalog,
+    depot_runner_catalog,
+    warpbuild_runner_catalog,
+    circleci_runner_catalog,
+  ]
+}
+
+// THE SAME PROVIDERS, READ FOR THEIR LABELS. Not derivable from the list above: a label catalog
+// carries the snapshot provenance the shape catalogs do not, and GitHub's contributes standard
+// runner labels that have no visibility-free shape at all.
+fn surveyed_label_catalogs() -> List<RunnerLabelCatalog> {
+  [
+    ubicloud_label_catalog,
+    blacksmith_label_catalog,
+    github_actions_label_catalog,
+    depot_label_catalog,
+    warpbuild_label_catalog,
+    circleci_label_catalog,
+  ]
+}

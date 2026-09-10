@@ -6,6 +6,9 @@ import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
+  CatalogSnapshot,
+  label_catalog_of_shapes,
+  RunnerLabelCatalog,
   EntitlementUnstated,
   RunnerCatalogAvailability,
   QuotedWithoutBasis,
@@ -77,3 +80,17 @@ data circleci_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
     circleci_shape(label: "2xlarge+", architecture: X86_64, vcpus: 20, quoted_numeral: 40),
   ],
 }
+
+// The label roster and its snapshot. See extdeps.ci_runner.types CatalogSnapshot for why the
+// fetch time and the declared scope both have to be carried: a consumer that meets a label this
+// catalog lacks must be able to tell a finding about the observed repository from a gap in ours.
+data circleci_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-08-18T00:00:00Z",
+  declared_scope: "Docker executor resource classes only, from the configuration reference cited above. CircleCI's machine, macOS, GPU and Arm executor classes are absent from this catalog because this repository has not read them.",
+}
+
+data circleci_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  provider: circleci_provider_identity,
+  snapshot: circleci_catalog_snapshot,
+  availability: circleci_runner_catalog,
+)
