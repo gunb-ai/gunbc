@@ -51,11 +51,10 @@ data bridged_attachment_rejected: GuestAttachment = BridgedToPhysicalSegment {
 
 // THE REJECTED TOPOLOGY IS THE ONE THE ATTEMPT RECEIPT HOLDS. These folds consume
 // egress_outcome and guest_reachability. CONFIG_NETFILTER and CONFIG_NF_NAT are required
-// either way, so the standing is NOT folded into KernelFeatureRequirement.required_for.
-// verify_kernel_config carries the standing on KernelConfigHolds; the kernel-config witness
-// matches Settled, which is the executing reader. The other three arms are the RED: they are
-// authorable by changing those receipts. The wet ProcessExit still does not refuse on them
-// (kernel-option admission is independent of that probe).
+// either way, so the standing is NOT folded into KernelFeatureRequirement.required_for
+// and is not a field of KernelConfigHolds (that verdict answers whether a .config satisfies
+// the option roster). The standing lives here; test.claim.runner.runner_filtered_egress_topology_witness_test
+// reads it. The other three arms are the RED: they are authorable by changing those receipts.
 fn bridged_attempt_left_guest_without_egress() -> Bool {
   match egress_outcome {
     GuestEgressEstablished { via: _ } => false

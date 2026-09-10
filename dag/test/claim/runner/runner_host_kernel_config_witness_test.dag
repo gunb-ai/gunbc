@@ -6,9 +6,6 @@ import gunbc.runner.runner_host_kernel_config {
   KernelOptionVerdict, KernelOptionMissing, KernelOptionUnexpectedlyEnabled, KernelOptionSatisfied,
   verify_kernel_config, runner_host_kernel_options, kernel_config_argv_text,
 }
-import gunbc.runner.runner_host_filtered_egress {
-  FilteredEgressTopologySettled,
-}
 
 // A CONFIGURATION THAT SATISFIES EVERY MODELED OPTION, built from the roster itself so the fixture
 // cannot drift away from what is required. Hand-writing fifty-two CONFIG_ lines would create a
@@ -34,12 +31,7 @@ fn satisfying_config() -> String {
 
 test fn a_configuration_meeting_every_modeled_option_holds() -> Bool {
   match verify_kernel_config(config: satisfying_config()) {
-    KernelConfigHolds { options_checked: n, filtered_egress_topology: t } =>
-      n == (runner_host_kernel_options() |> count)
-      && match t {
-           FilteredEgressTopologySettled => true
-           _ => false
-         }
+    KernelConfigHolds { options_checked: n } => n == (runner_host_kernel_options() |> count)
     _ => false
   }
 }
