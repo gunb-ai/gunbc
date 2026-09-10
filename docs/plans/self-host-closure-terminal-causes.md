@@ -81,8 +81,10 @@ run from the emitted crate directory. Every detail is load-bearing: the `== ./pa
 file is inside the hash; the file list is `find`-order sorted under `LC_ALL=C`, not shell glob order;
 the stripped prefix is exactly `pub use crate::` at line start, not `use ` and not any `pub use`; each
 file's surviving lines are sorted under `LC_ALL=C`; and the whole stream is hashed once rather than per
-file. Expect 171 files. A different count means the two emissions differ and no row join between them
-is valid.
+file. The calibration is agreement, not a numeral: run the same `find … | wc -l` on both emissions and they
+must report the SAME count, whatever it is. A number written here would be the very thing this document
+exists to warn about, and it would rot the first time the closure gains or loses a module. If the two
+counts differ, the emissions differ and no row join between them is valid.
 
 **`-not -path './bin/*'` is not incidental.** The reduction probes below are written INTO the emitted
 crate's `src/bin/`, and an earlier revision of this note's digest swept them in — making the pinned

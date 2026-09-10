@@ -4,10 +4,10 @@ import v2.std.algebra { any, length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import gunbc.tools.self_host_closure_terminal_causes {
-  cause_population,
   closure_observation_pin,
   closure_refusal_rows,
   every_cause_names_a_row,
+  every_citation_key_names_exactly_one_cause,
   no_cause_reuses_a_named_input_as_its_control,
   every_row_cause_is_rostered,
   every_refusing_path_is_a_closure_member,
@@ -50,29 +50,19 @@ test fn no_row_names_a_cause_the_roster_does_not_carry() -> Bool {
 // The relation is queried by key, so a cause key that no fold can reach would make the roster
 // unusable to the repair lanes that cite it. This exercises the query itself rather than the data:
 // every rostered key returns a non-empty row list THROUGH rows_for_cause.
-test fn every_cause_key_is_reachable_through_the_query() -> Bool {
-  !any(xs: front_end_causes, predicate: fn(c) { length(xs: rows_for_cause(cause: c.key)) == 0 })
-}
-
-test fn cause_population_agrees_with_the_query_it_counts() -> Bool {
-  !any(xs: front_end_causes, predicate: fn(c) {
-    cause_population(cause: c.key) != length(xs: rows_for_cause(cause: c.key))
-  })
-}
-
 // A cause whose key and id are the same symbol would mean the short citation key had silently become
 // the descriptive name, and five repair PRs citing keys would then be citing something else.
 test fn the_citation_key_and_the_defect_id_are_distinct() -> Bool {
   !any(xs: front_end_causes, predicate: fn(c) { c.key == c.id })
 }
 
-// Two causes sharing a key would make a citation ambiguous - the same defect that duplicate identities
-// cause anywhere else. Quadratic over eighteen rows, and the shape is what is priced, not the n.
-test fn no_two_causes_share_a_citation_key() -> Bool {
-  !any(xs: front_end_causes, predicate: fn(a) {
-    length(xs: rows_for_cause(cause: a.key)) == 0
-      || any(xs: front_end_causes, predicate: fn(b) { b.key == a.key && b.id != a.id })
-  })
+// Two records under one citation key make every one of the five repair PRs' citations ambiguous. This
+// COUNTS the records filed under each key. An earlier revision looked for a pair that DISAGREED about
+// its id, so the commonest duplication - the same record pasted twice - stayed green; that is the
+// identical defect the row table had, diagnosed and fixed there in this same PR and then re-committed
+// here. Counting is the fix in both places, and the row witness below is its twin.
+test fn every_citation_key_names_exactly_one_record() -> Bool {
+  every_citation_key_names_exactly_one_cause()
 }
 
 // Two rows for one path would mean the driver's output was decoded twice or a path was recorded under

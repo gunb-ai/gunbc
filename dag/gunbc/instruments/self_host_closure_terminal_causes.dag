@@ -994,6 +994,19 @@ fn no_cause_reuses_a_named_input_as_its_control() -> Bool {
   })
 }
 
+// THE RECORDS FILED UNDER ONE CITATION KEY. Five repair PRs cite causes by key, so a key naming two
+// records makes every one of those citations ambiguous. This COUNTS records per key rather than
+// looking for a disagreeing pair: the commonest duplication is the same record pasted twice, and two
+// identical records disagree about nothing. The row table learned this the hard way and this witness
+// was authored with the old defect anyway - counting is the fix in both places.
+fn causes_with_key(key: Symbol) -> List<FrontEndCause> {
+  filter(xs: front_end_causes, predicate: fn(c) { c.key == key })
+}
+
+fn every_citation_key_names_exactly_one_cause() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) { length(xs: causes_with_key(key: c.key)) != 1 })
+}
+
 fn every_row_cause_is_rostered() -> Bool {
   !any(xs: closure_refusal_rows, predicate: fn(row) {
     any(xs: row.causes, predicate: fn(c) {
