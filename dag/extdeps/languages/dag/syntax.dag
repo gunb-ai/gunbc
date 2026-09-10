@@ -4,7 +4,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
 import std.syntax {
-  DagParseEnvironment,
+  ParseEnvironment,
   ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
   BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
@@ -115,7 +115,7 @@ data dag_syntax_spec: SyntaxSpec = SyntaxSpec {
 // revision it is reading. The two are the same shape, which is what makes the base route a
 // different ARGUMENT rather than a different code path -- and a second code path is precisely how
 // the base side came to be read under head rules in the first place.
-data dag_parse_environment: DagParseEnvironment = DagParseEnvironment {
+data dag_parse_environment: ParseEnvironment = ParseEnvironment {
   syntax_spec: dag_syntax_spec,
   non_name_keywords: dag_non_name_keywords,
 }

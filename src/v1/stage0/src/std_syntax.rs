@@ -157,7 +157,7 @@ pub struct SyntaxSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DagParseEnvironment {
+pub struct ParseEnvironment {
     pub syntax_spec: Rc<SyntaxSpec>,
     pub non_name_keywords: Rc<HashMap<String, bool>>,
 }

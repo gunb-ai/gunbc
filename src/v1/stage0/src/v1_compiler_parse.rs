@@ -47,7 +47,7 @@ use crate::std_syntax::ItemFormKind::OtherForm;
 use crate::std_syntax::LiteralValue::LitStr;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitSymbol};
 pub use crate::std_syntax::{
-    BinOp, BodyKind, DagParseEnvironment, ItemForm, ItemFormKind, LiteralValue, OperatorSpec,
+    BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, ParseEnvironment,
     SyntaxSpec,
 };
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
@@ -163,7 +163,7 @@ pub struct ParseContext {
     pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
     pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
     pub heads_only: bool,
-    pub env: Rc<DagParseEnvironment>,
+    pub env: Rc<ParseEnvironment>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1818,7 +1818,7 @@ pub fn tok_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
     }
 }
 
-pub fn tok_keyword_to_name(tok: Option<Rc<Token>>, env: Rc<DagParseEnvironment>) -> Option<String> {
+pub fn tok_keyword_to_name(tok: Option<Rc<Token>>, env: Rc<ParseEnvironment>) -> Option<String> {
     match tok.clone() {
         Some(t) => {
             if is_name_keyword(t.clone(), env.clone()) {
@@ -1831,7 +1831,7 @@ pub fn tok_keyword_to_name(tok: Option<Rc<Token>>, env: Rc<DagParseEnvironment>)
     }
 }
 
-pub fn tok_is_keyword_name(tok: Option<Rc<Token>>, env: Rc<DagParseEnvironment>) -> bool {
+pub fn tok_is_keyword_name(tok: Option<Rc<Token>>, env: Rc<ParseEnvironment>) -> bool {
     match tok_keyword_to_name(tok.clone(), env.clone()) {
         Some(_) => true,
         std::option::Option::None => false,
@@ -2020,7 +2020,7 @@ pub fn expect_ident(tokens: Rc<TokenStream>) -> Rc<NameResult> {
     }
 }
 
-pub fn expect_name(tokens: Rc<TokenStream>, env: Rc<DagParseEnvironment>) -> Rc<NameResult> {
+pub fn expect_name(tokens: Rc<TokenStream>, env: Rc<ParseEnvironment>) -> Rc<NameResult> {
     {
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
@@ -2071,7 +2071,7 @@ pub fn expect_name(tokens: Rc<TokenStream>, env: Rc<DagParseEnvironment>) -> Rc<
     }
 }
 
-pub fn is_name_keyword(token: Rc<Token>, env: Rc<DagParseEnvironment>) -> bool {
+pub fn is_name_keyword(token: Rc<Token>, env: Rc<ParseEnvironment>) -> bool {
     if is_keyword_shape(token.shape.clone()) {
         match v1_rt::lookup(&env.non_name_keywords.clone(), token.text.clone()) {
             Some(_) => false,
@@ -2193,10 +2193,7 @@ pub fn is_ambiguous_prefix_infix_newline_boundary(tokens: Rc<TokenStream>) -> bo
     }
 }
 
-pub fn is_operator_continuation_token(
-    tok: Option<Rc<Token>>,
-    env: Rc<DagParseEnvironment>,
-) -> bool {
+pub fn is_operator_continuation_token(tok: Option<Rc<Token>>, env: Rc<ParseEnvironment>) -> bool {
     match tok.clone() {
         Some(t) => {
             if is_prefix_infix_dual_role_operator(t.text.clone()) {
@@ -2214,7 +2211,7 @@ pub fn is_operator_continuation_token(
 
 pub fn skip_continuation_newlines(
     tokens: Rc<TokenStream>,
-    env: Rc<DagParseEnvironment>,
+    env: Rc<ParseEnvironment>,
 ) -> Rc<TokenStream> {
     {
         let tok = token_stream_first(tokens.clone());
@@ -2589,7 +2586,7 @@ pub fn node_inferred_to_outputs(
     }
 }
 
-pub fn parse_dotted_ident(tokens: Rc<TokenStream>, env: Rc<DagParseEnvironment>) -> Rc<NameResult> {
+pub fn parse_dotted_ident(tokens: Rc<TokenStream>, env: Rc<ParseEnvironment>) -> Rc<NameResult> {
     {
         let r = expect_name(tokens.clone(), env.clone());
         if has_err(r.err.clone()) {
@@ -2608,7 +2605,7 @@ pub fn parse_dotted_ident_rest(
     mut tokens: Rc<TokenStream>,
     mut acc: String,
     mut span: Rc<SourceSpan>,
-    mut env: Rc<DagParseEnvironment>,
+    mut env: Rc<ParseEnvironment>,
 ) -> Rc<NameResult> {
     loop {
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectDot))).clone() {
@@ -3437,7 +3434,7 @@ pub fn parse_context_for_tokens(
     intern_table: Rc<InternTable>,
     occurrence_base: Rc<AuthoredTokenOrdinalSpace>,
     heads_only: bool,
-    env: Rc<DagParseEnvironment>,
+    env: Rc<ParseEnvironment>,
 ) -> Rc<ParseContext> {
     Rc::new(ParseContext {
         source_indices: source_indices.clone(),
@@ -3462,7 +3459,7 @@ pub fn parse_with_table_at(
     intern_table: Rc<InternTable>,
     occurrence_base: Rc<AuthoredTokenOrdinalSpace>,
     heads_only: bool,
-    env: Rc<DagParseEnvironment>,
+    env: Rc<ParseEnvironment>,
 ) -> Rc<ParseWithTableResult> {
     {
         let occurrence_allocator =
@@ -12503,7 +12500,7 @@ pub fn peek_is_eq_after_ident(tokens: Rc<TokenStream>) -> bool {
     }
 }
 
-pub fn peek_is_node_decl(tokens: Rc<TokenStream>, env: Rc<DagParseEnvironment>) -> bool {
+pub fn peek_is_node_decl(tokens: Rc<TokenStream>, env: Rc<ParseEnvironment>) -> bool {
     {
         let t1 = token_stream_first(token_stream_advance(tokens.clone(), 1));
         let t2 = token_stream_first(token_stream_advance(tokens.clone(), 2));
@@ -13000,7 +12997,7 @@ pub fn parse_expr_loop(
     }
 }
 
-pub fn infix_bp(tokens: Rc<TokenStream>, env: Rc<DagParseEnvironment>) -> Option<BindingPower> {
+pub fn infix_bp(tokens: Rc<TokenStream>, env: Rc<ParseEnvironment>) -> Option<BindingPower> {
     match token_stream_first(tokens.clone()) {
         Some(t) => find_operator_bp(env.syntax_spec.clone().operators.clone(), t.text.clone()),
         std::option::Option::None => std::option::Option::None,

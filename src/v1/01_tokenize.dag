@@ -22,7 +22,7 @@ import v1.std.core {
   ShNewline, ShEof, ShUnknown
 }
 
-import std.syntax { DagParseEnvironment }
+import std.syntax { ParseEnvironment }
 
 import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
 
@@ -30,7 +30,7 @@ import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
 // revision's grammar is applied and the last place anyone looks for it. A tokenizer that reaches
 // for a compiled-in set decides, before any parser runs, that base source is written in the head's
 // language.
-fn is_keyword_text(text: String, env: DagParseEnvironment) -> Bool {
+fn is_keyword_text(text: String, env: ParseEnvironment) -> Bool {
   match lookup(env.syntax_spec.keyword_set, key: text) {
     Present { value: _ } => true
     Absent => false
@@ -131,7 +131,7 @@ fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
   else { source_scan_to_eol(source: source, start: start + 1) }
 }
 
-fn tokenize_artifact(source: String, file: String, env: DagParseEnvironment) -> V1LexArtifact {
+fn tokenize_artifact(source: String, file: String, env: ParseEnvironment) -> V1LexArtifact {
   let c = chars(source)
   let src = SourceRef { file: file, text: source, source_chars: c }
   let initial = TokPos { pos: 0, interp_depth: [] }
@@ -143,7 +143,7 @@ fn tokenize_artifact(source: String, file: String, env: DagParseEnvironment) -> 
   }
 }
 
-fn tokenize(source: String, file: String, env: DagParseEnvironment) -> List<Token> {
+fn tokenize(source: String, file: String, env: ParseEnvironment) -> List<Token> {
   tokenize_artifact(source: source, file: file, env: env).tokens
 }
 
@@ -225,7 +225,7 @@ fn line_prefix_is_indent_only(source: SourceRef, pos: Int) -> Bool {
   )
 }
 
-fn scan_next_token(source: SourceRef, pos: TokPos, env: DagParseEnvironment) -> ScanStep {
+fn scan_next_token(source: SourceRef, pos: TokPos, env: ParseEnvironment) -> ScanStep {
   let ch = source_code_point(source: source, pos: pos.pos)
 
   if ch == 10 {
@@ -272,7 +272,7 @@ fn scan_next_token(source: SourceRef, pos: TokPos, env: DagParseEnvironment) -> 
   ScannedToken { result: scan_token(source: source, pos: pos, ch: ch, env: env) }
 }
 
-fn tokenize_loop(source: SourceRef, tokens: List<Token>, annotations: List<UnboundAnnotationCapture>, pos: TokPos, fuel: Int, env: DagParseEnvironment) -> TokenizerState {
+fn tokenize_loop(source: SourceRef, tokens: List<Token>, annotations: List<UnboundAnnotationCapture>, pos: TokPos, fuel: Int, env: ParseEnvironment) -> TokenizerState {
   let s = skip_spaces(source: source, pos: pos)
   if s.pos >= source_len(source: source) {
     return TokenizerState { pos: s.pos, tokens: tokens, annotations: annotations, interp_depth: s.interp_depth }
@@ -285,7 +285,7 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, annotations: List<Unbou
   }
 }
 
-fn scan_token(source: SourceRef, pos: TokPos, ch: Int, env: DagParseEnvironment) -> ScanResult {
+fn scan_token(source: SourceRef, pos: TokPos, ch: Int, env: ParseEnvironment) -> ScanResult {
   if ch == 34 { return scan_string(source: source, pos: pos) }
   if is_digit(ch: ch) { return scan_number(source: source, pos: pos) }
   if is_ident_start(ch: ch) { return scan_ident(source: source, pos: pos, env: env) }
@@ -349,7 +349,7 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) ->
   }
 }
 
-fn scan_ident(source: SourceRef, pos: TokPos, env: DagParseEnvironment) -> ScanResult {
+fn scan_ident(source: SourceRef, pos: TokPos, env: ParseEnvironment) -> ScanResult {
   let end = source_scan_while(source: source, start: pos.pos, pred: is_ident_char)
   let text = source_substring(source: source, start: pos.pos, end: end)
   let shape = if is_reserved_emit_sentinel(text: text) { ShUnknown }

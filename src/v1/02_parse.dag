@@ -104,7 +104,7 @@ import std.syntax {
 }
 
 import extdeps.languages.dag.syntax { dag_parse_environment }
-import std.syntax { DagParseEnvironment }
+import std.syntax { ParseEnvironment }
 
 type TokenStream {
   all: List<Token>
@@ -150,7 +150,7 @@ type ParseContext {
   declaration_occurrences: List<DeclarationOccurrence>?
   reference_occurrences: List<ReferenceOccurrence>?
   heads_only: Bool
-  env: DagParseEnvironment
+  env: ParseEnvironment
 }
 
 type ParseResult {
@@ -747,13 +747,13 @@ fn tok_is_question(tok: Token?) -> Bool {
 fn tok_span(tok: Token?) -> SourceSpan {
   match tok { Present { value: t } => t.span  Absent => no_span() }
 }
-fn tok_keyword_to_name(tok: Token?, env: DagParseEnvironment) -> String? {
+fn tok_keyword_to_name(tok: Token?, env: ParseEnvironment) -> String? {
   match tok {
     Present { value: t } => if is_name_keyword(token: t, env: env) { Present { value: t.text } } else { none }
     Absent => none
   }
 }
-fn tok_is_keyword_name(tok: Token?, env: DagParseEnvironment) -> Bool {
+fn tok_is_keyword_name(tok: Token?, env: ParseEnvironment) -> Bool {
   match tok_keyword_to_name(tok: tok, env: env) { Present { value: _ } => true  Absent => false }
 }
 
@@ -894,7 +894,7 @@ fn expect_ident(tokens: TokenStream) -> NameResult {
   }
 }
 
-fn expect_name(tokens: TokenStream, env: DagParseEnvironment) -> NameResult {
+fn expect_name(tokens: TokenStream, env: ParseEnvironment) -> NameResult {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
   match sh {
@@ -922,7 +922,7 @@ fn expect_name(tokens: TokenStream, env: DagParseEnvironment) -> NameResult {
   }
 }
 
-fn is_name_keyword(token: Token, env: DagParseEnvironment) -> Bool {
+fn is_name_keyword(token: Token, env: ParseEnvironment) -> Bool {
   if is_keyword_shape(shape: token.shape) {
     match lookup(env.non_name_keywords, key: token.text) {
       Present { value: _ } => false
@@ -992,7 +992,7 @@ fn is_ambiguous_prefix_infix_newline_boundary(tokens: TokenStream) -> Bool {
   }
 }
 
-fn is_operator_continuation_token(tok: Token?, env: DagParseEnvironment) -> Bool {
+fn is_operator_continuation_token(tok: Token?, env: ParseEnvironment) -> Bool {
   match tok {
     Present { value: t } =>
       if is_prefix_infix_dual_role_operator(symbol: t.text) {
@@ -1007,7 +1007,7 @@ fn is_operator_continuation_token(tok: Token?, env: DagParseEnvironment) -> Bool
   }
 }
 
-fn skip_continuation_newlines(tokens: TokenStream, env: DagParseEnvironment) -> TokenStream {
+fn skip_continuation_newlines(tokens: TokenStream, env: ParseEnvironment) -> TokenStream {
   let tok = token_stream_first(stream: tokens)
   let is_continuation = if tok_is_newline(tok: tok) {
     let after = skip_newlines(tokens: tokens)
@@ -1182,13 +1182,13 @@ fn node_inferred_to_outputs(rt: Node, source_indices: Map<String, NewlineIndex>)
   }
 }
 
-fn parse_dotted_ident(tokens: TokenStream, env: DagParseEnvironment) -> NameResult {
+fn parse_dotted_ident(tokens: TokenStream, env: ParseEnvironment) -> NameResult {
   let r = expect_name(tokens: tokens, env: env)
   if has_err(err: r.err) { return r }
   parse_dotted_ident_rest(tokens: r.tokens, acc: r.name, span: r.span, env: env)
 }
 
-fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: SourceSpan, env: DagParseEnvironment) -> NameResult {
+fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: SourceSpan, env: ParseEnvironment) -> NameResult {
   match eat(tokens: tokens, expected: ExpectDot) {
   EatConsumed { token: _, tokens: __ec } =>
     let r = expect_name(tokens: __ec, env: env)
@@ -1925,7 +1925,7 @@ fn parse_context_for_tokens(
   intern_table: InternTable,
   occurrence_base: AuthoredTokenOrdinalSpace,
   heads_only: Bool,
-  env: DagParseEnvironment
+  env: ParseEnvironment
 ) -> ParseContext {
   ParseContext {
     source_indices: source_indices,
@@ -1955,7 +1955,7 @@ fn parse_with_table_at(
   intern_table: InternTable,
   occurrence_base: AuthoredTokenOrdinalSpace,
   heads_only: Bool,
-  env: DagParseEnvironment
+  env: ParseEnvironment
 ) -> ParseWithTableResult {
   let occurrence_allocator = occurrence_id_allocator_advance_to(
     alloc: occurrence_base.allocator,
@@ -4818,7 +4818,7 @@ fn peek_is_eq_after_ident(tokens: TokenStream) -> Bool {
   }
 }
 
-fn peek_is_node_decl(tokens: TokenStream, env: DagParseEnvironment) -> Bool {
+fn peek_is_node_decl(tokens: TokenStream, env: ParseEnvironment) -> Bool {
   let t1 = token_stream_first(stream: token_stream_advance(stream: tokens, n: 1))
   let t2 = token_stream_first(stream: token_stream_advance(stream: tokens, n: 2))
   let name_ok = match t1 {
@@ -5010,7 +5010,7 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
   }
 }
 
-fn infix_bp(tokens: TokenStream, env: DagParseEnvironment) -> BindingPower? {
+fn infix_bp(tokens: TokenStream, env: ParseEnvironment) -> BindingPower? {
   match token_stream_first(stream: tokens) {
     Present { value: t } => find_operator_bp(ops: env.syntax_spec.operators, symbol: t.text)
     Absent => none

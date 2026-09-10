@@ -11,7 +11,7 @@ pub use crate::std_source_annotation::{
     advance_line_prefix_indent_only_text, placement_from_line_prefix,
 };
 pub use crate::std_source_annotation::{AnnotationPlacement, UnboundAnnotationCapture};
-pub use crate::std_syntax::DagParseEnvironment;
+pub use crate::std_syntax::ParseEnvironment;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_unicode_types::unicode_scalar;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
@@ -32,7 +32,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn is_keyword_text(text: String, env: Rc<DagParseEnvironment>) -> bool {
+pub fn is_keyword_text(text: String, env: Rc<ParseEnvironment>) -> bool {
     match v1_rt::lookup(&env.syntax_spec.clone().keyword_set.clone(), text.clone()) {
         Some(_) => true,
         std::option::Option::None => false,
@@ -197,7 +197,7 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
 pub fn tokenize_artifact(
     source: String,
     file: String,
-    env: Rc<DagParseEnvironment>,
+    env: Rc<ParseEnvironment>,
 ) -> Rc<V1LexArtifact> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
@@ -233,7 +233,7 @@ pub fn tokenize_artifact(
     }
 }
 
-pub fn tokenize(source: String, file: String, env: Rc<DagParseEnvironment>) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize(source: String, file: String, env: Rc<ParseEnvironment>) -> Rc<Vec<Rc<Token>>> {
     tokenize_artifact(source.clone(), file.clone(), env.clone())
         .tokens
         .clone()
@@ -352,7 +352,7 @@ pub fn line_prefix_is_indent_only(source: Rc<SourceRef>, pos: i64) -> bool {
 pub fn scan_next_token(
     source: Rc<SourceRef>,
     pos: Rc<TokPos>,
-    env: Rc<DagParseEnvironment>,
+    env: Rc<ParseEnvironment>,
 ) -> Rc<ScanStep> {
     {
         let ch = source_code_point(source.clone(), pos.pos.clone());
@@ -455,7 +455,7 @@ pub fn tokenize_loop(
     mut annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
     mut pos: Rc<TokPos>,
     mut fuel: i64,
-    mut env: Rc<DagParseEnvironment>,
+    mut env: Rc<ParseEnvironment>,
 ) -> Rc<TokenizerState> {
     loop {
         let s = skip_spaces(source.clone(), pos.clone());
@@ -505,7 +505,7 @@ pub fn scan_token(
     source: Rc<SourceRef>,
     pos: Rc<TokPos>,
     ch: i64,
-    env: Rc<DagParseEnvironment>,
+    env: Rc<ParseEnvironment>,
 ) -> Rc<ScanResult> {
     {
         if (ch.clone() == 34) {
@@ -776,7 +776,7 @@ pub fn emit(
 pub fn scan_ident(
     source: Rc<SourceRef>,
     pos: Rc<TokPos>,
-    env: Rc<DagParseEnvironment>,
+    env: Rc<ParseEnvironment>,
 ) -> Rc<ScanResult> {
     {
         let end = source_scan_while(source.clone(), pos.pos.clone(), is_ident_char);
