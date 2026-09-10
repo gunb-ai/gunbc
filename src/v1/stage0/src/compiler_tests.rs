@@ -79,7 +79,11 @@ mod compiler_tests {
     }
 
     fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
-        let tokens = tokenize(content.to_string(), path.to_string());
+        let tokens = tokenize(
+            content.to_string(),
+            path.to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         let mut source_indices = HashMap::new();
         source_indices.insert(
             path.to_string(),
@@ -184,7 +188,11 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_produces_tokens() {
-        let tokens = tokenize("fn foo() -> Int { 42 }".to_string(), "test.dag".to_string());
+        let tokens = tokenize(
+            "fn foo() -> Int { 42 }".to_string(),
+            "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         assert!(
             !tokens.is_empty(),
             "tokenize should produce at least one token"
@@ -193,7 +201,11 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_ends_with_eof() {
-        let tokens = tokenize("type Foo { x: Int }".to_string(), "test.dag".to_string());
+        let tokens = tokenize(
+            "type Foo { x: Int }".to_string(),
+            "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         let last = tokens.last().expect("should have tokens");
         assert!(
             matches!(last.shape, crate::v1_std_core::TokenShape::ShEof),
@@ -204,7 +216,11 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_fn_keyword() {
-        let tokens = tokenize("fn".to_string(), "test.dag".to_string());
+        let tokens = tokenize(
+            "fn".to_string(),
+            "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         assert!(
             tokens.len() >= 2,
             "expected at least 2 tokens, got {}",
@@ -222,6 +238,7 @@ mod compiler_tests {
         let tokens = tokenize(
             "module test\ntype Foo { x: Int }".to_string(),
             "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
         );
         assert!(
             tokens.len() > 5,
@@ -235,6 +252,7 @@ mod compiler_tests {
         let tokens = tokenize(
             "module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
         );
         let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
         assert!(
@@ -249,7 +267,11 @@ mod compiler_tests {
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
                 let source = read_dag("src/v1/01_tokenize.dag");
-                let tokens = tokenize(source, "src/v1/01_tokenize.dag".to_string());
+                let tokens = tokenize(
+                    source,
+                    "src/v1/01_tokenize.dag".to_string(),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                );
 
                 assert!(
                     !tokens.is_empty(),
@@ -344,6 +366,7 @@ mod compiler_tests {
                     crate::v1_compiler_tokenize::tokenize(
                         left_source.content.clone(),
                         left_source.path.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                     ),
                     std::rc::Rc::new(expected_source_indices),
                     crate::v1_std_core::empty_intern_table(),
@@ -2650,7 +2673,11 @@ mod compiler_tests {
                 );
 
                 for (file, source) in &v1_files {
-                    let tokens = tokenize(source.to_string(), file.to_string());
+                    let tokens = tokenize(
+                        source.to_string(),
+                        file.to_string(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                    );
                     assert!(!tokens.is_empty(), "{} should produce tokens", file);
                     assert!(
                         matches!(
@@ -4133,6 +4160,7 @@ mod compiler_tests {
                     let tokens = crate::v1_compiler_tokenize::tokenize(
                         source.content.clone(),
                         source.path.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                     );
                     let elapsed = t.elapsed();
                     eprintln!(
@@ -4342,6 +4370,7 @@ mod compiler_tests {
                     let tokens = crate::v1_compiler_tokenize::tokenize(
                         source.content.clone(),
                         source.path.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                     );
                     token_lists.push(tokens);
                 }
@@ -4605,6 +4634,7 @@ mod compiler_tests {
                     let tokens = crate::v1_compiler_tokenize::tokenize(
                         source.content.clone(),
                         source.path.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                     );
                     let si = crate::v1_std_core::build_newline_index(
                         source.path.clone(),

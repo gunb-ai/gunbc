@@ -294,8 +294,11 @@ fn build_module_index() -> ModuleIndex {
 }
 
 fn extract_imports(source: &str) -> Vec<String> {
-    let tokens =
-        v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string());
+    let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
+        source.to_string(),
+        "test.dag".to_string(),
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index =
         v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
     let mut source_indices = HashMap::new();
