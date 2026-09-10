@@ -5,7 +5,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at }
 import v2.std.fn_index { atom_identities_in_node }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Node, NodeFold, Symbol, fold_node }
@@ -170,15 +170,39 @@ fn v1cd_fact_is_the_signature_table(fact: DeclFact) -> Bool {
   fact.qualified_name == v1cd_self_excluded_qualified_name
 }
 
-fn v1_discovered_rows_for(pool_roots: List<String>) -> List<V1ConsumerRow> {
+// THE FOLD TAKES ITS FACTS AS AN ARGUMENT, and that is what makes it testable at ordinary cost
+// rather than only at whole-corpus cost. Over the live corpus the population is every declaration
+// decl_facts answers -- independently discovered and closed in the sense DESIGN section 5 requires
+// of an oracle, since this module does not choose which declarations exist. Over a KEYED read it is
+// one real declaration node, which is the same fold on the same shape of input and is what the
+// per-PR witness executes. The two differ in their subject, never in their mechanism, so a defect
+// in the fold reddens the cheap arm as surely as the expensive one.
+fn v1_discovered_rows_over(facts: List<DeclFact>) -> List<V1ConsumerRow> {
   let producer = v1cd_producer()
-  fold_list(xs: decl_facts(pool_roots: pool_roots), empty: v1cd_empty_rows, cons: fn(acc, fact) {
+  fold_list(xs: facts, empty: v1cd_empty_rows, cons: fn(acc, fact) {
     if v1cd_fact_is_the_signature_table(fact: fact) {
       acc
     } else {
       v1cd_merge_rows(left: acc, right: v1cd_rows_in_fact(fact: fact, producer: producer))
     }
   })
+}
+
+fn v1_discovered_rows_for(pool_roots: List<String>) -> List<V1ConsumerRow> {
+  v1_discovered_rows_over(facts: decl_facts(pool_roots: pool_roots))
+}
+
+// THE KEYED ARM. decl_facts_at filters host-side, before any of it becomes interpreter values, so
+// asking for one declaration by name costs the index the caller's resolve already built rather than
+// a walk over the corpus. This is the entry a witness uses to execute the fold against a REAL
+// declaration node -- not a fabricated DeclFact, which could not be built without inventing a Node
+// and would test the assertion rather than the producer.
+fn v1_discovery_rows_at_name(qualified_name: String) -> List<V1ConsumerRow> {
+  v1_discovered_rows_over(facts: decl_facts_at(pool_roots: v1cd_pool_roots, qualified_name: qualified_name))
+}
+
+fn v1_discovery_keys_at_name(qualified_name: String) -> List<String> {
+  v1_discovery_rows_at_name(qualified_name: qualified_name) |> map(r => v1_row_key(r: r))
 }
 
 data v1cd_pool_roots: List<String> = ["dag", "src/v2"]
@@ -206,6 +230,31 @@ fn v1_discovery_undisposed() -> List<String> {
   v1_consumers_undisposed(discovered: v1_discovery_keys(), rows: v1_consumers())
 }
 
+// WHY THIS GATE IS NOT AN ENROLLED WITNESS, and the reason is MEASURED rather than assumed. It WAS
+// enrolled -- four witnesses in the long home over the whole-corpus fold -- and the required floor
+// answered interrupted_before_verdict on every one of them. That is the floor stating that this
+// SUBJECT exceeds what a merge-path claim may cost, and it is a fact about the subject rather than
+// about the fold: the same fold over one declaration, fetched by name through
+// v1_discovery_rows_at_name, runs inside the ordinary per-PR budget and IS enrolled, in
+// dag/test/claim/self_host_v1_consumer_census_witness_test.dag. So the mechanism has an executed
+// arm and the whole-corpus JOIN does not, which is an honest split rather than a silence: what is
+// unenrolled is one specific claim -- that the corpus contains no undisposed .dag relation today --
+// and it is available on demand at the command v1cd_producer carries.
+//
+// WHAT WOULD RETIRE THAT GAP is a capability rather than an artifact: a whole-corpus declaration
+// walk whose cost the floor admits, which is what the long home's storage agreement exists to
+// grant and is not this lane's decision to take.
+//
+// ITS RED IS AUTHORABLE AND HAS BEEN AUTHORED, which is the question DESIGN section 4b says to ask
+// of a check before writing it: the forbidden state is an ordinary .dag declaration naming a v1
+// binary with no row beside it, expressible in the accepted corpus, and the refusal fires on the
+// real path. Re-derive both arms rather than trusting a sentence: run the command v1cd_producer
+// carries, then delete one row from gunbc.v1_consumer_census v1_dag_argv_consumers and run it again.
+//
+// THE RUNNABLE ENTRY REFUSES rather than reporting. A run that found undisposed relations has found
+// exactly the thing that blocks the cutover, so answering ExitSuccess with a list printed beside it
+// would be a green run over a red fact -- the shape DESIGN section 5 forbids in the arm it forbids
+// it in. The refusal carries the count and the keys, so a reader gets the finding from the exit.
 fn v1_discovery_gate() -> ProcessExit {
   let undisposed = v1_discovery_undisposed()
   if count(undisposed) == 0 {

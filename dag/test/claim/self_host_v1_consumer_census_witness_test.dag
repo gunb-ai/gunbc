@@ -17,6 +17,7 @@ import gunbc.v1_consumer_census {
   v1_blocking_consumers, v1_blocking_uncitable, v1_pending_pr_10882_consumers, v1_pending_head_row_count,
   v1_row_key, v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
 }
+import tools.v1_consumer_discovery { v1_discovery_keys_at_name }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,
   planted_undisposed_discovered, planted_stale_discovered, planted_same_size_discovered,
@@ -264,4 +265,54 @@ test fn discovery_excludes_the_bare_cli_homonym_and_keeps_the_qualified_spelling
     && v1cd_lexeme_is_a_signature(lexeme: "claim_executor")
     && !v1cd_lexeme_is_a_signature(lexeme: "a sentence that mentions claim_executor in prose")
     && count(v1_literal_signatures()) > 0
+}
+
+
+// THE FOLD ITSELF, GREEN BY EXECUTION AND AT PER-PR COST. Review 63173 was right that nothing
+// executed v1cd_rows_in_fact -- the assertions above exercise the signature table and the
+// module-path projection, which are the producer's light half. The first repair enrolled a
+// whole-corpus fold in the long home; the floor MEASURED it and interrupted all four witnesses
+// before verdict, which is the floor saying the subject was too expensive rather than the fold
+// being wrong. So the subject moves and the mechanism does not: decl_facts_at filters host-side, so
+// asking for ONE declaration by name costs the index the resolve already built, and the fold that
+// runs over it is the same fold, over a real declaration node fetched from the real corpus. A
+// fabricated DeclFact would have tested the assertion instead of the producer, since a Node cannot
+// be authored here without inventing one.
+//
+// THE DISCRIMINATING PAIR. gunbc.devboot.program offered_programs really spells "claim_batch" and
+// "claim_executor" as literal atoms in its body, so a fold that stopped descending into declaration
+// bodies, or lost the consumer-half projection, or broke the whole-atom match, returns nothing for
+// it. The RED half asks the same fold about a declaration that names no v1 binary at all and
+// requires zero rows -- a fold that returned everything, or the same rows for every fact, passes
+// the first and fails the second.
+data devboot_offered_programs_name: String = "gunbc.devboot.program.offered_programs"
+
+data devboot_claim_batch_relation: String = "gunbc.devboot.program.offered_programs -> v1_compiler.bin.claim_batch.main"
+
+data devboot_claim_executor_relation: String = "gunbc.devboot.program.offered_programs -> v1_compiler.bin.claim_executor.main"
+
+// The control declaration is this file's own, so it cannot drift out from under the assertion:
+// a String data row naming no v1 binary.
+data discovery_control_name: String = "test.claim.self_host_v1_consumer_census_witness_test.discovery_control_subject"
+
+data discovery_control_subject: String = "a declaration that names no v1 binary, so the fold must return nothing for it"
+
+test fn discovery_fold_executes_over_a_real_declaration_node() -> Bool {
+  let found = v1_discovery_keys_at_name(qualified_name: devboot_offered_programs_name)
+  (found |> any(k => k == devboot_claim_batch_relation))
+    && (found |> any(k => k == devboot_claim_executor_relation))
+    && count(v1_discovery_keys_at_name(qualified_name: discovery_control_name)) == 0
+}
+
+// THE SELF-OBSERVATION CONTROL, EXECUTED. The instrument's first real run reported the census's own
+// signature table as a five-fold consumer of the subjects it exists to describe, and the exclusion
+// that fixed it is one predicate on one qualified name -- exactly the arm a later reader deletes
+// because they cannot see what it was for. Asking the fold for that declaration by name is the
+// cheapest possible statement of it, and the positive control is on the same table: the signatures
+// are non-empty, so this cannot pass by the table having quietly become empty.
+data signature_table_name: String = "gunbc.v1_consumer_census.v1_literal_signatures"
+
+test fn discovery_fold_does_not_count_its_own_signature_table() -> Bool {
+  count(v1_literal_signatures()) > 0
+    && count(v1_discovery_keys_at_name(qualified_name: signature_table_name)) == 0
 }
