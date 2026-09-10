@@ -31,7 +31,9 @@ import v2.compiler.compile {
   native_lane_unowned_row_path
 }
 import v2.workflow.floor_discovery { FloorDiscoveryRow }
-import v2.workflow.floor_discovery_producer { FloorDiscoveryWalkState }
+import v2.workflow.floor_discovery_source_authority {
+  FloorDiscoveryWalkState
+}
 import v2.std.live_tree { SubstrateInputsOnly }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,

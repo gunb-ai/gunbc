@@ -18,10 +18,10 @@ import gunbc.witness_v2_native_route {
   native_route_universe_member,
   required_v2_native_job_name
 }
-import v2.workflow.floor_discovery_producer {
+import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
-  FloorDiscoveryWalkState,
   FloorDiscoveryRefused,
+  FloorDiscoveryWalkState,
   discover_floor_rows_for_source,
   floor_discovery_finalize_source_outcomes
 }
