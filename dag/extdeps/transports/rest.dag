@@ -105,6 +105,59 @@ type RestOutcome
   | RestTransportRefused { cause: NonEmptyStr }
   | RestBodyUndecodable { status: HttpStatus, cause: NonEmptyStr }
 
+// A STATUS IS ONLY EVIDENCE OF NON-COMMIT WHEN THE REMOTE MEANT IT AS A DECISION. A 4xx is an
+// authority or argument decision before committing; a 5xx spans states the remote may not be able
+// to describe, including a write that landed under a handler that then failed.
+fn mutation_status_is_commit_ambiguous(status: HttpStatus) -> Bool {
+  status >= 500
+}
+
+type RestExchangePerformance
+  = RestExchangeSucceeded
+  | RestExchangeRefused { status: HttpStatus, body: String }
+  | RestExchangeCommitAmbiguous { detail: NonEmptyStr }
+  | RestExchangeUnreached { cause: NonEmptyStr }
+  | RestExchangeUndecodable { status: HttpStatus, cause: NonEmptyStr }
+
+fn rest_exchange_ambiguous_detail(prefix: String, rest: String) -> NonEmptyStr {
+  concat(prefix, rest) as NonEmptyStr
+}
+
+// DERIVE FAILURE FROM NOT-SUCCESS, NEVER FROM A LIST OF KNOWN STATUSES. RestStatusRefused is
+// whatever status the remote answered that this operation does not treat as success. A 5xx on a
+// mutation is commit-ambiguous, not a retryable refusal. A 5xx on a read is an ordinary refusal.
+// A transport loss on a mutation is also commit-ambiguous; it is not Unreached pretending to be a
+// clean miss.
+fn classify_rest_outcome(rest: RestOutcome, mutation: Bool) -> RestExchangePerformance {
+  match rest {
+    RestOk => RestExchangeSucceeded
+    RestStatusRefused { status, body } =>
+      if mutation && mutation_status_is_commit_ambiguous(status: status) {
+        RestExchangeCommitAmbiguous {
+          detail: rest_exchange_ambiguous_detail(prefix: "mutation answered with a server-error status, which does not establish that the write did not commit: ", rest: body)
+        }
+      } else {
+        RestExchangeRefused { status: status, body: body }
+      }
+    RestTransportRefused { cause } =>
+      if mutation {
+        RestExchangeCommitAmbiguous {
+          detail: rest_exchange_ambiguous_detail(prefix: "no response arrived for a mutation, so the write may or may not have landed: ", rest: cause as String)
+        }
+      } else {
+        RestExchangeUnreached { cause: cause }
+      }
+    RestBodyUndecodable { status, cause } =>
+      if mutation {
+        RestExchangeCommitAmbiguous {
+          detail: rest_exchange_ambiguous_detail(prefix: "mutation answered with a body this client could not decode, so the outcome is unread rather than known: ", rest: cause as String)
+        }
+      } else {
+        RestExchangeUndecodable { status: status, cause: cause }
+      }
+  }
+}
+
 // THE HTTP CLIENT BOUNDARY REPORTS FACTS AND DECIDES NO OPERATION POLICY. RestResponseObserved says
 // a status arrived and then says separately whether its body was readable; RestExchangeRefused says
 // no response arrived, so no status can be fabricated. The operation-facing RestOutcome above is

@@ -3,8 +3,7 @@ module extdeps.github.workflows
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { EnvVar }
-import std.types { CommitSha, NonEmptyStr, String, HttpMethod, POST }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { CommitSha, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -16,16 +15,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data workflows_api_version: NonEmptyStr = "2026-03-10"
-
-// GitHubEffect needs this endpoint as a String. CreateDispatch's transport row cannot bind it:
-// both realizations read method/path as source text (review 63106). That fork is declared below.
-fn workflow_dispatch_path(owner: String, repo: String, workflow_id: String) -> String {
-  join(["/repos/", owner, "/", repo, "/actions/workflows/", workflow_id, "/dispatches"], "")
-}
-
-data workflow_dispatch_http_method: HttpMethod = POST
-
-data workflow_dispatch_transport_eval_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CAPABILITY: rest transport method and path are eval_expr in both realizations (v1_interpreter dispatch_rest method/path, emit_rest_http_method, emit_rest_url_line), so CreateDispatch can bind path: workflow_dispatch_path(owner:, repo:, workflow_id:) and method: workflow_dispatch_http_method. TRIGGER: those properties evaluate expressions rather than authored_name_at / template-only emit. SUFFICIENT FOR deleting this row and the interpolating path template on CreateDispatch. NOT satisfied by a witness comparing the fold to a copied path string, and not satisfied by issuing an identifier as an HTTP verb." as NonEmptyStr)
 
 // Create Workflow Dispatch has two live response contracts across GitHub REST versions. Requests
 // without X-GitHub-Api-Version default to 2022-11-28 and return 204 No Content. Version 2026-03-10

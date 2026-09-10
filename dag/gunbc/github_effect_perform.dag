@@ -1,88 +1,41 @@
 module gunbc.github_effect_perform
 
-import std.types { String, NonEmptyStr, Secret, HttpStatus }
+import std.types { NonEmptyStr, Secret, HttpStatus }
 import std.resources { Network }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.transports.rest {
-  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  classify_rest_outcome,
+  RestExchangeSucceeded, RestExchangeUndecodable, RestExchangePerformance,
 }
 import extdeps.github.users
 import extdeps.github.github { GitHubUser }
-import gunbc.secret_provision_actuator { mutation_status_is_commit_ambiguous }
 
 // RUNG, HONEST. Classification of a RestOutcome is mechanically preventable on the required
-// hermetic path. perform_github_authenticated_user_read is also reachable hermetically: the
-// GetAuthenticatedUser mock publishes the decoded-200 shape whose login is the fixture identity,
-// not a live GitHub account. That green is not a live 401. Live GET /user is not executed in
-// this change. The next-rung trigger is a required-lane route that may perform network effects
-// against a real credential. JIT mint and R2 mint are not callers in this change. This is not
-// structural: an invalid RestOutcome is still writable.
+// hermetic path via classify_rest_outcome. perform_github_authenticated_user_read is also
+// reachable hermetically: the GetAuthenticatedUser mock publishes the decoded-200 shape whose
+// login is the fixture identity, not a live GitHub account. That green is not a live 401. Live
+// GET /user is not executed in this change. The next-rung trigger is a required-lane route that
+// may perform network effects against a real credential. JIT mint and R2 mint are not callers in
+// this change. This is not structural: an invalid RestOutcome is still writable.
 
-// DECLARED FRONTIER (§3c). classify and perform have no production caller in this change; the
-// hermetic witness is not a consumer. NAMED CONSUMER: a production func that calls
-// perform_github_authenticated_user_read, or that classifies a GitHubEffect RestOutcome via
-// classify_github_http_outcome. TRIGGER: that import and call exist outside test.claim.
-// SUFFICIENT FOR deleting this row. NOT satisfied by another witness.
-data github_effect_perform_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a production func that calls perform_github_authenticated_user_read, or that classifies a GitHubEffect RestOutcome via classify_github_http_outcome. TRIGGER: that import and call exist outside test.claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing these declarations." as NonEmptyStr)
-
-type GitHubHttpPerformance
-  = GitHubHttpSucceeded
-  | GitHubHttpRefused { status: HttpStatus, body: String }
-  | GitHubHttpCommitAmbiguous { detail: NonEmptyStr }
-  | GitHubHttpUnreached { cause: NonEmptyStr }
-  | GitHubHttpUndecodable { status: HttpStatus, cause: NonEmptyStr }
-
-fn ambiguous_detail(prefix: String, rest: String) -> NonEmptyStr {
-  concat(prefix, rest) as NonEmptyStr
-}
-
-// DERIVE FAILURE FROM NOT-SUCCESS, NEVER FROM A LIST OF KNOWN STATUSES. RestStatusRefused is
-// whatever status the remote answered that this operation does not treat as success. A 5xx on a
-// mutation is commit-ambiguous (gunbc.secret_provision_actuator mutation_status_is_commit_ambiguous),
-// not a retryable refusal: the write may already have landed. A 5xx on a read is an ordinary
-// refusal — there was nothing to commit. A transport loss on a mutation is also commit-ambiguous
-// (timeout / dropped response); it is not Unreached pretending to be a clean miss.
-fn classify_github_http_outcome(rest: RestOutcome, mutation: Bool) -> GitHubHttpPerformance {
-  match rest {
-    RestOk => GitHubHttpSucceeded
-    RestStatusRefused { status, body } =>
-      if mutation && mutation_status_is_commit_ambiguous(status: status) {
-        GitHubHttpCommitAmbiguous {
-          detail: ambiguous_detail(prefix: "mutation answered with a server-error status, which does not establish that the write did not commit: ", rest: body)
-        }
-      } else {
-        GitHubHttpRefused { status: status, body: body }
-      }
-    RestTransportRefused { cause } =>
-      if mutation {
-        GitHubHttpCommitAmbiguous {
-          detail: ambiguous_detail(prefix: "no response arrived for a mutation, so the write may or may not have landed: ", rest: cause as String)
-        }
-      } else {
-        GitHubHttpUnreached { cause: cause }
-      }
-    RestBodyUndecodable { status, cause } =>
-      if mutation {
-        GitHubHttpCommitAmbiguous {
-          detail: ambiguous_detail(prefix: "mutation answered with a body this client could not decode, so the outcome is unread rather than known: ", rest: cause as String)
-        }
-      } else {
-        GitHubHttpUndecodable { status: status, cause: cause }
-      }
-  }
-}
+// DECLARED FRONTIER (§3c). perform_github_authenticated_user_read has no production caller in
+// this change; the hermetic witness is not a consumer. classify_rest_outcome is consumed by
+// create_secret_for_attempt, add_initial_version, and delete_observed_secret. NAMED CONSUMER for
+// the read perform: a production func that calls it. TRIGGER: that import and call exist outside
+// test.claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness.
+data github_effect_perform_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a production func that calls perform_github_authenticated_user_read. TRIGGER: that import and call exist outside test.claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing it." as NonEmptyStr)
 
 type GitHubAuthenticatedUserRead
   = GitHubAuthenticatedUserObserved { user: GitHubUser }
-  | GitHubAuthenticatedUserRefused { performance: GitHubHttpPerformance }
+  | GitHubAuthenticatedUserRefused { performance: RestExchangePerformance }
 
 func perform_github_authenticated_user_read(auth_token: Secret) -> GitHubAuthenticatedUserRead uses net: Network {
   let got = github.Users.GetAuthenticatedUser(auth_token: auth_token)
-  match classify_github_http_outcome(rest: got.outcome, mutation: false) {
-    GitHubHttpSucceeded =>
+  match classify_rest_outcome(rest: got.outcome, mutation: false) {
+    RestExchangeSucceeded =>
       if got.user.login == "" {
         GitHubAuthenticatedUserRefused {
-          performance: GitHubHttpUndecodable {
+          performance: RestExchangeUndecodable {
             status: 200,
             cause: "GitHub answered 200 with an empty login; no authenticated user was observed" as NonEmptyStr,
           }

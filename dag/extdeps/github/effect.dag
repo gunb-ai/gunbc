@@ -1,12 +1,9 @@
 module extdeps.github.effect
 
-import std.types { NonEmptyStr, CommitSha, HttpMethod, POST, PATCH }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr, CommitSha }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.github.actions_jit_runner { org_generate_jitconfig_path }
-import extdeps.github.workflows { workflow_dispatch_path, workflow_dispatch_http_method }
 import extdeps.github.app {
   GitHubAppPermission,
   GitHubPermissionAxis,
@@ -164,56 +161,9 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
 }
 
 // EVERY VARIANT OF GitHubEffect IS A MUTATION. There is no is-mutation fold: a Bool true for
-// every inhabitant restates the type. classify_github_http_outcome takes mutation as an
-// input; a GitHubEffect perform passes true. GET /user is github.Users with mutation: false —
-// a different operation, not a fifth arm of this algebra.
-
-// DECLARED FRONTIER (§3c). method and path are the REST surface of GitHubEffect. This change
-// does not perform a GitHubEffect. The named later consumer is a GitHubEffect REST perform
-// that issues these values and classifies the RestOutcome as a mutation. TRIGGER: that
-// perform exists. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing
-// these folds. gunbc.runner.runner_jit_mint currently plans mint and is out of this change.
-data github_effect_http_surface_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a GitHubEffect REST perform issues github_effect_http_method and github_effect_http_path and classifies the RestOutcome as a mutation. TRIGGER: that import and call exist. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing the folds." as NonEmptyStr)
-
-fn github_effect_http_method(effect: GitHubEffect) -> HttpMethod {
-  match effect {
-    AdvanceRepositoryBranch { repository: _, branch: _, changed_paths: _ } => PATCH
-    DispatchWorkflow { repository: _, workflow: _, subject: _ } => workflow_dispatch_http_method
-    RegisterOrganizationRunner { organization: _ } => POST
-    GenerateOrganizationJitConfig { organization: _ } => POST
-  }
-}
-
-fn org_registration_token_path(org_login: NonEmptyStr) -> String {
-  join(["/orgs/", org_login as String, "/actions/runners/registration-token"], "")
-}
-
-fn github_effect_http_path(effect: GitHubEffect) -> String {
-  match effect {
-    AdvanceRepositoryBranch { repository, branch, changed_paths: _ } =>
-      join(
-        [
-          "/repos/",
-          repository.owner,
-          "/",
-          repository.name,
-          "/git/refs/heads/",
-          branch.name as String,
-        ],
-        ""
-      )
-    DispatchWorkflow { repository, workflow, subject: _ } =>
-      workflow_dispatch_path(
-        owner: repository.owner,
-        repo: repository.name,
-        workflow_id: workflow.file_name as String
-      )
-    RegisterOrganizationRunner { organization } =>
-      org_registration_token_path(org_login: organization.login)
-    GenerateOrganizationJitConfig { organization } =>
-      org_generate_jitconfig_path(org_login: organization.login)
-  }
-}
+// every inhabitant restates the type. classify_rest_outcome takes mutation as an input; a
+// GitHubEffect perform passes true. GET /user is github.Users with mutation: false — a
+// different operation, not a fifth arm of this algebra.
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
