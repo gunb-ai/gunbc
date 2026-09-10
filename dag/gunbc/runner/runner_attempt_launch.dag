@@ -85,7 +85,9 @@ type AttemptGround
   = GroundClear
   | GroundOccupied
 
-type PlacementBeforeExec = CgroupJoinThenExec
+type PlacementBeforeExec
+  = CgroupJoinThenExec
+  | PlacementNotEstablished
 
 type AttemptLaunchPlan
   = LaunchRefusedUnauthorized { authorization: GrantAuthorization }
@@ -126,6 +128,7 @@ fn credential_bytes_admit(bytes: Int) -> Bool {
 fn placement_is_cgroup_join_then_exec(p: PlacementBeforeExec) -> Bool {
   match p {
     CgroupJoinThenExec => true
+    PlacementNotEstablished => false
   }
 }
 
