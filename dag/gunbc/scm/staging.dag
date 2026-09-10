@@ -170,7 +170,11 @@ type StagingRefusal
 //
 // So the binding happens where it is actually known: `effective_candidate` reads the record OUT OF this
 // repository's store, so at that instant the pair is true by observation rather than by inference. The
-// carrier freezes that instant. Nothing downstream re-derives it, and no caller can assemble one.
+// carrier freezes that instant. What no longer gets re-derived or independently assembled is the
+// RELATION between the repository and the record -- downstream still resolves that record's root within
+// the same carried repository, which is a different act and a legitimate one. The first writing of this
+// line said "nothing downstream re-derives it", which overstated the claim past what the carrier
+// actually guarantees; external review narrowed it.
 type ResolvedCandidateManifest sole_constructor {
   repository: RepositoryEnvelope
   record: CorpusManifestRecord
@@ -371,45 +375,26 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
 // `gunbc.scm.write_spine` re-resolve the same locator at freeze time and answer all three again, above
 // an annotation saying they could not fire there. Carrying the `RepositoryManifestRoot` makes the
 // second question absent instead of unreachable-but-answered. Found by external review.
-// THE ROOT IS NOT A PARAMETER OF A SIBLING, BECAUSE IT IS DERIVED HERE FROM THIS RECORD.
+// THE REPOSITORY AND THE RECORD ARRIVE ALREADY RELATED, AND THAT IS THE ONLY THING SEALED HERE.
 //
-// The resolved branch below was a call to `stage_standing_with_root(repository, record, root)`, which
-// took the record and the root as independent peers -- so a caller could hand it a record from one
-// repository and a root resolved in another, and receive a `FreezableChange` whose entries and basis
-// describe different manifests. That is the same peer seam the commit path was just sealed against,
-// one function further up, and sealing `FreezableChange` alone would NOT have reached it: the
-// constructor would still have been handed a mispaired argument from inside its own module, which is
-// the one place `sole_constructor` does not guard. The root is resolved from `record.identity.locator`
-// immediately below, so the two cannot disagree unless something separates them -- and now nothing
-// does. Found by applying external review's rule (carry the relationship as one value, do not compare
-// independently supplied peers) to the level above the one it was reported at.
-// THE ROOT IS NOT A PARAMETER OF A SIBLING, BECAUSE IT IS DERIVED HERE FROM THIS RECORD.
+// `effective_candidate` binds the repository to the exact manifest record observed in ITS OWN store.
+// This function resolves that record's root within that same carried repository to obtain a
+// `RepositoryManifestRoot`; the re-resolution is fine, because what can no longer be independently
+// assembled is the RELATION between the repository and the record. No caller can substitute another
+// repository, or another record, beside it.
 //
-// The resolved branch below was a call to `stage_standing_with_root(repository, record, root)`, which
-// took the record and the root as independent peers -- so a caller could hand it a record from one
-// repository and a root resolved in another, and receive a `FreezableChange` whose entries and basis
-// describe different manifests. That is the same peer seam the commit path was just sealed against,
-// one function further up, and sealing `FreezableChange` alone would NOT have reached it: the
-// constructor would still have been handed a mispaired argument from inside its own module, which is
-// the one place `sole_constructor` does not guard. The root is resolved from `record.identity.locator`
-// immediately below, so the two cannot disagree unless something separates them -- and now nothing
-// does. Found by applying external review's rule (carry the relationship as one value, do not compare
-// independently supplied peers) to the level above the one it was reported at.
-// WHY THE REMAINING TWO ARGUMENTS ARE NOT A PEER SEAM, STATED SO IT NEED NOT BE RE-DERIVED.
+// TWO EARLIER ANNOTATIONS STOOD HERE AND BOTH WERE WRONG, which is why this one is deliberately short.
+// The first described a `stage_standing_with_root(repository, record, root)` sibling that no longer
+// exists. The second argued the then-current `(repository, record)` pair was safe because a locator is
+// a content hash, so a manifest found at that locator in any store must have the record's entries.
+// That is false: `ObjectId` is a 64-BIT NONCRYPTOGRAPHIC locator, and a store refuses unequal records
+// at one locator only within itself, so two stores can hold different manifests at the same locator --
+// which let completeness vouch for one manifest while the basis froze another. Both were removed by
+// external review; the second one twice, because the edit that was supposed to delete it duplicated a
+// neighbouring block instead and I reported the deletion without reading the file back.
 //
-// This function still takes a repository and a record, and the entries it carries come from the RECORD
-// while the basis comes from a root resolved against the REPOSITORY. That is the shape peer seams wear,
-// so it is worth saying exactly why it is not one: the root is not supplied, it is resolved FROM
-// `record.identity.locator`. A locator is the content hash of the manifest's own entries, and the store
-// refuses to bind one locator to two objects -- so a manifest found at that locator in ANY store has the
-// same entries as `record`. Either the resolution finds that manifest, in which case basis and entries
-// describe the same content by construction, or it does not, in which case this refuses. There is no
-// third case in which they silently disagree.
-//
-// THE SAFETY IS THEREFORE INHERITED FROM CONTENT-ADDRESSING, NOT FROM THE ARGUMENT LIST. It is stated
-// here because that is a real premise a future change could remove -- a non-hash locator, a store that
-// tolerates collisions, or a resolution keyed on anything but the record's own identity would each turn
-// these two arguments back into peers, and the type system would not notice.
+// The lesson worth keeping is about annotations rather than about this function: an argument written
+// beside the code is inherited by whoever reads it next, so a wrong one is more expensive than none.
 fn stage_standing_against_base(candidate: ResolvedCandidateManifest) -> StageStanding {
   let repository = candidate.repository
   let record = candidate.record
