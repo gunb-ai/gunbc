@@ -578,7 +578,7 @@ pub struct CanonKey {
 }
 
 impl CanonKey {
-    fn new(key: Value) -> Option<CanonKey> {
+    pub(crate) fn new(key: Value) -> Option<CanonKey> {
         if key.is_reflexive() {
             Some(CanonKey { key })
         } else {
@@ -800,7 +800,7 @@ pub(crate) fn process_termination_label(status: &std::process::ExitStatus) -> St
     "termination unobserved".to_string()
 }
 
-fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
+pub(crate) fn map_value(entries: HamtMap<CanonKey, Value>) -> Value {
     Value::Map(Rc::new(entries))
 }
 
