@@ -240,6 +240,7 @@ data three_sixty_five_facilities: List<ColoFacilityRow> = [
   three_sixty_five_nyc_65_broadway,
   three_sixty_five_brooklyn_vanderbilt,
   three_sixty_five_staten_island_teleport,
+  three_sixty_five_commack,
 ]
 
 // TWO PHILADELPHIA SITES, NEITHER PUBLISHING A CABINET DENSITY. This operator is the census's

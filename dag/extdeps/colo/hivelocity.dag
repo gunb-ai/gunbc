@@ -2,9 +2,12 @@ module extdeps.colo.hivelocity
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { watt }
+import std.algebra { FreeSemigroup }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
   RetailGrainStanding, RetailGrainUnread, DensityUnread,
+  CapabilityAtLeast, DensityPublished, PublishedDensityFigure, PublishedRealPower, WordingVerbatim,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
