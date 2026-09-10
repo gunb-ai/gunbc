@@ -691,6 +691,11 @@ fn published_requirement_standing(
 // Whether the operator sells at a grain this fleet can buy. A campus marketing 25 MW that takes
 // only private-suite commitments is not a candidate for one cabinet, and that is a different
 // refusal from an unread density - so it is a different fact.
+//
+// RetailGrainUnread is the same fused-string defect as DensityUnread: observation of an unpublished
+// grain plus the obligation to confirm it. Split follows with density onto std.citation's retrieval
+// observation (read-and-absent vs failed-to-read) and a separate coverage obligation; do not mint a
+// third answer. SingleCabinetOffered and CageOrSuiteMinimum stay.
 type RetailGrainStanding
   = SingleCabinetOffered { wording: NonEmptyStr, citation: NonEmptyStr }
   | CageOrSuiteMinimum { wording: NonEmptyStr, citation: NonEmptyStr }
@@ -700,6 +705,10 @@ type RetailGrainStanding
 // market price by quote; that is a fact about the provider worth a typed arm, because a
 // consumer computing over prices must treat quote-only as absent-with-an-obligation and
 // never as zero or as an average of the published ones.
+//
+// RatesQuoteOnly.obligation fuses "no price on the pages we read" with "a quote is required".
+// Same split as DensityUnread onto std.citation plus a remaining quote obligation; this arm is not
+// the home of either once that lands.
 type RetailRateStanding
   = RatesPublished { plans_note: NonEmptyStr }
   | RatesQuoteOnly { contact_route: NonEmptyStr, obligation: NonEmptyStr }

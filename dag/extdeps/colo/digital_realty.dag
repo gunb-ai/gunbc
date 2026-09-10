@@ -2,7 +2,11 @@ module extdeps.colo.digital_realty
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -18,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.digital_realty",
-      decl_name: "digital_realty_ewr10",
+      decl_name: "digital_realty_facilities",
       field: WholeDeclaration
     }
   },
@@ -50,7 +54,76 @@ data digital_realty_ewr20: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Seven-story roughly 183,000 square foot building with about 33 MW marketed per directory profiles read 2026-08-18; legacy Telx NJR2/NJR3 lineage. Multi-operator building: Colocation America resells retail space here under its own module.",
 }
 
-data digital_realty_facilities: List<ColoFacilityRow> = [digital_realty_ewr10, digital_realty_ewr20]
+data digital_realty_jfk10: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Digital Realty",
+  facility_label: "Digital Realty JFK10",
+  address: AddressListed {
+    street: "111 8th Avenue, New York, NY 10011",
+    citation: "digitalrealty.com JFK10 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "15-story 111,000 square foot carrier hotel floorplate with N+1 UPS and cooling per the operator page read 2026-09-08. Markets New York's first Quantum-AI colocation (OQC plus NVIDIA) inside the same building Equinix NY9 and DataBank LGA2 also sell from - distinct operator rows, one building.",
+}
+
+data digital_realty_jfk10_density: CabinetDensityClaim = DensityUnread {
+  obligation: "digitalrealty.com/data-centers/americas/new-york/jfk10 from the operator en-sitemap. Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 213431 bytes. Subject control in RAW bytes: JFK10=41. Excluded kW sentence: campus chrome field_sum_utility_power_capacity 392.8k+ kW (portfolio utility capacity, not cabinet density). No other RAW kW.",
+}
+
+data digital_realty_jfk10_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "From single cabinets to private data center suites",
+  citation: "digitalrealty.com JFK10 page, read 2026-09-08",
+}
+
+data digital_realty_jfk12: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Digital Realty",
+  facility_label: "Digital Realty JFK12",
+  address: AddressListed {
+    street: "60 Hudson Street, New York, NY 10013",
+    citation: "digitalrealty.com JFK12 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "24-story 163,500 square foot presence in the 60 Hudson carrier hotel with N+1 UPS and cooling per the operator page read 2026-09-08. DataBank LGA1 and Colocation America NYDC1 sell from the same building under their own modules.",
+}
+
+data digital_realty_jfk12_density: CabinetDensityClaim = DensityUnread {
+  obligation: "digitalrealty.com/data-centers/americas/new-york/jfk12 from the operator en-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 208031 bytes. Subject control JFK12=36. Excluded kW: same campus-chrome 392.8k+ kW as JFK10 (portfolio utility capacity). Names multi-megawatt suites through single cabinet deployments as a product range.",
+}
+
+data digital_realty_jfk12_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "From multi-megawatt suites to single cabinet deployments",
+  citation: "digitalrealty.com JFK12 page, read 2026-09-08",
+}
+
+data digital_realty_jfk13: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Digital Realty",
+  facility_label: "Digital Realty JFK13",
+  address: AddressListed {
+    street: "32 Avenue of the Americas, New York, NY 10013",
+    citation: "digitalrealty.com JFK13 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "27-story 132,500 square foot multi-floor colocation in the 32 Avenue of the Americas carrier hotel per the operator page read 2026-09-08. CoreSite NY1 occupies the same building under its own module.",
+}
+
+data digital_realty_jfk13_density: CabinetDensityClaim = DensityUnread {
+  obligation: "digitalrealty.com/data-centers/americas/new-york/jfk13 from the operator en-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 209985 bytes. Subject control JFK13=39. Excluded kW: same campus-chrome 392.8k+ kW (portfolio utility capacity).",
+}
+
+data digital_realty_jfk13_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "From single cabinets to private data center suites",
+  citation: "digitalrealty.com JFK13 page, read 2026-09-08",
+}
+
+data digital_realty_facilities: List<ColoFacilityRow> = [
+  digital_realty_ewr10,
+  digital_realty_ewr20,
+  digital_realty_jfk10,
+  digital_realty_jfk12,
+  digital_realty_jfk13,
+]
 
 data digital_realty_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "digitalrealty.com sales",

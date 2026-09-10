@@ -2,8 +2,10 @@ module gunbc.spark.serving_deployment_selection
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value, basis_point, basis_point_count }
 import v2.std.optional { Present, Absent }
+import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
+import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval, OrderedClosedInterval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
@@ -127,7 +129,12 @@ data spark_fleet_snapshot: FleetSnapshot = FleetSnapshot {
 // physically has, turning an impossible profile into a passing one.
 type ExecutorProfile = ExecutorRayProfile | ExecutorMpProfile
 
-type KvLayoutPolicy = KvAutoLayout | KvFp8DsMlaLayout
+// THE REQUESTED LAYOUT, AND `fp8` WAS NOT EXPRESSIBLE. The canary's launch asks for `--kv-cache-dtype
+// fp8` and the engine RESOLVES that to fp8_ds_mla for an MLA model, reporting so on its own startup
+// line. This type spells the REQUEST, so it needs the spelling the request actually uses: without it,
+// describing the canary meant claiming it requested fp8_ds_mla, which is the resolved value rather
+// than the argument, and two launches sending different arguments would have shared one identity.
+type KvLayoutPolicy = KvAutoLayout | KvFp8Layout | KvFp8DsMlaLayout
 
 type SpeculativePolicy = SpeculationOff | SpeculationOn
 
@@ -155,6 +162,7 @@ fn executor_wire(e: ExecutorProfile) -> NonEmptyStr {
 fn kv_layout_wire(k: KvLayoutPolicy) -> NonEmptyStr {
   match k {
     KvAutoLayout => "auto" as NonEmptyStr
+    KvFp8Layout => "fp8" as NonEmptyStr
     KvFp8DsMlaLayout => "fp8_ds_mla" as NonEmptyStr
   }
 }
@@ -174,7 +182,7 @@ fn runtime_revision_key(r: RuntimeRevision) -> String {
 
 type ServingDecisionParameters sole_constructor {
   max_model_len: TokenCount
-  gpu_memory_utilisation_percent: Nat
+  memory_request: VllmMemoryRequest
   max_num_batched_tokens: TokenCount
   max_num_seqs: Nat
   executor: ExecutorProfile
@@ -185,7 +193,7 @@ type ServingDecisionParameters sole_constructor {
 
 fn serving_decision_parameters(
   max_model_len: TokenCount,
-  gpu_memory_utilisation_percent: Nat,
+  memory_request: VllmMemoryRequest,
   max_num_batched_tokens: TokenCount,
   max_num_seqs: Nat,
   executor: ExecutorProfile,
@@ -195,7 +203,7 @@ fn serving_decision_parameters(
 ) -> ServingDecisionParameters {
   ServingDecisionParameters {
     max_model_len: max_model_len,
-    gpu_memory_utilisation_percent: gpu_memory_utilisation_percent,
+    memory_request: memory_request,
     max_num_batched_tokens: max_num_batched_tokens,
     max_num_seqs: max_num_seqs,
     executor: executor,
@@ -208,7 +216,7 @@ fn serving_decision_parameters(
 fn parameters_key(p: ServingDecisionParameters) -> String {
   join([
     "ctx", to_string(token_count_value(t: p.max_model_len)),
-    "|util", to_string(p.gpu_memory_utilisation_percent),
+    "|util", vllm_memory_request_key(r: p.memory_request),
     "|batch", to_string(token_count_value(t: p.max_num_batched_tokens)),
     "|seqs", to_string(p.max_num_seqs),
     "|", executor_wire(e: p.executor) as String,
@@ -220,19 +228,14 @@ fn parameters_key(p: ServingDecisionParameters) -> String {
 
 // A memory fraction above the whole device is not a bold setting, it is an arithmetic error that
 // makes the feasibility screen generous in the one direction it must never be generous.
+//
+// THE RANGE CHECK IS NOT RESTATED HERE ANY MORE. This module carried its own >100 and ==0 tests
+// against an integral percent while extdeps.vllm.runtime_defaults carried the same rule against the
+// request the engine actually receives -- two validators for one upstream constraint, free to drift,
+// and the local one could not even see a request that OMITS the fraction. The upstream rule has one
+// home and this screen consumes it.
 fn parameters_defect(p: ServingDecisionParameters) -> NonEmptyStr? {
-  if p.gpu_memory_utilisation_percent > 100 {
-    Present { value: join([
-      "the declared GPU memory fraction is ", to_string(p.gpu_memory_utilisation_percent),
-      " percent, which claims more memory than the host has and would let an impossible weight profile pass the lower-bound screen",
-    ], "") as NonEmptyStr }
-  } else {
-    if p.gpu_memory_utilisation_percent == 0 {
-      Present { value: "a zero GPU memory fraction reserves nothing and cannot serve" as NonEmptyStr }
-    } else {
-      none
-    }
-  }
+  vllm_memory_request_defect(request: p.memory_request)
 }
 
 // ── THE CANDIDATE CARRIES ONLY WHAT VARIES ────────────────────────────────────────────────────
@@ -512,8 +515,36 @@ type WeightFit
   | WeightsImpossibleByLowerBound { per_rank_bytes: Nat, usable_bytes: Nat }
   | WeightFitUnderivable { because: NonEmptyStr }
 
-fn usable_bytes_per_rank(fleet: FleetSnapshot, utilisation_percent: Nat) -> Nat {
-  (fleet.bytes_per_host * utilisation_percent) / 100
+// THE SCREEN TAKES BASIS POINTS BECAUSE THE REQUEST DOES. It divided by 100 against an integral
+// percent, which could not represent the fractions this fleet's engines actually receive; the
+// arithmetic is identical, at the precision the request carries.
+fn usable_bytes_per_rank(fleet: FleetSnapshot, utilisation_basis_points: Nat) -> Nat {
+  (fleet.bytes_per_host * utilisation_basis_points) / 10000
+}
+
+// AN OMITTED FRACTION HAS NO EFFECTIVE VALUE UNTIL IT IS RESOLVED AGAINST A REVISION, so this screen
+// cannot run on it. Substituting a fraction here -- the revision's default, or the other route's 82%
+// -- would make the lower bound generous in exactly the direction DESIGN section 5 forbids, and it
+// would do so silently, on the one screen whose whole job is to rule impossible weights out. The
+// canary's launch omits the fraction, so this is a reachable state rather than a defensive arm.
+fn requested_utilisation_basis_points(r: VllmMemoryRequest) -> Nat? {
+  match r.utilization {
+    Absent => none
+    Present { value: bp } => Present { value: basis_point_count(bp: bp) }
+  }
+}
+
+fn weight_fit_against_envelope(fleet: FleetSnapshot, per_rank: Nat, basis_points: Nat) -> WeightFit {
+  let usable = usable_bytes_per_rank(fleet: fleet, utilisation_basis_points: basis_points)
+  if per_rank <= usable {
+    WeightsNotRuledOutByLowerBound {
+      per_rank_bytes: per_rank,
+      usable_bytes: usable,
+      slack_bytes: usable - per_rank,
+    }
+  } else {
+    WeightsImpossibleByLowerBound { per_rank_bytes: per_rank, usable_bytes: usable }
+  }
 }
 
 // CEILING, NOT FLOOR, and it refuses zero ranks itself rather than trusting its callers to guard.
@@ -534,17 +565,11 @@ fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisio
       match per_rank_bytes_ceiling(total: b, ranks: c.topology.tensor_parallel_degree) {
         Absent => WeightFitUnderivable { because: "a zero tensor-parallel degree has no per-rank share" as NonEmptyStr }
         Present { value: per_rank } =>
-          if per_rank <= usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent) {
-            WeightsNotRuledOutByLowerBound {
-              per_rank_bytes: per_rank,
-              usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent),
-              slack_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent) - per_rank,
+          match requested_utilisation_basis_points(r: p.memory_request) {
+            Absent => WeightFitUnderivable {
+              because: "this launch omits --gpu-memory-utilization, so its memory envelope is whatever its runtime revision defaults to; a lower-bound screen cannot run until that omission is resolved against the revision, and assuming a fraction here would make the screen generous in the one direction it must not be" as NonEmptyStr,
             }
-          } else {
-            WeightsImpossibleByLowerBound {
-              per_rank_bytes: per_rank,
-              usable_bytes: usable_bytes_per_rank(fleet: fleet, utilisation_percent: p.gpu_memory_utilisation_percent),
-            }
+            Present { value: bp } => weight_fit_against_envelope(fleet: fleet, per_rank: per_rank, basis_points: bp)
           }
       }
   }
@@ -1249,7 +1274,10 @@ data spark_runtime: RuntimeRevision = runtime_revision(
 
 data serving_parameters_current: ServingDecisionParameters = serving_decision_parameters(
   max_model_len: token_count(count: 300000),
-  gpu_memory_utilisation_percent: 82,
+  memory_request: VllmMemoryRequest {
+    utilization: Present { value: basis_point(count: 8200) },
+    kv_cache_bytes: none,
+  },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,

@@ -1,6 +1,7 @@
 module v2.compiler.self_host.direct_rust_door_fixture
 
 import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.emit_module { emit_module_decl_separator }
 import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree, infer }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -61,7 +62,12 @@ import v2.std.witness {
 
 data direct_rust_door_module_path: String = "src/v2/compiler/self_host/direct_rust_door_fixture.dag"
 
-data direct_rust_door_expected_source: String = rust_source_text
+// The door emits a MODULE, so the expected source is the declaration text followed by the module
+// authority's declared declaration separator — the same convention emit_produced_module and
+// emit_module apply to every declaration including the last. It is composed from the two
+// authorities rather than transcribed, so a change to either is a located red here, not a silent
+// drift between a literal and the emitter that produces it.
+data direct_rust_door_expected_source: String = concat(rust_source_text, emit_module_decl_separator)
 
 data direct_rust_door_dag_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
