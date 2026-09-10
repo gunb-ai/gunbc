@@ -2,10 +2,14 @@ module extdeps.colo.databank
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { FreeSemigroup }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
-  DensityUnread, RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
-  NoPublishedSurface, FigureReadButUnrepresentable,
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityPublished, DensityUnread, PublishedDensityFigure, CabinetPowerFigure, PublishedRealPower,
+  FigureVerificationStanding, WordingVerbatim,
+  CoolingMediumStanding, CoolingMediumPublished, CoolingMedium, AirCooling, LiquidCooling,
+  PublishedPowerQuantity, CapabilityAtLeast,
+  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -61,19 +65,46 @@ data databank_lga4_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // in this metro holds three. That gap between what is marketed and what is published for retail
 // sale is the census's central finding, and it is a reason to obtain quotes rather than a reason
 // to believe a quote will be affordable: nothing here says what 35 kW costs.
+// DEMOTED ON MAIN AND RESTORED HERE BY THE TRIGGER THE DEMOTION ITSELF NAMED. #10862 demoted this row
+// to DensityUnread, and it was right to: on that carrier the only figure-bearing arms were marketed
+// MAXIMA, so "35kW+ Cab Density Air" was typed as an at-most and the census asserted that a cabinet
+// advertised at thirty-five kilowatts OR MORE refuses 35,001 W. That was the LIVE instance rather than
+// a latent one - the positive control that exists to prove the accessor works was asserting
+// established_watts == 35000 over a floor, so a wrong reading executed under a green witness.
 //
-// DEMOTED WITH EWR1, AND THIS ONE WAS THE LIVE INSTANCE RATHER THAN THE LATENT ONE. EWR1's wrong
-// ceiling was never read by any call site. This row's was: the census's own positive control asserted
-// established_watts == 35000 and a refusal at 35,001 W over a figure whose wording is "35kW+". So the
-// stronger claim - a marketed floor asserted as an exact reading - was executing under a green
-// witness, in the control that exists to prove the accessor works. It proved instead that nobody had
-// checked what the row said. The control now runs on iron_mountain_nje1_density, whose wording is
-// "up to 30 kW/rack" and which therefore genuinely has the property being asserted.
-data databank_lga4_density: CabinetDensityClaim = DensityUnread {
-  cause: FigureReadButUnrepresentable {
-    obligation: "THIS PAGE WAS READ AND IT PUBLISHES TWO FIGURES, neither of which this carrier can hold pointing the right way. The operator publishes, verbatim: \"35kW+ Cab Density Air\" and \"100kW+ Cab Density Liq\". Both plus signs are the operator's own, so both are capability FLOORS - at least thirty-five kilowatts on air, at least one hundred on liquid - and the figure-bearing arms here are marketed MAXIMA. Typed as a maximum, thirty-five thousand became an at-most, and the census asserted that a cabinet advertised at thirty-five kilowatts OR MORE refuses 35,001 W. RESOLVE by re-typing both as floor-carrying figures once the carrier expresses a quantity's direction; the numerals and wording above are the reading and no re-fetch is required. RETRIEVAL EVIDENCE, unchanged and still verified: databank.com Orangeburg campus LGA4 page from db_data_center-sitemap. Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 113793 bytes. Subject control in RAW bytes: LGA4=10. THE WORDING ABOVE IS NOW THE LITERAL SPEC-TABLE CELLS AND WAS NOT BEFORE. The first cut read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool, not text on the page. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the WORDING did not. The plus signs are the operator's own, so these are marketed floors rather than exact ceilings.",
-    wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liq",
-    citation: "databank.com",
+// The obligation that demotion left said in terms: "RESOLVE by re-typing both as floor-carrying
+// figures once the carrier expresses a quantity's direction; the numerals and wording above are the
+// reading and no re-fetch is required." This carrier expresses direction - CapabilityAtLeast carries
+// a floor as a floor - so the trigger has fired and the row is retyped from the reading it already
+// had. No re-fetch was needed and none was done.
+//
+// THE WORDING IS THE CORRECTED ONE, PER CELL. The first cut read "35kW+ air-cooled, 100kW+
+// liquid-cooled", a fused sentence produced by a summarizing fetch tool and not text on the page. The
+// page carries three separate cells: "N+1 Cooling Design", "35kW+ Cab Density Air", "100kW+ Cab
+// Density Liq". The figures survived verification and the fused wording did not, which is why wording
+// now sits on the figure it establishes rather than once above both.
+data databank_lga4_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 35000) } },
+      wording: "35kW+ Cab Density Air",
+      citation: "databank.com Orangeburg campus LGA4 page, spec table, raw fetch 2026-09-09 (HTTP 200)",
+      verification: WordingVerbatim {
+        retrieval: "Raw fetch of the LGA4 facility page on 2026-09-09 returned HTTP 200 and the wording above is the literal spec-table cell. The plus sign is the operator's own, which is what makes this a marketed floor on a maximum rather than an exact ceiling.",
+      },
+    },
+    tail: [
+      PublishedDensityFigure {
+        medium: CoolingMediumPublished { medium: LiquidCooling },
+        quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 100000) } },
+        wording: "100kW+ Cab Density Liq",
+        citation: "databank.com Orangeburg campus LGA4 page, spec table, raw fetch 2026-09-09 (HTTP 200)",
+        verification: WordingVerbatim {
+          retrieval: "Same raw fetch and same spec table as the air cell, and a SEPARATE cell in it. The first cut of this row read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool and not text on the page - and stored it once above both figures. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the fused WORDING did not, which is why wording now sits on the figure it establishes.",
+        },
+      },
+    ],
   },
 }
 
@@ -95,11 +126,7 @@ data databank_lga1_hudson: ColoFacilityRow = ColoFacilityRow {
 }
 
 data databank_lga1_density: CabinetDensityClaim = DensityUnread {
-  cause: FigureReadButUnrepresentable {
-    obligation: "databank.com/data-centers/new-york-city/hudson-street/ from db_data_center-sitemap (not a constructed /lga1/ path: that URL is HTTP 404 with a 116829-byte styled body). Raw fetch 2026-09-09: both UAs HTTP 200, 127107 bytes. Subject control LGA1=84. RAW '5kW+'=1 is the marketed floor sentence, not a ceiling; not treated as DensityMarketedAirOnly. A quote or a spec that names a ceiling is required.",
-    wording: "5kW+",
-    citation: "databank.com/data-centers/new-york-city/hudson-street/",
-  },
+  obligation: "databank.com/data-centers/new-york-city/hudson-street/ from db_data_center-sitemap (not a constructed /lga1/ path: that URL is HTTP 404 with a 116829-byte styled body). Raw fetch 2026-09-09: both UAs HTTP 200, 127107 bytes. Subject control LGA1=84. RAW '5kW+'=1 is the marketed floor sentence, not a ceiling; not treated as DensityMarketedAirOnly. A quote or a spec that names a ceiling is required.",
 }
 
 data databank_lga1_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -119,11 +146,7 @@ data databank_lga2_eighth: ColoFacilityRow = ColoFacilityRow {
 }
 
 data databank_lga2_density: CabinetDensityClaim = DensityUnread {
-  cause: FigureReadButUnrepresentable {
-    obligation: "databank.com/data-centers/new-york-city/eighth-avenue/ from db_data_center-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 127126 bytes. Subject control LGA2=85. RAW '5kW+'=1 is the same marketed floor as LGA1, not a cabinet maximum. Unread until a ceiling is published.",
-    wording: "5kW+",
-    citation: "databank.com/data-centers/new-york-city/eighth-avenue/",
-  },
+  obligation: "databank.com/data-centers/new-york-city/eighth-avenue/ from db_data_center-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 127126 bytes. Subject control LGA2=85. RAW '5kW+'=1 is the same marketed floor as LGA1, not a cabinet maximum. Unread until a ceiling is published.",
 }
 
 data databank_lga2_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -136,44 +159,6 @@ data databank_lga2_retail_grain: RetailGrainStanding = RetailGrainUnread {
 // returned 404 on 2026-09-08, so no address, capacity or density is carried for it. A tailored
 // deployment for one named tenant would in any case be a different fact from a marketed cabinet
 // maximum, and would need its own arm rather than being read as retail density.
-// THE COUNT THAT WAS IN THIS OBLIGATION IS GONE, AND ITS REMOVAL IS THE THIRD TIME IT WENT STALE.
-// The sentence read "exactly one modelled facility", which was true when it was written. A New
-// York lane added LGA3 and it became two; the Philadelphia lane added PHL1 in the same window and
-// it became three. Neither edit touched this sentence and nothing went red either time, because a
-// count in prose has no dependency edge to the rows it counts. Correcting the numeral produces a
-// numeral that is right until the next row lands - the class is fixed by not carrying one. What
-// the obligation is FOR survives intact: the New Jersey pages are still unlocated.
-data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. The operator runs several sites in this metro that this census does not carry, so its coverage here understates it; which facilities ARE modelled is a question for the rows this module declares."
-
-// THE OTHER BUILDING ON THE SAME CAMPUS, and it is the larger one. LGA4 was modelled first because
-// it was the row that broke the census's New York blindness; LGA3 is the operational sibling at the
-// same street address, and the campus reads as one site in directories while the operator prices
-// two facilities. Both are carried, because a cabinet is bought in a building.
-data databank_lga3_orangeburg: ColoFacilityRow = ColoFacilityRow {
-  operator_label: "DataBank",
-  facility_label: "DataBank LGA3 Orangeburg",
-  address: AddressListed {
-    street: "2000 Corporate Dr., Orangeburg, NY 10962",
-    citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08",
-  },
-  municipality: "Orangeburg",
-  region_code: "NY",
-  facility_note: "Rockland County, the first building of the Orangeburg campus: 20 MW critical IT load across 110,000 IT square feet, against LGA4's 10 MW. Same campus, same address, same density claim, twice the load - so a quote that fails on capacity at one building has not failed at the campus.",
-}
-
-data databank_lga3_density: CabinetDensityClaim = DensityUnread {
-  cause: FigureReadButUnrepresentable {
-    obligation: "THIS PAGE WAS READ AND IT PUBLISHES TWO FIGURES, neither of which this carrier can hold pointing the right way - the same standing as its LGA4 sibling and for the same reason. The operator publishes, verbatim: '35kW+ Cab Density Air' and '100kW+ Cab Density Liquid'. Both plus signs are the operator's own, so both are capability FLOORS - at least thirty-five kilowatts on air, at least one hundred on liquid - and the figure-bearing arms here are marketed MAXIMA. Typed as a maximum, thirty-five thousand became an at-most, and the census would assert that a cabinet advertised at thirty-five kilowatts OR MORE refuses 35,001 W. RESOLVE by re-typing both as floor-carrying figures once the carrier expresses a quantity's direction; the numerals and wording above are the reading and NO RE-FETCH IS REQUIRED. RETRIEVAL EVIDENCE, unchanged and still verified: databank.com Orangeburg campus LGA3 page, confirmed against raw HTML 2026-09-09. ELEMENT BOUNDARY, which settles the fusion: the markup is <li><strong>35kW+</strong> Cab Density Air</li> and <li><strong>100kW+</strong> Cab Density Liquid</li> - TWO list items, each with its numeral in its own <strong>, so the slash in the wording above is this row's separator and not the operator's punctuation. SCOPE CHECKED IN BYTE ORDER: the nearest heading above the two cells is the page's own LGA3 Orangeburg, New York City title and the page carries no promotional block. Identical figures to LGA4, and this is a SECOND facility carrying the claim rather than a second reading of the same one - the two buildings are separately marketed with separate critical loads.",
-    wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liquid",
-    citation: "databank.com",
-  },
-}
-
-data databank_lga3_retail_grain: RetailGrainStanding = SingleCabinetOffered {
-  wording: "Cabinets & Cages Colocation",
-  citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08",
-}
-
 // PARTIALLY DISCHARGED 2026-09-08. The operator's New Jersey index at databank.com/data-
 // centers/new-jersey/ resolves and names exactly two sites: EWR1 Downtown Newark, now modelled
 // above, and EWR2 Piscataway at 25 Corporate Place South, Piscataway, NJ 08854 with no density
@@ -188,6 +173,48 @@ data databank_lga3_retail_grain: RetailGrainStanding = SingleCabinetOffered {
 // suite inside the 165 Halsey carrier hotel, which the census already carries as a building under
 // extdeps.colo.halsey_165 and as a Hivelocity suite under extdeps.colo.hivelocity: one building,
 // three upstream authorities, three rows, exactly as the building-versus-operator rule requires.
+data databank_lga3_orangeburg: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank LGA3 Orangeburg",
+  address: AddressListed {
+    street: "2000 Corporate Dr., Orangeburg, NY 10962",
+    citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08",
+  },
+  municipality: "Orangeburg",
+  region_code: "NY",
+  facility_note: "Rockland County, the first building of the Orangeburg campus: 20 MW critical IT load across 110,000 IT square feet, against LGA4's 10 MW. Same campus, same address, same density claim, twice the load - so a quote that fails on capacity at one building has not failed at the campus.",
+}
+
+data databank_lga3_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 35000) } },
+      wording: "35kW+ Cab Density Air",
+      citation: "databank.com Orangeburg campus LGA3 page, spec table, read 2026-09-08",
+      verification: WordingVerbatim {
+        retrieval: "The LGA3 page carries the same two labelled spec-table cells as its LGA4 sibling, read the same way and on the same campus. The plus sign is the operator's own, which is what makes this a marketed floor rather than an exact ceiling - typed as a maximum the census would have asserted that a cabinet advertised at thirty-five kilowatts OR MORE refuses 35,001 W.",
+      },
+    },
+    tail: [
+      PublishedDensityFigure {
+        medium: CoolingMediumPublished { medium: LiquidCooling },
+        quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 100000) } },
+        wording: "100kW+ Cab Density Liquid",
+        citation: "databank.com Orangeburg campus LGA3 page, spec table, read 2026-09-08",
+        verification: WordingVerbatim {
+          retrieval: "A SEPARATE spec-table cell from the air figure and not a fused sentence, which is the distinction the LGA4 row was corrected on. Note the wording differs from LGA4's by one word - LGA3 renders it 'Liquid' where LGA4 renders 'Liq' - so the two rows are not copies of one reading and the wording is the page's own in each case.",
+        },
+      },
+    ],
+  },
+}
+
+data databank_lga3_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets & Cages Colocation",
+  citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08",
+}
+
 data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
   operator_label: "DataBank",
   facility_label: "DataBank EWR1 Downtown Newark",
@@ -222,21 +249,53 @@ data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
 // seven reviewers were correct while nothing moved, and the carrier change is itself under rework.
 // Demote-then-convert is two cheap edits; a wrong-direction figure standing another day is not.
 //
-// WHAT THE SEVEN EQUINIX ROWS DO AND DO NOT SHOW. They are DensityUnread for a second, independent
-// reason: they publish kVA, this carrier's figures are Watt, and no power factor is published, so
-// they are unrepresentable in any published arm regardless of direction. They were never evidence
-// that the right arm existed for EWR1 - they only show the same destination reached by another road.
-data databank_ewr1_density: CabinetDensityClaim = DensityUnread {
-  cause: FigureReadButUnrepresentable {
-    obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE. DensityUnread here does NOT mean nobody looked - it means the carrier has no arm that points the right way. The operator publishes, verbatim: \"10kW+ Cab Density Air\". The plus sign is the operator's own, so that is a capability FLOOR - at least ten kilowatts - and the only figure-bearing arms this carrier offers are marketed MAXIMA, which would make the census answer that this cabinet refuses 10,001 W on evidence saying ten kilowatts or more. A wrong-direction bound is silent wrongness rather than a weak reading, so the figure is carried here as text a consumer cannot compute with, instead of in a field a consumer would compute with backwards. RESOLVE by re-typing this row as a floor-carrying figure once the carrier expresses a quantity's direction, at which point the numeral and wording above are the reading and no re-fetch is required. RETRIEVAL EVIDENCE, unchanged and still verified: databank.com Newark 165 Halsey Street suite page, read 2026-09-08 and verified in raw HTML 2026-09-09 at markup grain: the page emits <li><strong>10kW+</strong> Cab Density Air</li> as ONE list item inside the column whose heading is Cooling, beside a sibling item reading N+1 Cooling Design. So this wording is a single authored cell rather than two cells fused - the distinction matters because an earlier summarized capture of this row DID fuse the two into one invented sentence, and the same fusion has now been found on three DataBank facilities by three readers. SCOPE IS VERIFIED TOO, which is the separate question a string check does not answer: the nearest heading above this cell is the facility's own address line, \"(EWR1) 165 Halsey Street Suite #500 - Newark, NJ 07102\", under an h1 of \"Downtown Newark Data Center\", and EWR1 is the only facility code appearing anywhere in the page bytes. So this figure is not sitting under another metro's banner and not shared with a second site. And the qualifier is intact rather than truncated - the cell says Air, and the operator's own word is what SELECTS the air-only arm rather than it being inferred from an absent liquid cell. The operator's own word is AIR, which is why this is DensityMarketedAirOnly and not a maximum with a liquid arm.",
-    wording: "10kW+ Cab Density Air",
-    citation: "databank.com",
+// WHAT THE SEVEN EQUINIX ROWS DO AND DO NOT SHOW, CORRECTED. They were DensityUnread for a second,
+// independent reason: they publish kVA where this carrier's figures were Watt, so they were
+// unrepresentable in any published arm regardless of direction. THAT IS NO LONGER TRUE - the quantity
+// carries its own unit, so CapabilityAtLeast over PublishedApparentPower holds a kVA floor exactly as
+// read. They are now UNCONVERTED rather than unrepresentable, which is a smaller and differently-owned
+// debt: it belongs to whoever reads equinix.dag's pages, not to this file. What has not changed is
+// that they were never evidence the right arm existed for EWR1 - they only reached the same
+// destination by another road, and both roads are now open.
+// RESTORED BY THE TRIGGER ITS OWN OBLIGATION NAMED, FOR THE SAME REASON AS LGA4 ABOVE. #10862 demoted
+// this row because "10kW+ Cab Density Air" is a capability FLOOR and that carrier's only figure-bearing
+// arms were marketed MAXIMA, so a census over it would have answered that a cabinet advertised at ten
+// kilowatts OR MORE refuses 10,001 W. The obligation said: "RESOLVE by re-typing this row as a
+// floor-carrying figure once the carrier expresses a quantity's direction, at which point the numeral
+// and wording above are the reading and no re-fetch is required." CapabilityAtLeast is that direction.
+// No re-fetch was needed and none was done; the numeral, the wording, the markup-grain verification
+// and the scope check are carried across verbatim from what that obligation already held.
+//
+// IT IS RESTORED WITH LGA4 AND NOT AFTER IT, BECAUSE ONE ROW WITHOUT ITS NEIGHBOUR IS THE DEFECT THIS
+// FILE WAS ALREADY CORRECTED FOR. Review 62991 caught #10862 applying the demotion to one DataBank row
+// and not the other; doing the restoration to one and not the other is the same inconsistency running
+// backwards.
+//
+// THE SEVEN EQUINIX ROWS ARE NOT RESTORED HERE AND THAT IS DELIBERATE. Their figures are published
+// kVA MINIMUMS, which this carrier can now hold - CapabilityAtLeast over PublishedApparentPower - so
+// their trigger has fired too. They are another reader's readings in another module, and converting
+// seven readings I did not take, off an annotation rather than off the pages, is how a wrong numeral
+// enters a census. That conversion belongs to whoever owns equinix.dag.
+data databank_ewr1_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 10000) } },
+      wording: "10kW+ Cab Density Air",
+      citation: "databank.com Newark 165 Halsey Street suite page, read 2026-09-08 and verified in raw HTML 2026-09-09 at markup grain: the page emits <li><strong>10kW+</strong> Cab Density Air</li> as ONE list item inside the column headed Cooling, beside a sibling item reading N+1 Cooling Design",
+      verification: WordingVerbatim {
+        retrieval: "Markup-grain verification 2026-09-09: the wording is a single authored <li> rather than two cells fused, which matters because an earlier summarized capture of this row DID fuse two cells into one invented sentence and the same fusion was found on three DataBank facilities by three readers. SCOPE was verified separately, which a string check does not answer: the nearest heading above the cell is the facility's own address line, \"(EWR1) 165 Halsey Street Suite #500 - Newark, NJ 07102\", under an h1 of \"Downtown Newark Data Center\", and EWR1 is the only facility code in the page bytes - so the figure is not under another metro's banner and not shared with a second site. The qualifier is intact rather than truncated: the cell says Air, and the operator's own word is what selects the medium rather than it being inferred from an absent liquid cell.",
+      },
+    },
+    tail: [],
   },
 }
 
 data databank_ewr1_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "The EWR1 page names Cabinets among its colocation platforms but states no minimum, so whether one cabinet is sellable on its own at this site is unread. Ask the quote whether a single cabinet is contractable at 165 Halsey Suite 500, and whether the 10 kW cooling figure is available to a one-cabinet order or only inside a larger footprint.",
 }
+
+data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator contributes exactly one modelled facility despite operating several in this metro, which understates it."
 
 // THE SAME OPERATOR IN PENNSYLVANIA, ADDED BY THE PHILADELPHIA AND LEHIGH VALLEY LANE. DataBank
 // sells from 401 North Broad, the Philadelphia carrier hotel Netrality owns - so this census now
@@ -258,9 +317,7 @@ data databank_phl1_philadelphia: ColoFacilityRow = ColoFacilityRow {
 }
 
 data databank_phl1_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "databank.com Philadelphia page, read 2026-09-08, states critical IT load, IT square footage and carrier count, and NO per-cabinet density. Raw-byte confirmed 2026-09-09 under a subject control (HTTP 200, full browser user-agent): 'Philadelphia' occurs 26 times, so the instrument reached this facility's surface, and 'kW', 'kVA' and even 'cabinet' occur zero times. The operator's 35 kW+ claim belongs to the Orangeburg campus and may not be carried to this suite - a 0.34 MW suite and a 10 MW campus are different plant. Request a PHL1 spec sheet or a quote.",
-  },
+  obligation: "databank.com Philadelphia page, read 2026-09-08, states critical IT load, IT square footage and carrier count, and NO per-cabinet density. Raw-byte confirmed 2026-09-09 under a subject control (HTTP 200, full browser user-agent): 'Philadelphia' occurs 26 times, so the instrument reached this facility's surface, and 'kW', 'kVA' and even 'cabinet' occur zero times. The operator's 35 kW+ claim belongs to the Orangeburg campus and may not be carried to this suite - a 0.34 MW suite and a 10 MW campus are different plant. Request a PHL1 spec sheet or a quote.",
 }
 
 data databank_phl1_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -271,6 +328,7 @@ data databank_facilities: List<ColoFacilityRow> = [
   databank_lga4_orangeburg,
   databank_lga1_hudson,
   databank_lga2_eighth,
+  databank_lga3_orangeburg,
   databank_ewr1_newark,
   databank_phl1_philadelphia,
 ]

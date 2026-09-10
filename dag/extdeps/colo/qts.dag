@@ -2,7 +2,7 @@ module extdeps.colo.qts
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread, NoPublishedSurface }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -66,9 +66,7 @@ data qts_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // TRIGGER: QTS Jersey City resolving into a facility row, or a Middlesex region row existing for
 // Piscataway. Until one of those, this is state two of 3c and not state three.
 data qts_cabinet_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "q.com's data-centers index read 2026-09-08 publishes acreage and site megawatts - 38 acres and 65 MW+ at Piscataway - and no per-cabinet or per-rack kW figure at any site. Site megawatts is not cabinet density. Resolve by quote; note that this operator has no facility in the Hudson-Bergen-Essex corridor that it currently claims.",
-  },
+  obligation: "q.com's data-centers index read 2026-09-08 publishes acreage and site megawatts - 38 acres and 65 MW+ at Piscataway - and no per-cabinet or per-rack kW figure at any site. Site megawatts is not cabinet density. Resolve by quote; note that this operator has no facility in the Hudson-Bergen-Essex corridor that it currently claims.",
 }
 
 data qts_retail_grain: RetailGrainStanding = RetailGrainUnread {

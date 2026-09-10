@@ -6,7 +6,6 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, RetailGrainUnread,
-  NoPublishedSurface,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -44,9 +43,7 @@ data sabey_375_pearl: ColoFacilityRow = ColoFacilityRow {
 }
 
 data sabey_375_pearl_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "sabey.com/real-estate/375-pearl-manhattan from the operator realEstate sitemap. Raw fetch 2026-09-09: no User-Agent HTTP 403, 5344 bytes (interstitial); full Chrome User-Agent HTTP 200, 128437 bytes. Subject control in RAW 200 body: 375 Pearl=22. Token cabinet=0. Excluded kW: inside 'cost per kWh', not a cabinet ceiling. Building MW is not cabinet density.",
-  },
+  obligation: "sabey.com/real-estate/375-pearl-manhattan from the operator realEstate sitemap. Raw fetch 2026-09-09: no User-Agent HTTP 403, 5344 bytes (interstitial); full Chrome User-Agent HTTP 200, 128437 bytes. Subject control in RAW 200 body: 375 Pearl=22. Token cabinet=0. Excluded kW: inside 'cost per kWh', not a cabinet ceiling. Building MW is not cabinet density.",
 }
 
 data sabey_375_pearl_retail_grain: RetailGrainStanding = RetailGrainUnread {

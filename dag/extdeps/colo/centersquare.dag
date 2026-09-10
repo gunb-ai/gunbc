@@ -2,7 +2,7 @@ module extdeps.colo.centersquare
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered, NoPublishedSurface }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -67,9 +67,7 @@ data centersquare_ewr5_secaucus: ColoFacilityRow = ColoFacilityRow {
 // operator does not state and this census will not invent. So the density is UNREAD and the
 // operator's actual sentence is preserved in the obligation for whoever resolves it.
 data centersquare_cabinet_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "csquare.com New York/New Jersey index, read 2026-09-08, publishes for Secaucus \"Standard cage density: Up to 300W/sq. ft.\" and no per-cabinet or per-rack kW figure for any of EWR2, EWR3 or EWR5. Watts per square foot is not cabinet density and may not be converted into one here. Resolve by asking each facility for its air-cooled per-cabinet maximum.",
-  },
+  obligation: "csquare.com New York/New Jersey index, read 2026-09-08, publishes for Secaucus \"Standard cage density: Up to 300W/sq. ft.\" and no per-cabinet or per-rack kW figure for any of EWR2, EWR3 or EWR5. Watts per square foot is not cabinet density and may not be converted into one here. Resolve by asking each facility for its air-cooled per-cabinet maximum.",
 }
 
 data centersquare_retail_grain: RetailGrainStanding = SingleCabinetOffered {

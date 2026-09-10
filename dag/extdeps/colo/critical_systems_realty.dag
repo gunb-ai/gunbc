@@ -5,7 +5,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
   RetailGrainStanding, RetailGrainUnread, DensityUnread,
-  FigureReadButUnrepresentable,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -52,11 +51,18 @@ data csr_orny1_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // DataBank's 35 kW air claim four miles away this is the same county and a third of the density,
 // which is the sort of spread that only becomes visible once density is a typed field rather than
 // a sentence in a facility note.
-data csr_orny1_density: CabinetDensityClaim = DensityUnread {
-  cause: FigureReadButUnrepresentable {
-    obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE THIS CARRIER CANNOT HOLD POINTING THE RIGHT WAY. The operator publishes, verbatim: 'High density 10KW + per cabinets'. The plus sign is the operator's own, so this is a capability FLOOR - at least ten kilowatts - while the figure-bearing arms here are marketed MAXIMA. Typed as a maximum the census would assert that a cabinet advertised at ten kilowatts OR MORE refuses 10,001 W. RESOLVE by re-typing as a floor-carrying figure once the carrier expresses a quantity's direction; the numeral and wording above are the reading and NO RE-FETCH IS REQUIRED. RETRIEVAL EVIDENCE: 1547realty.com ORNY1 Orangeburg page, confirmed against raw HTML 2026-09-09. THE PAGE STATES NO COOLING MEDIUM - not air, not liquid - so no medium may be inferred from it either; 'high density' names neither.",
-    wording: "High density 10KW + per cabinets",
-    citation: "1547realty.com",
+data csr_orny1_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 10000) } },
+      wording: "High density 10KW + per cabinets",
+      citation: "1547realty.com ORNY1 page, read 2026-09-08. No cooling medium is named anywhere on the page - the medium here is unspecified BY EVIDENCE, not by default.",
+      verification: WordingVerbatim {
+        retrieval: "The plus sign is the operator's own, so this is a capability FLOOR - at least ten kilowatts - and not a marketed maximum. Typed as a maximum the census would have asserted that a cabinet advertised at ten kilowatts OR MORE refuses 10,001 W. The page says \"high density\" and names no medium; high density is true of air and liquid alike and so discriminates nothing.",
+      },
+    },
+    tail: [],
   },
 }
 

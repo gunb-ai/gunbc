@@ -6,7 +6,6 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, RetailGrainUnread,
-  NoPublishedSurface,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -56,9 +55,7 @@ data colocation_america_nydc1: ColoFacilityRow = ColoFacilityRow {
 }
 
 data colocation_america_nydc1_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "colocationamerica.com/data-center-locations/new-york from the operator page-sitemap. Raw fetch 2026-09-09: no User-Agent HTTP 403, 5506 bytes; full Chrome User-Agent HTTP 200, 182447 bytes. Subject control in RAW 200 body: NYDC1=4 and 60 Hudson=8 (not the site token New York). Token cabinet=0. No RAW substring kW. Case-insensitive kw hits are inside the minified Tidio id tudkwjyu, excluded. Not a per-cabinet kilowatt claim.",
-  },
+  obligation: "colocationamerica.com/data-center-locations/new-york from the operator page-sitemap. Raw fetch 2026-09-09: no User-Agent HTTP 403, 5506 bytes; full Chrome User-Agent HTTP 200, 182447 bytes. Subject control in RAW 200 body: NYDC1=4 and 60 Hudson=8 (not the site token New York). Token cabinet=0. No RAW substring kW. Case-insensitive kw hits are inside the minified Tidio id tudkwjyu, excluded. Not a per-cabinet kilowatt claim.",
 }
 
 data colocation_america_nydc1_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -78,9 +75,7 @@ data colocation_america_nydc2: ColoFacilityRow = ColoFacilityRow {
 }
 
 data colocation_america_nydc2_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "Same New York location fetch as NYDC1 (full UA HTTP 200, 182447 bytes). Subject control NYDC2=4. Lists the 16th-floor suite at 111 8th, not a per-cabinet density. No RAW substring kW (Tidio tudkwjyu excluded).",
-  },
+  obligation: "Same New York location fetch as NYDC1 (full UA HTTP 200, 182447 bytes). Subject control NYDC2=4. Lists the 16th-floor suite at 111 8th, not a per-cabinet density. No RAW substring kW (Tidio tudkwjyu excluded).",
 }
 
 data colocation_america_nydc2_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -126,9 +121,7 @@ data colocation_america_njdc2_secaucus: ColoFacilityRow = ColoFacilityRow {
 }
 
 data colocation_america_cabinet_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "The operator's New Jersey locations page was fetched 2026-09-09 with a full browser user-agent (HTTP 200, 178,020 bytes) and read from RAW HTML, and it publishes no per-cabinet power figure for either New Jersey site - not for NJDC2 at 275 Hartz Way, Secaucus, and not for NJDC1 at 100 Delawanna Ave, Clifton. The string \"cabinet\" does not occur in the page bytes at all. This obligation has been wrong twice and both errors were mine: it first said the operator refused a fetch, when the refusal was a missing user-agent, and it then said the operator's pages do not name a Secaucus site, when they name it in a heading - a zero produced by a stripper that destroyed the page. Resolve by quote: ask what a cabinet at NJDC2 may draw. Do NOT resolve it by reading the Equinix NY2 density for the same building; one address carrying two operators is not one operator's density.",
-  },
+  obligation: "The operator's New Jersey locations page was fetched 2026-09-09 with a full browser user-agent (HTTP 200, 178,020 bytes) and read from RAW HTML, and it publishes no per-cabinet power figure for either New Jersey site - not for NJDC2 at 275 Hartz Way, Secaucus, and not for NJDC1 at 100 Delawanna Ave, Clifton. The string \"cabinet\" does not occur in the page bytes at all. This obligation has been wrong twice and both errors were mine: it first said the operator refused a fetch, when the refusal was a missing user-agent, and it then said the operator's pages do not name a Secaucus site, when they name it in a heading - a zero produced by a stripper that destroyed the page. Resolve by quote: ask what a cabinet at NJDC2 may draw. Do NOT resolve it by reading the Equinix NY2 density for the same building; one address carrying two operators is not one operator's density.",
 }
 
 data colocation_america_retail_grain: RetailGrainStanding = RetailGrainUnread {

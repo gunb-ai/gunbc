@@ -5,7 +5,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
   RetailGrainStanding, SingleCabinetOffered, DensityUnread,
-  FigureReadButUnrepresentable,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -51,11 +50,18 @@ data long_island_interconnect_westbury: ColoFacilityRow = ColoFacilityRow {
 // air claim at DataBank LGA4. A 650 W-per-node fleet fills this cabinet at four nodes. The
 // operator states expansion space is planned for higher-kW cabinets; that is a plan, not a
 // purchasable density, and is carried in the wording rather than in the number.
-data long_island_interconnect_density: CabinetDensityClaim = DensityUnread {
-  cause: FigureReadButUnrepresentable {
-    obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE THIS CARRIER CANNOT HOLD POINTING THE RIGHT WAY - and here the mismatch is not direction but KIND. The operator publishes, verbatim: 'Cooling level average is 3kW per cabinet; plans to support higher kW cabinets are established for adjacent future expansion space'. That is an AVERAGE, which is neither a floor nor a ceiling: it bounds what the hall sustains across cabinets, not what any one cabinet may draw, and the figure-bearing arms here are marketed MAXIMA. Typed as a maximum the census would assert that this cabinet refuses 3,001 W, which the page does not say and which an average cannot support. RESOLVE by re-typing as a published average once the carrier expresses a quantity's kind; the numeral and wording above are the reading and NO RE-FETCH IS REQUIRED. A quote must still establish the per-cabinet ceiling. RETRIEVAL EVIDENCE: longislandinterconnect.com colocation page, read 2026-09-08 and confirmed verbatim against raw HTML 2026-09-09. ELEMENT BOUNDARY: one <li> under an Environmental Distribution accordion, contiguous but for a non-breaking space after the semicolon - one authored item. 'COOLING' NAMES NO MEDIUM: a liquid hall is cooled too, so the sentence discriminates nothing about medium.",
-    wording: "Cooling level average is 3kW per cabinet; plans to support higher kW cabinets are established for adjacent future expansion space",
-    citation: "longislandinterconnect.com",
+data long_island_interconnect_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: PublishedAverage { average: PublishedRealPower { power: watt(count: 3000) } },
+      wording: "Cooling level average is 3kW per cabinet; plans to support higher kW cabinets are established for adjacent future expansion space",
+      citation: "longislandinterconnect.com Westbury page, read 2026-09-08. No cooling medium is named anywhere on the page - unspecified BY EVIDENCE, not by default.",
+      verification: WordingVerbatim {
+        retrieval: "An AVERAGE, which is neither a floor nor a ceiling: it bounds what the hall sustains ACROSS cabinets, not what any one cabinet will take. Typed as a marketed maximum the census would have asserted this cabinet refuses 3,001 W, which an average cannot support. The word \"cooling\" here names the system, not the medium.",
+      },
+    },
+    tail: [],
   },
 }
 

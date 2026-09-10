@@ -4,10 +4,13 @@ import std.types { Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
 import test.claim.colo_cabinet_density_witness {
-  established_watts,
   grain_offers_single_cabinet,
-  density_reading_was_read,
+  covered_by_floor,
+  claim_unread,
+  bounds_above,
+  has_figure_for,
 }
+import extdeps.colo.types { AirCooling, density_claim_figures }
 import extdeps.colo.types { ColoFacilityRow, AddressStanding, address_street }
 import extdeps.colo.databank { databank_lga3_density, databank_lga3_retail_grain, databank_lga3_orangeburg }
 import extdeps.colo.critical_systems_realty {
@@ -49,79 +52,97 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // in another lane, so this file is not that fold: it is the execution that proves every row this
 // lane authored flows through the carrier's accessors and lands on the arm its citation claims.
 //
-// TWO FOLDS, BOTH CONSUMED RATHER THAN RE-DECLARED - review 62870 found the first cut of this file
-// carrying a byte-identical copy of established_watts and a second name for the single-cabinet
-// predicate, which is DESIGN section 3's nicknaming failure and would have let a later change to
-// the sentinel or to a RetailGrainStanding arm update one witness and silently miss the other. The
-// grain predicate is now an accessor on the carrier, where its absence was what produced the fork.
-// established_watts is imported from the carrier's own witness rather than lifted beside it: its
-// minus-one is a TEST-HARNESS sentinel for an Optional that the carrier deliberately does not have,
-// and pushing an in-band sentinel into extdeps would undo the very change that replaced the
-// zero-for-unread accessor with Watt?.
+// FOLDS ARE CONSUMED RATHER THAN RE-DECLARED - review 62870 found the first cut of this file
+// carrying a byte-identical copy of the watt accessor and a second name for the single-cabinet
+// predicate, which is DESIGN section 3's nicknaming failure and would have let a later change to a
+// RetailGrainStanding arm update one witness and silently miss the other. The grain predicate is
+// now an accessor on the carrier, where its absence was what produced the fork, and the density
+// predicates below are imported from the carrier's own witness rather than lifted beside it.
 //
-// WHAT MAKES THESE ASSERTIONS SOMETHING OTHER THAN THE ROWS RESTATED, now that no New York row
-// carries a watt: the discrimination has MOVED from the numeral to the arm. It used to be that
-// editing a row's watt value without its page changing turned a test red. Every published New York
-// figure is a floor or an average, so those numerals now live in obligation prose where no fold
-// reads them - and the assertions below are that the carrier establishes NOTHING from them. What
-// reds is re-typing a floor into a figure-bearing arm, which is the edit that would silently invert
-// a bound. The external authority is unchanged: each numeral and its verbatim wording remain in the
-// row, confirmed against the page's own bytes, so the reading survives its arm being wrong for it.
+// WHAT MAKES THESE ASSERTIONS SOMETHING OTHER THAN THE ROWS RESTATED: the discrimination is on the
+// ARM AND THE DIRECTION, not on the numeral. Re-typing one of these floors into a marketed-maximum
+// arm without its page changing turns this file red, and that is the edit that would silently
+// invert a bound - a cabinet advertised at "20 kW+" made to refuse 20,001 W. Editing a numeral
+// alone is caught by the citation and the verbatim wording, which is where an external fact belongs.
+//
+// THIS FILE WAS REWRITTEN WHEN THE CARRIER GAINED DIRECTION, and the previous version is worth one
+// sentence because its shape was a symptom. It asserted that all five readings established NOTHING,
+// and partitioned read from unread with two hand-typed row lists, because the carrier could express
+// neither a floor nor an average and DensityUnread meant two different things. #10888 landed
+// CapabilityAtLeast, PublishedAverage and QuantityUnreadable, so both facts are now carried by the
+// rows and asserted by folds over them. The count that moved is the census's headline: five read
+// and none holdable became five read and five held, without a single page being re-fetched.
 
 // FIVE FIGURES WERE READ AND NONE OF THEM ESTABLISHES A WATT, WHICH IS NOT A CONTRADICTION.
 // Every New York page that publishes a per-cabinet number publishes a FLOOR or an AVERAGE:
 // "35kW+", "100kW+", "20 kW+", "10KW +", and twice "Cooling level average is 3kW per cabinet".
-// The carrier's figure-bearing arms are marketed MAXIMA. Typing a floor as a maximum asserts that a
-// cabinet advertised at twenty kilowatts OR MORE refuses 20,001 W - the reading inverted, which is
-// worse than no reading, and is the defect main corrected on databank_lga4 by moving it to
-// DensityUnread with the numerals preserved in the obligation. These five follow that standard: the
-// only rows left in a figure-bearing arm anywhere in the census are the two whose wording says
-// "up to".
+// THE FIVE READ FIGURES ARE NOW PUBLISHED, AND THIS TEST CHANGED SHAPE BECAUSE THE CARRIER DID.
+// It previously asserted that all five established nothing, which was true against a carrier with
+// only marketed-maximum arms: every New York figure is a FLOOR ("35kW+", "20 kW+", "10KW +") or a
+// stated AVERAGE (both Westbury rows), and typing a floor as a maximum asserts that a cabinet
+// advertised at twenty kilowatts OR MORE refuses 20,001 W - the reading inverted, which is worse
+// than no reading. #10888 landed CapabilityAtLeast and PublishedAverage, so the direction is now
+// expressible and the honest count moved from five-read-none-holdable to five-read-five-held.
 //
-// SO THIS TEST ASSERTS THE FAIL-CLOSED HALF OF A READING THAT EXISTS. The pages were read, the
-// numerals and verbatim wordings are carried in each obligation, and NO RE-FETCH IS REQUIRED to
-// restore them - what is missing is a carrier that can say which direction a quantity points. Until
-// then the honest answer to "how many watts does this cabinet take" is that the census does not
-// know, and this is where that refusal is enforced rather than promised.
+// WHAT IS ASSERTED HERE IS THE DIRECTION, because that is the fact that was being lost. A floor
+// SUPPORTS FROM BELOW and BOUNDS NOTHING ABOVE; an average does neither. If any of these ever
+// starts bounding from above without its page having changed, someone has re-typed a floor as a
+// maximum and the census is asserting an inverted bound again - which is exactly what this file
+// existed to prevent before the arms could say it.
+// ONLY LGA3 IS ASSERTED HERE, AND THE OMISSION IS THE POINT. The first draft of this test also
+// asserted !bounds_above for the four medium-unspecified rows, and that was VACUOUS: those rows
+// answer RequestedMediumAbsent to any medium-keyed screen, so !bounds_above holds for them no
+// matter which quantity arm they carry - the test would have stayed green if all four were typed
+// as marketed MAXIMA, which is the one error it exists to catch. A check whose passing value is
+// also its broken value establishes nothing. Direction is therefore asserted where direction is
+// reachable, on the one New York row that publishes a labelled medium, and the other four are
+// asserted on what they can actually answer in the test below.
+test fn w_a_published_floor_supports_from_below_and_bounds_nothing_above() -> Bool {
+  covered_by_floor(d: databank_lga3_density, requested: AirCooling, required: 35000)
+    && !bounds_above(d: databank_lga3_density, requested: AirCooling)
+}
+
+// A FIGURE WITH NO PUBLISHED MEDIUM IS INVENTORIED AND STILL CANNOT ANSWER A MEDIUM QUESTION, and
+// keeping those two facts apart is the whole reason the medium is a standing rather than a default.
+// Four of the five New York readings name no coolant: "cooling", "raised floor" and "high density"
+// are true of air and liquid alike, so they discriminate nothing and the rows carry
+// CoolingMediumUnspecified BY EVIDENCE. medium_matches answers false for them, so a request for
+// AirCooling correctly finds no figure - while density_claim_figures still returns the reading, so
+// a coverage roster counts it and only the medium-specific screen declines.
 //
-// IF ANY OF THESE STARTS YIELDING A VALUE WITHOUT ITS PAGE HAVING CHANGED, someone has re-typed a
-// floor as a maximum and the census is asserting an inverted bound again.
-test fn w_ny_read_figures_establish_nothing_until_the_carrier_carries_DIRECTION() -> Bool {
-  density_reading_was_read(d: databank_lga3_density)
-    && density_reading_was_read(d: hivelocity_ogb1_density)
-    && density_reading_was_read(d: csr_orny1_density)
-    && density_reading_was_read(d: long_island_interconnect_density)
-    && density_reading_was_read(d: nyi_long_island_density)
-    && established_watts(d: databank_lga3_density) == 0 - 1
-    && established_watts(d: hivelocity_ogb1_density) == 0 - 1
-    && established_watts(d: csr_orny1_density) == 0 - 1
-    && established_watts(d: long_island_interconnect_density) == 0 - 1
-    && established_watts(d: nyi_long_island_density) == 0 - 1
+// DataBank LGA3 is the control: it publishes two LABELLED cells, so it answers the same question
+// the other four cannot. A test that only looked at the four would pass if medium_matches returned
+// false unconditionally.
+test fn w_medium_unspecified_figures_are_inventoried_but_answer_no_medium() -> Bool {
+  !has_figure_for(d: csr_orny1_density, requested: AirCooling)
+    && !has_figure_for(d: hivelocity_ogb1_density, requested: AirCooling)
+    && !has_figure_for(d: long_island_interconnect_density, requested: AirCooling)
+    && !has_figure_for(d: nyi_long_island_density, requested: AirCooling)
+    && has_figure_for(d: databank_lga3_density, requested: AirCooling)
+    && density_claim_figures(d: csr_orny1_density).length() == 1
+    && density_claim_figures(d: nyi_long_island_density).length() == 1
+    && density_claim_figures(d: databank_lga3_density).length() == 2
 }
 
 // THE UNREAD ONES ESTABLISH NOTHING, AND THAT IS THE HALF THAT MATTERS MOST. An unread density is
-// the census's fail-closed arm: no operator page states a figure, so no watt reading exists and a
-// consumer that needs one must refuse rather than receive a plausible number.
+// the census's fail-closed arm: no operator page states a per-cabinet figure, so no reading exists
+// and a consumer that needs one must refuse rather than receive a plausible number. These six are
+// unread in the ONE sense the arm now carries - nobody published a surface - because the rows that
+// had been read but not holdable are published above rather than sharing this arm with them.
 //
 // DENSITY CLAIMS AND FACILITY ROWS ARE NOT IN BIJECTION, which is the fact a reader needs here and
 // is stated as a relation rather than as two numerals. TierPoint HWT and HW2 are two buildings on
 // one Hawthorne campus sharing a single density row, because a density is a claim about a CABINET
 // and the operator publishes one claim across both halls. A reader who expects the facility fold
-// below and the density folds above to have equal arity is expecting the wrong thing. If any of
-// these ever yields a value without its page having changed, someone has filled in a guess.
+// below and the density folds above to have equal arity is expecting the wrong thing.
 test fn w_ny_unread_densities_establish_nothing() -> Bool {
-  density_reading_was_read(d: tierpoint_hawthorne_density) == false
-    && density_reading_was_read(d: equinix_ny13_density) == false
-    && density_reading_was_read(d: three_sixty_five_commack_density) == false
-    && density_reading_was_read(d: stafford_density) == false
-    && density_reading_was_read(d: vastnet_density) == false
-    && density_reading_was_read(d: continuity_centers_density) == false
-    && established_watts(d: tierpoint_hawthorne_density) == 0 - 1
-    && established_watts(d: equinix_ny13_density) == 0 - 1
-    && established_watts(d: three_sixty_five_commack_density) == 0 - 1
-    && established_watts(d: stafford_density) == 0 - 1
-    && established_watts(d: vastnet_density) == 0 - 1
-    && established_watts(d: continuity_centers_density) == 0 - 1
+  claim_unread(d: tierpoint_hawthorne_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: equinix_ny13_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: three_sixty_five_commack_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: stafford_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: vastnet_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: continuity_centers_density, requested: AirCooling, required: 5000)
+
 }
 
 // DENSITY AND GRAIN ARE INDEPENDENT, and this region is where that independence is load-bearing
@@ -135,8 +156,8 @@ test fn w_ny_grain_is_published_where_density_is_not() -> Bool {
     && grain_offers_single_cabinet(g: long_island_interconnect_retail_grain)
     && grain_offers_single_cabinet(g: tierpoint_hawthorne_retail_grain)
     && grain_offers_single_cabinet(g: databank_lga3_retail_grain)
-    && established_watts(d: stafford_density) == 0 - 1
-    && established_watts(d: vastnet_density) == 0 - 1
+    && claim_unread(d: stafford_density, requested: AirCooling, required: 5000)
+    && claim_unread(d: vastnet_density, requested: AirCooling, required: 5000)
 }
 
 // THE GRAIN UNREADS, for the same reason as the density unreads: operators in this region whose

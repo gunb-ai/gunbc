@@ -6,7 +6,6 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, SingleCabinetOffered,
-  NoPublishedSurface,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -113,33 +112,23 @@ data tierpoint_pennsylvania_facilities: List<ColoFacilityRow> = [
 // remain unread rather than read-and-empty. Nothing here is derived from the generator megawatts,
 // which are building capacity and not a cabinet commitment.
 data tierpoint_philadelphia_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "tierpoint.com Philadelphia page read 2026-09-08 states 25,000+ total square feet, 11,000+ raised floor and three 1.5 MW generators, and NO per-cabinet density. BYTE-CONFIRMED 2026-09-09 under a subject control (HTTP 200, 421,123 bytes): 'Philadelphia' occurs 58 times, so the instrument reached this facility's own page rather than the state index, and 'kW' occurs zero times case-sensitively. Read the linked Philadelphia spec-sheet PDF or obtain a quote.",
-  },
+  obligation: "tierpoint.com Philadelphia page read 2026-09-08 states 25,000+ total square feet, 11,000+ raised floor and three 1.5 MW generators, and NO per-cabinet density. BYTE-CONFIRMED 2026-09-09 under a subject control (HTTP 200, 421,123 bytes): 'Philadelphia' occurs 58 times, so the instrument reached this facility's own page rather than the state index, and 'kW' occurs zero times case-sensitively. Read the linked Philadelphia spec-sheet PDF or obtain a quote.",
 }
 
 data tierpoint_allentown_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "tierpoint.com Allentown TekPark page read 2026-09-08 states 122,000+ total square feet, 96,000+ raised floor and fifteen 2.5 MW plus eight 2 MW generators, and NO per-cabinet density, byte-confirmed 2026-09-09 under a subject control (HTTP 200, 421,605 bytes; 'allentown' occurs 49 times, 'kW' zero times case-sensitively). The largest TierPoint site in the state by generation and still no cabinet figure. Read the linked TekPark spec-sheet PDF or obtain a quote.",
-  },
+  obligation: "tierpoint.com Allentown TekPark page read 2026-09-08 states 122,000+ total square feet, 96,000+ raised floor and fifteen 2.5 MW plus eight 2 MW generators, and NO per-cabinet density, byte-confirmed 2026-09-09 under a subject control (HTTP 200, 421,605 bytes; 'allentown' occurs 49 times, 'kW' zero times case-sensitively). The largest TierPoint site in the state by generation and still no cabinet figure. Read the linked TekPark spec-sheet PDF or obtain a quote.",
 }
 
 data tierpoint_bethlehem_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "tierpoint.com Bethlehem page read 2026-09-08 states 25,000+ total square feet, 12,000+ raised floor and two 600 kW plus one 1 MW generator, and NO per-cabinet density. BYTE-CONFIRMED 2026-09-09 under a subject control (HTTP 200, 421,957 bytes): 'Bethlehem' occurs 56 times, and 'kW' occurs EXACTLY ONCE - in 'Two 600 kW redundant generators and one 1 MW generator', which is generator capacity and not a cabinet figure. That single hit is why a rule of the form 'kW occurs, therefore a density is published' would be wrong here. Read the linked Bethlehem spec-sheet PDF or obtain a quote.",
-  },
+  obligation: "tierpoint.com Bethlehem page read 2026-09-08 states 25,000+ total square feet, 12,000+ raised floor and two 600 kW plus one 1 MW generator, and NO per-cabinet density. BYTE-CONFIRMED 2026-09-09 under a subject control (HTTP 200, 421,957 bytes): 'Bethlehem' occurs 56 times, and 'kW' occurs EXACTLY ONCE - in 'Two 600 kW redundant generators and one 1 MW generator', which is generator capacity and not a cabinet figure. That single hit is why a rule of the form 'kW occurs, therefore a density is published' would be wrong here. Read the linked Bethlehem spec-sheet PDF or obtain a quote.",
 }
 
 data tierpoint_lehigh_valley_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "tierpoint.com Lehigh Valley page read 2026-09-08 states 27,000+ total square feet, 8,700+ raised floor and three 1.5 MW generators, and NO per-cabinet density, byte-confirmed 2026-09-09 under a subject control (HTTP 200, 421,303 bytes; 'lehigh' occurs 51 times, and 'kW' occurs zero times case-sensitively - the case-insensitive matches an earlier revision counted were all CSS node names, which is why this count is case-sensitive). The linked spec sheet web.tierpoint.com/hubfs/data-center/pa-lehigh-valley-data-center-spec-sheet.pdf was fetched the same day and returned as unparsed binary, so it is still unread. Read it with a PDF text extractor.",
-  },
+  obligation: "tierpoint.com Lehigh Valley page read 2026-09-08 states 27,000+ total square feet, 8,700+ raised floor and three 1.5 MW generators, and NO per-cabinet density, byte-confirmed 2026-09-09 under a subject control (HTTP 200, 421,303 bytes; 'lehigh' occurs 51 times, and 'kW' occurs zero times case-sensitively - the case-insensitive matches an earlier revision counted were all CSS node names, which is why this count is case-sensitive). The linked spec sheet web.tierpoint.com/hubfs/data-center/pa-lehigh-valley-data-center-spec-sheet.pdf was fetched the same day and returned as unparsed binary, so it is still unread. Read it with a PDF text extractor.",
 }
 
 data tierpoint_valley_forge_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "tierpoint.com Valley Forge page read 2026-09-08 states 137,000+ total square feet, 61,000+ raised floor and nine 2.5 MW generators, and NO per-cabinet density. BYTE-CONFIRMED 2026-09-09 under a subject control (HTTP 200, 421,112 bytes): 'valley' occurs 54 times and 'kW' zero times case-sensitively. Read the linked Valley Forge spec-sheet PDF or obtain a quote.",
-  },
+  obligation: "tierpoint.com Valley Forge page read 2026-09-08 states 137,000+ total square feet, 61,000+ raised floor and nine 2.5 MW generators, and NO per-cabinet density. BYTE-CONFIRMED 2026-09-09 under a subject control (HTTP 200, 421,112 bytes): 'valley' occurs 54 times and 'kW' zero times case-sensitively. Read the linked Valley Forge spec-sheet PDF or obtain a quote.",
 }
 
 // ONE GRAIN READING PER SITE BECAUSE EACH PAGE STATES IT ITSELF, in identical wording. The grain
@@ -209,9 +198,7 @@ data tierpoint_hawthorne_hw2: ColoFacilityRow = ColoFacilityRow {
 // content was branding metadata rather than the specification table, so no figure was read from
 // it and none is carried. That is a fetch failure recorded as one, not a fact about the facility.
 data tierpoint_hawthorne_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "NO POWER FIGURE IS PUBLISHED, AND THE ZERO CARRIES ITS POSITIVE CONTROL. Counted in RAW BYTES (452,221 bytes, HTTP 200, full browser user-agent, 2026-09-09), because a tag-stripper was found in this census to eat 21 of 22 occurrences of a token that was plainly present: controls Hawthorne 63, Skyline 10 and the grain wording Cabinets and cages 2, all SUBJECT tokens naming this facility rather than the site - TierPoint 722 is a site token and proves only that the fetch reached tierpoint.com, which is not the same claim. This IS the per-facility surface: it carries the 11 Skyline and 17 Skyline specification blocks, so an absence here is evidence about the facility rather than about an index that was never going to carry a figure. Against those, case-sensitive kW is 0, per cabinet is 0, kilowatt is 0. A case-INSENSITIVE kw returns 3, and all three are inside CSS node identifiers (fl-node-izjpc548gkwv and siblings) rather than prose, which is recorded because a case-insensitive count is the search a later reader would run first and it does not mean what it looks like. TWO STANDING CAUTIONS FOR WHOEVER RE-RUNS THIS: kw is a common substring of minified identifiers, so count kW case-sensitively; and a kW hit is not a density until its sentence is read - the same operator publishes Two 600 kW redundant generators on its Pennsylvania facility pages, which is facility generator capacity and would be off by orders of magnitude if counted as a cabinet figure. The page markets High-Density Colocation as a product name and attaches no figure to it. The linked Hawthorne HWT spec-sheet PDF at web.tierpoint.com did not yield readable specification text on 2026-09-08 and is the remaining place a figure could hide. Retry the PDF by another route or ask sales for the per-cabinet allocation at both buildings - they may differ, and one campus row would then be two densities.",
-  },
+  obligation: "NO POWER FIGURE IS PUBLISHED, AND THE ZERO CARRIES ITS POSITIVE CONTROL. Counted in RAW BYTES (452,221 bytes, HTTP 200, full browser user-agent, 2026-09-09), because a tag-stripper was found in this census to eat 21 of 22 occurrences of a token that was plainly present: controls Hawthorne 63, Skyline 10 and the grain wording Cabinets and cages 2, all SUBJECT tokens naming this facility rather than the site - TierPoint 722 is a site token and proves only that the fetch reached tierpoint.com, which is not the same claim. This IS the per-facility surface: it carries the 11 Skyline and 17 Skyline specification blocks, so an absence here is evidence about the facility rather than about an index that was never going to carry a figure. Against those, case-sensitive kW is 0, per cabinet is 0, kilowatt is 0. A case-INSENSITIVE kw returns 3, and all three are inside CSS node identifiers (fl-node-izjpc548gkwv and siblings) rather than prose, which is recorded because a case-insensitive count is the search a later reader would run first and it does not mean what it looks like. TWO STANDING CAUTIONS FOR WHOEVER RE-RUNS THIS: kw is a common substring of minified identifiers, so count kW case-sensitively; and a kW hit is not a density until its sentence is read - the same operator publishes Two 600 kW redundant generators on its Pennsylvania facility pages, which is facility generator capacity and would be off by orders of magnitude if counted as a cabinet figure. The page markets High-Density Colocation as a product name and attaches no figure to it. The linked Hawthorne HWT spec-sheet PDF at web.tierpoint.com did not yield readable specification text on 2026-09-08 and is the remaining place a figure could hide. Retry the PDF by another route or ask sales for the per-cabinet allocation at both buildings - they may differ, and one campus row would then be two densities.",
 }
 
 data tierpoint_hawthorne_retail_grain: RetailGrainStanding = SingleCabinetOffered {

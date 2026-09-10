@@ -6,7 +6,6 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
-  NoPublishedSurface,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -218,9 +217,7 @@ data three_sixty_five_staten_island_teleport: ColoFacilityRow = ColoFacilityRow 
 }
 
 data three_sixty_five_nyc_density_unread: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "Operator page-sitemap has no New York City facility URL. The surfaces that exist: facilities-network roster (both UAs HTTP 200, 178955 bytes) names the sites (subject controls e.g. 60 Hudson=3, 325 Hudson=1, 375 Pearl=1, 7 Teleport=1) and has RAW kW=0 - that is an index, so the zero is not a per-site density reading. caged-colocation/ (both UAs HTTP 200, 256736 bytes) is a product page: subject tokens New York=0 and Hudson=0; it names a high-density tier '6kW+' when cabinet draw is higher - product language, excluded from these site rows. Per-site density stays unread until a site cut sheet states a cabinet ceiling.",
-  },
+  obligation: "Operator page-sitemap has no New York City facility URL. The surfaces that exist: facilities-network roster (both UAs HTTP 200, 178955 bytes) names the sites (subject controls e.g. 60 Hudson=3, 325 Hudson=1, 375 Pearl=1, 7 Teleport=1) and has RAW kW=0 - that is an index, so the zero is not a per-site density reading. caged-colocation/ (both UAs HTTP 200, 256736 bytes) is a product page: subject tokens New York=0 and Hudson=0; it names a high-density tier '6kW+' when cabinet draw is higher - product language, excluded from these site rows. Per-site density stays unread until a site cut sheet states a cabinet ceiling.",
 }
 
 data three_sixty_five_nyc_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -251,15 +248,11 @@ data three_sixty_five_facilities: List<ColoFacilityRow> = [
 // cabinet next door at 401 North Broad, and the pages that would say how much power such a unit
 // carries say nothing at all.
 data three_sixty_five_philadelphia_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "365datacenters.com Philadelphia pages read 2026-09-08 publish no per-cabinet or per-rack density for the Spring Garden site. Request the facility spec sheet named on the page.",
-  },
+  obligation: "365datacenters.com Philadelphia pages read 2026-09-08 publish no per-cabinet or per-rack density for the Spring Garden site. Request the facility spec sheet named on the page.",
 }
 
 data three_sixty_five_philadelphia_university_city_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "365datacenters.com Philadelphia data center page read 2026-09-08 states four 180 kW UPS modules and a 1,000 kW generator for the 3701 Market site and NO per-cabinet density. UPS module kilowatts are room capacity and must not be divided into a cabinet figure. Raw-byte confirmed 2026-09-09 under a subject control (HTTP 200, full browser user-agent): 'Philadelphia' occurs 33 times, so the instrument reached the facility surface; 'kW' occurs exactly twice and both are plant - '4 x 180 kW' UPS modules and 'Dedicated onsite 1000 kW diesel generator' - and 'kVA' zero times. Request the downloadable facility specification the page references.",
-  },
+  obligation: "365datacenters.com Philadelphia data center page read 2026-09-08 states four 180 kW UPS modules and a 1,000 kW generator for the 3701 Market site and NO per-cabinet density. UPS module kilowatts are room capacity and must not be divided into a cabinet figure. Raw-byte confirmed 2026-09-09 under a subject control (HTTP 200, full browser user-agent): 'Philadelphia' occurs 33 times, so the instrument reached the facility surface; 'kW' occurs exactly twice and both are plant - '4 x 180 kW' UPS modules and 'Dedicated onsite 1000 kW diesel generator' - and 'kVA' zero times. Request the downloadable facility specification the page references.",
 }
 
 data three_sixty_five_philadelphia_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -288,9 +281,7 @@ data three_sixty_five_commack: ColoFacilityRow = ColoFacilityRow {
 }
 
 data three_sixty_five_commack_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "The Commack page publishes facility-level megawatts and pod square footage but no kW-per-cabinet figure (read 2026-09-08). Six megawatts across 24,000 square feet says nothing about what one cabinet may draw, and this census does not divide the one by the other. Ask for the per-cabinet allocation in the primary pods.",
-  },
+  obligation: "The Commack page publishes facility-level megawatts and pod square footage but no kW-per-cabinet figure (read 2026-09-08). Six megawatts across 24,000 square feet says nothing about what one cabinet may draw, and this census does not divide the one by the other. Ask for the per-cabinet allocation in the primary pods.",
 }
 
 data three_sixty_five_commack_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -305,7 +296,5 @@ data three_sixty_five_retail_grain: RetailGrainStanding = SingleCabinetOffered {
 }
 
 data three_sixty_five_cabinet_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "No per-cabinet or per-rack kW figure appears on the operator's colocation-services page or its Carlstadt facility page (both read 2026-09-08). The operator publishes a Carlstadt cutsheet PDF at 365datacenters.com/wp-content/uploads/2023/05/365_CUTSHEET_FINAL_CARLSTADT410_V3.pdf which was fetched 2026-09-08 and did not yield extractable text; that PDF is the specific artifact to read to resolve NJ3 Carlstadt, and the 235,500 sqft building figure is not a substitute for it.",
-  },
+  obligation: "No per-cabinet or per-rack kW figure appears on the operator's colocation-services page or its Carlstadt facility page (both read 2026-09-08). The operator publishes a Carlstadt cutsheet PDF at 365datacenters.com/wp-content/uploads/2023/05/365_CUTSHEET_FINAL_CARLSTADT410_V3.pdf which was fetched 2026-09-08 and did not yield extractable text; that PDF is the specific artifact to read to resolve NJ3 Carlstadt, and the 235,500 sqft building figure is not a substitute for it.",
 }

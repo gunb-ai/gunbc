@@ -6,7 +6,6 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
-  NoPublishedSurface,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -68,9 +67,7 @@ data digital_realty_jfk10: ColoFacilityRow = ColoFacilityRow {
 }
 
 data digital_realty_jfk10_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "digitalrealty.com/data-centers/americas/new-york/jfk10 from the operator en-sitemap. Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 213431 bytes. Subject control in RAW bytes: JFK10=41. Excluded kW sentence: campus chrome field_sum_utility_power_capacity 392.8k+ kW (portfolio utility capacity, not cabinet density). No other RAW kW.",
-  },
+  obligation: "digitalrealty.com/data-centers/americas/new-york/jfk10 from the operator en-sitemap. Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 213431 bytes. Subject control in RAW bytes: JFK10=41. Excluded kW sentence: campus chrome field_sum_utility_power_capacity 392.8k+ kW (portfolio utility capacity, not cabinet density). No other RAW kW.",
 }
 
 data digital_realty_jfk10_retail_grain: RetailGrainStanding = SingleCabinetOffered {
@@ -91,9 +88,7 @@ data digital_realty_jfk12: ColoFacilityRow = ColoFacilityRow {
 }
 
 data digital_realty_jfk12_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "digitalrealty.com/data-centers/americas/new-york/jfk12 from the operator en-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 208031 bytes. Subject control JFK12=36. Excluded kW: same campus-chrome 392.8k+ kW as JFK10 (portfolio utility capacity). Names multi-megawatt suites through single cabinet deployments as a product range.",
-  },
+  obligation: "digitalrealty.com/data-centers/americas/new-york/jfk12 from the operator en-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 208031 bytes. Subject control JFK12=36. Excluded kW: same campus-chrome 392.8k+ kW as JFK10 (portfolio utility capacity). Names multi-megawatt suites through single cabinet deployments as a product range.",
 }
 
 data digital_realty_jfk12_retail_grain: RetailGrainStanding = SingleCabinetOffered {
@@ -114,9 +109,7 @@ data digital_realty_jfk13: ColoFacilityRow = ColoFacilityRow {
 }
 
 data digital_realty_jfk13_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "digitalrealty.com/data-centers/americas/new-york/jfk13 from the operator en-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 209985 bytes. Subject control JFK13=39. Excluded kW: same campus-chrome 392.8k+ kW (portfolio utility capacity).",
-  },
+  obligation: "digitalrealty.com/data-centers/americas/new-york/jfk13 from the operator en-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 209985 bytes. Subject control JFK13=39. Excluded kW: same campus-chrome 392.8k+ kW (portfolio utility capacity).",
 }
 
 data digital_realty_jfk13_retail_grain: RetailGrainStanding = SingleCabinetOffered {
@@ -152,9 +145,7 @@ data digital_realty_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // are the operator's live New Jersey sites, none of which is in the Hudson-Bergen-Essex corridor.
 
 data digital_realty_cabinet_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "The operator's New York and New Jersey facility list, read 2026-09-08, publishes no per-cabinet or per-rack kW figure for any facility; it publishes a 133.5k square-foot colocation footprint, which is a portfolio fact and not a density. Resolve per facility from a spec sheet or a quote.",
-  },
+  obligation: "The operator's New York and New Jersey facility list, read 2026-09-08, publishes no per-cabinet or per-rack kW figure for any facility; it publishes a 133.5k square-foot colocation footprint, which is a portfolio fact and not a density. Resolve per facility from a spec sheet or a quote.",
 }
 
 data digital_realty_retail_grain: RetailGrainStanding = RetailGrainUnread {

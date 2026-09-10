@@ -5,7 +5,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
   RetailGrainStanding, RetailGrainUnread, DensityUnread,
-  FigureReadButUnrepresentable,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -48,11 +47,18 @@ data nyi_long_island: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Nassau County. NYI's own page states generator-backed AC, UPS AC, DC, N+1/2N and 99.982% availability for the site. It is the same street address as the Long Island Interconnect row; both are carried because the operator is the upstream authority each row cites, not the building.",
 }
 
-data nyi_long_island_density: CabinetDensityClaim = DensityUnread {
-  cause: FigureReadButUnrepresentable {
-    obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE THIS CARRIER CANNOT HOLD POINTING THE RIGHT WAY - an AVERAGE, which is neither floor nor ceiling. The operator publishes, verbatim: 'Cooling level average is 3kW per cabinet; plans to support higher kW per cabinet are established for an adjacent campus property owned by building'. Typed as a marketed maximum the census would assert this cabinet refuses 3,001 W, which an average cannot support. RESOLVE by re-typing as a published average once the carrier expresses a quantity's kind; the numeral and wording above are the reading and NO RE-FETCH IS REQUIRED. RETRIEVAL EVIDENCE: nyi.net Long Island page, re-read from raw HTML 2026-09-09. THE FIRST READ OF THIS ROW CALLED THIS WORDING IDENTICAL TO THE LONG ISLAND INTERCONNECT PAGE AND IT IS NOT: the FIGURE is identical and the first clause is word-for-word, but this operator writes 'an adjacent campus property owned by building' where Long Island Interconnect writes 'adjacent future expansion space'. Two surfaces sharing a sentence stem is what one expects of one building described by two sellers; the divergence is where they stop agreeing. 'COOLING' NAMES NO MEDIUM.",
-    wording: "Cooling level average is 3kW per cabinet; plans to support higher kW per cabinet are established for an adjacent campus property owned by building",
-    citation: "nyi.net",
+data nyi_long_island_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: PublishedAverage { average: PublishedRealPower { power: watt(count: 3000) } },
+      wording: "Cooling level average is 3kW per cabinet; plans to support higher kW per cabinet are established for an adjacent campus property owned by building",
+      citation: "nyi.net Long Island page, re-read from raw HTML 2026-09-09. No cooling medium is named anywhere on the page - unspecified BY EVIDENCE, not by default.",
+      verification: WordingVerbatim {
+        retrieval: "An AVERAGE and not a bound in either direction. This row and the Long Island Interconnect row are two operators publishing the same 3 kW average about the SAME Westbury building; the wordings differ in their tail, so these are two readings rather than one copied twice. \"Cooling level average\" names the system and not the coolant.",
+      },
+    },
+    tail: [],
   },
 }
 

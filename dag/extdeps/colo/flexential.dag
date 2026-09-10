@@ -6,7 +6,6 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressUnread,
   CabinetDensityClaim, DensityUnread,
   RetailGrainStanding, RetailGrainUnread,
-  NoPublishedSurface,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -60,9 +59,7 @@ data flexential_philadelphia_collegeville: ColoFacilityRow = ColoFacilityRow {
 // figure is recorded here so the next reader does not have to re-find it, and so that it is
 // unmistakably NOT this row's density.
 data flexential_philadelphia_collegeville_density: CabinetDensityClaim = DensityUnread {
-  cause: NoPublishedSurface {
-    obligation: "No per-cabinet density is published FOR THIS FACILITY. The operator's platform page carries '80+ kW per cabinet' under a portfolio heading covering all forty-plus sites (read as raw bytes 2026-09-09, HTTP 200, 194,883 bytes), which scopes it to the product line and not to Collegeville. Confirm with the facility's own page or a quote whether this site delivers it - and if it does, that is the densest published cabinet in this census.",
-  },
+  obligation: "No per-cabinet density is published FOR THIS FACILITY. The operator's platform page carries '80+ kW per cabinet' under a portfolio heading covering all forty-plus sites (read as raw bytes 2026-09-09, HTTP 200, 194,883 bytes), which scopes it to the product line and not to Collegeville. Confirm with the facility's own page or a quote whether this site delivers it - and if it does, that is the densest published cabinet in this census.",
 }
 
 data flexential_philadelphia_collegeville_retail_grain: RetailGrainStanding = RetailGrainUnread {

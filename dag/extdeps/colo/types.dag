@@ -1,6 +1,6 @@
 module extdeps.colo.types
 
-import std.types { NonEmptyStr, List, Bool }
+import std.types { NonEmptyStr, List, Bool, Int }
 import v2.std.optional { Optional, Present, Absent }
 import std.nat { Nat }
 import std.measure {
@@ -10,7 +10,15 @@ import std.measure {
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.algebra { FreeSemigroup, FreeMonoid }
+import std.interval {
+  OrderedClosedInterval, IntervalConstruction, IntervalConstructionFold,
+  closed_interval, interval_construction_fold, interval_low, interval_high,
+}
+import v2.std.algebra { non_empty_to_list }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -143,122 +151,197 @@ type CabinetPowerFigure
   = PublishedRealPower { power: Watt }
   | PublishedApparentPower { power: VoltAmpere }
 
-// DensityUnread fuses two facts in one String: an observation (we read these pages on this date
-// and found no marketed cabinet figure) and a coverage obligation (we still owe a quote or a later
-// spec). Both are OUR state, not the operator's. READ arms stay upstream. Follow-up is a SPLIT, not
-// a rehome of one fused string, census-wide in one motion so this carrier is not left with two
-// shapes. Do not mint two new fields on colo_census_coverage for that split: WE READ IT AND IT SAID
-// NOTHING versus WE FAILED TO READ IT is already CitationRetrievalObservation in std.citation
-// (HttpAccessRefused carrying the status). keen-newt-324's PR is the dependency. The fused string
-// makes a false observation expensive to retract - correcting a bogus block must not rewrite an
-// independent quote obligation. Trigger: that split onto std.citation's observation arms plus a
-// separate coverage obligation, over the merged corpus (sized by re-derivation, not a transcribed
-// file count).
+// A PUBLISHED NUMBER IS NOT A PUBLISHED BOUND, AND UNTIL THIS TYPE EXISTED NOTHING COULD TELL THEM
+// APART. CabinetPowerFigure answers WHAT UNIT the operator published. Nothing answered WHICH
+// DIRECTION the number bounds - and both directions occur verbatim in this corpus, in the same
+// field, distinguishable only by a plus sign an author had to notice: "high-density up to 30 kW/rack"
+// is a CAP; "35kW+ Cab Density Air" is a FLOOR the operator advertises being able to exceed.
+//
+// THE QUANTIFIER IS ORTHOGONAL TO EVERYTHING ELSE ABOUT THE FIGURE, so it is one type applied at
+// every figure site rather than a new arm per combination. An operator may publish a floor for air
+// and a cap for liquid; a per-combination arm set would need one arm per pairing and would fork the
+// quantifier concept across them, which is the re-invention that fails DESIGN section 2's test.
+//
+// WHY THE CONFLATION SURVIVED, WHICH IS THE PART WORTH KEEPING: it failed in the SAFE direction. A
+// floor read as a cap makes the screen REFUSE a facility that may well allow far more - a candidate
+// lost silently. The reverse, a cap read as a floor, ADMITS a cabinet the breaker cannot carry. One
+// costs an opportunity, the other trips a rack, and a single field carrying both means which one you
+// get is decided by the wording an author happened to paste rather than by the type.
+//
+// TWO REVIEWS FOUND THIS INDEPENDENTLY ON THE SAME DAY FROM OPPOSITE ENDS. A design review named the
+// conflation abstractly - lower bounds, ceilings, ranges and averages sharing one carrier. A census
+// lane hit it concretely: seven Equinix per-IBX pages publish a row labelled MINIMUM Cabinet Density,
+// and having no arm for it the lane left all seven DensityUnread rather than file a floor as a
+// maximum. That was the right call and it cost seven real readings; this type is what makes it
+// unnecessary.
+//
+// AN AVERAGE IS AN ARM, AND THE REASON IS THE DISTINCTION BETWEEN READ AND USABLE. "Cooling level
+// average is 3kW per cabinet" bounds NOTHING about a particular cabinet in either direction - half
+// of them may exceed it - so it supports no admission and no refusal. The first cut of this type
+// left it out, which forced a lane holding two such rows to file them as DensityUnread: a claim
+// that WAS read, recorded as never looked at. Those are different facts, and collapsing them makes
+// the census understate its own coverage while hiding a real reading in an obligation string.
+//
+// So the arm exists and NO OPERATION CONSUMES IT. That is the whole design: the quantity is
+// representable, countable and citable, and there is no function into which it can be fed to
+// produce a bound. Representability is not permission.
+// AN INTERVAL IS TWO NUMBERS ON ONE DIMENSION, AND THE FIRST CUT LET THEM BE ON TWO. The arm used to
+// be MarketedInterval { lower: CabinetPowerFigure, upper: CabinetPowerFigure }, and because each
+// figure carries its OWN unit tag, `lower: PublishedRealPower` beside `upper: PublishedApparentPower`
+// was constructible - a real-power floor under an apparent-power cap. That is not a wide interval,
+// it is not an interval at all: kW and kVA are separate dimensions in std.measure precisely so they
+// cannot be compared, so the two endpoints of such a value have no ordering between them, and every
+// operation over it - ceiling from the upper, coverage from the lower - would silently mix them.
+//
+// SO THE INTERVAL SPLITS BY DIMENSION AND THE MIXED STATE HAS NO CONSTRUCTOR. This is not a fork of
+// the interval concept into two: it is the dimension split std.measure ALREADY made, applied where a
+// pair of endpoints has to live on one side of it. A per-dimension arm is what a homogeneous pair
+// costs when the dimensions are genuinely distinct types, and the alternative - one arm plus a check
+// that the tags agree - is validation standing where construction was available, satisfiable by
+// editing the check while the literal still lies.
+//
+// The two single-ended arms need no such split: one endpoint carries one tag and cannot disagree
+// with itself, so CabinetPowerFigure stays exactly where it is sound.
+//
+// THE INVERTED-INTERVAL GAP IS CLOSED BY CONSUMING AN AUTHORITY THAT ALREADY EXISTED. An earlier cut
+// of this file declared `lower: Watt, upper: Watt` and filed the ordering as a mitigatable class whose
+// next-rung trigger was "field visibility sufficient to make a variant's direct literal
+// unconstructible outside its declaring module". That trigger was WRONG, and wrong in the expensive
+// direction: it named a language capability as missing when `std.interval` had already shipped exactly
+// this wall. OrderedClosedInterval<T> is `sole_constructor`, so no module but its own can write the
+// record or cast into it, and `closed_interval` is the ONE mint and refuses a reversed pair. Declaring
+// a drop against a capability that already exists parks the class forever - nothing arrives to retire
+// it, because the thing it waits for has already landed (DESIGN section 4b, meta-obligation 2).
+//
+// So the endpoints are gone and the interval arms hold the ordered carrier itself. Reversed endpoints
+// have NO CONSTRUCTOR here - rung four - rather than a check this module could be edited to bypass.
+//
+// THE REFUSAL HAS TO LAND SOMEWHERE, AND IT LANDS IN THE QUANTITY. A module-scope data row is total,
+// so a row that hands the mint a reversed pair cannot simply propagate IntervalRefused to its caller;
+// it has to hold something. QuantityUnreadable is that arm, and it is a REAL reading state rather than
+// a sentinel: a page that prints "16kW - 2kW" published something this carrier cannot interpret as a
+// range, and the honest record is that the numbers were read and did not form one. It bounds nothing
+// and covers nothing, so it screens as undetermined in both directions and can never admit.
+type PublishedPowerQuantity
+  = CapabilityAtLeast { lower: CabinetPowerFigure }
+  | MarketedAtMost { upper: CabinetPowerFigure }
+  | MarketedRealInterval { interval: OrderedClosedInterval<Watt> }
+  | MarketedApparentInterval { interval: OrderedClosedInterval<VoltAmpere> }
+  | PublishedAverage { average: CabinetPowerFigure }
+  | QuantityUnreadable { reason: NonEmptyStr }
+
+// COOLING MEDIUM IS THE THIRD COORDINATE AND IT WAS BEING INFERRED FROM SILENCE. The arms above used
+// to name it - DensityMarketedMax meant air-and-liquid, DensityMarketedAirOnly meant air - so a page
+// that published a figure and named NO medium had no true arm. Six live rows across three lanes hit
+// this: NJFX and Digital Fortress state a figure with no medium, csr_orny1 and hivelocity_ogb1 the
+// same, and the operator named Netrality and Telehouse independently. Every one of them sat in the
+// air arm with a citation CONFESSING the inference in words - the prose-beside-a-type shape, where
+// the sentence is true, adjacent, and unable to stop a consumer reading air out of the arm.
+//
+// ABSENCE OF A LIQUID FIGURE DOES NOT ESTABLISH AIR-COOLED CAPABILITY. That is the whole content of
+// the defect and it fails in the ADMITTING direction, which makes it worse than the quantifier bug
+// this file fixed one axis over: a 20 kW electrical claim with no stated medium would satisfy a hard
+// requirement for a 20 kW AIR-COOLED cabinet on evidence that never mentioned cooling.
+//
+// SO MEDIUM BECOMES A FIELD AND THE ARMS STOP MENTIONING IT. A third arm was the tempting repair and
+// it is wrong in shape: three arms for two coordinates, needing a fourth the moment an operator
+// publishes liquid-only. Medium is orthogonal to direction exactly as direction is orthogonal to
+// unit, so it gets the same treatment - one type applied at the figure, never folded into an arm.
+// TWO TYPES BECAUSE THERE ARE TWO FACTS, AND THE OLD SINGLE TYPE LET ONE STAND FOR THE OTHER. A
+// DEPLOYABLE MEDIUM is something a fleet can ask for: air or liquid, and nothing else. A PUBLICATION'S
+// MEDIUM STANDING is what a page established, which includes the case that it established nothing.
+// The earlier cut folded both into one three-arm type, so `CoolingMediumUnspecified` was accepted as a
+// REQUEST and then special-cased to match nothing - a validation standing exactly where a construction
+// was available (DESIGN section 5). "Give me the unspecified-cooling cabinets" is not a request with an
+// empty answer; it is not a request. It now has no constructor to write.
+type CoolingMedium
+  = AirCooling
+  | LiquidCooling
+
+type CoolingMediumStanding
+  = CoolingMediumPublished { medium: CoolingMedium }
+  | CoolingMediumUnspecified
+
+// WHETHER THE WORDING BESIDE A FIGURE IS THE OPERATOR'S OR A TOOL'S, WHICH IS NOT THE SAME QUESTION
+// AS WHETHER THE FIGURE WAS PUBLISHED. Both live rows in this census carry a number that survived
+// verification; only one carries a SENTENCE that did. DataBank's cells were read raw at HTTP 200 and
+// the wording is the literal spec-table text. Iron Mountain's 30 kW came through a summarizing fetch
+// tool, and the raw re-fetch that would confirm it verbatim was blocked at HTTP 429 behind a security
+// checkpoint - so the sentence in `wording` there may be the tool's prose rather than the operator's.
+//
+// UNTIL THIS TYPE EXISTED THE DIFFERENCE WAS CARRIED IN THE CITATION STRING, IN WORDS, and a reader
+// scanning rows saw two figures that looked equally established. That is the prose-beside-a-type
+// shape this file has now removed three times on three different axes, and it is the reason a
+// coverage census must keep at least three separate facts: a figure is MODELLED, its representation
+// is VERIFIED, and it is USEFUL for some particular requirement. The first two are properties of the
+// reading and live here; the third depends on the requirement and belongs with the consumer.
+//
+// A summarized reading is retained rather than discarded because a summarizing read is still a read
+// and dropping it would lose a real observation - but it is retained VISIBLY, with the discharge
+// route beside it, so nothing can cite it as verbatim evidence by mistake.
+type FigureVerificationStanding
+  = WordingVerbatim { retrieval: NonEmptyStr }
+  | WordingSummarized { retrieval: NonEmptyStr, discharge: NonEmptyStr }
+
+// EVIDENCE BELONGS TO THE FIGURE IT ESTABLISHES, NOT TO THE CLAIM THAT COLLECTS THEM. The first cut
+// put `claim_wording` and `citation` on the DensityPublished arm, one each, above a LIST of figures.
+// DataBank is the counterexample that was already in the corpus when the arm was written: its page
+// carries two separately authored cells, "35kW+ Cab Density Air" and "100kW+ Cab Density Liq", and
+// the row stored a synthetic slash-joined sentence fusing them beside a single citation. Nothing
+// joined either number to the text that established it, so a consumer could add, delete or swap a
+// figure while the evidence above it stayed byte-identical - the join was doing no work at all.
+//
+// It is the same defect as the fused wording silent-heron-303 found across the census, one level up:
+// there a tool fused two cells into one sentence, here the TYPE did. Moving the evidence down to the
+// figure is what makes the fusion unwritable rather than merely discouraged.
+type PublishedDensityFigure {
+  medium: CoolingMediumStanding
+  quantity: PublishedPowerQuantity
+  wording: NonEmptyStr
+  citation: NonEmptyStr
+  verification: FigureVerificationStanding
+}
+
+// A PUBLISHED CLAIM WITH NO FIGURES IS A CONSTRUCTOR CALLING ITSELF PUBLISHED WHILE ITS OWN PREDICATE
+// SAYS FALSE, and `List<PublishedDensityFigure>` admitted exactly that. DensityUnread already exists
+// for the nothing-was-read case, so an empty DensityPublished is not a second meaning - it is the
+// same meaning reachable through the wrong arm, which is the state that makes a census disagree with
+// itself depending on which question it asks.
+//
+// THE CARRIER IS std.algebra's FreeSemigroup AND THE FIRST CUT MINTED A THIRD SPELLING INSTEAD.
+// `NonEmptyDensityFigures { head, tail }` was authored here, justified in this annotation by citing
+// std.source_annotation's NonEmptyAnnotationAttachmentRefusals as precedent - and that citation was
+// the defect, because the precedent IS the second spelling rather than an authority for a third.
+// std.algebra owns FreeSemigroup<T> as the monoid's other identity; std.goal_assessment reaches for
+// it for exactly this purpose and its note says why in terms this file should have read first: it is
+// "deliberately NOT a fresh NonEmptyList ... so one name never resolves to two declarations".
+//
+// It was caught re-reading DESIGN against a finished, approved diff, which is where it is cheapest to
+// find and least likely to be looked for. The uncomfortable part is the local one: this PR spends its
+// length arguing that the duplication lookup should reuse std.pareto's ReadingLookup shape rather
+// than re-coin it, and then re-coined the non-empty carrier eleven lines away. Reuse was applied as a
+// rule to the concept under review and not to the one being used to carry it.
 type CabinetDensityClaim
-  = DensityMarketedMax {
-      air_cooled: CabinetPowerFigure
-      liquid_cooled: CabinetPowerFigure
-      claim_wording: NonEmptyStr
-      citation: NonEmptyStr
-    }
-  | DensityMarketedAirOnly {
-      air_cooled: CabinetPowerFigure
-      claim_wording: NonEmptyStr
-      citation: NonEmptyStr
+  = DensityPublished {
+      figures: FreeSemigroup<PublishedDensityFigure>
     }
   | DensityUnread {
-      cause: DensityUnreadCause
-    }
-
-// WHY THE CAUSE IS TYPED RATHER THAN LEFT TO THE OBLIGATION PROSE. DensityUnread was carrying two
-// materially different contracts under one name - the DESIGN section 3 meaning fork - and the tell
-// was that a witness over these rows had to hand-type two row lists to separate them, because the
-// carrier could not discriminate them. "No operator surface states a per-cabinet figure" is the
-// ABSENCE of a reading. "A figure was read and this carrier has no arm that points the right way"
-// is a PRESENT reading the carrier cannot hold: a floor, an average, a range, a per-U figure. The
-// second is a permanent category in a census, not a transient one - the next page that publishes a
-// percentile or a reversed range lands there again - so it is typed here rather than described.
-//
-// The obligation stays on both arms because both owe a resolution; what differs is what discharges
-// it. NoPublishedSurface owes a FETCH. FigureReadButUnrepresentable owes NO re-fetch at all - the
-// numeral is already in hand - it owes a CARRIER that expresses a quantity's direction and kind,
-// which is why that arm carries the wording and the citation beside the obligation: the reading is
-// evidence already paid for and must not be re-acquired to discharge the obligation.
-//
-// THE MEMBERSHIP TEST IS THE OBLIGATION'S REMEDY, NOT THE FIGURE'S GRAIN. Ask what discharges the
-// row: if a FETCH is still owed, it is NoPublishedSurface, whatever numerals the obligation quotes;
-// if no re-fetch is owed and what is missing is a carrier, it is FigureReadButUnrepresentable. That
-// is the arms' own contract and it decides the hard rows without appeal to judgement. CenterSquare
-// publishes "Standard CAGE density: Up to 300W/sq. ft." and then owes a fetch for a per-cabinet
-// maximum, so it is NoPublishedSurface - and the grain argument never has to be had. (It would also
-// go the same way: watts per square foot and watts per cabinet are not one quantity at two
-// resolutions but power-per-area against power-per-enclosure, and converting needs an assumed
-// cabinet footprint, which is this census's cardinal prohibition in a different costume.)
-//
-// MEMBERSHIP IS HAND-AUDITED, NOT PATTERN-MATCHED, and that is a load-bearing fact about this type.
-// A scripted classifier over the obligation prose was written and discarded: it read "4 x 180 kW"
-// and "Two 600 kW redundant generators" as cabinet densities, which is the census's cardinal error
-// - facility power is a fact about a BUILDING and is not density - and its quote extraction split
-// an English apostrophe mid-sentence. A second lane built its own classifier to cross-check this
-// one and reproduced the same failure independently within the hour, so this is a property of the
-// task and not of one script. READING MORE OF THE STRING DOES NOT REPAIR IT: that instrument also
-// matched a clause whose grammatical subject was a DIFFERENT OPERATOR ("DataBank's suite page is
-// the only surface in the building that states a per-cabinet figure at all"), which no amount of
-// read length recovers, because the subject and scope a figure was stated under are not carried by
-// the numeral.
-type DensityUnreadCause
-  = NoPublishedSurface {
       obligation: NonEmptyStr
     }
-  | FigureReadButUnrepresentable {
-      obligation: NonEmptyStr
-      wording: NonEmptyStr
-      citation: NonEmptyStr
-    }
 
-// THE ESTABLISHED REAL-POWER READING, AND THERE IS NO OTHER TOTAL ONE. The previous accessor
-// returned 0 for an unread claim - a fabricated in-band answer sitting on the same axis as real
-// readings, defended only by a comment telling callers to consult a predicate first, which is the
-// validation-beside-construction shape DESIGN section 5 warns about. The Optional makes the
-// confusable zero unconstructible instead, so the companion predicate is gone rather than
-// documented around.
+// THE ESTABLISHED-READING ACCESSOR IS GONE RATHER THAN REWRITTEN, AND THE QUANTIFIER SPLIT IS WHY.
+// `cabinet_density_air_established` returned a Watt reading whenever the published figure was in
+// real power. Once a figure carries its DIRECTION, no arm can honestly answer: a cap is not a
+// measurement because the cabinet may deliver less; a floor is not one in the other direction; and
+// a range names two real numbers while saying nothing about where between them the cabinet sits.
+// Every arm would be Absent, so the function becomes a constant dressed as an accessor - a
+// decoration that gets cited as coverage, which DESIGN section 4b rules worse than absent.
 //
-// Absent has TWO causes and they are different facts with the same consequence for a consumer:
-// nobody published a figure, or somebody published apparent power and no power factor exists to
-// convert it. Either way there is no established watt reading, and an admission decision that
-// needs one must refuse.
-// THE VERBATIM READING BEHIND AN UNREAD DENSITY, WHERE ONE EXISTS. This is what makes the two
-// causes of DensityUnread discriminable by a fold instead of by an author. Present means a figure
-// was read from the operator's own surface and no arm of this carrier points the right way to hold
-// it; Absent means no such figure was read at all. It returns the WORDING rather than a Bool
-// because the wording is the reading - a caller resolving the obligation needs the operator's own
-// text, not the news that text exists - and because a Bool would put the answer on the same axis
-// as a real density reading while carrying none of it.
-fn density_unread_reading(d: CabinetDensityClaim) -> NonEmptyStr? {
-  match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Absent,
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Absent,
-    DensityUnread { cause } => match cause {
-      NoPublishedSurface { obligation } => Absent,
-      FigureReadButUnrepresentable { obligation, wording, citation } => Present { value: wording },
-    },
-  }
-}
-
-fn cabinet_density_air_established(d: CabinetDensityClaim) -> Watt? {
-  match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
-    DensityUnread { cause } => Absent,
-  }
-}
-
-fn cabinet_power_established(f: CabinetPowerFigure) -> Watt? {
-  match f {
-    PublishedRealPower { power } => Present { value: power },
-    PublishedApparentPower { power } => Absent,
-  }
-}
+// IT HAD NO PRODUCTION CONSUMER TO BREAK: on main its only caller was its own witness, so deleting
+// it costs nothing and that is itself the finding. The accessor had been answering a question
+// nothing asked, and carrying the quantifier is what made that legible. A consumer that needs what
+// a cabinet WILL supply is asking for a quote or a metered reading; neither is a marketing page,
+// and it must go get one rather than find a plausible number here.
 
 // A CEILING IS NOT A READING, AND AFTER THIS IT CANNOT BE HANDED TO ANYTHING THAT WANTS ONE.
 // Because kW <= kVA, an apparent-power publication bounds real power from above, so a candidate too
@@ -272,38 +355,338 @@ fn cabinet_power_established(f: CabinetPowerFigure) -> Watt? {
 // same defence, and the crossing at `watt(count: volt_ampere_count(...))` is the constructor of the
 // confusable value.
 //
-// So the ceiling now has its OWN carrier. Passing it where a reading is wanted is ill-typed rather
-// than discouraged, and the sound use is the only operation offered: ask whether a requirement is
-// refused, never what the cabinet can supply. RESIDUE, STATED RATHER THAN CLAIMED AWAY: `at_most`
-// is still reachable by a caller who destructures the arm, so this is a distinct TYPE and not yet
-// an inaccessible one. Next capability: field visibility sufficient to make the Watt unreadable
-// outside this module, at which point admitting on a ceiling has no constructor at all.
-type CabinetPowerCeiling = CeilingAt { at_most: Watt }
+// A LOOKUP THAT PICKS IS A LOOKUP THAT WIDENS, AND THE FIRST CUT SHIPPED ONE KNOWINGLY. `air_figure`
+// filtered to air and took `.first()`, so a claim carrying TWO air figures - "up to 30 kW" in one
+// cell and "35kW+" in another - answered with whichever an author happened to type first, and the
+// contradiction left no trace. That is DESIGN section 5's rule inverted: the arm WIDENS where it
+// should refuse, and absorption destroys the only signal that the row needs a human. The previous
+// note declared it as a future construction rung and shipped it anyway; the honest reading is that
+// the query widened on contradiction TODAY, so it is fixed today.
+//
+// THE SHAPE IS MODELLED ON std.pareto's ReadingLookup AND IS RE-AUTHORED RATHER THAN CONSUMED, WHICH
+// AN EARLIER DRAFT OF THIS ANNOTATION CLAIMED THE OPPOSITE OF. It said "reused rather than re-coined"
+// while DensityFigureLookup, figure_matches_count and figure_lookup were a line-for-line re-authoring
+// of ReadingLookup, reading_matches and reading_for with the payload and predicate swapped. That is an
+// annotation asserting a machine claim that is false, which DESIGN section 4c forbids outright - and
+// worse than a missing note, because it reads as a reuse audit already performed.
+//
+// WHY IT IS RE-AUTHORED, STATED HONESTLY: ReadingLookup is not generic. It carries
+// OrderedClosedInterval readings keyed by DeclarationRef, so it cannot be instantiated over media, and
+// consuming it would mean widening the wrong authority to fit this consumer. The count-first fold that
+// refuses before it selects is what makes a mutation adding a second air figure go red by producing
+// the Duplicated arm rather than by changing list ORDER, which is what a `.first()` test would
+// actually have been measuring - so the structure is worth having twice for now.
+//
+// One-slot-per-medium construction remains the ceiling and would make a duplicate unconstructible
+// rather than merely refused. Until then this refuses, and a refusal is a rung the previous arm did
+// not hold at all.
+//
+// BOTH DISSOLUTION CONDITIONS ARE TYPED ROWS IN colo_types_frontier_rows AND NOT SENTENCES HERE. This
+// paragraph explains and does not legislate, which is the rule the rest of extdeps/ already follows -
+// and the reason is written into this very file forty lines up: the inverted-interval class carried
+// its trigger as prose, that prose named a capability std.interval had ALREADY SHIPPED, and nothing
+// mechanical could notice, so the class was parked against a condition that could never fire. A
+// trigger a program cannot read is a trigger nobody retires.
+// FOUR ARMS BECAUSE THERE ARE FOUR CAUSES, AND THE EARLIER THREE FUSED TWO OF THEM. `FigureAbsent`
+// was returned both when a published claim simply had no figure for the requested medium AND when
+// nobody had read the operator's page at all - two different obligations wearing one arm. The second
+// carries a remedy the first does not: the row names WHAT MUST BE READ, and collapsing it discarded
+// that string at the first seam it crossed. A census that cannot tell "we looked and the page is
+// silent on liquid" from "nobody has looked" cannot rank its own work.
+type DensityFigureLookup
+  = FigureFound { figure: PublishedDensityFigure }
+  | RequestedMediumAbsent { requested: CoolingMedium }
+  | ClaimUnread { obligation: NonEmptyStr }
+  | FigureDuplicated { duplicated: CoolingMedium }
 
-fn cabinet_density_air_ceiling(d: CabinetDensityClaim) -> CabinetPowerCeiling? {
+// THE REQUESTED MEDIUM IS A PARAMETER, NOT A FUNCTION NAME. The carrier introduced
+// CoolingMediumStanding as a coordinate and then exported only `air_figure` - baking the first
+// consumer back into the shared authority and inviting a second, slightly different liquid traversal
+// the moment someone needs one. Two traversals of one coordinate is the fork DESIGN section 3
+// removes; one function taking the coordinate is the same code doing both jobs.
+//
+// UNSPECIFIED SATISFIES NOTHING IN EITHER DIRECTION, AND THAT IS ONE LINE RATHER THAN TWO RULES. A
+// figure the operator never labelled matches no request, and a REQUEST for CoolingMediumUnspecified
+// matches no figure - so the value stays countable as a census fact while being unable to answer an
+// air or a liquid question, which is exactly what it means for a page to have named no medium.
+// ONE EQUALITY, AND THE FIRST CUT SPELLED IT THREE TIMES. figure_is_air, figure_is_liquid and
+// figure_is_unspecified were three full matches over one closed three-arm type, each returning true
+// for a single variant, with this function then dispatching across two of them. That is medium
+// equality authored once per variant - the same section 2 re-invention this branch has now removed at
+// two other grains, and the third instance was inside the carrier five census lanes consume.
+//
+// THE ASYMMETRY THE THREE PREDICATES WERE DEFENDING SURVIVES THE COLLAPSE, AND IS NOW THE ONLY THING
+// THIS FUNCTION SAYS. An unspecified medium is a fact about what the PAGE said, never a medium
+// anything can be deployed into, so it satisfies no request - including a request for it. That lives
+// in one arm here rather than being distributed across three predicates where a reader had to
+// reconstruct it from their absences.
+// The unspecified arm is gone from the REQUEST side by construction, so what remains is the honest
+// question: did this figure's publication establish the medium being asked for? A figure whose page
+// named no medium answers nothing, and that is now a fact about the FIGURE rather than a rejected
+// request.
+fn medium_matches(f: PublishedDensityFigure, requested: CoolingMedium) -> Bool {
+  match f.medium {
+    CoolingMediumPublished { medium } => cooling_medium_eq(a: medium, b: requested),
+    CoolingMediumUnspecified => false,
+  }
+}
+
+// Equality on the closed medium coordinate. Exhaustive on both sides rather than a wildcard, so
+// adding a fourth medium refuses to compile here instead of silently comparing unequal.
+fn cooling_medium_eq(a: CoolingMedium, b: CoolingMedium) -> Bool {
+  match a {
+    AirCooling => match b {
+      AirCooling => true,
+      LiquidCooling => false,
+    },
+    LiquidCooling => match b {
+      AirCooling => false,
+      LiquidCooling => true,
+    },
+  }
+}
+
+// Equality on the PUBLICATION standing, which a roster needs to group rows by what their pages
+// established. Exhaustive on both sides rather than a wildcard, so adding a third medium refuses to
+// compile here instead of silently comparing unequal.
+fn medium_standing_eq(a: CoolingMediumStanding, b: CoolingMediumStanding) -> Bool {
+  match a {
+    CoolingMediumPublished { medium: am } => match b {
+      CoolingMediumPublished { medium: bm } => cooling_medium_eq(a: am, b: bm),
+      CoolingMediumUnspecified => false,
+    },
+    CoolingMediumUnspecified => match b {
+      CoolingMediumPublished { medium: bm } => false,
+      CoolingMediumUnspecified => true,
+    },
+  }
+}
+
+fn figure_matches_count(figures: List<PublishedDensityFigure>, requested: CoolingMedium) -> Int {
+  fold(figures, init: 0, f: fn(acc, f) {
+    if medium_matches(f: f, requested: requested) { acc + 1 } else { acc }
+  })
+}
+
+fn figure_lookup(figures: List<PublishedDensityFigure>, requested: CoolingMedium) -> DensityFigureLookup {
+  if figure_matches_count(figures: figures, requested: requested) > 1 {
+    FigureDuplicated { duplicated: requested }
+  } else {
+    fold(figures, init: RequestedMediumAbsent { requested: requested }, f: fn(acc, f) {
+      match acc {
+        FigureFound { figure } => acc,
+        FigureDuplicated { duplicated } => acc,
+        ClaimUnread { obligation } => acc,
+        RequestedMediumAbsent { requested: r } =>
+          if medium_matches(f: f, requested: r) { FigureFound { figure: f } } else { acc },
+      }
+    })
+  }
+}
+
+fn density_figure_for_medium(d: CabinetDensityClaim, requested: CoolingMedium) -> DensityFigureLookup {
   match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
-    DensityUnread { cause } => Absent,
+    DensityPublished { figures } =>
+      figure_lookup(figures: non_empty_to_list(xs: figures), requested: requested),
+    DensityUnread { obligation } => ClaimUnread { obligation: obligation },
   }
 }
 
-fn cabinet_power_ceiling(f: CabinetPowerFigure) -> CabinetPowerCeiling {
+// Comparison is supplied by the caller because std.interval has no typeclass to demand it from, and
+// the count accessors are the fact std.measure owns. Real and apparent power get separate functions
+// for the same reason they get separate arms: a Watt and a VoltAmpere are not comparable.
+fn watt_le(a: Watt, b: Watt) -> Bool {
+  watt_count(w: a) <= watt_count(w: b)
+}
+
+fn volt_ampere_le(a: VoltAmpere, b: VoltAmpere) -> Bool {
+  volt_ampere_count(v: a) <= volt_ampere_count(v: b)
+}
+
+// THE TWO MINTS AUTHORED ROWS CALL. They are total, which is what a module-scope data row needs, and
+// they are the only route to an interval arm - the arms' payload is sole_constructor, so a row cannot
+// spell one directly even if its author wanted to. A reversed pair becomes QuantityUnreadable carrying
+// std.interval's own reason string rather than being swapped into order, because swapping would be the
+// absorbing fallback: a plausible range that destroys the evidence the page was misread.
+fn marketed_real_interval(lower: Watt, upper: Watt) -> PublishedPowerQuantity {
+  interval_construction_fold(
+    construction: closed_interval(low: lower, high: upper, le: watt_le),
+    fold: IntervalConstructionFold {
+      ready: i => MarketedRealInterval { interval: i },
+      refused: r => QuantityUnreadable { reason: r },
+    },
+  )
+}
+
+fn marketed_apparent_interval(lower: VoltAmpere, upper: VoltAmpere) -> PublishedPowerQuantity {
+  interval_construction_fold(
+    construction: closed_interval(low: lower, high: upper, le: volt_ampere_le),
+    fold: IntervalConstructionFold {
+      ready: i => MarketedApparentInterval { interval: i },
+      refused: r => QuantityUnreadable { reason: r },
+    },
+  )
+}
+
+// THE CEILING CARRIER IS GONE, AND ITS DELETION IS THE POINT RATHER THAN A TIDY-UP. It read
+// `CeilingAt { at_most: Watt }` and its one operation asked whether a requirement EXCEEDS WHAT THE
+// CABINET CAN POSSIBLY DRAW. Nothing in this census can establish that. The only quantities that fed
+// it were a marketed maximum and an interval's upper end - product statements about what an operator
+// advertises, not measurements of what a cabinet is wired for - so the type took soft evidence and
+// handed back a hard physical claim. That is the admitting failure wearing a refusal's clothes: the
+// overclaim is invisible at the call site and every later consumer inherits it.
+//
+// What replaced it is a RELATION rather than a property: `OutsidePublishedMaximum` says the
+// requirement sits outside what the page published, which is exactly what the page supports and
+// nothing more. The comparison it needs is two lines and lives at the one arm that needs it, so the
+// carrier bought nothing except a place for the overclaim to live.
+
+// WHETHER A REQUIREMENT SITS ABOVE WHAT A SINGLE-ENDED FIGURE PUBLISHED. The apparent-power crossing
+// is the conservative one and goes the opposite way from `figure_covers`: real power never exceeds
+// apparent, so a requirement above the kVA numeral is above the real figure too and the comparison is
+// sound in this direction only. It says nothing about whether a requirement BELOW the figure fits.
+fn figure_upper_exceeded(f: CabinetPowerFigure, required: Watt) -> Bool {
   match f {
-    PublishedRealPower { power } => CeilingAt { at_most: power },
-    PublishedApparentPower { power } => CeilingAt { at_most: watt(count: volt_ampere_count(v: power)) },
+    PublishedRealPower { power } => watt_count(w: required) > watt_count(w: power),
+    PublishedApparentPower { power } => watt_count(w: required) > volt_ampere_count(v: power),
   }
 }
 
-// THE ONE OPERATION A CEILING SOUNDLY SUPPORTS. True means the requirement exceeds what the cabinet
-// can possibly draw, so the candidate is refused on published evidence alone. FALSE MEANS
-// UNDETERMINED, NEVER ADMITTED: a requirement under the ceiling has not been shown to fit, because
-// the ceiling is an inequality and not a measurement.
-fn ceiling_refuses(c: CabinetPowerCeiling, required: Watt) -> Bool {
-  match c {
-    CeilingAt { at_most } => watt_count(w: required) > watt_count(w: at_most),
+// The crossing is the conservative one and it goes the other way from the ceiling's. There kW <= kVA
+// let an apparent figure bound real power from ABOVE; here a floor must be read as REAL watts to
+// cover, and an apparent figure is a weaker claim than the same numeral in watts - so an apparent
+// floor covers nothing rather than being converted. Refusing to cross is what keeps the coverage
+// from being one power factor more generous than the operator's sentence. The apparent interval arm
+// above is the same refusal for the same reason.
+fn figure_covers(f: CabinetPowerFigure, required: Watt) -> Bool {
+  match f {
+    PublishedRealPower { power } => watt_count(w: required) <= watt_count(w: power),
+    PublishedApparentPower { power } => false,
   }
 }
+
+// A DUPLICATED FIGURE IS NEITHER A YES NOR A NO, AND A BOOLEAN HAS NOWHERE TO PUT IT. Every route
+// from a claim to a screen used to flatten through an Optional, so FigureDuplicated would arrive at
+// a consumer as Absent - the refusal computed one function down, discarded one function up, and the
+// lookup's whole point lost at the seam. THE ARM IS PROPAGATED, NOT COLLAPSED.
+//
+// WHAT A PUBLICATION CAN ESTABLISH IS A RELATION TO PUBLISHED EVIDENCE, NOT A PHYSICAL VERDICT. Two
+// earlier cuts got this wrong in the same direction. The first returned a bare three-state screen from
+// two different questions, so "the published floor covers 27 kW" and "the published maximum excludes
+// 31 kW" were THE SAME VALUE; once stored, the proposition was gone. Splitting that affirmative in two
+// fixed the collision and left the deeper error standing: `MarketedAtMost` still became a
+// CabinetPowerCeiling, whose contract reads "cannot exceed", and a marketing page cannot establish
+// that. "Up to 30kW" supports "the requirement is outside the published range". It does not support
+// "the cabinet physically cannot carry it", and it establishes nothing about availability, a quote, an
+// allocation, or final placement. Upgrading marketing into physical impossibility is the admitting
+// failure wearing a refusal's clothes: it is a HARD answer minted from a SOFT source, and every later
+// consumer inherits the overclaim.
+//
+// SO EVERY ARM NAMES THE PUBLISHED RELATION IT ACTUALLY IS, and none of them is a placement decision.
+// A decision belongs to a later join of this standing with a quote, present availability, exact
+// footprint, A/B allocation and cooling terms - which is a different subject with different evidence,
+// and is exactly why this carrier must not mint its answer.
+//
+// THE FIGURE RIDES ALONG ON EVERY ARM THAT HAS ONE, WHICH IS WHAT KEEPS VERIFICATION FROM BEING LOST
+// AT THIS BOUNDARY. Verification standing is modeled at figure grain, and the earlier screens read
+// none of it - so a summarized-wording figure and a raw-byte-verbatim figure produced an identical
+// answer. Iron Mountain escaped that only because its medium is unspecified, which is protection from
+// a different coordinate and not from this one. Carrying the figure means the caller reaches
+// `figure.verification` on the same value it is about to act on, rather than being trusted to go and
+// ask a second question it has no reason to know exists.
+//
+// PublishedQuantityUnreadable is the QuantityUnreadable arm reaching a consumer intact: the page
+// published numbers that formed no range, which is neither coverage nor exclusion and must not be
+// silently undetermined alongside "no figure at all".
+//
+// RequirementFigureContested is std.pareto's needs-evidence outcome under a different name for a
+// different subject, and it names the medium whose figures disagree so a reader knows which cell to
+// go re-read rather than seeing a silent nothing.
+type PublishedRequirementStanding
+  = CoveredByPublishedFloor { figure: PublishedDensityFigure }
+  | CoveredByPublishedRangeFloor { figure: PublishedDensityFigure }
+  | OutsidePublishedMaximum { figure: PublishedDensityFigure }
+  | NonBoundingPublication { figure: PublishedDensityFigure }
+  | PublishedQuantityUnreadable { figure: PublishedDensityFigure, reason: NonEmptyStr }
+  | RequirementMediumAbsent { requested: CoolingMedium }
+  | RequirementClaimUnread { obligation: NonEmptyStr }
+  | RequirementFigureContested { contested: CoolingMedium }
+
+// The relation between one published quantity and one requirement, with no arm that decides
+// placement. A floor covers from its value up; a real interval covers everything up to and including
+// its LOWER end and is outside above its UPPER - so the interval arm is named for the FLOOR it covers
+// from and not for the range, because a requirement of 1 W against a 2 kW-16 kW publication is
+// covered and is not within that range. An arm named `WithinPublishedRange` would have stated a
+// different fact from the one it carries, and three consumer lanes are about to read these arms by
+// name; a marketed maximum is only ever "outside above"; an apparent-power
+// quantity bounds nothing, because reading kVA as W would be one power factor more generous than the
+// operator's sentence; and an average bounds in neither direction.
+fn quantity_requirement_relation(
+  q: PublishedPowerQuantity,
+  required: Watt,
+  figure: PublishedDensityFigure
+) -> PublishedRequirementStanding {
+  match q {
+    CapabilityAtLeast { lower } =>
+      if figure_covers(f: lower, required: required) {
+        CoveredByPublishedFloor { figure: figure }
+      } else {
+        NonBoundingPublication { figure: figure }
+      },
+    MarketedAtMost { upper } =>
+      if figure_upper_exceeded(f: upper, required: required) {
+        OutsidePublishedMaximum { figure: figure }
+      } else {
+        NonBoundingPublication { figure: figure }
+      },
+    MarketedRealInterval { interval } =>
+      if watt_count(w: required) <= watt_count(w: interval_low(interval: interval)) {
+        CoveredByPublishedRangeFloor { figure: figure }
+      } else {
+        if watt_count(w: required) > watt_count(w: interval_high(interval: interval)) {
+          OutsidePublishedMaximum { figure: figure }
+        } else {
+          NonBoundingPublication { figure: figure }
+        }
+      },
+    MarketedApparentInterval { interval } =>
+      if watt_count(w: required) > volt_ampere_count(v: interval_high(interval: interval)) {
+        OutsidePublishedMaximum { figure: figure }
+      } else {
+        NonBoundingPublication { figure: figure }
+      },
+    PublishedAverage { average } => NonBoundingPublication { figure: figure },
+    QuantityUnreadable { reason } =>
+      PublishedQuantityUnreadable { figure: figure, reason: reason },
+  }
+}
+
+// FRONTIER, PER DESIGN SECTION 3c, STATED RATHER THAN LEFT TO BE COUNTED. This route is consumed by
+// this change's witnesses today and by nothing else in the tree. Its named consumers are the three
+// census lanes holding rebases on this carrier: bright-swift-678 is re-keying three NJ-central
+// witnesses off the deleted air-only accessors onto it, and silent-heron-303 and keen-newt-324 screen
+// their corridor and New York rows through it. The trigger is those re-keyed screens landing.
+//
+// This is the middle state section 3c admits, not the dangling one, and the distinction is the reason
+// `cabinet_density_air_established` was deleted while this stays: that accessor had no consumer AND no
+// arm that could honestly answer it - every arm returned Absent, so it was a constant dressed as an
+// accessor. Absence of a caller was the receipt that nobody missed it, not the ground for removing it.
+// This answers; it is simply asked by code that has not landed yet, and deleting it would leave three
+// held lanes with a carrier that models a screen and cannot perform one.
+fn published_requirement_standing(
+  d: CabinetDensityClaim,
+  requested: CoolingMedium,
+  required: Watt
+) -> PublishedRequirementStanding {
+  match density_figure_for_medium(d: d, requested: requested) {
+    FigureFound { figure } =>
+      quantity_requirement_relation(q: figure.quantity, required: required, figure: figure),
+    RequestedMediumAbsent { requested: r } => RequirementMediumAbsent { requested: r },
+    ClaimUnread { obligation } => RequirementClaimUnread { obligation: obligation },
+    FigureDuplicated { duplicated } => RequirementFigureContested { contested: duplicated },
+  }
+}
+
 
 // Whether the operator sells at a grain this fleet can buy. A campus marketing 25 MW that takes
 // only private-suite commitments is not a candidate for one cabinet, and that is a different
@@ -397,3 +780,140 @@ type RemoteHandsWindowRate {
   minimum_note: NonEmptyStr
   citation: NonEmptyStr
 }
+
+// A THREE-STATE QUESTION GETS A TYPED ARM, AND THE FIRST CUT ANSWERED IT WITH A Bool - WHICH IS THE
+// SHAPE THIS FILE HAS NOW DELETED THREE TIMES AND REINTRODUCED ONE SCREEN OVER. `figure_wording_is_verified`
+// projected the closed FigureVerificationStanding coproduct onto true/false, and
+// `density_claim_wording_is_verified` folded that to a single Bool at claim grain - fusing TWO
+// DIFFERENT CAUSES into one `false`: a claim nobody read, and a claim read through a summarizing tool.
+// Those have opposite remedies - go read the page, versus go re-read it raw - which is the same
+// distinction ScreenUndetermined and ScreenNeedsEvidence draw one screen over, and the witness module
+// states the rule outright: an outcome that is the union of N causes cannot serve as the control for
+// one of them.
+//
+// AND THE Bool DISCARDED THE `discharge` ROUTE. WordingSummarized carries the thing that would upgrade
+// it - a raw fetch that clears the checkpoint, a spec sheet, a quote - and a projection to false threw
+// that away at the one seam where a consumer asking "is this verified" would most want to know what
+// would make it so.
+//
+// THE FIGURE-LEVEL PROJECTION IS DELETED RATHER THAN RETYPED, because at figure grain the field IS the
+// answer: a caller matches `f.verification` and gets both arms with their payloads. A function that
+// re-matches a two-arm coproduct to hand back less than it read is not an accessor, it is a lossy one.
+type ClaimWordingStanding
+  = ClaimWordingVerified
+  | ClaimWordingSummarized { unverified: FreeSemigroup<PublishedDensityFigure> }
+  | ClaimWordingUnread
+
+// EVERY UNVERIFIED FIGURE, NOT THE FIRST ONE. An earlier cut returned the first summarized figure's
+// discharge and defended the narrowing on the ground that one summarized member is enough to answer
+// "can this claim's wording be cited as the operator's own" with no. That much is true and is not the
+// whole question. The VERDICT is settled by one member; the REMEDY is not - a claim with three
+// summarized figures has three retrieval routes to run, and handing back one tells a reader how to
+// verify one figure while leaving the population it belongs to unstated. The caller cannot even tell
+// there were others, so the missing work is invisible rather than pending.
+//
+// So the arm carries the figures themselves rather than a bare string: each one already holds its own
+// retrieval AND its discharge at figure grain, so nothing has to be re-keyed to find out which reading
+// a route belongs to. FreeSemigroup because the arm exists only when at least one figure is
+// summarized - an empty unverified set is the verified arm, and it has no constructor here.
+//
+// FRONTIER, PER DESIGN SECTION 3c: consumed by this change's witnesses today, and by
+// bright-swift-678's split verification count in the NJ-central census, which carries verbatim and
+// summarized readings as separate figures rather than one fused density_read_count. The trigger is
+// that count landing - and it is named as the CONSUMER rather than as a pull request, because four
+// artifact-shaped triggers in this lane were falsified tonight by artifacts moving.
+//
+// The recursion preserves authored order and touches each figure once. An accumulating fold would
+// either reverse the population or append, and appending is the copied-accumulator cost shape DESIGN
+// section 6 says to fix regardless of the realized n - a census claim has few figures today and the
+// carrier is the thing that outlives that.
+fn unverified_figures(figs: List<PublishedDensityFigure>) -> List<PublishedDensityFigure> {
+  match figs {
+    Empty => [],
+    Cons { head, tail } => match head.verification {
+      WordingVerbatim { retrieval } => unverified_figures(figs: tail),
+      WordingSummarized { retrieval, discharge } =>
+        Cons { head: head, tail: unverified_figures(figs: tail) },
+    },
+  }
+}
+
+fn claim_wording_standing(d: CabinetDensityClaim) -> ClaimWordingStanding {
+  match d {
+    DensityPublished { figures } =>
+      match unverified_figures(figs: non_empty_to_list(xs: figures)) {
+        Empty => ClaimWordingVerified,
+        Cons { head, tail } =>
+          ClaimWordingSummarized { unverified: FreeSemigroup { head: head, tail: tail } },
+      },
+    DensityUnread { obligation } => ClaimWordingUnread,
+  }
+}
+
+// INVENTORY IS NOT SCREENING, AND WITHOUT THIS ROUTE FOUR OF FIVE READ ROWS IN ONE LANE WOULD HAVE
+// BEEN UNREACHABLE. `density_figure_for_medium` deliberately answers NOTHING for a request of
+// CoolingMediumUnspecified: an unlabelled figure must never satisfy an air or liquid requirement, and
+// making the request askable would restore that defect through the query side after it was closed on
+// the figure side. That is right for the SCREENING question and it is the wrong shape for the census
+// question, which is not "does this cover 20 kW of air" but "what did this operator publish".
+//
+// A census lane reading New York found the gap before the rebase rather than during it: four of its
+// five read rows are CoolingMediumUnspecified, and with only a medium-keyed accessor those verbatim
+// readings would sit in the corpus with no total route returning them - a dangling set created by the
+// CARRIER rather than by an author, which is the worse kind because no author can fix it.
+//
+// SO THE TWO QUESTIONS GET TWO ROUTES, WHICH IS THE SAME MOVE THIS FILE HAS MADE AT EVERY OTHER SEAM.
+// A ceiling and a reading are different types; occupancy and retrieval are different functions;
+// inventory and screening are different folds. Giving inventory its own route does not weaken the
+// screen, because the screen still cannot be asked with an unspecified medium - the routes answer
+// different questions rather than one question two ways, which is what would have been the fork.
+//
+// TOTAL, AND EMPTY FOR AN UNREAD CLAIM RATHER THAN REFUSING: a claim nobody read published no figures,
+// which is a true statement about its inventory. Because a published claim's figures are NON-EMPTY BY
+// CONSTRUCTION, emptiness here IS the unread arm - equal by construction rather than by coincidence -
+// so this one function answers both "what is here" and "was anything published".
+//
+// A `density_claim_contains_figure(d) -> Bool` STOOD BESIDE IT AND WAS DELETED, MAKING IT THE THIRD
+// TIME THIS CENSUS HAS DELETED THIS SHAPE. `cabinet_density_is_read` went from this very file, and
+// `coverage_is_surveyed` from gunbc.colo_census_coverage (review 62776), whose surviving annotation
+// says of the second that "writing the predicate again one module later is the receipt that the first
+// deletion was applied to an instance and not to the habit". It then happened a third time, here,
+// authored by someone who had read that sentence.
+//
+// THE ARGUMENT FOR KEEPING IT WAS THAT A CLOSED COPRODUCT CANNOT FORK SILENTLY - add a third arm and
+// both functions red at compile time, so the stale-half failure DESIGN section 3 exists to prevent is
+// unwritable. That is true and it proves the duplicate is SAFE, not that it is NEEDED. Section 2
+// prices authoring, review and maintenance, not only staleness, and a safe duplicate is still one.
+//
+// A CONTROL THAT WANTS TO ASSERT ARM MEMBERSHIP RATHER THAN A COUNT still can, and should say so in
+// its own annotation: over a structurally non-empty carrier `density_claim_figures(d).length() == 0`
+// IS the unread arm. The intent belongs in the assertion that has it, not in a second matcher.
+// FRONTIER, SAME SECTION AND SAME LANES: the inventory route's named consumer is
+// silent-heron-303's `coverage_density_read_count`, which replaces a witness-local `density_claim_is_read`
+// and reaches presence through this list rather than through a predicate. The trigger is that fold
+// landing. It is also the only route by which an unlabelled figure is readable at all - four of five
+// read New York rows are CoolingMediumUnspecified and no screen may consume them - so its absence
+// would strand verified readings, which is why it exists before its production caller does.
+fn density_claim_figures(d: CabinetDensityClaim) -> List<PublishedDensityFigure> {
+  match d {
+    DensityPublished { figures } => non_empty_to_list(xs: figures),
+    DensityUnread { obligation } => [],
+  }
+}
+
+// THE DISSOLUTION CONDITIONS FOR THIS CARRIER'S TWO KNOWN RESIDUES, AS ROWS A PROGRAM CAN READ. Both
+// were prose until review 63024, which was right that DESIGN section 4c puts a dissolution condition
+// in a typed carrier and that section 4b(2)'s untracked-stall is exactly what two triggers in a
+// comment produce. The carrier is the one ~276 extdeps modules already use, so nothing is minted here.
+data colo_types_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.colo.types", decl_name: "figure_lookup"),
+    reason: "the count-first unique-lookup fold is a second spelling of std.pareto's ReadingLookup shape, re-authored because ReadingLookup is not generic - it carries OrderedClosedInterval readings keyed by DeclarationRef, so it cannot be instantiated over cooling media without widening the wrong authority to fit this consumer",
+    dissolution: unbound_dissolution(description: "feature:generic-count-first-unique-lookup - a unique-lookup over a keyed collection that counts before it selects and returns found/absent/duplicated, authored once in std over a caller-supplied key and consumed by BOTH std.pareto's reading lookup and this one; then figure_lookup, figure_matches_count and DensityFigureLookup's found/absent/duplicated arms are expressed through it and this row deletes. Consume-never-fork: the capability is the generic fold, not a copy of this one moved into std"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.colo.types", decl_name: "DensityFigureLookup"),
+    reason: "a claim carrying two figures for one cooling medium is REFUSED at lookup rather than being unconstructible, so the invalid state is still writable and safety depends on the lookup executing",
+    dissolution: unbound_dissolution(description: "feature:one-slot-per-medium-density-construction - PublishedDensityFigure's medium becomes a slot on a record with one field per CoolingMedium rather than a coordinate on a member of a free list, so a second air figure has no constructor; this requires the medium-slot record AND identity closure over the slot set landing in one motion, since a partial slot record reintroduces the duplicate through the un-slotted remainder. Then figure_lookup's Duplicated arm, FigureDuplicated and RequirementFigureContested delete together with this row"),
+  ),
+]
