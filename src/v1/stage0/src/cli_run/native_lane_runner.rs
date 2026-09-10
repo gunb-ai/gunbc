@@ -43,10 +43,19 @@ const CONTROL_MODULE: &str = "v2.native_lane_fixture.control";
 const FALSE_CONTROL_DECL: &str = "native_lane_false_control";
 const TRUE_CONTROL_DECL: &str = "native_lane_true_control";
 
-/// The malformed control: a deliberately unterminating string any honest front-end must refuse
-/// at tokenize. It lives outside every source root and enters only the control run's ingest.
-const MALFORMED_FIXTURE_DIR: &str = "fixtures/native_lane_malformed";
-const MALFORMED_FIXTURE_PATH: &str = "fixtures/native_lane_malformed/poison.dag";
+/// The malformed control: deliberately unterminating bytes any honest front-end must refuse at
+/// tokenize. THE COMMITTED CARRIER IS NOT A `.dag` FILE — the bytes are not a dag program, and
+/// carrying the extension put them in the changed-witness observation's parse path, where the
+/// deliberate tokenize failure refused the whole floor lane (run 34471447387). The harness
+/// materializes the specimen as `poison.dag` under the lane's scratch root, and only that
+/// materialized copy ever enters an ingest — the control run's own source root.
+const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poison.dag.poisoned";
+/// The control run's scratch source root and the materialized specimen's path under it,
+/// workspace-relative like every path this harness hands the binary (its working directory is
+/// the workspace root). The receipt records the observed refusal path; the admission authority
+/// requires it non-empty, and this harness requires it to name the materialized specimen.
+const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root";
+const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-control-root/poison.dag";
 
 /// The admission authority's entry file, for the interpreter context that judges the receipt.
 const NATIVE_ROUTE_AUTHORITY_ENTRY: &str = "dag/gunbc/witness/v2_native_route.dag";
@@ -243,7 +252,10 @@ fn derive_native_universe(source_roots: &[String]) -> Result<NativeUniverseDeriv
 /// the seed's identity honestly, and this job claims no native bootstrap.
 fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparation, String> {
     let workspace = super::process_workspace_root();
-    let probe_root = super::local_emit_compile_probe_root();
+    // The probe root follows the declared execution environment (per-job runner temp in CI,
+    // host temp locally) — the selection's authority and its receipt live beside the required
+    // phase's own root policy in `emitted_closure_compile_host`.
+    let probe_root = super::lane_emit_compile_probe_root();
     eprintln!("required-ci: v2-native emitting {NATIVE_COMPILE_ENTRY} (seed, in-process)");
     let run = super::compile_entry_emission(
         source_roots,
@@ -409,6 +421,33 @@ fn write_universe_file(path: &Path, universe: &[(String, String)]) -> Result<(),
 /// per-file refusal.
 fn write_control_universe_file(path: &Path) -> Result<(), String> {
     write_universe_file(path, &[])
+}
+
+/// Build the malformed control's scratch source root: exactly the committed specimen,
+/// materialized under its `.dag` name. The root is REMOVED first — a scratch root that
+/// accumulates whatever earlier runs left behind would let a stale second file into the
+/// control's ingest, and the control's whole value is that its root holds exactly one poisoned
+/// file. Returns the workspace-relative root the binary is spawned with.
+fn materialize_malformed_specimen(workspace: &Path) -> Result<String, String> {
+    let specimen = workspace.join(MALFORMED_SPECIMEN_COMMITTED);
+    let bytes = std::fs::read(&specimen).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=MalformedSpecimenUnreadable — reading {}: {e}",
+            specimen.display()
+        )
+    })?;
+    let root = workspace.join(MALFORMED_CONTROL_ROOT);
+    if root.exists() {
+        std::fs::remove_dir_all(&root).map_err(|e| format!("clearing {}: {e}", root.display()))?;
+    }
+    let materialized = workspace.join(MALFORMED_MATERIALIZED_PATH);
+    let parent = materialized
+        .parent()
+        .expect("the materialized path names a file under the control root");
+    std::fs::create_dir_all(parent).map_err(|e| format!("creating {}: {e}", parent.display()))?;
+    std::fs::write(&materialized, bytes)
+        .map_err(|e| format!("writing {}: {e}", materialized.display()))?;
+    Ok(MALFORMED_CONTROL_ROOT.to_string())
 }
 
 /// The spawned run's decoded observations: one row per printed verdict, the per-file refusals
@@ -840,17 +879,20 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         main_output.file_refusals.len()
     );
 
-    // 6. THE MALFORMED CONTROL. The same binary over the poison fixture's directory ALONE.
-    // The run's only consumed output is the poison path's per-file refusal, and rooting the
-    // control at the full corpus paid a second whole-corpus context fold — the lane's dominant
-    // cost — to produce it. Tokenization is per-file and deterministic, so the observed refusal
-    // is identical under the restricted roots.
+    // 6. THE MALFORMED CONTROL. The same binary over the materialized specimen's scratch root
+    // ALONE. The run's only consumed output is the poison path's per-file refusal, and rooting
+    // the control at the full corpus paid a second whole-corpus context fold — the lane's
+    // dominant cost — to produce it. Tokenization is per-file and deterministic, so the
+    // observed refusal is identical under the restricted roots. The committed specimen is not a
+    // `.dag` file (its constant carries the reason), so the control's source root is built here
+    // — exactly the specimen, rebuilt fresh, never whatever a previous run left behind.
     let control_universe_file = workspace
         .join("target")
         .join("v2-native-lane")
         .join("controls-universe.tsv");
     write_control_universe_file(&control_universe_file)?;
-    let control_roots = vec![MALFORMED_FIXTURE_DIR.to_string()];
+    let control_root = materialize_malformed_specimen(&workspace)?;
+    let control_roots = vec![control_root];
     let control_output = run_native_binary(
         &preparation.binary_path,
         &control_universe_file,
@@ -885,7 +927,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     let malformed_control = match control_output
         .file_refusals
         .iter()
-        .find(|fr| fr.path.contains(MALFORMED_FIXTURE_PATH))
+        .find(|fr| fr.path.contains(MALFORMED_MATERIALIZED_PATH))
     {
         Some(fr) => {
             let reason = fr.fatal_reason.clone();

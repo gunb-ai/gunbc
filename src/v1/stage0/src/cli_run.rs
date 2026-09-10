@@ -42359,10 +42359,10 @@ pub use emitted_closure_compile_host::{
     cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
     emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
     emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
-    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
-    required_ci_emit_compile_probe_root, required_emit_compile_entries,
-    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
-    EmitCompileSelection, MutationVerdict,
+    emit_compile_selection_universe_digest, lane_emit_compile_probe_root,
+    local_emit_compile_probe_root, required_ci_emit_compile_probe_root,
+    required_emit_compile_entries, retain_not_selected_identities, run_required_emit_compile,
+    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict,
 };
 
 /// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE

@@ -419,8 +419,11 @@ fn native_route_census(
 // representable so a missing observation refuses by name rather than pattern-matching to a
 // default.
 //
-// THE MALFORMED CONTROL PROVES THE FRONT-END REFUSAL ARM IS LIVE. The host runs the same binary
-// over the poison fixture's directory as the run's only source root — the run's single consumed
+// THE MALFORMED CONTROL PROVES THE FRONT-END REFUSAL ARM IS LIVE. The host materializes the
+// committed poison specimen as a `.dag` under the lane's scratch root — the committed carrier
+// is not a `.dag` file, because the changed-witness observation parses every changed `.dag`
+// path in a diff and the deliberate tokenize failure would refuse it — and runs the same
+// binary over that scratch root as the run's only source root. The run's single consumed
 // output is the poison path's refusal, so rooting it at the full corpus would pay a second
 // whole-corpus context fold for one observation. An honest front-end collects a per-file refusal
 // for it (the collecting fold refuses the FILE, never the whole context), and the receipt records

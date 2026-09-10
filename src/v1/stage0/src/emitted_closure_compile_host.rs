@@ -553,6 +553,13 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
 /// root is inferred into the workspace and would need its own `[workspace]` to escape — a manifest
 /// fact invented to work around its location.
 ///
+/// The per-job temp a CI executor declares, when it declares one — the ONE read of that
+/// declaration, so the required phase's refusal and the lane's selection cannot drift into two
+/// spellings of the same fact.
+fn declared_runner_temp() -> Option<std::ffi::OsString> {
+    std::env::var_os("RUNNER_TEMP").filter(|value| !value.is_empty())
+}
+
 /// RUNNER-SCOPED, NOT HOST-SHARED, AND THIS WAS MEASURED THE HARD WAY. A fixed path in the host's
 /// `/tmp` is shared by every tenant of a SELF-HOSTED runner and persists across runs, slots and
 /// jobs. On the first required run the directory existed owned by another uid, so creating the
@@ -583,11 +590,32 @@ fn required_ci_probe_root_from_runner_temp(
 }
 
 pub fn required_ci_emit_compile_probe_root() -> Result<PathBuf, String> {
-    required_ci_probe_root_from_runner_temp(std::env::var_os("RUNNER_TEMP").as_deref())
+    required_ci_probe_root_from_runner_temp(declared_runner_temp().as_deref())
 }
 
 pub fn local_emit_compile_probe_root() -> PathBuf {
     std::env::temp_dir().join(PROBE_ROOT_DIR_NAME)
+}
+
+fn lane_probe_root_from_runner_temp(runner_temp: Option<&std::ffi::OsStr>) -> PathBuf {
+    match runner_temp.filter(|value| !value.is_empty()) {
+        Some(base) => PathBuf::from(base).join(PROBE_ROOT_DIR_NAME),
+        None => local_emit_compile_probe_root(),
+    }
+}
+
+/// THE V2-NATIVE LANE'S PROBE ROOT FOLLOWS THE DECLARED EXECUTION ENVIRONMENT, SELECTED ONCE.
+///
+/// The lane runs in two environments and each has its own root authority. In required CI the
+/// executor declares a per-job temp: the self-hosted fleet's host-shared temp persists across
+/// jobs, runs and euids, and a stale or concurrent `gunbc-emit-compile` there is an EACCES at
+/// best and two runs writing one crate dir at worst (receipt: run 34471447387,
+/// `EmittedCrateNotWritten — … Permission denied`). Locally no runner temp exists and the host
+/// temp is the local route's authority. This is environment SELECTION, not a failure arm: both
+/// roots are declared, nothing is widened, and the required phase's own stricter policy
+/// (refuse without the declaration) is untouched beside it.
+pub fn lane_emit_compile_probe_root() -> PathBuf {
+    lane_probe_root_from_runner_temp(declared_runner_temp().as_deref())
 }
 
 fn probe_crate_dir(probe_root: &Path, entry: &str) -> PathBuf {
@@ -2147,6 +2175,31 @@ mod tests {
                 .expect("a declared runner temp owns the probe root"),
             PathBuf::from("/runner/job/gunbc-emit-compile")
         );
+    }
+
+    /// THE LANE SELECTS THE DECLARED PER-JOB ROOT WHEN ONE EXISTS, the host temp otherwise.
+    ///
+    /// Both arms are pinned because both are load-bearing: the first keeps a required-CI lane
+    /// off the self-hosted fleet's host-shared temp (the EACCES of run 34471447387), the second
+    /// keeps the local route runnable where no executor declares a temp. The expected values
+    /// name the authorities, never the spelled dir name — the single-spelling test above owns
+    /// that needle.
+    #[test]
+    fn the_lane_probe_root_follows_the_declared_environment() {
+        assert_eq!(
+            lane_probe_root_from_runner_temp(Some(std::ffi::OsStr::new("/runner/job"))),
+            required_ci_probe_root_from_runner_temp(Some(std::ffi::OsStr::new("/runner/job")))
+                .expect("the same declared temp"),
+            "a declared per-job runner temp owns the lane's probe root, exactly as it owns the \
+             required phase's"
+        );
+        for absent in [None, Some(std::ffi::OsStr::new(""))] {
+            assert_eq!(
+                lane_probe_root_from_runner_temp(absent),
+                local_emit_compile_probe_root(),
+                "with no declared runner temp the lane takes the local route's root"
+            );
+        }
     }
 
     /// A FAILED RESTORE MUST WIN OVER EVERY NON-TERMINAL FAULT VERDICT.
