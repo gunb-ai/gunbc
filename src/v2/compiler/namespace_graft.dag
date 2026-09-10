@@ -2,8 +2,8 @@ module v2.compiler.namespace_graft
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_right, list_snoc_item }
-import v2.std.collection { Absent, List, Present }
+import v2.std.algebra { fold_list, fold_list_right, list_append, list_snoc_item }
+import v2.std.collection { Absent, List, Present, optional_absent }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -31,14 +31,22 @@ import v2.std.node {
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.grammar {
+  GrammarExpr,
+  GrammarExprFold,
+  GrammarProduction,
+  fold_grammar_expr,
+  node_atom_identity_optional
+}
 import v2.extdeps.languages.dag {
   dag_named_edge,
   dag_surface_module_header_metadata_edge,
+  dag_grammar_root,
+  dag_grammar_top_level_item_expr,
   namespace_graft_already_grafted,
   namespace_graft_has_module_header,
   namespace_graft_unwrap_module_working_root,
   parse_production_emitted_identity_optional,
-  dag_surface_is_top_level_item_alternative_emitted,
   qualified_name_from_module_node
 }
 
@@ -155,19 +163,81 @@ fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
   namespace_graft_fold_collect_children(node: node)
 }
 
+fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> List<Symbol> {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { [] },
+      nonterminal: fn(production) { [production] },
+      sequence: fn(left, right) { list_append(left: left, right: right) },
+      choice: fn(left, right) { list_append(left: left, right: right) },
+      optional: fn(xs) { xs },
+      repeat: fn(xs) { xs }
+    }
+  )
+}
+
+fn namespace_graft_emitted_identity_for_production_name(name: Symbol) -> Symbol? {
+  fold_list(
+    xs: dag_grammar_root().productions,
+    empty: optional_absent(),
+    cons: fn(acc, production) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if production.name == name {
+            node_atom_identity_optional(node: production.emitted)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn namespace_graft_top_level_item_alternative_emitted_ids() -> List<Symbol> {
+  fold_list(
+    xs: namespace_graft_grammar_expr_nonterminal_productions(expr: dag_grammar_top_level_item_expr()),
+    empty: [],
+    cons: fn(acc, production_name) {
+      match namespace_graft_emitted_identity_for_production_name(name: production_name) {
+        Present { value: emitted } => list_snoc_item(xs: acc, item: emitted)
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn namespace_graft_id_is_top_level_item_unit(id: Symbol, unit_ids: List<Symbol>) -> Bool {
+  fold_list(
+    xs: unit_ids,
+    empty: false,
+    cons: fn(found, emitted) {
+      found || (emitted == id)
+    }
+  )
+}
+
 fn namespace_graft_collect_unit_nodes(node: Node) -> List<Node> {
+  namespace_graft_collect_unit_nodes_against(
+    node: node,
+    unit_ids: namespace_graft_top_level_item_alternative_emitted_ids()
+  )
+}
+
+fn namespace_graft_collect_unit_nodes_against(node: Node, unit_ids: List<Symbol>) -> List<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
-      if dag_surface_is_top_level_item_alternative_emitted(id: id) {
+      if namespace_graft_id_is_top_level_item_unit(id: id, unit_ids: unit_ids) {
         [node]
       } else {
         fold(node.children, init: [], f: fn(acc, edge) {
-          concat(acc, namespace_graft_collect_unit_nodes(node: edge.target))
+          concat(acc, namespace_graft_collect_unit_nodes_against(node: edge.target, unit_ids: unit_ids))
         })
       }
     Absent =>
       fold(node.children, init: [], f: fn(acc, edge) {
-        concat(acc, namespace_graft_collect_unit_nodes(node: edge.target))
+        concat(acc, namespace_graft_collect_unit_nodes_against(node: edge.target, unit_ids: unit_ids))
       })
   }
 }

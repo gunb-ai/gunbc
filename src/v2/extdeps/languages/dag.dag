@@ -30,8 +30,6 @@ import v2.std.grammar {
   grammar_expr_terminal,
   grammar_expr_terminal_bound,
   grammar_expr_terminal_lexeme,
-  fold_grammar_expr,
-  GrammarExprFold,
   formal_grammar_symbol_to_grammar_expr,
   ParseGrammar,
   FormalGrammarSymbol,
@@ -3440,68 +3438,6 @@ fn dag_g0_void_grammar() -> ParseGrammar {
 
 fn dag_grammar() -> ParseGrammar {
   ModeledGrammar { root: dag_grammar_root() }
-}
-
-// Graft-body units are the emitted identities of nonterminals in
-// dag_grammar_top_level_item_expr, joined through the grammar roster. Interior productions
-// of those alternatives (import_block under import_decl) are not units.
-fn dag_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> List<Symbol> {
-  fold_grammar_expr(
-    expr: expr,
-    algebra: GrammarExprFold {
-      terminal: fn(_, _) { [] },
-      nonterminal: fn(production) { [production] },
-      sequence: fn(left, right) { list_append(left: left, right: right) },
-      choice: fn(left, right) { list_append(left: left, right: right) },
-      optional: fn(xs) { xs },
-      repeat: fn(xs) { xs }
-    }
-  )
-}
-
-fn dag_grammar_production_emitted_identity_optional(production: GrammarProduction) -> Optional<Symbol> {
-  node_atom_identity_optional(node: production.emitted)
-}
-
-fn dag_emitted_identity_for_production_name(name: Symbol) -> Optional<Symbol> {
-  fold_list(
-    xs: dag_grammar_root().productions,
-    empty: optional_absent(),
-    cons: fn(acc, production) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if production.name == name {
-            dag_grammar_production_emitted_identity_optional(production: production)
-          } else {
-            optional_absent()
-          }
-      }
-    }
-  )
-}
-
-fn dag_top_level_item_alternative_emitted_ids() -> List<Symbol> {
-  fold_list(
-    xs: dag_grammar_expr_nonterminal_productions(expr: dag_grammar_top_level_item_expr()),
-    empty: [],
-    cons: fn(acc, production_name) {
-      match dag_emitted_identity_for_production_name(name: production_name) {
-        Present { value: emitted } => list_snoc_item(xs: acc, item: emitted)
-        Absent => acc
-      }
-    }
-  )
-}
-
-fn dag_surface_is_top_level_item_alternative_emitted(id: Symbol) -> Bool {
-  fold_list(
-    xs: dag_top_level_item_alternative_emitted_ids(),
-    empty: false,
-    cons: fn(found, emitted) {
-      found || (emitted == id)
-    }
-  )
 }
 
 fn dag_language_model_surface_prelude_atoms() -> PointwisePower<Symbol> {
