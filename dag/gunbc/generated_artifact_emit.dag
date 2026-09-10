@@ -4,7 +4,7 @@ module gunbc.generated_artifact_emit
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, BootstrapPrLauncherYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -27,7 +27,6 @@ import gunbc.generated_workflow_provenance {
   GeneratedWorkflowProvenanceHeaderNotApplicable,
 }
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
-import gunbc.ci_bootstrap_pr_launcher_workflow { expected_bootstrap_pr_launcher_yml }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.ci_yaml_validate { ci_yml_parses }
@@ -93,7 +92,6 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
       FleetDesiredGenerated { content } => artifact_generated(content: content)
       FleetDesiredGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
-    BootstrapPrLauncherYamlArtifact => artifact_generated(content: expected_bootstrap_pr_launcher_yml())
     GitignoreArtifact => artifact_generated(content: expected_gitignore())
     GitattributesArtifact => match expected_gitattributes() {
       GitattributesGenerated { content } => artifact_generated(content: content)
@@ -191,7 +189,6 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     WitnessFloorYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetConvergeYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetDesiredAdmissionYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    BootstrapPrLauncherYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
     GitattributesArtifact => true
     RoadmapArtifact => true
