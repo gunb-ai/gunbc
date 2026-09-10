@@ -40,6 +40,7 @@ import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository }
 import gunbc.scm.write_spine {
   StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
+  StagedCommitSourceUnrecoverable,
   StagedCommitAllocatorInvalid,
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
   StageManifestLocatorCollision,
@@ -232,6 +233,10 @@ func spine_commit_loaded(loaded: LoadedRepositoryGeneration, message: String) ->
   match commit_staged(repository: loaded.envelope, message: message) {
     StagedCommitCandidateRefused { cause: _ } =>
       exit_failure(reason: "commit refused: the effective candidate could not be read")
+    StagedCommitSourceUnrecoverable { cause: _ } =>
+      exit_failure(
+        reason: "commit refused: the staged corpus names an authored source this store cannot produce, so the commit would publish a snapshot that cannot be checked out"
+      )
     StagedCommitNothingToFreeze =>
       exit_failure(
         reason: "commit refused: nothing to freeze -- the candidate is the snapshot already committed, or there is no snapshot at all"

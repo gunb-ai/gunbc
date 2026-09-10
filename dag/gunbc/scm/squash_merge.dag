@@ -23,22 +23,7 @@ module gunbc.scm.squash_merge
 // arm destroys the signal that would rank the precise deficit for repair.
 
 import std.types { List, String }
-import gunbc.scm.object_store {
-  ObjectId,
-  CorpusManifestRecord,
-  CorpusManifestEntry,
-  PathUniqueManifestEntries,
-  CorpusManifestObjectRef,
-  store_corpus_manifest,
-  CorpusManifestStored,
-  CorpusManifestDuplicatePath,
-  CorpusManifestLocatorCollision,
-  find_corpus_manifest_record,
-  CorpusManifestFound,
-  CorpusManifestAbsent,
-  CorpusManifestIsSemanticNode,
-  CorpusManifestIsAuthoredSource,
-}
+import gunbc.scm.object_store { ObjectId, CorpusEntrySourceRefusal }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.integration { SquashIntegrated }
 import gunbc.scm.repository_envelope {
@@ -46,7 +31,6 @@ import gunbc.scm.repository_envelope {
   admit_merge_subject,
   MergeSideName,
   MergeSubjectSourceUnrecoverable,
-  CorpusEntrySourceRefusal,
   MergeBaseOutcome,
   MergeBaseDerived,
   MergeBaseSourceAlreadyConsumed,
@@ -55,13 +39,7 @@ import gunbc.scm.repository_envelope {
   MergeBaseSourceIsAncestorOfTarget,
   merge_base,
 }
-import gunbc.scm.manifest_merge {
-  ManifestPathConflict,
-  ManifestMergeOutcome,
-  ManifestMerged,
-  ManifestConflicted,
-  merge_manifests,
-}
+import gunbc.scm.manifest_merge { ManifestPathConflict }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryCommit,

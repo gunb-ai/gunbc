@@ -281,7 +281,7 @@ fn recover_entry_step(store: ObjectStore, acc: CorpusRecoveryAcc, entry: CorpusM
       match resolve_manifest_entry_source(store: store, entry: entry) {
         CorpusEntrySourceResolved(record) =>
           CorpusRecoveryAcc {
-            files: concat(acc.files, [RecoveredSourceFile { path: entry.path, content: record.content }]),
+            files: concat([RecoveredSourceFile { path: entry.path, content: record.content }], acc.files),
             refusal: acc.refusal,
           }
         CorpusEntrySourceUnresolved { cause: c } =>
@@ -290,6 +290,14 @@ fn recover_entry_step(store: ObjectStore, acc: CorpusRecoveryAcc, entry: CorpusM
   }
 }
 
+// THE ACCUMULATOR PREPENDS AND `recover_corpus` REVERSES ONCE -- the same cost discipline, and the
+// same load-bearing reverse, as `checkout_edge_step` above. The first writing appended with
+// `concat(acc.files, [file])`, which recopies the growing prefix on every entry and makes recovering a
+// corpus quadratic in its number of paths. DESIGN section 6 fixes a proven cost shape regardless of the
+// realized n, because "n is small here" stops being true the moment a real corpus is checked out.
+// The reverse restores manifest order, which is the order the caller writes the files back in.
+// Found by external review.
+//
 // RECOVERABILITY IS A SEPARATE QUESTION FROM SNAPSHOT DESIGNATION, and this function is where the
 // second one is answered. The mint decides only that a commit names a manifest of the required kind;
 // whether that manifest's sources are present is this observation, performed against a particular
@@ -303,7 +311,7 @@ fn recover_corpus(store: ObjectStore, entries: List<CorpusManifestEntry>) -> Cor
     CorpusRecoveryAcc { files: files, refusal: refusal } =>
       match refusal {
         Present { value: cause } => CorpusRecoveryRefused { cause: cause }
-        Absent => CorpusRecovered { files: files }
+        Absent => CorpusRecovered { files: reverse(files) }
       }
   }
 }

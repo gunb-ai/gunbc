@@ -27,6 +27,9 @@ import gunbc.scm.object_store {
   PathUniqueManifestEntries, manifest_entries_with_path_replaced, manifest_entries_of_single,
   UniqueManifestStoreOutcome, UniqueManifestStored, UniqueManifestLocatorCollision,
   store_path_unique_manifest,
+  CorpusEntrySourceRefusal,
+  CorpusSourceCompleteness, CorpusSourcesComplete, CorpusSourceIncomplete,
+  observe_corpus_source_completeness,
 }
 import gunbc.scm.ancestry { CommitAncestry }
 import gunbc.scm.repository_envelope {
@@ -216,11 +219,19 @@ fn stage_into(
 // domain and dishonest about this operation's. The repair is not to re-report it or to translate it,
 // but to invoke a construction from which the question is ABSENT: `mint_ordinary_commit` takes no
 // integration argument, so there is no source that could be missing.
+//
+// SOURCE COMPLETENESS IS THE COMMIT'S OUTCOME, NOT THE STAGE'S REFUSAL. `StagingRefusal` answers one
+// relational question -- can this candidate be compared against its base -- and status and checkout
+// read that same vocabulary. Whether every entry's bytes are still recoverable is a question only
+// PUBLICATION asks, so it is an arm of THIS type rather than a widening of that one. An earlier
+// revision carried it as `StagingRefusal StageSourceUnrecoverable`, which is how it came to fire on
+// the read paths at all. Found by external review.
 type StagedCommit
   = StagedCommitMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
   | StagedCommitCandidateRefused { cause: StagingRefusal }
   | StagedCommitNothingToFreeze
   | StagedCommitAllocatorInvalid { next_ordinal: Int }
+  | StagedCommitSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
 
 // THE COMMITTABLE STAGE -- THE CARRIER THAT SAYS THIS ROOT IS *THIS WORKSPACE'S PENDING CHANGE*.
 //
@@ -254,12 +265,49 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
     StageStandingRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
     NoCandidateAndNoBase => StagedCommitNothingToFreeze
     StageMatchesBase { candidate: _ } => StagedCommitNothingToFreeze
-    StageWithNoBase { candidate: _, basis: basis } =>
-      freeze_committable(
-        committable: CommittableStage { basis: basis },
+    StageWithNoBase { candidate: _, basis: basis, entries: entries } =>
+      commit_admitted_stage(
+        repository: repository,
+        entries: entries,
+        basis: basis,
         message: message,
       )
-    StageDiffersFromBase { candidate: _, committed: _, basis: basis } =>
+    StageDiffersFromBase { candidate: _, committed: _, basis: basis, entries: entries } =>
+      commit_admitted_stage(
+        repository: repository,
+        entries: entries,
+        basis: basis,
+        message: message,
+      )
+  }
+}
+
+// PUBLICATION ADMITS ITS SOURCES; READING THEM DOES NOT.
+//
+// Every entry a commit freezes must name an authored source this store can actually produce. A commit
+// is a PUBLICATION: the manifest it freezes becomes a permanent parent that later commits inherit and
+// that checkout is expected to materialize, so an entry whose source is absent -- or is a semantic node
+// or another manifest wearing a source's locator -- publishes a snapshot that can never be restored.
+// Refusing at read time would be worse than useless (see the note in `gunbc.scm.staging`); refusing HERE
+// stops the line at the one operation that makes the defect permanent, and it names the offending path.
+//
+// WHAT CARRYING THE ENTRIES ACTUALLY SAVES, STATED NARROWLY. `stage_standing` already resolved the
+// candidate MANIFEST to get its identity, so its entry list arrives on the committable arms and this
+// function does not re-read it -- that is the one lookup avoided. It is NOT free overall: the
+// completeness observation still performs an object-store lookup PER ENTRY, so a commit pays the
+// corpus's path count. An earlier writing here claimed "no second store walk", which overstated a
+// saved manifest read as a saved corpus walk; external review corrected it. The per-entry cost is
+// inherent to the question -- there is no way to know a source resolves without asking the store --
+// and it is paid at publication, which is where it buys something.
+fn commit_admitted_stage(
+  repository: RepositoryEnvelope,
+  entries: List<CorpusManifestEntry>,
+  basis: AdmittedCommitBasis,
+  message: String,
+) -> StagedCommit {
+  match observe_corpus_source_completeness(store: repository.store, entries: entries) {
+    CorpusSourceIncomplete { cause: c } => StagedCommitSourceUnrecoverable { cause: c }
+    CorpusSourcesComplete =>
       freeze_committable(
         committable: CommittableStage { basis: basis },
         message: message,

@@ -114,10 +114,10 @@ import gunbc.scm.object_store {
   CorpusManifestEntry,
   CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
   store_corpus_manifest,
-  PathUniqueManifestEntries, store_path_unique_manifest,
+  PathUniqueManifestEntries, path_unique_entry_list, store_path_unique_manifest,
   UniqueManifestStored, UniqueManifestLocatorCollision,
-  CorpusEntrySourceRefusal, CorpusSourcesAdmitted, CorpusSourcesRefused,
-  admit_corpus_sources,
+  CorpusEntrySourceRefusal, CorpusSourcesComplete, CorpusSourceIncomplete,
+  observe_corpus_source_completeness,
 }
 import gunbc.scm.commit_closure {
   ClosureCensus,
@@ -1084,19 +1084,21 @@ fn read_anchor_manifest(
 // The alternative was to state partial-merge semantics explicitly as a different contract. That would
 // be a second meaning for "merged", and DESIGN 3 requires a materially different contract to carry a
 // materially different name. It is one contract, so it gets one admission. Ruled by external review.
-fn admit_merged_sources(
-  anchors: ResolvedMergeAnchors,
-  merged: MergedManifestEntries,
-) -> MergeSubjectAdmission {
-  match admit_corpus_sources(
-    store: anchors.repository.store,
-    entries: path_unique_entry_list(unique: merged.entries),
-  ) {
-    CorpusSourcesRefused { cause: c } => MergeSubjectSourceUnrecoverable { cause: c }
-    CorpusSourcesAdmitted =>
-      MergeSubjectAdmitted(AdmittedMergeSubject { anchors: anchors, merged: merged })
-  }
-}
+//
+// THE COMPLETENESS OBSERVATION HAS NO SEPARATE FUNCTION, AND THAT IS THE WHOLE SEAM. An earlier
+// revision factored it out as `admit_merged_sources(anchors, merged)` -- which took back, one function
+// later, exactly the peer pair that removing it from `admit_merge_subject` had just sealed. `.dag` has
+// no module privacy, so that helper was a live entry point at which a caller could hold admitted
+// anchors A, obtain an unrelated conflict-free merge result B, and receive
+// `AdmittedMergeSubject { anchors: A, merged: B }` whenever B's sources happened to exist in A's store.
+// The route downstream would then commit B's corpus as a child of A's target and write
+// `SquashIntegrated { source: A.source }` -- committing the wrong corpus AND spending A's source
+// without ever merging A's manifests. Found by external review, which named this as reopening the seam
+// the previous round had closed.
+//
+// So the subject is constructed inside the `ManifestMerged` branch below, from the `e` that THIS
+// call's manifests produced, and there is no function anywhere that accepts the two as arguments.
+// The pairing is not validated; it is unwritable.
 
 fn admit_merge_subject(anchors: ResolvedMergeAnchors) -> MergeSubjectAdmission {
   let repository = anchors.repository
@@ -1128,7 +1130,17 @@ fn admit_merge_subject(anchors: ResolvedMergeAnchors) -> MergeSubjectAdmission {
               ) {
                 ManifestConflicted { conflicts: c } => MergeSubjectConflicted { conflicts: c }
                 ManifestMerged { merged: e } =>
-                  admit_merged_sources(anchors: anchors, merged: e)
+                  match observe_corpus_source_completeness(
+                    store: repository.store,
+                    entries: path_unique_entry_list(unique: e.entries),
+                  ) {
+                    CorpusSourceIncomplete { cause: c } =>
+                      MergeSubjectSourceUnrecoverable { cause: c }
+                    CorpusSourcesComplete =>
+                      MergeSubjectAdmitted(
+                        AdmittedMergeSubject { anchors: anchors, merged: e },
+                      )
+                  }
               }
           }
       }

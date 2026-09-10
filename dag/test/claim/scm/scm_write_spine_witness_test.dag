@@ -23,12 +23,16 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.integration { NoSquashIntegration }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference, empty_repository }
-import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
+import gunbc.scm.staging {
+  StagedEntries, StagedEntriesRefused, staged_entries,
+  StageStanding, StageMatchesBase, StageDiffersFromBase, StageWithNoBase,
+  NoCandidateAndNoBase, StageStandingRefused, stage_standing,
+}
 import gunbc.scm.write_spine {
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
   StageManifestLocatorCollision,
   StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
-  StagedCommitAllocatorInvalid,
+  StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
   stage_source_at_path, commit_staged,
 }
 import test.fixture.scm_repository_builder {
@@ -393,12 +397,13 @@ test fn scm_ws_committing_over_a_base_with_an_absent_source_refuses_naming_the_p
     path: "added.dag" as NonEmptyStr,
     text: "module added",
   ) {
-    StageCandidateRefused { cause: c } => scm_ws_names_the_ghost(cause: c)
+    StageCandidateRefused { cause: _ } => false
     StageSourceLocatorCollision { identity: _ } => false
     StageManifestLocatorCollision { identity: _ } => false
     Staged { repository: repository, manifest: _, source: _ } =>
       match commit_staged(repository: repository, message: "publish the unpublishable") {
-        StagedCommitCandidateRefused { cause: c } => scm_ws_names_the_ghost(cause: c)
+        StagedCommitSourceUnrecoverable { cause: c } => scm_ws_names_the_ghost(cause: c)
+        StagedCommitCandidateRefused { cause: _ } => false
         StagedCommitMinted { repository: _, reference: _ } => false
         StagedCommitNothingToFreeze => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
@@ -406,21 +411,11 @@ test fn scm_ws_committing_over_a_base_with_an_absent_source_refuses_naming_the_p
   }
 }
 
-fn scm_ws_names_the_ghost(cause: StagingRefusal) -> Bool {
+fn scm_ws_names_the_ghost(cause: CorpusEntrySourceRefusal) -> Bool {
   match cause {
-    StageSourceUnrecoverable { cause: c } =>
-      match c {
-        CorpusEntrySourceMissing { path: p, source: _ } => (p as String) == "ghost.dag"
-        CorpusEntrySourceIsSemanticNode { path: _, source: _ } => false
-        CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
-      }
-    StageManifestMissingFromStore { staged: _ } => false
-    StageManifestIsAuthoredSource { staged: _ } => false
-    StageManifestIsSemanticNode { staged: _ } => false
-    StageBaseUnresolved { reference: _ } => false
-    StageBaseManifestMissingFromStore { root: _ } => false
-    StageBaseManifestIsAuthoredSource { root: _ } => false
-    StageBaseManifestIsSemanticNode { root: _ } => false
+    CorpusEntrySourceMissing { path: p, source: _ } => (p as String) == "ghost.dag"
+    CorpusEntrySourceIsSemanticNode { path: _, source: _ } => false
+    CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
   }
 }
 
@@ -439,9 +434,45 @@ test fn scm_ws_the_same_commit_is_admitted_once_the_source_is_present() -> Bool 
     Staged { repository: repository, manifest: _, source: _ } =>
       match commit_staged(repository: repository, message: "publishable") {
         StagedCommitMinted { repository: _, reference: _ } => true
+        StagedCommitSourceUnrecoverable { cause: _ } => false
         StagedCommitCandidateRefused { cause: _ } => false
         StagedCommitNothingToFreeze => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+      }
+  }
+}
+
+// THE PARTIAL REPOSITORY STAYS READABLE, AND THIS CLAIM IS WHY THE WALL IS NOT IN `stage_standing`.
+//
+// The publication admission above was first written into `stage_standing`, where the candidate's
+// entries were already in hand. `stage_standing` is not the commit path: `gunbc.scm.status` reads it
+// to report a stage and `gunbc.scm.checkout` reads it to decide whether a checkout would discard
+// staged work. So the first writing made the repository in `scm_ws_partial_base(present: false)`
+// unREADABLE -- status answered "the staged corpus cannot be compared" about a stage that was
+// perfectly comparable, and checkout answered `CheckoutCandidateUnreadable` about the CANDIDATE when
+// the fact it had found concerned a source behind the BASE. External review asked whether embedding
+// the admission in the general standing changed partial-repository read semantics. It did.
+//
+// This claim is the discriminating control for that, and it is deliberately separate from the refusal
+// claim: together they say the wall fires at exactly one boundary. Restore the admission to
+// `stage_standing` and this goes red while the refusal claim stays green -- which is the whole point,
+// since a regression that only strengthens a refusal is invisible to every claim about refusing.
+test fn scm_ws_a_repository_with_an_unrecoverable_source_can_still_be_read() -> Bool {
+  match stage_source_at_path(
+    repository: scm_ws_partial_base(present: false),
+    path: "added.dag" as NonEmptyStr,
+    text: "module added",
+  ) {
+    StageCandidateRefused { cause: _ } => false
+    StageSourceLocatorCollision { identity: _ } => false
+    StageManifestLocatorCollision { identity: _ } => false
+    Staged { repository: repository, manifest: _, source: _ } =>
+      match stage_standing(repository: repository) {
+        StageStandingRefused { cause: _ } => false
+        NoCandidateAndNoBase => false
+        StageMatchesBase { candidate: _ } => false
+        StageWithNoBase { candidate: _ } => false
+        StageDiffersFromBase { candidate: _, committed: _ } => true
       }
   }
 }

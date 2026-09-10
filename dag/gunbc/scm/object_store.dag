@@ -618,49 +618,57 @@ fn resolve_manifest_entry_source(
   }
 }
 
-// THE PUBLICATION ADMISSION: every entry resolves, or the first failure is reported with its path.
+// SOURCE COMPLETENESS: every entry resolves, or the first failure is reported with its path.
 //
-// This is the question a local commit must pass before it may publish. It is deliberately NOT the
-// checkout recovery: it discards the bytes, because whether a snapshot is publishable does not depend
-// on holding its content in memory, and a commit that materialized every file would pay the whole
-// corpus per commit.
-type CorpusSourceAdmission
-  = CorpusSourcesAdmitted
-  | CorpusSourcesRefused { cause: CorpusEntrySourceRefusal }
+// THIS OBSERVES, IT DOES NOT DECIDE. An earlier writing called this "the publication admission" and
+// described it as the question a commit must pass before publishing -- but whether completeness is
+// REQUIRED is policy, and policy about publishing belongs to the operations that publish
+// (`gunbc.scm.write_spine` `commit_staged`, `gunbc.scm.squash_merge`), not to the store. What this
+// module owns is the observable fact: against this store, right now, do these entries' sources all
+// resolve. Naming the fold after one caller's policy is the layer inversion DESIGN section 3 names,
+// and it would have made a second caller wanting the same fact under a different policy look like a
+// new question. Found by external review.
+//
+// It is deliberately NOT the checkout recovery: it discards the bytes, because whether a snapshot is
+// complete does not depend on holding its content in memory, and a commit that materialized every
+// file would pay the whole corpus per commit.
+type CorpusSourceCompleteness
+  = CorpusSourcesComplete
+  | CorpusSourceIncomplete { cause: CorpusEntrySourceRefusal }
 
-type CorpusSourceAdmissionAcc {
+type CorpusSourceCompletenessAcc {
   refusal: CorpusEntrySourceRefusal?
 }
 
-fn admit_corpus_source_step(
+fn corpus_source_completeness_step(
   store: ObjectStore,
-  acc: CorpusSourceAdmissionAcc,
+  acc: CorpusSourceCompletenessAcc,
   entry: CorpusManifestEntry,
-) -> CorpusSourceAdmissionAcc {
+) -> CorpusSourceCompletenessAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
       match resolve_manifest_entry_source(store: store, entry: entry) {
         CorpusEntrySourceResolved(_) => acc
         CorpusEntrySourceUnresolved { cause: c } =>
-          CorpusSourceAdmissionAcc { refusal: Present { value: c } }
+          CorpusSourceCompletenessAcc { refusal: Present { value: c } }
       }
   }
 }
 
-fn admit_corpus_sources(
+fn observe_corpus_source_completeness(
   store: ObjectStore,
   entries: List<CorpusManifestEntry>,
-) -> CorpusSourceAdmission {
+) -> CorpusSourceCompleteness {
   match fold(
     entries,
-    init: CorpusSourceAdmissionAcc { refusal: none },
-    f: fn(acc, e) { admit_corpus_source_step(store: store, acc: acc, entry: e) },
+    init: CorpusSourceCompletenessAcc { refusal: none },
+    f: fn(acc, e) { corpus_source_completeness_step(store: store, acc: acc, entry: e) },
   ) {
-    CorpusSourceAdmissionAcc { refusal: r } =>
+    CorpusSourceCompletenessAcc { refusal: r } =>
       match r {
-        Present { value: cause } => CorpusSourcesRefused { cause: cause }
-        Absent => CorpusSourcesAdmitted
+        Present { value: cause } => CorpusSourceIncomplete { cause: cause }
+        Absent => CorpusSourcesComplete
       }
   }
 }

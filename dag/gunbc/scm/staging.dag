@@ -61,8 +61,6 @@ import gunbc.scm.object_store {
   CorpusManifestIsAuthoredSource,
   CorpusManifestIsSemanticNode,
   find_corpus_manifest_record,
-  CorpusEntrySourceRefusal, CorpusSourceAdmission,
-  CorpusSourcesAdmitted, CorpusSourcesRefused, admit_corpus_sources,
 }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
@@ -99,7 +97,6 @@ type StagingRefusal
   | StageBaseManifestMissingFromStore { root: ObjectId }
   | StageBaseManifestIsAuthoredSource { root: ObjectId }
   | StageBaseManifestIsSemanticNode { root: ObjectId }
-  | StageSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
 
 // ---------------------------------------------------------------------------------------------
 // THE CANDIDATE IS A FULL SNAPSHOT, AND `Absent` MEANS NO EXPLICIT OVERRIDE -- NOT AN EMPTY CORPUS.
@@ -265,9 +262,14 @@ type StageStanding
   | StageDiffersFromBase {
       candidate: RepositoryManifestRoot,
       committed: CorpusManifestObjectRef,
-      basis: AdmittedCommitBasis
+      basis: AdmittedCommitBasis,
+      entries: List<CorpusManifestEntry>
     }
-  | StageWithNoBase { candidate: RepositoryManifestRoot, basis: AdmittedCommitBasis }
+  | StageWithNoBase {
+      candidate: RepositoryManifestRoot,
+      basis: AdmittedCommitBasis,
+      entries: List<CorpusManifestEntry>
+    }
   | NoCandidateAndNoBase
   | StageStandingRefused { cause: StagingRefusal }
 
@@ -276,47 +278,36 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
     CandidateRefused { cause: c } => StageStandingRefused { cause: c }
     CandidateEmptyCorpus => NoCandidateAndNoBase
     CandidateInheritedFromBase { record: record } =>
-      stage_standing_of_admitted_candidate(repository: repository, record: record)
+      stage_standing_against_base(repository: repository, record: record)
     CandidateFromStage { record: record } =>
-      stage_standing_of_admitted_candidate(repository: repository, record: record)
+      stage_standing_against_base(repository: repository, record: record)
   }
 }
 
-// PUBLICATION ADMISSION, AND IT IS PERFORMED WHERE THE ENTRIES ARE ALREADY IN HAND.
+// THE STANDING CARRIES THE ENTRIES; IT DOES NOT JUDGE THEM. THE PUBLICATION QUESTION IS THE COMMIT'S.
 //
-// The format admits a manifest naming a source this store does not hold: partial historical and
-// transport state is representable on purpose. That permission is NOT the same fact as "this
-// repository may publish this snapshot locally", and the write path had been inheriting the first as
-// if it were the second. The authorable counterexample: load a partial repository whose selected
-// manifest names `a -> X` with X absent, `add b -> Y`, and the candidate `{ a -> X, b -> Y }` differs
-// from the base, so `commit_staged` minted, published and reported success -- while checking that
-// commit out refuses with `CorpusEntrySourceMissing { path: a }`. A commit reported as SAVED whose
-// bytes cannot be recovered is the fabricated-plausible-output DESIGN 5 forbids outright. Found by
-// external review.
+// A first repair put the source-completeness check HERE, inside `stage_standing`, because this is where
+// `effective_candidate`'s record is already in hand. That was a cost analysis attached to the wrong
+// operation, and review caught it before it landed: this
+// function is not the commit path. `gunbc.scm.status` reads it to REPORT a stage, and
+// `gunbc.scm.checkout` reads it to decide whether a checkout would discard staged work. Refusing here
+// made a partial repository unREADABLE -- status could no longer say what was staged -- and it MASKED
+// checkout's own located cause, returning `CheckoutCandidateUnreadable` about the candidate when the
+// real fact was an unrecoverable TARGET snapshot, which `CheckoutCorpusUnrecoverable` exists to name.
+// A wall that converts a read into a refusal is not a safer read.
 //
-// IT COSTS NO SECOND LOOKUP. `effective_candidate` already returns the whole `CorpusManifestRecord`
-// and this function was discarding everything but `record.identity`. Admitting here consumes the
-// entries that were already resolved, so the wall is added without reintroducing the second store
-// walk a previous round deleted as a cost defect.
+// The sharper counterexample is review's, and it needs no stage at all: take a selected commit whose
+// manifest is present but one of whose sources is absent, with nothing explicitly staged. The effective
+// candidate is that commit's own manifest, so the truthful standing is `StageMatchesBase` -- there is no
+// pending change, and missing bytes do not make two locators harder to compare. Refusing there made
+// source unavailability an ABSORBING WORKSPACE STATE: the workspace could not even check out a
+// different, complete commit to escape it, because the refusal fired before checkout could ask its own
+// question. That is DESIGN section 5's absorbing fallback wearing a wall's clothing.
 //
-// AND IT REUSES THE ONE SOURCE-RECOVERY AUTHORITY rather than copying checkout's. `admit_corpus_sources`
-// is homed in `object_store` beside the lookup it performs; checkout keeps the RECORD per path, this
-// keeps only the refusal. The located missing and wrong-kind causes travel unchanged -- an empty
-// locator and one occupied by the wrong kind are different repairs.
-//
-// THE REFUSAL IS A STAGING REFUSAL, so `CommittableStage` is constructible only from the arms below
-// this admission. The bad commit is not refused downstream; it has no route (DESIGN 4b: construction
-// over validation).
-fn stage_standing_of_admitted_candidate(
-  repository: RepositoryEnvelope,
-  record: CorpusManifestRecord,
-) -> StageStanding {
-  match admit_corpus_sources(store: repository.store, entries: record.entries) {
-    CorpusSourcesRefused { cause: c } => StageStandingRefused { cause: StageSourceUnrecoverable { cause: c } }
-    CorpusSourcesAdmitted =>
-      stage_standing_against_base(repository: repository, candidate: record.identity)
-  }
-}
+// So this function stays RELATIONAL -- it answers only whether the candidate differs from the base --
+// and the entries travel on the two committable arms to the one operation that publishes. Carrying them
+// saves that operation a repeat manifest read; it does not make its per-entry source check free, and the
+// note in `gunbc.scm.write_spine` states that cost honestly.
 
 // THE CANDIDATE IS RESOLVED ONCE, HERE, AND THE SEALED ROOT IS WHAT TRAVELS.
 //
@@ -328,11 +319,11 @@ fn stage_standing_of_admitted_candidate(
 // second question absent instead of unreachable-but-answered. Found by external review.
 fn stage_standing_against_base(
   repository: RepositoryEnvelope,
-  candidate: CorpusManifestObjectRef,
+  record: CorpusManifestRecord,
 ) -> StageStanding {
   match repository_root_by_resolving(
     repository: repository,
-    root: CorpusManifestTarget { locator: candidate.locator },
+    root: CorpusManifestTarget { locator: record.identity.locator },
   ) {
     RepositoryManifestRootMissing { root: r } =>
       StageStandingRefused { cause: StageManifestMissingFromStore { staged: r } }
@@ -341,19 +332,25 @@ fn stage_standing_against_base(
     RepositoryManifestRootIsSemanticNode { root: r } =>
       StageStandingRefused { cause: StageManifestIsSemanticNode { staged: r } }
     RepositoryManifestRootResolved(root) =>
-      stage_standing_with_root(repository: repository, candidate: candidate, root: root)
+      stage_standing_with_root(repository: repository, record: record, root: root)
   }
 }
 
 fn stage_standing_with_root(
   repository: RepositoryEnvelope,
-  candidate: CorpusManifestObjectRef,
+  record: CorpusManifestRecord,
   root: RepositoryManifestRoot,
 ) -> StageStanding {
+  let candidate = record.identity
+  let entries = record.entries
   match base_snapshot(subject: root) {
     BaseRefused { cause: c } => StageStandingRefused { cause: c }
     NoBaseSelected =>
-      StageWithNoBase { candidate: root, basis: admit_root_basis(subject: root) }
+      StageWithNoBase {
+        candidate: root,
+        basis: admit_root_basis(subject: root),
+        entries: entries,
+      }
     BaseAtCommit { basis: admitted, root: committed } =>
       if committed.locator == candidate.locator {
         StageMatchesBase { candidate: candidate }
@@ -362,6 +359,7 @@ fn stage_standing_with_root(
           candidate: root,
           committed: committed,
           basis: admitted,
+          entries: entries,
         }
       }
   }
