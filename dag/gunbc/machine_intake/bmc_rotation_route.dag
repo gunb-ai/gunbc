@@ -59,12 +59,35 @@ fn rotation_route_for_family(family: BmcFirmwareFamily) -> BmcRotationRoute {
 
 // THE REFUSAL IS PRODUCED BEFORE ANY CONTROLLER WRITE, WHICH IS THE WHOLE POINT OF PUTTING THE
 // ROUTE AHEAD OF THE ATTEMPT. An unavailable route yields AccountManagementUnavailable, which
-// gunbc.machine_intake_bmc_secure already adjudicates into a typed, located BmcSecure refusal whose
-// owner is derived rather than authored -- so a unit whose firmware has no rotation transport
-// FAILS ITS ARRIVAL PHASE and is never certified as secured. It does not silently skip, and it is
-// not filed as a hardware defect: bmc_secure_refusal_owner routes an access state to a PartsHold
-// rather than to the return clock, because a firmware we cannot yet drive is not a defect of the
-// unit the seller shipped.
+// gunbc.machine_intake_bmc_secure adjudicates into a typed, located BmcSecure refusal whose owner
+// is derived rather than authored. It does not silently skip, and it is not filed as a hardware
+// defect: bmc_secure_refusal_owner routes an access state to a PartsHold rather than to the return
+// clock, because a firmware we cannot yet drive is not a defect of the unit the seller shipped.
+//
+// THE SENTENCE ABOVE IS ABOUT THE VALUE THIS FOLD RETURNS, NOT ABOUT ANY UNIT'S ARRIVAL PHASE, and
+// the first draft of this block asserted the latter in the PRESENT TENSE (review 63236). It read
+// "a unit whose firmware has no rotation transport FAILS ITS ARRIVAL PHASE and is never certified
+// as secured". That is not true today and nothing here makes it true: BmcCredentialRotationObservation
+// takes `rotation` as a SUPPLIED field, so no unit's arrival phase consults this table. The claim
+// described the terminal architecture and wore the tense of the current one, which is DESIGN §4b(1)
+// rung inflation -- the executed evidence is this module's witness fold and nothing else, and a
+// sentence about arrival phases cited that evidence for a claim it does not support.
+
+// WHO CONSUMES THIS TABLE, AND BY WHAT ROUTE (DESIGN §3c). Today: nobody in production. The only
+// executing consumer of rotation_route_for_family and rotation_application_for_route is
+// test.claim.machine_intake.machine_intake_bmc_rotation_route_witness, which exercises both arms
+// rather than asserting they exist. That is the honest state and it is stated rather than left to
+// be discovered, because a declaration whose consumption is described in a PR body and absent from
+// the diff is exactly §3c's red.
+//
+// THIS IS THE ADMISSIBLE MIDDLE STATE -- consumed by a NAMED consumer landing in a NAMED later
+// change -- and the trigger is stated here rather than borrowed from the frontier below, which
+// answers a different question. megarac_rotation_route_frontier dissolves the UNAVAILABLE ARM; it
+// says nothing about whether any caller exists, and citing it for consumption would be one
+// dissolution condition doing two jobs.
+data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when the effectful rotation actuator named in gunbc.machine_intake_bmc_secure -- the producer of BmcCredentialRotationObservation, gated on the gunbc.bmc_onboarding split -- derives the rotation field by calling rotation_application_for_route on the family read from the controller, rather than receiving it as a supplied argument; at that point a MegaRAC unit's Arrival phase genuinely fails on this table and the present-tense claim becomes authorable. NOT satisfied by this module typechecking, by the witness exercising both arms, or by any caller that passes a route it constructed itself rather than one this table returned" as NonEmptyStr,
+)
 fn rotation_application_for_route(route: BmcRotationRoute) -> CredentialRotationApplication? {
   match route {
     RotationRouteRedfishAccountService { path_note: _ } => none
