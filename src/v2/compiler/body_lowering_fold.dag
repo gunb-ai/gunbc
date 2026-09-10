@@ -49,7 +49,7 @@ import v2.std.optional {
 }
 import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match }
 import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -505,6 +505,75 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_field_init)
     || (emitted == ^dag_surface_where_refinement_clause)
     || (emitted == ^dag_surface_where_predicate)
+}
+
+// A where-clause on a type-variant is a parse-projection sibling of the base
+// type-expr. namespace_graft treats every `_node_projection` edge as
+// transparent at the module body, so a preserved production shell is unfolded
+// and the clause identity is dissolved. Rehome a present clause onto a Named
+// edge that is not a projection (the emitted surface symbol) so graft keeps
+// the refined Conj and parse_subtree_find still sees the production.
+fn body_lower_type_variant_suffix_pair_optional(captured: Node) -> Optional<SugarSequencePair> {
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => optional_absent()
+    Present { value: pair } => sugar_sequence_pair_optional(node: pair.right)
+  }
+}
+
+fn body_lower_type_variant_children_with_where(
+  base: Node,
+  where_clause: Node,
+  fields: Node
+) -> List<Edge> {
+  let with_clause = [
+    Edge { label: Positional, target: base },
+    Edge {
+      label: Named { name: ^dag_surface_where_refinement_clause },
+      target: where_clause
+    }
+  ]
+  if is_empty_conj_root(n: fields) {
+    with_clause
+  } else {
+    list_snoc_item(
+      xs: with_clause,
+      item: Edge { label: Positional, target: fields }
+    )
+  }
+}
+
+fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => outcome_accepted(value: shell)
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => outcome_accepted(value: shell)
+        Present { value: pair } =>
+          match body_lower_type_variant_suffix_pair_optional(captured: captured) {
+            Absent => outcome_accepted(value: shell)
+            Present { value: suffixes } =>
+              match parse_production_emitted_identity_optional(node: suffixes.left) {
+                Absent => outcome_accepted(value: shell)
+                Present { value: suffix_id } =>
+                  if suffix_id == ^dag_surface_where_refinement_clause {
+                    outcome_accepted(
+                      value: node_with_occurrence_id(
+                        kind: TypeNode { connective: Conj },
+                        children: body_lower_type_variant_children_with_where(
+                          base: pair.left,
+                          where_clause: suffixes.left,
+                          fields: suffixes.right
+                        ),
+                        occurrence_id: shell.occurrence_id
+                      )
+                    )
+                  } else {
+                    outcome_accepted(value: shell)
+                  }
+              }
+          }
+      }
+  }
 }
 
 fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
@@ -4324,6 +4393,8 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<Node> {
   if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
+  } else if emitted == ^dag_surface_type_variant {
+    body_lower_type_variant(shell: shell)
   } else if body_lower_is_structure_preserved_emitted(emitted: emitted) {
     outcome_accepted(value: shell)
   } else if emitted == ^dag_surface_fn_body && fn_body_pass_through {

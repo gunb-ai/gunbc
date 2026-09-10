@@ -80,7 +80,13 @@ test fn cause_a_where_refinement_clause_parses_holds() -> Bool {
 test fn cause_a_where_clause_parse_tree_carries_holds() -> Bool {
   match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_parse) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } => d1_tree_carries_where_clause(root: tree)
+    Accepted { value: brand_tree, diagnostics: _ } =>
+      match d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_carry_parse_bare) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: bare_tree, diagnostics: _ } =>
+          d1_tree_carries_where_clause(root: brand_tree)
+            && d1_tree_carries_where_clause(root: bare_tree)
+      }
   }
 }
 
@@ -95,11 +101,20 @@ test fn cause_a_where_reproducer_normalizes_holds() -> Bool {
 test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
   match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_norm) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match normalize(parse_tree: tree) {
+    Accepted { value: brand_tree, diagnostics: _ } =>
+      match d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_carry_norm_bare) {
         Rejected { diagnostics: _ } => false
-        Accepted { value: normalized, diagnostics: _ } =>
-          d1_tree_carries_where_clause(root: normalized.root)
+        Accepted { value: bare_tree, diagnostics: _ } =>
+          match normalize(parse_tree: brand_tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: brand_normalized, diagnostics: _ } =>
+              match normalize(parse_tree: bare_tree) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: bare_normalized, diagnostics: _ } =>
+                  d1_tree_carries_where_clause(root: brand_normalized.root)
+                    && d1_tree_carries_where_clause(root: bare_normalized.root)
+              }
+          }
       }
   }
 }
