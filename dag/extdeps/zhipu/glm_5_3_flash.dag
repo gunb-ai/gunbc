@@ -139,6 +139,54 @@ data glm_5_3_flash_vllm_tool_call_parser: NonEmptyStr = "glm47" as NonEmptyStr
 // what a completion looks like therefore asks the SERVING UNIT
 // (gunbc.harness.harness_reasoning_wire harness_unit_server_parses_reasoning), never this row.
 data glm_5_3_flash_vllm_reasoning_parser: NonEmptyStr = "glm45" as NonEmptyStr
+
+// ── WHAT THE RECIPE REQUIRES OF THE RUNTIME ITSELF ────────────────────────────────────────────
+//
+// THE ROWS ABOVE SAY WHICH FLAGS TO PASS; THESE SAY WHAT MUST BE TRUE OF THE ENGINE BEFORE ANY FLAG
+// MATTERS, and the distinction is not academic. On 2026-09-10 this fleet launched the native FP8
+// checkpoint on an image that registers Glm5NextForConditionalGeneration and supports fp8_per_block,
+// and it failed at weight load with KeyError 'layers.0.self_attn.k_proj.weight' -- because
+// architecture registration and quantisation support are NECESSARY and NOT SUFFICIENT. The third
+// requirement is that the engine's weight loader knows this checkpoint's tensor layout, and upstream
+// states it as a version floor rather than leaving it to be discovered by a failed launch.
+//
+// THE SAME RECIPE THAT PRESCRIBES THE FLAGS ABOVE CARRIES THESE, and they were not read. The half of
+// the page this module already cites was modelled; the half that would have refused that launch was
+// not, so the citation was real and the coverage was partial -- which reads exactly like completeness
+// until the missing field is the one that decides.
+//
+// SUPPORT IS NOT IN MAINLINE. `nightly_required` is upstream's own field and it is true: the
+// integration arrives with vllm-project/vllm#53906, and until it lands in the standard image the
+// recipe directs deployments to a dedicated pre-release tag. A repository that pins "the latest
+// stable vLLM" therefore gets an engine that CANNOT serve this checkpoint, which is the case where a
+// version floor is worth more than a version pin.
+data glm_5_3_flash_vllm_min_version: NonEmptyStr = "0.29.0" as NonEmptyStr
+data glm_5_3_flash_vllm_nightly_required: Bool = true
+data glm_5_3_flash_vllm_prerelease_image_nvidia: NonEmptyStr = "vllm/vllm-openai:glm53-flash" as NonEmptyStr
+data glm_5_3_flash_vllm_prerelease_image_amd: NonEmptyStr = "vllm/vllm-openai-rocm:glm53-flash" as NonEmptyStr
+data glm_5_3_flash_vllm_integration_pull_request: NonEmptyStr = "https://github.com/vllm-project/vllm/pull/53906" as NonEmptyStr
+
+// THE ENGINE READY TIMEOUT IS UPSTREAM'S BASE ENVIRONMENT FOR THIS MODEL, not a tuning knob, and it
+// is carried because its absence is independently fatal on a cold multi-node start. torch's
+// distributed rendezvous defaults to 601 seconds; a four-rank group whose members are still
+// materialising exceeds that and dies with "Timed out waiting for clients", which is a different
+// failure from anything about the model and reports nothing about it.
+data glm_5_3_flash_vllm_engine_ready_timeout_seconds: Nat = 3600
+
+// FLASHINFER'S FLOOR IS A SEPARATE DEPENDENCY WITH ITS OWN VERSION, required by the NoPE sparse MLA
+// path this model's full-attention layers use.
+data glm_5_3_flash_flashinfer_min_version: NonEmptyStr = "0.6.17" as NonEmptyStr
+
+// THE ENVIRONMENT THE REFERENCE LAUNCHES CARRY. Recorded as upstream's prescription; whether a given
+// deployment sets them is a fact about that deployment.
+data glm_5_3_flash_vllm_ssm_conv_state_layout: NonEmptyStr = "DS" as NonEmptyStr
+data glm_5_3_flash_vllm_kv_cache_layout: NonEmptyStr = "HND" as NonEmptyStr
+
+// THE REFERENCE TOPOLOGY, which is the shape upstream measured rather than one this repository chose:
+// tensor parallelism of four with MTP speculation on a single GB200 tray. `multi_node_tp` is listed
+// among the compatible strategies, so spreading those four ranks across hosts is a supported shape
+// rather than an improvisation.
+data glm_5_3_flash_vllm_reference_tensor_parallel_size: Nat = 4
 // THE ATTENTION ARCHITECTURE, CORRECTED AND DECOMPOSED. This stood as
 // `glm_5_3_flash_attention_is_multi_head_latent: Bool = false`, which was false in both senses: the
 // value was wrong, and a Bool could not have carried the truth even set the other way.

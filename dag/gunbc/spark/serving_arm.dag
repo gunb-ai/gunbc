@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
-import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest, glm_manifest_gibibytes }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_min_version, glm_5_3_flash_vllm_prerelease_image_nvidia }
 import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627 }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
@@ -98,6 +98,7 @@ type ServingCheckpointRow {
   placement: SnapshotPlacement
   weight_gib: Nat
   quantization_wire: NonEmptyStr
+  requires_upstream_glm53_integration: Bool
   provenance: NonEmptyStr
 }
 
@@ -108,6 +109,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/glm53-flash-exl3-2.05" as NonEmptyStr },
   weight_gib: 80,
   quantization_wire: "exl3" as NonEmptyStr,
+  requires_upstream_glm53_integration: false,
   provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards" as NonEmptyStr,
 }
 
@@ -118,6 +120,7 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   weight_gib: glm_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
   quantization_wire: "fp8" as NonEmptyStr,
+  requires_upstream_glm53_integration: true,
   provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence. Still NOT measured on this fleet -- nothing here has fetched it" as NonEmptyStr,
 }
 
@@ -152,12 +155,35 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // evidence that the image contains that revision's bytes: nothing here has compared them, and
 // extdeps.vllm.runtime_defaults keeps that question in its own binding type rather than folding it
 // into the value.
+// -- WHETHER AN ENGINE CAN LOAD THIS CHECKPOINT'S TENSOR LAYOUT --------------------------------
+//
+// A THIRD WALL, AND THE ONE THIS FLEET LEARNED BY LOSING A SERVICE. `registers_glm5_next` answers
+// whether the architecture is in the registry and the quantisation roster answers whether fp8 is
+// implemented; BOTH were true of the image that failed on 2026-09-10, which loaded the native FP8
+// checkpoint far enough to form a four-rank NCCL group and then died with
+// KeyError 'layers.0.self_attn.k_proj.weight'. The loader expected a plain k_proj that this
+// architecture does not have -- it uses fused_qkvbfg_a_proj and conv1d projections, with 1509 modules
+// held out of quantisation -- so the missing fact was the WEIGHT MAPPING, which neither existing wall
+// asks about.
+//
+// UPSTREAM STATES IT AS A VERSION FLOOR, and extdeps.zhipu.glm_5_3_flash now carries it:
+// min_vllm_version 0.29.0 with nightly_required true, the integration arriving in
+// vllm-project/vllm#53906. This field is the per-image JOIN to that requirement, and it is an
+// OBSERVATION rather than a version comparison because a version string is not orderable here --
+// the failing image reports "0.1.dev20051+g487ecf187", which no comparison against "0.29.0" reads
+// correctly, and inventing one would be a parser standing where a measurement belongs.
+type NativeGlm53FlashSupport
+  = NativeSupportObserved { instrument: NonEmptyStr }
+  | NativeSupportRefutedByExecution { evidence: NonEmptyStr }
+  | NativeSupportUnestablished { obligation: NonEmptyStr }
+
 type ServingRuntimeRow {
   runtime: ServingRuntime
   image_reference: NonEmptyStr
   hub_cli_path: NonEmptyStr
   vllm_version: NonEmptyStr
   registers_glm5_next: Bool
+  native_glm53_flash_support: NativeGlm53FlashSupport
   reasoning_projection: ReasoningResponseProjection
   provenance: NonEmptyStr
   claimed_defaults_revision: ModelledVllmDefaultsRevision
@@ -180,6 +206,9 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: "0.1.dev20051+g487ecf187" as NonEmptyStr,
   registers_glm5_next: true,
+  native_glm53_flash_support: NativeSupportRefutedByExecution {
+    evidence: "launched against zai-org/GLM-5.3-Flash at the pinned revision on four ranks, 2026-09-10: the group formed (nccl 2.30.7, tp:0 and ep:0 communicators up) and the load failed with KeyError 'layers.0.self_attn.k_proj.weight'. This image reports vLLM 0.1.dev20051+g487ecf187, which predates the integration extdeps.zhipu.glm_5_3_flash names at min_vllm_version 0.29.0. It DOES serve turboderp/GLM-5.3-Flash-exl3, whose repack has a different tensor layout -- so the refutation is of this checkpoint on this image, not of the image" as NonEmptyStr,
+  },
   reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
   provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`" as NonEmptyStr,
   claimed_defaults_revision: Vllm487ecf187,
@@ -191,6 +220,9 @@ data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
   vllm_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr,
   registers_glm5_next: false,
+  native_glm53_flash_support: NativeSupportRefutedByExecution {
+    evidence: "the registry probe on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, so this image cannot reach a weight loader for this architecture at all" as NonEmptyStr,
+  },
   reasoning_projection: InlineReasoning { end_token: "</think>" as NonEmptyStr },
   provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present" as NonEmptyStr,
   claimed_defaults_revision: Vllm1967a5627,
@@ -234,6 +266,26 @@ type ServingArmVerdict
 // the native FP8 arm has never run, so admission should require that observation rather than infer it
 // from a bound. NEXT-RUNG TRIGGER: a runtime-feasibility observation on the checkpoint x runtime x
 // topology arm, at which point the positive verdict requires it and the bound reverts to refusal only.
+fn runtime_carries_native_glm53_support(r: ServingRuntimeRow) -> Bool {
+  match r.native_glm53_flash_support {
+    NativeSupportObserved { instrument: _ } => true
+    NativeSupportRefutedByExecution { evidence: _ } => false
+    NativeSupportUnestablished { obligation: _ } => false
+  }
+}
+
+// AN UNESTABLISHED SUPPORT FACT REFUSES EXACTLY AS A REFUTED ONE DOES, and the cause says which it
+// was. The asymmetry that matters is between "we watched it fail" and "nobody has looked": both are
+// grounds to refuse a launch that would displace a running service, and only the first is evidence
+// about the image.
+fn native_glm53_support_cause(s: NativeGlm53FlashSupport) -> NonEmptyStr {
+  match s {
+    NativeSupportObserved { instrument: i } => i
+    NativeSupportRefutedByExecution { evidence: e } => e
+    NativeSupportUnestablished { obligation: o } => o
+  }
+}
+
 data serving_arm_headroom_numerator: Nat = 5
 data serving_arm_headroom_denominator: Nat = 4
 
@@ -254,6 +306,16 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
               "the runtime does not register Glm5NextForConditionalGeneration (vLLM ",
               rrow.vllm_version as String,
               "); no amount of weight transfer makes this tuple start",
+            ], "") as NonEmptyStr }
+          } else if crow.requires_upstream_glm53_integration && !runtime_carries_native_glm53_support(r: rrow) {
+            ServingArmRefused { cause: join([
+              "this checkpoint needs the upstream GLM-5.3-Flash integration and this runtime does not carry it: ",
+              native_glm53_support_cause(s: rrow.native_glm53_flash_support) as String,
+              " -- extdeps.zhipu.glm_5_3_flash names the requirement (min_vllm_version ",
+              glm_5_3_flash_vllm_min_version as String,
+              ", nightly required, pre-release image ",
+              glm_5_3_flash_vllm_prerelease_image_nvidia as String,
+              "). Registering the architecture and implementing fp8 are NOT sufficient: the weight loader must know this checkpoint's tensor layout",
             ], "") as NonEmptyStr }
           } else if !serving_arm_fits(c: crow, t: topology) {
             ServingArmRefused { cause: join([

@@ -130,6 +130,10 @@ data glm_native_master_port: Nat = 29501
 data glm_native_weights_host_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
 data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
 
+// A LOCAL CHECKOUT IS MOUNTED AS ITSELF, at the path the canary already uses, so a line rendered for
+// such a checkpoint matches the shape that has been serving rather than inventing a second convention.
+data glm_local_checkout_container_dir: NonEmptyStr = "/model" as NonEmptyStr
+
 // THE MASTER PORT IS THE IMAGE'S OWN DEFAULT, SPELLED ANYWAY. Read from this revision's ParallelConfig
 // on 2026-09-10: `master_port: int = 29501`. Authoring it converts a value the image would have picked
 // into one this model chose and can be held to, which is the same argument the canary's batched-token
@@ -166,16 +170,45 @@ fn render_utilization_fraction(basis_points: Nat) -> String {
   join(["0.", to_string(basis_points / 100)], "")
 }
 
-// THE MODEL PATH IS THE HUB CACHE LAYOUT, DERIVED FROM THE CHECKPOINT ROW. The directory name is the
-// Hub's own convention and is consumed from extdeps.huggingface.hub rather than reconstructed, for the
-// reason the pair route already records: a hand-spelled `models--org--name` is a nickname for a fact
-// upstream owns.
-fn arm_model_path_in_container(row: ServingCheckpointRow) -> NonEmptyStr {
-  join([
-    glm_native_weights_container_dir as String, "/",
-    hub_repo_cache_directory_name(repo: row.repo) as String,
-    "/snapshots/", row.revision as String,
-  ], "") as NonEmptyStr
+// THE MOUNT AND THE MODEL PATH BOTH COME FROM THE PLACEMENT, AND AN EARLIER REVISION READ ONLY ONE
+// ARM OF IT. This function built the Hub-cache path unconditionally -- correct for the native
+// checkpoint, and silently wrong for any checkpoint placed in a local directory, which is what the
+// EXL3 arm actually uses (`/home/briansrls/models/glm53-flash-exl3-2.05`). The tell was visible in the
+// import list: `SnapshotPlacement`, `HubCachePlacement` and `LocalDirectoryPlacement` were imported
+// and then never matched on, which is what importing a vocabulary and hardcoding one of its cases
+// looks like.
+//
+// IT WOULD NOT HAVE FAILED LOUDLY. The rendered line would have named a path that does not exist on
+// the host, and the engine would have refused with a file-not-found about a directory nobody chose --
+// a located error pointing at the wrong place, which costs more to chase than a refusal here.
+//
+// gunbc.spark.model_snapshot_acquisition states the governing rule for exactly this: one value decides
+// the install path, the download, the verification, the mount and the launch path, or they disagree.
+// The two arms differ in the container directory as well as the path, because a Hub cache is mounted
+// whole and a local checkout is mounted as itself.
+type ArmMountPlan sole_constructor {
+  host_dir: NonEmptyStr
+  container_dir: NonEmptyStr
+  model_path: NonEmptyStr
+}
+
+fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
+  match row.placement {
+    HubCachePlacement { cache_root: root } => ArmMountPlan {
+      host_dir: root,
+      container_dir: glm_native_weights_container_dir,
+      model_path: join([
+        glm_native_weights_container_dir as String, "/",
+        hub_repo_cache_directory_name(repo: row.repo) as String,
+        "/snapshots/", row.revision as String,
+      ], "") as NonEmptyStr,
+    }
+    LocalDirectoryPlacement { host_path: hp } => ArmMountPlan {
+      host_dir: hp,
+      container_dir: glm_local_checkout_container_dir,
+      model_path: glm_local_checkout_container_dir,
+    }
+  }
 }
 
 // ── THE CONTAINER LINE, ONE PER RANK ──────────────────────────────────────────────────────────
@@ -204,9 +237,9 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "--gpus", "all",
     "--network", "host",
     "--ipc", "host",
-    "-v", join([glm_native_weights_host_dir as String, ":", glm_native_weights_container_dir as String, ":ro"], ""),
+    "-v", join([arm_mount_plan(row: crow).host_dir as String, ":", arm_mount_plan(row: crow).container_dir as String, ":ro"], ""),
     rrow.image_reference as String,
-    arm_model_path_in_container(row: crow) as String,
+    arm_mount_plan(row: crow).model_path as String,
     "--served-model-name", glm_native_served_model_alias as String,
     "--quantization", crow.quantization_wire as String,
     "--tensor-parallel-size", to_string(ranks),
