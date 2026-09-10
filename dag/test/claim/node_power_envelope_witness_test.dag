@@ -1,13 +1,12 @@
 module test.claim.node_power_envelope_witness
 
-import std.types { Bool, Int, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
   ByteSize,
   bandwidth_count,
   byte_size,
   byte_size_count,
-  megatransfers_per_second,
   megatransfers_per_second_count,
   milliwatt,
   watt,
@@ -26,15 +25,14 @@ import extdeps.memory.types {
 }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
 import extdeps.cpu.ampere_altra_memory_controller {
-  RankDependentDerateTableAbsentFromHeldIssue,
-  altra_held_datasheet_2dpc_rank_derate,
   altra_memory_max_data_rate,
 }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { OneDimmPerChannel, TwoDimmsPerChannel }
 import extdeps.ocp.mt_jade.platform {
-  SameChannelOneAndTwoRankNotSupported,
+  SameChannelUnlikeRanksNotSupported,
+  TwoSlotRanksUniform,
   mt_jade_dimm_speed_at_two_dpc,
-  mt_jade_same_channel_one_and_two_rank_mix,
+  mt_jade_two_slot_rank_standing,
 }
 import gunbc.memory_provisioning {
   FullChannel,
@@ -50,6 +48,11 @@ import product.node_power_envelope {
   MemoryElectricalContext,
   altra_two_dpc_ceilings,
   altra_two_dpc_ceilings_evidence,
+  channel_effective_data_rate,
+  DataRateAdmitted,
+  TwoDpcUnlikeRanksOnOneChannelRefused,
+  MemoryBandwidthDerived,
+  MemoryBandwidthRefusedUnlikeRanksOnChannel,
   NodeElectricalInputs,
   PsuAdequate,
   PsuUndersized,
@@ -132,13 +135,13 @@ data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
 // module's context adds only the platform's rated transfer rate.
 data altrad8ud_context: MemoryElectricalContext = MemoryElectricalContext {
   geometry: asrock_altrad8ud_1l2t_geometry,
-  max_data_rate: megatransfers_per_second(count: 3200),
+  max_data_rate: altra_memory_max_data_rate,
   two_dpc_ceilings: altra_two_dpc_ceilings,
 }
 
 data mt_collins_context: MemoryElectricalContext = MemoryElectricalContext {
   geometry: mt_collins_per_socket_geometry,
-  max_data_rate: megatransfers_per_second(count: 3200),
+  max_data_rate: altra_memory_max_data_rate,
   two_dpc_ceilings: altra_two_dpc_ceilings,
 }
 
@@ -170,6 +173,13 @@ data eight_module_population: PopulationOption = PopulationOption {
 
 // Reads the wall figure out of the typed reading. A refusal answers a negative,
 // which no claim below can mistake for a wattage.
+fn bandwidth_count_or_refused(context: MemoryElectricalContext, population: PopulationOption) -> Int {
+  match memory_bandwidth(context: context, population: population) {
+    MemoryBandwidthDerived { bandwidth: b } => bandwidth_count(b: b)
+    MemoryBandwidthRefusedUnlikeRanksOnChannel { slot0_ranks: _, slot1_ranks: _ } => 0 - 1
+  }
+}
+
 fn node_wall(inputs: NodeElectricalInputs) -> Int {
   match node_draw(inputs: inputs) {
     NodeDrawDerived { dc_load: _, wall_draw: w } => watt_count(w: w)
@@ -222,11 +232,34 @@ test fn the_two_dpc_ceilings_are_cited_empty_because_ampere_publishes_no_rank_de
     }
     && megatransfers_per_second_count(r: altra_memory_max_data_rate) == 3200
     && megatransfers_per_second_count(r: mt_jade_dimm_speed_at_two_dpc) == 3200
-    && match altra_held_datasheet_2dpc_rank_derate {
-      RankDependentDerateTableAbsentFromHeldIssue { section: s } => (s as String) == "2.10"
+    && match mt_jade_two_slot_rank_standing(slot0_ranks: 2, slot1_ranks: 2) {
+      TwoSlotRanksUniform { rank_count: r } => r == 2
+      SameChannelUnlikeRanksNotSupported { slot0_ranks: _, slot1_ranks: _ } => false
     }
-    && match mt_jade_same_channel_one_and_two_rank_mix {
-      SameChannelOneAndTwoRankNotSupported => true
+}
+
+test fn two_dpc_unlike_ranks_on_one_channel_are_refused() -> Bool {
+  match mt_jade_two_slot_rank_standing(slot0_ranks: 1, slot1_ranks: 2) {
+    SameChannelUnlikeRanksNotSupported { slot0_ranks: a, slot1_ranks: b } => a == 1 && b == 2
+    TwoSlotRanksUniform { rank_count: _ } => false
+  }
+    && match channel_effective_data_rate(
+      context: mt_collins_context,
+      dimms_per_channel: 2,
+      slot0_ranks: 1,
+      slot1_ranks: 2,
+    ) {
+      TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: a, slot1_ranks: b } => a == 1 && b == 2
+      DataRateAdmitted { rate: _ } => false
+    }
+    && match channel_effective_data_rate(
+      context: mt_collins_context,
+      dimms_per_channel: 2,
+      slot0_ranks: 2,
+      slot1_ranks: 2,
+    ) {
+      DataRateAdmitted { rate: r } => megatransfers_per_second_count(r: r) == 3200
+      TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: _, slot1_ranks: _ } => false
     }
 }
 
@@ -280,16 +313,13 @@ test fn an_undersized_supply_reports_its_shortfall() -> Bool {
 }
 
 test fn memory_bandwidth_is_derived_from_the_populated_topology() -> Bool {
-  bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: eight_module_population)) == 204800000000
-    && bandwidth_count(b: memory_bandwidth(context: mt_collins_context, population: sixteen_module_population)) == 204800000000
+  bandwidth_count_or_refused(context: altrad8ud_context, population: eight_module_population) == 204800000000
+    && bandwidth_count_or_refused(context: mt_collins_context, population: sixteen_module_population) == 204800000000
 }
 
-// A single-rank module cannot interleave, so it does not reach the bus's rated
-// throughput even at its rated clock — the axis that made rank a real tradeoff
-// rather than a preference.
 test fn a_single_rank_population_does_not_reach_the_rated_bus() -> Bool {
-  bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: sixteen_module_1rx4_population))
-    < bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: eight_module_population))
+  bandwidth_count_or_refused(context: altrad8ud_context, population: sixteen_module_1rx4_population)
+    < bandwidth_count_or_refused(context: altrad8ud_context, population: eight_module_population)
 }
 
 test fn realizability_rejects_an_impossible_sku() -> Bool {

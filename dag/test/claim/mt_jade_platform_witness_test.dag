@@ -55,8 +55,9 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_cpld_timer_clock,
   mt_jade_motherboard_mechanical,
   mt_jade_dimm_speed_at_two_dpc,
-  mt_jade_same_channel_one_and_two_rank_mix,
-  SameChannelOneAndTwoRankNotSupported,
+  mt_jade_two_slot_rank_standing,
+  TwoSlotRanksUniform,
+  SameChannelUnlikeRanksNotSupported,
   mt_jade_platform_subject,
   mt_jade_bmc_chip_catalog,
   mt_jade_reference_parts,
@@ -210,8 +211,13 @@ test fn w_the_motherboard_outline_and_socket_facts_are_carried() -> Bool {
     && mt_jade_motherboard_mechanical.processor_socket_count == 2
     && mt_jade_motherboard_mechanical.ddr4_dimms_total == 32
     && megatransfers_per_second_count(r: mt_jade_dimm_speed_at_two_dpc) == 3200
-    && match mt_jade_same_channel_one_and_two_rank_mix {
-      SameChannelOneAndTwoRankNotSupported => true
+    && match mt_jade_two_slot_rank_standing(slot0_ranks: 2, slot1_ranks: 2) {
+      TwoSlotRanksUniform { rank_count: r } => r == 2
+      SameChannelUnlikeRanksNotSupported { slot0_ranks: _, slot1_ranks: _ } => false
+    }
+    && match mt_jade_two_slot_rank_standing(slot0_ranks: 1, slot1_ranks: 2) {
+      SameChannelUnlikeRanksNotSupported { slot0_ranks: a, slot1_ranks: b } => a == 1 && b == 2
+      TwoSlotRanksUniform { rank_count: _ } => false
     }
 }
 
