@@ -28,6 +28,8 @@ data an_extractor_lifts_a_figure_out_of_its_scope: RecurringFailureMode = Recurr
 
     "AND THE HAND READ IS NOT THE ANSWER EITHER, only the cheaper wrong-avoider. A human recovers the scope because a human parses the caveat - ONCE, unrepeatably, with no receipt, and the next author reading the same field gets no help from the fact that someone already did it correctly. That asymmetry is the whole argument for the trigger: the repair must make the scope inseparable from the figure in the CARRIER, not add diligence to the reader. ",
 
+    "WHERE THE TRIGGER STANDS TODAY, recorded because this row's own first citation went stale within hours of being written and the wall caught it. The repair first attempted at the CLAIM grain - a typed cause distinguishing read-but-unholdable from no-surface - was deleted when #10888 landed the vocabulary one level down, and that PR is the closer approach to this row's trigger: PublishedDensityFigure carries medium, wording, citation and verification BESIDE the quantity, so a figure lifted out of an obligation arrives with the subject and scope it was stated under rather than as a bare numeral. QuantityUnreadable is its refusal arm for a publication that forms no holdable quantity. The trigger is not yet fully fired: nothing prevents an AUTHOR from typing a figure under the wrong subject, so the class remains mitigatable and the ceiling stands where it was. ",
+
     "RECOGNITION RULE: A SCRIPTED CONVERSION OVER AUTHORED PROSE WHOSE SOURCE ROWS CARRY SCOPE QUALIFIERS THE SCRIPT DOES NOT PARSE. ",
 
     "DISTINGUISHED FROM ITS SIBLING a_positive_control_certifies_the_defect_it_exists_to_catch: that class is a CHECK that agrees with a wrong subject; this class is an EXTRACTOR that manufactures a subject the source does not support. The sibling's defect is agreement, this one's is fabrication. ",
@@ -38,7 +40,7 @@ data an_extractor_lifts_a_figure_out_of_its_scope: RecurringFailureMode = Recurr
   ],
 
   evidence: [
-    DeclarationRef { module_path: "extdeps.colo.types", decl_name: "DensityUnreadCause", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.colo.types", decl_name: "PublishedDensityFigure", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.colo.hivelocity", decl_name: "hivelocity_jfk1_density", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.colo.summit", decl_name: "summit_secaucus_density", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.colo.lumen", decl_name: "lumen_cabinet_density", field: WholeDeclaration },
