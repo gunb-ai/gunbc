@@ -15,7 +15,7 @@
 //! The test calls the loader's own public entry point rather than re-implementing its body, so a
 //! defect in the loader reddens this rather than being masked by a second copy of the logic.
 
-use v1_compiler::cli_run::base_parse_environment::evaluate_environment_in;
+use v1_compiler::cli_run::namespace_wave_admission::evaluate_environment_in;
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
 

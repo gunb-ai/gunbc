@@ -184,8 +184,6 @@ pub(crate) use test_migration::*;
 // registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
-#[path = "base_parse_environment.rs"]
-pub mod base_parse_environment;
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "namespace_wave_admission.rs"]
