@@ -197,10 +197,7 @@ fn emit_produced_module_append(
     o: emit_produced_decl(decl: decl, target: target),
     f: fn(medium) {
       Accepted {
-        value: list_append(
-          left: list_append(left: partial, right: medium.carried),
-          right: emit_module_decl_separator
-        ),
+        value: concat(partial, medium.carried, emit_module_decl_separator),
         diagnostics: None
       }
     }
@@ -220,11 +217,22 @@ fn emit_produced_module_step(
   )
 }
 
+// THE JOIN IS `concat` OVER A "" SEED, NOT `list_append` OVER `Empty`, and the difference is not
+// cosmetic. Built by list_append from the FreeMonoid variant, the fold's result carries the
+// CONS-LIST SPELLING of a string rather than the native one: `==` and `concat` still behave, which
+// is why every golden over this fold stayed green for as long as goldens were all that read it --
+// but a builtin that requires a native string REFUSES it. Measured 2026-09-10 as `split expects a
+// string, got Variant` from v2.test.self_host.stage0_production_target's two contains-controls,
+// the first consumers to read this fold's output through `split`. Nothing on the production door
+// reached this fold until the door started routing every nonempty population through it, so the
+// defect was latent rather than new, and the equality-only readers could never have found it.
+// One representation for one concept (DESIGN section 3): a String is a String, not a FreeMonoid
+// that happens to compare equal to one.
 fn emit_produced_module(decls: List<Node>, target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: fold_list(
       xs: decls,
-      empty: Accepted { value: Empty, diagnostics: None },
+      empty: Accepted { value: "", diagnostics: None },
       cons: fn(acc, decl) { emit_produced_module_step(acc: acc, decl: decl, target: target) }
     ),
     f: fn(joined) { target_source_medium(text: joined, target: target) }
