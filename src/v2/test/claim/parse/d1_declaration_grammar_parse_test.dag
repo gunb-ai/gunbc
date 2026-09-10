@@ -10,14 +10,13 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound
 }
-import v2.std.algebra { list_snoc_item }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Edge, Named, Node, Positional }
 import v2.std.optional { Absent, Optional, Present }
-import v2.std.text { string_join }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -100,12 +99,9 @@ fn d1_edge_label_text(e: Edge) -> String {
 }
 
 fn d1_child_labels(n: Node) -> String {
-  string_join(
-    fields: fold(n.children, init: [], f: fn(acc, e) {
-      list_snoc_item(xs: acc, item: d1_edge_label_text(e: e))
-    }),
-    separator: ", "
-  )
+  fold(n.children, init: "", f: fn(acc, e) {
+    join([acc, "|", d1_edge_label_text(e: e)], "")
+  })
 }
 
 fn d1_find_flag(root: Node) -> String {
@@ -118,20 +114,24 @@ fn d1_find_flag(root: Node) -> String {
 fn d1_locus_from_root(root: Node) -> String {
   match d1_find_where_host_conj(root: root) {
     Present { value: host } =>
-      string_join(
-        fields: ["variant_conj: [", d1_child_labels(n: host), "] ", d1_find_flag(root: root)],
-        separator: ""
-      )
+      join(["variant_conj: [", d1_child_labels(n: host), "] ", d1_find_flag(root: root)], "")
     Absent =>
-      string_join(
-        fields: [
+      join(
+        [
           "host-conj-absent: root children [",
           d1_child_labels(n: root),
           "] ",
           d1_find_flag(root: root)
         ],
-        separator: ""
+        ""
       )
+  }
+}
+
+fn d1_locus_exit(root: Node) -> ProcessExit {
+  match d1_tree_carries_where_clause(root: root) {
+    true => ExitSuccess
+    false => exit_failure(reason: d1_locus_from_root(root: root))
   }
 }
 
@@ -167,22 +167,18 @@ test fn cause_a_where_reproducer_normalizes_holds() -> Bool {
   d1_normalize_accepted(text: d1_where_reproducer, file: ^d1_where_norm)
 }
 
-fn cause_a_where_clause_survives_normalize_locus() -> String {
+fn cause_a_where_clause_survives_normalize_locus() -> ProcessExit {
   match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_norm) {
     Rejected { diagnostics: r } =>
-      string_join(
-        fields: ["parse-refused: ", symbol_lexeme(sym: r.head.reason)],
-        separator: ""
-      )
+      exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
     Accepted { value: brand_tree, diagnostics: _ } =>
       match normalize(parse_tree: brand_tree) {
         Rejected { diagnostics: r } =>
-          string_join(
-            fields: ["normalize-refused: ", symbol_lexeme(sym: r.head.reason)],
-            separator: ""
+          exit_failure(
+            reason: join(["normalize-refused: ", symbol_lexeme(sym: r.head.reason)], "")
           )
         Accepted { value: brand_normalized, diagnostics: _ } =>
-          d1_locus_from_root(root: brand_normalized.root)
+          d1_locus_exit(root: brand_normalized.root)
       }
   }
 }
