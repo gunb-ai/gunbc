@@ -4,6 +4,7 @@ import v2.std.text { String }
 import v2.std.logic { Bool }
 import v2.std.algebra { fold_list }
 import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import v2.std.grammar { ParseTree, node_atom_identity_optional }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
@@ -19,7 +20,11 @@ import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
 // namespace_graft_body_dissolved_refused. Declaration productions are graft-body units; the
 // source controls below ACCEPT (type-only and type+fn). Total dissolution — a top_level_item
 // wrapper with no unit — still refuses, on a synthetic Node at namespace_graft_shape (source cannot
-// author a lost forest). Header-only still accepts. This guard covers total dissolution only.
+// author a lost forest). Header-only still accepts. A nonempty flatten (types+fn) stays the
+// admitted Conj; reconstructing units into that Conj is what made previously-accepted modules
+// fail well_formed. Regression: src/v2/std/text.dag through tokenize/parse/normalize.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
   artifact.tree
@@ -149,4 +154,10 @@ test fn witness_lowered_body_module_still_grafts() -> Bool {
 
 test fn witness_header_only_module_still_accepts() -> Bool {
   normalize_accepts(source: header_only_source)
+}
+
+data ng_regression_text_dag_path: String = "src/v2/std/text.dag"
+
+test fn witness_accepted_closure_module_text_dag_still_normalizes() -> Bool {
+  normalize_accepts(source: filesystem_read(path: ng_regression_text_dag_path).content)
 }

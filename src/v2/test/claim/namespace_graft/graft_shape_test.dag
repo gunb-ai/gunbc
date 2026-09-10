@@ -19,7 +19,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_strip_provenance_marker
 }
 import v2.std.node_query { find_named_child }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, ComputationNode }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, ComputationNode, well_formed }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -308,7 +308,10 @@ fn ng_graft_reason_is(root: Node, reason: Symbol) -> Bool {
 }
 
 test fn namespace_graft_type_decl_unit_is_not_dissolved_holds() -> Bool {
-  ng_outcome_accepted(out: module_header_containment_graft(root: ng_type_decl_unit_root))
+  match module_header_containment_graft(root: ng_type_decl_unit_root) {
+    Accepted { value: grafted, diagnostics: _ } => well_formed(n: grafted)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn namespace_graft_lost_top_level_item_without_unit_refuses_RED() -> Bool {
@@ -316,4 +319,24 @@ test fn namespace_graft_lost_top_level_item_without_unit_refuses_RED() -> Bool {
     root: ng_lost_body_root,
     reason: ^namespace_graft_body_dissolved_refused
   )
+}
+
+data ng_types_and_fn_root: Node = ng_pre_graft_module_root(
+  qn: ng_module_qn,
+  body_edges: [
+    ng_projection_edge(
+      target: ng_production_identity_shell(id: ^dag_surface_type_decl)
+    ),
+    ng_projection_edge(
+      target: ng_production_identity_shell(id: ^dag_surface_data_decl)
+    ),
+    ng_export_edge(name: ^NgPilotFn)
+  ]
+)
+
+test fn namespace_graft_nonempty_flatten_stays_well_formed_holds() -> Bool {
+  match module_header_containment_graft(root: ng_types_and_fn_root) {
+    Accepted { value: grafted, diagnostics: _ } => well_formed(n: grafted)
+    Rejected { diagnostics: _ } => false
+  }
 }

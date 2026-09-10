@@ -1743,6 +1743,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "same as witness_type_fn_module_grafts row")
   },
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
+    function: "witness_accepted_closure_module_text_dag_still_normalizes",
+    reason: "regression control: tokenize/parse/normalize of src/v2/std/text.dag (previously accepted; graft must not make well_formed fail). Same interpreted wall as sibling type-only (~16s+ file size)",
+    dissolution: unbound_dissolution(description: "same as witness_type_fn_module_grafts row")
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/witness_execution_class_live_census_test.dag",
     function: "witness_live_roster_census_holds",
     reason: "~150s measured single-walk eval (valiant-boar-65, 2026-08-08): the CI-0 live-roster classification census — a full floor_discovery_producer walk over witness_discovery_scan_dirs (~1k file reads through the interpreted producer) joined against the enrolled bundle plan. Corpus-breadth census, not a fixture-shaped defect (DESIGN witness-cost ruling: the census is irreducible, the mechanism never is); the mechanism fixtures stay per-PR in witness_execution_class_test",
