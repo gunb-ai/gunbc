@@ -1674,42 +1674,11 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-/// CpuBoundStanding rehome (2026-09-09, gunbc#10818). `CpuBoundStanding` (and the
-/// `CpuBoundInterfacePresent` constructor `cpu_bound_standing` names) moved from
-/// `gunbc.runner.runner_cpu_bandwidth_receipt` onto `gunbc.runner.runner_guest_egress_attempt`,
-/// which already held the refusal standing, so one coproduct answers for the earlier unread write,
-/// the EPERM refusal, and the later interface-present row. The bandwidth receipt still binds the
-/// two spellings; only the declaring module changed. Required floor run 34341884341 measured
-/// `FloorClean` with the consumption witness planned-and-passed, then refused adjudication on
-/// exactly these two `TargetChanged` binding deltas (and no others). Membership edges this change
-/// also adds auto-admit as `ExplicitlyEvaluatedZeroDelta` and are not listed.
 ///
-/// TRIGGER: these two rows go when #10818 merges. The base then binds both spellings to
-/// `gunbc.runner.runner_guest_egress_attempt` inside `cpu_bound_standing`, the deltas stop being
-/// producible, and CONSUMED comes due on the roster's next touch — adjudicated by the
-/// declaring-module join, not by this sentence.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10818 CpuBoundStanding rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
-            in_declaration: "cpu_bound_standing",
-            spelling: "CpuBoundStanding",
-            target: "gunbc.runner.runner_guest_egress_attempt",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10818 CpuBoundStanding rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
-            in_declaration: "cpu_bound_standing",
-            spelling: "CpuBoundInterfacePresent",
-            target: "gunbc.runner.runner_guest_egress_attempt",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
+/// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
+/// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -2637,6 +2606,30 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         .collect())
 }
 
+/// Annotation-erased source identity: non-empty lines that are not standalone `//` comments.
+///
+/// THE REPAIR DISCRIMINATOR for `gunbc.recurring_failure_mode.fail_closed_gate_refuses_its_own_repair`.
+/// A base blob the census parser cannot read is unobservable as declarations; pretending it was
+/// empty is the silent narrow. The one comparison that does not invent a baseline is against the
+/// HEAD bytes with both sides stripped of the only construct the current `.dag` annotation
+/// channel admits — standalone `//` lines. If those remainders are equal, the head removed
+/// (or relocated) annotation grain and nothing else; declaration identity is the head's, and
+/// substituting the head records as the base side is identity, not a fabricated parse. A code
+/// edit riding with a comment hoist makes the remainders differ and stays `NotEvaluated`.
+pub fn is_annotation_grain_repair(base_source: &str, head_source: &str) -> bool {
+    annotation_erased_lines(base_source) == annotation_erased_lines(head_source)
+}
+
+fn annotation_erased_lines(source: &str) -> Vec<&str> {
+    source
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with("//")
+        })
+        .collect()
+}
+
 /// Run the wall for one required CI invocation.
 ///
 /// THE BASE INDEX IS THE HEAD INDEX WITH THE DIFF APPLIED IN REVERSE, at file grain — the
@@ -2730,7 +2723,28 @@ pub fn run_required_wave_admission(
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(reason) => {
+                let head_src = git_stdout(&workspace, &["show", &format!("{head}:{rel}")]).ok();
+                let repair = head_src
+                    .as_deref()
+                    .is_some_and(|src| is_annotation_grain_repair(&content, src));
+                if !repair {
+                    return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
+                }
+                let mut copied = 0usize;
+                for record in index_records(head_index) {
+                    if record.rel_path == **rel {
+                        crate::cli_run::declaration_index::index_insert(
+                            &mut base_index,
+                            record.clone(),
+                        );
+                        copied += 1;
+                    }
+                }
+                if copied == 0 {
+                    return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
+                }
+            }
         }
     }
 
