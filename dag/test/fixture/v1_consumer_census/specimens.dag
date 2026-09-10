@@ -2,7 +2,7 @@ module test.fixture.v1_consumer_census.specimens
 
 import std.types { List, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.replacement_cut { BoundaryConsumer, ConsumerDisposition, RetainSameContract, ReplacedByY, Retire, Covered, CoverageOpen }
+import gunbc.replacement_cut { BoundaryConsumer, ConsumerDisposition, RetainSameContract, ReplacedByY, Retire, Covered, CoverageOpen, Undecided }
 import gunbc.v1_consumer_census {
   V1ConsumerRow, V1UncitableConsumer, ConsumerPopulation, DiscoveryProducer, discovery_producer,
   PopulationMeasuredComplete, PopulationMeasuredLowerBound, PopulationUnmeasured,
@@ -141,4 +141,24 @@ data planted_covered_unrealized_population: ConsumerPopulation = PopulationMeasu
 data planted_same_size_discovered: List<String> = [
   "test.fixture.v1_consumer_census.specimens.consumer_one -> test.fixture.v1_consumer_census.specimens.old_authority",
   "test.fixture.v1_consumer_census.specimens.consumer_three_undisposed -> test.fixture.v1_consumer_census.specimens.old_authority",
+]
+
+// PLANT EIGHT -- an UNDECIDED relation beside a discharged one and a retained-open one. This is the
+// shape tools.v1_consumer_discovery produces: discovery establishes that a relation exists and says
+// nothing about what should happen to it, so a newly found consumer lands here and stays until an
+// author judges it. The population carries one row of each of the three worklist classes precisely
+// so the ordering assertion has something to order and the count assertion has a permutation to
+// check rather than a singleton.
+data planted_mixed_disposition_rows: List<V1ConsumerRow> = [
+  v1cc_fixture_row(consumer: consumer_one, disposition: ReplacedByY { new_authority: v1cc_fixture_nes(s: fixture_native_successor) }),
+  v1cc_fixture_row(consumer: consumer_two, disposition: RetainSameContract { justification: v1cc_fixture_nes(s: "controlled specimen: a creditor that has not been paid"), coverage: CoverageOpen }),
+  v1cc_fixture_row(consumer: consumer_three_undisposed, disposition: Undecided),
+]
+
+// The same three consumers with the undecided one JUDGED. Everything else is held fixed, so an
+// assertion that moves between these two populations moved for the disposition and for nothing else.
+data planted_all_judged_rows: List<V1ConsumerRow> = [
+  v1cc_fixture_row(consumer: consumer_one, disposition: ReplacedByY { new_authority: v1cc_fixture_nes(s: fixture_native_successor) }),
+  v1cc_fixture_row(consumer: consumer_two, disposition: RetainSameContract { justification: v1cc_fixture_nes(s: "controlled specimen: a creditor that has not been paid"), coverage: CoverageOpen }),
+  v1cc_fixture_row(consumer: consumer_three_undisposed, disposition: Retire { reason: v1cc_fixture_nes(s: "controlled specimen: judged, and the judgement is retirement") }),
 ]

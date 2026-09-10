@@ -11,14 +11,22 @@ import gunbc.v1_consumer_census {
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
   v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
   v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
-  v1_shim_partition, v1_shim_items, v1_consumer_population_for, v1_claimed_successors
+  v1_shim_partition, v1_shim_items, v1_consumer_population_for, v1_claimed_successors,
+  v1_rows_undecided, v1_undecided_row_count, v1_deletion_worklist, v1_worklist_is_a_permutation,
+  v1_worklist_leading_unjudged_count, v1_worklist_leads_with_the_unjudged,
+  v1_blocking_consumers, v1_pending_pr_10882_consumers, v1_pending_head_row_count,
+  v1_row_key
+}
+import tools.v1_consumer_discovery {
+  v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
 }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,
   planted_undisposed_discovered, planted_stale_discovered, planted_same_size_discovered,
   planted_unrealized_rows, planted_unrealized_population,
   planted_lower_bound_population, planted_unmeasured_population,
-  planted_blocking_population, planted_covered_unrealized_rows, planted_covered_unrealized_population
+  planted_blocking_population, planted_covered_unrealized_rows, planted_covered_unrealized_population,
+  planted_mixed_disposition_rows, planted_all_judged_rows
 }
 
 // WHAT THIS WITNESS ESTABLISHES, AND WHAT IT DOES NOT.
@@ -183,4 +191,78 @@ test fn consumer_census_same_size_substitution_refuses_in_both_directions() -> B
     && count(planted_same_size_discovered) == count(clean_discovered)
     && !v1_every_discovered_consumer_disposed(discovered: planted_same_size_discovered, rows: clean_rows)
     && !v1_every_row_names_a_live_consumer(discovered: planted_same_size_discovered, rows: clean_rows)
+}
+
+
+// THE UNKNOWN ARM IS COUNTED SEPARATELY FROM THE UNCOVERED ONE, and the two populations differ in
+// exactly one row's disposition. Both halves matter: the mixed population has one undecided row and
+// the judged population has none, while the RETAINED-OPEN row is present in both -- so a predicate
+// that had quietly collapsed unknown into blocking would report the same number twice and this
+// assertion would go red.
+test fn consumer_census_counts_the_unknown_arm_apart_from_the_uncovered_one() -> Bool {
+  v1_undecided_row_count(rows: planted_mixed_disposition_rows) == 1
+    && v1_undecided_row_count(rows: planted_all_judged_rows) == 0
+    && v1_undecided_row_count(rows: clean_rows) == 0
+    && count(v1_blocking_consumers(rows: planted_mixed_disposition_rows)) == 2
+    && count(v1_blocking_consumers(rows: planted_all_judged_rows)) == 1
+}
+
+// THE WORKLIST IS A PERMUTATION AND IT PUTS THE UNJUDGED FIRST. The permutation half is what stops
+// it becoming a second roster: a projection that dropped or added a row would pass an ordering
+// check and fail this one. The ordering half is read off the PRODUCED list, and the judged
+// population is the control -- same three consumers, one disposition changed, leading segment zero.
+test fn consumer_census_worklist_is_a_permutation_that_leads_with_the_unjudged() -> Bool {
+  v1_worklist_is_a_permutation(rows: planted_mixed_disposition_rows)
+    && v1_worklist_is_a_permutation(rows: planted_all_judged_rows)
+    && v1_worklist_is_a_permutation(rows: clean_rows)
+    && count(v1_deletion_worklist(rows: planted_mixed_disposition_rows)) == 3
+    && v1_worklist_leading_unjudged_count(rows: planted_mixed_disposition_rows) == 1
+    && v1_worklist_leading_unjudged_count(rows: planted_all_judged_rows) == 0
+    && v1_worklist_leads_with_the_unjudged(rows: planted_mixed_disposition_rows)
+    && v1_worklist_leads_with_the_unjudged(rows: planted_all_judged_rows)
+}
+
+// THE UNMERGED HEAD IS ROSTERED AND IS NOT IN THE POPULATION THE GATE READS. A frontier row folded
+// into the live roster would make the census a mixture of two trees, and the failure would be
+// silent: the count would simply be larger. So the assertion is a disjointness one -- every pending
+// row's key is absent from the live roster's keys -- and the positive half is that the pending list
+// is non-empty, since a disjointness claim over nothing holds vacuously.
+test fn consumer_census_pending_head_rows_are_rostered_and_disjoint() -> Bool {
+  v1_pending_head_row_count() > 0
+    && (v1_pending_pr_10882_consumers()
+        |> all(pending => !(v1_row_keys(rows: v1_consumers()) |> any(k => k == v1_row_key(r: pending)))))
+}
+
+// THE DISCOVERY PROJECTION RESTORES THE ROOT PREFIX, and the RED half is the one that matters: a
+// declaration under src/v2 whose module path was NOT re-prefixed produces a key that no rostered
+// row can match, so the join would silently report every src/v2 consumer as undisposed.
+test fn discovery_projects_the_module_path_from_the_declaring_root() -> Bool {
+  v1cd_module_path_from(
+      qualified_name: "workflow.rust_crate_partition.stage0_partition_crate_rows",
+      name: "stage0_partition_crate_rows",
+      rel_path: "src/v2/workflow/rust_crate_partition.dag"
+    ) == "v2.workflow.rust_crate_partition"
+  && v1cd_module_path_from(
+      qualified_name: "gunbc.witness_floor_workflow.build_lane_run_step",
+      name: "build_lane_run_step",
+      rel_path: "dag/gunbc/witness/witness_floor_workflow.dag"
+    ) == "gunbc.witness_floor_workflow"
+  && v1cd_module_path_from(
+      qualified_name: "workflow.rust_crate_partition.stage0_partition_crate_rows",
+      name: "stage0_partition_crate_rows",
+      rel_path: "src/v2/workflow/rust_crate_partition.dag"
+    ) != "workflow.rust_crate_partition"
+}
+
+// THE DECLARED EXCLUSION IS EXECUTED, NOT DESCRIBED. The signature table says the bare CLI name is
+// not a signature because it is a homonym of the project name; adding it would flood the blocking
+// column with rows nobody can disposition, and the note alone could not stop that. The positive
+// control is on the same table: the path-qualified spelling IS a signature, so this assertion
+// cannot pass by the lookup answering false for everything.
+test fn discovery_excludes_the_bare_cli_homonym_and_keeps_the_qualified_spelling() -> Bool {
+  !v1cd_lexeme_is_a_signature(lexeme: "gunbc")
+    && v1cd_lexeme_is_a_signature(lexeme: "target/release/gunbc")
+    && v1cd_lexeme_is_a_signature(lexeme: "claim_executor")
+    && !v1cd_lexeme_is_a_signature(lexeme: "a sentence that mentions claim_executor in prose")
+    && count(v1_literal_signatures()) > 0
 }
