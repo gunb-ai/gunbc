@@ -29,21 +29,11 @@ import std.measure { byte_size_count }
 // rate-limit refusal from a repository with no matching workflow will fold both into "no
 // candidate here", and the deficit that shrank the population never ranks for fixing.
 
-// DECLARED FRONTIER (DESIGN section 3c), stated rather than left for a reader to notice. The
-// classifiers below are consumed by execution in this change - the claims drive the same functions
-// the effectful reads call - but the SCAN this module is named for is not in this diff: nothing
-// outside test.claim walks the search pages or canonicalizes their survivors, so
-// perform_code_search_page, perform_workflow_source_read and canonicalize_hit have no production
-// caller yet.
-//
-// NAMED CONSUMER: a scan producer that pages perform_code_search_page to exhaustion under a
-// declared bound, reads each survivor's workflow through perform_workflow_source_read at an exact
-// ref, and canonicalizes the survivors into workflow-source identities against a run receipt.
-// TRIGGER: a production func outside test.claim calls perform_code_search_page in a page walk and
-// canonicalize_hit on its results. SUFFICIENT FOR deleting this row. NOT satisfied by another
-// witness importing these functions, and NOT satisfied by a caller that reads one page - the
-// obligation this row carries is the page walk and its receipt, which is where a bounded scan
-// becomes a declared population rather than a sample nobody sized.
+// DECLARED FRONTIER (DESIGN section 3c). The reason the scan producer is absent rather than
+// forgotten: the reads and their refusal arms are one change and the page walk that consumes them
+// is another, and landing the walk here would mean landing a bounded-scan policy - how many pages,
+// under what budget, retained how - inside the change that models the endpoints it calls. The row
+// below carries the consumer and the trigger; this note carries only why they are not here yet.
 data ci_workflow_scan_producer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a scan producer that pages perform_code_search_page under a declared bound, reads each survivor through perform_workflow_source_read at an exact ref, and canonicalizes them against a run receipt. TRIGGER: a production func outside test.claim calls perform_code_search_page in a page walk and canonicalize_hit on its results. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing these functions, nor by a caller that reads a single page." as NonEmptyStr)
 
 // -------------------------------------------------------------------------------------
@@ -163,9 +153,23 @@ type WorkflowSourceIdentity {
   blob_sha: String
 }
 
+// THE REFUSAL ARM CARRIES THE REFUSAL, and an earlier revision of this function did not - it bound
+// the RestExchangePerformance and threw it away, so a 404 on a deleted path, a 403 rate limit and a
+// 500 all left here as the same constant sentence. That is the collapse this module's own opening
+// note says it exists to prevent, reintroduced at its own boundary one screen further down: a scan
+// that cannot tell a rate limit from a repository with no matching workflow folds both into "no
+// candidate here", and the deficit that shrank the population never ranks for fixing.
+//
+// It is a SEPARATE ARM rather than an extra field on the existing one, because the two states are
+// not the same kind of thing. HitNotCanonicalized means the bytes arrived and could not be used -
+// a fact about the file, already carrying its own located cause from the classifier. HitReadRefused
+// means the bytes never arrived, and what a caller needs then is the performance, which is where
+// the status and the transport disposition live. Merging them would put an optional refusal on a
+// row that usually has none, which is the shape that gets defaulted away.
 type HitCanonicalization
   = HitCanonicalized { identity: WorkflowSourceIdentity }
   | HitNotCanonicalized { repository_full_name: String, path: String, cause: NonEmptyStr }
+  | HitReadRefused { repository_full_name: String, path: String, performance: RestExchangePerformance }
 
 fn canonicalize_hit(hit: CodeSearchHit, ref: String, read: WorkflowSourceRead) -> HitCanonicalization {
   match read {
@@ -185,9 +189,8 @@ fn canonicalize_hit(hit: CodeSearchHit, ref: String, read: WorkflowSourceRead) -
     WorkflowSourceEncodingUnrecognized { file, cause } => HitNotCanonicalized {
       repository_full_name: hit.repository.full_name, path: hit.path, cause: cause,
     }
-    WorkflowSourceRefused { performance } => HitNotCanonicalized {
-      repository_full_name: hit.repository.full_name, path: hit.path,
-      cause: "the file could not be read at the named ref, so the hit was not promoted to an observation",
+    WorkflowSourceRefused { performance } => HitReadRefused {
+      repository_full_name: hit.repository.full_name, path: hit.path, performance: performance,
     }
   }
 }

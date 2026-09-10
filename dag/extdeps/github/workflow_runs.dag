@@ -89,20 +89,6 @@ type WorkflowRunList {
 // no census consumer reads individual step data; if a future consumer needs it, adding it
 // here is a backward-compatible extension (the field is optional in the API response and
 // would become an optional field here).
-type WorkflowJobRun {
-  id: Int
-  run_id: Int
-  run_attempt: Int
-  name: String
-  status: WorkflowRunStatus
-  conclusion: WorkflowRunConclusion?
-  labels: List<String>
-  runner_name: String?
-  created_at: Timestamp?
-  started_at: Timestamp?
-  completed_at: Timestamp?
-}
-
 // WHY THE THREE ADDED FIELDS ARE NOT OPTIONAL RICHNESS.
 //
 // labels is THE OBSERVED RUNNER LABEL, and it is a different fact from the label the workflow
@@ -122,6 +108,19 @@ type WorkflowJobRun {
 // vendor catalog already produced and may never be the thing that produces one. Reading a
 // provider out of it would be the string grammar gunbc.runner_label_resolution exists to refuse,
 // wearing a different field's name.
+type WorkflowJobRun {
+  id: Int
+  run_id: Int
+  run_attempt: Int
+  name: String
+  status: WorkflowRunStatus
+  conclusion: WorkflowRunConclusion?
+  labels: List<String>
+  runner_name: String?
+  created_at: Timestamp?
+  started_at: Timestamp?
+  completed_at: Timestamp?
+}
 
 type WorkflowJobRunList {
   total_count: Int

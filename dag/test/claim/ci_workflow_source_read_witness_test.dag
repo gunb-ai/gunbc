@@ -18,8 +18,13 @@ import gunbc.ci_workflow_source_read {
   WorkflowSourceRead, WorkflowSourceObserved, WorkflowSourceTooLargeForContentsApi,
   WorkflowSourceEncodingUnrecognized, WorkflowSourceRefused,
   perform_workflow_source_read, classify_workflow_source, classify_code_search_page,
-  HitCanonicalization, HitCanonicalized, HitNotCanonicalized, canonicalize_hit,
+  HitCanonicalization, HitCanonicalized, HitNotCanonicalized, HitReadRefused, canonicalize_hit,
   WorkflowSourceIdentity,
+}
+import extdeps.transports.rest {
+  RestOk, RestStatusRefused, RestTransportRefused,
+  classify_rest_outcome, RestReadExchange,
+  RestExchangeStatusRefused, RestExchangeUnreached,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -136,6 +141,7 @@ test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> 
         && identity.repository_full_name == "llvm/llvm-project"
         && identity.repository_is_fork == false
     HitNotCanonicalized { repository_full_name, path, cause } => false
+    HitReadRefused { repository_full_name, path, performance } => false
   }
 }
 
@@ -146,10 +152,12 @@ test fn an_unread_file_never_becomes_an_identity() -> Bool {
   let oversized_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: classify_workflow_source(file: oversized_response)) {
     HitCanonicalized { identity } => false
     HitNotCanonicalized { repository_full_name, path, cause } => repository_full_name == "llvm/llvm-project"
+    HitReadRefused { repository_full_name, path, performance } => false
   }
   let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: classify_workflow_source(file: unknown_encoding_response)) {
     HitCanonicalized { identity } => false
     HitNotCanonicalized { repository_full_name, path, cause } => true
+    HitReadRefused { repository_full_name, path, performance } => false
   }
   oversized_refused && unknown_encoding_refused
 }
@@ -219,4 +227,62 @@ test fn an_upstream_truncated_page_is_not_a_complete_one() -> Bool {
     other => false
   }
   truncated && complete
+}
+
+// -------------------------------------------------------------------------------------
+// A REFUSAL THAT ARRIVES AS A REFUSAL, AND KEEPS ITS STATUS. An earlier revision of
+// canonicalize_hit bound the RestExchangePerformance and discarded it, so a 404 on a deleted path,
+// a 403 rate limit and a 500 all left as one identical sentence - the collapse this module's
+// opening note says it exists to prevent, reintroduced at its own boundary. The arm also had no
+// claim, so the collapse was unobserved as well as unmodeled.
+//
+// The two statuses below are the pair that MATTERS to a scan and that the old shape made
+// indistinguishable: 404 shrinks the population legitimately, 403 shrinks it because we ran out of
+// budget. A scan that treats the second as the first reports a smaller world and never learns it
+// was rate limited.
+// -------------------------------------------------------------------------------------
+
+fn refusal_of(status: Int, body: String) -> WorkflowSourceRead {
+  WorkflowSourceRefused {
+    performance: classify_rest_outcome(standing: RestReadExchange {
+      rest: RestStatusRefused { status: status, body: body },
+    }),
+  }
+}
+
+fn refused_status(read: WorkflowSourceRead) -> Int {
+  match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read) {
+    HitReadRefused { repository_full_name, path, performance } =>
+      match performance {
+        RestExchangeStatusRefused { status, body } => status
+        other => 0
+      }
+    HitCanonicalized { identity } => 0
+    HitNotCanonicalized { repository_full_name, path, cause } => 0
+  }
+}
+
+test fn a_read_refusal_reaches_canonicalization_carrying_its_status() -> Bool {
+  refused_status(read: refusal_of(status: 404, body: "Not Found")) == 404
+    && refused_status(read: refusal_of(status: 403, body: "rate limit exceeded")) == 403
+    && refused_status(read: refusal_of(status: 500, body: "boom")) == 500
+}
+
+// AND A TRANSPORT LOSS IS NOT A STATUS, which is the arm that would otherwise be flattened into a
+// zero by a reader expecting one. It reaches the same refusal arm and keeps its own disposition.
+test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool {
+  let read = WorkflowSourceRefused {
+    performance: classify_rest_outcome(standing: RestReadExchange {
+      rest: RestTransportRefused { cause: "timeout" },
+    }),
+  }
+  match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read) {
+    HitReadRefused { repository_full_name, path, performance } =>
+      match performance {
+        RestExchangeUnreached { cause } => repository_full_name == "llvm/llvm-project"
+        other => false
+      }
+    HitCanonicalized { identity } => false
+    HitNotCanonicalized { repository_full_name, path, cause } => false
+  }
 }

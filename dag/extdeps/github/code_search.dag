@@ -40,30 +40,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // means re-reading the file at an exact ref, which is extdeps.github.repository_contents' job.
 // The type name carries that: what comes back is a CodeSearchHit.
 
-// -------------------------------------------------------------------------------------
-// total_count IS NOT THE NUMBER OF THINGS THIS ENDPOINT WILL GIVE YOU, and the field is modelled
-// anyway because refusing to model what upstream returns would leave a consumer nowhere to see
-// that. It is an index-side figure that does not agree with the items delivered, and the
-// disagreement runs in the direction that UNDER-counts: a population size taken from it is
-// smaller than the population actually handed over, with nothing in the response saying so.
-//
-// THE INSTRUMENT, NOT ITS OUTPUT. The reading that establishes this is the published mock below -
-// hermetic_code_search_total_count beside a single delivered item - and the claim that asserts
-// the disagreement is total_count_disagrees_with_the_hits_actually_read in
-// test.claim.ci_workflow_source_read_witness_test. So the fixture EXHIBITS the defect rather than
-// describing it, and the claim goes red the day the two are made to agree. The page-by-page
-// figures from a real scan belong to that scan's own receipt, which is where a reader who wants
-// the numbers re-derives them; copying them here would put them beyond reach of the thing that
-// produces them.
-//
-// This is the same class the workload census already found on actions/runs, where total_count
-// reported a cap wearing the shape of a total. The rule both instances teach is the same: a
-// population size is the number of things COUNTED over a recorded window, and a number the
-// server volunteers about the size of its own index is not that.
-// UPSTREAM'S OWN HONESTY FIELD. GitHub returns incomplete_results: true when the search timed out
-// and it is handing back whatever it had. It is the only signal that a page is a truncation
-// rather than an answer, and a scan that discards it cannot tell a small population from an
-// abandoned query.
 // THE REPOSITORY THIS ENDPOINT RETURNS IS NOT extdeps.github.github.Repository, and modelling it
 // as one would have been a fabricated field rather than a shared shape. Observed 2026-09-10, the
 // repository object inside a code-search item carries id, name, full_name, owner, private, fork,
@@ -94,6 +70,30 @@ type CodeSearchHit {
   repository: CodeSearchRepository
 }
 
+// -------------------------------------------------------------------------------------
+// total_count IS NOT THE NUMBER OF THINGS THIS ENDPOINT WILL GIVE YOU, and the field is modelled
+// anyway because refusing to model what upstream returns would leave a consumer nowhere to see
+// that. It is an index-side figure that does not agree with the items delivered, and the
+// disagreement runs in the direction that UNDER-counts: a population size taken from it is
+// smaller than the population actually handed over, with nothing in the response saying so.
+//
+// THE INSTRUMENT, NOT ITS OUTPUT. The reading that establishes this is the published mock below -
+// hermetic_code_search_total_count beside a single delivered item - and the claim that asserts
+// the disagreement is total_count_disagrees_with_the_hits_actually_read in
+// test.claim.ci_workflow_source_read_witness_test. So the fixture EXHIBITS the defect rather than
+// describing it, and the claim goes red the day the two are made to agree. The page-by-page
+// figures from a real scan belong to that scan's own receipt, which is where a reader who wants
+// the numbers re-derives them; copying them here would put them beyond reach of the thing that
+// produces them.
+//
+// This is the same class the workload census already found on actions/runs, where total_count
+// reported a cap wearing the shape of a total. The rule both instances teach is the same: a
+// population size is the number of things COUNTED over a recorded window, and a number the
+// server volunteers about the size of its own index is not that.
+// UPSTREAM'S OWN HONESTY FIELD. GitHub returns incomplete_results: true when the search timed out
+// and it is handing back whatever it had. It is the only signal that a page is a truncation
+// rather than an answer, and a scan that discards it cannot tell a small population from an
+// abandoned query.
 type CodeSearchPage {
   total_count: Int
   incomplete_results: Bool
