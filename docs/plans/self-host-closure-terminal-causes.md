@@ -44,10 +44,14 @@ and the prepared grammar alone.
 Two different things are described below and they have different standings, so the distinction is
 stated before either.
 
-**The route that produced the table is in this repository and is executable**: the required
-`v2-native` lane (`gunbc.witness_v2_native_route`), whose context fold emits the per-file refusal rows.
-The population and the terminal causes in `gunbc.tools.self_host_closure_terminal_causes` come from
-there and nowhere else, and re-deriving them needs nothing this note invents.
+**The route that produced the table is a required CI lane — and it resolves at the PINNED HEAD, not on
+main.** The `v2-native` lane, its authority `gunbc.witness_v2_native_route`, and the
+`NativeTestFileRefusal` row type are #10882's and are unmerged at this writing; on any base without that
+PR the three names resolve to nothing. The population and the terminal causes in
+`gunbc.tools.self_host_closure_terminal_causes` come from there and nowhere else, so the pin's
+`head_sha` is the tree a reader must check out to re-derive them. Saying "in this repository" without
+that qualification, as an earlier revision of this note did, is the unreachable citation the carrier
+refuses to make about its own probe digest.
 
 **The per-declaration reduction probes below are RECIPES, not artifacts.** They are hand-written Rust
 that lives in the emitted probe crate for the length of a reduction session and is not committed:

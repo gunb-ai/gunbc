@@ -11,8 +11,8 @@ import v2.std.text { String }
 // output. The subject is the INPUT CLOSURE of src/v2/compiler/00_compile.dag - the modules the
 // emitted-native compiler is actually built from - and not the directory census a reader counting
 // *.dag under src/v2/compiler would reach. The closure is a fact about imports, it is carried below
-// as closure_module_manifest, and its width is closure_module_count's to answer. How much of it the
-// emitted compiler's own front end refuses is length over closure_refusal_rows.
+// as closure_module_manifest, and its width is length over that roster. How much of it the emitted
+// compiler's own front end refuses is length over closure_refusal_rows.
 //
 // WHY THE TERMINAL DIAGNOSTIC AND NOT THE HEAD. A rejection is a LIST, and rejected_with_pending
 // prepends the grammar-global overlap residue to every parse failure, so the head reason is the
@@ -39,14 +39,21 @@ import v2.std.text { String }
 // same defect is reported at `fn`, at `data`, at `type` and at its own token depending only on where
 // the parser happened to give up.
 //
-// HOW THIS TABLE IS RE-DERIVED, so no number here has to be trusted on its own. The population and
-// the terminal causes come from the emitted native compiler's own per-file output, reached by
-// `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane v2-native`
-// (gunbc.witness_v2_native_route), whose context fold emits one NativeTestFileRefusal row per source
-// carrying the head and fatal reason. The per-declaration reduction behind each cause comes from a
-// probe binary in the emitted crate that calls
+// HOW THIS TABLE IS RE-DERIVED, AND WHERE THE PRODUCER RESOLVES - which is NOT this base, and saying
+// otherwise would be the unreachable citation this module refuses to make elsewhere.
+//
+// The population and the terminal causes come from the emitted native compiler's own per-file output,
+// reached by `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane
+// v2-native`, whose context fold emits one NativeTestFileRefusal row per source carrying the head and
+// fatal reason. That lane, its authority gunbc.witness_v2_native_route, and the NativeTestFileRefusal
+// row type all resolve AT THE PINNED HEAD BELOW and at no commit on this branch's base: they are
+// #10882's, unmerged at this writing. The pin's head_sha is therefore not decoration - it is the only
+// tree in which this citation resolves, and a reader who checks it out gets the producer.
+//
+// The per-declaration reduction behind each cause comes from a probe that calls
 // v2.compiler.program_assembly program_assembly_read_to_normalized_root_prepared - the same per-file
-// path that fold takes, so every stage the fold can refuse at is reachable from it.
+// path that fold takes, so every stage the fold can refuse at is reachable from it. That symbol does
+// resolve here.
 //
 // WHAT A READER MAY NOT DO WITH IT. There is no aggregate verdict, because the population IS the
 // finding; a Boolean over it would be a verdict on subjects that have not each been separately
@@ -57,8 +64,8 @@ import v2.std.text { String }
 // table is not one kind of thing, and only half of it is a projection.
 //
 // The PROJECTED half is the population and the terminal causes. The v2-native lane's context fold
-// (gunbc.witness_v2_native_route) already emits exactly one {path, head_reason, fatal_reason} row per
-// source, and closure_module_manifest is likewise derivable from the emitted crate's per-module
+// already emits exactly one {path, head_reason, fatal_reason} row per source - at the pinned head, not
+// on this base - and closure_module_manifest is likewise derivable from the emitted crate's per-module
 // headers. Those rows are hand-applied here, which is the manual-application-committed-as-source tell,
 // and they are the part that should stop being authored.
 // dissolve-on: an emission target for this table plus a drift gate over it, in the shape
@@ -138,14 +145,21 @@ type JoinEvidence
 // that refuses, the input that accepts, and the control that separates this cause from its nearest
 // alternative. A line break inside them is written as an escape, because a raw newline inside a
 // string literal is itself one of the causes rostered below.
-// WHAT THE NEAREST-ALTERNATIVE CONTROL ESTABLISHED. Both arms exclude an alternative and they
-// exclude different ones: a control that ACCEPTS shows the neighbouring construct is innocent, so
-// the cause is not the wider class it sits in; a control that REFUSES IDENTICALLY shows the cause
-// does not depend on the detail that control varied. Carrying the verdict as a variant rather than
-// as a sentence is what lets a reader ask which of the two a given control did.
-type ControlVerdict
-  = ControlAccepts
-  | ControlRefusesIdentically
+// WHAT THE NEAREST-ALTERNATIVE CONTROL ESTABLISHED. Both arms exclude an alternative and they exclude
+// different ones: a control that ACCEPTS shows the neighbouring construct is innocent, so the cause is
+// not the wider class it sits in; a control that REFUSES IDENTICALLY shows the cause does not depend on
+// the detail that control varied.
+//
+// THE VERDICT IS THE CONSTRUCTOR, NOT A FIELD BESIDE THE INPUT. An earlier revision carried the control
+// text and its verdict as two fields, which left the verdict readable by a human and consumed by
+// nothing - and the only carrier-decidable check over it turned out to be implied by the
+// copied-control wall, so adding one would have been the redundant witness this file has already
+// deleted twice. As a variant the question cannot be dodged: reading the input at all eliminates the
+// arm, so every consumer of the control has consumed the verdict, by construction rather than by a
+// check that re-states it.
+type NearestAlternativeControl
+  = ControlThatAccepts { input: String }
+  | ControlThatRefusesIdentically { input: String }
 
 type FrontEndCause {
   key: Symbol
@@ -153,8 +167,7 @@ type FrontEndCause {
   terminal_reason: Symbol
   rejecting_reproducer: String
   positive_control: String
-  discriminating_control: String
-  discriminating_control_verdict: ControlVerdict
+  discriminating_control: NearestAlternativeControl
   join_evidence: JoinEvidence
 }
 
@@ -359,8 +372,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "type A = NonEmptyStr where brand(\"A\")"
     positive_control: "type A = NonEmptyStr"
-    discriminating_control: "type A = NonEmptyStr where true"
-    discriminating_control_verdict: ControlRefusesIdentically
+    discriminating_control: ControlThatRefusesIdentically { input: "type A = NonEmptyStr where true" }
     join_evidence: JoinedByExecutedNeutralizer
   },
   FrontEndCause {
@@ -369,8 +381,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^namespace_graft_body_dissolved_refused
     rejecting_reproducer: "module m\\n\\ntype A {\\n  x: Int\\n}"
     positive_control: "module m\\n\\ntype A {\\n  x: Int\\n}\\n\\nfn f() -> Int {\\n  1\\n}"
-    discriminating_control: "module m\\n\\ntest fn t() -> Bool {\\n  true\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "module m\\n\\ntest fn t() -> Bool {\\n  true\\n}" }
     join_evidence: JoinedByExecutedClosureIdentityJoin
   },
   FrontEndCause {
@@ -379,8 +390,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^tokenize_lex_e1_unrecognized_char
     rejecting_reproducer: "data d: String = \"line one<RAW NEWLINE>line two\""
     positive_control: "data d: String = \"line one\\\\nline two\""
-    discriminating_control: "data d: String = \"an em dash \\u2014 here\""
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "data d: String = \"an em dash \\u2014 here\"" }
     join_evidence: JoinedByExecutedClosureIdentityJoin
   },
   FrontEndCause {
@@ -389,8 +399,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
     rejecting_reproducer: "match t {\\n  _ => 1\\n}"
     positive_control: "match t {\\n  A => 1\\n  _ => 2\\n}"
-    discriminating_control: "match t {\\n  A => 1\\n  B { x: v } => v\\n  _ => 3\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "match t {\\n  A => 1\\n  B { x: v } => v\\n  _ => 3\\n}" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
   },
   FrontEndCause {
@@ -399,8 +408,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "type S sole_constructor {\\n  x: Int\\n}"
     positive_control: "type S {\\n  x: Int\\n}"
-    discriminating_control: "type S foo {\\n  x: Int\\n}"
-    discriminating_control_verdict: ControlRefusesIdentically
+    discriminating_control: ControlThatRefusesIdentically { input: "type S foo {\\n  x: Int\\n}" }
     join_evidence: JoinedByExecutedNeutralizer
   },
   FrontEndCause {
@@ -409,8 +417,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
     rejecting_reproducer: "type R {\\n  match: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.match\\n}"
     positive_control: "type R {\\n  other: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.other\\n}"
-    discriminating_control: "type R {\\n  loop: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.loop\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "type R {\\n  loop: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.loop\\n}" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
   },
   FrontEndCause {
@@ -419,8 +426,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "fn f(a: Int) -> Int =\\n  a"
     positive_control: "fn f(a: Int) -> Int {\\n  a\\n}"
-    discriminating_control: "fn f(c: Int) -> Int = c + 0"
-    discriminating_control_verdict: ControlRefusesIdentically
+    discriminating_control: ControlThatRefusesIdentically { input: "fn f(c: Int) -> Int = c + 0" }
     join_evidence: JoinedByExecutedNeutralizer
   },
   FrontEndCause {
@@ -429,8 +435,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "R { a: x as Hex }"
     positive_control: "R { a: x }"
-    discriminating_control: "g(a: x as Hex)"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "g(a: x as Hex)" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
   },
   FrontEndCause {
@@ -439,8 +444,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "true && match x {\\n  true => true\\n  false => false\\n}"
     positive_control: "match x {\\n  true => true\\n  false => false\\n}"
-    discriminating_control: "let y = match x {\\n  true => true\\n  false => false\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "let y = match x {\\n  true => true\\n  false => false\\n}" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
   },
   FrontEndCause {
@@ -449,8 +453,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "type A = MachineWidth<8>"
     positive_control: "type A = MachineWidth<Eight>"
-    discriminating_control: "type A = Compose<Int, List<Int>>"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "type A = Compose<Int, List<Int>>" }
     join_evidence: JoinedByExecutedNeutralizer
   },
   FrontEndCause {
@@ -459,8 +462,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "type A\\n  = | B\\n  | C"
     positive_control: "type A\\n  = B\\n  | C"
-    discriminating_control: "type A =\\n  B\\n  | C"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "type A =\\n  B\\n  | C" }
     join_evidence: JoinedByExecutedNeutralizer
   },
   FrontEndCause {
@@ -469,8 +471,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "type A = { a: Int, b: Int }"
     positive_control: "type A {\\n  a: Int\\n  b: Int\\n}"
-    discriminating_control: "type A = Map<String, String>"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "type A = Map<String, String>" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
   },
   FrontEndCause {
@@ -479,8 +480,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "type A\\n  = B(Int)\\n  | C"
     positive_control: "type A\\n  = B\\n  | C"
-    discriminating_control: "match t {\\n  A(s) => 1\\n  B => 2\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "match t {\\n  A(s) => 1\\n  B => 2\\n}" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
   },
   FrontEndCause {
@@ -489,8 +489,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "data d: Map<String, String> = {\\n  \"a\": \"b\"\\n}"
     positive_control: "data d: Int = 1"
-    discriminating_control: "fn f() -> R {\\n  R {\\n    a: 1\\n  }\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "fn f() -> R {\\n  R {\\n    a: 1\\n  }\\n}" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
   },
   FrontEndCause {
@@ -499,8 +498,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "fn f() -> Int {\\n  -1\\n}"
     positive_control: "fn f() -> Int {\\n  1\\n}"
-    discriminating_control: "fn f(a: Int) -> Int {\\n  a - 1\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "fn f(a: Int) -> Int {\\n  a - 1\\n}" }
     join_evidence: JoinedByExecutedNeutralizer
   },
   FrontEndCause {
@@ -509,8 +507,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "B { module: a }"
     positive_control: "B { thing: a }"
-    discriminating_control: "fn f(module: Int) -> Int {\\n  1\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "fn f(module: Int) -> Int {\\n  1\\n}" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
   },
   FrontEndCause {
@@ -519,8 +516,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "fn f(a: Bool) -> Int {\\n  if a {\\n    return 1\\n  }\\n  2\\n}"
     positive_control: "fn f(a: Bool) -> Int {\\n  if a {\\n    1\\n  } else {\\n    2\\n  }\\n}"
-    discriminating_control: "fn f(a: Bool) -> Int {\\n  let x = 1\\n  x\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "fn f(a: Bool) -> Int {\\n  let x = 1\\n  x\\n}" }
     join_evidence: JoinedByExecutedNeutralizer
   },
   FrontEndCause {
@@ -529,8 +525,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^normalized_tree_reason_wrapper_retention_not_normalized
     rejecting_reproducer: "data d: A = A {\\n  meet: (a, b) => a\\n}"
     positive_control: "data d: A = A {\\n  meet: 1\\n}"
-    discriminating_control: "fn f() -> A {\\n  A {\\n    meet: (a, b) => a\\n  }\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: ControlThatAccepts { input: "fn f() -> A {\\n  A {\\n    meet: (a, b) => a\\n  }\\n}" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
   }
 ]
@@ -893,12 +888,6 @@ fn rows_for_path(path: String) -> List<ClosureFileRow> {
   filter(xs: closure_refusal_rows, predicate: fn(row) { row.path == path })
 }
 
-// The closure's width, DERIVED from the manifest rather than pinned beside it. An authored count is a
-// second answer to a question the manifest already answers, and the two can disagree.
-fn closure_module_count() -> Int {
-  length(xs: closure_module_manifest)
-}
-
 fn cause_population(cause: Symbol) -> Int {
   length(xs: rows_for_cause(cause: cause))
 }
@@ -944,6 +933,59 @@ fn row_terminal_reason_is_named_by_one_of_its_causes(row: ClosureFileRow) -> Boo
 fn every_row_terminal_reason_is_named_by_a_cause() -> Bool {
   !any(xs: closure_refusal_rows, predicate: fn(row) {
     !row_terminal_reason_is_named_by_one_of_its_causes(row: row)
+  })
+}
+
+// THE MANIFEST IS A SET, and a repeated path would double-count the denominator every row is a
+// fraction of. Quadratic over the manifest by construction; the fold's shape is what is priced, not
+// the realized width.
+fn every_closure_module_appears_once() -> Bool {
+  !any(xs: closure_module_manifest, predicate: fn(m) {
+    length(xs: filter(xs: closure_module_manifest, predicate: fn(x) { x == m })) != 1
+  })
+}
+
+// THE CONTROL'S INPUT, WHICHEVER ARM IT CAME FROM. Every reader of a control goes through here, so
+// every reader has eliminated the verdict - which is the point of carrying it as a constructor.
+fn control_input(control: NearestAlternativeControl) -> String {
+  match control {
+    ControlThatAccepts { input: i } => i
+    ControlThatRefusesIdentically { input: i } => i
+  }
+}
+
+// WHAT THE CLOSURE-IDENTITY ARM CLAIMS, ASKED OF THE ROWS. That arm means the cause was joined to its
+// files by an identity join over the whole closure with no exceptions - so every row carrying that
+// cause's terminal reason must name it. The weaker signature arm claims nothing of the kind and is not
+// asked for it. Red is authorable in both directions: move a cause onto the executed arm without that
+// coverage, or drop the cause from one row of its class.
+fn causes_joined_by_closure_identity() -> List<FrontEndCause> {
+  filter(xs: front_end_causes, predicate: fn(c) {
+    match c.join_evidence {
+      JoinedByExecutedClosureIdentityJoin => true
+      JoinedByExecutedNeutralizer => false
+      JoinedBySignatureOverIsolatedDeclaration => false
+    }
+  })
+}
+
+fn every_closure_identity_cause_covers_its_class() -> Bool {
+  !any(xs: causes_joined_by_closure_identity(), predicate: fn(c) {
+    any(xs: closure_refusal_rows, predicate: fn(row) {
+      row.terminal_reason == c.terminal_reason
+        && !any(xs: row.causes, predicate: fn(k) { k == c.key })
+    })
+  })
+}
+
+// A NEAREST-ALTERNATIVE CONTROL THAT IS A COPY OF EITHER NAMED INPUT VARIES NOTHING, so its arm reads
+// as separating evidence while separating nothing. Two records were authored that way and a reviewer
+// caught them; this makes the shape unwritable in the carrier instead. It reads the control through
+// control_input, so it eliminates the verdict arm on every record it checks.
+fn no_cause_reuses_a_named_input_as_its_control() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) {
+    control_input(control: c.discriminating_control) == c.positive_control
+      || control_input(control: c.discriminating_control) == c.rejecting_reproducer
   })
 }
 

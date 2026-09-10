@@ -3,22 +3,17 @@ module gunbc.test.claim.self_host_closure_terminal_causes_test
 import v2.std.algebra { any, length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
 import gunbc.tools.self_host_closure_terminal_causes {
-  ClosureFileRow,
-  ControlAccepts,
-  ControlRefusesIdentically,
-  FrontEndCause,
-  JoinedByExecutedClosureIdentityJoin,
-  JoinedByExecutedNeutralizer,
-  JoinedBySignatureOverIsolatedDeclaration,
   cause_population,
   closure_observation_pin,
   closure_refusal_rows,
   every_cause_names_a_row,
+  no_cause_reuses_a_named_input_as_its_control,
   every_row_cause_is_rostered,
   every_refusing_path_is_a_closure_member,
   every_row_names_a_cause,
+  every_closure_identity_cause_covers_its_class,
+  every_closure_module_appears_once,
   every_row_terminal_reason_is_named_by_a_cause,
   front_end_causes,
   rows_for_cause,
@@ -89,14 +84,11 @@ test fn every_closure_path_has_exactly_one_row() -> Bool {
   !any(xs: closure_refusal_rows, predicate: fn(row) { length(xs: rows_for_path(path: row.path)) != 1 })
 }
 
-// A cause whose nearest-alternative control is a COPY of its positive control varies nothing, so its
-// typed verdict reads as separating evidence while separating nothing. Two records were authored that
-// way and a reviewer caught them; this makes the shape unwritable in the carrier instead, which is the
-// rung the finding should have moved the class to rather than a second pair of eyes next time.
-test fn no_cause_reuses_its_positive_control_as_its_discriminating_control() -> Bool {
-  !any(xs: front_end_causes, predicate: fn(c) {
-    c.discriminating_control == c.positive_control || c.discriminating_control == c.rejecting_reproducer
-  })
+// A NEAREST-ALTERNATIVE CONTROL THAT COPIES EITHER NAMED INPUT VARIES NOTHING, so its arm claims to
+// separate the cause from something while separating nothing. Two records were authored that way and
+// review 63154 caught them; this is the wall that replaced the reviewer.
+test fn no_cause_reuses_a_named_input_as_its_nearest_alternative_control() -> Bool {
+  no_cause_reuses_a_named_input_as_its_control()
 }
 
 // THE PIN IS THE ROW'S PROVENANCE, so an unrecorded digest makes every row unattributable to a tree
@@ -143,4 +135,18 @@ test fn every_refusing_path_is_a_closure_member_row() -> Bool {
 // manifest turns the membership join RED, not green).
 test fn every_row_terminal_reason_is_named_by_one_of_its_causes() -> Bool {
   every_row_terminal_reason_is_named_by_a_cause()
+}
+
+// THE MANIFEST IS THE DENOMINATOR, so a repeated path would inflate it and quietly shrink every
+// fraction taken against it. Red is authorable: duplicate one entry.
+test fn every_closure_module_is_listed_once() -> Bool {
+  every_closure_module_appears_once()
+}
+
+// THE CLOSURE-IDENTITY JOIN ARM CLAIMS WHOLE-CLASS COVERAGE, and this asks the rows whether it holds:
+// a cause joined that way must be named by every row carrying its terminal reason. The signature arm
+// claims nothing of the kind and is deliberately not asked. Red is authorable in both directions -
+// promote a cause onto the executed arm without that coverage, or drop it from one row of its class.
+test fn every_closure_identity_joined_cause_covers_its_whole_class() -> Bool {
+  every_closure_identity_cause_covers_its_class()
 }
