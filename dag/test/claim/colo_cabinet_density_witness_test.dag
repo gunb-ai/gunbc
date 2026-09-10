@@ -71,23 +71,7 @@ import extdeps.colo.telehouse {
   telehouse_chelsea_density, telehouse_chelsea_retail_grain,
   telehouse_teleport_density, telehouse_teleport_retail_grain,
 }
-import extdeps.colo.digital_realty {
-  digital_realty_jfk10_density, digital_realty_jfk10_retail_grain,
-  digital_realty_jfk12_density, digital_realty_jfk12_retail_grain,
-  digital_realty_jfk13_density, digital_realty_jfk13_retail_grain,
-}
-import extdeps.colo.coresite { coresite_ny1_density, coresite_ny1_retail_grain }
-import extdeps.colo.dataverge { dataverge_brooklyn_density, dataverge_brooklyn_retail_grain }
-import extdeps.colo.equinix { equinix_ny9_density, equinix_ny9_retail_grain }
-import extdeps.colo.h5 { h5_nyc_325_hudson_density, h5_nyc_325_hudson_retail_grain }
 import extdeps.colo.sabey { sabey_375_pearl_density, sabey_375_pearl_retail_grain }
-import extdeps.colo.three_sixty_five {
-  three_sixty_five_nyc_density_unread, three_sixty_five_nyc_retail_grain,
-}
-import extdeps.colo.colocation_america {
-  colocation_america_nydc1_density, colocation_america_nydc1_retail_grain,
-  colocation_america_nydc2_density, colocation_america_nydc2_retail_grain,
-}
 import gunbc.colo_census_coverage {
   RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
   coverage_facility_count, coverage_density_read_count,
