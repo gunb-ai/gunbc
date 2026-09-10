@@ -68,10 +68,10 @@ import v2.std.occurrence_id {
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocator, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, node_occurrence_identity_minted }
 import std.source_annotation {
+  AnnotationAttachmentRefusal,
   AnnotationAttachmentResult,
   AnnotationsAdmitted,
   AnnotationsRefused,
-  NonEmptyAnnotationAttachmentRefusals,
   SourceAnnotationGraph,
   admit_annotations
 }
@@ -97,7 +97,7 @@ import v2.std.optional {
   Optional,
   Present
 }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, FreeSemigroup }
 import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_reverse, list_snoc_item, list_tail, unique }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
@@ -177,7 +177,7 @@ type AuthoredParseOutcome
   = AuthoredParseAccepted { artifact: AuthoredParseArtifact }
   | AuthoredParseRejected {
       semantic: ParseArtifact,
-      refusals: NonEmptyAnnotationAttachmentRefusals
+      refusals: FreeSemigroup<AnnotationAttachmentRefusal>
     }
 
 fn authored_parse_outcome(
