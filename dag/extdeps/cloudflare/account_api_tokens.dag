@@ -82,13 +82,8 @@ type CloudflareCredentialKind
   | UserOwnedApiToken
   | GlobalApiKey
 
-type CloudflareCredentialCapability
-  = CreateAccountOwnedToken
-  | ListAccountTokenPermissionGroups
-
 type CloudflarePermissionGrant
   = AccountApiTokensWrite
-  | AccountApiTokensRead
   | PermissionGroupGrant { group: PermissionGroupRef }
 
 type CloudflareCredentialAcquisition
@@ -110,27 +105,6 @@ type CloudflareAccountTokenShape {
   acquisition: CloudflareCredentialAcquisition
   lifetime: CloudflareCredentialLifetime
   revocation: CloudflareCredentialRevocation
-}
-
-fn grant_supports(
-  grant: CloudflarePermissionGrant,
-  capability: CloudflareCredentialCapability
-) -> Bool {
-  match grant {
-    AccountApiTokensWrite => any(
-      [CreateAccountOwnedToken, ListAccountTokenPermissionGroups],
-      c => c == capability
-    )
-    AccountApiTokensRead => capability == ListAccountTokenPermissionGroups
-    PermissionGroupGrant { group: _ } => false
-  }
-}
-
-fn credential_supports(
-  shape: CloudflareAccountTokenShape,
-  capability: CloudflareCredentialCapability
-) -> Bool {
-  any(shape.grants, g => grant_supports(grant: g, capability: capability))
 }
 
 type CloudflareCredentialFormat
@@ -330,7 +304,6 @@ fn permission_groups_from_grants(
   flat_map(grants, g => match g {
     PermissionGroupGrant { group: grp } => [grp]
     AccountApiTokensWrite => []
-    AccountApiTokensRead => []
   })
 }
 

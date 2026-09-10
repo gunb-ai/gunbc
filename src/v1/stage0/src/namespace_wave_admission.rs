@@ -1674,56 +1674,57 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-/// CABLE-PLANT DISSOLUTION (2026-09-10, gunbc#10729). NO ORDINAL IS CLAIMED, for the reason the
-/// entries above give and which this change re-measured: the sequence already collides. `THIRTIETH`
-/// appears twice and `THIRTY-SECOND` three times, minted independently by concurrent branches that
-/// each read the then-highest and appended. An ordinal implies a total order this ledger cannot
-/// provide, so the dissolution is named by its SUBJECT, which is unique and checkable. A first draft
-/// of this entry claimed `THIRTY-SECOND` and would have been the fourth of that name.
+/// CpuBoundStanding rehome (2026-09-09, gunbc#10818). `CpuBoundStanding` (and the
+/// `CpuBoundInterfacePresent` constructor `cpu_bound_standing` names) moved from
+/// `gunbc.runner.runner_cpu_bandwidth_receipt` onto `gunbc.runner.runner_guest_egress_attempt`,
+/// which already held the refusal standing, so one coproduct answers for the earlier unread write,
+/// the EPERM refusal, and the later interface-present row. The bandwidth receipt still binds the
+/// two spellings; only the declaring module changed. Required floor run 34341884341 measured
+/// `FloorClean` with the consumption witness planned-and-passed, then refused adjudication on
+/// exactly these two `TargetChanged` binding deltas (and no others). Membership edges this change
+/// also adds auto-admit as `ExplicitlyEvaluatedZeroDelta` and are not listed.
 ///
-/// All 9 `gunbc#10883` cable-plant rows are deleted. #10883 merged into `main`, so `main` itself now binds each spelling to
-/// `product.cable_plant_assessment`; base and head agree, no run can produce those deltas, and run
-/// 34421135341 reported every one of them CONSUMED -- `0 unadjudicated, 0 stale, 9 consumed
-/// admission(s) due for deletion on this roster-touching change`. The obligation is not this change's
-/// by authorship but by CONTACT: this is the change that touched the roster, and that is exactly the
-/// rule those rows wrote for themselves. ROWS DELETED EQUALS ROWS THE WALL NAMED: 9 = 9.
+/// TRIGGER: these two rows go when #10818 merges. The base then binds both spellings to
+/// `gunbc.runner.runner_guest_egress_attempt` inside `cpu_bound_standing`, the deltas stop being
+/// producible, and CONSUMED comes due on the roster's next touch — adjudicated by the
+/// declaring-module join, not by this sentence.
+/// CABLE-PLANT ROSTER-TOUCH OBLIGATION, DISCHARGED ON BOTH SIDES INDEPENDENTLY (2026-09-10).
+/// This branch deleted the 9 `gunbc#10883` cable-plant rows when run 34421135341 reported them
+/// `9 consumed admission(s) due for deletion on this roster-touching change`; `main` removed them too.
+/// The merged tree carries neither, and NEITHER SIDE GETS SOLE CREDIT in this note -- a first draft
+/// claimed the deletion outright, which would have described as this change's work something the base
+/// already did. The obligation was real, it is discharged, and that is the whole of the claim.
 ///
-/// ADJUDICATED BY THE WALL'S OWN POSITIVE PROOF, not by the trigger sentence. Each row entered
-/// `consumed_admissions` on `admission_consumed_at_base` -- a proof against the BASE side -- rather
-/// than as the else-arm of "did not match a delta", which this file keeps as an `UnmatchedAdmission`
-/// refusal precisely so the two cannot be confused. The entry above warns that a trigger sentence is
-/// not evidence its trigger fired; here the evidence is the run, named so it can be re-read.
+/// NO ORDINAL IS CLAIMED, for the reason the entries above give and which this change re-measured: the
+/// sequence already collides. `THIRTIETH` appears twice and `THIRTY-SECOND` three times, minted
+/// independently by concurrent branches that each read the then-highest and appended. An ordinal
+/// implies a total order this ledger cannot provide, so entries are named by SUBJECT, which is unique
+/// and checkable. A first draft of this entry claimed `THIRTY-SECOND` and would have been the fourth
+/// of that name.
 ///
-/// THE THIRTY-ONE ROWS BELOW ARE ONE CO-HOME (2026-09-09, gunbc#10729), AND THEY ARE NOT A
-/// REQUALIFICATION. `gunbc.scm.merge_base` is DELETED and its declarations now live in
-/// `gunbc.scm.repository_envelope`, because the merge-base authority had to be nameable where the
-/// commit-basis seal is sole-constructed. Every row is the same motion: a spelling authored on both
-/// sides -- `merge_base`, `MergeBaseOutcome`, `MergeBaseDerived`, `MergeBaseHistoryUnwalkable`,
-/// `MergeBaseHistoriesDisjoint`, `MergeBaseSourceAlreadyConsumed` -- still denotes THE SAME
-/// DECLARATION and resolves to a different module. The module-membership half of the same motion is
-/// auto-admitted as SameDeclarationIdentityRebind on its own rows, which is the corroboration this
-/// file asks for; a binding whose MEANING had moved would refuse separately and is not covered here.
+/// THE THIRTY-ONE ROWS BELOW ARE ONE CO-HOME (gunbc#10729), AND NOT A REQUALIFICATION.
+/// `gunbc.scm.merge_base` is DELETED and its declarations now live in `gunbc.scm.repository_envelope`,
+/// because the merge-base authority had to be nameable where the commit-basis seal is sole-constructed.
+/// Every row is the same motion: a spelling authored on both sides -- `merge_base`, `MergeBaseOutcome`,
+/// `MergeBaseDerived`, `MergeBaseHistoryUnwalkable`, `MergeBaseHistoriesDisjoint`,
+/// `MergeBaseSourceAlreadyConsumed` -- still denotes THE SAME DECLARATION and resolves to a different
+/// module. The module-membership half is auto-admitted as SameDeclarationIdentityRebind on its own
+/// rows, which is the corroboration this file asks for; a binding whose MEANING had moved would refuse
+/// separately and is not covered here.
 ///
 /// `MergeSideName` IS THE SAME MOTION BY A DIFFERENT ROAD, and its row is called out because its base
 /// target is NOT the deleted module: it was DECLARED in `gunbc.scm.squash_merge` and moved into the
 /// envelope with the manifest read that needs it. Folding it into the sentence above would silently
-/// widen what this label claims to cover.
+/// widen what this label claims to cover. The wall found it as `NewUnresolvedness` (head `{}`) -- a
+/// spelling admitting no declaring identity -- which the local resolve and the whole claim suite had
+/// passed over, because this wall reads the binding index rather than asking whether a module compiles.
 ///
-/// ENUMERATED BY EXACT IDENTITY, NEVER BY A PATTERN over the module pair, exactly as the entries
-/// above require: a pattern would admit a genuine rebind that happened to land in the same pair. The
-/// rows were generated from the wall's OWN refusal output (run 34379709974, then a local run for the
-/// last one) rather than hand-derived from the diff, so the subject is the wall's measured delta set
-/// and not an author's reading of it. That distinction paid: I predicted the repointed spellings in
-/// `scm_squash_merge_witness` would need rows too, and the wall said they do not -- guessing wider
-/// would have planted rows matching no delta, which this file refuses as stale. The wave went
-/// 30 unadjudicated -> 1 -> 0 with 0 stale at every step.
-///
-/// A BRANCH-LOCAL DISSOLUTION CLAIM WAS DROPPED HERE ON MERGE, DELIBERATELY. This branch had deleted
-/// the 5 `gunbc#10692` structural-text/logic rows itself and said so as a THIRTY-FIRST DISSOLUTION
-/// with a 5 = 5 count. `main` deleted them first, so on this merged tree that sentence would have
-/// described a deletion this change does not perform -- a stale authority statement of exactly the
-/// kind this stack keeps finding. The obligation was real and is discharged; the claim to have
-/// discharged it belongs to whoever did.
+/// ENUMERATED BY EXACT IDENTITY, NEVER BY A PATTERN over the module pair, exactly as the entries above
+/// require. The rows were generated from the wall's OWN refusal output rather than hand-derived from
+/// the diff, so the subject is its measured delta set and not an author's reading of it. That paid: I
+/// predicted the repointed spellings in `scm_squash_merge_witness` would need rows too, the wall said
+/// they do not, and guessing wider would have planted rows matching no delta -- which this file
+/// refuses as stale. The wave went 30 unadjudicated -> 1 -> 0 with 0 stale at every step.
 ///
 /// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10729 merges. Main then binds each
 /// spelling to `gunbc.scm.repository_envelope`, base and head agree, no run can produce these deltas,
@@ -2045,6 +2046,26 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
                 "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
             spelling: "MergeBaseSourceAlreadyConsumed",
             target: "gunbc.scm.repository_envelope",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10818 CpuBoundStanding rehome",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
+            in_declaration: "cpu_bound_standing",
+            spelling: "CpuBoundStanding",
+            target: "gunbc.runner.runner_guest_egress_attempt",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#10818 CpuBoundStanding rehome",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
+            in_declaration: "cpu_bound_standing",
+            spelling: "CpuBoundInterfacePresent",
+            target: "gunbc.runner.runner_guest_egress_attempt",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

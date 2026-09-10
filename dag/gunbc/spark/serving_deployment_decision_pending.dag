@@ -7,11 +7,19 @@ import std.types { String, Bool, List, NonEmptyStr }
 // that the branch which owns the decision and the branch which owns the deployment do not each
 // invent half a selector and then have to reconcile them.
 //
-// THE OWNER IS `std.decision.select_realization`, WHICH THIS BRANCH DELIBERATELY DOES NOT IMPORT.
-// That module does not exist here yet -- it arrives with the selection PR -- and writing a local
-// stand-in would be exactly the fork this row is placed to prevent. `std.pareto` computes a frontier
-// and does not pick a winner; policy-bound realization selection belongs in `std.decision`, and
-// missing evidence and missing policy stay explicit rather than becoming a guessed choice.
+// THE OWNER IS `std.decision.select_realization`, AND THE REASON THIS MODULE STILL STANDS HAS
+// CHANGED. It used to be that the selector did not exist here: this header said so, and said the
+// module would arrive with the selection PR. IT HAS ARRIVED -- `gunbc.spark.serving_deployment_
+// selection` imports `select_realization` and calls it -- so the premise that justified this roster
+// is now false, and a pending-decision module carrying a stale account of its own missing capability
+// is worse than no module, because it tells the next reader to go build something that is built.
+//
+// WHAT IS ACTUALLY MISSING IS ONE STEP FURTHER ON: the serving launch does not yet consume the
+// selected realization as its ONLY construction route. A selector that exists and is called, beside
+// a launch path that can still be assembled from authored literals, is two ways to reach one launch
+// -- which is the fork this row was placed to prevent, now sitting one layer up from where it was
+// first written. `std.pareto` computes a frontier and does not pick a winner; missing evidence and
+// missing policy stay explicit rather than becoming a guessed choice.
 //
 // WHY A ROW AND NOT A COMMENT. These literals are spread across four modules and read as settled
 // facts. Without one place naming them as pending, the selection PR has to rediscover them, and this
@@ -87,11 +95,11 @@ data pending_serving_decisions: List<PendingServingDecision> = [
     basis_today: "off for first boot to remove an execution variable. MTP's quality standing is UNREAD on this fleet -- it must not be assumed lossless and taken for free" as NonEmptyStr,
   },
   PendingServingDecision {
-    parameter: "gunbc.harness.harness_seat harness_seat_operator_policy_seats" as NonEmptyStr,
-    authored_at: "2026-09-06" as NonEmptyStr,
-    current_value: "3" as NonEmptyStr,
+    parameter: "gunbc.harness.harness_seat harness_interactive_quality_seats" as NonEmptyStr,
+    authored_at: "2026-09-09" as NonEmptyStr,
+    current_value: "1" as NonEmptyStr,
     role: ShouldBeDecisionVariable,
-    basis_today: "operator policy against concurrency observed on a DeepSeek group; declared uncalibrated for any other model" as NonEmptyStr,
+    basis_today: "a product decision following measured co-tenancy degradation, carrying no claim about what the KV pool holds. THIS ROW PREVIOUSLY CITED harness_seat_operator_policy_seats AT 3, WHICH MAIN DELETED: the seat model was replaced by an interactive-quality ceiling with its own dissolution condition, and a pending-decision row naming a declaration that no longer exists is a citation defect rather than a pending decision. The entry is retained because the QUESTION is still open for a GLM serving binding -- which seat ceiling governs it -- while the row it used to point at is gone" as NonEmptyStr,
   },
 ]
 

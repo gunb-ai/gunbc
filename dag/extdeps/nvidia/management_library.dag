@@ -66,12 +66,18 @@ data gb10_torch_device_memory: DeviceMemoryObservation = TorchDeviceMemoryObserv
 
 // A refusal is not a small number and a fallback is not an observation. This is the predicate a
 // consumer must pass before it may use bytes at all.
-fn device_memory_bytes_known(o: DeviceMemoryObservation) -> Bool {
+// A BOOL BESIDE THE BYTES IS TWO REPRESENTATIONS OF ONE FACT, AND THE BOOL HAD NO CONSUMERS. This
+// stood as `device_memory_bytes_known`, answering whether a caller MAY read the bytes while leaving
+// the caller to read them separately -- so nothing structural stopped a consumer from skipping the
+// predicate, and the predicate could not hand back what it had just proved existed. Returning the
+// bytes as an option IS the predicate: an arm that carries no measurement cannot produce one, and a
+// caller that wants a number has to face the absence to get it.
+fn device_memory_observed_bytes(o: DeviceMemoryObservation) -> Nat? {
   match o {
-    NvmlDeviceMemoryObserved { bytes: _ } => true
-    TorchDeviceMemoryObserved { bytes: _ } => true
-    NvmlDeviceMemoryUnsupportedOnUnifiedMemory { device_name: _, error: _ } => false
-    DeviceMemoryUnread { because: _ } => false
+    NvmlDeviceMemoryObserved { bytes: b } => Present { value: b }
+    TorchDeviceMemoryObserved { bytes: b } => Present { value: b }
+    NvmlDeviceMemoryUnsupportedOnUnifiedMemory { device_name: _, error: _ } => none
+    DeviceMemoryUnread { because: _ } => none
   }
 }
 
