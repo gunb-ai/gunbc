@@ -227,6 +227,21 @@ epoch. The receipt never contains the password. A non-working factory credential
 state (CredentialStateUnknown, PreviouslyRotatedCredentialRequired,
 AccountManagementUnavailable) → PartsHold, not ReturnWindow, absent other evidence.
 
+`gunbc.machine_intake_bmc_secure` is the authority for that standing: `derive_bmc_secure` folds
+one `BmcCredentialRotationObservation` — the bootstrap reading, the rotation application, and the
+two post-rotation readbacks — into a `BmcSecureStanding`, and `bmc_secure_phase_receipt` projects
+that onto the receipt spine so `derive_fleet_admission` reads it like any other phase. The
+standing is `sole_constructor` and carries the `MachineIntakeSubject` it was adjudicated for, and
+the receipt reads its subject off the standing rather than taking one: a standing derived for one
+attempt has no argument left to swap, so it cannot be re-addressed as another attempt's evidence.
+Both post-rotation readbacks must be ordered after the rotation they claim to verify — an ordering
+among the supplied readings, which establishes nothing about whether a BMC was probed — and a
+readback that did not establish a credential state refuses rather than widening into the good arm.
+No refusal cause is owned by `UnitHardware`. The module observes nothing; the effectful rotation
+actuator that produces the observation is the declared frontier, and it is the same producer the
+ruling gates on the `gunbc.bmc_onboarding` split. Evidence:
+`test.claim.machine_intake_bmc_secure_witness_test`.
+
 ## 7. Proving the diagnostic environment booted
 
 Each attempt mints a nonce; the intake agent returns `IntakeAgentBootReceipt { attempt_nonce,
@@ -365,7 +380,7 @@ evidence; automating media attachment while the verdict stays manual is not it.
 | Perturbation | Required result | Where |
 |---|---|---|
 | Change one DIMM while retaining the board serial | Old admission no longer applies | subject + disposition witnesses |
-| Leave factory credential working after rotation | BmcSecure refuses | BmcSecure (unbuilt) |
+| Leave factory credential working after rotation | BmcSecure refuses | bmc secure witness |
 | Remove Redfish VirtualMedia from live observation, keep it in the profile | Redfish transport not selected | boot delivery witness |
 | Stage a URI serving digest B for a request naming digest A | `CandidateStagedArtifactMismatch`, no plan | boot delivery witness |
 | Hand the solve an observation receipt from another attempt | `AccessContextObservationForOtherAttempt`, no plan | boot delivery witness |

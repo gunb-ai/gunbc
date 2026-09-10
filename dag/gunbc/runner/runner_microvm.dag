@@ -599,6 +599,26 @@ fn jit_transport_drive_id(t: JitCredentialTransport) -> NonEmptyStr {
   }
 }
 
+data runner_microvm_workspace_drive_id: NonEmptyStr = "work"
+
+fn runner_microvm_workspace_drive(path: FilePath) -> FirecrackerDrive {
+  FirecrackerDrive {
+    drive_id: runner_microvm_workspace_drive_id,
+    path_on_host: path,
+    is_root_device: false,
+    is_read_only: false,
+  }
+}
+
+fn attach_workspace_drive(config: FirecrackerVmConfig, path: FilePath) -> FirecrackerVmConfig {
+  FirecrackerVmConfig {
+    boot_source: config.boot_source,
+    drives: append(config.drives, items: [runner_microvm_workspace_drive(path: path)]),
+    network_interfaces: config.network_interfaces,
+    machine_config: config.machine_config,
+  }
+}
+
 // THE FLEET'S OWN ADMISSION, EVALUATED AGAINST THE DECLARED INTENT.
 //
 // This is the row that answers "may we run runners in microVMs today", and it answers by consuming
