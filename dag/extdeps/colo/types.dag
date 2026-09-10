@@ -767,6 +767,23 @@ type RetailRateStanding
   = RatesPublished { plans_note: NonEmptyStr }
   | RatesQuoteOnly { contact_route: NonEmptyStr, obligation: NonEmptyStr }
 
+// THE PUBLISHED PLANS NOTE, WHERE ONE EXISTS, AND THIS AXIS HAD NO CONSUMER AT ALL UNTIL NOW.
+// RetailRateStanding was read by nothing anywhere in the corpus - 30 modules author a rate row and
+// no fold, witness or workflow touched the type, which is DESIGN section 3c's dangling state in its
+// purest form and is the same absence found on AddressStanding earlier in this census.
+//
+// It returns the plans note rather than a Bool for the reason the grain and address accessors do:
+// the note IS the reading. A caller deciding whether a cabinet can be priced without contacting the
+// operator needs the operator's own text, not the news that text exists, and a Bool would put the
+// answer on the same axis as a price while carrying none of it. RatesQuoteOnly is Absent because a
+// contact route is not a rate - it is the obligation to go and get one.
+fn retail_rate_published_plans(r: RetailRateStanding) -> NonEmptyStr? {
+  match r {
+    RatesPublished { plans_note } => Present { value: plans_note },
+    RatesQuoteOnly { contact_route, obligation } => Absent,
+  }
+}
+
 type CrossConnectFee {
   monthly: MoneyPerMonth
   install: MoneyOnce

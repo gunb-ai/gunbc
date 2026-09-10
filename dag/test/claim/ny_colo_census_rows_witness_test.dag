@@ -5,16 +5,21 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
 import test.claim.colo_cabinet_density_witness {
   grain_offers_single_cabinet,
+  rate_is_published,
   covered_by_floor,
   claim_unread,
   bounds_above,
   has_figure_for,
 }
-import extdeps.colo.types { AirCooling, density_claim_figures }
-import extdeps.colo.types { ColoFacilityRow, AddressStanding, address_street }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressStanding, address_street,
+  AirCooling, density_claim_figures,
+}
+import extdeps.colo.interserver { interserver_retail_rates }
 import extdeps.colo.databank { databank_lga3_density, databank_lga3_retail_grain, databank_lga3_orangeburg }
 import extdeps.colo.critical_systems_realty {
   csr_orny1_density, csr_orny1_retail_grain, csr_orny1_orangeburg,
+  csr_orny1_retail_rates,
 }
 import extdeps.colo.hivelocity {
   hivelocity_ogb1_density, hivelocity_ogb1_retail_grain, hivelocity_ogb1_orangeburg,
@@ -22,14 +27,19 @@ import extdeps.colo.hivelocity {
 import extdeps.colo.long_island_interconnect {
   long_island_interconnect_density, long_island_interconnect_retail_grain,
   long_island_interconnect_westbury,
+  long_island_interconnect_retail_rates,
 }
-import extdeps.colo.nyi { nyi_long_island_density, nyi_long_island_retail_grain, nyi_long_island }
+import extdeps.colo.nyi {
+  nyi_long_island_density, nyi_long_island_retail_grain, nyi_long_island, nyi_retail_rates,
+}
 import extdeps.colo.stafford_associates {
   stafford_density, stafford_retail_grain, stafford_setauket,
+  stafford_retail_rates,
 }
-import extdeps.colo.vastnet { vastnet_density, vastnet_retail_grain, vastnet_melville }
+import extdeps.colo.vastnet { vastnet_density, vastnet_retail_grain, vastnet_melville, vastnet_retail_rates }
 import extdeps.colo.continuity_centers {
   continuity_centers_density, continuity_centers_retail_grain, continuity_centers_woodbury,
+  continuity_centers_retail_rates,
 }
 import extdeps.colo.tierpoint {
   tierpoint_hawthorne_density, tierpoint_hawthorne_retail_grain,
@@ -51,6 +61,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The selection fold that will eventually rank these candidates is a workflow fact being reworked
 // in another lane, so this file is not that fold: it is the execution that proves every row this
 // lane authored flows through the carrier's accessors and lands on the arm its citation claims.
+//
+// THAT SENTENCE WAS FALSE WHEN FIRST WRITTEN AND IS THE RECURRENCE THIS HEADER ALREADY NAMED.
+// Review 63146 found the rate axis dangling: six RetailRateStanding rows added here, and the type
+// read by NOTHING in the entire corpus - thirty modules author one and no fold touched it. The
+// claim above covered the density, grain, address and facility axes and quietly not the fourth,
+// which is exactly "enrolling the rows I was thinking about and leaving the ones I was not",
+// written two paragraphs below by the author who then did it again. A header asserting completeness
+// is worth less than the fold that makes it true, and it is worse than nothing when it is cited as
+// coverage - so the sentence now stands because w_no_new_york_operator_publishes_a_cabinet_price
+// exists, not because it was claimed. FOUR AXES ARE CONSUMED HERE: density, grain, address, rate.
 //
 // FOLDS ARE CONSUMED RATHER THAN RE-DECLARED - review 62870 found the first cut of this file
 // carrying a byte-identical copy of the watt accessor and a second name for the single-cabinet
@@ -143,6 +163,34 @@ test fn w_ny_unread_densities_establish_nothing() -> Bool {
     && claim_unread(d: vastnet_density, requested: AirCooling, required: 5000)
     && claim_unread(d: continuity_centers_density, requested: AirCooling, required: 5000)
 
+}
+
+
+// NOT ONE OPERATOR IN THIS REGION PUBLISHES A CABINET PRICE, and until this test the rate axis was
+// read by NOTHING - thirty modules author a RetailRateStanding row and no fold, witness or workflow
+// touched the type. Review 63146 is right that this PR added six more instances of that, and right
+// that the header above claimed every row this lane authored flows through the carrier's accessors
+// while the rate rows did not. The header even named the recurrence - enrolling the rows I was
+// thinking about and leaving the ones I was not - and this was the next instance of it.
+//
+// WHAT THE ASSERTION IS FOR, because "all six are quote-only" restated as a test would be the rows
+// read back. Every New York operator answers a cabinet price with a contact route, so the census
+// cannot rank this region on price at all: a selection fold that needs a number must refuse and go
+// get a quote rather than find a plausible one. That is a regional finding of the same shape as the
+// density one and it is now enforced rather than described.
+//
+// INTERSERVER IS THE POSITIVE CONTROL AND IS NOT A CLAIM ABOUT NEW YORK. Only two rows in the whole
+// census publish plans, so without one of them here the predicate would answer Absent for every row
+// it was ever handed and this test would pass with a constant - a check whose passing value is also
+// its broken value. The control is what makes the six negatives mean something.
+test fn w_no_new_york_operator_publishes_a_cabinet_price() -> Bool {
+  !rate_is_published(r: nyi_retail_rates)
+    && !rate_is_published(r: vastnet_retail_rates)
+    && !rate_is_published(r: continuity_centers_retail_rates)
+    && !rate_is_published(r: long_island_interconnect_retail_rates)
+    && !rate_is_published(r: csr_orny1_retail_rates)
+    && !rate_is_published(r: stafford_retail_rates)
+    && rate_is_published(r: interserver_retail_rates)
 }
 
 // DENSITY AND GRAIN ARE INDEPENDENT, and this region is where that independence is load-bearing
