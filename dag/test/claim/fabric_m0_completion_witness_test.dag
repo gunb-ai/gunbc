@@ -150,11 +150,6 @@ fn digest_a(rd: OriginReading) -> Sha256Digest {
   origin_reading_digest(reading: rd)
 }
 
-fn digest_a_unused_marker() -> Sha256Digest {
-
-  Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
-}
-
 fn digest_b() -> Sha256Digest {
   Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Sha256DigestHex }
 }

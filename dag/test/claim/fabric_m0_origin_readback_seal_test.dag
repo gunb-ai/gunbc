@@ -181,8 +181,16 @@ test fn both_arms_of_the_differential_actually_compiled() -> Bool {
     && (keys_only_in(a: ["CENSUS-NOT-RUNNABLE"], b: blocking_keys(source: probe_source(body: sanctioned_body))).count() == 1)
 }
 
-// Printed diagnostics: the integer behind each verdict, so a wrong count is distinguishable from
-// CensusNotRunnable (-1) without re-deriving the battery.
+// PRINTED DIAGNOSTICS, and their consumer is named rather than left to be inferred (DESIGN 3c).
+// They are not test arms and no fold reads them; they are entry points a person runs when an arm
+// above goes red, so a wrong count is distinguishable from the CensusNotRunnable sentinel (-1)
+// without re-deriving the battery:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/fabric_m0_origin_readback_seal_test.dag --function diag_forged_reading_count
+//
+// Same shape and same purpose as the f10_diag_* / f13_diag_* entries in
+// test.claim.sole_constructor_completeness_audit_probe, which is the precedent this follows.
 fn diag_forged_reading_count() -> Int {
   sole_constructor_on_origin_reading(source: probe_source(body: forged_reading_source))
 }
