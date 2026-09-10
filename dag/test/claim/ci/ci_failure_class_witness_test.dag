@@ -67,7 +67,28 @@ test fn witness_real_infra_reasons_are_non_blocking() -> Bool {
     && (floor_failure_blocks_merge(c: classify_failure_reason(reason: sccache_exec)) == false)
 }
 
-test fn witness_structural_not_swallowed_as_infra() -> Bool {
+test fn witness_posix_shell_reserved_exits_are_infra_not_subject() -> ProcessExit {
+  let not_exec = ExitFailure { code: 126, reason: "Process completed with exit code 126." }
+  let not_found = ExitFailure { code: 127, reason: "Process completed with exit code 127." }
+  if class_is_infra(c: classify_failure_exit(code: 126, reason: "Process completed with exit code 126."))
+    && class_is_infra(c: classify_failure_exit(code: 127, reason: "Process completed with exit code 127."))
+    && (floor_failure_blocks_merge(c: classify_failure_exit(code: 126, reason: "x")) == false)
+    && (floor_outcome_wire(o: classify_floor_exit(e: not_exec)) == floor_outcome_wire_infra)
+    && (floor_outcome_wire(o: classify_floor_exit(e: not_found)) == floor_outcome_wire_infra)
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: posix_exit_status_decimal(code: 126))
+    && string_contains(s: wrap_command_with_floor_attempt_receipt(command: "cargo build"), pattern: "title=environment")
+    && (posix_exit_status_decimal(code: 126) == "126")
+    && string_contains(s: floor_attempt_receipt_body(exit_code: 126, outcome: classify_floor_exit(e: not_exec)), pattern: "CommandInvokedCannotExecute") {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: "POSIX 126/127 must classify as infra, not subject, and the attempt receipt must wire that class"
+    }
+  }
+}
+
+test fn witness_structural_compile_error_is_still_subject_red() -> Bool {
   let compile_err = "error[E0599]: no method named `frobnicate` found for type `Node`"
   let inference = "type inference failed: cannot unify Int with String at dag/gunbc/foo.dag:42"
   let assertion = "witness cheap_pool_chunk_totality_holds returned false (1 uncovered claim)"

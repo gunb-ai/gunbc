@@ -2,6 +2,10 @@ module gunbc.ci_failure_class
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { String }
+import extdeps.process.posix_exit {
+  exit_code_command_invoked_cannot_execute,
+  exit_code_command_not_found,
+}
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.runtime.errno { PosixErrno, EAGAIN, errno_strerror }
@@ -27,10 +31,13 @@ type InfraSignature
   | SccacheFailedToExecuteCompile
   | RunnerLost
   | ClusteredOutOfMemoryKill
+  | CommandInvokedCannotExecute
+  | CommandNotFound
 
 type SignatureSite
   = BuildLog
   | JobSignal
+  | ExitStatus
 
 type FloorFailureClass
   = Infra { signature: InfraSignature }
@@ -54,6 +61,8 @@ fn infra_signature_match_substring(sig: InfraSignature) -> String {
     SccacheFailedToExecuteCompile => sccache_failed_to_execute_compile_log_fragment
     RunnerLost => runner_lifecycle_log_fragment(signal: ShutdownReceived)
     ClusteredOutOfMemoryKill => "Out of memory: Killed process"
+    CommandInvokedCannotExecute => "command invoked cannot execute"
+    CommandNotFound => "command not found"
   }
 }
 
@@ -66,6 +75,8 @@ fn infra_signature_origin(sig: InfraSignature) -> String {
     SccacheFailedToExecuteCompile => "extdeps.cache.sccache (failed to execute compile)"
     RunnerLost => "extdeps.github.ci_runner (runner shutdown signal)"
     ClusteredOutOfMemoryKill => "kernel cgroup memory.events oom_kill / systemd-oomd (cross-run clustered OOM, evidence-derived; not a log-grep roster signature)"
+    CommandInvokedCannotExecute => "extdeps.process.posix_exit (POSIX.1-2017 shell status 126: command found but not executable)"
+    CommandNotFound => "extdeps.process.posix_exit (POSIX.1-2017 shell status 127: command not found)"
   }
 }
 
@@ -78,6 +89,8 @@ fn infra_signature_site(sig: InfraSignature) -> SignatureSite {
     SccacheFailedToExecuteCompile => BuildLog
     RunnerLost => JobSignal
     ClusteredOutOfMemoryKill => JobSignal
+    CommandInvokedCannotExecute => ExitStatus
+    CommandNotFound => ExitStatus
   }
 }
 
@@ -86,6 +99,7 @@ fn build_retry_infra_signatures() -> List<InfraSignature> {
     match infra_signature_site(sig: sig) {
       BuildLog => concat(acc, [sig])
       JobSignal => acc
+      ExitStatus => acc
     }
   })
 }
@@ -128,7 +142,6 @@ fn reason_matches_infra_signature(reason: String, sig: InfraSignature) -> Bool {
 // precedent it still is, not as a live route) — at which point the hand-typed list is deleted,
 // classify_failure_reason gains its first production consumer, and the site axis (build-log versus
 // job-signal text) becomes decidable at the call site instead of being flattened away.
-
 fn classify_failure_reason(reason: String) -> FloorFailureClass {
   fold(verdict_infra_signatures, init: Structural { reason: reason }, f: fn(acc, sig) {
     match acc {
@@ -147,11 +160,202 @@ type FloorOutcome
   = NoFailure
   | FloorFailed { class: FloorFailureClass }
 
+fn posix_shell_invocation_infra(code: Int) -> InfraSignature? {
+  if code == exit_code_command_invoked_cannot_execute {
+    Present { value: CommandInvokedCannotExecute }
+  } else {
+    if code == exit_code_command_not_found {
+      Present { value: CommandNotFound }
+    } else {
+      none
+    }
+  }
+}
+
+fn classify_failure_exit(code: Int, reason: String) -> FloorFailureClass {
+  match posix_shell_invocation_infra(code: code) {
+    Present { value: sig } => Infra { signature: sig }
+    Absent => classify_failure_reason(reason: reason)
+  }
+}
+
 fn classify_floor_exit(e: ProcessExit) -> FloorOutcome {
   match e {
     ExitSuccess => NoFailure
-    ExitFailure { code: _, reason: r } => FloorFailed { class: classify_failure_reason(reason: r) }
+    ExitFailure { code: c, reason: r } => FloorFailed { class: classify_failure_exit(code: c, reason: r) }
   }
+}
+
+data floor_outcome_wire_none: String = "none"
+data floor_outcome_wire_infra: String = "infra"
+data floor_outcome_wire_structural: String = "structural"
+data floor_outcome_wire_unobserved: String = "unobserved"
+
+data floor_attempt_receipt_filename: String = "gunbc-floor-outcome.txt"
+data floor_attempt_receipt_output_name: String = "floor_class"
+data floor_attempt_receipt_step_id: String = "attempt_receipt"
+
+fn floor_failure_class_wire(c: FloorFailureClass) -> String {
+  match c {
+    Infra { signature: _ } => floor_outcome_wire_infra
+    Structural { reason: _ } => floor_outcome_wire_structural
+  }
+}
+
+fn floor_outcome_wire(o: FloorOutcome) -> String {
+  match o {
+    NoFailure => floor_outcome_wire_none
+    FloorFailed { class: c } => floor_failure_class_wire(c: c)
+  }
+}
+
+fn posix_exit_status_decimal(code: Int) -> String {
+  if code == 0 {
+    "0"
+  } else {
+    if code == exit_code_command_invoked_cannot_execute {
+      "126"
+    } else {
+      if code == exit_code_command_not_found {
+        "127"
+      } else {
+        "unknown"
+      }
+    }
+  }
+}
+
+fn infra_signature_wire(sig: InfraSignature) -> String {
+  match sig {
+    ResourceTemporarilyUnavailable => "ResourceTemporarilyUnavailable"
+    ProcessSpawnFailure => "ProcessSpawnFailure"
+    SccacheFatalError => "SccacheFatalError"
+    SccacheRustcWrapperExit254 => "SccacheRustcWrapperExit254"
+    SccacheFailedToExecuteCompile => "SccacheFailedToExecuteCompile"
+    RunnerLost => "RunnerLost"
+    ClusteredOutOfMemoryKill => "ClusteredOutOfMemoryKill"
+    CommandInvokedCannotExecute => "CommandInvokedCannotExecute"
+    CommandNotFound => "CommandNotFound"
+  }
+}
+
+fn floor_attempt_receipt_body(exit_code: Int, outcome: FloorOutcome) -> String {
+  match outcome {
+    NoFailure =>
+      join(
+        [
+          concat("class=", floor_outcome_wire_none),
+          "signature=",
+          concat("exit=", posix_exit_status_decimal(code: exit_code))
+        ],
+        "\n"
+      )
+    FloorFailed { class: c } => match c {
+      Infra { signature: sig } =>
+        join(
+          [
+            concat("class=", floor_outcome_wire_infra),
+            concat("signature=", infra_signature_wire(sig: sig)),
+            concat("exit=", posix_exit_status_decimal(code: exit_code))
+          ],
+          "\n"
+        )
+      Structural { reason: _ } =>
+        join(
+          [
+            concat("class=", floor_outcome_wire_structural),
+            "signature=",
+            concat("exit=", posix_exit_status_decimal(code: exit_code))
+          ],
+          "\n"
+        )
+    }
+  }
+}
+
+fn floor_attempt_receipt_write_script() -> String {
+  concat(
+    concat("GUNBC_FLOOR_RECEIPT=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_receipt_filename, "\"\n")),
+    concat(
+      concat("GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_structural, "\"\n")),
+      concat(
+        "GUNBC_FLOOR_SIGNATURE=\"\"\n",
+        concat(
+          concat("if [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_invoked_cannot_execute), " ]; then\n")),
+          concat(
+            concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"\n")),
+            concat(
+              concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandInvokedCannotExecute), "\"\n")),
+              concat(
+                concat("elif [ \"$GUNBC_FLOOR_EXIT\" -eq ", concat(posix_exit_status_decimal(code: exit_code_command_not_found), " ]; then\n")),
+                concat(
+                  concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_infra, "\"\n")),
+                  concat(
+                    concat("  GUNBC_FLOOR_SIGNATURE=\"", concat(infra_signature_wire(sig: CommandNotFound), "\"\n")),
+                    concat(
+                      "elif [ \"$GUNBC_FLOOR_EXIT\" -eq 0 ]; then\n",
+                      concat(
+                        concat("  GUNBC_FLOOR_CLASS=\"", concat(floor_outcome_wire_none, "\"\n")),
+                        concat(
+                          "fi\n",
+                          concat(
+                            "printf 'class=%s\\nsignature=%s\\nexit=%s\\n' \"$GUNBC_FLOOR_CLASS\" \"$GUNBC_FLOOR_SIGNATURE\" \"$GUNBC_FLOOR_EXIT\" > \"$GUNBC_FLOOR_RECEIPT\"\n",
+                            concat(
+                              concat("if [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_infra, "\" ]; then\n")),
+                              concat(
+                                "  echo \"::error title=environment::floor_class=$\{GUNBC_FLOOR_CLASS} signature=$\{GUNBC_FLOOR_SIGNATURE} exit=$\{GUNBC_FLOOR_EXIT}; this is not a verdict about the diff. Attempt receipt: $\{GUNBC_FLOOR_RECEIPT}\"\n",
+                                concat(
+                                  concat("elif [ \"$GUNBC_FLOOR_CLASS\" = \"", concat(floor_outcome_wire_structural, "\" ]; then\n")),
+                                  "  echo \"::error title=subject::floor_class=$\{GUNBC_FLOOR_CLASS} exit=$\{GUNBC_FLOOR_EXIT}; read the step log for the subject defect\"\nfi\n"
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn wrap_command_with_floor_attempt_receipt(command: String) -> String {
+  join(
+    [
+      "set +e",
+      "(",
+      "set -e",
+      command,
+      ")",
+      "GUNBC_FLOOR_EXIT=$?",
+      floor_attempt_receipt_write_script(),
+      "exit \"$GUNBC_FLOOR_EXIT\""
+    ],
+    "\n"
+  )
+}
+
+fn floor_attempt_receipt_finalize_script() -> String {
+  join(
+    [
+      concat("GUNBC_FLOOR_RECEIPT=\"$\{GITHUB_WORKSPACE:-.}/", concat(floor_attempt_receipt_filename, "\"")),
+      concat("if [ ! -f \"$GUNBC_FLOOR_RECEIPT\" ]; then printf 'class=%s\\nsignature=\\nexit=\\n' \"", concat(floor_outcome_wire_unobserved, "\" > \"$GUNBC_FLOOR_RECEIPT\"; fi")),
+      "GUNBC_FLOOR_CLASS=$(sed -n 's/^class=//p' \"$GUNBC_FLOOR_RECEIPT\" | head -n 1)",
+      "GUNBC_FLOOR_SIGNATURE=$(sed -n 's/^signature=//p' \"$GUNBC_FLOOR_RECEIPT\" | head -n 1)",
+      "if [ -n \"$\{GITHUB_OUTPUT:-}\" ]; then",
+      concat("  echo \"", concat(floor_attempt_receipt_output_name, "=$GUNBC_FLOOR_CLASS\" >> \"$GITHUB_OUTPUT\"")),
+      "  echo \"floor_signature=$GUNBC_FLOOR_SIGNATURE\" >> \"$GITHUB_OUTPUT\"",
+      "fi",
+      "echo \"GUNBC_FLOOR_ATTEMPT_RECEIPT class=$GUNBC_FLOOR_CLASS signature=$GUNBC_FLOOR_SIGNATURE path=$GUNBC_FLOOR_RECEIPT\""
+    ],
+    "\n"
+  )
 }
 
 fn floor_failure_blocks_merge(c: FloorFailureClass) -> Bool {

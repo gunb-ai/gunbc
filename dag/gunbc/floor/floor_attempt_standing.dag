@@ -2,6 +2,18 @@ module gunbc.floor_attempt_standing
 
 import std.types { String }
 import v2.std.logic { Bool }
+import gunbc.ci_failure_class {
+  FloorOutcome,
+  NoFailure,
+  FloorFailed,
+  Infra,
+  Structural,
+  CommandInvokedCannotExecute,
+  floor_outcome_wire_infra,
+  floor_outcome_wire_structural,
+  floor_outcome_wire_none,
+  floor_outcome_wire_unobserved,
+}
 
 // HEAD-STANDING AND LANE-TERMINALITY ARE TWO INDEPENDENT AXES, AND EVERY SHAPE THIS GATE HAS
 // WORN SO FAR COLLAPSED THEM INTO ONE.
@@ -244,6 +256,16 @@ type FloorRenderedVerdict =
       floor: FloorLaneTerminal,
       interruption: EvaluationInterruption
     }
+  | AttemptStandsEnvironment {
+      standing: FloorHeadStanding,
+      build: FloorLaneTerminal,
+      floor: FloorLaneTerminal,
+      interruption: EvaluationInterruption
+    }
+
+type LaneSubjectReceipt
+  = SubjectReceiptUnobserved
+  | SubjectReceiptObserved { outcome: FloorOutcome }
 
 // THE WIRE SPELLINGS, DECLARED ONCE HERE AND CONSUMED BY BOTH REALIZATIONS.
 //
@@ -359,6 +381,82 @@ fn floor_rendered_verdict(
       floor_standing_attempt_verdict(standing: standing, build: build, floor: floor)
     FloorHeadUnobservable { measured: _, cause: _ } =>
       floor_standing_attempt_verdict(standing: standing, build: build, floor: floor)
+  }
+}
+
+fn lane_subject_receipt_from_wire(raw: String) -> LaneSubjectReceipt {
+  if raw == floor_outcome_wire_infra {
+    SubjectReceiptObserved {
+      outcome: FloorFailed { class: Infra { signature: CommandInvokedCannotExecute } }
+    }
+  } else {
+    if raw == floor_outcome_wire_none {
+      SubjectReceiptObserved { outcome: NoFailure }
+    } else {
+      if raw == floor_outcome_wire_structural {
+        SubjectReceiptObserved { outcome: FloorFailed { class: Structural { reason: "subject" } } }
+      } else {
+        if raw == floor_outcome_wire_unobserved {
+          SubjectReceiptUnobserved
+        } else {
+          if raw == "" {
+            SubjectReceiptUnobserved
+          } else {
+            SubjectReceiptUnobserved
+          }
+        }
+      }
+    }
+  }
+}
+
+fn lane_subject_receipt_is_environment(receipt: LaneSubjectReceipt) -> Bool {
+  match receipt {
+    SubjectReceiptUnobserved => false
+    SubjectReceiptObserved { outcome: o } => match o {
+      NoFailure => false
+      FloorFailed { class: c } => match c {
+        Infra { signature: _ } => true
+        Structural { reason: _ } => false
+      }
+    }
+  }
+}
+
+fn floor_environment_interruption() -> EvaluationInterruption {
+  EvaluationInterruption {
+    mechanism: MechanismEstablished { kind: ToolchainIdentityLost },
+    attribution: EvaluationSubstrate,
+    evidence: floor_outcome_wire_infra
+  }
+}
+
+fn floor_rendered_verdict_with_receipts(
+  standing: FloorHeadStanding,
+  build: FloorLaneTerminal,
+  floor: FloorLaneTerminal,
+  build_receipt: LaneSubjectReceipt,
+  floor_receipt: LaneSubjectReceipt
+) -> FloorRenderedVerdict {
+  match floor_rendered_verdict(standing: standing, build: build, floor: floor) {
+    AttemptSuperseded { measured: measured, current: current } =>
+      AttemptSuperseded { measured: measured, current: current }
+    AttemptStandsGreen { standing: s } => AttemptStandsGreen { standing: s }
+    AttemptStandsRed { standing: s, build: b, floor: f, interruption: i } =>
+      if lane_subject_receipt_is_environment(receipt: build_receipt) || lane_subject_receipt_is_environment(receipt: floor_receipt) {
+        AttemptStandsEnvironment {
+          standing: s,
+          build: b,
+          floor: f,
+          interruption: floor_environment_interruption()
+        }
+      } else {
+        AttemptStandsRed { standing: s, build: b, floor: f, interruption: i }
+      }
+    AttemptStandsUnestablished { standing: s, build: b, floor: f, interruption: i } =>
+      AttemptStandsUnestablished { standing: s, build: b, floor: f, interruption: i }
+    AttemptStandsEnvironment { standing: s, build: b, floor: f, interruption: i } =>
+      AttemptStandsEnvironment { standing: s, build: b, floor: f, interruption: i }
   }
 }
 
@@ -523,6 +621,7 @@ fn floor_rendered_verdict_blocks(verdict: FloorRenderedVerdict) -> Bool {
     AttemptStandsGreen { standing: _ } => false
     AttemptStandsRed { standing: _, build: _, floor: _, interruption: _ } => true
     AttemptStandsUnestablished { standing: _, build: _, floor: _, interruption: _ } => true
+    AttemptStandsEnvironment { standing: _, build: _, floor: _, interruption: _ } => true
   }
 }
 
@@ -530,6 +629,7 @@ data floor_rendered_verdict_superseded_name: String = "superseded-attempt"
 data floor_rendered_verdict_green_name: String = "stands-green"
 data floor_rendered_verdict_red_name: String = "stands-red"
 data floor_rendered_verdict_unestablished_name: String = "stands-unestablished"
+data floor_rendered_verdict_environment_name: String = "stands-environment"
 
 fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
   match verdict {
@@ -539,6 +639,8 @@ fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
       floor_rendered_verdict_red_name
     AttemptStandsUnestablished { standing: _, build: _, floor: _, interruption: _ } =>
       floor_rendered_verdict_unestablished_name
+    AttemptStandsEnvironment { standing: _, build: _, floor: _, interruption: _ } =>
+      floor_rendered_verdict_environment_name
   }
 }
 
@@ -617,4 +719,4 @@ data floor_attempt_standing_acquisition_trigger: String = "Head-standing acquisi
 // NEXT-RUNG TRIGGER: a terminal subject receipt published by each required lane and read by the
 // aggregator. When it lands, `w_RED_a_failed_lane_carries_no_established_mechanism` goes red --
 // deliberately, so nobody can land the receipt without being routed back here.
-data floor_subject_receipt_acquisition_trigger: String = "A lane's GitHub conclusion does not establish whether its subject was evaluated; gunbc#9298 concluded FAILURE over a one-file markdown diff with the subject never judged. Retire this row when each required lane publishes a terminal subject receipt the aggregator reads, at which point AttemptStandsRed splits into subject-refuted and subject-not-evaluated."
+data floor_subject_receipt_acquisition_trigger: String = "A lane's GitHub conclusion does not establish whether its subject was evaluated; gunbc#9298 concluded FAILURE over a one-file markdown diff with the subject never judged. THE WORDS-ONLY COMPOSITION `floor_rendered_verdict` STILL CANNOT SPLIT RED. `floor_rendered_verdict_with_receipts` consumes a terminal LaneSubjectReceipt: Infra is AttemptStandsEnvironment (subject not evaluated; EvaluationSubstrate), Structural stays AttemptStandsRed. Retire this row when every required lane publishes that receipt as a job output the aggregator reads on the real acceptance path — `w_RED_a_failed_lane_carries_no_established_mechanism` stays the words-only control and must remain green; the receipt-aware split is `w_RED_an_infra_receipt_is_environment_not_subject_red`."
