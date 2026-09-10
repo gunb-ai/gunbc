@@ -128,13 +128,6 @@ fn d1_locus_from_root(root: Node) -> String {
   }
 }
 
-fn d1_locus_exit(root: Node) -> ProcessExit {
-  match d1_tree_carries_where_clause(root: root) {
-    true => ExitSuccess
-    false => exit_failure(reason: d1_locus_from_root(root: root))
-  }
-}
-
 data d1_where_reproducer: String = "module m\ntype A = NonEmptyStr where brand(\"A\")\nfn f() -> Int { 1 }\n"
 data d1_where_control: String = "module m\ntype A = NonEmptyStr\nfn f() -> Int { 1 }\n"
 data d1_where_bare: String = "module m\ntype A = NonEmptyStr where non_empty\nfn f() -> Int { 1 }\n"
@@ -172,13 +165,49 @@ fn cause_a_where_clause_survives_normalize_locus() -> ProcessExit {
     Rejected { diagnostics: r } =>
       exit_failure(reason: join(["parse-refused: ", symbol_lexeme(sym: r.head.reason)], ""))
     Accepted { value: brand_tree, diagnostics: _ } =>
-      match normalize(parse_tree: brand_tree) {
+      match d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_carry_norm_bare) {
         Rejected { diagnostics: r } =>
           exit_failure(
-            reason: join(["normalize-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+            reason: join(["bare-parse-refused: ", symbol_lexeme(sym: r.head.reason)], "")
           )
-        Accepted { value: brand_normalized, diagnostics: _ } =>
-          d1_locus_exit(root: brand_normalized.root)
+        Accepted { value: bare_tree, diagnostics: _ } =>
+          match normalize(parse_tree: brand_tree) {
+            Rejected { diagnostics: r } =>
+              exit_failure(
+                reason: join(["normalize-refused: ", symbol_lexeme(sym: r.head.reason)], "")
+              )
+            Accepted { value: brand_normalized, diagnostics: _ } =>
+              match normalize(parse_tree: bare_tree) {
+                Rejected { diagnostics: r } =>
+                  exit_failure(
+                    reason: join(
+                      ["bare-normalize-refused: ", symbol_lexeme(sym: r.head.reason)],
+                      ""
+                    )
+                  )
+                Accepted { value: bare_normalized, diagnostics: _ } =>
+                  match d1_tree_carries_where_clause(root: brand_normalized.root) {
+                    false =>
+                      exit_failure(
+                        reason: join(
+                          ["brand ", d1_locus_from_root(root: brand_normalized.root)],
+                          ""
+                        )
+                      )
+                    true =>
+                      match d1_tree_carries_where_clause(root: bare_normalized.root) {
+                        true => ExitSuccess
+                        false =>
+                          exit_failure(
+                            reason: join(
+                              ["bare ", d1_locus_from_root(root: bare_normalized.root)],
+                              ""
+                            )
+                          )
+                      }
+                  }
+              }
+          }
       }
   }
 }

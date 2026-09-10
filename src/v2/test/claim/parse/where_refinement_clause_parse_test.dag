@@ -192,7 +192,7 @@ test fn where_refinement_clause_parses_and_is_carried_holds() -> Bool {
 test fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
   match where_refinement_tokenize_parse(
     text: where_refinement_positive_bare_source,
-    file: ^where_refinement_normalize_bare_bool
+        file: ^where_refinement_normalize_bare
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
