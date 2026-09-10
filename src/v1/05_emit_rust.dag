@@ -10168,6 +10168,32 @@ fn collect_pattern_rc_variant_guards(pattern: MatchPattern, rc_analysis: RcPatte
   }
 }
 
+// A let-else over `.as_ref()` is irrefutable when the pattern is structurally irrefutable
+// (wildcard/bind) OR when the variant is the enum's only inhabitant. Rust treats a
+// single-variant coproduct match as irrefutable (`-D irrefutable-let-patterns`); the
+// dag-level `match_pattern_is_irrefutable` is false for every VariantPattern, which is how
+// `DiscoveredSourceRefsDigestUnavailableCause` (one variant) emitted
+// `let Cause::NoRefList {..} = cause.as_ref() else { unreachable!() }` and refused the native
+// cargo under RUSTFLAGS=-D warnings.
+fn rust_as_ref_let_is_irrefutable(pattern: MatchPattern, emit_info: EmitGraphInfo) -> Bool {
+  if match_pattern_is_irrefutable(pattern: pattern) { true }
+  else {
+    match pattern {
+      VariantPattern { name: n, parent_enum: parent, field_bindings: _ } =>
+        let resolved = pattern_parent_enum(name: qualified_last_segment(name: n), parent_enum: parent, scrut_type: "", type_summaries: emit_info.type_summaries)
+        match resolved {
+          Present { value: enum_name } =>
+            match map_get(emit_info.type_summaries, enum_name) {
+              Present { value: summary } => (sorted_map_keys(summary.variant_name_set) |> count) <= 1
+              Absent => false
+            }
+          Absent => false
+        }
+      _ => false
+    }
+  }
+}
+
 fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
@@ -10196,7 +10222,7 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat_here, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
             if inner_analysis.needs_rc_pattern {
               let aware = emit_pattern_rc_aware(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              let tail = if match_pattern_is_irrefutable(pattern: fb_pat_here) {
+              let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
                 ";"
               } else {
                 " else { unreachable!() };"
@@ -10206,7 +10232,7 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
               if inner_preludes == "" { [head] } else { [concat(head, " ", inner_preludes)] }
             } else {
               let bound_str = emit_pattern(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              let tail = if match_pattern_is_irrefutable(pattern: fb_pat_here) {
+              let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
                 ";"
               } else {
                 " else { unreachable!() };"

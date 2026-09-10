@@ -21711,6 +21711,40 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::conc
     })
 }
 
+pub fn rust_as_ref_let_is_irrefutable(
+    pattern: Rc<MatchPattern>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    if crate::v1_std_core::match_pattern_is_irrefutable(pattern.clone()) {
+        true
+    } else {
+        match (*pattern.clone()).clone() {
+            MatchPattern::VariantPattern {
+                name: n,
+                parent_enum: parent,
+                ..
+            } => {
+                let resolved = pattern_parent_enum(
+                    crate::v1_std_core::qualified_last_segment(n.clone()),
+                    parent.clone(),
+                    "".to_string(),
+                    emit_info.type_summaries.clone(),
+                );
+                match resolved {
+                    Some(enum_name) => match emit_info.type_summaries.get(&enum_name).cloned() {
+                        Some(summary) => {
+                            v1_rt::sorted_map_keys(&summary.variant_name_set.clone()).len() <= 1
+                        }
+                        None => false,
+                    },
+                    None => false,
+                }
+            }
+            _ => false,
+        }
+    }
+}
+
 pub fn rc_pattern_preludes(
     pattern: Rc<MatchPattern>,
     rc_analysis: Rc<RcPatternAnalysis>,
@@ -21786,7 +21820,7 @@ let inner_analysis = analyze_rc_pattern(fb_pat_here.clone(), "".to_string(), sha
 if inner_analysis.needs_rc_pattern.clone() {
                                         {
                                             let aware = emit_pattern_rc_aware(fb_pat_here.clone(), v1_rt::rc_list_push(v1_rt::rc_list_push(Rc::new(vec![]), bare_n.clone()), fb_name.clone()), inner_analysis.clone(), shared_types.clone(), "".to_string(), source_indices.clone(), emit_info.clone());
-let tail = if crate::v1_std_core::match_pattern_is_irrefutable(fb_pat_here.clone()) {
+let tail = if rust_as_ref_let_is_irrefutable(fb_pat_here.clone(), emit_info.clone()) {
                                                 ";".to_string()
                                             } else {
                                                 " else { unreachable!() };".to_string()
@@ -21802,7 +21836,7 @@ if (inner_preludes.clone() == "".to_string()) {
                                     } else {
                                         {
                                             let bound_str = emit_pattern(fb_pat_here.clone(), v1_rt::rc_list_push(v1_rt::rc_list_push(Rc::new(vec![]), bare_n.clone()), fb_name.clone()), shared_types.clone(), "".to_string(), source_indices.clone(), emit_info.clone());
-let tail = if crate::v1_std_core::match_pattern_is_irrefutable(fb_pat_here.clone()) {
+let tail = if rust_as_ref_let_is_irrefutable(fb_pat_here.clone(), emit_info.clone()) {
                                                 ";".to_string()
                                             } else {
                                                 " else { unreachable!() };".to_string()
