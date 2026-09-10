@@ -36,18 +36,43 @@ import gunbc.fabric_m0_commit {
   StoreDidNotAnswer,
   ManifestReadbackObservation,
   ManifestRead,
-  DurableOriginRead,
-  DisposableCacheRead,
+  cache_manifest_read,
   ManifestNotFound,
   ManifestReadUnavailable,
   CommitNamespace,
 }
 import gunbc.fabric_m0_publication { publish_work }
+import gunbc.fabric_m0_origin_readback {
+  OriginReading,
+  OriginReadingOutcome,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  origin_reading_digest,
+  read_origin_staged_file,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn digest_a() -> Sha256Digest {
-  Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
+// A CONFIRMING READ IS A REAL READ HERE TOO. gunbc#10934 replaced the ManifestRead
+// digest-plus-provenance-stamp pair with a sealed OriginReading whose only constructor is
+// read_origin_staged_file, and deleted ReadSource with it. This file landed from a sibling lane
+// against the older shape and imported the deleted variants, so main's required floor failed
+// IMPORT-MEMBER-ABSENT for every open PR in the repo -- two individually-green PRs from one lane,
+// incompatible only once both were on main.
+//
+// The repair is to inhabit the construction rather than reach around it: the reading comes from
+// digesting a committed fixture file, and the recorded digest is DERIVED from that reading so a
+// success arm cannot drift from what was read. Under the hermetic envelope crypto.Sha256Sum.File
+// replays one constant digest for every path, which is what these witnesses need -- they are about
+// the publication join, not about the digest computation.
+data fixture_staged_manifest: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
+
+fn read_outcome() -> OriginReadingOutcome {
+  read_origin_staged_file(staged_path: fixture_staged_manifest)
+}
+
+fn digest_a(r: OriginReading) -> Sha256Digest {
+  origin_reading_digest(reading: r)
 }
 
 fn the_attempt() -> AttemptIdentity {
@@ -69,8 +94,8 @@ fn answered() -> CommitTransportOutcome {
   }
 }
 
-fn origin_read() -> ManifestReadbackObservation {
-  ManifestRead { observed_digest: digest_a(), source: DurableOriginRead }
+fn origin_read(r: OriginReading) -> ManifestReadbackObservation {
+  ManifestRead { reading: r }
 }
 
 fn build_output() -> OutputObligation {
@@ -111,24 +136,24 @@ fn the_work() -> Work<NonEmptyStr> {
   work_for(principal: "gunbc" as NonEmptyStr, contract: the_contract(), requirements: fixture_requirements())
 }
 
-fn committed_both() -> List<CommittedOutput> {
+fn committed_both(r: OriginReading) -> List<CommittedOutput> {
   [
-    CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
-    CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
+    CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a(r: r) },
+    CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a(r: r) },
   ]
 }
 
-fn members_both() -> List<ManifestMember> {
+fn members_both(r: OriginReading) -> List<ManifestMember> {
   [
-    ManifestMember { obligation: build_output(), content: digest_a() },
-    ManifestMember { obligation: execution_receipt(), content: digest_a() },
+    ManifestMember { obligation: build_output(), content: digest_a(r: r) },
+    ManifestMember { obligation: execution_receipt(), content: digest_a(r: r) },
   ]
 }
 
-fn object_reads() -> List<OriginObservation> {
+fn object_reads(r: OriginReading) -> List<OriginObservation> {
   [
-    OriginObservation { subject: ObligationSubject { obligation: build_output() }, readback: ReadbackConfirmed { observed_digest: digest_a() } },
-    OriginObservation { subject: ObligationSubject { obligation: execution_receipt() }, readback: ReadbackConfirmed { observed_digest: digest_a() } },
+    OriginObservation { subject: ObligationSubject { obligation: build_output() }, readback: ReadbackConfirmed { reading: r } },
+    OriginObservation { subject: ObligationSubject { obligation: execution_receipt() }, readback: ReadbackConfirmed { reading: r } },
   ]
 }
 
@@ -147,109 +172,129 @@ test fn fixture_work_resolves_two_obligations() -> Bool {
 
 // THE POSITIVE CONTROL of the named join: a complete attempt publishes success.
 test fn a_complete_work_admits_job_success() -> Bool {
-  match publish_work(
-    work: the_work(),
-    attempt: the_attempt(),
-    computation: ComputationSucceeded,
-    committed: committed_both(),
-    observations: object_reads(),
-    namespace: the_namespace(),
-    manifest_digest: digest_a(),
-    members: members_both(),
-    transport: answered(),
-    observed: origin_read(),
-  ) {
-    PublishSuccess { attempt: _, manifest_digest: _ } => true
-    PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => false
-    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match publish_work(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationSucceeded,
+        committed: committed_both(r: r),
+        observations: object_reads(r: r),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(r: r),
+        members: members_both(r: r),
+        transport: answered(),
+        observed: origin_read(r: r),
+      ) {
+        PublishSuccess { attempt: _, manifest_digest: _ } => true
+        PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => false
+        PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+      }
   }
 }
 
 // Discriminating RED: a failed computation cannot be inverted by a confirmed store.
 test fn a_failed_computation_refuses_job_success() -> Bool {
-  match publish_work(
-    work: the_work(),
-    attempt: the_attempt(),
-    computation: ComputationFailed { cause: "compile failed" },
-    committed: committed_both(),
-    observations: object_reads(),
-    namespace: the_namespace(),
-    manifest_digest: digest_a(),
-    members: members_both(),
-    transport: answered(),
-    observed: origin_read(),
-  ) {
-    PublishComputationFailed { attempt: _, cause, unresolved: _ } => cause == "compile failed"
-    PublishSuccess { attempt: _, manifest_digest: _ } => false
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => false
-    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match publish_work(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationFailed { cause: "compile failed" },
+        committed: committed_both(r: r),
+        observations: object_reads(r: r),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(r: r),
+        members: members_both(r: r),
+        transport: answered(),
+        observed: origin_read(r: r),
+      ) {
+        PublishComputationFailed { attempt: _, cause, unresolved: _ } => cause == "compile failed"
+        PublishSuccess { attempt: _, manifest_digest: _ } => false
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => false
+        PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+      }
   }
 }
 
 // ReadbackUnknown must not collapse into success. A cache hit is not origin confirmation.
 test fn a_cache_manifest_read_refuses_job_success() -> Bool {
-  match publish_work(
-    work: the_work(),
-    attempt: the_attempt(),
-    computation: ComputationSucceeded,
-    committed: committed_both(),
-    observations: object_reads(),
-    namespace: the_namespace(),
-    manifest_digest: digest_a(),
-    members: members_both(),
-    transport: answered(),
-    observed: ManifestRead { observed_digest: digest_a(), source: DisposableCacheRead { provider: "local-store" } },
-  ) {
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    PublishSuccess { attempt: _, manifest_digest: _ } => false
-    PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
-    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match publish_work(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationSucceeded,
+        committed: committed_both(r: r),
+        observations: object_reads(r: r),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(r: r),
+        members: members_both(r: r),
+        transport: answered(),
+        observed: cache_manifest_read(provider: "local-store"),
+      ) {
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        PublishSuccess { attempt: _, manifest_digest: _ } => false
+        PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+        PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+      }
   }
 }
 
 // An unanswered write with nothing found is pending, not success and not a decided absence.
 test fn a_lost_ack_without_origin_read_refuses_job_success() -> Bool {
-  match publish_work(
-    work: the_work(),
-    attempt: the_attempt(),
-    computation: ComputationSucceeded,
-    committed: committed_both(),
-    observations: object_reads(),
-    namespace: the_namespace(),
-    manifest_digest: digest_a(),
-    members: members_both(),
-    transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
-    observed: ManifestNotFound,
-  ) {
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    PublishSuccess { attempt: _, manifest_digest: _ } => false
-    PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
-    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match publish_work(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationSucceeded,
+        committed: committed_both(r: r),
+        observations: object_reads(r: r),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(r: r),
+        members: members_both(r: r),
+        transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
+        observed: ManifestNotFound,
+      ) {
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        PublishSuccess { attempt: _, manifest_digest: _ } => false
+        PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+        PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+      }
   }
 }
 
 test fn an_unavailable_origin_read_refuses_job_success() -> Bool {
-  match publish_work(
-    work: the_work(),
-    attempt: the_attempt(),
-    computation: ComputationSucceeded,
-    committed: committed_both(),
-    observations: object_reads(),
-    namespace: the_namespace(),
-    manifest_digest: digest_a(),
-    members: members_both(),
-    transport: answered(),
-    observed: ManifestReadUnavailable { cause: "origin unbound" },
-  ) {
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    PublishSuccess { attempt: _, manifest_digest: _ } => false
-    PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
-    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match publish_work(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationSucceeded,
+        committed: committed_both(r: r),
+        observations: object_reads(r: r),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(r: r),
+        members: members_both(r: r),
+        transport: answered(),
+        observed: ManifestReadUnavailable { cause: "origin unbound" },
+      ) {
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        PublishSuccess { attempt: _, manifest_digest: _ } => false
+        PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+        PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+      }
   }
 }
