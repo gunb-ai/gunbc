@@ -841,10 +841,7 @@ fn witness_floor_build_step(step_name: String, build_script: String) -> Step {
   RunStep {
     name: Present { value: step_name },
     id: Present { value: "build_witness_fold" },
-    run: concat(
-      concat("# ", concat(dissolution_description(condition: floor_attempt_receipt_dissolution_condition), "\n")),
-      concat(wrap_command_with_floor_attempt_receipt(command: build_script), "\n")
-    ),
+    run: concat(wrap_command_with_floor_attempt_receipt(command: build_script), "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -1040,11 +1037,11 @@ fn witness_floor_precondition() -> String {
 // like a probe that failed to run.
 //
 // Shell remains a §6 tell, bounded by the explicit condition below rather than permanent workflow
-// furniture. Runner microVM isolation is independently sufficient because it makes another job's
-// cleanup incapable of reaching this filesystem even before the particular deleter is known.
-data toolchain_filesystem_probe_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible")
-
-data floor_attempt_receipt_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_attempt_receipt -- delete wrap_command_with_floor_attempt_receipt, the always() receipt publish/upload steps, and aggregator BUILD_CLASS/FLOOR_CLASS once per-job runner microVMs make shared-filesystem toolchain eviction impossible, or the deleter is identified and the fleet no longer evicts toolchain identity")
+// furniture. Process-count (#46) does not retire this instrument. Typed env-vs-code classification
+// (POSIX 126/127, attempt receipts, stands-environment) is a different class and does not dissolve
+// here: BMC/host/JIT failure remains environmental after isolation. The probe retires only when
+// BOTH conjuncts in toolchain_filesystem_probe_dissolution_condition hold (gunbc#10971).
+data toolchain_filesystem_probe_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument when BOTH (1) every required public job selects a per-attempt microVM via gunbc.ci_runner_target selected_ci_runner_target / gunbc_ci_selected_runner_spec and every required private job selects one via strategy.private_witness_workflow witnesses_job() SelfHosted custom labels, not the empty-custom shared-FS fleet slot, AND (2) this row is eligible to bind because that selection makes the shared-filesystem eviction class impossible. Identifying a deleter on the shared slot is not a substitute for (1). Isolation does not dissolve typed BMC/host/JIT vs code classification.")
 
 fn witness_toolchain_filesystem_probe_script(phase: String) -> String {
   concat(
@@ -1201,10 +1198,7 @@ fn build_lane_run_step() -> Step {
   RunStep {
     name: Present { value: "Required CI: build lane (phases named by the run, not by this label)" },
     id: none,
-    run: concat(
-      concat("# ", concat(dissolution_description(condition: floor_attempt_receipt_dissolution_condition), "\n")),
-      concat(wrap_command_with_floor_attempt_receipt(command: build_lane_run_script()), "\n")
-    ),
+    run: concat(wrap_command_with_floor_attempt_receipt(command: build_lane_run_script()), "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -1218,10 +1212,7 @@ fn witness_floor_run_step() -> Step {
   RunStep {
     name: Present { value: "D0-MEASURE: witnesses lane" },
     id: Present { value: "required_ci_measure" },
-    run: concat(
-      concat("# ", concat(dissolution_description(condition: floor_attempt_receipt_dissolution_condition), "\n")),
-      concat(wrap_command_with_floor_attempt_receipt(command: witness_floor_run_script()), "\n")
-    ),
+    run: concat(wrap_command_with_floor_attempt_receipt(command: witness_floor_run_script()), "\n"),
     shell: none,
     env: none,
     working_directory: none,
