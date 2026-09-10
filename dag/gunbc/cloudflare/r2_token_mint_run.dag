@@ -6,8 +6,9 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.human_intervention { HumanIntervention, ProvisioningHumanBurden }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import extdeps.transports.rest {
-  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
-  mutation_status_is_commit_ambiguous,
+  classify_rest_outcome, RestMutationExchange,
+  RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
+  RestExchangeUnreached, RestExchangeUndecodable,
 }
 import extdeps.cloudflare.account_api_tokens
 import extdeps.cloudflare.account_api_tokens {
@@ -122,12 +123,11 @@ import gunbc.secret_provision_actuator {
 //
 // NO HTTP PERFORMER EXISTS FOR THIS OPERATION YET, AND THAT IS THE SUCCESSOR RATHER THAN A DEFECT
 // HERE. gunbc.github_effect_perform (gunbc#10923, open at this writing) gives one effect family a
-// REST realization whose outcome classification consumes RestOutcome and
-// mutation_status_is_commit_ambiguous; it is a GitHub performer and does not perform
-// AccountTokens.Create. The reusable part is the CLASSIFICATION, which this module consumes below
-// rather than re-minting. SUCCESSOR TRIGGER for the executed receipt, stated as the capability: a
-// REST performer that can carry a Cloudflare service operation, at which point the three mint
-// frontier rows dissolve on a performed Create.
+// REST realization whose outcome classification consumes RestOutcome through classify_rest_outcome;
+// it is a GitHub performer and does not perform AccountTokens.Create. The reusable part is the
+// CLASSIFICATION, which this module consumes below rather than re-minting. SUCCESSOR TRIGGER for
+// the executed receipt, stated as the capability: a REST performer that can carry a Cloudflare
+// service operation, at which point the three mint frontier rows dissolve on a performed Create.
 //
 // WHAT THIS CHANGE DOES NOT DO, STATED SO THE FRONTIER ROWS ARE READ HONESTLY. No AccountTokens.Create
 // has been performed. The three mint rows in gunbc.cloudflare.r2_token_mint dissolve on an EXECUTING
@@ -221,15 +221,13 @@ fn bootstrap_burden_text() -> String {
 // opposite remedies and neither may be reported as the other. That distinction is why this change
 // added outcome: RestOutcome to the operation; without it a 5xx and a refusal were the same silence.
 //
-// THE 5xx SPLIT IS CONSUMED, NOT RESTATED. extdeps.transports.rest already owns
-// mutation_status_is_commit_ambiguous and states why the boundary sits at 500: a 4xx is a decision
-// the remote made BEFORE committing anything, while a 5xx spans states the remote itself may not be
-// able to describe, including a write that landed under a handler that then failed. Spelling a
-// second threshold here would be one fact with two authorities, and the two would drift on the first
-// status either side learned about. An earlier revision of this function DID map every refused
-// status to the refused arm -- so a 500 that may have minted a token was classified as safely
-// retryable, which is the duplicate-write class arriving through an HTTP response instead of a
-// transport loss.
+// THE 5xx SPLIT IS CONSUMED, NOT RESTATED. classify_rest_outcome over RestMutationExchange is
+// the authority: a 4xx is a decision the remote made BEFORE committing anything, while a 5xx
+// spans states the remote itself may not be able to describe. Spelling a second threshold here
+// would be one fact with two authorities. An earlier revision of this function DID map every
+// refused status to the refused arm -- so a 500 that may have minted a token was classified as
+// safely retryable, which is the duplicate-write class arriving through an HTTP response instead
+// of a transport loss.
 //
 // AND IT IS WORSE HERE THAN AT A SECRET VERSION, which is why the reuse is not merely tidy. A
 // duplicate AddVersion writes bytes we hold; a duplicate Create mints a CREDENTIAL whose value is
@@ -253,32 +251,18 @@ func mint_r2_object_read_token(
     not_before: request.not_before,
     expires_on: request.expires_on,
   )
-  match created.outcome {
-    RestStatusRefused { status: status, body: body } =>
-      if mutation_status_is_commit_ambiguous(status: status) {
-        R2TokenMintOutcomeUnknown {
-          cause: concat(
-            "AccountTokens.Create answered with a server-error status, which does not establish that the mutation did not commit; a token may exist on the account whose value -- returned once -- was never read: ",
-            body) as NonEmptyStr,
-        }
-      } else {
-        R2TokenMintRefused {
-          cause: concat("Cloudflare refused the token create: ", body) as NonEmptyStr,
-        }
+  match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
+    RestExchangeStatusRefused { status: _, body: body } =>
+      R2TokenMintRefused {
+        cause: concat("Cloudflare refused the token create: ", body) as NonEmptyStr,
       }
-    RestTransportRefused { cause: cause } =>
-      R2TokenMintOutcomeUnknown {
-        cause: concat(
-          "no response arrived for AccountTokens.Create, so a token may exist on the account with nobody holding its value; reconcile by listing the account's tokens rather than creating again: ",
-          cause as String) as NonEmptyStr,
-      }
-    RestBodyUndecodable { status: _, cause: cause } =>
-      R2TokenMintOutcomeUnknown {
-        cause: concat(
-          "AccountTokens.Create answered with a body this client could not decode, so the outcome is unread rather than known and the value -- returned once -- may be lost: ",
-          cause as String) as NonEmptyStr,
-      }
-    RestOk =>
+    RestExchangeCommitAmbiguous { detail: detail } =>
+      R2TokenMintOutcomeUnknown { cause: detail }
+    RestExchangeUnreached { cause: cause } =>
+      R2TokenMintOutcomeUnknown { cause: cause }
+    RestExchangeUndecodable { status: _, cause: cause } =>
+      R2TokenMintOutcomeUnknown { cause: cause }
+    RestExchangeSucceeded =>
       match created_account_token_from_create_response(
         response: CreatedAccountTokenCreateResponse {
           id: created.id,
