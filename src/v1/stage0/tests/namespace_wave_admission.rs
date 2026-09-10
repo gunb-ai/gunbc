@@ -800,6 +800,27 @@ fn a_base_side_source_that_does_not_parse_refuses_instead_of_reading_as_empty() 
     );
 }
 
+/// The annotation-erased AST is still a baseline. Body-grain `//` refuses on HEAD parse, but
+/// the module was produced; reading it as unobservable sealed the repair that only moves those
+/// lines onto the declaration (`fail_closed_gate_refuses_its_own_repair`).
+#[test]
+fn a_base_side_source_with_only_body_annotations_still_yields_records() {
+    let body_comment = "\
+module probe.home
+
+fn widget() -> Int {
+  // still an allocated session
+  1
+}
+";
+    let read = base_records("dag/probe/home.dag", body_comment);
+    assert!(
+        read.as_ref().map(|r| !r.is_empty()).unwrap_or(false),
+        "annotation-grain refusals must not make the base unreadable when the parser already \
+         produced the module. Got: {read:?}"
+    );
+}
+
 /// A RENAME HAS TWO SIDES AND THE DIFF NAMES ONLY ONE OF THEM.
 ///
 /// `git diff --name-only` reports a detected rename as its destination alone, so reading that list
