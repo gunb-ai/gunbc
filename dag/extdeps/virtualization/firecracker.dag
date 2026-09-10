@@ -67,6 +67,15 @@ fn firecracker_release_binary_path_in_tarball(rel: FirecrackerRelease) -> String
   ], "")
 }
 
+// THE JAILER IS A SEPARATE BINARY IN THE SAME TARBALL. Production starts Firecracker through it;
+// a path that execs Firecracker directly is a different operation and is not this builder.
+fn firecracker_release_jailer_path_in_tarball(rel: FirecrackerRelease) -> String {
+  join([
+    "release-", rel.version as String, "-", rel.arch as String,
+    "/jailer-", rel.version as String, "-", rel.arch as String,
+  ], "")
+}
+
 data firecracker_release_aarch64_tarball_sha256: NonEmptyStr = "8d0e69f6d6f9a1724551f607f18504052c16c1828ee3d4d7b6e6c73380871e0e" as NonEmptyStr
 
 // `firecracker --version` prints `Firecracker v<version>` on its first line; the readback compares
@@ -231,5 +240,43 @@ fn firecracker_run_config_command(binary: String, config_path: String) -> ArgvCo
   argv_command(
     program: binary as NonEmptyStr,
     arguments: ["--no-api", "--config-file", config_path],
+  )
+}
+
+// `--cgroup-version` SELECTS AN IMPLEMENTATION, IT DOES NOT PLACE A PROCESS. Upstream documents
+// the flag; a live run showed the VMM still at cgroup 0::/ when the supervisor never joined a
+// leaf. Treating the flag as placement would re-author the unbounded-attempt defect.
+data firecracker_jailer_cgroup_version_2: String = "2"
+
+fn jailer_cgroup_version_flag_places_the_process() -> Bool {
+  false
+}
+
+// THE `--` IS THE BOUNDARY BETWEEN JAILER FLAGS AND VMM FLAGS. Everything after it is what
+// Firecracker would have taken on a direct exec, including `--no-api` (without which the VMM
+// binds its API socket and waits). Config paths here are INSIDE the jail after pivot: a host
+// path would fail open as a missing artifact rather than as the containment boundary working.
+fn firecracker_jailer_run_command(
+  jailer_binary: String,
+  jailer_id: String,
+  exec_file: String,
+  uid: Int,
+  gid: Int,
+  chroot_base_dir: String,
+  config_path_in_jail: String,
+) -> ArgvCommand {
+  argv_command(
+    program: jailer_binary as NonEmptyStr,
+    arguments: [
+      "--id", jailer_id,
+      "--exec-file", exec_file,
+      "--uid", to_string(uid),
+      "--gid", to_string(gid),
+      "--chroot-base-dir", chroot_base_dir,
+      "--cgroup-version", firecracker_jailer_cgroup_version_2,
+      "--",
+      "--no-api",
+      "--config-file", config_path_in_jail,
+    ],
   )
 }

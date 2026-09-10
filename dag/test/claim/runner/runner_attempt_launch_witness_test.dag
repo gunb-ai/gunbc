@@ -1,0 +1,208 @@
+module test.claim.runner_attempt_launch_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.exec.command { argv_words }
+import extdeps.virtualization.firecracker {
+  firecracker_requires_kvm_device,
+  jailer_cgroup_version_flag_places_the_process,
+}
+import test.claim.fabric_grant_issuance_witness {
+  issue, subject_work, first_attempt, funded_account, exhausted_account,
+  admitted_offer, thread_appropriation, money_request,
+}
+import product.fabric.grant_issue { GrantCommitted, GrantRefused }
+import product.fabric.execution { ExecutionGrant }
+import product.fabric.budget { MoneyAccount }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt,
+  runner_microvm_attempt_workspace_path, runner_microvm_attempt_dir,
+}
+import gunbc.runner_microvm_network {
+  runner_slot_tap_device_name, runner_microvm_nft_ruleset_text,
+}
+import gunbc.runner_attempt_launch {
+  AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedUnauthorized,
+  LaunchRefusedEmptyOrShortCredential, LaunchRefusedPriorResources,
+  LaunchRefusedConfigUnresolved,
+  AttemptGround, GroundClear, GroundOccupied,
+  plan_attempt_launch, planned_jailer_launches,
+  work_standing_from_vmm_exit, vmm_exit_establishes_work,
+  jailer_cgroup_flag_is_not_placement, placement_is_cgroup_join_then_exec,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data issued_money_generation: Int = money_request.generation
+
+type IssuedPair {
+  grant: ExecutionGrant<NonEmptyStr>
+  account: MoneyAccount
+}
+
+fn issued_pairs() -> List<IssuedPair> {
+  match issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ) {
+    GrantCommitted { grant: g, account: a, ledger: _ } =>
+      [IssuedPair { grant: g, account: a }]
+    GrantRefused { refusal: _ } => []
+  }
+}
+
+fn slot(i: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv2, slot_index: i }
+}
+
+fn accepted_attempt(i: Nat, id: String) -> List<MicroVmAttempt> {
+  match microvm_attempt(slot: slot(i: i), attempt_id: id) {
+    MicroVmAttemptAccepted { attempt: a } => [a]
+    MicroVmAttemptRefused { refusal: _ } => []
+  }
+}
+
+fn plan_for(
+  pair: IssuedPair,
+  account: MoneyAccount,
+  attempt: MicroVmAttempt,
+  bytes: Int,
+  ground: AttemptGround,
+) -> AttemptLaunchPlan {
+  plan_attempt_launch(
+    grant: pair.grant,
+    account: account,
+    money_generation: issued_money_generation,
+    work: pair.grant.context.work,
+    demand: pair.grant.context.demand,
+    offer: pair.grant.object.offer,
+    attempt: attempt,
+    credential_bytes: bytes,
+    ground: ground,
+    jailer_binary: "/bin/jailer",
+    firecracker_binary: "/bin/firecracker",
+  )
+}
+
+test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
+  match issued_pairs() {
+    Cons { head: pair, tail: _ } =>
+      match accepted_attempt(i: 1, id: "cred0") {
+        Cons { head: a, tail: _ } =>
+          match plan_for(pair: pair, account: pair.account, attempt: a, bytes: 0, ground: GroundClear) {
+            LaunchRefusedEmptyOrShortCredential { bytes: n } =>
+              n == 0 && planned_jailer_launches(plan: plan_for(
+                pair: pair, account: pair.account, attempt: a, bytes: 0, ground: GroundClear,
+              )) == 0
+            _ => false
+          }
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+test fn an_unauthorized_grant_yields_zero_jailer_launches() -> Bool {
+  match issued_pairs() {
+    Cons { head: pair, tail: _ } =>
+      match accepted_attempt(i: 2, id: "unauth") {
+        Cons { head: a, tail: _ } =>
+          match plan_for(
+            pair: pair, account: exhausted_account, attempt: a, bytes: 4096, ground: GroundClear,
+          ) {
+            LaunchRefusedUnauthorized { authorization: _ } =>
+              planned_jailer_launches(plan: plan_for(
+                pair: pair, account: exhausted_account, attempt: a, bytes: 4096, ground: GroundClear,
+              )) == 0
+            _ => false
+          }
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+test fn prior_resources_refuse_rather_than_reuse() -> Bool {
+  match issued_pairs() {
+    Cons { head: pair, tail: _ } =>
+      match accepted_attempt(i: 3, id: "prior") {
+        Cons { head: a, tail: _ } =>
+          match plan_for(
+            pair: pair, account: pair.account, attempt: a, bytes: 4096, ground: GroundOccupied,
+          ) {
+            LaunchRefusedPriorResources => planned_jailer_launches(plan: plan_for(
+              pair: pair, account: pair.account, attempt: a, bytes: 4096, ground: GroundOccupied,
+            )) == 0
+            _ => false
+          }
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+test fn an_authorized_launch_consumes_network_slice_workspace_and_jailer() -> Bool {
+  match issued_pairs() {
+    Cons { head: pair, tail: _ } =>
+      match accepted_attempt(i: 4, id: "ok1") {
+        Cons { head: a, tail: _ } =>
+          match plan_for(
+            pair: pair, account: pair.account, attempt: a, bytes: 4096, ground: GroundClear,
+          ) {
+            LaunchAuthorized {
+              authorization: _,
+              tap_device: tap,
+              guest_ip_boot_arg: ip,
+              nft_ruleset: nft,
+              slice: _,
+              workspace_path: ws,
+              workspace_format: fmt,
+              kvm_device: kvm,
+              vm_config: cfg,
+              jailer: jailer,
+              placement: place,
+            } => {
+              let words = join(argv_words(command: jailer), " ")
+              placement_is_cgroup_join_then_exec(p: place)
+                && (tap as String) == (runner_slot_tap_device_name(slot: a.slot) as String)
+                && nft == runner_microvm_nft_ruleset_text()
+                && string_contains(s: ws, pattern: runner_microvm_attempt_dir(attempt: a))
+                && (kvm as String) == (firecracker_requires_kvm_device as String)
+                && string_contains(s: ip, pattern: "ip=")
+                && string_contains(s: words, pattern: "--exec-file")
+                && string_contains(s: words, pattern: "--no-api")
+                && string_contains(s: words, pattern: "--chroot-base-dir")
+                && string_contains(s: words, pattern: "--cgroup-version")
+                && string_contains(s: words, pattern: "/bin/jailer")
+                && (fmt.program as String) == "mke2fs"
+                && count(cfg.drives) == 3
+                && planned_jailer_launches(plan: plan_for(
+                  pair: pair, account: pair.account, attempt: a, bytes: 4096, ground: GroundClear,
+                )) == 1
+            }
+            LaunchRefusedUnauthorized { authorization: _ } => false
+            LaunchRefusedEmptyOrShortCredential { bytes: _ } => false
+            LaunchRefusedPriorResources => false
+            LaunchRefusedConfigUnresolved { cause: _ } => false
+          }
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+test fn a_clean_vmm_exit_is_not_evidence_that_work_ran() -> Bool {
+  !vmm_exit_establishes_work(standing: work_standing_from_vmm_exit(exit_code: 0))
+    && !vmm_exit_establishes_work(standing: work_standing_from_vmm_exit(exit_code: 1))
+}
+
+test fn the_jailer_cgroup_flag_does_not_place_the_process() -> Bool {
+  jailer_cgroup_flag_is_not_placement() && !jailer_cgroup_version_flag_places_the_process()
+}

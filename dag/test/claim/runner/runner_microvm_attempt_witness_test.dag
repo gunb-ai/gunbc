@@ -16,6 +16,7 @@ import gunbc.runner_microvm_attempt {
   AttemptSegmentRefusal, AttemptSegmentEmpty, AttemptSegmentIsRelativeMarker,
   AttemptSegmentContainsSeparator, attempt_segment,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt,
+  runner_microvm_attempt_workspace_path,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -69,6 +70,8 @@ test fn every_guest_path_is_scoped_to_its_own_attempt() -> Bool {
             && string_contains(s: runner_microvm_attempt_rootfs_path(attempt: a), pattern: runner_microvm_attempt_dir(attempt: a))
             && runner_microvm_attempt_dir(attempt: a) != runner_microvm_attempt_dir(attempt: b)
             && runner_microvm_attempt_rootfs_path(attempt: a) != runner_microvm_attempt_rootfs_path(attempt: b)
+            && runner_microvm_attempt_workspace_path(attempt: a) != runner_microvm_attempt_workspace_path(attempt: b)
+            && string_contains(s: runner_microvm_attempt_workspace_path(attempt: a), pattern: runner_microvm_attempt_dir(attempt: a))
         }
         _ => false
       }
