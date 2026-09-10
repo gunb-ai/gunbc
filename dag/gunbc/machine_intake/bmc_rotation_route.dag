@@ -80,7 +80,7 @@ data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolu
 )
 fn rotation_application_for_route(route: BmcRotationRoute) -> CredentialRotationApplication? {
   match route {
-    RotationRouteRedfishAccountService { path_note: _ } => none
+    RotationRouteRedfishAccountService { transport_operation: _, action_shape: _ } => none
     RotationRouteUnavailable { family_note: f, detail: d } =>
       Present {
         value: AccountManagementUnavailable {

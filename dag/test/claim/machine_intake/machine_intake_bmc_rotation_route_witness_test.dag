@@ -23,13 +23,29 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn megarac_has_no_rotation_route_today() -> Bool {
   match rotation_route_for_family(family: AmiMegaRac) {
     RotationRouteUnavailable { family_note: _, detail: _ } => true
-    RotationRouteRedfishAccountService { path_note: _ } => false
+    RotationRouteRedfishAccountService { transport_operation: _, action_shape: _ } => false
   }
 }
 
 test fn openbmc_routes_to_redfish_account_service() -> Bool {
   match rotation_route_for_family(family: OpenBmc) {
-    RotationRouteRedfishAccountService { path_note: _ } => true
+    RotationRouteRedfishAccountService { transport_operation: _, action_shape: _ } => true
+    RotationRouteUnavailable { family_note: _, detail: _ } => false
+  }
+}
+
+// THE AVAILABLE ARM'S PAYLOAD IS READ, NOT MERELY CARRIED. Review 63263 found the arm holding a
+// prose path_note that no consumer touched -- dead data by §4c's own test. Replacing the sentence
+// with DeclarationRefs only fixes half of that: a reference nothing reads is still unconsumed. So
+// the witness destructures the arm and asserts the operation it names, which means a route table
+// pointing at the wrong operation reds here rather than being discovered by the actuator later.
+test fn the_openbmc_route_names_the_set_account_password_operation() -> Bool {
+  match rotation_route_for_family(family: OpenBmc) {
+    RotationRouteRedfishAccountService { transport_operation: op, action_shape: act } =>
+      op.module_path == "extdeps.bmc.http"
+        && op.decl_name == "redfish.Http"
+        && act.module_path == "extdeps.bmc.types"
+        && act.decl_name == "RedfishSystemAction"
     RotationRouteUnavailable { family_note: _, detail: _ } => false
   }
 }

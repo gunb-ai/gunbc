@@ -3,6 +3,7 @@ module gunbc.bmc_implementation_dispatch
 import std.types { List, NonEmptyStr, String }
 import std.credentials { FactoryLogin }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { DeclarationRef, NamedField }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, OpenBmc }
 import extdeps.bmc.openbmc {
   HostStorageBlind,
@@ -62,8 +63,21 @@ fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> RedfishHos
   }
 }
 
+// THE AVAILABLE ARM CARRIES REFERENCES, NOT A SENTENCE ABOUT THEM (review 63263). It was a single
+// path_note String spelling out the method, the path template, the JSON member, the operation name
+// and the executing tool -- and every one of those is ALREADY a modeled fact: the argv is
+// `operation SetAccountPassword` on the redfish.Http service, the action shape is the
+// SetAccountPassword arm of RedfishSystemAction, and the provenance is the call site in
+// gunbc.tools.bmc_onboard. A String leaf hiding named parts is anemic modeling (DESIGN §2), and a
+// symbol cited INSIDE a string literal is unreachable from the Node tree, so unlike a
+// DeclarationRef it is not harvested by the citation checker -- it can rot with neither end touched.
+//
+// AND IT WOULD NOT HAVE SURVIVED ITS OWN FRONTIER. rotation_route_consumption_frontier promises an
+// actuator that DERIVES the rotation by calling this table; that actuator needs the operation, not
+// a description of it, so the arm would have been rewritten rather than consumed -- §6's reviewer
+// test answered "no" on the one arm that is supposed to work.
 type BmcRotationRoute
-  = RotationRouteRedfishAccountService { path_note: NonEmptyStr }
+  = RotationRouteRedfishAccountService { transport_operation: DeclarationRef, action_shape: DeclarationRef }
   | RotationRouteUnavailable { family_note: NonEmptyStr, detail: NonEmptyStr }
 
 // THE MEGARAC ARM IS UNAVAILABLE AND THAT IS A GROUNDED STATEMENT, NOT A GAP LEFT BLANK.
@@ -85,7 +99,16 @@ type BmcRotationRoute
 fn rotation_route_for_family(family: BmcFirmwareFamily) -> BmcRotationRoute {
   match family {
     OpenBmc => RotationRouteRedfishAccountService {
-      path_note: "PATCH /redfish/v1/AccountService/Accounts/ plus the account id, with a JSON Password member; extdeps.bmc.http SetAccountPassword, executed against the srv3 and srv4 controllers by gunbc.tools.bmc_onboard" as NonEmptyStr,
+      transport_operation: DeclarationRef {
+        module_path: "extdeps.bmc.http" as NonEmptyStr,
+        decl_name: "redfish.Http" as NonEmptyStr,
+        field: NamedField { field_name: "SetAccountPassword" as NonEmptyStr },
+      },
+      action_shape: DeclarationRef {
+        module_path: "extdeps.bmc.types" as NonEmptyStr,
+        decl_name: "RedfishSystemAction" as NonEmptyStr,
+        field: NamedField { field_name: "SetAccountPassword" as NonEmptyStr },
+      },
     }
     AmiMegaRac => RotationRouteUnavailable {
       family_note: "AMI MegaRAC serves an SP-X-style /api/ surface and no Redfish service root" as NonEmptyStr,
