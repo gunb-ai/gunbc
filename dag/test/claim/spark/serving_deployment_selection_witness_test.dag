@@ -8,7 +8,7 @@ import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, FootprintReportedExternally, FootprintUnread, DeploymentCandidate, deployment_candidate,
-  ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, SpeculationOff, SpeculationOn,
+  ExecutorRayProfile, ExecutorMpProfile, KvFp8Layout, KvFp8DsMlaLayout, SpeculationOff, SpeculationOn,
   RuntimeRevision, runtime_revision,
   ServingDecisionParameters, serving_decision_parameters,
   ServingExecutionProfile, execution_profile_of, execution_profile_eq, parameters_render,
@@ -35,7 +35,9 @@ import gunbc.spark.serving_deployment_selection {
   serving_selection_axes, candidate_gaps, candidate_diagnostics,
   ax_replica_capacity_share_lost, ax_physical_failure_domains, ax_independent_replicas,
   ax_accepted_task_goodput, ax_time_to_first_token, ax_cotenant_impact,
-  ExperimentPlanNotAuthorizable, glm_native_tp4_experiment_admission,
+  ExperimentPlanNotAuthorizable, ExperimentAuthorizationRefused, glm_native_tp4_experiment_admission,
+  ExperimentPlanStanding, ExperimentPlanAuthorizable, ExperimentPlanBlocked, launch_critical_obligations,
+  ParameterStandingRow, parameter_row, ParameterUnestablished,
   ParameterStandingCompleteness, AllParametersHaveStanding, ParametersWithoutStanding,
   ParametersWithConflictingStandings, parameter_standing_completeness,
   deepseek_quality_requirement,
@@ -563,13 +565,18 @@ test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bo
 //
 // The join is against field NAMES, so a parameter nobody classified is named rather than merely
 // changing a count. And the complete arm carries the unestablished set, because "every parameter has a
-// standing" and "every parameter is established" are different claims: this roster is complete and
-// still reports two fields whose values are held without being established -- the KV layout, which
-// carries DeepSeek's MLA format against a GLM subject, and the runtime, which is a descriptive string
-// where an exact image digest is needed.
+// standing" and "every parameter is established" are different claims -- a roster of nine obligations
+// would otherwise report as done.
+//
+// THE ASSERTION IS THAT THE SET IS EMPTY, NOT THAT IT HAS A PARTICULAR SIZE. It read `count(u) == 2`
+// while two fields were outstanding, which is the change-detector shape §5 names: the literal had to be
+// hand-edited every time a field was established, and editing it was the only content the row had. The
+// set is empty today because the KV layout resolved to a REQUEST that was read off the live argv and the
+// runtime resolved to a digest whose capability was proven inside the image; if either regresses, or a
+// tenth parameter arrives unclassified, this goes red without anyone maintaining a number.
 test fn every_fixed_parameter_has_exactly_one_standing() -> Bool {
   match parameter_standing_completeness() {
-    AllParametersHaveStanding { unestablished: u } => count(u) == 2
+    AllParametersHaveStanding { unestablished: u } => join(map(u, f => f as String), ",") == ""
     ParametersWithoutStanding { fields: _ } => false
     ParametersWithConflictingStandings { fields: _ } => false
   }
@@ -632,14 +639,48 @@ test fn replica_count_is_still_readable_as_a_diagnostic() -> Bool {
 // state: nobody has granted a launch that would displace the DeepSeek group. No witness row asserts
 // that an experiment arm cannot become a deployment shape, because no such conversion exists -- its
 // red would be unauthorable and the check would be a decoration.
-// The plan is blocked BEFORE authorization is even consulted, because two launch-critical parameters
-// are unestablished for GLM: the KV layout carries DeepSeek's MLA format, and the runtime is a
-// descriptive string where an image digest is needed. So an operator grant could not admit this arm
-// today even if one existed -- which is the parameter standings finally governing the decision rather
-// than describing it from the sidelines.
-test fn the_native_experiment_plan_is_not_authorizable_while_launch_critical_fields_are_unestablished() -> Bool {
+//
+// THE BLOCKING ARM IS EXERCISED FROM A FIXTURE, AND THAT IS A REPAIR RATHER THAN A CONVENIENCE. The
+// previous version of this row asserted that the LIVE plan was not authorizable because two
+// launch-critical fields were unestablished. It passed, and it was a trap: the moment those fields were
+// established the row would go green by the roster changing under it, and a control that greens when
+// its subject disappears has stopped discriminating. Worse, one of the two obligations could never have
+// been discharged at all -- the KV layout's resolved format is knowable only BY launching, so a
+// launch-critical gate over the resolved value was unsatisfiable by construction, and this row was
+// quietly asserting that permanent deadlock was correct behaviour.
+//
+// So the wall is now tested where its red stays authorable forever: a roster carrying an unestablished
+// launch-critical field must block, whatever the fleet's real roster says.
+data fixture_unestablished_runtime: List<ParameterStandingRow> = [
+  parameter_row(parameter: "runtime" as NonEmptyStr, provenance: ParameterUnestablished {
+    obligation: "fixture: a runtime nobody has read" as NonEmptyStr }),
+]
+
+test fn a_roster_with_an_unestablished_launch_critical_field_blocks_the_plan() -> Bool {
+  match launch_critical_obligations(rows: fixture_unestablished_runtime) {
+    ExperimentPlanBlocked { obligations: os } => count(os) == 1
+    ExperimentPlanAuthorizable => false
+  }
+}
+
+// THE POSITIVE CONTROL, so the row above is not passing because the gate blocks everything. Both
+// launch-critical fields are now established on the live roster -- the KV layout as the REQUEST that
+// the canary argv was read to confirm, the runtime as an exact digest whose native-architecture support
+// was proven by executing inside that image -- so the live plan clears the gate.
+test fn the_live_roster_clears_the_launch_critical_gate() -> Bool {
+  match launch_critical_obligations(rows: serving_parameter_standings) {
+    ExperimentPlanAuthorizable => true
+    ExperimentPlanBlocked { obligations: _ } => false
+  }
+}
+
+// AND CLEARING THE GATE IS NOT ADMISSION, which is the distinction the whole authorization layer
+// exists for. The plan is now authorizABLE and still does not admit, because no operator grant exists:
+// the refusal moved from the parameter standings to the authorization, which is where it belongs.
+test fn a_gate_clearing_plan_still_refuses_without_a_grant() -> Bool {
   match glm_native_tp4_experiment_admission() {
-    ExperimentPlanNotAuthorizable { obligations: os } => count(os) == 2
+    ExperimentPlanNotAuthorizable { obligations: _ } => false
+    ExperimentAuthorizationRefused { cause: _ } => true
     _ => false
   }
 }

@@ -208,25 +208,22 @@ type ModelSnapshotRole
 // WHICH MEMBER SEEDS IS A DECISION OVER CURRENT OBSERVATIONS, AND THE PREVIOUS PIN WAS FALSIFIED BY
 // THIS BRANCH'S OWN CANARY.
 //
-// The literal it replaces was `.110.17`, chosen on 2026-09-08 because that member "runs NO container
-// (group B is not serving)" and "holds the most free space of any member at 3340 GB". Both halves are
-// now false, and the first is false BECAUSE OF WORK ON THIS BRANCH: `.110.17` is spark-0c75, which is
-// the host serving the GLM EXL3 canary on port 30001. Measured 2026-09-08 across the reachable rail:
+// The literal it replaces was `.110.17`, chosen on 2026-09-08 because that member held the most free
+// space and ran no container. Both halves went false within two days, and the first went false BECAUSE
+// OF WORK ON THIS BRANCH: `.110.17` is spark-0c75, the host serving the GLM EXL3 canary. That is the
+// argument for a fold over observation rows rather than a pin -- a timeless literal cannot express a
+// fact that its own branch is about to invalidate.
 //
-//     spark-3bd5  .110.14  3,076,433,002,496 free  SERVING (DeepSeek group A head)
-//     spark-a3ee  .110.11  3,062,869,479,424 free  not serving
-//     spark-c2b1  .110.13  3,272,444,051,456 free  not serving
-//     spark-0c75  .110.17  3,478,167,228,416 free  SERVING (GLM EXL3 canary)
-//     spark-2196  .110.16  3,586,612,215,808 free  not serving
-//
-// So the most-free member is now .110.16 rather than .110.17, and the idle-member criterion excludes
-// the old pin outright. A timeless literal cannot express either fact.
+// THE NUMBERS ARE NOT REPEATED HERE. An earlier revision of this annotation transcribed the whole
+// measured table above the rows that carry it, so one read of the rail lived in two places and the
+// prose half could rot while the rows stayed right. The rows below ARE the observation; the instrument
+// that re-derives them is named in `model_snapshot_seed_observed_at`.
 //
 // THE ELIGIBILITY SIGNAL IS A LISTENING SERVING PORT, NOT A CONTAINER COUNT. `docker ps` refuses
 // without group membership on at least one member, so a container census reads zero on a box that is
 // serving -- exactly backwards for this purpose. A listening endpoint is readable everywhere and is
-// the fact that matters: seeding 330 GB onto a member that is answering requests is the cost this
-// choice exists to avoid.
+// the fact that matters: seeding a multi-hundred-gigabyte fetch onto a member that is answering
+// requests is the cost this choice exists to avoid.
 //
 // FREE SPACE IS COMPARED AGAINST WHAT IS BEING FETCHED rather than against a remembered threshold, so
 // a larger artifact narrows the eligible set on its own.
@@ -242,20 +239,27 @@ fn seed_observation(host: NonEmptyStr, rail: Ipv4Address, free_bytes: Nat, servi
   SeedEligibilityObservation { host: host, rail: rail, free_bytes: free_bytes, serving_endpoints: serving_endpoints, observed_at: observed_at }
 }
 
-data model_snapshot_seed_observed_at: NonEmptyStr = "read over ssh on 2026-09-08: `ip -4 -o addr show` for the rail address, `df -B1 --output=avail /` for free bytes, and `ss -ltn` counting listeners on 30000 and 30001 for serving" as NonEmptyStr
+data model_snapshot_seed_observed_at: NonEmptyStr = "read over ssh on 2026-09-10, all eight members: `ip -4 -o addr show` for the rail address, `df -B1 --output=avail /` for free bytes, and `ss -ltn` counting listeners on 30000 and 30001 for serving" as NonEmptyStr
 
 data model_snapshot_seed_observations: List<SeedEligibilityObservation> = [
-  seed_observation(host: "spark-3bd5" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 14), free_bytes: 3076433002496, serving_endpoints: 1, observed_at: model_snapshot_seed_observed_at),
-  seed_observation(host: "spark-a3ee" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 11), free_bytes: 3062869479424, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
-  seed_observation(host: "spark-c2b1" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 13), free_bytes: 3272444051456, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
-  seed_observation(host: "spark-0c75" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 17), free_bytes: 3478167228416, serving_endpoints: 1, observed_at: model_snapshot_seed_observed_at),
-  seed_observation(host: "spark-2196" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 16), free_bytes: 3586612215808, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-a3ee" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 11), free_bytes: 3062845353984, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-ac79" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 12), free_bytes: 3301108027392, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-c2b1" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 13), free_bytes: 3272375140352, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-3bd5" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 14), free_bytes: 3076123234304, serving_endpoints: 1, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-3336" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 15), free_bytes: 3586060328960, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-2196" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 16), free_bytes: 3586588590080, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-0c75" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 17), free_bytes: 3478162620416, serving_endpoints: 1, observed_at: model_snapshot_seed_observed_at),
+  seed_observation(host: "spark-b66c" as NonEmptyStr, rail: ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: 18), free_bytes: 3597229400064, serving_endpoints: 0, observed_at: model_snapshot_seed_observed_at),
 ]
 
-// TWO MEMBERS ARE ABSENT FROM THAT ROSTER AND THAT IS RECORDED RATHER THAN ROUNDED AWAY: the two
-// members whose serving-network addresses did not answer ssh on 2026-09-08 have no observation, so
-// they are not eligible -- an unobserved member is not an idle one.
-data model_snapshot_seed_unobserved_members: NonEmptyStr = "two members did not answer ssh on their serving-network addresses when this roster was read; they carry no observation and therefore cannot be selected" as NonEmptyStr
+// THE ROSTER IS COMPLETE AS OF THIS READ, AND SAYING SO IS THIS ROW'S JOB. A previous read reached
+// only five of eight members, and the two that did not answer carried no observation -- an unobserved
+// member is not an idle one, so they could not be selected. On 2026-09-10 all eight answered on their
+// serving-network addresses, including spark-ac79 (.110.12) and spark-b66c (.110.18). This row is
+// still appended to a refusal's causes because completeness is a fact the refusal must state: a reader
+// of SeedUnselectable needs to know whether the eligible set was empty because every member was
+// excluded or because the roster never saw them.
+data model_snapshot_seed_roster_completeness: NonEmptyStr = "all eight fabric members answered ssh on their serving-network addresses when this roster was read, so every member carries an observation and the eligible set is empty only by exclusion" as NonEmptyStr
 
 type SeedSelection
   = SeedSelected { rail: Ipv4Address, host: NonEmptyStr, free_bytes: Nat, basis: NonEmptyStr }
@@ -289,7 +293,7 @@ fn select_snapshot_seed(required_bytes: Nat) -> SeedSelection {
           Present { value: c } => [c]
           Absent => []
         }),
-        [model_snapshot_seed_unobserved_members]),
+        [model_snapshot_seed_roster_completeness]),
     }
   } else {
     let best = fold(eligible, init: first_or(list: eligible), f: (acc, o) => seed_better(a: acc, b: o))

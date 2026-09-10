@@ -6,6 +6,7 @@ import std.measure { TokenCount, token_count, token_count_value, basis_point, ba
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_memory_request_key }
 import extdeps.vllm.runtime_defaults { vllm_memory_request_defect }
+import gunbc.spark.serving_arm { gitcommit90_sm121_exl3_row }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval, OrderedClosedInterval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
@@ -1506,9 +1507,15 @@ fn admit_shape(s: ServingDeploymentSelection) -> ShapeAdmission {
 // axes and would have answered the moment two of them filled; this one names every dimension that
 // could change the decision, so the answer stays an obligation until they are measured. No weights
 // are guessed and no axis is dropped to obtain a winner.
+// DERIVED FROM THE ROW THAT MEASURED IT, NOT RESTATED. gunbc.spark.serving_arm already carries this
+// image as a probed fact -- digest, hub CLI path, self-reported vLLM version, and whether the registry
+// answers for Glm5Next -- because whether a runtime can load an architecture is a measured property of
+// the image. A revision of this row hand-copied the digest and the version here, which is the §3 fork
+// in its most ordinary form: two spellings of one measurement, agreeing on the day they were written
+// and free to diverge on any day after. The direction of the import is facts into decision.
 data spark_runtime: RuntimeRevision = runtime_revision(
-  image: "the serving container image currently deployed on the Sparks" as NonEmptyStr,
-  vllm_revision: "the vLLM revision pinned in that image" as NonEmptyStr,
+  image: gitcommit90_sm121_exl3_row.image_reference,
+  vllm_revision: gitcommit90_sm121_exl3_row.vllm_version,
 )
 
 data serving_parameter_standings: List<ParameterStandingRow> = [
@@ -1528,13 +1535,14 @@ data serving_parameter_standings: List<ParameterStandingRow> = [
     instrument: "read from the live DeepSeek group's engine argv on spark-3bd5, 2026-09-08: --enable-prefix-caching is present" as NonEmptyStr }),
   parameter_row(parameter: "executor" as NonEmptyStr, provenance: ParameterObserved {
     instrument: "read from the same live argv: --distributed-executor-backend ray" as NonEmptyStr }),
-  parameter_row(parameter: "kv_layout" as NonEmptyStr, provenance: ParameterUnestablished {
-    obligation: "this row carries the DeepSeek MLA layout (fp8_ds_mla), correct for the artifact THAT route serves and NOT established for GLM. The GLM canary launches with plain --kv-cache-dtype fp8, and the internal format the backend then selects is a separate fact from the flag. A GLM profile needs its own read-back" as NonEmptyStr }),
+  parameter_row(parameter: "kv_layout" as NonEmptyStr, provenance: ParameterDecided {
+    decider: "read from the live GLM canary argv on spark-0c75, 2026-09-10: --kv-cache-dtype fp8" as NonEmptyStr,
+    purpose: "THIS FIELD IS THE REQUEST AND NOT THE RESOLUTION, which is the distinction that unblocks it. A previous revision held it unestablished because the internal format the backend selects is a separate fact from the flag -- true, but it made the field undischargeable: the resolved layout can only be learned BY launching, while this field is a launch argument, so a launch-critical gate over it could never be satisfied before a launch. The request is decidable and decided; the resolved format is the subject of gunbc.spark.vllm_memory_receipt VllmKvLayoutReceipt, acquired after a launch, and it is not this roster's row" as NonEmptyStr }),
   parameter_row(parameter: "speculative" as NonEmptyStr, provenance: ParameterDecided {
     decider: "operator, first-boot policy" as NonEmptyStr,
     purpose: "disabled to isolate the base model path. Its quality standing is separately unobserved, so admitting it needs a receipt rather than a default" as NonEmptyStr }),
-  parameter_row(parameter: "runtime" as NonEmptyStr, provenance: ParameterUnestablished {
-    obligation: "the image and vLLM revision are carried as descriptive strings rather than an exact digest, so two different images satisfy this row identically. An exact image digest read from the host is the missing observation, and it is load-bearing: a native-FP8 GLM arm needs a runtime proven to register that architecture, which the EXL3 image is not known to do" as NonEmptyStr }),
+  parameter_row(parameter: "runtime" as NonEmptyStr, provenance: ParameterObserved {
+    instrument: "gunbc.spark.serving_arm gitcommit90_sm121_exl3_row, whose provenance names the registry probe executed inside that exact digest; `spark_runtime` is derived from that row rather than restating it. Re-confirmed independently on 2026-09-10: docker inspect on spark-0c75 resolved the running canary to the same digest, and python3 inside it reported Glm5NextForConditionalGeneration registered with fp8, fp8_per_block and compressed-tensors among its quantisation methods. THAT SECOND HALF IS THE LOAD-BEARING ONE: a previous revision held this field unestablished on the ground that the EXL3 image was not known to register the native architecture, and it is discharged BY EXECUTION rather than by argument -- the checkpoint at the pinned revision declares quant_method fp8 with weight_block_size [128,128], and fp8_per_block is the method for it" as NonEmptyStr }),
 ]
 
 data serving_parameter_field_names: List<NonEmptyStr> = [
@@ -1549,8 +1557,12 @@ data serving_parameter_field_names: List<NonEmptyStr> = [
   "runtime" as NonEmptyStr,
 ]
 
+fn rows_for_field_in(rows: List<ParameterStandingRow>, field: NonEmptyStr) -> List<ParameterStandingRow> {
+  filter(rows, r => (r.parameter as String) == (field as String))
+}
+
 fn rows_for_field(field: NonEmptyStr) -> List<ParameterStandingRow> {
-  filter(serving_parameter_standings, r => (r.parameter as String) == (field as String))
+  rows_for_field_in(rows: serving_parameter_standings, field: field)
 }
 
 type ParameterStandingCompleteness
@@ -1590,7 +1602,7 @@ data serving_parameters_current: ServingDecisionParameters = serving_decision_pa
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
-  kv_layout: KvFp8DsMlaLayout,
+  kv_layout: KvFp8Layout,
   speculative: SpeculationOff,
   enable_prefix_caching: true,
   runtime: spark_runtime,
@@ -1809,7 +1821,7 @@ fn admit_serving_experiment(
   topology: TopologyShape,
   parameters: ServingDecisionParameters,
 ) -> ServingExperimentAdmission {
-  match launch_critical_obligations() {
+  match launch_critical_obligations(rows: serving_parameter_standings) {
     ExperimentPlanBlocked { obligations: os } => ExperimentPlanNotAuthorizable { obligations: os }
     ExperimentPlanAuthorizable =>
       match authorize(authorization: authorization, request: request, observed_at: observed_at) {
@@ -1864,9 +1876,16 @@ type ExperimentPlanStanding
   = ExperimentPlanAuthorizable
   | ExperimentPlanBlocked { obligations: List<NonEmptyStr> }
 
-fn launch_critical_obligations() -> ExperimentPlanStanding {
+// THE ROSTER IS A PARAMETER BECAUSE THE WALL MUST STAY TESTABLE AFTER THE LIVE ROSTER IS CLEAN. While
+// this function read the global rows, the only way to exercise its blocking arm was for the real fleet
+// to have an unestablished launch-critical field -- so the day those fields were established, the
+// control asserting non-authorisability would flip to green and stop discriminating. Taking the rows as
+// an argument makes the blocked arm reachable from a fixture forever, which is what §4b(4) requires of
+// evidence when its production case climbs: the probe becomes a permanent regression control instead of
+// retiring.
+fn launch_critical_obligations(rows: List<ParameterStandingRow>) -> ExperimentPlanStanding {
   let blocked = flat_map(launch_critical_parameter_fields, f =>
-    flat_map(rows_for_field(field: f), r => match provenance_obligation(prov: r.provenance) {
+    flat_map(rows_for_field_in(rows: rows, field: f), r => match provenance_obligation(prov: r.provenance) {
       Present { value: o } => [join([f as String, ": ", o as String], "") as NonEmptyStr]
       Absent => []
     }))
