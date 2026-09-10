@@ -1,5 +1,12 @@
 module product.fabric.selection
 
+import product.fabric.provider_route { provider_route_eq }
+import product.fabric.provider_admission {
+  permit_standing, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
+  PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
+  ProviderUsePermit, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
+  ProviderUseRefusal,
+}
 import std.types { NonEmptyStr, List, Bool }
 import std.measure {
   MoneyAmountMicro, MoneyOnce, MoneyPerSecond, money_amount_micro, money_amount_micro_count,
@@ -8,7 +15,7 @@ import std.measure {
 }
 import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat, nat_min }
-import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { ExecutionRequirements }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, content_hash_atom, content_hash_combine_structural }
@@ -218,23 +225,97 @@ type DispatchInputs<P> {
 // unchanged -- this confines WHO may construct and establishes nothing about whether the
 // observations themselves were honestly taken, which stays a boundary obligation on whoever
 // produced them.
+// THE PERMIT IS A THIRD MEMBER OF THE SEALED TRIPLE, AND THAT IS THE WHOLE WALL.
+//
+// Ranking used to decide over offers that no authority had admitted, so "may this work run on this
+// route at all" was answered nowhere on the deciding path and the cheapest offer won regardless.
+// Adding a check inside the ranking fold would have been validation - satisfiable by editing the
+// check, and one forgotten call site from being wrong again. Putting the permit INSIDE the sealed
+// candidate makes the bad state unconstructible instead: sole_constructor confines construction to
+// bind_candidate, bind_candidate refuses without an admitted permit, and selection ranks
+// CandidateOffers. So "an unadmitted offer won the ranking" has no spelling, which is section 4b's
+// top rung rather than a wall someone has to remember to run.
+//
+// The ordering argument is unchanged and now enforced one step earlier: this module already
+// evaluates price LAST so price cannot rescue an offer that cannot run the work. Admission is
+// earlier still, so price cannot rescue an offer we are not authorised to use.
 type CandidateOffer<P> sole_constructor {
   offer: SupplierOffer<P>
   dispatch: DispatchInputs<P>
+  permit: ProviderUsePermit<P>
 }
 
+// THE THREE NEW ARMS ARE THREE DIFFERENT THINGS TO GO AND DO, which is why they are not one
+// "not admitted" arm. A denial carries the admission's own typed cause, so the remedy is whatever
+// that cause names - gather route facts, clear a sanctions case, re-posture. A permit naming
+// another offer is a WIRING fault: a real admission carried onto the wrong offer. A permit naming
+// another route is the same fault one level down, and it is the case the route on SupplierOffer
+// exists to make expressible - without it the two could never disagree, so the check could not be
+// written at all.
 type CandidateBinding<P>
   = CandidateBound { candidate: CandidateOffer<P> }
   | DispatchInputsNameAnotherOffer {
       offer: FabricIdentity<P, OfferKey>,
       inputs_name: FabricIdentity<P, OfferKey>,
     }
+  | OfferNotAdmittedForUse {
+      offer: FabricIdentity<P, OfferKey>,
+      cause: ProviderUseRefusal,
+    }
+  | PermitNamesAnotherOffer {
+      offer: FabricIdentity<P, OfferKey>,
+      permit_names: FabricIdentity<P, OfferKey>,
+    }
+  | PermitNamesAnotherRoute { offer: FabricIdentity<P, OfferKey> }
+  | PermitNamesAnotherWork {
+      permit_work: FabricIdentity<P, WorkKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | PermitNamesAnotherDemand {
+      permit_demand: FabricIdentity<P, DemandKey>,
+      subject_demand: FabricIdentity<P, DemandKey>,
+    }
 
-fn bind_candidate<P>(offer: SupplierOffer<P>, dispatch: DispatchInputs<P>) -> CandidateBinding<P> {
-  if !fabric_identity_eq(left: offer.id, right: dispatch.offer) {
-    DispatchInputsNameAnotherOffer { offer: offer.id, inputs_name: dispatch.offer }
-  } else {
-    CandidateBound { candidate: CandidateOffer { offer: offer, dispatch: dispatch } }
+// The admission coproduct is matched ONCE and the permit comes out of the admitted arm, so there
+// is no Bool "was it admitted" predicate and nowhere to invent a permit: the only permit this
+// function can put in a candidate is the one the decision actually produced.
+// A CANDIDATE IS SEALED FOR A USE, NOT MERELY FOR A ROUTE, AND THE USE IS A PARAMETER SO IT
+// CANNOT BE READ OFF THE PERMIT BEING CHECKED. product.fabric.grant_issue already states the
+// reason: admission is granted FOR a customer profile and a data-handling profile, and both are
+// properties of the WORK, so "a permit checked only against the offer and the route would
+// authorise work B under the scope that was admitted for work A". That check previously existed
+// ONLY in issue_grant, which the production broker never reaches - it selects and reserves
+// without ever issuing a grant - so the deciding path carried the offer and route halves of the
+// check and none of the use half. Binding here is what puts all four on one path.
+fn bind_candidate<P>(
+  offer: SupplierOffer<P>,
+  dispatch: DispatchInputs<P>,
+  admission: ProviderUseAdmission<P>,
+  demand: FabricIdentity<P, DemandKey>,
+  work: FabricIdentity<P, WorkKey>,
+) -> CandidateBinding<P> {
+  match admission {
+    ProviderUseDenied { decision, cause } =>
+      OfferNotAdmittedForUse { offer: offer.id, cause: cause }
+    ProviderUseAdmitted { permit } =>
+      if !fabric_identity_eq(left: offer.id, right: dispatch.offer) {
+        DispatchInputsNameAnotherOffer { offer: offer.id, inputs_name: dispatch.offer }
+      } else {
+        match permit_standing(
+          permit: permit, offer: offer.id, route: offer.route, demand: demand, work: work) {
+          PermitNamesAnotherOfferThan { permit_names: n } =>
+            PermitNamesAnotherOffer { offer: offer.id, permit_names: n }
+          PermitNamesAnotherRouteThan => PermitNamesAnotherRoute { offer: offer.id }
+          PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+            PermitNamesAnotherWork { permit_work: pw, subject_work: sw }
+          PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+            PermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd }
+          PermitAuthorizesUse =>
+            CandidateBound {
+              candidate: CandidateOffer { offer: offer, dispatch: dispatch, permit: permit },
+            }
+        }
+      }
   }
 }
 
@@ -964,7 +1045,7 @@ fn axis_amount(a: PricedAxis) -> MoneyAmountMicro {
 // cheaper and unsuitable. There is none here.
 type SupplySelection<P>
   = OfferSelected {
-      offer: SupplierOffer<P>,
+      candidate: CandidateOffer<P>,
       cost: SelectionCost,
       basis: CostBasis,
       horizon: CommitmentHorizon,
@@ -1235,7 +1316,7 @@ fn select_supply<P>(
               EqualCostTieUnresolved { digest: d, cause: c, considered: ranked.considered }
             TieResolved { winner: winner } =>
               OfferSelected {
-                offer: winner.candidate.offer,
+                candidate: winner.candidate,
                 cost: winner.cost,
                 basis: winner.basis,
                 horizon: winner.horizon,

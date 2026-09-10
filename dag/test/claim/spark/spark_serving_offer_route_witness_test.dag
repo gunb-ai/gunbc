@@ -1,0 +1,99 @@
+module test.claim.spark.spark_serving_offer_route_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import product.fabric.provider_route { ProviderRoute }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.work { TrustDomainRef }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
+}
+import gunbc.spark.serving_offer {
+  SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused,
+  SparkServingReadiness, ServingObserved,
+  SparkServingRoute, ServingRouteObserved, ServingRouteRegionUnobserved,
+  spark_serving_route_standing, spark_serving_route_region_obligation,
+  bind_spark_serving_offer,
+}
+
+// THE ROUTE OBLIGATION, EXECUTED. spark_serving_route_standing refuses today because nothing
+// observes which region a serving host sits in, and these rows are what stop that refusal from
+// being a claim in a comment. The pair is deliberate: without the observed control below, "the
+// offer did not bind" would be satisfied by a binder that never binds for any reason at all, and
+// the refusal row would assert nothing about the route.
+
+fn t_launch() -> VllmEndpointProcessLaunch {
+  vllm_endpoint_process_launch(
+    group: FabricGroupA,
+    endpoint: "http://10.0.0.1:8000" as NonEmptyStr,
+    process_start_field: "1" as NonEmptyStr,
+  )
+}
+
+fn t_observed_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.spark.spark_serving_offer_route_witness_test", decl_name: "t_observed_route"),
+    service: decl_ref(module_path: "gunbc.spark.serving_offer", decl_name: "spark_serving_quote"),
+    region: decl_ref(module_path: "gunbc.spark.fabric_switch_observed", decl_name: "FabricGroupA"),
+  }
+}
+
+fn t_ready() -> SparkServingReadiness {
+  ServingObserved {
+    ready_at: "2026-09-09T00:00:00Z",
+    receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef,
+  }
+}
+
+fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
+  bind_spark_serving_offer(
+    principal: "gunbc" as NonEmptyStr,
+    executor: "spark-a" as NonEmptyStr,
+    launch: t_launch(),
+    model: "test-model" as NonEmptyStr,
+    trust_domain: "gunbc.trust.spark" as TrustDomainRef,
+    isolation: IsolationProfile { guarantees: [] },
+    seats: 1,
+    readiness: t_ready(),
+    route: route,
+  )
+}
+
+// POSITIVE CONTROL, AND IT CARRIES THE EXACT ROUTE RATHER THAN MERELY BINDING. A binder that
+// bound while dropping the route on the floor would satisfy "it bound" and leave the offer in the
+// state this whole change exists to make unwritable.
+test fn an_observed_route_binds_and_the_offer_carries_it() -> Bool {
+  match t_bind(route: ServingRouteObserved { route: t_observed_route() }) {
+    SparkOfferBound { bound: p } =>
+      (p.offer.route.region as String) == (t_observed_route().region as String)
+        && (p.offer.route.provider as String) == (t_observed_route().provider as String)
+    SparkOfferBindingRefused { group_wire: _, cause: _ } => false
+  }
+}
+
+// RED - AN UNOBSERVED REGION REFUSES, AND THE REFUSAL SAYS WHY. Asserting only that it refused
+// would be satisfied by a refusal for the readiness reason, which this fixture deliberately does
+// not exercise: readiness is observed above, so the only thing left to refuse for is the route.
+test fn an_unobserved_region_refuses_naming_its_obligation() -> Bool {
+  match t_bind(route: ServingRouteRegionUnobserved { obligation: spark_serving_route_region_obligation }) {
+    SparkOfferBound { bound: _ } => false
+    SparkOfferBindingRefused { group_wire: _, cause: why } =>
+      (why as String) == (spark_serving_route_region_obligation as String)
+  }
+}
+
+// THE STANDING THE PRODUCTION CALLER ACTUALLY PASSES IS THE UNOBSERVED ONE. This is what makes the
+// two rows above statements about the live path rather than about a fixture: harness_seat calls
+// spark_serving_route_standing, and it refuses. When a region observer lands, this row goes red and
+// must be replaced by one asserting the observed route -- that is the restoration trigger firing,
+// not a change detector, because the arm it selects is different code.
+test fn the_standing_the_harness_passes_is_unobserved_today() -> Bool {
+  match spark_serving_route_standing() {
+    ServingRouteObserved { route: _ } => false
+    ServingRouteRegionUnobserved { obligation: o } =>
+      (o as String) == (spark_serving_route_region_obligation as String)
+  }
+}
