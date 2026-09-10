@@ -443,6 +443,33 @@ fn inspect_fan_tach(subject: FanTachSubject) -> FanTachInspection {
 // inventory, and an incomplete authority. A combined number is a display summary at best; as the
 // module's semantic output it re-does the conflation one level up.
 
+// THE HEALTHY ARMS GET COUNTERS TOO, so that all seven judgement arms are counted by one typed
+// authority rather than six here and one re-minted at each call site. A consumer asking "how many
+// endpoints are spinning" is asking about the same classification as one asking how many drifted.
+fn rotation_observed_count(healthy: List<FanTachHealthy>) -> Int {
+  fold(
+    healthy,
+    init: 0,
+    f: (acc, h) =>
+      match h {
+        RotationObserved { header, speed } => acc + 1
+        other => acc
+      },
+  )
+}
+
+fn rotation_correctly_absent_count(healthy: List<FanTachHealthy>) -> Int {
+  fold(
+    healthy,
+    init: 0,
+    f: (acc, h) =>
+      match h {
+        RotationCorrectlyAbsent { header } => acc + 1
+        other => acc
+      },
+  )
+}
+
 fn rotation_anomaly_count(deviations: List<FanTachDeviation>) -> Int {
   fold(
     deviations,
