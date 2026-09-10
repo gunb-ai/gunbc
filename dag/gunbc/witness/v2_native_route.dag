@@ -408,11 +408,12 @@ fn native_route_census(
 // default.
 //
 // THE MALFORMED CONTROL PROVES THE FRONT-END REFUSAL ARM IS LIVE. The host runs the same binary
-// with the poison fixture's directory added as a source root; an honest front-end collects a
-// per-file refusal for it (the collecting fold refuses the FILE, never the whole context), and
-// the receipt records the refusal it observed. MalformedSpecimenAccepted — no refusal row for
-// the poison path — means the route "accepted" poisoned source and every refusal verdict in its
-// census is worthless.
+// over the poison fixture's directory as the run's only source root — the run's single consumed
+// output is the poison path's refusal, so rooting it at the full corpus would pay a second
+// whole-corpus context fold for one observation. An honest front-end collects a per-file refusal
+// for it (the collecting fold refuses the FILE, never the whole context), and the receipt records
+// the refusal it observed. MalformedSpecimenAccepted — no refusal row for the poison path — means
+// the route "accepted" poisoned source and every refusal verdict in its census is worthless.
 type NativeRouteMalformedControl
   = MalformedSpecimenRefused { path: String, reason: Symbol }
   | MalformedSpecimenAccepted

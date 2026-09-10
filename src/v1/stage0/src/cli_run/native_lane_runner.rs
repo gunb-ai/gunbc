@@ -383,7 +383,10 @@ fn write_universe_file(path: &Path, universe: &[(String, String)]) -> Result<(),
 }
 
 /// One controls-only universe file for the malformed-specimen run: the poisoned source root is
-/// the subject, and the controls give the run a live verdict path to print beside the refusal.
+/// the subject. The control rows stay named because the driver refuses an empty universe file;
+/// under the control run's fixture-only roots they resolve to nothing, and their prepare-stage
+/// refusal observations are not consumed — the run's only consumed output is the poison path's
+/// per-file refusal.
 fn write_control_universe_file(path: &Path) -> Result<(), String> {
     write_universe_file(path, &[])
 }
@@ -776,15 +779,17 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         main_output.file_refusals.len()
     );
 
-    // 6. THE MALFORMED CONTROL. The same binary with the poison fixture's directory added as a
-    // source root; an honest front-end collects a per-file refusal for it.
+    // 6. THE MALFORMED CONTROL. The same binary over the poison fixture's directory ALONE.
+    // The run's only consumed output is the poison path's per-file refusal, and rooting the
+    // control at the full corpus paid a second whole-corpus context fold — the lane's dominant
+    // cost — to produce it. Tokenization is per-file and deterministic, so the observed refusal
+    // is identical under the restricted roots.
     let control_universe_file = workspace
         .join("target")
         .join("v2-native-lane")
         .join("controls-universe.tsv");
     write_control_universe_file(&control_universe_file)?;
-    let mut control_roots = source_roots.to_vec();
-    control_roots.push(MALFORMED_FIXTURE_DIR.to_string());
+    let control_roots = vec![MALFORMED_FIXTURE_DIR.to_string()];
     let control_output = run_native_binary(
         &preparation.binary_path,
         &control_universe_file,
