@@ -694,7 +694,7 @@ fn ct_pub_use_crate_lines_two_emission_byte_identity_test() -> String {
     "                });\n",
     "                let omega = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
     "                    path: \"probe_omega.dag\".to_string(),\n",
-    "                    content: \"module probe.omega\\nimport probe.zebra { Zebra }\\nimport probe.aardvark { Aardvark }\\nimport probe.mongoose { Mongoose }\\nfn keep(z: Zebra, a: Aardvark, m: Mongoose) -> Int { z.n + a.n + m.n }\\n\".to_string(),\n",
+    "                    content: \"module probe.omega\\nfn keep(z: probe.zebra.Zebra, a: probe.aardvark.Aardvark, m: probe.mongoose.Mongoose) -> Int { z.n + a.n + m.n }\\n\".to_string(),\n",
     "                });\n",
     "                let sources = std::rc::Rc::new(im::vector![zebra, aardvark, mongoose, omega]);\n",
     "                let first = crate::v1_compiler_compile::compile_sources(sources.clone(), crate::v1_compiler_artifact::RenderTarget::Rust);\n",

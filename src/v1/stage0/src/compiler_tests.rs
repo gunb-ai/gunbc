@@ -550,7 +550,7 @@ mod compiler_tests {
                 });
                 let omega = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "probe_omega.dag".to_string(),
-                    content: "module probe.omega\nimport probe.zebra { Zebra }\nimport probe.aardvark { Aardvark }\nimport probe.mongoose { Mongoose }\nfn keep(z: Zebra, a: Aardvark, m: Mongoose) -> Int { z.n + a.n + m.n }\n".to_string(),
+                    content: "module probe.omega\nfn keep(z: probe.zebra.Zebra, a: probe.aardvark.Aardvark, m: probe.mongoose.Mongoose) -> Int { z.n + a.n + m.n }\n".to_string(),
                 });
                 let sources = std::rc::Rc::new(im::vector![zebra, aardvark, mongoose, omega]);
                 let first = crate::v1_compiler_compile::compile_sources(
