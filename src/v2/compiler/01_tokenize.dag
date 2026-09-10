@@ -597,14 +597,12 @@ fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWal
 }
 
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
+// Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar when remaining is nonempty.
 fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
   let result = fold_source(
     src: source,
     algebra: lex_walk_source_algebra(file: file, rules: rules)
   )
-  // Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a
-  // refusal on an offending literal landed on the insertion point rather than
-  // covering the character. Cover one scalar when remaining is nonempty.
   let at = match string_is_empty(s: result.remaining) {
     true => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
     false => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos + 1 } }
