@@ -35,7 +35,7 @@ fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
 // the sweep's first_located_cause already skips. The assertion is therefore containment: the
 // refusal CARRIES the guard's typed reason, wherever the pending carriers put it.
 fn rejection_reasons(source: String) -> List<Symbol> {
-  match lex_walk_artifact(source: source, file: ^graft_guard_probe, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: chars(s: source), file: ^graft_guard_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => no_reasons()
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
@@ -70,7 +70,7 @@ fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
 }
 
 fn normalize_accepts(source: String) -> Bool {
-  match lex_walk_artifact(source: source, file: ^graft_guard_probe, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: chars(s: source), file: ^graft_guard_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
@@ -85,7 +85,7 @@ fn normalize_accepts(source: String) -> Bool {
 }
 
 fn normalized_tree_optional(source: String) -> Node? {
-  match lex_walk_artifact(source: source, file: ^graft_guard_probe, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: chars(s: source), file: ^graft_guard_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
