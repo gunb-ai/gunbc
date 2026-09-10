@@ -33,7 +33,11 @@ pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
 }
 
 pub fn tokenize(source: &str) -> Rc<im::Vector<Rc<Token>>> {
-    v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
+    v1_compiler::v1_compiler_tokenize::tokenize(
+        source.to_string(),
+        "test.dag".to_string(),
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    )
 }
 
 pub fn parse_source(source: &str) -> Rc<ParseResult> {
@@ -41,8 +45,11 @@ pub fn parse_source(source: &str) -> Rc<ParseResult> {
 }
 
 pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
-    let tokens =
-        v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), filename.to_string());
+    let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
+        source.to_string(),
+        filename.to_string(),
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index =
         v1_compiler::v1_std_core::build_newline_index(filename.to_string(), source.to_string());
     let mut source_indices = im::HashMap::new();

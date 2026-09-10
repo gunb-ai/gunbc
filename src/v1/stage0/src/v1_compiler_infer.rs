@@ -67,8 +67,8 @@ pub use crate::std_operator_realization::OperandDeclaration;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
-use crate::std_syntax::LiteralValue::{LitBool, LitInt, LitStr};
-use crate::std_syntax::LiteralValue::{LitFloat, LitNull};
+use crate::std_syntax::LiteralValue::LitStr;
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;

@@ -3,7 +3,8 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, v2_native_lane_needs }
+import gunbc.witness_v2_native_route { required_v2_native_job_name }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -253,13 +254,20 @@ test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool
 test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
   !any(fleet_converge_workflow.jobs, j => j.id == build_lane_job_id)
     && !any(fleet_converge_workflow.jobs, j => j.id == floor_lane_job_id)
+    && !any(fleet_converge_workflow.jobs, j => j.id == required_v2_native_job_name)
     && build_lane_job_id != floor_lane_job_id
+    && build_lane_job_id != required_v2_native_job_name
     && build_lane_job_id != witness_floor_workflow_job_id
+    && floor_lane_job_id != required_v2_native_job_name
     && floor_lane_job_id != witness_floor_workflow_job_id
+    && required_v2_native_job_name != witness_floor_workflow_job_id
 }
 
-// NEITHER LANE WAITS ON THE OTHER, WHICH IS THE ENTIRE CONTENT OF "PARALLEL" -- and the
-// aggregation job waits on both, which is what keeps the split fail-closed.
+// NO LANE WAITS ON ANOTHER, WHICH IS THE ENTIRE CONTENT OF "PARALLEL" -- and the
+// aggregation job waits on all of them, which is what keeps the split fail-closed. The
+// roster was two lanes at the split (build, floor); the required v2-native lane's enrolment
+// (gunbc.witness_v2_native_route) makes it three, and the witness name keeps the split's
+// original identity rather than re-authoring the row.
 //
 // THE EARLIER FORM OF THIS ROW ASSERTED THAT THE FILE CONTAINED NO `needs:` AT ALL, and that
 // was the right claim for a workflow shape that was WRONG. Review of gunbc#9203 found it: the
@@ -271,17 +279,18 @@ test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
 //
 // The claim is therefore stated at the grain that actually matters. The typed lane jobs must
 // carry no `needs`, while the one roster from which the aggregate derives its `needs` must carry
-// exactly both lane identities. Reading those narrow producers avoids serializing the aggregate's
+// exactly the three lane identities. Reading those narrow producers avoids serializing the aggregate's
 // large gate program merely to recover fields that existed before serialization. This remains a
 // strictly sharper discriminator than the old token count: it distinguishes the serialization
 // being forbidden from the aggregation being demanded, which "no needs anywhere" could not.
 //
-// It is a RED that can be authored in both directions: giving either lane job a `needs` row
+// It is a RED that can be authored in both directions: giving any lane job a `needs` row
 // fails the negatives, and dropping the aggregator's fails the positive.
 test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
   length(xs: build_lane_needs()) == 0
     && length(xs: witness_floor_lane_needs()) == 0
-    && length(xs: non_empty_to_list(xs: required_lanes_roster())) == 2
+    && length(xs: v2_native_lane_needs()) == 0
+    && length(xs: non_empty_to_list(xs: required_lanes_roster())) == 3
     && count_where(
       xs: non_empty_to_list(xs: required_lanes_roster()),
       predicate: fn(lane) { lane.job_id == build_lane_job_id },
@@ -289,6 +298,10 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
     && count_where(
       xs: non_empty_to_list(xs: required_lanes_roster()),
       predicate: fn(lane) { lane.job_id == floor_lane_job_id },
+    ) == 1
+    && count_where(
+      xs: non_empty_to_list(xs: required_lanes_roster()),
+      predicate: fn(lane) { lane.job_id == required_v2_native_job_name },
     ) == 1
 }
 

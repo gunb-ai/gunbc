@@ -1,5 +1,11 @@
 module v2.test.compile_door_ledger_ownership
 
+import v2.workflow.compile_door_ledger {
+  cause_ownership_lookup, HeadGrain, ThisLaneCalibration, SharedSelfHostCriticalPath, MigrationOwned,
+  affected_ledger_from_diff, AffectedDiffRefused, AffectedLedgered, ledger_refused_count
+}
+import v2.workflow.floor_diff_observe { NameStatusDiffFail, NameStatusDiffOk }
+
 // Fast pure receipt (no door, no live tree) for the flip-trigger table: every frontier cause the
 // histogram receipts pin is attributed to its owning lane, and an unknown cause is fail-closed
 // UNATTRIBUTED (not silently bucketed). This is the DESIGN 5 tell that the burn-down table stays
@@ -8,7 +14,7 @@ module v2.test.compile_door_ledger_ownership
 // witness in v2.test.long.compile_door_ledger, which pins the counts; this pins the ATTRIBUTION.
 
 fn lane_ok_this_lane(cause: Symbol) -> Bool {
-  match cause_ownership_lookup(cause: cause) {
+  match cause_ownership_lookup(cause: cause, grain: HeadGrain) {
     Present { value: row } =>
       match row.lane {
         ThisLaneCalibration => true
@@ -20,7 +26,7 @@ fn lane_ok_this_lane(cause: Symbol) -> Bool {
 }
 
 fn lane_ok_shared(cause: Symbol) -> Bool {
-  match cause_ownership_lookup(cause: cause) {
+  match cause_ownership_lookup(cause: cause, grain: HeadGrain) {
     Present { value: row } =>
       match row.lane {
         ThisLaneCalibration => false
@@ -32,7 +38,7 @@ fn lane_ok_shared(cause: Symbol) -> Bool {
 }
 
 fn lane_ok_migration(cause: Symbol) -> Bool {
-  match cause_ownership_lookup(cause: cause) {
+  match cause_ownership_lookup(cause: cause, grain: HeadGrain) {
     Present { value: row } =>
       match row.lane {
         ThisLaneCalibration => false

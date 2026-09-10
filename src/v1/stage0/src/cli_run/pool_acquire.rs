@@ -110,8 +110,11 @@ fn acquire(file: &str, content: &str) -> Rc<Acquired> {
             return hit;
         }
     }
-    let artifact =
-        crate::v1_compiler_tokenize::tokenize_artifact(content.to_string(), file.to_string());
+    let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
+        content.to_string(),
+        file.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let newline_index = build_newline_index(file.to_string(), content.to_string());
     let acquired = Rc::new(Acquired {
         content: Rc::new(content.to_string()),
