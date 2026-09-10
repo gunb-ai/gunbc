@@ -31,8 +31,8 @@ data cause_established: NonEmptyStr = "CONFIG_CFS_BANDWIDTH was unset, so cpu.ma
 
 // CpuBoundStanding lives on the attempt receipt. This row is the later standing on
 // filtered-egress-4: the interface exists; enforcement does not. It is not derived from
-// placement_verdict (slice5b-cgroup-77e659df), which is a different run and on that run the
-// standing was CpuBoundWrittenButUnread. cpu_bound_write_refused is the EPERM this rebuild closes.
+// the earlier cgroup-placement run (that run's cpu bound was written and unread). 
+// cpu_bound_write_refused is the EPERM this rebuild closes.
 data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
   value: "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf",
   what_this_does_not_show: "that a process exceeding it is actually throttled. No load was applied, so cpu.stat's throttled_usec and nr_throttled were never going to move, and nothing here distinguishes an enforced bound from a stored number",
@@ -46,6 +46,6 @@ data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
 data next_rung_trigger: NonEmptyStr = "a guest running a controlled CPU load above quota, with nr_throttled and throttled_usec advancing in the attempt leaf's cpu.stat"
 
 // AND THE MEMORY BOUND IS IN THE SAME STATE, which is worth saying beside this rather than leaving
-// implicit. The observed current and max bytes live on placement_accounting; no run has yet driven
-// a guest into the limit.
+// implicit. Memory current and max were observed on the earlier placement run; no run has yet
+// driven a guest into the limit.
 data memory_bound_standing: NonEmptyStr = "memory.max is set and memory.current tracks real usage, but no run has driven an attempt to the limit, so reclaim and kill behaviour at the boundary are unobserved"
