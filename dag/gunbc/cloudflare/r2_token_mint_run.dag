@@ -101,11 +101,14 @@ import gunbc.secret_provision_actuator {
 // payload/data, because a dotted path is a single JSON-pointer key and was why the first live
 // Create looked like RestOk with a null status.
 //
-// THE ATTEMPT GRAIN IS r2_object_read_token_mint_receipt. THREE Creates ran. The first two reached
+// THE ATTEMPT GRAIN WAS THE THIRD CREATE. THREE Creates ran. The first two reached
 // Cloudflare under the dotted-path decoder, minted live tokens whose values this process did not
 // keep, and were revoked by id after List: 3cbb99f150c4daec03ab6a8458a2440f and
-// cb444492f55dbc1b40ee7ce17778d7ff (account listing was the only readback of those two). This
-// receipt is the THIRD Create. Those were not commit-ambiguous HTTP arms; they were RestOk with
+// cb444492f55dbc1b40ee7ce17778d7ff (account listing was the only readback of those two). The stored
+// mint is 3f43e1c7f8fbcfc97139cb5d9dc4e984. Those identities are named here because the PR body must
+// not be the only record of what the account saw; they are not re-derived by comparing them to
+// themselves in a witness. The instrument is gunbc.cloudflare.r2_token_mint_run run / List /
+// revoke_unheld_object_read_token. Those were not commit-ambiguous HTTP arms; they were RestOk with
 // unread fields. A retry into a 5xx/timeout was not done. The class is
 // gunbc.recurring_failure_mode.json_pointer_dot_spelling_reads_nested_fields_as_absent.
 //
@@ -284,11 +287,12 @@ func list_account_tokens(
 // bytes to a Cloudflare token id. An exact version on the origin read_credential is the live
 // declaration that a held mint exists. Comparing a listed id to a receipt literal goes stale on
 // the next rotation and deletes the credential the fabric is reading with.
-fn origin_read_pin_is_exact() -> Bool {
-  match fabric_durable_origin_standing() {
+fn origin_read_pin_is_exact(origin: DurableOriginStanding) -> Bool {
+  match origin {
     DurableOriginUnallocated { purpose: _ } => false
     DurableOriginAllocated { bucket: bucket } =>
       (bucket.read_credential.version as String) != "latest"
+        && (bucket.read_credential.version as String) != "pending"
   }
 }
 
@@ -392,23 +396,10 @@ func mint_r2_object_read_token(
 // THE ACCESS KEY ID IS NOT A SECRET AND IS REPORTED, NOT STORED. It is the token's id, which the
 // account's own token listing shows.
 
-data r2_object_read_tokens_revoked_before_store: List<NonEmptyStr> = [
-  "3cbb99f150c4daec03ab6a8458a2440f",
-  "cb444492f55dbc1b40ee7ce17778d7ff",
-]
-
-// Surviving mint identity and the Secret Manager version the origin pin joins. Grain booleans are
-// not fields: they are a progression coproduct, and writing them as parallel flags made illegal
-// sequences representable. The access key id is the token id; it is not a second field.
-type R2ObjectReadTokenMintReceipt {
-  token_id: NonEmptyStr
-  version_resource: NonEmptyStr
-}
-
-data r2_object_read_token_mint_receipt: R2ObjectReadTokenMintReceipt = R2ObjectReadTokenMintReceipt {
-  token_id: "3f43e1c7f8fbcfc97139cb5d9dc4e984",
-  version_resource: "projects/582015116396/secrets/cloudflare-r2-origin-read-token/versions/1",
-}
+// THE ACCESS KEY ID IS NOT A SECRET AND IS REPORTED, NOT STORED. It is the token's id, which the
+// account's own token listing shows. The third Create's id and the two revoked unread Creates are
+// named in the annotation at the top of this module and in the PR body; they are not data rows.
+// A transcribed Secret Manager resource string would rot the moment the pin rotated.
 
 type R2CredentialStored
   = R2CredentialStoredAt { version_resource: String }
@@ -471,6 +462,11 @@ func store_minted_token(
       }
   }
 }
+
+// List and revoke are the standing reconcile entries for a non-idempotent Create whose HTTP
+// outcome is unknown or whose nested fields were unread. They are gunbc-run functions, the same
+// consumer class as run(); they are not a second mint path. /tmp is the non-secret readback
+// channel run() also uses. They dissolve when a modeled artifact store replaces that write.
 
 func list_account_tokens_for_reconcile() -> ProcessExit uses net: Network {
   match r2_mint_bootstrap() {
@@ -535,7 +531,7 @@ func revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
                 init: "",
                 f: (acc, row) => if row.name == request.name { row.id as String } else { acc },
               )
-              if origin_read_pin_is_exact() {
+              if origin_read_pin_is_exact(origin: fabric_durable_origin_standing()) {
                 exit_failure(reason: concat(
                   "ORIGIN READ CREDENTIAL IS PINNED TO AN EXACT VERSION, NOTHING REVOKED: the named object-read token is the held mint ",
                   token_id))
@@ -586,34 +582,6 @@ func revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
           }
         }
       }
-  }
-}
-
-// ACCESSVERSION BEFORE CREATE. AccountTokens.Create is non-idempotent; a mint issued against a
-// bootstrap path that has not been proven readable can spend a token this run cannot store. This
-// probe is the same bracket run() uses -- OperatorSuppliedToken, exact version, identity join --
-// and it STOPS at the credential. The resolved version resource is written without the payload.
-func probe_bootstrap_access_version() -> ProcessExit uses net: Network {
-  match r2_mint_bootstrap() {
-    R2MintBootstrapRefused { cause: cause } =>
-      exit_failure(reason: cause as String)
-    R2MintBootstrapReady {
-      account_id: _,
-      request: _,
-      bootstrap: _,
-      gcp_token: _,
-      resolved_version: identity,
-    } => {
-      let written = Filesystem.Write(
-        path: "/tmp/r2-bootstrap-access-version-identity.txt",
-        content: identity as String,
-      )
-      if written.success {
-        ExitSuccess
-      } else {
-        exit_failure(reason: concat("BOOTSTRAP WAS READ AND THE IDENTITY FILE COULD NOT BE WRITTEN: ", written.error))
-      }
-    }
   }
 }
 

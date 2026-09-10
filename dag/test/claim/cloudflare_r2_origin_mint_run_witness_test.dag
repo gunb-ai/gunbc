@@ -9,7 +9,7 @@ import extdeps.cloudflare.r2 {
   r2_bucket_resource_name,
   workers_r2_storage_bucket_item_read_permission_group_id,
 }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_version }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_version, secret_ref_version_resource }
 import std.allocation_roster {
   AllocationAdmission,
   AllocationAdmitted,
@@ -34,6 +34,8 @@ import gunbc.cloudflare.r2_origin {
   fabric_durable_origin_standing,
   DurableOriginAllocated,
   DurableOriginUnallocated,
+  DurableOriginStanding,
+  DurableOriginBucket,
   FabricDurableOrigin,
   BucketPurpose,
   R2BucketAllocation,
@@ -50,6 +52,7 @@ import gunbc.cloudflare.r2_permission_group_observe {
   ObservedPermissionGroup,
   observed_permission_group_by_id,
 }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.cloudflare.r2_token_mint_run {
   classify_r2_mint,
   R2MintReady,
@@ -58,8 +61,6 @@ import gunbc.cloudflare.r2_token_mint_run {
   R2MintOriginUnallocated,
   R2MintAdmissionRefused,
   bootstrap_burden_text,
-  r2_object_read_token_mint_receipt,
-  r2_object_read_tokens_revoked_before_store,
   origin_read_pin_is_exact,
 }
 
@@ -270,32 +271,42 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
   }
 }
 
-// THE RECEIPT IS JOINED TO THE ORIGIN PIN, not checked against itself. version_resource is an
-// observation of Secret Manager; the origin's read_credential is the declared pin.
-// gcp_resource_names_this_version is the same identity join the fetch uses, so a receipt that names
-// another project, secret, or version fails while the pin stays put.
-test fn r2_object_read_mint_receipt_names_the_origin_read_pin() -> Bool {
+// THE PIN'S RESOURCE NAME JOINS THIS FLEET'S PROJECT NUMBER, not a transcribed AccessVersion string.
+// secret_ref_version_resource is derived from the origin declaration; gcp_resource_names_this_version
+// is the same identity join the bootstrap fetch uses. A pin that names another project fails while
+// fleet_secrets_project_number stays put.
+test fn r2_origin_read_pin_names_this_project_version() -> Bool {
   match fabric_durable_origin_standing() {
     DurableOriginUnallocated { purpose: _ } => false
     DurableOriginAllocated { bucket: bucket } =>
       gcp_resource_names_this_version(
-        returned: r2_object_read_token_mint_receipt.version_resource as String,
+        returned: secret_ref_version_resource(ref: bucket.read_credential),
         ref: bucket.read_credential,
         project_number: fleet_secrets_project_number,
       )
   }
 }
 
-test fn revoke_unheld_refuses_when_origin_read_is_pinned() -> Bool {
-  origin_read_pin_is_exact()
-    && (fabric_durable_origin_read_secret_version as String) != "latest"
+fn origin_with_latest_read_pin() -> DurableOriginStanding {
+  DurableOriginAllocated {
+    bucket: DurableOriginBucket {
+      bucket_name: "gunbai-fabric-origin",
+      jurisdiction: R2JurisdictionDefault,
+      admits: FabricCommitManifestsAndContentAddressedOutputs {},
+      read_credential: secret_ref_pin_version(
+        ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
+        version: "latest",
+      ),
+    }
+  }
 }
 
-test fn surviving_mint_id_is_not_a_revoked_unread_create() -> Bool {
-  all(
-    r2_object_read_tokens_revoked_before_store,
-    id => (id as String) != (r2_object_read_token_mint_receipt.token_id as String),
-  )
+// THE DISCRIMINATING RED IS A FIXTURE, same move as the absent-bootstrap-custody test. latest is
+// representable as a standing handed to the classifier even though the accepted origin pin is
+// exact. origin_read_pin_is_exact on the declared standing is the positive control.
+test fn origin_read_pin_is_exact_is_false_for_latest() -> Bool {
+  !origin_read_pin_is_exact(origin: origin_with_latest_read_pin())
+    && origin_read_pin_is_exact(origin: fabric_durable_origin_standing())
 }
 
 // THE BURDEN IS PRICED BY THE ENTRY, which is the dissolution this change claims for
