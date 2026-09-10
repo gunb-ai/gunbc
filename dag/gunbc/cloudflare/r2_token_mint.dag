@@ -1,6 +1,6 @@
 module gunbc.cloudflare.r2_token_mint
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Timestamp }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -18,6 +18,7 @@ import extdeps.cloudflare.account_api_tokens {
   HumanDashboardAcquired,
   CreatedViaAccountTokensApi,
   NoExpiryUntilRevoked,
+  OptionalTokenExpiry,
   AccountApiTokensSurface,
   admit_account_token_api_mint,
   AccountTokenApiMintStanding,
@@ -41,6 +42,21 @@ import extdeps.cloudflare.r2 {
 // Cluster: admit_r2_object_read_api_mint, admit_account_token_api_mint, and
 // r2_s3_access_pair_from_created_token have no executing AccountTokens.Create in this change.
 // Subjects are DeclarationRefs (std.roster_frontier); rationale is this annotation, not a String field.
+//
+// TWO ROWS DISSOLVED WHEN gunbc.cloudflare.r2_token_mint_run LANDED, AND THREE DELIBERATELY DID NOT.
+// vendor_cloudflare_frontier_rows dissolved on its own stated trigger: gunbc.cloudflare.r2_origin is
+// a gunbc declaration that names this fleet's Cloudflare account and cites extdeps.vendor.cloudflare
+// as the company, and the mint entry reads that standing on its executing refusal path.
+// cloudflare_r2_token_human_burden's row dissolved on its stated trigger too: the entry renders the
+// FleetOnce interventions from the burden on every refusal arm, which is the pricing the row asked
+// for -- not a witness asserting the burden exists.
+//
+// The three rows BELOW stand unchanged, and that is a rung-honesty decision rather than an
+// oversight. Their trigger is an EXECUTING AccountTokens.Create, and the entry that landed refuses
+// for want of an allocated account id and a pinned bootstrap custody version, so no Create has been
+// performed. Deleting them here would retire the rows while the capability stays dead, which is
+// exactly the section 4b(3) failure of satisfying a trigger that names less than the capability it
+// restores. They dissolve in the change that lands an executed receipt.
 data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_read_api_mint"),
@@ -63,31 +79,33 @@ data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
       description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
     ),
   ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "cloudflare_r2_token_human_burden"),
-    reason: "no executing consumer of the FleetOnce bootstrap burden; witness is not a consumer",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration consumes cloudflare_r2_token_human_burden on an executing converge or gunbc-run entry that prices the dashboard bootstrap; a witness that the burden exists does not fire this",
-    ),
-  ),
 ]
 
-data vendor_cloudflare_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
-    reason: "cited company entity has no executing gunbc consumer in this change",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration names this fleet's Cloudflare account and cites extdeps.vendor.cloudflare as the company; the vendor row is not consumed by token minting",
-    ),
-  ),
-]
+// THE FLEET'S BOOTSTRAP TOKEN EXPIRES, AND THE MODEL SAID IT DID NOT. This shape declared
+// NoExpiryUntilRevoked, which was a convenient default rather than an observed fact, and the token
+// the operator actually holds carries an expiry. A modeled lifetime that outlives the real one is a
+// silent wrong answer on exactly one day -- the day it lapses -- and everything that consults the
+// shape until then agrees with itself and disagrees with Cloudflare.
+//
+// RECORDING THE DATE IS NOT REFUSING ON IT, AND THIS CHANGE ONLY DOES THE FORMER. Nothing here
+// compares the expiry to now, because there is no modeled comparison to make: this tree carries no
+// Timestamp ordering at all -- no compare, no before/after -- and the reachable substitute is
+// lexicographic String comparison over a format nothing validates, which would answer confidently
+// for "2027-9-10" and for any offset spelling other than Z. Building the refusal on that would put a
+// guess underneath the check whose entire job is to catch one.
+//
+// SUCCESSOR, STATED AS THE CAPABILITY RATHER THAN AN ARTIFACT: a modeled Timestamp ordering in std
+// -- a total comparison over a validated instant, not a string compare -- at which point the mint
+// preconditions gain an expired-bootstrap arm that refuses BEFORE the fetch, beside the
+// custody-unrecorded arm, and this annotation's second paragraph dissolves.
+data cloudflare_bootstrap_token_expires_on: Timestamp = "2027-09-10T23:59:59Z"
 
 fn cloudflare_bootstrap_token_shape() -> CloudflareAccountTokenShape {
   CloudflareAccountTokenShape {
     kind: AccountOwnedApiToken,
     grants: [AccountApiTokensWrite],
     acquisition: HumanDashboardAcquired,
-    lifetime: NoExpiryUntilRevoked,
+    lifetime: OptionalTokenExpiry { expires_on: cloudflare_bootstrap_token_expires_on },
     revocation: AccountApiTokensSurface
   }
 }
