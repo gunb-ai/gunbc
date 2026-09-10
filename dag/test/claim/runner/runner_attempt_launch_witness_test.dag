@@ -170,7 +170,7 @@ test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
           }
         Empty {} => false
       }
-    Empty {} => true
+    Empty {} => false
   }
 }
 
