@@ -59,33 +59,33 @@ data braced_fn_control_source: String = "module probe.braced_fn\n\nfn f(a: Int) 
 
 data empty_eq_fn_source: String = "module probe.empty_eq\n\nfn f(a: Int) -> Int =\n"
 
-fn expression_bodied_fn_decl_parses_holds() -> Bool {
+test fn expression_bodied_fn_decl_parses_holds() -> Bool {
   g_parse_accepted(text: expression_bodied_fn_source, file: ^probe_expr_fn)
 }
 
-fn expression_bodied_literal_fn_decl_parses_holds() -> Bool {
+test fn expression_bodied_literal_fn_decl_parses_holds() -> Bool {
   g_parse_accepted(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
 }
 
-fn braced_fn_decl_still_parses_holds() -> Bool {
+test fn braced_fn_decl_still_parses_holds() -> Bool {
   g_parse_accepted(text: braced_fn_control_source, file: ^probe_braced_fn)
 }
 
-fn braced_fn_decl_survives_normalize_holds() -> Bool {
+test fn braced_fn_decl_survives_normalize_holds() -> Bool {
   g_normalize_accepted(text: braced_fn_control_source, file: ^probe_braced_fn)
 }
 
-fn empty_eq_fn_decl_refuses_holds() -> Bool {
+test fn empty_eq_fn_decl_refuses_holds() -> Bool {
   match g_parse_accepted(text: empty_eq_fn_source, file: ^probe_empty_eq) {
     true => false
     false => true
   }
 }
 
-fn expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
+test fn expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
   g_normalize_accepted(text: expression_bodied_fn_source, file: ^probe_expr_fn)
 }
 
-fn expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
+test fn expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
   g_normalize_accepted(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
 }
