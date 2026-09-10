@@ -179,10 +179,22 @@ type FrontEndCause {
 // THE CLOSURE ITSELF, as the denominator every row is a fraction of. It is derived, not listed by
 // hand: the emitted probe crate writes one Rust file per closure module carrying a `// Source
 // module:` header, and joining those headers against each `.dag` file's own `module` line yields
-// exactly these paths. It is carried because a population without its denominator invites the
-// directory census this table exists to replace - and because it is the only thing a refusal row's
-// path can be joined AGAINST, which is what makes the membership witness a real check rather than a
-// comparison of two numerals authored side by side.
+// exactly these paths.
+//
+// THREE POPULATIONS ARE EASY TO CONFLATE HERE AND ONLY ONE IS THIS TABLE'S SUBJECT, so all three are
+// named. The MODULES are the `.dag` closure members - this roster, and the denominator every refusal
+// row is a fraction of. The EMITTED RUST FILES under the probe crate's `src/` are more numerous: one
+// per module PLUS four that project no module at all - the crate root, the driver's `main`, the
+// runtime shim and an emitted population table - which is exactly why membership is decided by the
+// `// Source module:` header join and never by counting `.rs` files. The EMISSION'S OWN FILE COUNT,
+// which the lane prints, is larger still because it includes a file outside `src/`. A reader taking
+// the second or third number for the first would be measuring the emitter's harness, not the
+// compiler's closure; the four-file gap is not slack in the roster.
+//
+// The roster is carried because a population without its denominator invites the directory census
+// this table exists to replace - and because it is the only thing a refusal row's path can be joined
+// AGAINST, which is what makes the membership witness a real check rather than a comparison of two
+// numerals authored side by side.
 data closure_module_manifest: List<String> = [
   "dag/extdeps/cache/catalog_io.dag",
   "dag/extdeps/cache/catalog_placement.dag",
