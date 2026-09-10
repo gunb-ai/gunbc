@@ -13,7 +13,7 @@ import gunbc.self_host_compile_phase_frontier {
   TargetPinnedOnInvocation,
   PhaseCount,
   PhaseNotYetReached,
-  Observed,
+  ObservedPhaseCount,
   DerivedFromRustcErrorIndex,
   RustcPhaseBoardRow,
   RustcPhaseBoard,
@@ -115,7 +115,7 @@ fn fixture_borrow_board(borrow_ids: List<String>) -> RustcPhaseBoard {
       row_derived(phase: Borrowck, n: count(borrow_ids), identities: borrow_ids)
     ],
     furthest_phase_reached: Borrowck,
-    furthest_phase_evidence: Observed,
+    furthest_phase_evidence: ObservedPhaseCount,
     census_identity_digest: CensusIdentityDigest { algorithm: CanonicalIdentitySetV1, digest: content_hash_atom(value: "fixture-borrow-board" as NonEmptyStr) },
     total_error_diagnostics: count(borrow_ids),
     coded_error_diagnostics: count(borrow_ids),
@@ -134,7 +134,7 @@ test fn coded_and_codeless_error_identities_must_reconcile_to_total() -> Bool {
       RustcPhaseBoardRow { phase: Borrowck, standing: PhaseNotYetReached, identities: [] }
     ],
     furthest_phase_reached: Typeck,
-    furthest_phase_evidence: Observed,
+    furthest_phase_evidence: ObservedPhaseCount,
     census_identity_digest: CensusIdentityDigest { algorithm: CanonicalIdentitySetV1, digest: content_hash_atom(value: "malformed-error-population" as NonEmptyStr) },
     total_error_diagnostics: 1,
     coded_error_diagnostics: 1,
@@ -147,7 +147,7 @@ test fn coded_and_codeless_error_identities_must_reconcile_to_total() -> Bool {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn row_parse(n: Int, identities: List<String>) -> RustcPhaseBoardRow {
-  RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: n, evidence: Observed }, identities: identities }
+  RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: n, evidence: ObservedPhaseCount }, identities: identities }
 }
 
 fn row_derived(phase: RustcPhase, n: Int, identities: List<String>) -> RustcPhaseBoardRow {
@@ -168,7 +168,7 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
       RustcPhaseBoardRow { phase: Borrowck, standing: PhaseNotYetReached, identities: [] }
     ],
     furthest_phase_reached: if count(resolve_ids) > 0 { Resolve } else { Typeck },
-    furthest_phase_evidence: Observed,
+    furthest_phase_evidence: ObservedPhaseCount,
     census_identity_digest: CensusIdentityDigest { algorithm: CanonicalIdentitySetV1, digest: content_hash_atom(value: "fixture-board" as NonEmptyStr) },
     total_error_diagnostics: count(resolve_ids) + count(typeck_ids),
     coded_error_diagnostics: count(resolve_ids) + count(typeck_ids),

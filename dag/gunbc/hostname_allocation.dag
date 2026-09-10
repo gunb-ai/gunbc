@@ -1,6 +1,14 @@
 module gunbc.hostname_allocation
 
-import std.types { List, Bool, String, Map }
+import std.types { List, Bool, String }
+import std.allocation_roster {
+  AllocationAdmission,
+  AllocationAdmitted,
+  AllocationPrimaryKeyRepeated,
+  AllocationSecondaryKeyRepeated,
+  allocated_value,
+  build_allocation_roster,
+}
 import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
@@ -16,108 +24,48 @@ data gunbc_hostname_allocation_scope_disposition: Disposition = Terminal {
 }
 
 data gunbc_hostname_allocation_injectivity_disposition: Disposition = Terminal {
-  reason: "A hostname is a JOIN KEY that consumers copy — SSH known_hosts, DNS records, runner registrations, Docker contexts, Tailscale, sccache endpoints, certificate SANs — so two fleet slots claiming one canonical hostname is not a tidiness defect, it is two machines answering to one join key and every consumer resolving to whichever converged last. Both directions are refused: a slot allocated twice is an ambiguous desired state, a hostname claimed twice is the collision above. The rung is MECHANICALLY PREVENTABLE, not structural: the roster is an ordinary List literal, so a duplicate row remains WRITABLE and is caught by hostname_allocation_roster_verdict, which every production lookup consults before answering — a violating roster makes canonical_hostname_for_fleet_slot answer Absent for every slot rather than serving one arbitrary winner (§5: the failure arm refuses, it does not pick). ATTAINABLE CEILING is structural impossibility, and its NEXT-RUNG TRIGGER is a duplicate-refusing keyed roster carrier whose construction cannot admit a repeated key — the same shape std.occurrence_binding_candidates already builds with typed duplicate evidence; it is not adopted here because that carrier keys on one axis and this roster must stay injective on TWO."
+  reason: "A hostname is a JOIN KEY that consumers copy — SSH known_hosts, DNS records, runner registrations, Docker contexts, Tailscale, sccache endpoints, certificate SANs — so two fleet slots claiming one canonical hostname is not a tidiness defect, it is two machines answering to one join key and every consumer resolving to whichever converged last. Both directions are refused: a slot allocated twice is an ambiguous desired state, a hostname claimed twice is the collision above. THE RUNG CLIMBED WHEN std.allocation_roster LANDED, and this row is rewritten in the same change rather than left asserting the state it used to describe. It previously reported MECHANICALLY PREVENTABLE and named its next-rung trigger as a duplicate-refusing keyed roster carrier whose CONSTRUCTION cannot admit a repeated key — deferred then because std.occurrence_binding_candidates keys on ONE axis while this roster must stay injective on TWO. std.allocation_roster is that two-axis carrier: AllocationRoster is sole_constructor, its only producers are the empty roster and an allocate that returns AllocationPrimaryKeyRepeated or AllocationSecondaryKeyRepeated rather than a roster when either axis is claimed, so NO ACCEPTED PROGRAM HOLDS a roster with a slot allocated twice or a hostname claimed twice. The verdict machinery this row used to cite is deleted, not wrapped: there is no consistency question left for a production lookup to consult, because an inconsistent roster is not a value. RUNG NOW: STRUCTURALLY GUARANTEED at the carrier — the invalid state is describable in source but no accepted program contains it. It is NOT structurally impossible, and saying so would be the inflation §4b names: the authored allocation list below is still an ordinary literal into which a person can write two colliding rows, and build_allocation_roster refuses it at ONE fallible ingress instead of every lookup guarding against it. ATTAINABLE CEILING is structural impossibility. NEXT-RUNG TRIGGER, stated as the capability and owned by std.allocation_roster rather than restated per consumer: a declaration form that builds a keyed carrier at authoring time, so rows never pass through an intermediate list in which a duplicate is expressible. EXECUTED EVIDENCE for the rung claimed here: the duplicate-refusal witnesses in test.claim.hostname_allocation_witness remain enrolled and now assert std.allocation_roster's arms — a slot allocated twice, a hostname claimed twice, and a colliding roster serving nothing rather than a winner."
 }
 
-type HostnameAllocationRosterVerdict
-  = HostnameAllocationRosterConsistent
-  | FleetSlotAllocatedTwice { fleet_slot: HostIdentity }
-  | CanonicalHostnameClaimedTwice { canonical_hostname: DnsLabel }
-
-type HostnameAllocationRosterScan {
-  seen_slots: Map<String, Bool>
-  seen_hostnames: Map<String, Bool>
-  verdict: HostnameAllocationRosterVerdict
-}
-
-fn hostname_allocation_roster_step(
-  scan: HostnameAllocationRosterScan,
-  row: HostnameAllocation,
-) -> HostnameAllocationRosterScan {
-  match scan.verdict {
-    HostnameAllocationRosterConsistent =>
-      match map_get(scan.seen_slots, row.fleet_slot as String) {
-        Present { value: _ } =>
-          HostnameAllocationRosterScan {
-            seen_slots: scan.seen_slots,
-            seen_hostnames: scan.seen_hostnames,
-            verdict: FleetSlotAllocatedTwice { fleet_slot: row.fleet_slot },
-          }
-        Absent =>
-          match map_get(scan.seen_hostnames, row.canonical_hostname as String) {
-            Present { value: _ } =>
-              HostnameAllocationRosterScan {
-                seen_slots: scan.seen_slots,
-                seen_hostnames: scan.seen_hostnames,
-                verdict: CanonicalHostnameClaimedTwice { canonical_hostname: row.canonical_hostname },
-              }
-            Absent =>
-              HostnameAllocationRosterScan {
-                seen_slots: map_insert(scan.seen_slots, row.fleet_slot as String, true),
-                seen_hostnames: map_insert(scan.seen_hostnames, row.canonical_hostname as String, true),
-                verdict: HostnameAllocationRosterConsistent,
-              }
-          }
-      }
-    FleetSlotAllocatedTwice { fleet_slot: dup } =>
-      HostnameAllocationRosterScan {
-        seen_slots: scan.seen_slots,
-        seen_hostnames: scan.seen_hostnames,
-        verdict: FleetSlotAllocatedTwice { fleet_slot: dup },
-      }
-    CanonicalHostnameClaimedTwice { canonical_hostname: dup } =>
-      HostnameAllocationRosterScan {
-        seen_slots: scan.seen_slots,
-        seen_hostnames: scan.seen_hostnames,
-        verdict: CanonicalHostnameClaimedTwice { canonical_hostname: dup },
-      }
-  }
-}
-
-fn hostname_allocation_roster_verdict(
-  allocations: List<HostnameAllocation>,
-) -> HostnameAllocationRosterVerdict {
-  fold(
-    allocations,
-    init: HostnameAllocationRosterScan {
-      seen_slots: empty_map(),
-      seen_hostnames: empty_map(),
-      verdict: HostnameAllocationRosterConsistent,
-    },
-    f: hostname_allocation_roster_step,
-  ).verdict
-}
-
-fn hostname_allocation_pick(
-  acc: DnsLabel?,
-  row: HostnameAllocation,
-  fleet_slot: HostIdentity,
-) -> DnsLabel? {
-  match acc {
-    Present { value: found } => Present { value: found }
-    Absent =>
-      if (row.fleet_slot as String) == (fleet_slot as String) {
-        Present { value: row.canonical_hostname }
-      } else {
-        none
-      }
-  }
-}
-
+// THE ALGEBRA MOVED TO std.allocation_roster, AND THAT MOVE FIRED THIS MODULE OWN DECLARED TRIGGER.
+// The injectivity disposition above reported this roster as MECHANICALLY PREVENTABLE and named its
+// next-rung trigger as a duplicate-refusing keyed roster carrier whose CONSTRUCTION cannot admit a
+// repeated key -- deferred at the time because std.occurrence_binding_candidates keys on one axis
+// and this roster must stay injective on two. std.allocation_roster is that two-axis carrier, and it
+// is sole_constructor with refusing producers, so no accepted program holds a roster with a slot
+// allocated twice or a hostname claimed twice.
+// WHAT THE VERDICT MACHINERY HERE BECAME: deleted, not wrapped. It existed to let the production
+// lookup ask whether the roster was consistent before answering, and a roster value can no longer be
+// inconsistent, so the question has no subject. The DESIGN dissolution rule -- a climb deletes the
+// redundant lower-rung PRODUCTION machinery it obsoletes, while the discriminating REDs stay
+// enrolled -- is why the scan record and the three-arm verdict are gone from this module while the
+// duplicate-refusal tests remain, now asserting the shared carrier arms.
+// THE RESIDUAL IS UNCHANGED IN KIND AND SMALLER IN SURFACE: the authored list below is still an
+// ordinary literal a person can write two colliding rows into, and the fold refuses it at one
+// ingress instead of every lookup guarding against it. That residual and its own next-rung trigger
+// are stated once, in std.allocation_roster.
 fn canonical_hostname_in_roster(
   allocations: List<HostnameAllocation>,
   fleet_slot: HostIdentity,
 ) -> DnsLabel? {
-  match hostname_allocation_roster_verdict(allocations: allocations) {
-    HostnameAllocationRosterConsistent =>
-      fold(
-        allocations,
-        init: none,
-        f: (acc, row) => hostname_allocation_pick(acc: acc, row: row, fleet_slot: fleet_slot),
-      )
-    FleetSlotAllocatedTwice { fleet_slot: _ } => none
-    CanonicalHostnameClaimedTwice { canonical_hostname: _ } => none
-  }
+  allocated_value(
+    rows: allocations,
+    wanted: fleet_slot as String,
+    primary: row => row.fleet_slot as String,
+    secondary: row => row.canonical_hostname as String,
+    value: row => row.canonical_hostname,
+  )
+}
+
+fn hostname_allocation_admission(
+  allocations: List<HostnameAllocation>,
+) -> AllocationAdmission<DnsLabel> {
+  build_allocation_roster(
+    rows: allocations,
+    primary: row => row.fleet_slot as String,
+    secondary: row => row.canonical_hostname as String,
+    value: row => row.canonical_hostname,
+  )
 }
 
 // THE FIFTH SLOT, AND IT IS ALLOCATED RATHER THAN INHERITED. This module's scope disposition states

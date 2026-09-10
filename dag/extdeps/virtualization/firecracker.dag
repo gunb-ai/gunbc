@@ -233,3 +233,60 @@ fn firecracker_run_config_command(binary: String, config_path: String) -> ArgvCo
     arguments: ["--no-api", "--config-file", config_path],
   )
 }
+
+// `--cgroup-version` SELECTS AN IMPLEMENTATION, IT DOES NOT PLACE A PROCESS. Upstream documents
+// the flag; a live run showed the VMM still at cgroup 0::/ when the supervisor never joined a
+// leaf. Treating the flag as placement would re-author the unbounded-attempt defect.
+data firecracker_jailer_cgroup_version_2: String = "2"
+
+// THE `--` IS THE BOUNDARY BETWEEN JAILER FLAGS AND VMM FLAGS. Everything after it is what
+// Firecracker would have taken on a direct exec, including `--no-api` (without which the VMM
+// binds its API socket and waits). Config paths here are INSIDE the jail after pivot: a host
+// path would fail open as a missing artifact rather than as the containment boundary working.
+fn firecracker_jailer_run_command(
+  jailer_binary: String,
+  jailer_id: String,
+  exec_file: String,
+  uid: Int,
+  gid: Int,
+  chroot_base_dir: String,
+  config_path_in_jail: String,
+) -> ArgvCommand {
+  argv_command(
+    program: jailer_binary as NonEmptyStr,
+    arguments: [
+      "--id", jailer_id,
+      "--exec-file", exec_file,
+      "--uid", to_string(uid),
+      "--gid", to_string(gid),
+      "--chroot-base-dir", chroot_base_dir,
+      "--cgroup-version", firecracker_jailer_cgroup_version_2,
+      "--",
+      "--no-api",
+      "--config-file", config_path_in_jail,
+    ],
+  )
+}
+
+// THE JAILER'S CHROOT ROOT ON THE HOST is `<chroot-base-dir>/<exec-file-basename>/<id>/root`.
+// Upstream creates that tree and pivots into `root`; config `path_on_host` values are then
+// names inside that root (`/work.img`), while the supervisor still has to CREATE the files
+// at the host path below. The basename is the last `/`-separated segment of `--exec-file`.
+fn firecracker_jailer_exec_file_basename(exec_file: String) -> String {
+  fold(split(s: exec_file, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}
+
+fn firecracker_jailer_chroot_root(
+  chroot_base_dir: String,
+  exec_file: String,
+  jailer_id: String,
+) -> String {
+  join([
+    chroot_base_dir,
+    "/",
+    firecracker_jailer_exec_file_basename(exec_file: exec_file),
+    "/",
+    jailer_id,
+    "/root",
+  ], "")
+}
