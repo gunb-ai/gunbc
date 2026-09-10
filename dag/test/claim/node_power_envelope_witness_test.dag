@@ -51,14 +51,11 @@ import product.node_power_envelope {
   channel_effective_data_rate,
   DataRateAdmitted,
   TwoDpcUnlikeRanksOnOneChannelRefused,
-  MemoryBandwidthDerived,
-  MemoryBandwidthRefusedUnlikeRanksOnChannel,
   NodeElectricalInputs,
   PsuAdequate,
   PsuUndersized,
   WallPowerMeasured,
   derived_wall_power,
-  effective_data_rate,
   envelope_divergence,
   memory_bandwidth,
   DerivedWallPowerReading,
@@ -173,13 +170,6 @@ data eight_module_population: PopulationOption = PopulationOption {
 
 // Reads the wall figure out of the typed reading. A refusal answers a negative,
 // which no claim below can mistake for a wattage.
-fn bandwidth_count_or_refused(context: MemoryElectricalContext, population: PopulationOption) -> Int {
-  match memory_bandwidth(context: context, population: population) {
-    MemoryBandwidthDerived { bandwidth: b } => bandwidth_count(b: b)
-    MemoryBandwidthRefusedUnlikeRanksOnChannel { slot0_ranks: _, slot1_ranks: _ } => 0 - 1
-  }
-}
-
 fn node_wall(inputs: NodeElectricalInputs) -> Int {
   match node_draw(inputs: inputs) {
     NodeDrawDerived { dc_load: _, wall_draw: w } => watt_count(w: w)
@@ -202,13 +192,15 @@ data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
 // THE 2DPC DOWNCLOCK IS RANK-DEPENDENT — the claim that survived the module
 // deletion unchanged, now stated against the relocated function.
 fn rate_at(dimms_per_channel: Nat, rank_count: Nat) -> Nat {
-  megatransfers_per_second_count(
-    r: effective_data_rate(
-      context: mt_collins_context,
-      dimms_per_channel: dimms_per_channel,
-      rank_count: rank_count,
-    ),
-  )
+  match channel_effective_data_rate(
+    context: mt_collins_context,
+    dimms_per_channel: dimms_per_channel,
+    slot0_ranks: rank_count,
+    slot1_ranks: rank_count,
+  ) {
+    DataRateAdmitted { rate: r } => megatransfers_per_second_count(r: r)
+    TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: _, slot1_ranks: _ } => 0 - 1
+  }
 }
 
 // 2DPC KEEPS THE RATED RATE ON THE CITED AMPERE TABLE. Rank no longer changes the clock: the
@@ -313,13 +305,13 @@ test fn an_undersized_supply_reports_its_shortfall() -> Bool {
 }
 
 test fn memory_bandwidth_is_derived_from_the_populated_topology() -> Bool {
-  bandwidth_count_or_refused(context: altrad8ud_context, population: eight_module_population) == 204800000000
-    && bandwidth_count_or_refused(context: mt_collins_context, population: sixteen_module_population) == 204800000000
+  bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: eight_module_population)) == 204800000000
+    && bandwidth_count(b: memory_bandwidth(context: mt_collins_context, population: sixteen_module_population)) == 204800000000
 }
 
 test fn a_single_rank_population_does_not_reach_the_rated_bus() -> Bool {
-  bandwidth_count_or_refused(context: altrad8ud_context, population: sixteen_module_1rx4_population)
-    < bandwidth_count_or_refused(context: altrad8ud_context, population: eight_module_population)
+  bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: sixteen_module_1rx4_population))
+    < bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: eight_module_population))
 }
 
 test fn realizability_rejects_an_impossible_sku() -> Bool {

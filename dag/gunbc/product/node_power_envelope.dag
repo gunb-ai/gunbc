@@ -187,22 +187,6 @@ fn channel_effective_data_rate(
   }
 }
 
-fn effective_data_rate(
-  context: MemoryElectricalContext,
-  dimms_per_channel: Nat,
-  rank_count: Nat,
-) -> MegatransfersPerSecond {
-  if dimms_per_channel <= 1 {
-    altra_cited_two_dpc_rated_rate(context: context)
-  } else {
-    ceiling_for_ranks(
-      table: context.two_dpc_ceilings,
-      rated: altra_cited_two_dpc_rated_rate(context: context),
-      rank_count: rank_count,
-    )
-  }
-}
-
 fn dram_channel_bus_bytes() -> ByteSize {
   byte_size(count: bit_width_count(b: dram_data_word_width) / bits_per_byte())
 }
@@ -215,39 +199,40 @@ fn rank_interleave_percent(rank_count: Nat) -> Percent {
 
 // The platform downclocks to the SLOWEST module present, so the rated figure is
 // the minimum of what the module can do and what the topology admits.
-type MemoryBandwidthReading
-  = MemoryBandwidthDerived { bandwidth: Bandwidth }
-  | MemoryBandwidthRefusedUnlikeRanksOnChannel { slot0_ranks: Nat, slot1_ranks: Nat }
-
 fn memory_bandwidth(
   context: MemoryElectricalContext,
   population: PopulationOption,
-) -> MemoryBandwidthReading {
+) -> Bandwidth {
   let module = population.module
   let dpc = populated_dimms_per_channel(population: population)
-  match channel_effective_data_rate(
+  let er = match channel_effective_data_rate(
     context: context,
     dimms_per_channel: dpc,
     slot0_ranks: module.rank_count,
     slot1_ranks: module.rank_count,
   ) {
-    TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: a, slot1_ranks: b } =>
-      MemoryBandwidthRefusedUnlikeRanksOnChannel { slot0_ranks: a, slot1_ranks: b }
-    DataRateAdmitted { rate: er } => {
-      let rated = min_nat(
-        a: module.data_rate_mts,
-        b: megatransfers_per_second_count(r: er),
-      )
-      let interleaved = rated * percent_count(p: rank_interleave_percent(rank_count: module.rank_count)) / 100
-      MemoryBandwidthDerived {
-        bandwidth: Bandwidth {
-          count: interleaved
-            * mega_factor()
-            * byte_size_count(b: dram_channel_bus_bytes())
-            * context.geometry.channels,
-        },
+    DataRateAdmitted { rate: r } => r
+    TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: _, slot1_ranks: _ } =>
+      if dpc <= 1 {
+        altra_cited_two_dpc_rated_rate(context: context)
+      } else {
+        ceiling_for_ranks(
+          table: context.two_dpc_ceilings,
+          rated: altra_cited_two_dpc_rated_rate(context: context),
+          rank_count: module.rank_count,
+        )
       }
-    }
+  }
+  let rated = min_nat(
+    a: module.data_rate_mts,
+    b: megatransfers_per_second_count(r: er),
+  )
+  let interleaved = rated * percent_count(p: rank_interleave_percent(rank_count: module.rank_count)) / 100
+  Bandwidth {
+    count: interleaved
+      * mega_factor()
+      * byte_size_count(b: dram_channel_bus_bytes())
+      * context.geometry.channels,
   }
 }
 
