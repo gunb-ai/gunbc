@@ -520,6 +520,19 @@ fn body_lower_type_variant_suffix_pair_optional(captured: Node) -> Optional<Suga
   }
 }
 
+fn body_lower_kept_where_clause(where_clause: Node) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^dag_surface_where_refinement_clause },
+        target: where_clause
+      }
+    ],
+    occurrence_id: where_clause.occurrence_id
+  )
+}
+
 fn body_lower_type_variant_children_with_where(
   base: Node,
   where_clause: Node,
@@ -529,7 +542,7 @@ fn body_lower_type_variant_children_with_where(
     Edge { label: Positional, target: base },
     Edge {
       label: Named { name: ^dag_surface_where_refinement_clause },
-      target: where_clause
+      target: body_lower_kept_where_clause(where_clause: where_clause)
     }
   ]
   if is_empty_conj_root(n: fields) {

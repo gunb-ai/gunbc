@@ -10,10 +10,22 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound
 }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Suggested,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node }
+import v2.std.node { Edge, Named, Node }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.witness { Holds, Violates, Witness, witness_violates }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -66,6 +78,56 @@ fn d1_tree_carries_where_clause(root: Node) -> Bool {
   }
 }
 
+fn d1_edge_names_where_clause(e: Edge) -> Bool {
+  match e.label {
+    Named { name: n } => n == ^dag_surface_where_refinement_clause
+    _ => false
+  }
+}
+
+fn d1_find_where_host_conj(root: Node) -> Optional<Node> {
+  if fold(root.children, init: false, f: fn(found, e) {
+    found || d1_edge_names_where_clause(e: e)
+  }) {
+    Present { value: root }
+  } else {
+    fold(root.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => d1_find_where_host_conj(root: e.target)
+      }
+    })
+  }
+}
+
+fn d1_where_clause_survive_witness(root: Node) -> Witness<Node> {
+  match parse_subtree_find_production_captured(
+    root: root,
+    emitted: ^dag_surface_where_refinement_clause
+  ) {
+    ParseSubtreeFound { captured: captured } => Holds { value: captured }
+    ParseSubtreeAbsent =>
+      match d1_find_where_host_conj(root: root) {
+        Present { value: host } =>
+          witness_violates(
+            diagnostic: Diagnostic {
+              reason: ^where_clause_absent_from_admitted_tree,
+              at: node_locus(node: host),
+              correction: Suggested { node: host }
+            }
+          )
+        Absent =>
+          witness_violates(
+            diagnostic: Diagnostic {
+              reason: ^where_clause_host_conj_absent,
+              at: node_locus(node: root),
+              correction: Suggested { node: root }
+            }
+          )
+      }
+  }
+}
+
 data d1_where_reproducer: String = "module m\ntype A = NonEmptyStr where brand(\"A\")\nfn f() -> Int { 1 }\n"
 data d1_where_control: String = "module m\ntype A = NonEmptyStr\nfn f() -> Int { 1 }\n"
 data d1_where_bare: String = "module m\ntype A = NonEmptyStr where non_empty\nfn f() -> Int { 1 }\n"
@@ -98,21 +160,29 @@ test fn cause_a_where_reproducer_normalizes_holds() -> Bool {
   d1_normalize_accepted(text: d1_where_reproducer, file: ^d1_where_norm)
 }
 
-test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
+test fn cause_a_where_clause_survives_normalize_holds() -> Witness<Node> {
   match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_norm) {
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      witness_violates(diagnostic: r.head)
     Accepted { value: brand_tree, diagnostics: _ } =>
       match d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_carry_norm_bare) {
-        Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: r } =>
+          witness_violates(diagnostic: r.head)
         Accepted { value: bare_tree, diagnostics: _ } =>
           match normalize(parse_tree: brand_tree) {
-            Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: r } =>
+              witness_violates(diagnostic: r.head)
             Accepted { value: brand_normalized, diagnostics: _ } =>
-              match normalize(parse_tree: bare_tree) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: bare_normalized, diagnostics: _ } =>
-                  d1_tree_carries_where_clause(root: brand_normalized.root)
-                    && d1_tree_carries_where_clause(root: bare_normalized.root)
+              match d1_where_clause_survive_witness(root: brand_normalized.root) {
+                Violates { diagnostic: d } =>
+                  witness_violates(diagnostic: d)
+                Holds { value: _ } =>
+                  match normalize(parse_tree: bare_tree) {
+                    Rejected { diagnostics: r } =>
+                      witness_violates(diagnostic: r.head)
+                    Accepted { value: bare_normalized, diagnostics: _ } =>
+                      d1_where_clause_survive_witness(root: bare_normalized.root)
+                  }
               }
           }
       }
