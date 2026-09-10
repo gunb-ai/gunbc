@@ -16,9 +16,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data workflows_api_version: NonEmptyStr = "2026-03-10"
 
-// THE DISPATCH PATH AND VERB LIVE HERE, not at GitHubEffect. CreateDispatch interpolates the same
-// fold a later GitHubEffect perform must issue; a second join in effect.dag would be a nickname
-// for this endpoint.
+// THE DISPATCH PATH STRING LIVES HERE for consumers that need a String (GitHubEffect). CreateDispatch's
+// transport row cannot call this fold: both realizations take method/path as source text (bare
+// POST, interpolating template), not eval_expr. The template below is that transport spelling;
+// this fold is the same endpoint as a String. They must stay the same path.
 fn workflow_dispatch_path(owner: String, repo: String, workflow_id: String) -> String {
   join(["/repos/", owner, "/", repo, "/actions/workflows/", workflow_id, "/dispatches"], "")
 }
@@ -66,8 +67,8 @@ service github.Workflows {
       html_url: NonEmptyStr
     }
     transport rest {
-      method: workflow_dispatch_http_method,
-      path: workflow_dispatch_path(owner: owner, repo: repo, workflow_id: workflow_id),
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/actions/workflows/\{workflow_id\}/dispatches",
       headers: { "X-GitHub-Api-Version": workflows_api_version },
       body: {
         ref: ref,
