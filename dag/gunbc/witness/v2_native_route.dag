@@ -129,6 +129,18 @@ type NativeRouteMemberRow {
   verdict: NativeTestVerdict
 }
 
+// THE MODULE → SOURCE-PATH RELATION, OVER THE UNIVERSE'S OWN MODULES. A Context-stage row is a
+// derived classification minted by the host from a file refusal, and the derivation's join key
+// is this relation: the observation names a module, the file refusal names a path, and only the
+// module → path row binds the two. The receipt carries it (restricted to the universe's modules
+// — the whole domain the classification can touch) so admission can require the backing file
+// refusal to belong to the ROW'S OWN module, not to some file anywhere with the same reason.
+// The path is a Symbol because the join partner — NativeTestFileRefusal.path — is one.
+type NativeRouteModuleSource {
+  module: String
+  path: Symbol
+}
+
 // THE EXCLUSION TAXONOMY, CLASSIFIED FROM STAGE AND PROVENANCE — never from the reason symbol
 // alone (the review's standing instruction: the same symbol is a driver limit on one route and a
 // resolver defect on another). A refused member is excluded for exactly one of these causes:
@@ -434,8 +446,10 @@ type NativeRouteOldRouteControl
 // seed used ONLY to prepare the emitted compiler (recorded honestly — this job does not claim
 // native bootstrap); the emitted closure's identity; the executed binary's path AND content
 // identity (route identity is observed, never synthesized from the intended command); the
-// DERIVED universe; the OBSERVED population; the per-file front-end refusals the collecting
-// fold gathered; and every control.
+// DERIVED universe; the module → source-path relation over the universe's modules (the context
+// reclassification's join key, carried so admission can re-ask the join, not trust it); the
+// OBSERVED population; the per-file front-end refusals the collecting fold gathered; and every
+// control.
 type NativeRouteReceipt {
   job: String
   tested_tree: String
@@ -444,6 +458,7 @@ type NativeRouteReceipt {
   executable_path: String
   executable_identity: String
   universe: List<NativeRouteTestIdentity>
+  module_source_index: List<NativeRouteModuleSource>
   population: List<NativeRouteMemberRow>
   file_refusals: List<NativeTestFileRefusal>
   false_control: Optional<NativeTestVerdict>
@@ -457,9 +472,11 @@ type NativeRouteReceipt {
 // derived and well-formed (non-empty, duplicate-free, prefix-closed); the observed population
 // JOINS the universe exactly (no duplicates, no foreign rows, no omissions — "no silent
 // remainder" as an executing check, not a comment); the positive population is non-empty (an
-// all-refused census proves the route refused, not that it routed); no divergence is observed;
+// all-refused census proves the route refused, not that it routed); every identity on the
+// required-native ratchet roster is observed passing natively again (a regression of an already
+// admitted native pass blocks, however its refusal would classify); no divergence is observed;
 // every exclusion is classified; every file refusal is owned at both grains; every Context-stage
-// refusal is backed by an observed file refusal; and all four controls hold. The fold collects
+// refusal is backed by its own module's observed file refusal; and all four controls hold. The fold collects
 // EVERY violated clause rather than stopping at the first, so one red run names everything that
 // must change before the next run.
 type NativeRouteAdmissionRefusalCause
@@ -475,6 +492,7 @@ type NativeRouteAdmissionRefusalCause
   | PopulationForeignRowsPresent
   | PopulationOmissionsPresent
   | PositivePopulationEmpty
+  | RequiredNativePassRegressed
   | DivergencesPresent
   | UnattributedExclusionsPresent
   | UnattributedFileRefusalsPresent
@@ -569,6 +587,55 @@ fn native_route_positive_population_present(census: NativeRouteCensus) -> Bool {
   census.agreement_pass > 0
 }
 
+// THE REQUIRED-NATIVE RATCHET. The positive-population clause alone is an existential canary:
+// a test that passes natively today could regress tomorrow to an already-known compiler refusal
+// and disappear into the attributed-exclusion population while the lane stays green — coverage
+// could collapse from hundreds of identities to one. This roster is the convergence ratchet
+// that forbids the collapse: every identity ADMITTED as a native agreement-pass is enrolled
+// here, and every subsequent head must observe it passing natively again. The frontier census
+// still types every not-yet-native test as an exclusion; the distinction the roster draws is
+//   not yet admitted natively → typed exclusion allowed
+//   already admitted natively → a refusal is a regression and blocks
+// Membership changes are explicit authority edits — a removal or redisposition is a reviewed
+// row change beside its reason, never a silent shrink. A count floor would not do: one identity
+// can replace another while capability is lost, so the join is at identity grain.
+data native_route_required_pass_identities: List<NativeRouteTestIdentity> = [
+  NativeRouteTestIdentity {
+    module: "v2.test.native_lane_smoke",
+    declaration: "native_route_positive_population_smoke"
+  }
+]
+
+// One clause, asked of the observed population with the floor's rosters already derived: every
+// rostered identity must be present with disposition NativeAgreementPass. The disposition fold
+// is reused whole rather than re-asked as a raw verdict match, so a rostered identity whose
+// reference expectation ever changes is judged by the same pairing every other member gets.
+fn native_route_required_passes_hold(
+  rows: List<NativeRouteMemberRow>,
+  expected_red: List<String>,
+  route_gap: List<String>
+) -> Bool {
+  !any(xs: native_route_required_pass_identities, predicate: fn(required) {
+    !any(xs: rows, predicate: fn(row) {
+      native_route_identity_eq(a: row.identity, b: required)
+      && match native_route_disposition(
+        verdict: row.verdict,
+        reference: native_route_reference_for(
+          qualified: native_route_identity_qualified(identity: row.identity),
+          expected_red: expected_red,
+          route_gap: route_gap
+        )
+      ) {
+        NativeAgreementPass => true
+        NativeAgreementExpectedRed => false
+        NativeAgreementRouteGap => false
+        NativeExclusion { cause: _ } => false
+        NativeDivergence { cause: _ } => false
+      }
+    })
+  })
+}
+
 fn native_route_no_divergences(census: NativeRouteCensus) -> Bool {
   census.divergences == 0
 }
@@ -604,18 +671,25 @@ fn native_route_head_advisories_attributed(receipt: NativeRouteReceipt) -> Bool 
 }
 
 // A CONTEXT-STAGE REFUSAL IS A DERIVED CLASSIFICATION, AND DERIVED CLASSIFICATIONS ARE FORGEABLE
-// UNTIL BOUND TO THEIR OBSERVATION. The host reclassifies a member whose entry file never loaded
-// as Context-stage with the file's fatal reason; the receipt therefore carries the file-refusal
-// population, and every Context-stage row's reason must appear among the observed file refusals'
-// fatal reasons. A Context-stage row whose reason no file refusal carries was minted without its
-// evidence — admission refuses.
+// UNTIL BOUND TO THEIR OBSERVATION — AT SUBJECT GRAIN. The host reclassifies a member whose
+// entry file never loaded as Context-stage with the file's fatal reason; the receipt therefore
+// carries the module → source-path relation beside the file-refusal population, and every
+// Context-stage row must join BOTH: its module's own source path (through module_source_index)
+// AND an observed file refusal at exactly that path carrying exactly that fatal reason. A join
+// on the reason alone is forgeable by any unrelated file sharing a common parser reason; a join
+// on the module alone says nothing about which refusal backs it. The triple is the observation.
 fn native_route_context_refusals_backed(receipt: NativeRouteReceipt) -> Bool {
   !any(xs: receipt.population, predicate: fn(row) {
     match row.verdict {
       NativeTestRefused { stage: stage, reason: reason } =>
         match stage {
           NativeTestStageContext =>
-            !any(xs: receipt.file_refusals, predicate: fn(fr) { fr.fatal_reason == reason })
+            !any(xs: receipt.module_source_index, predicate: fn(ms) {
+              ms.module == row.identity.module
+              && any(xs: receipt.file_refusals, predicate: fn(fr) {
+                fr.path == ms.path && fr.fatal_reason == reason
+              })
+            })
           NativeTestStagePrepare => false
           NativeTestStageEntry => false
           NativeTestStageEval => false
@@ -689,6 +763,7 @@ fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
     NativeRouteClauseCheck { holds: native_route_population_no_foreign(receipt: receipt), cause: PopulationForeignRowsPresent },
     NativeRouteClauseCheck { holds: native_route_population_covers_universe(receipt: receipt), cause: PopulationOmissionsPresent },
     NativeRouteClauseCheck { holds: native_route_positive_population_present(census: census), cause: PositivePopulationEmpty },
+    NativeRouteClauseCheck { holds: native_route_required_passes_hold(rows: receipt.population, expected_red: expected_red, route_gap: route_gap), cause: RequiredNativePassRegressed },
     NativeRouteClauseCheck { holds: native_route_no_divergences(census: census), cause: DivergencesPresent },
     NativeRouteClauseCheck { holds: native_route_exclusions_all_classified(census: census), cause: UnattributedExclusionsPresent },
     NativeRouteClauseCheck { holds: native_route_file_refusals_attributed(receipt: receipt), cause: UnattributedFileRefusalsPresent },
@@ -727,6 +802,7 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     PopulationForeignRowsPresent => "population_foreign_rows_present"
     PopulationOmissionsPresent => "population_omissions_present"
     PositivePopulationEmpty => "positive_population_empty"
+    RequiredNativePassRegressed => "required_native_pass_regressed"
     DivergencesPresent => "divergences_present"
     UnattributedExclusionsPresent => "unattributed_exclusions_present"
     UnattributedFileRefusalsPresent => "unattributed_file_refusals_present"

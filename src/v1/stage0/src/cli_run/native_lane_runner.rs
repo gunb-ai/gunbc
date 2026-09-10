@@ -120,15 +120,25 @@ fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// The derived universe plus BOTH directions of the module index's path relation. The
+/// discovery-row join needs path → module (producer rows key on the entry path); the context
+/// reclassification needs module → path (observations key on the module). The module → path
+/// direction carries no collision refusal of its own: `ModuleSourceIndex` is keyed by module
+/// and its construction already refuses two files declaring one module, so the relation is a
+/// function by construction — a second check here would have an unauthorable RED.
+struct NativeUniverseDerivation {
+    universe: Vec<(String, String)>,
+    module_for_path: HashMap<String, String>,
+    path_for_module: HashMap<String, String>,
+}
+
 /// THE UNIVERSE IS DERIVED BY THE FLOOR'S OWN PRODUCER, NOT BY A SECOND SCAN. The production
 /// required floor folds `discover_floor_rows_for_source` over the full module inventory and
 /// finalizes with `floor_discovery_finalize_source_outcomes`; this derivation makes the same
 /// two calls over the same inventory and keeps the rows whose AUTHORED module (read off the
 /// `module` header by the index, never path-derived) carries the universe prefix. A second
 /// discovery beside the producer would be free to disagree with the floor about what a test is.
-fn derive_native_universe(
-    source_roots: &[String],
-) -> Result<(Vec<(String, String)>, HashMap<String, String>), String> {
+fn derive_native_universe(source_roots: &[String]) -> Result<NativeUniverseDerivation, String> {
     let (graph, indices) =
         super::resolve_workspace_entry(source_roots, super::FLOOR_DISCOVERY_PRODUCER_ENTRY)?;
     let ctx = super::make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
@@ -147,6 +157,10 @@ fn derive_native_universe(
     let module_for_path: HashMap<String, String> = inventory
         .iter()
         .map(|(path, module, _)| (path.clone(), module.clone()))
+        .collect();
+    let path_for_module: HashMap<String, String> = inventory
+        .iter()
+        .map(|(path, module, _)| (module.clone(), path.clone()))
         .collect();
     eprintln!(
         "required-ci: v2-native deriving the universe — {} sources through the floor discovery producer",
@@ -204,8 +218,10 @@ fn derive_native_universe(
             universe.push((module.clone(), row.function.clone()));
         }
     }
+    // SORTED FOR CANONICAL TRANSPORT, NEVER DEDUPLICATED. A duplicated identity is a harness
+    // defect the admission authority refuses by name (UniverseDuplicatesPresent); normalizing
+    // it away here would erase the evidence before the authority can judge it.
     universe.sort();
-    universe.dedup();
     if universe.is_empty() {
         return Err(
             "V2-NATIVE REFUSAL cause=UniverseUnderived — the floor discovery producer enrolled \
@@ -213,7 +229,11 @@ fn derive_native_universe(
                 .to_string(),
         );
     }
-    Ok((universe, module_for_path))
+    Ok(NativeUniverseDerivation {
+        universe,
+        module_for_path,
+        path_for_module,
+    })
 }
 
 /// PREPARATION IS THE EMIT-COMPILE PHASE'S OWN MACHINERY, REUSED. The same emission entry
@@ -536,20 +556,26 @@ fn run_native_binary(
 /// A module whose file the context fold refused never reached preparation, so the binary's row
 /// for it is a prepare-stage resolver refusal; the harness rewrites exactly those rows to the
 /// Context stage carrying the FILE'S fatal reason — the cause that actually refused the file —
-/// and admission's context_refusals_backed clause refuses any Context row whose reason no
-/// observed file refusal carries. A prepare refusal whose module's file loaded stays a prepare
-/// refusal with the resolver's own reason.
+/// and admission's context_refusals_backed clause refuses any Context row whose (module, path,
+/// reason) triple no observed file refusal backs through the receipt's module-source index. A
+/// prepare refusal whose module's file loaded stays a prepare refusal with the resolver's own
+/// reason.
+///
+/// THE JOIN KEY IS module → path, NEVER path → module: the observation names its module, and
+/// the file refusal names its path, so the relation is queried in the module → path direction.
+/// (An earlier draft queried the path-keyed map with the module, which type-checks at
+/// `HashMap<String, String>` and matches nothing — the reclassification silently never fired.)
 fn reclassify_context_refusals(
     observations: &mut [NativeObservation],
     file_refusals: &[NativeFileRefusalObserved],
-    module_for_path: &HashMap<String, String>,
+    path_for_module: &HashMap<String, String>,
 ) {
     let refused_by_path: HashMap<&str, &NativeFileRefusalObserved> = file_refusals
         .iter()
         .map(|fr| (fr.path.as_str(), fr))
         .collect();
     for observation in observations.iter_mut() {
-        let Some(path) = module_for_path.get(observation.module.as_str()) else {
+        let Some(path) = path_for_module.get(observation.module.as_str()) else {
             continue;
         };
         let Some(file_refusal) = refused_by_path.get(path.as_str()) else {
@@ -639,6 +665,7 @@ fn receipt_value(
     tested_tree: &str,
     preparation: &EmittedPreparation,
     universe: &[(String, String)],
+    module_source_index: &[(String, String)],
     population: &[NativeObservation],
     file_refusals: &[NativeFileRefusalObserved],
     false_control: Option<&NativeVerdictObserved>,
@@ -674,6 +701,16 @@ fn receipt_value(
             ]),
         })
         .collect();
+    let module_source_values: Vec<Value> = module_source_index
+        .iter()
+        .map(|(module, path)| Value::Record {
+            type_name: ctx.sym("NativeRouteModuleSource"),
+            fields: Rc::new(vec![
+                (ctx.sym("module"), str_value(module)),
+                (ctx.sym("path"), str_value(path)),
+            ]),
+        })
+        .collect();
     Value::Record {
         type_name: ctx.sym("NativeRouteReceipt"),
         fields: Rc::new(vec![
@@ -698,6 +735,10 @@ fn receipt_value(
             (
                 ctx.sym("universe"),
                 super::list_value_from_vec(universe_values),
+            ),
+            (
+                ctx.sym("module_source_index"),
+                super::list_value_from_vec(module_source_values),
             ),
             (
                 ctx.sym("population"),
@@ -742,12 +783,32 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     let tested_tree = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
 
     // 1. THE UNIVERSE, DERIVED. The floor's producer over the full module inventory, filtered
-    // to the universe prefix, plus the module->path join the context reclassification needs.
-    let (universe, module_for_path) = derive_native_universe(source_roots)?;
+    // to the universe prefix, plus both directions of the module/path relation: the entry join
+    // consumed path → module during derivation, and the context reclassification consumes
+    // module → path below.
+    let derivation = derive_native_universe(source_roots)?;
+    let universe = derivation.universe;
     eprintln!(
         "required-ci: v2-native universe derived — {} v2.test.* identities",
         universe.len()
     );
+    // THE MODULE-SOURCE INDEX THE RECEIPT CARRIES, restricted to the universe's own modules —
+    // the domain the context reclassification can touch and the admission join reasons over.
+    // Built here, where a missing row is a located refusal, rather than inside receipt minting
+    // where it could only panic or default.
+    let mut universe_modules: Vec<String> =
+        universe.iter().map(|(module, _)| module.clone()).collect();
+    universe_modules.dedup();
+    let mut module_source_index: Vec<(String, String)> = Vec::with_capacity(universe_modules.len());
+    for module in &universe_modules {
+        let Some(path) = derivation.path_for_module.get(module) else {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=UniverseEntryOutsideSubject module={module} — the \
+                 derived universe names a module the module index does not hold"
+            ));
+        };
+        module_source_index.push((module.clone(), path.clone()));
+    }
     // The derivation's interpreter context and the full inventory's source bytes died with the
     // call above; return the retained arena before the emission peaks beside it (same release
     // discipline as the emission-to-build handoff below).
@@ -819,7 +880,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     reclassify_context_refusals(
         &mut population,
         &main_output.file_refusals,
-        &module_for_path,
+        &derivation.path_for_module,
     );
     let malformed_control = match control_output
         .file_refusals
@@ -861,6 +922,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         &tested_tree,
         &preparation,
         &universe,
+        &module_source_index,
         &population,
         &main_output.file_refusals,
         false_control.as_ref(),
@@ -913,5 +975,124 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         Err(format!(
             "V2-NATIVE REFUSAL cause=AdmissionRefused — {summary_text}"
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn refused_observation(
+        module: &str,
+        declaration: &str,
+        stage: &str,
+        reason: &str,
+    ) -> NativeObservation {
+        NativeObservation {
+            module: module.to_string(),
+            declaration: declaration.to_string(),
+            verdict: NativeVerdictObserved::Refused {
+                stage: stage.to_string(),
+                reason: reason.to_string(),
+            },
+        }
+    }
+
+    fn refusal_shape(observation: &NativeObservation) -> Option<(&str, &str)> {
+        match &observation.verdict {
+            NativeVerdictObserved::Refused { stage, reason } => Some((stage, reason)),
+            _ => None,
+        }
+    }
+
+    /// THE PRODUCTION-PATH RECLASSIFICATION, AT ITS EXACT JOIN GRAIN. A test module whose own
+    /// file the context fold refused (here: an unterminated string at tokenize, the poison
+    /// class the malformed control carries) surfaces in the binary's rows as a Prepare-stage
+    /// resolver refusal; the reclassification must rewrite THAT identity — keyed by its module,
+    /// through the module → path direction of the index relation — to the Context stage
+    /// carrying the file's fatal reason. A second module whose file loaded keeps its Prepare
+    /// refusal untouched: the join is per-subject, never "some file anywhere".
+    #[test]
+    fn context_reclassification_joins_module_to_its_own_files_refusal() {
+        let mut observations = vec![
+            refused_observation(
+                "v2.test.poisoned",
+                "never_ran",
+                "NativeTestStagePrepare",
+                "resolve_module_not_found",
+            ),
+            refused_observation(
+                "v2.test.healthy",
+                "ran_and_refused",
+                "NativeTestStagePrepare",
+                "resolve_reason_unbound_symbol",
+            ),
+        ];
+        let file_refusals = vec![NativeFileRefusalObserved {
+            path: "src/v2/test/poisoned_test.dag".to_string(),
+            head_reason: "parse_g0_tokens_remain".to_string(),
+            fatal_reason: "tokenize_lex_e1_unterminated_string".to_string(),
+        }];
+        let path_for_module: HashMap<String, String> = [
+            (
+                "v2.test.poisoned".to_string(),
+                "src/v2/test/poisoned_test.dag".to_string(),
+            ),
+            (
+                "v2.test.healthy".to_string(),
+                "src/v2/test/healthy_test.dag".to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        reclassify_context_refusals(&mut observations, &file_refusals, &path_for_module);
+
+        assert_eq!(
+            refusal_shape(&observations[0]),
+            Some((
+                "NativeTestStageContext",
+                "tokenize_lex_e1_unterminated_string"
+            )),
+            "the poisoned module's exact identity must receive its own file's Context-stage \
+             fatal reason"
+        );
+        assert_eq!(
+            refusal_shape(&observations[1]),
+            Some(("NativeTestStagePrepare", "resolve_reason_unbound_symbol")),
+            "a module whose file loaded keeps the resolver's own Prepare-stage reason"
+        );
+    }
+
+    /// THE DIRECTION IS LOAD-BEARING. Handed the relation in its REVERSED shape — paths as
+    /// keys, the exact pre-repair defect — the lookup by module must miss and leave the row a
+    /// Prepare refusal: no module → path row means no reclassification, never a guessed join.
+    #[test]
+    fn context_reclassification_misses_when_queried_off_key() {
+        let mut observations = vec![refused_observation(
+            "v2.test.poisoned",
+            "never_ran",
+            "NativeTestStagePrepare",
+            "resolve_module_not_found",
+        )];
+        let file_refusals = vec![NativeFileRefusalObserved {
+            path: "src/v2/test/poisoned_test.dag".to_string(),
+            head_reason: "parse_g0_tokens_remain".to_string(),
+            fatal_reason: "tokenize_lex_e1_unterminated_string".to_string(),
+        }];
+        let reversed_relation: HashMap<String, String> = [(
+            "src/v2/test/poisoned_test.dag".to_string(),
+            "v2.test.poisoned".to_string(),
+        )]
+        .into_iter()
+        .collect();
+
+        reclassify_context_refusals(&mut observations, &file_refusals, &reversed_relation);
+
+        assert_eq!(
+            refusal_shape(&observations[0]),
+            Some(("NativeTestStagePrepare", "resolve_module_not_found")),
+            "a path-keyed map cannot answer the module-keyed question"
+        );
     }
 }
