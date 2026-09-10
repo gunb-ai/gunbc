@@ -406,7 +406,7 @@ jobs:
         if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
   required-v2-native:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - name: Record runner filesystem at job start
         run: |

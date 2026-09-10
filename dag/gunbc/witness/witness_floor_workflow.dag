@@ -1684,9 +1684,12 @@ fn witness_floor_job() -> Job {
 // the v2 closure emission, one cargo build of the emitted compiler crate, the universe
 // derivation fold (the floor's own discovery producer over the full module inventory), and the
 // native run itself — one process over the derived v2.test.* universe plus the three controls.
-// The interpreter measured the admission fold's quadratic shape over the full derived population
-// at tens of seconds; the cargo build of the emitted crate is the dominant term. The envelope is
-// 90 minutes against the floor lane's 180.
+// Measured 2026-09-10 on the 4-core cloud VM, after the lexer accumulation fix
+// (v2.compiler.tokenize lexeme_grow): the native run dominates the envelope — ~70 minutes for
+// the whole-corpus context fold plus the 3467-row eval, observed by the
+// gunbc.witness_v2_native_route census — beside ~10 minutes of emission and ~10 minutes of
+// cargo build. The envelope is 180 minutes, the floor lane's own value, so the merge queue's
+// check_response_timeout (witness_floor_lane_timeout plus margin) still bounds it.
 //
 // WHAT RED DISCRIMINATES. The admission authority is gunbc.witness_v2_native_route: the observed
 // population must join the derived universe exactly (no duplicates, no foreign rows, no
@@ -1702,7 +1705,7 @@ fn witness_floor_job() -> Job {
 // control and the floor cannot share a job. The lane also builds a second crate (the emitted
 // compiler), a capability envelope the existing lanes do not declare. A job is the smallest
 // boundary that keeps both facts honest.
-data v2_native_lane_timeout: Minute = minute(count: 90)
+data v2_native_lane_timeout: Minute = minute(count: 180)
 
 fn v2_native_lane_build_script() -> String {
   repo_self_build_command(bins: witness_floor_required_bins)
