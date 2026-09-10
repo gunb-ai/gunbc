@@ -158,7 +158,7 @@ test fn cause_a_where_reproducer_normalizes_holds() -> Bool {
   d1_normalize_accepted(text: d1_where_reproducer, file: ^d1_where_norm)
 }
 
-test fn cause_a_where_clause_survives_normalize_holds() -> Witness<Node> {
+fn cause_a_where_clause_survives_normalize_locus() -> Witness<Node> {
   match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_norm) {
     Rejected { diagnostics: r } =>
       witness_violates(diagnostic: r.head)
@@ -184,6 +184,13 @@ test fn cause_a_where_clause_survives_normalize_holds() -> Witness<Node> {
               }
           }
       }
+  }
+}
+
+test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
+  match cause_a_where_clause_survives_normalize_locus() {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
   }
 }
 

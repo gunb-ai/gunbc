@@ -142,7 +142,7 @@ fn where_refinement_positive_parse_carries_clause_holds() -> Bool {
   }
 }
 
-fn where_refinement_normalize_carries_clause_holds() -> Witness<Node> {
+fn where_refinement_clause_survives_normalize_locus() -> Witness<Node> {
   match where_refinement_tokenize_parse(
     text: where_refinement_positive_bare_source,
     file: ^where_refinement_normalize_bare
@@ -170,8 +170,11 @@ test fn where_refinement_clause_parses_and_is_carried_holds() -> Bool {
   where_refinement_positive_parse_carries_clause_holds()
 }
 
-test fn where_refinement_clause_survives_normalize_graft_holds() -> Witness<Node> {
-  where_refinement_normalize_carries_clause_holds()
+test fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
+  match where_refinement_clause_survives_normalize_locus() {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
 }
 
 test fn where_refinement_empty_clause_is_refused_holds() -> Bool {
