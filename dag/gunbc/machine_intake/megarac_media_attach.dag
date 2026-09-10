@@ -178,14 +178,6 @@ fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr
 // no credential at all because the cookie is the bearer. The ipmi operations beside this take a
 // password FILE for the same threat and can, because -f exists there. Naming the asymmetry is the
 // point; hiding it behind a wrapper would make one call's exposure look like none.
-//
-// AN OPENED SESSION WHOSE TOKEN CANNOT BE READ IS STILL AN ALLOCATED SESSION. An earlier
-// revision returned SessionReleaseNotAttempted here, which is the leak that saturated this
-// controller: OpenSession succeeded, the cookie was written, and CloseSession never ran because
-// the renderer treated the arm as "never opened". The DELETE still needs an X-CSRFTOKEN header
-// by the upstream contract; the cookie is the bearer, so the header is supplied as a sentinel
-// rather than inventing a second CloseSession shape. A refused or uncertain close remains
-// SessionReleaseRefused, never NotAttempted.
 func megarac_attach_remote_image(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
@@ -217,6 +209,13 @@ func megarac_attach_remote_image(
     Present { value: doc } => json_string_member(doc: doc, key: "CSRFToken")
   }
 
+  // AN OPENED SESSION WHOSE TOKEN CANNOT BE READ IS STILL AN ALLOCATED SESSION. An earlier
+  // revision returned SessionReleaseNotAttempted here, which is the leak that saturated this
+  // controller: OpenSession succeeded, the cookie was written, and CloseSession never ran because
+  // the renderer treated the arm as "never opened". The DELETE still needs an X-CSRFTOKEN header
+  // by the upstream contract; the cookie is the bearer, so the header is supplied as a sentinel
+  // rather than inventing a second CloseSession shape. A refused or uncertain close remains
+  // SessionReleaseRefused, never NotAttempted.
   return match csrf {
     Absent =>
       megarac_release_unreadable_session(
@@ -285,11 +284,6 @@ func megarac_attach_then_release(
 // CONFIGURATIONS IS CONSULTED BEFORE ANYTHING IS WRITTEN, so the converged case performs no write
 // at all. This is not an optimisation: start-media against an already-presented image is a write
 // whose effect on a booted host is unmodelled, and the point of reading first is to not make it.
-//
-// MALFORMED PRESENTED STATE IS UNKNOWN, NOT "NOT ATTACHED". An earlier revision collapsed a
-// JSON parse failure or a non-array document to false, then walked the available-images list
-// and could StartMedia over a controller whose current attachment was unreadable. That is the
-// absorbing-fallback DESIGN §5 forbids: ignorance rendered as the empty case.
 func megarac_attach_with_token(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
@@ -306,6 +300,10 @@ func megarac_attach_with_token(
   if presented.success == false {
     return MegaRacConfigurationsUnreadable { detail: presented.body }
   }
+  // MALFORMED PRESENTED STATE IS UNKNOWN, NOT "NOT ATTACHED". An earlier revision collapsed a
+  // JSON parse failure or a non-array document to false, then walked the available-images list
+  // and could StartMedia over a controller whose current attachment was unreadable. That is the
+  // absorbing-fallback DESIGN §5 forbids: ignorance rendered as the empty case.
   match presented_media_standing(body: presented.body, image_name: image_name) {
     PresentedMediaUnreadable { detail: d } =>
       return MegaRacConfigurationsUnreadable { detail: d }
@@ -415,13 +413,6 @@ fn presented_media_standing(body: String, image_name: NonEmptyStr) -> PresentedM
 // asynchronous. Reporting MegaRacStartRefused on a status code would refuse an attach that is
 // merely still mounting. The bounded read-back decides; the status code only distinguishes which
 // unconfirmed state is reported.
-//
-// THE READ-BACK DECIDES, INCLUDING WHEN START REPORTED FAILURE. This firmware answers HTTP 500
-// on writes that take effect; mapping start.success == false to MegaRacStartRefused refused an
-// attach that was merely still mounting, and contradicted the comment this function already
-// carried. A missing confirmation after any start response is pending (Unconfirmed). StartRefused
-// is reserved for a start that failed AND whose configurations document is itself unreadable
-// as JSON — that is, when we cannot even ask the read-back.
 func megarac_start_and_confirm(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
@@ -447,6 +438,12 @@ func megarac_start_and_confirm(
     return MegaRacAttachUnconfirmed { image_name: image_name, configurations: configurations.body }
   }
 
+  // THE READ-BACK DECIDES, INCLUDING WHEN START REPORTED FAILURE. This firmware answers HTTP 500
+  // on writes that take effect; mapping start.success == false to MegaRacStartRefused refused an
+  // attach that was merely still mounting, and contradicted the comment this function already
+  // carried. A missing confirmation after any start response is pending (Unconfirmed). StartRefused
+  // is reserved for a start that failed AND whose configurations document is itself unreadable
+  // as JSON — that is, when we cannot even ask the read-back.
   return match presented_media_standing(body: configurations.body, image_name: image_name) {
     PresentedMediaAttached =>
       MegaRacAttached { image_name: image_name, image_index: image_index }
