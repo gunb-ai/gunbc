@@ -93,7 +93,11 @@ fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<
         .and_then(|s| s.to_str())
         .unwrap_or("file.dag")
         .to_string();
-    let tokens = tokenize(source.clone(), filename.clone());
+    let tokens = tokenize(
+        source.clone(),
+        filename.clone(),
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), build_newline_index(filename, source));
     let source_indices = Rc::new(source_indices);

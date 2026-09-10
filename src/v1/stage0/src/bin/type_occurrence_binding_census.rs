@@ -378,7 +378,11 @@ fn run_denominator(workspace: &std::path::Path, roots: &[String]) -> ExitCode {
                 index,
             );
             let parsed = parse_with_table(
-                tokenize(content, rel.clone()),
+                tokenize(
+                    content,
+                    rel.clone(),
+                    v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+                ),
                 source_indices,
                 empty_intern_table(),
             );
@@ -601,7 +605,11 @@ fn establish_declaration_population(
                 newline_index,
             );
             let parsed = parse_with_table(
-                tokenize(content, rel.clone()),
+                tokenize(
+                    content,
+                    rel.clone(),
+                    v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+                ),
                 source_indices.clone(),
                 empty_intern_table(),
             );
