@@ -1681,14 +1681,25 @@ pub struct TransitionAdmission {
 /// claimed the deletion outright, which would have described as this change's work something the base
 /// already did. The obligation was real, it is discharged, and that is the whole of the claim.
 ///
-/// UNION, NOT A CHOICE (2026-09-10 merge). Both sides carried LIVE rows this time, which is the
-/// case the previous merge of this file did not present: this branch has 40 SCM rows and `main`
-/// added one for the gunbc#10945 stranded-caller repair. Taking either side whole would delete
-/// obligations the other side still owes, and an unadjudicated delta is what this wall exists to
-/// refuse, so the rosters are appended. Main's account of the stranding is kept verbatim below
-/// because it is the history of a defect, not this branch's commentary, and it independently
-/// reached the attribution this session had corrected to: neither contributing change was wrong
-/// alone, and the defect lived only in their composition.
+/// UNION FIRST, THEN THE ROSTER-TOUCH DELETION (2026-09-10 merge), and the two steps are different
+/// questions that happened to land in one edit. Both sides carried rows: this branch's 40 SCM
+/// deltas and one `main` added for the gunbc#10945 stranded-caller repair. The union was right --
+/// choosing either side whole would have deleted obligations the other still owed, which is the
+/// unadjudicated delta this wall exists to refuse.
+///
+/// The #10945 ROW IS THEN DELETED, and not as a reversal of that reasoning. A row earns its place by
+/// admitting a delta that is still open; #10945 merged into `main`, so at THIS branch's base the
+/// binding it admits is already satisfied, and the required floor reported it exactly that way:
+/// `CONSUMED ADMISSION ... already satisfied at the base`, `1 consumed admission(s) due for deletion
+/// on this roster-touching change`. A consumed row left standing is a standing mitigation over a
+/// repaired defect. The 40 SCM rows stay because the same run shows them still ADMITTING -- they are
+/// live, not decorative.
+///
+/// Main's account of the stranding is kept verbatim below though its row is gone, which is this
+/// file's own convention for a deleted row (see the #10818 note above): the row is the obligation,
+/// the prose is the history of a defect, and only the first is discharged by the repair. It also
+/// independently reached the attribution this session had corrected to -- neither contributing
+/// change was wrong alone, and the defect lived only in their composition.
 ///
 /// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
 /// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
@@ -2214,16 +2225,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             target: "gunbc.scm.repository_envelope",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10945 mutation_status_is_commit_ambiguous stranded-caller repair",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.cloudflare.r2_token_mint_run",
-            in_declaration: "mint_r2_object_read_token",
-            spelling: "mutation_status_is_commit_ambiguous",
-            target: "extdeps.transports.rest",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
     },
 ];
 
