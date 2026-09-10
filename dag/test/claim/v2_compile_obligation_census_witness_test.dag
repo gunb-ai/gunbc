@@ -1,0 +1,153 @@
+module test.claim.v2_compile_obligation_census_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_rung {
+  GuaranteeRung,
+  OutsideTheLadder,
+  Mitigatable,
+  MechanicallyPreventable,
+  StructurallyGuaranteed,
+  StructurallyImpossible
+}
+import gunbc.v2_compile_obligation_census {
+  V2CompileObligation,
+  PathExecution,
+  CompileDoor,
+  RequiredRootLens,
+  ExecutedOnPath,
+  RouteGapHeld,
+  SeedEscapeOpen,
+  SeedEscapeClosed,
+  obligation_executed_rung,
+  obligation_executes_natively,
+  obligation_seed_escape_is_open,
+  v2_compile_obligation_census
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THIS WITNESS IS HOMED IN dag/test/claim ON PURPOSE, AND THAT IS THE POINT OF THE CENSUS IT
+// GUARDS. Every witness of every obligation the census records lives outside
+// gunbc.ci_layer_roots witness_discovery_scan_dirs, so none of them executes on a required run. A
+// census of unexecuted checks that itself went unexecuted would be the same defect one layer up.
+//
+// WHAT IT DOES NOT DO, SAID FIRST. It does not assert that the census's row set equals the enrolled
+// rosters in v2.compiler.compile. That join is over the CONTENTS of two list literals, which no
+// reader available here can walk, so a lens de-enrolled from always_required_root_lenses would
+// leave a stale row standing and nothing here would notice. The citation half is likewise uncovered
+// corpus-wide: cited-symbol resolution as a required check is an existing declared drop,
+// gunbc.rung_drop cited_symbol_census, and these rows inherit it rather than minting a second wall
+// beside it. Both are named rather than papered over, and both are the census's own next trigger.
+//
+// A ROW-SHAPE VALIDATOR WAS CONSIDERED AND DELETED, not omitted — the reasoning is in the census
+// module beside the rows, and it is the reason this file carries three checks rather than five.
+
+data fixture_home: DeclarationRef = decl_ref(module_path: "fixture.module", decl_name: "fixture_decl")
+
+data fixture_stall: DeclarationRef = decl_ref(
+  module_path: "fixture.stall",
+  decl_name: "fixture_stall_decl"
+)
+
+fn non_executing_arm() -> PathExecution {
+  RouteGapHeld { stall: fixture_stall }
+}
+
+fn executing_arm() -> PathExecution {
+  ExecutedOnPath { instrument: "gunbc run --entry <fixture> --function <fixture>" as NonEmptyStr }
+}
+
+fn fixture_row(interpreted_arm: PathExecution, native_arm: PathExecution) -> V2CompileObligation {
+  V2CompileObligation {
+    identity: "fixture_row" as NonEmptyStr,
+    kind: RequiredRootLens,
+    home: fixture_home,
+    claimed_rung: StructurallyGuaranteed,
+    discriminating_red: "fixture red" as NonEmptyStr,
+    positive_control: "fixture positive control" as NonEmptyStr,
+    interpreted: interpreted_arm,
+    native: native_arm,
+    ceiling: StructurallyGuaranteed,
+    next_trigger: "fixture trigger" as NonEmptyStr,
+    seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
+    related_drops: [],
+  }
+}
+
+fn closed_escape_fixture_row() -> V2CompileObligation {
+  V2CompileObligation {
+    identity: "fixture_closed" as NonEmptyStr,
+    kind: CompileDoor,
+    home: fixture_home,
+    claimed_rung: MechanicallyPreventable,
+    discriminating_red: "fixture red" as NonEmptyStr,
+    positive_control: "fixture positive control" as NonEmptyStr,
+    interpreted: non_executing_arm(),
+    native: non_executing_arm(),
+    ceiling: StructurallyGuaranteed,
+    next_trigger: "fixture trigger" as NonEmptyStr,
+    seed_escape: SeedEscapeClosed { by: fixture_home },
+    related_drops: [],
+  }
+}
+
+fn guarantee_rung_is(r: GuaranteeRung, expected: String) -> Bool {
+  match r {
+    OutsideTheLadder => expected == "OutsideTheLadder"
+    Mitigatable => expected == "Mitigatable"
+    MechanicallyPreventable => expected == "MechanicallyPreventable"
+    StructurallyGuaranteed => expected == "StructurallyGuaranteed"
+    StructurallyImpossible => expected == "StructurallyImpossible"
+  }
+}
+
+// THE EXECUTED RUNG IGNORES THE CLAIM. Both fixture rows below claim StructurallyGuaranteed. The
+// one whose paths do not execute must still read Mitigatable, and the one whose paths do execute
+// must read MechanicallyPreventable — so the function is neither a constant nor a reader of
+// claimed_rung. This is DESIGN section 4b(1) applied to the census itself: without this arm, a row
+// could raise its own executed rung by restating its claim, which is the exact inflation the census
+// exists to measure.
+test fn v2_compile_obligation_executed_rung_reads_the_paths_not_the_claim_holds() -> Bool {
+  guarantee_rung_is(
+    r: obligation_executed_rung(
+      o: fixture_row(interpreted_arm: non_executing_arm(), native_arm: non_executing_arm())
+    ),
+    expected: "Mitigatable"
+  )
+    && guarantee_rung_is(
+      r: obligation_executed_rung(
+        o: fixture_row(interpreted_arm: executing_arm(), native_arm: executing_arm())
+      ),
+      expected: "MechanicallyPreventable"
+    )
+}
+
+// THE SEED-ESCAPE ARMS ARE DISTINGUISHED BY THE ARM, NOT BY PROSE. The escape column is the
+// census's reason for existing, and every row in the live roster is currently open — so a
+// constant-true reader would be indistinguishable from a correct one when read over the roster
+// alone. The closed fixture is what separates them.
+test fn v2_compile_obligation_seed_escape_arms_are_distinguished_holds() -> Bool {
+  obligation_seed_escape_is_open(
+    o: fixture_row(interpreted_arm: non_executing_arm(), native_arm: non_executing_arm())
+  )
+    && !obligation_seed_escape_is_open(o: closed_escape_fixture_row())
+}
+
+// NOTHING IN THE CENSUS EXECUTES NATIVELY TODAY, STATED AS A PREDICATE OVER THE ROWS RATHER THAN AS
+// A COUNT AGAINST A LITERAL. A number copied from the current tree is not an oracle (DESIGN section
+// 5); the checkable statement is that no row carries a native ExecutedOnPath arm. It flips the day
+// one does, and that flip is this arm's intended dissolution, not a regression — the arm deletes
+// then rather than being repaired back to passing. Its positive control is the executing fixture
+// above, which proves an executing arm is representable and would be counted.
+test fn v2_compile_obligation_no_row_executes_natively_holds() -> Bool {
+  fold(
+    v2_compile_obligation_census,
+    init: true,
+    f: (acc, o) => acc && !obligation_executes_natively(o: o)
+  )
+    && obligation_executes_natively(
+      o: fixture_row(interpreted_arm: executing_arm(), native_arm: executing_arm())
+    )
+}

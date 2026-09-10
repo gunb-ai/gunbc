@@ -1,0 +1,497 @@
+module gunbc.v2_compile_obligation_census
+
+import std.types { Bool, Int, List, NonEmptyStr, list_length }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_rung { GuaranteeRung, Mitigatable, MechanicallyPreventable, StructurallyGuaranteed }
+
+// WHY THIS CENSUS EXISTS, IN ONE SENTENCE THE OPERATOR ASKED FOR (2026-09-10): v2 exists so that
+// classes like nondeterministic emission are UNWRITABLE, and this roster says, per compile-time
+// obligation v2 declares, whether that is true ON THE ROUTE THAT ACTUALLY ACCEPTS SOURCE or only
+// claimed in a declaration nobody executes.
+//
+// IT IS A JOIN, NOT A SECOND VOCABULARY. Every rung drop, frozen deferral and recurring failure
+// mode this census reaches is named BY ITS EXISTING IDENTITY (related_drops below) and never
+// restated here; every home is a DeclarationRef into the authority that owns the obligation. The
+// only facts this module adds are the three columns nothing else carries: what executes the
+// obligation on the interpreted per-PR route, what executes it on the emitted-native route, and
+// what the v1 seed does OUTSIDE the obligation's reach.
+//
+// THE THREE COLUMNS ARE DIFFERENT QUESTIONS AND THE CENSUS EXISTS BECAUSE THEY DISAGREE. DESIGN
+// section 4b(1): a class's rung is the MINIMUM across its in-scope paths, and a type name, a lens
+// declaration, or a plan establishes nothing. Direct execution of a witness is evidence that its
+// assertion HOLDS; it is never evidence that any required run reaches it, and conflating those two
+// is the inflation this census measures.
+
+// WHAT THE OBLIGATION IS. RequiredRootLens and RequiredSubtreeLens are the two enrolled rosters in
+// v2.compiler.compile; CompileDoor is the door itself, which is an obligation in its own right
+// because a roster that fires on every call of a function nothing calls fires never;
+// DeclaredPrimitiveTraversalFact is one row of the closed denominator v2.lens.determinism ranges
+// over, and it is carried per-primitive only for the members whose declared order leaves the
+// question open.
+type ObligationKind
+  = CompileDoor
+  | RequiredRootLens
+  | RequiredSubtreeLens
+  | DeclaredPrimitiveTraversalFact
+
+// WHERE AN OBLIGATION EXECUTES ON ONE ROUTE, AND WHY THE NON-EXECUTING ARMS ARE FOUR AND NOT ONE.
+// Collapsing them would reproduce exactly the failure gunbc.recurring_failure_mode names as
+// non-execution undifferentiated by what it silenced: a witness outside the discovery scope, a
+// witness inside the scope but frozen, a witness with no consumer at all, and a receipt family
+// whose route produces evidence nothing can spend are four different repairs with four different
+// owners, and a single Absent arm would rank none of them.
+type PathExecution
+  // The obligation runs on this route on a required run. instrument NAMES THE PRODUCER that
+  // re-derives the observation (DESIGN section 6) and never transcribes its output.
+  = ExecutedOnPath { instrument: NonEmptyStr }
+  // A witness exists and passes when invoked by hand, but its home directory is outside the
+  // discovery scope the required run walks, so no required run ever reaches it.
+  | OutsideDiscoveryScope { scope_authority: DeclarationRef, home_dir: NonEmptyStr }
+  // Enrolled in the frozen legacy population: declared never-executed, admitted with no executing
+  // consumer. Mitigatable at best, by construction of the roster it sits in.
+  | FrozenPathDeferred { roster: DeclarationRef }
+  // A receipt family exists for this route but publishes no evidence the required acceptance path
+  // can consume.
+  | RouteGapHeld { stall: DeclarationRef }
+  // No witness names this obligation on this route at all.
+  | NoWitnessNamesIt { note: NonEmptyStr }
+
+// WHAT THE v1 SEED DOES OUTSIDE THE OBLIGATION'S REACH — the column that motivates the census. The
+// seed is compiled by stage0 and by rustc; it is not a tree v2's compile door was ever handed, so
+// every gate above is silent about it. An escape is CLOSED only when a named declaration brings the
+// seed inside the obligation's reach, never when the obligation is merely stated more strongly.
+type SeedEscape
+  = SeedEscapeOpen { what_the_seed_does: NonEmptyStr }
+  | SeedEscapeClosed { by: DeclarationRef }
+
+type V2CompileObligation {
+  identity: NonEmptyStr
+  kind: ObligationKind
+  home: DeclarationRef
+  // The rung the obligation's own declaration claims for itself, read off that declaration.
+  claimed_rung: GuaranteeRung
+  // The input that makes the obligation refuse, and the input that must still be accepted beside
+  // it. A refusal with no positive control is satisfied by a mechanism that refuses everything.
+  discriminating_red: NonEmptyStr
+  positive_control: NonEmptyStr
+  interpreted: PathExecution
+  native: PathExecution
+  ceiling: GuaranteeRung
+  next_trigger: NonEmptyStr
+  seed_escape: SeedEscape
+  // Identities of gunbc.rung_drop rows that already govern part of this obligation. Joined by
+  // identity; the rows are NOT restated here.
+  related_drops: List<NonEmptyStr>
+}
+
+// THE ONE FACT EVERY ROW SHARES, HELD ONCE. The required run walks
+// gunbc.ci_layer_roots witness_discovery_scan_dirs and nothing else, so a *_test.dag outside those
+// three directories is not discovered however green it is when run by hand.
+data discovery_scope_authority: DeclarationRef = decl_ref(
+  module_path: "gunbc.ci_layer_roots",
+  decl_name: "witness_discovery_scan_dirs"
+)
+
+data frozen_roster_authority: DeclarationRef = decl_ref(
+  module_path: "gunbc.witness_deferral_freeze",
+  decl_name: "frozen_path_deferrals"
+)
+
+data self_host_route_stall: DeclarationRef = decl_ref(
+  module_path: "gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall",
+  decl_name: "self_host_wet_route_receipt_lifetime_stall"
+)
+
+// THE NATIVE ARM IS THE SAME VALUE ON EVERY LENS ROW AND THAT IS THE FINDING, NOT AN ABBREVIATION.
+// The only behavioral receipt the emitted crate publishes for v2.compiler.compile is the
+// self_host_00_compile shim, and it compares ONE VALUE — required_lens_grain_note, the prose string
+// describing the two roster grains — between the emitted module and the seed. Not one gate is
+// invoked. The seed side of that comparison is v1_compiler::v2_compiler_compile, a nine-line module
+// whose entire content is that same string, so the receipt's strongest possible verdict is that two
+// copies of a sentence about lenses agree. And the receipt itself is in the route_gap_held
+// population, so even that verdict reaches no acceptance path.
+data lens_native_execution: PathExecution = RouteGapHeld { stall: self_host_route_stall }
+
+// THE SEED IS OUTSIDE EVERY ROW'S REACH FOR ONE STRUCTURAL REASON, stated once here rather than
+// repeated per row: v2's gates read the InferredTree the compile door is handed, and the seed is
+// never handed to that door — it is stage0 Rust compiled by rustc. So the reach of every obligation
+// below stops at the corpus v2 compiles, which is today the fixtures its own witnesses build. Each
+// row's what_the_seed_does states the specific escape that reach leaves open, not this general fact.
+
+data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "accumulator_copy_root_lens" as NonEmptyStr,
+  kind: RequiredRootLens,
+  home: decl_ref(
+    module_path: "v2.lens.complexity_accumulator_copy.compile_gate",
+    decl_name: "accumulator_copy_compile_gate"
+  ),
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "a rooted tree threading a copied accumulator through a fold, which the gate must reject with a located diagnostic rather than a widened pass" as NonEmptyStr,
+  positive_control: "the resolved add fixture, which threads no copy and must pass the root-required roster unchanged (src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag)" as NonEmptyStr,
+  interpreted: FrozenPathDeferred { roster: frozen_roster_authority },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "the compile-gate and roster-gate witnesses move under a directory gunbc.ci_layer_roots witness_discovery_scan_dirs walks AND their gunbc.witness_deferral_freeze rows delete, so a required run refuses on the copied-accumulator tree" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "the seed's own folds are never presented to this gate, so a copied accumulator authored in stage0 Rust is invisible to the complexity lens that exists to make it unwritable" as NonEmptyStr
+  },
+  related_drops: ["lens_enforcement_censuses" as NonEmptyStr],
+}
+
+data determinism_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "determinism_root_lens" as NonEmptyStr,
+  kind: RequiredRootLens,
+  home: decl_ref(module_path: "v2.lens.determinism", decl_name: "determinism_compile_gate"),
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "a tree whose call joins a PrimitiveIdentity carrying HostUnspecifiedOrder or TraversalOrderUnclassified, which the gate must refuse per leaking call node" as NonEmptyStr,
+  positive_control: "a tree over CanonicalOrder and OrderFreeResult primitives, which must still compile" as NonEmptyStr,
+  interpreted: OutsideDiscoveryScope {
+    scope_authority: discovery_scope_authority,
+    home_dir: "src/v2/test/claim, src/v2/test/claim/enforcement and src/v2/test/lens_determinism, none of which the required run walks" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "the determinism witnesses are homed inside witness_discovery_scan_dirs AND a production caller hands the corpus to v2.compiler.compile validate_then_compile, so the gate is asked about a real module rather than a fixture" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "the seed emitter iterates a set when ordering pub-use lines, which this gate would classify NonDeterministic; the class is live and observed as same-sha emission divergence, and the gate never sees the emitter because the emitter is stage0 Rust" as NonEmptyStr
+  },
+  related_drops: ["determinism_transitive_reachability" as NonEmptyStr],
+}
+
+data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "machine_shape_root_lens" as NonEmptyStr,
+  kind: RequiredRootLens,
+  home: decl_ref(module_path: "v2.lens.machine_shape", decl_name: "machine_shape_compile_gate"),
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "a tree carrying a flat machine-shape scalar where the modeled carrier is required, which the gate must reject" as NonEmptyStr,
+  positive_control: "the modeled-carrier fixture in src/v2/test/claim/machine_shape_construction_wall_test.dag, which must pass" as NonEmptyStr,
+  interpreted: OutsideDiscoveryScope {
+    scope_authority: discovery_scope_authority,
+    home_dir: "src/v2/test/claim, which the required run does not walk. THE TWO MACHINE-SHAPE WITNESSES THAT ARE INSIDE THE SCOPE ARE A DIFFERENT SUBJECT: dag/test/claim/machine_shape_witness_test.dag and its catalog sibling import std.machine_shape and the extdeps catalogs, never v2.lens.machine_shape, so reading the scope for this name finds green witnesses that exercise none of this gate" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "a witness that imports v2.lens.machine_shape machine_shape_compile_gate is homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "stage0 Rust declares machine widths as host integer types with no modeled carrier, and no gate asks" as NonEmptyStr
+  },
+  related_drops: [],
+}
+
+data mandatory_tag_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "mandatory_tag_root_lens" as NonEmptyStr,
+  kind: RequiredRootLens,
+  home: decl_ref(module_path: "v2.lens.mandatory_tag", decl_name: "mandatory_tag_compile_gate"),
+  // THE ONLY WallNow IN THE ROSTER, AND THE ONLY ROW WHOSE CLAIM AND EVIDENCE ARE THE FURTHEST
+  // APART. Its construction_justification declares WallNow with mandatory_tag_compile_gate as the
+  // authority — a wall standing NOW — while every one of its twelve gate witnesses, including
+  // mandatory_tag_enrolled_in_root_roster_rejects_violating_module (the one whose entire job is the
+  // root-roster enrollment this claim rests on), is a frozen path deferral under test/claim/long.
+  // Frozen means declared never-executed. So the strongest claim in the roster is the one with no
+  // executing evidence anywhere, which is DESIGN section 4b(1) rung inflation exactly.
+  claimed_rung: StructurallyGuaranteed,
+  discriminating_red: "a module declaring a mandatory tag with a missing, misnamed, wrongly typed or bogus-scheme value, at parse grain and again at normalized grain, which the gate must reject" as NonEmptyStr,
+  positive_control: "the clean and the off-region fixtures, which must be accepted at both grains" as NonEmptyStr,
+  interpreted: FrozenPathDeferred { roster: frozen_roster_authority },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "the twelve mandatory_tag gate functions leave gunbc.witness_deferral_freeze AND their entries are homed inside witness_discovery_scan_dirs, so the enrolled-in-root-roster refusal executes on a required run" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "stage0 Rust carries no mandatory-tag surface at all, so the seed cannot violate the rule and cannot demonstrate it either" as NonEmptyStr
+  },
+  related_drops: [],
+}
+
+data undecidable_verdict_collapse_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "undecidable_verdict_collapse_root_lens" as NonEmptyStr,
+  kind: RequiredRootLens,
+  home: decl_ref(
+    module_path: "v2.lens.undecidable_verdict_collapse",
+    decl_name: "undecidable_verdict_collapse_compile_gate"
+  ),
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "a tree collapsing an undecidable verdict into a decided one, which the gate must refuse rather than absorb" as NonEmptyStr,
+  positive_control: "a tree keeping the undecided arm distinct, which must compile" as NonEmptyStr,
+  interpreted: OutsideDiscoveryScope {
+    scope_authority: discovery_scope_authority,
+    home_dir: "src/v2/test/claim" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "src/v2/test/claim/undecidable_verdict_collapse_wall_test.dag is homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "stage0 Rust returns bool from predicates that answer undecidable questions, and the collapse is unobservable to this gate" as NonEmptyStr
+  },
+  related_drops: [],
+}
+
+data fact_density_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "fact_density_subtree_lens" as NonEmptyStr,
+  kind: RequiredSubtreeLens,
+  home: decl_ref(module_path: "v2.lens.fact_density", decl_name: "fact_density_hollow_alias_gate"),
+  claimed_rung: MechanicallyPreventable,
+  // MEASURED, NOT READ. hollow_alias_blocked_via_always_required_lenses_holds was executed directly
+  // against this tree and returned true — the hollow-alias tree is rejected with reason
+  // fact_density_hollow_alias_locus through the always_required_lenses roster. That establishes the
+  // assertion HOLDS. It establishes nothing about coverage, and the interpreted column below is why.
+  discriminating_red: "a hollow alias node whose fact bundle names no fact, which run_required_lens_gates must reject with reason fact_density_hollow_alias_locus" as NonEmptyStr,
+  positive_control: "the named fact-bundle fixture in the same directory, which must pass the same roster" as NonEmptyStr,
+  interpreted: OutsideDiscoveryScope {
+    scope_authority: discovery_scope_authority,
+    home_dir: "src/v2/test/lens_fact_density, which is not a test/claim directory at all" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "the src/v2/test/lens_fact_density witnesses are homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "stage0 Rust type aliases carry no fact bundle, so a hollow alias in the seed is not a state this gate can see" as NonEmptyStr
+  },
+  related_drops: [],
+}
+
+data unit_modeling_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "unit_modeling_subtree_lens" as NonEmptyStr,
+  kind: RequiredSubtreeLens,
+  home: decl_ref(module_path: "v2.lens.unit_modeling", decl_name: "unit_modeling_gate"),
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "a flat scalar leaf carrying a unit the model does not declare, which the gate must flag" as NonEmptyStr,
+  positive_control: "the modeled-unit field and the coordinate-index fixtures, which must NOT be flagged — this gate's positive controls are load-bearing because a gate that flagged every scalar would satisfy every red above" as NonEmptyStr,
+  interpreted: OutsideDiscoveryScope {
+    scope_authority: discovery_scope_authority,
+    home_dir: "src/v2/test/lens_unit_modeling" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "the src/v2/test/lens_unit_modeling witnesses are homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "stage0 Rust carries widths and counts as bare host integers, the exact flat-scalar shape this gate flags, and none of it is presented" as NonEmptyStr
+  },
+  related_drops: [],
+}
+
+data lifecycle_carrier_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "lifecycle_carrier_subtree_lens" as NonEmptyStr,
+  kind: RequiredSubtreeLens,
+  home: decl_ref(module_path: "v2.lens.lifecycle_carrier", decl_name: "lifecycle_carrier_gate"),
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "a raw prose String field standing where a typed lifecycle carrier belongs, which the gate must flag (DESIGN section 4c)" as NonEmptyStr,
+  positive_control: "a typed carrier in the same position, which must pass" as NonEmptyStr,
+  interpreted: OutsideDiscoveryScope {
+    scope_authority: discovery_scope_authority,
+    home_dir: "src/v2/test/lens_lifecycle_carrier, which carries exactly one witness file" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag is homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "stage0 Rust is written almost entirely in String and bool, so the population this gate exists to flag is the seed itself, and the gate is never asked about it" as NonEmptyStr
+  },
+  related_drops: [],
+}
+
+// THE DOOR IS ITS OWN OBLIGATION AND IT IS THE ROW THAT SUBSUMES THE OTHER EIGHT. The two rosters
+// above fire on every validate_then_compile call regardless of caller-supplied lenses — which is a
+// true and complete statement about a function whose only callers in the corpus are its own
+// fixtures. A grep for the symbol outside src/v2/compiler/00_compile.dag reaches three test entries
+// and one line of roadmap prose. No production path hands a real module to this door, so the
+// question the whole roster answers is asked only about trees its own witnesses built.
+data compile_door_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "validate_then_compile_door" as NonEmptyStr,
+  kind: CompileDoor,
+  home: decl_ref(module_path: "v2.compiler.compile", decl_name: "validate_then_compile"),
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "a real corpus module carrying a violation of any enrolled lens, handed to the door, which must be Rejected before compile-core" as NonEmptyStr,
+  positive_control: "the same module with the violation removed, which must reach compile-core (src/v2/test/lens_application/rejecting_lens_blocks_before_compile_test.dag holds the fixture-grain pair)" as NonEmptyStr,
+  interpreted: NoWitnessNamesIt {
+    note: "no production consumer calls this door. Its callers are src/v2/test/lens_application (two entries, outside witness_discovery_scan_dirs), src/v2/test/claim/manual/validate_then_compile_public_terminal.dag, and src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag. A roster that fires on every call of a function nothing calls fires never" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "the acceptance path that compiles the corpus routes modules through validate_then_compile, so the two rosters are asked about authored source rather than about fixtures" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "the seed compiles and accepts the entire corpus without ever calling this door, so every lens enrolled behind it is silent on every module the repository actually builds" as NonEmptyStr
+  },
+  related_drops: ["required_gate_bankruptcy" as NonEmptyStr, "source_root_ingest_gate_rung_drop" as NonEmptyStr],
+}
+
+// THE PRIMITIVE ROWS ARE THE DENOMINATOR THE DETERMINISM GATE RANGES OVER, AND ONLY THE OPEN
+// MEMBERS ARE CARRIED. std.primitive_identity declares seventeen PrimitiveTraversalOrderFact rows
+// and the closure wall makes a declared primitive with no fact refuse, which is a real construction
+// and is not re-litigated here. What this census carries is the three members whose DECLARED answer
+// leaves a program's determinism open: two HostUnspecifiedOrder and the one
+// TraversalOrderUnclassified. Restating the other fourteen would be the fork this module exists to
+// avoid — they are reachable from primitive_declared_traversal_facts and carry no open question.
+data primitive_index_by_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "primitive_index_by_traversal_unclassified" as NonEmptyStr,
+  kind: DeclaredPrimitiveTraversalFact,
+  home: decl_ref(module_path: "std.primitive_identity", decl_name: "primitive_index_by_traversal"),
+  // Unclassified is IGNORANCE, and the gate refuses fail-closed on it — so the claim here is the
+  // refusal, not a determinism guarantee.
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "any call reaching index_by in a tree handed to the determinism gate, which must refuse because nobody has answered the order question" as NonEmptyStr,
+  positive_control: "the same tree with sorted_map_keys in place of index_by, which must be accepted as CanonicalOrder" as NonEmptyStr,
+  interpreted: OutsideDiscoveryScope {
+    scope_authority: discovery_scope_authority,
+    home_dir: "the refusal only fires through v2.lens.determinism, whose witnesses are all outside the scope" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "index_by's realization is read and the row is replaced by a classified order, at which point this census row deletes rather than being marked closed" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "the seed calls its own index_by realization directly with no gate between, so an unclassified order is consumed rather than refused" as NonEmptyStr
+  },
+  related_drops: ["determinism_transitive_reachability" as NonEmptyStr],
+}
+
+data primitive_map_keys_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "primitive_map_keys_traversal_host_unspecified" as NonEmptyStr,
+  kind: DeclaredPrimitiveTraversalFact,
+  home: decl_ref(module_path: "std.primitive_identity", decl_name: "primitive_map_keys_traversal"),
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "a tree calling map_keys, whose result order is a function of the per-process hash seed and not of the input, which the gate must refuse per leaking call node" as NonEmptyStr,
+  positive_control: "the same tree calling sorted_map_keys, which must be accepted" as NonEmptyStr,
+  interpreted: OutsideDiscoveryScope {
+    scope_authority: discovery_scope_authority,
+    home_dir: "the refusal only fires through v2.lens.determinism, whose witnesses are all outside the scope" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "a production caller hands emitting trees to validate_then_compile, so a map_keys call on an emission path refuses instead of being classified by non-membership" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "this is the live specimen: the seed emitter orders pub-use lines from a set traversal, producing different bytes from the same sha, and the gate that would classify it NonDeterministic is never handed the emitter" as NonEmptyStr
+  },
+  related_drops: [],
+}
+
+data primitive_map_values_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "primitive_map_values_traversal_host_unspecified" as NonEmptyStr,
+  kind: DeclaredPrimitiveTraversalFact,
+  home: decl_ref(module_path: "std.primitive_identity", decl_name: "primitive_map_values_traversal"),
+  claimed_rung: MechanicallyPreventable,
+  discriminating_red: "a tree calling map_values, which exposes the same host order as map_keys and must refuse" as NonEmptyStr,
+  positive_control: "a tree whose values are read through a sorted key list, which must be accepted" as NonEmptyStr,
+  interpreted: OutsideDiscoveryScope {
+    scope_authority: discovery_scope_authority,
+    home_dir: "the refusal only fires through v2.lens.determinism, whose witnesses are all outside the scope" as NonEmptyStr
+  },
+  native: lens_native_execution,
+  ceiling: StructurallyGuaranteed,
+  next_trigger: "the same production routing that closes the map_keys row closes this one; they are one trigger and are written twice only because they are two declared primitives" as NonEmptyStr,
+  seed_escape: SeedEscapeOpen {
+    what_the_seed_does: "the seed reads map values directly in emission and ordering code with no gate between" as NonEmptyStr
+  },
+  related_drops: [],
+}
+
+data v2_compile_obligation_census: List<V2CompileObligation> = [
+  compile_door_obligation,
+  accumulator_copy_obligation,
+  determinism_obligation,
+  machine_shape_obligation,
+  mandatory_tag_obligation,
+  undecidable_verdict_collapse_obligation,
+  fact_density_obligation,
+  unit_modeling_obligation,
+  lifecycle_carrier_obligation,
+  primitive_index_by_obligation,
+  primitive_map_keys_obligation,
+  primitive_map_values_obligation,
+]
+
+// THE THREE NUMBERS THE OPERATOR ASKED FOR, DERIVED AND NEVER TRANSCRIBED. Each is a fold over the
+// roster above, so a row added, removed or re-dispositioned moves the number and no second place
+// records it.
+fn obligations_claimed() -> Int {
+  list_length(items: v2_compile_obligation_census)
+}
+
+fn obligation_executes_natively(o: V2CompileObligation) -> Bool {
+  match o.native {
+    ExecutedOnPath { instrument: _ } => true
+    OutsideDiscoveryScope { scope_authority: _, home_dir: _ } => false
+    FrozenPathDeferred { roster: _ } => false
+    RouteGapHeld { stall: _ } => false
+    NoWitnessNamesIt { note: _ } => false
+  }
+}
+
+fn obligation_executes_interpreted(o: V2CompileObligation) -> Bool {
+  match o.interpreted {
+    ExecutedOnPath { instrument: _ } => true
+    OutsideDiscoveryScope { scope_authority: _, home_dir: _ } => false
+    FrozenPathDeferred { roster: _ } => false
+    RouteGapHeld { stall: _ } => false
+    NoWitnessNamesIt { note: _ } => false
+  }
+}
+
+fn obligation_seed_escape_is_open(o: V2CompileObligation) -> Bool {
+  match o.seed_escape {
+    SeedEscapeOpen { what_the_seed_does: _ } => true
+    SeedEscapeClosed { by: _ } => false
+  }
+}
+
+fn obligations_executing_natively() -> Int {
+  list_length(items: filter(v2_compile_obligation_census, o => obligation_executes_natively(o: o)))
+}
+
+fn obligations_executing_interpreted() -> Int {
+  list_length(items: filter(v2_compile_obligation_census, o => obligation_executes_interpreted(o: o)))
+}
+
+fn obligations_with_open_seed_escape() -> Int {
+  list_length(items: filter(v2_compile_obligation_census, o => obligation_seed_escape_is_open(o: o)))
+}
+
+// THE EXECUTED RUNG OF AN OBLIGATION IS THE MINIMUM ACROSS ITS IN-SCOPE PATHS (DESIGN section
+// 4b(1)), and with both paths non-executing that minimum is Mitigatable regardless of what the
+// obligation's own declaration claims. This function is the census's whole verdict: it reads the
+// two path arms and NOT the claimed_rung field, so a row cannot raise its own executed rung by
+// restating its claim.
+fn obligation_executed_rung(o: V2CompileObligation) -> GuaranteeRung {
+  if obligation_executes_natively(o: o) && obligation_executes_interpreted(o: o) {
+    MechanicallyPreventable
+  } else {
+    Mitigatable
+  }
+}
+
+// ROW WELL-FORMEDNESS IS STRUCTURALLY IMPOSSIBLE TO VIOLATE, AND THE CHECK FOR IT WAS DELETED
+// RATHER THAN SHIPPED. The first cut of this module carried an obligation_row_is_well_formed
+// predicate asserting that identity, discriminating_red, positive_control, next_trigger and each
+// arm's authority were non-empty, with fixture reds handing it empty strings. Those reds do not
+// compile: every one of those fields is NonEmptyStr, `"" as NonEmptyStr` is refused at typecheck,
+// and DeclarationRef's own fields are NonEmptyStr too — so the invalid state has no constructor
+// anywhere the check could run, in the accepted corpus OR at the fixture boundary. DESIGN section
+// 4b names that exactly: a check whose RED is unauthorable is not a weak wall but a decoration,
+// permanently green by construction, and worse than absent because it would be cited as coverage.
+// The honest reading is that this class already sits at rung 4 and needs no validator. What DOES
+// need one is the pair of judgments below, whose reds are authorable and are authored in
+// test.claim.v2_compile_obligation_census_witness_test.
+
+// TWO FINDINGS THIS CENSUS SURFACED THAT ARE NOT ROWS, RECORDED HERE RATHER THAN REPAIRED. The
+// brief that produced this module is read-only measurement; both belong to the authorities that own
+// them and are named so the owning lane can act.
+//
+// FINDING 1 — A STALE PRESENT-TENSE COVERAGE CLAIM IN THE COMPILE DOOR'S OWN ANNOTATION. The
+// annotation above always_required_root_lenses in v2.compiler.compile explains that lens_module_gate
+// was de-enrolled from the root roster and adds, present tense, that "enforcement is NOT reduced:
+// the invariant executes per-PR via its honestly-stamped consumer
+// v2.test.claim.enforcement.lens_module_gate_witness". That sentence is false on two independent
+// grounds, either of which alone would be sufficient: the entry is enrolled in
+// gunbc.witness_deferral_freeze, which means declared never-executed, AND src/v2/test/claim/enforcement
+// is not one of the three directories gunbc.ci_layer_roots witness_discovery_scan_dirs walks. A
+// reader consulting the door's own annotation to answer "is this invariant still covered" is told
+// YES. This is the same class gunbc.ci_layer_roots excl_bin_wet_reason corrected on itself in
+// 2026-08-19, appearing here in the authority a reader consults first.
+//
+// FINDING 2 — THE NATIVE BEHAVIORAL RECEIPT FOR THE COMPILE DOOR COMPARES A PROSE STRING. The
+// self_host_00_compile shim's case list has exactly one entry, required_lens_grain_note, and the
+// seed side of that comparison is a nine-line Rust module whose whole content is the same sentence.
+// The receipt is well built — it carries an --inject-fault arm and a real positive control — but its
+// subject is the note ABOUT the lens rosters rather than any gate in them. So the strongest verdict
+// the emitted crate can currently publish about v2's compile door is that two copies of a sentence
+// agree, and the census's native column is RouteGapHeld on every row for a reason that is upstream
+// of the route gap: even with a spendable receipt, nothing in that comparison would move if every
+// gate were deleted.
