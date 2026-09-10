@@ -13,11 +13,9 @@ import v2.extdeps.languages.dag {
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
-  ExternalContractUnknown,
   Outcome,
   Rejected,
   Suggested,
-  Unavailable,
   bind_outcome,
   node_locus
 }
@@ -83,17 +81,17 @@ fn where_refinement_edge_names_clause(e: Edge) -> Bool {
 }
 
 fn where_refinement_find_host_conj(root: Node) -> Optional<Node> {
-  if fold(root.children, init: false, f: fn(found, e) {
+  match fold(root.children, init: false, f: fn(found, e) {
     found || where_refinement_edge_names_clause(e: e)
   }) {
-    Present { value: root }
-  } else {
-    fold(root.children, init: Absent, f: fn(acc, e) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => where_refinement_find_host_conj(root: e.target)
-      }
-    })
+    true => Present { value: root }
+    false =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => where_refinement_find_host_conj(root: e.target)
+        }
+      })
   }
 }
 
