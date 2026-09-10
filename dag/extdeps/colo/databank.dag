@@ -207,10 +207,14 @@ data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
 // seven reviewers were correct while nothing moved, and the carrier change is itself under rework.
 // Demote-then-convert is two cheap edits; a wrong-direction figure standing another day is not.
 //
-// WHAT THE SEVEN EQUINIX ROWS DO AND DO NOT SHOW. They are DensityUnread for a second, independent
-// reason: they publish kVA, this carrier's figures are Watt, and no power factor is published, so
-// they are unrepresentable in any published arm regardless of direction. They were never evidence
-// that the right arm existed for EWR1 - they only show the same destination reached by another road.
+// WHAT THE SEVEN EQUINIX ROWS DO AND DO NOT SHOW, CORRECTED. They were DensityUnread for a second,
+// independent reason: they publish kVA where this carrier's figures were Watt, so they were
+// unrepresentable in any published arm regardless of direction. THAT IS NO LONGER TRUE - the quantity
+// carries its own unit, so CapabilityAtLeast over PublishedApparentPower holds a kVA floor exactly as
+// read. They are now UNCONVERTED rather than unrepresentable, which is a smaller and differently-owned
+// debt: it belongs to whoever reads equinix.dag's pages, not to this file. What has not changed is
+// that they were never evidence the right arm existed for EWR1 - they only reached the same
+// destination by another road, and both roads are now open.
 // RESTORED BY THE TRIGGER ITS OWN OBLIGATION NAMED, FOR THE SAME REASON AS LGA4 ABOVE. #10862 demoted
 // this row because "10kW+ Cab Density Air" is a capability FLOOR and that carrier's only figure-bearing
 // arms were marketed MAXIMA, so a census over it would have answered that a cabinet advertised at ten
