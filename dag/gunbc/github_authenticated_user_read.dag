@@ -1,11 +1,11 @@
 module gunbc.github_authenticated_user_read
 
-import std.types { NonEmptyStr, Secret, HttpStatus }
+import std.types { NonEmptyStr, Secret }
 import std.resources { Network }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.transports.rest {
   classify_rest_outcome,
-  RestExchangeSucceeded, RestExchangeUndecodable, RestExchangePerformance,
+  RestExchangeSucceeded, RestExchangePerformance,
   RestReadExchange,
 }
 import extdeps.github.users
@@ -29,18 +29,14 @@ data github_authenticated_user_read_consumer_frontier: DissolutionCondition = un
 type GitHubAuthenticatedUserRead
   = GitHubAuthenticatedUserObserved { user: GitHubUser }
   | GitHubAuthenticatedUserRefused { performance: RestExchangePerformance }
+  | GitHubAuthenticatedUserLoginAbsent { user: GitHubUser }
 
 func perform_github_authenticated_user_read(auth_token: Secret) -> GitHubAuthenticatedUserRead uses net: Network {
   let got = github.Users.GetAuthenticatedUser(auth_token: auth_token)
   match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
     RestExchangeSucceeded =>
       if got.user.login == "" {
-        GitHubAuthenticatedUserRefused {
-          performance: RestExchangeUndecodable {
-            status: 200,
-            cause: "GitHub answered 200 with an empty login; no authenticated user was observed" as NonEmptyStr,
-          }
-        }
+        GitHubAuthenticatedUserLoginAbsent { user: got.user }
       } else {
         GitHubAuthenticatedUserObserved { user: got.user }
       }

@@ -16,6 +16,7 @@ import extdeps.github.users {
 }
 import gunbc.github_authenticated_user_read {
   GitHubAuthenticatedUserObserved, GitHubAuthenticatedUserRefused,
+  GitHubAuthenticatedUserLoginAbsent,
   perform_github_authenticated_user_read,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -135,5 +136,6 @@ test fn perform_authenticated_user_read_binds_the_hermetic_fixture_login() -> Bo
         && user.id == hermetic_get_authenticated_user_id
         && user.type == hermetic_get_authenticated_user_type
     GitHubAuthenticatedUserRefused { performance: _ } => false
+    GitHubAuthenticatedUserLoginAbsent { user: _ } => false
   }
 }
