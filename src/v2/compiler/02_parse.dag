@@ -590,6 +590,11 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
   )
 }
 
+// Route through chars(s:): the emitted realization needs the boundary conversion — emitted
+// fold_list<T, _> cannot infer T from a host-carrier lexeme (E0282) without it — and the
+// interpreted chars builtin grounds every string realization (native compact string and
+// Empty/Cons chain alike, via free_monoid_to_string) to the same Int codepoints fold_list
+// itself would read, so the digest is realization-stable on both routes.
 fn parse_lexeme_digest(lexeme: Lexeme) -> Hash {
   fold_list(
     xs: chars(s: lexeme),

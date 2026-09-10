@@ -1,5 +1,7 @@
 module v1.compiler.compile
 
+import extdeps.languages.dag.syntax { dag_parse_environment }
+
 import std.syntax { LiteralValue, BinOp }
 import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
 import v1.std.core {
@@ -1075,7 +1077,7 @@ fn resolve_frontend_occurrence_transport(
 
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let prepared = sources |> map(s =>
-    let artifact = tokenize_artifact(source: s.content, file: s.path)
+    let artifact = tokenize_artifact(source: s.content, file: s.path, env: dag_parse_environment)
     let si = build_newline_index(file: s.path, source: s.content)
     FrontendPrepared {
       tokens: artifact.tokens,
@@ -1170,7 +1172,7 @@ type CensusFillParse {
 
 fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
   let prepared = sources |> map(s =>
-    let artifact = tokenize_artifact(source: s.content, file: s.path)
+    let artifact = tokenize_artifact(source: s.content, file: s.path, env: dag_parse_environment)
     let si = build_newline_index(file: s.path, source: s.content)
     FrontendPrepared {
       tokens: artifact.tokens,

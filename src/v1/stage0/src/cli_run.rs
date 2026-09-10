@@ -3458,7 +3458,11 @@ pub(crate) fn string_list_data_from_module_source(
     use crate::v1_std_core::{ExprData, LiteralValue};
 
     let filename = module_rel_path.to_string();
-    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
+    let tokens = crate::v1_compiler_tokenize::tokenize(
+        content.to_string(),
+        filename.clone(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index =
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
     let mut source_indices = HashMap::new();
@@ -35311,7 +35315,11 @@ fn parse_module_items_for_transport_script(
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(path);
-    let tokens = v1_compiler_tokenize::tokenize(content.clone(), filename.to_string());
+    let tokens = v1_compiler_tokenize::tokenize(
+        content.clone(),
+        filename.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index = build_newline_index(filename.to_string(), content);
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
@@ -36166,7 +36174,11 @@ pub fn parse_extdeps_module_items(
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(path);
-    let tokens = tokenize(content.clone(), filename.to_string());
+    let tokens = tokenize(
+        content.clone(),
+        filename.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index = build_newline_index(filename.to_string(), content);
     let mut source_indices_map = HashMap::new();
     source_indices_map.insert(filename.to_string(), source_index);
