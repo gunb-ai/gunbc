@@ -1721,7 +1721,7 @@ fn body_lower_node_is_eq_token(n: Node) -> Bool {
 }
 
 fn body_lower_last_child_optional(n: Node) -> Optional<Node> {
-  fold(n.children, init: Absent, f: fn(_acc, e) {
+  fold(n.children, init: optional_absent(), f: fn(_acc, e) {
     optional_present(value: e.target)
   })
 }
@@ -1780,25 +1780,28 @@ fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
 }
 
 fn body_lower_body_after_eq_token(captured: Node) -> Optional<Node> {
-  match fold(captured.children, init: Absent, f: fn(acc, e) {
+  match fold(captured.children, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: n } =>
-        match body_lower_node_is_eq_token(n: n) {
-          true => optional_present(value: e.target)
-          false => acc
+        if body_lower_node_is_eq_token(n: n) {
+          optional_present(value: e.target)
+        } else {
+          optional_present(value: n)
         }
       Absent =>
-        match body_lower_node_is_eq_token(n: e.target) {
-          true => optional_present(value: e.target)
-          false => body_lower_body_after_eq_token(captured: e.target)
+        if body_lower_node_is_eq_token(n: e.target) {
+          optional_present(value: e.target)
+        } else {
+          body_lower_body_after_eq_token(captured: e.target)
         }
     }
   }) {
     Absent => optional_absent()
     Present { value: n } =>
-      match body_lower_node_is_eq_token(n: n) {
-        true => optional_absent()
-        false => optional_present(value: n)
+      if body_lower_node_is_eq_token(n: n) {
+        optional_absent()
+      } else {
+        optional_present(value: n)
       }
   }
 }
