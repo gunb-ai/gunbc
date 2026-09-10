@@ -1,0 +1,403 @@
+module gunbc.spark.serving_arm_convergence
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import v2.std.algebra { non_empty_to_list }
+import std.goal_assessment {
+  ObservationAttempt, ObservationEstablished, ObservationRefused,
+  GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+  GoalInspection, GoalInspected, GoalObservationRefused,
+  inspect_goal, assess_by_deviations_and_unknowns,
+}
+import gunbc.spark.serving_arm {
+  ServingCheckpoint, ServingRuntime, ServingTopology,
+  ServingCheckpointRow, serving_checkpoint_row,
+  serving_topology_rank_count,
+  ServingArmVerdict, ServingArmAdmitted, ServingArmRefused, serving_arm_admits,
+}
+
+// ── WHY THIS EXISTS BESIDE THE CANARY'S CUTOVER, AND WHAT IT CORRECTS ─────────────────────────
+//
+// gunbc.spark.glm_canary_converge can replace a running container with one this model started, and it
+// is deliberately narrow: it proceeds only on ServeAgreed, meaning the rendered launch line already
+// equals the running one. Its own annotation states the value that buys -- PROVENANCE, NOT CAPABILITY,
+// same digest and same weights, a container the model owns instead of one a person started.
+//
+// THAT GATE CANNOT EXPRESS A CHANGE OF ARTIFACT, WHICH IS THE OPERATOR'S ACTUAL GOAL. Moving off the
+// quantised EXL3 checkpoint onto the native FP8 one is by construction a DIFFERENT launch line, so it
+// arrives at ServeDiffers and is refused as "an unreviewed change to a live service"; a first launch on
+// hosts where nothing serves arrives at ServeNotRunning and is refused as "a first launch rather than a
+// cutover". Both refusals are correct FOR A CUTOVER. They mean the operation the program needs has no
+// route, not that it is unsafe.
+//
+// AND THE COMPARISON GRAIN IS THE DEEPER DEFECT. Whole-line equality conflates two different facts:
+// WHICH ARM IS SERVING -- artifact, quantisation, rank count -- and HOW THAT ARM IS TUNED. The live
+// canary is the clearest case: the model desires 2048 batched tokens and the engine runs 7168, so a
+// line comparison reports divergence and blocks, while the arm actually serving is exactly the arm
+// desired. A batched-token difference is a tuning drift to be reported; it is not evidence that the
+// wrong model is loaded, and treating the two as one fact means the only way to converge is to stop
+// reporting the drift.
+//
+// SO THIS MODULE ASSESSES ARM IDENTITY AND NOTHING ELSE, and it is an ASSESSMENT rather than a plan:
+// std.goal_assessment owns the remedy-free relation between a declared goal and an observation, and
+// choosing what to do about a deviation is a separate fold below. The two halves are separate because
+// their answers have different owners -- a divergence is a fact about the world, and a remedy is a
+// decision about acting on it.
+
+// ── THE IDENTITY THAT DECIDES WHETHER THE RIGHT ARM IS SERVING ────────────────────────────────
+//
+// THREE FIELDS AND NOT THE WHOLE ARGV, for the reason above. Each is a fact about WHICH deployment is
+// loaded rather than how it behaves: the served alias names the artifact a requester asks for, the
+// quantisation names which weights were read, and the rank count names how many GPUs hold them. Two
+// launches agreeing on all three are the same arm however differently they are tuned; two disagreeing
+// on any one are different arms however similar their lines look.
+//
+// ALL THREE FIELDS ARE THE WIRE WORDS THE LAUNCH LINE SPELLS, INCLUDING THE RANK COUNT, and that is a
+// consequence of a missing capability rather than a preference. The rank count is a Nat everywhere it is
+// MODELLED; here it is the numeral the argv carries, because comparing them requires moving one side
+// across the boundary and `std` has no decimal parser at all -- every numeric projection in the corpus
+// renders Nat into String and nothing reads one back. Minting a parser inside this module would be a
+// fresh authority for a concept that belongs in std, so the comparison happens in the direction that
+// already exists: the desired Nat is rendered once, and the two words are compared.
+//
+// THE RESIDUAL WEAKNESS IS NAMED AND IT ERRS TOWARD REFUSING. Two spellings of one number -- "4" and
+// "04" -- would read as different arms, which is a FALSE DIVERGENCE: it can withhold a replacement that
+// should proceed, and it cannot report a wrong arm as the right one. For a gate that can stop a live
+// service that is the correct direction to be wrong in, and the only inputs are the engine's own argv
+// and this model's own rendering. NEXT-RUNG TRIGGER: a decimal reader in std, at which point the
+// observed word is parsed once at the boundary and this field becomes the Nat it describes.
+type ServedArmIdentity sole_constructor {
+  alias: NonEmptyStr
+  quantization_wire: NonEmptyStr
+  rank_count_wire: NonEmptyStr
+}
+
+fn served_arm_identity(alias: NonEmptyStr, quantization_wire: NonEmptyStr, rank_count_wire: NonEmptyStr) -> ServedArmIdentity {
+  ServedArmIdentity { alias: alias, quantization_wire: quantization_wire, rank_count_wire: rank_count_wire }
+}
+
+fn served_arm_identity_eq(a: ServedArmIdentity, b: ServedArmIdentity) -> Bool {
+  (a.alias as String) == (b.alias as String)
+    && (a.quantization_wire as String) == (b.quantization_wire as String)
+    && (a.rank_count_wire as String) == (b.rank_count_wire as String)
+}
+
+// ── THE GOAL ───────────────────────────────────────────────────────────────────────────────────
+//
+// THE GOAL NAMES THE ARM BY ITS MODELLED ROWS, NOT BY A RENDERED LINE. The checkpoint and topology are
+// the enum members gunbc.spark.serving_arm already carries facts against, so the desired quantisation
+// and rank count are DERIVED from those rows rather than spelled again here -- which is what keeps the
+// identity this module compares and the launch a realization renders from disagreeing.
+type ServingArmGoal sole_constructor {
+  alias: NonEmptyStr
+  checkpoint: ServingCheckpoint
+  runtime: ServingRuntime
+  topology: ServingTopology
+}
+
+fn serving_arm_goal(alias: NonEmptyStr, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmGoal {
+  ServingArmGoal { alias: alias, checkpoint: checkpoint, runtime: runtime, topology: topology }
+}
+
+// A TWO-ARM COPRODUCT RATHER THAN AN OPTIONAL, because the absent case has a reason worth carrying. An
+// unmodelled checkpoint is not merely "no identity available": it names WHICH goal cannot be compared,
+// and every consumer of this function reports that to somebody. An Optional would force each of them to
+// re-derive the sentence from the goal it already had, which is the located-half-of-a-diagnostic loss
+// DESIGN section 5 names.
+type DesiredArmIdentity
+  = DesiredArm { identity: ServedArmIdentity }
+  | DesiredArmUnmodelled { goal_alias: NonEmptyStr }
+
+fn desired_arm_identity(goal: ServingArmGoal) -> DesiredArmIdentity {
+  match serving_checkpoint_row(c: goal.checkpoint) {
+    Absent => DesiredArmUnmodelled { goal_alias: goal.alias }
+    Present { value: row } => DesiredArm { identity: served_arm_identity(
+      alias: goal.alias,
+      quantization_wire: row.quantization_wire,
+      rank_count_wire: to_string(serving_topology_rank_count(t: goal.topology)) as NonEmptyStr,
+    ) }
+  }
+}
+
+// ── THE READING, AND WHERE AN ABSENCE BELONGS ─────────────────────────────────────────────────
+//
+// std.goal_assessment draws the line this type inherits: a failed read produces NO usable snapshot and
+// is an observation refusal, while an ESTABLISHED ABSENCE is a fact inside the snapshot. "Nothing is
+// serving on this group" is something the reader saw, so it is Observed and becomes a deviation; "the
+// host did not answer" is not, so it refuses. Collapsing them would make an idle group and an
+// unreachable one indistinguishable, and those license opposite actions -- launch, versus do nothing
+// until someone looks.
+type ServingArmReading
+  = ArmArgvRead { words: List<String> }
+  | ArmNothingRunning { detail: NonEmptyStr }
+  | ArmReadUnavailable { cause: NonEmptyStr }
+
+// THE ARGV IS CARRIED BESIDE THE IDENTITY, and it is not redundant with it: the identity is the three
+// fields that decide the arm, and the words are what a receipt shows an operator when it reports a
+// replacement -- including the tuning differences this comparison deliberately ignores.
+type ServedArmObserved
+  = ServedArm { identity: ServedArmIdentity, words: List<String> }
+  | NoArmServing { detail: NonEmptyStr }
+  | ServedArmIdentityIncomplete { missing: List<NonEmptyStr>, words: List<String> }
+
+type ServedArmDeviation
+  = ServedAliasDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
+  | ServedQuantizationDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
+  | ServedRankCountDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
+  | ServedNothingRunning { detail: NonEmptyStr }
+
+type ServedArmUnknown sole_constructor {
+  missing_flag: NonEmptyStr
+  because: NonEmptyStr
+}
+
+type ServedArmReceipt sole_constructor {
+  identity: ServedArmIdentity
+  words: List<String>
+}
+
+// A GOAL WHOSE CHECKPOINT HAS NO MODELLED ROW IS A MALFORMED QUESTION, not a divergence: without the
+// row there is no desired quantisation to compare against, so an answer either way would certify a
+// comparison that never happened.
+type ServedArmAssessRefusal
+  = ArmGoalCheckpointUnmodelled { alias: NonEmptyStr }
+
+// ── READING THREE FLAGS OUT OF AN ARGV ────────────────────────────────────────────────────────
+//
+// A FOLD RATHER THAN A RECURSION, and rather than a substring search. Searching the joined line for
+// "--quantization exl3" would match a path that happens to contain those characters and would depend on
+// the separator, which is the concatenation-identity failure this program has already paid for once in
+// a rendered parameter key. Scanning the WORDS for a flag and taking the word after it is what the
+// engine itself does with the same list.
+type ArgvScan sole_constructor {
+  found: String?
+  armed: Bool
+}
+
+fn argv_scan_step(acc: ArgvScan, word: String, flag: String) -> ArgvScan {
+  match acc.found {
+    Present { value: v } => ArgvScan { found: Present { value: v }, armed: false }
+    Absent =>
+      if acc.armed {
+        ArgvScan { found: Present { value: word }, armed: false }
+      } else {
+        ArgvScan { found: none, armed: word == flag }
+      }
+  }
+}
+
+fn argv_value_after(words: List<String>, flag: String) -> String? {
+  fold(words, init: ArgvScan { found: none, armed: false }, f: (acc, w) => argv_scan_step(acc: acc, word: w, flag: flag)).found
+}
+
+data argv_flag_served_model_name: String = "--served-model-name"
+data argv_flag_quantization: String = "--quantization"
+data argv_flag_tensor_parallel_size: String = "--tensor-parallel-size"
+
+// ── FORMING THE OBSERVED IDENTITY, AND REFUSING TO GUESS AT A MISSING FLAG ────────────────────
+//
+// AN OMITTED FLAG IS AN UNKNOWN, NEVER A DEFAULT. If the running line does not name a quantisation, the
+// engine resolved one from the checkpoint's own config, and substituting the desired value here would
+// make the comparison agree with itself -- a check satisfiable by editing the goal while the running
+// engine serves something else. Reporting it as an unknown is what makes the assessment indeterminate
+// rather than falsely satisfied, and indeterminate is the arm over which remediation is refused.
+fn observed_identity_of(words: List<String>) -> ServedArmObserved {
+  match argv_value_after(words: words, flag: argv_flag_served_model_name) {
+    Absent => ServedArmIdentityIncomplete { missing: [argv_flag_served_model_name], words: words }
+    Present { value: alias_word } =>
+      match argv_value_after(words: words, flag: argv_flag_quantization) {
+        Absent => ServedArmIdentityIncomplete { missing: [argv_flag_quantization], words: words }
+        Present { value: quant_word } =>
+          match argv_value_after(words: words, flag: argv_flag_tensor_parallel_size) {
+            Absent => ServedArmIdentityIncomplete { missing: [argv_flag_tensor_parallel_size], words: words }
+            Present { value: tp_word } => ServedArm {
+              identity: served_arm_identity(
+                alias: alias_word as NonEmptyStr,
+                quantization_wire: quant_word as NonEmptyStr,
+                rank_count_wire: tp_word as NonEmptyStr,
+              ),
+              words: words,
+            }
+          }
+      }
+  }
+}
+
+fn observe_served_arm(subject: NonEmptyStr, reading: ServingArmReading) -> ObservationAttempt<ServedArmObserved, NonEmptyStr> {
+  match reading {
+    ArmReadUnavailable { cause: c } => ObservationRefused { cause: c }
+    ArmNothingRunning { detail: d } => ObservationEstablished { observed: NoArmServing { detail: d } }
+    ArmArgvRead { words: ws } => ObservationEstablished { observed: observed_identity_of(words: ws) }
+  }
+}
+
+fn arm_deviations(want: ServedArmIdentity, observed: ServedArmObserved) -> List<ServedArmDeviation> {
+  match observed {
+    NoArmServing { detail: d } => [ServedNothingRunning { detail: d }]
+    ServedArmIdentityIncomplete { missing: _, words: _ } => []
+    ServedArm { identity: got, words: _ } => concat(concat(
+      if (want.alias as String) == (got.alias as String) { [] } else {
+        [ServedAliasDiffers { desired: want.alias, observed: got.alias }]
+      },
+      if (want.quantization_wire as String) == (got.quantization_wire as String) { [] } else {
+        [ServedQuantizationDiffers { desired: want.quantization_wire, observed: got.quantization_wire }]
+      }),
+      if (want.rank_count_wire as String) == (got.rank_count_wire as String) { [] } else {
+        [ServedRankCountDiffers { desired: want.rank_count_wire, observed: got.rank_count_wire }]
+      })
+  }
+}
+
+fn arm_unknowns(observed: ServedArmObserved) -> List<ServedArmUnknown> {
+  match observed {
+    ServedArmIdentityIncomplete { missing: ms, words: _ } =>
+      map(ms, m => ServedArmUnknown {
+        missing_flag: m as NonEmptyStr,
+        because: "the running launch line does not name this flag, so the value the engine resolved is not readable from the line; assuming the desired value here would make the comparison agree with itself" as NonEmptyStr,
+      })
+    ServedArm { identity: _, words: _ } => []
+    NoArmServing { detail: _ } => []
+  }
+}
+
+fn arm_agreement_receipt(want: ServedArmIdentity, observed: ServedArmObserved) -> ServedArmReceipt {
+  match observed {
+    ServedArm { identity: got, words: ws } => ServedArmReceipt { identity: got, words: ws }
+    NoArmServing { detail: _ } => ServedArmReceipt { identity: want, words: [] }
+    ServedArmIdentityIncomplete { missing: _, words: ws } => ServedArmReceipt { identity: want, words: ws }
+  }
+}
+
+fn assess_served_arm(goal: ServingArmGoal, observed: ServedArmObserved) -> GoalAssessment<ServedArmReceipt, ServedArmDeviation, ServedArmUnknown, ServedArmAssessRefusal> {
+  match desired_arm_identity(goal: goal) {
+    DesiredArmUnmodelled { goal_alias: a } => GoalAssessmentRefused { cause: ArmGoalCheckpointUnmodelled { alias: a } }
+    DesiredArm { identity: want } => assess_by_deviations_and_unknowns(
+      evidence: arm_agreement_receipt(want: want, observed: observed),
+      deviations: arm_deviations(want: want, observed: observed),
+      unknowns: arm_unknowns(observed: observed),
+    )
+  }
+}
+
+type ServingArmInspection = GoalInspection<NonEmptyStr, ServingArmGoal, ServingArmReading, ServedArmObserved, ServedArmReceipt, ServedArmDeviation, ServedArmUnknown, NonEmptyStr, ServedArmAssessRefusal>
+
+fn inspect_served_arm(subject: NonEmptyStr, goal: ServingArmGoal, reading: ServingArmReading) -> ServingArmInspection {
+  inspect_goal(
+    subject: subject,
+    goal: goal,
+    request: reading,
+    observe: observe_served_arm,
+    assess: assess_served_arm,
+  )
+}
+
+// ── THE REMEDY, WHICH IS A DIFFERENT QUESTION FROM THE DIVERGENCE ─────────────────────────────
+//
+// std.goal_assessment is remedy-free by design, and this is the fold it says belongs elsewhere. The
+// mapping is not mechanical, and two of its arms are the whole reason the module exists.
+//
+// A FIRST LAUNCH AND A REPLACEMENT ARE DIFFERENT OPERATIONS, and the deviation says which. Nothing
+// serving means there is no rollback line to record and nothing to displace; a different arm serving
+// means both exist and an operator is owed the line that was working. The canary's cutover refused both
+// because it could only express the third case.
+//
+// INDETERMINATE REFUSES TO ACT, and that is inherited rather than chosen: remediation over a subject
+// whose state is partly unread is exactly what the assessment algebra separates GoalIndeterminate from
+// GoalDiverged to prevent. An unreadable quantisation could mean the desired arm is already serving.
+type ServingArmRemedy
+  = ArmAlreadyConverged { identity: ServedArmIdentity }
+  | ArmFirstLaunchRequired { desired: ServedArmIdentity }
+  | ArmReplacementRequired { desired: ServedArmIdentity, displaced: ServedArmIdentity }
+  | ArmRemedyWithheld { because: List<NonEmptyStr> }
+  | ArmRemedyRefused { cause: NonEmptyStr }
+
+fn deviation_is_nothing_running(d: ServedArmDeviation) -> Bool {
+  match d {
+    ServedNothingRunning { detail: _ } => true
+    ServedAliasDiffers { desired: _, observed: _ } => false
+    ServedQuantizationDiffers { desired: _, observed: _ } => false
+    ServedRankCountDiffers { desired: _, observed: _ } => false
+  }
+}
+
+fn plan_arm_remedy(inspection: ServingArmInspection) -> ServingArmRemedy {
+  match inspection {
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: c } =>
+      ArmRemedyRefused { cause: join(["the served arm could not be read, so nothing is decided about it: ", c as String], "") as NonEmptyStr }
+    GoalInspected { subject: _, goal: g, request: _, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: _ } =>
+          ArmRemedyRefused { cause: join(["the goal names a checkpoint with no modelled row, so no desired identity exists to converge on: ", g.alias as String], "") as NonEmptyStr }
+        GoalIndeterminate { known_deviations: _, unknowns: us } =>
+          ArmRemedyWithheld { because: map(non_empty_to_list(xs: us), u => u.missing_flag) }
+        GoalSatisfied { evidence: r } => ArmAlreadyConverged { identity: r.identity }
+        GoalDiverged { deviations: ds } =>
+          match desired_arm_identity(goal: g) {
+            DesiredArmUnmodelled { goal_alias: _ } => ArmRemedyRefused { cause: "unreachable by construction: a goal with no checkpoint row refuses in the assessment" as NonEmptyStr }
+            DesiredArm { identity: want } =>
+              if deviation_is_nothing_running(d: ds.head) {
+                ArmFirstLaunchRequired { desired: want }
+              } else {
+                match o {
+                  ServedArm { identity: got, words: _ } =>
+                    ArmReplacementRequired { desired: want, displaced: got }
+                  NoArmServing { detail: _ } => ArmFirstLaunchRequired { desired: want }
+                  ServedArmIdentityIncomplete { missing: ms, words: _ } =>
+                    ArmRemedyWithheld { because: map(ms, m => m as NonEmptyStr) }
+                }
+              }
+          }
+      }
+  }
+}
+
+// ── ADMISSION SITS ON TOP OF THE REMEDY, NOT INSIDE IT ────────────────────────────────────────
+//
+// A remedy says what would converge the arm. Whether it may be PERFORMED is a separate question with
+// separate authorities, and folding them together is how a plan becomes an action by having been
+// computed. Three independent grounds can withhold a remedy that is otherwise correct, and each names a
+// different owner: the arm itself may be inadmissible (gunbc.spark.serving_arm), the weights may not be
+// present on the ranks, and nobody may have granted the launch.
+//
+// THE WEIGHT PRESENCE AND THE GRANT ARE PARAMETERS RATHER THAN READS, so this stays a pure fold and the
+// impure halves are performed by the caller that owns them. That is the same shape the reading takes.
+type ArmActuationStanding
+  = ArmActuationAdmitted { remedy: ServingArmRemedy }
+  | ArmActuationWithheld { obligations: List<NonEmptyStr> }
+
+fn arm_remedy_needs_action(r: ServingArmRemedy) -> Bool {
+  match r {
+    ArmFirstLaunchRequired { desired: _ } => true
+    ArmReplacementRequired { desired: _, displaced: _ } => true
+    ArmAlreadyConverged { identity: _ } => false
+    ArmRemedyWithheld { because: _ } => false
+    ArmRemedyRefused { cause: _ } => false
+  }
+}
+
+fn admit_arm_actuation(
+  goal: ServingArmGoal,
+  remedy: ServingArmRemedy,
+  weights_present_on_every_rank: Bool,
+  launch_granted: Bool,
+) -> ArmActuationStanding {
+  if !arm_remedy_needs_action(r: remedy) {
+    ArmActuationAdmitted { remedy: remedy }
+  } else {
+    let arm = match serving_arm_admits(checkpoint: goal.checkpoint, runtime: goal.runtime, topology: goal.topology) {
+      ServingArmRefused { cause: c } => [c]
+      ServingArmAdmitted => []
+    }
+    let weights = if weights_present_on_every_rank { [] } else {
+      ["the checkpoint is not verified present on every rank, so a launch would either fail or serve a partial tree" as NonEmptyStr]
+    }
+    let grant = if launch_granted { [] } else {
+      ["no operator grant authorises this launch; the arm is a requested experiment and not an approved deployment" as NonEmptyStr]
+    }
+    let obligations = concat(concat(arm, weights), grant)
+    match obligations.first() {
+      Absent => ArmActuationAdmitted { remedy: remedy }
+      Present { value: _ } => ArmActuationWithheld { obligations: obligations }
+    }
+  }
+}

@@ -1,0 +1,232 @@
+module test.claim.spark.serving_arm_convergence_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, Glm53Exl3_205, Glm53Nvfp4CompressedTensors,
+  Gitcommit90Sm121Exl3,
+  SingleSparkTp1, FourSparkTp4,
+}
+import gunbc.spark.serving_arm_convergence {
+  ServingArmGoal, serving_arm_goal,
+  ServingArmReading, ArmArgvRead, ArmNothingRunning, ArmReadUnavailable,
+  ServedArmIdentity, served_arm_identity, served_arm_identity_eq,
+  inspect_served_arm, plan_arm_remedy,
+  ServingArmRemedy, ArmAlreadyConverged, ArmFirstLaunchRequired, ArmReplacementRequired,
+  ArmRemedyWithheld, ArmRemedyRefused,
+  ArmActuationStanding, ArmActuationAdmitted, ArmActuationWithheld, admit_arm_actuation,
+  argv_value_after,
+}
+
+// ── THE SUBJECTS ──────────────────────────────────────────────────────────────────────────────
+//
+// THE CANARY ARGV IS THE REAL ONE, READ OFF THE RUNNING ENGINE, not a plausible reconstruction of it.
+// `docker inspect` on spark-0c75 returned exactly these words on 2026-09-10 while the container had been
+// up 27 hours. Using the genuine line is what makes the tuning-versus-identity row below evidence rather
+// than an argument: the 7168 in it is the value the model does NOT desire, and it is there because the
+// engine really is running it.
+data canary_argv: List<String> = [
+  "serve", "/model",
+  "--served-model-name", "glm-5.3-flash-exl3-canary",
+  "--quantization", "exl3",
+  "--tensor-parallel-size", "1",
+  "--kv-cache-dtype", "fp8",
+  "--max-model-len", "262144",
+  "--max-num-seqs", "1",
+  "--max-num-batched-tokens", "7168",
+  "--reasoning-parser", "glm45",
+  "--tool-call-parser", "glm47",
+  "--enable-auto-tool-choice",
+  "--no-enable-flashinfer-autotune",
+  "--host", "0.0.0.0",
+  "--port", "30001",
+]
+
+data canary_goal: ServingArmGoal = serving_arm_goal(
+  alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
+  checkpoint: Glm53Exl3_205,
+  runtime: Gitcommit90Sm121Exl3,
+  topology: SingleSparkTp1,
+)
+
+data native_tp4_goal: ServingArmGoal = serving_arm_goal(
+  alias: "glm-5.3-flash-native-fp8" as NonEmptyStr,
+  checkpoint: Glm53NativeFp8,
+  runtime: Gitcommit90Sm121Exl3,
+  topology: FourSparkTp4,
+)
+
+data unmodelled_goal: ServingArmGoal = serving_arm_goal(
+  alias: "glm-5.3-flash-nvfp4" as NonEmptyStr,
+  checkpoint: Glm53Nvfp4CompressedTensors,
+  runtime: Gitcommit90Sm121Exl3,
+  topology: FourSparkTp4,
+)
+
+data subject_group_b: NonEmptyStr = "the four hosts on fabric cage 2 (srv9, srv10, srv11, srv12)" as NonEmptyStr
+
+fn remedy_for(goal: ServingArmGoal, reading: ServingArmReading) -> ServingArmRemedy {
+  plan_arm_remedy(inspection: inspect_served_arm(subject: subject_group_b, goal: goal, reading: reading))
+}
+
+// ── THE ROW THIS MODULE EXISTS FOR ────────────────────────────────────────────────────────────
+//
+// THE ARM THE CANARY IS SERVING IS THE ARM THE CANARY GOAL DESIRES, and the tuning disagreement does not
+// change that. The model desires 2048 batched tokens and this line runs 7168 -- a real drift, and one the
+// arm's own basis in gunbc.spark.glm_canary_converge insists must keep being reported -- but the alias,
+// the quantisation and the rank count all agree, so the right model is loaded on the right number of
+// GPUs. The cutover this replaces compared whole rendered lines and therefore answered ServeDiffers here,
+// which is why converging the fleet appeared to require either editing the desired value to match the
+// running one or leaving the arm unowned.
+//
+// ITS RED IS AUTHORABLE AND CHEAP: change any of the three identity words in `canary_argv` and this row
+// goes red, which is the next control below.
+test fn an_arm_differing_only_in_tuning_is_already_converged() -> Bool {
+  match remedy_for(goal: canary_goal, reading: ArmArgvRead { words: canary_argv }) {
+    ArmAlreadyConverged { identity: got } => (got.alias as String) == "glm-5.3-flash-exl3-canary"
+    ArmFirstLaunchRequired { desired: _ } => false
+    ArmReplacementRequired { desired: _, displaced: _ } => false
+    ArmRemedyWithheld { because: _ } => false
+    ArmRemedyRefused { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING NEGATIVE. The same reading against the NATIVE goal is a different artifact on a
+// different rank count, so it asks for a replacement and names what it would displace. If the comparison
+// ever collapsed to "something is serving, good enough", this row would go green as converged.
+test fn a_different_arm_serving_asks_for_a_replacement_naming_what_it_displaces() -> Bool {
+  match remedy_for(goal: native_tp4_goal, reading: ArmArgvRead { words: canary_argv }) {
+    ArmReplacementRequired { desired: want, displaced: got } =>
+      (want.quantization_wire as String) == "fp8"
+        && (want.rank_count_wire as String) == "4"
+        && (got.quantization_wire as String) == "exl3"
+        && (got.rank_count_wire as String) == "1"
+    _ => false
+  }
+}
+
+// ── A FIRST LAUNCH IS NOT A REPLACEMENT ───────────────────────────────────────────────────────
+//
+// Nothing serving means there is no rollback line to record and nothing to displace. The cutover refused
+// this case outright as "a first launch rather than a cutover"; it is the ordinary state of a group that
+// has been withdrawn from its previous roster, which is exactly the state group B is in.
+test fn nothing_serving_asks_for_a_first_launch() -> Bool {
+  match remedy_for(goal: native_tp4_goal, reading: ArmNothingRunning { detail: "no listener on the serving port" as NonEmptyStr }) {
+    ArmFirstLaunchRequired { desired: want } => (want.rank_count_wire as String) == "4"
+    _ => false
+  }
+}
+
+// ── AN UNREAD FACT WITHHOLDS, AND DOES NOT DEFAULT ────────────────────────────────────────────
+//
+// A line that names no quantisation had one resolved from the checkpoint's own config, and this module
+// refuses to guess which. The remedy is WITHHELD rather than a replacement: the unread value could mean
+// the desired arm is already serving, and replacing on that basis would stop a healthy engine on the
+// strength of a fact nobody read. This is std.goal_assessment's indeterminate arm doing the work it is
+// separated from divergence to do.
+data argv_without_quantization: List<String> = [
+  "serve", "/model",
+  "--served-model-name", "glm-5.3-flash-native-fp8",
+  "--tensor-parallel-size", "4",
+  "--max-model-len", "262144",
+]
+
+test fn an_omitted_quantisation_flag_withholds_rather_than_replaces() -> Bool {
+  match remedy_for(goal: native_tp4_goal, reading: ArmArgvRead { words: argv_without_quantization }) {
+    ArmRemedyWithheld { because: bs } => count(bs) == 1
+    _ => false
+  }
+}
+
+// ── AN UNREADABLE HOST DECIDES NOTHING ────────────────────────────────────────────────────────
+//
+// The distinction this row protects is the one that would otherwise launch a second engine onto hosts
+// already serving: an unreachable group and an idle group are not the same reading, and only the second
+// licenses a launch.
+test fn an_unreadable_group_refuses_rather_than_launching() -> Bool {
+  match remedy_for(goal: native_tp4_goal, reading: ArmReadUnavailable { cause: "ssh to the group head timed out" as NonEmptyStr }) {
+    ArmRemedyRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+// A GOAL NAMING AN UNMODELLED CHECKPOINT IS A MALFORMED QUESTION rather than a divergence: with no row
+// there is no desired quantisation, so any verdict would certify a comparison that never ran.
+test fn a_goal_whose_checkpoint_has_no_row_refuses() -> Bool {
+  match remedy_for(goal: unmodelled_goal, reading: ArmNothingRunning { detail: "nothing serving" as NonEmptyStr }) {
+    ArmRemedyRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+// ── KNOWING WHAT TO DO IS NOT PERMISSION TO DO IT ─────────────────────────────────────────────
+//
+// The native launch is correct as a remedy and inadmissible as an action, on two independent grounds at
+// once: the checkpoint is not present on the ranks and nobody has granted the launch. Both are named, so
+// clearing one does not silently look like clearing both.
+test fn a_correct_remedy_is_withheld_without_weights_and_a_grant() -> Bool {
+  match admit_arm_actuation(
+    goal: native_tp4_goal,
+    remedy: remedy_for(goal: native_tp4_goal, reading: ArmNothingRunning { detail: "nothing serving" as NonEmptyStr }),
+    weights_present_on_every_rank: false,
+    launch_granted: false,
+  ) {
+    ArmActuationWithheld { obligations: os } => count(os) == 2
+    ArmActuationAdmitted { remedy: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THAT GATE, so the row above is not passing because the gate withholds
+// everything. With the weights present and the launch granted, the same remedy is admitted.
+test fn the_same_remedy_is_admitted_once_weights_and_a_grant_exist() -> Bool {
+  match admit_arm_actuation(
+    goal: native_tp4_goal,
+    remedy: remedy_for(goal: native_tp4_goal, reading: ArmNothingRunning { detail: "nothing serving" as NonEmptyStr }),
+    weights_present_on_every_rank: true,
+    launch_granted: true,
+  ) {
+    ArmActuationAdmitted { remedy: _ } => true
+    ArmActuationWithheld { obligations: _ } => false
+  }
+}
+
+// AND A CONVERGED ARM NEEDS NO GRANT, because it needs no action. A gate that demanded authorisation to
+// conclude "nothing to do" would make every read of a healthy fleet require a permission slip.
+test fn an_already_converged_arm_is_admitted_without_a_grant() -> Bool {
+  match admit_arm_actuation(
+    goal: canary_goal,
+    remedy: remedy_for(goal: canary_goal, reading: ArmArgvRead { words: canary_argv }),
+    weights_present_on_every_rank: false,
+    launch_granted: false,
+  ) {
+    ArmActuationAdmitted { remedy: _ } => true
+    ArmActuationWithheld { obligations: _ } => false
+  }
+}
+
+// ── THE ARGV SCAN READS WORDS, NOT SUBSTRINGS ─────────────────────────────────────────────────
+//
+// The flag's value is the word AFTER it, and a value that happens to equal a flag name elsewhere in the
+// line must not be picked up early. A substring search over the joined line would also match the
+// characters "--quantization" wherever they appeared, including inside a path.
+test fn the_argv_scan_takes_the_word_after_the_flag() -> Bool {
+  match argv_value_after(words: canary_argv, flag: "--max-num-batched-tokens") {
+    Present { value: v } => v == "7168"
+    Absent => false
+  }
+}
+
+test fn the_argv_scan_declines_a_flag_that_is_absent() -> Bool {
+  match argv_value_after(words: canary_argv, flag: "--gpu-memory-utilization") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// IDENTITY EQUALITY IS FIELD-WISE, and this row is the control that it is not comparing a rendering: two
+// identities differing only in rank count are different arms.
+test fn identities_differing_only_in_rank_count_are_not_equal() -> Bool {
+  let one = served_arm_identity(alias: "a" as NonEmptyStr, quantization_wire: "fp8" as NonEmptyStr, rank_count_wire: "1" as NonEmptyStr)
+  let four = served_arm_identity(alias: "a" as NonEmptyStr, quantization_wire: "fp8" as NonEmptyStr, rank_count_wire: "4" as NonEmptyStr)
+  !served_arm_identity_eq(a: one, b: four) && served_arm_identity_eq(a: four, b: four)
+}
