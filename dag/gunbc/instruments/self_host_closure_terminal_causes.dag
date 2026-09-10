@@ -108,9 +108,13 @@ import v2.std.text { String }
 // whoever measured rather than about the emission, and no second reader could reproduce it - the
 // unreachable citation this module refuses elsewhere, committed here. Its producer is the exact
 // command in docs/plans/self-host-closure-terminal-causes.md; the corrected value was reproduced
-// independently on another host and architecture over its own emission of the same head. The driver binary digest is the strongest of the three:
-// rebuilding it from a SECOND emission of the same sources produced identical bytes, which is what
-// establishes that the re-export delta is inert rather than merely believed to be.
+// independently on another host, over that host's own emission of the same head. The two hosts'
+// driver binaries differ in bytes, and that delta is BUILD ENVIRONMENT, not architecture - an earlier
+// revision of this note said architecture, which was inferred rather than checked and was wrong.
+//
+// The driver binary digest is the strongest of the three: rebuilding it from a SECOND emission of the
+// same sources produced identical bytes, which is what establishes that the re-export delta is inert
+// rather than merely believed to be.
 //
 // THE GRAMMAR-PREPARE RESIDUE IS PINNED HERE because the repair lanes need a BEFORE number and a
 // number that lives in a message is unreachable from the thing that owns it. It is prepare_grammar's
@@ -119,6 +123,18 @@ import v2.std.text { String }
 // of the corpus, so a lane adding a production can move it in either direction and a rise is not by
 // itself a regression: a production that overlaps an existing choice adds residue rows even when it
 // parses everything it was added for.
+//
+// THE CLOSURE-ONLY SHORTCUT IS ESTABLISHED, NOT ASSUMED, AND ON EACH AXIS SEPARATELY. Every row here
+// was taken over a source root holding exactly the manifest's members rather than the whole tree, on
+// the reasoning that a per-file front-end refusal is a function of that file's bytes and the prepared
+// grammar alone. Three observations of the same head now check that reasoning rather than restate it:
+// this baseline; the same closure-only root through a DIFFERENT driver binary built on another host;
+// and that host's binary over the WHOLE tree. Baseline against the second isolates the binary, the
+// second against the third isolates the root, and every closure member reached the same terminal cause
+// in all three - none changing, none missing. So the shortcut is the same instrument as the full-root
+// driver on each axis independently, not merely when both vary together, which is the weaker claim a
+// single comparison would have supported. The method and all three observation identities are in
+// docs/plans/self-host-closure-terminal-causes.md.
 //
 // WHAT THE PIN DELIBERATELY DOES NOT CARRY is a digest of the per-declaration reduction probe. That
 // probe is a recipe in docs/plans/self-host-closure-terminal-causes.md, not an artifact in this tree,

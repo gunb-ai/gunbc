@@ -39,6 +39,30 @@ The closure is import-closed, so a source root holding exactly the closure files
 per-file rows in a fraction of the time; a per-file front-end refusal is a function of that file's bytes
 and the prepared grammar alone.
 
+**That shortcut has been checked rather than argued, and on each axis separately.** Three observations
+of the same head exist, and they differ in one variable at a time:
+
+| observation | root | driver binary |
+|---|---|---|
+| the baseline this table carries | closure-only | built in the authoring container |
+| second | closure-only | built on another host |
+| third | `dag` + `src/v2` | that host's binary |
+
+Each pair was joined at closure-member grain — one row per member, keyed on path and terminal reason,
+tri-stated as agrees / changes-with-context / missing-from-one-observation. Baseline against the second
+isolates the **binary**; the second against the third isolates the **root**. Every member agreed in
+every join; none changed, none was missing. The shortcut is therefore the same instrument on each axis
+independently, which is strictly stronger than the joint comparison a single whole-tree run supports.
+The whole-tree refusals outside the closure are counted and never enumerated — a different subject.
+
+Two details make that join worth trusting and are worth repeating for anyone re-running it. The join
+script was calibrated in BOTH directions first: fed the baseline's own rows it reports every member
+agreeing, and fed those rows with one member's cause flipped and one member's refusal deleted it names
+both and returns the DIFFERENT verdict — a join that cannot report a difference is not evidence. And
+`stage` and per-file `source digest` are deliberately NOT join keys: stage is a function of the terminal
+reason, so joining on both would join a value against itself, and both runs read the same worktree at
+the same head, so a per-file digest would restate what the pin's `head_sha` already carries.
+
 ## What is an artifact here, and what is only a recipe
 
 Two different things are described below and they have different standings, so the distinction is

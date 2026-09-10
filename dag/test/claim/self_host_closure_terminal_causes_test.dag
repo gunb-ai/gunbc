@@ -16,7 +16,6 @@ import gunbc.tools.self_host_closure_terminal_causes {
   every_closure_module_appears_once,
   every_row_terminal_reason_is_named_by_a_cause,
   front_end_causes,
-  rows_for_cause,
   rows_for_path
 }
 
@@ -47,9 +46,6 @@ test fn no_row_names_a_cause_the_roster_does_not_carry() -> Bool {
   every_row_cause_is_rostered()
 }
 
-// The relation is queried by key, so a cause key that no fold can reach would make the roster
-// unusable to the repair lanes that cite it. This exercises the query itself rather than the data:
-// every rostered key returns a non-empty row list THROUGH rows_for_cause.
 // A cause whose key and id are the same symbol would mean the short citation key had silently become
 // the descriptive name, and five repair PRs citing keys would then be citing something else.
 test fn the_citation_key_and_the_defect_id_are_distinct() -> Bool {
