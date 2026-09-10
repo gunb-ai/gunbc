@@ -157,12 +157,13 @@ type OutputObligationsJudgment
 // inflation 4b(1) forbids.
 //
 // CONSUMPTION FRONTIER (DESIGN §3c): this sealed family is not yet read by a
-// production gate in this closure. Named consumer: gunbc durable-commit
-// admit_job_publication (warm-moth-142 / gunbc#10641). Trigger: that gate takes
-// OutputObligationsResolution (or ResolvedOutputObligations) instead of a
-// caller-supplied coproduct. Until the trigger fires, DeclaredOutputObligations
-// in work_identity_material is the live production consumer of the roster half;
-// the seal exists so the gate cannot mint terminal-success without resolving.
+// job-ending on a run path. Named join: gunbc.fabric_m0_publication
+// publish_work resolves here and passes the sealed result to
+// admit_job_publication. That join is reached only by enrolled witnesses until
+// the trigger on gunbc.fabric_m0_commit publish_after_commit fires. Until then,
+// DeclaredOutputObligations in work_identity_material is the live production
+// consumer of the roster half; the seal exists so the gate cannot mint
+// terminal-success without resolving.
 // required is the typed roster (id AND kind). Projecting to ids at this seal
 // would make artifact "a" and terminal "a" indistinguishable to #10641.
 type ResolvedOutputObligations sole_constructor {
@@ -394,8 +395,9 @@ fn output_obligations_revision(declared: DeclaredOutputObligations) -> OutputObl
 // seal another's roster. judgment is required and stamped so start-vs-gate
 // policy is readable from the value.
 //
-// Production consumer: declared frontier on ResolvedOutputObligations (warm-moth-142
-// admit_job_publication / gunbc#10641). Witnesses below exercise both arms.
+// Named join: gunbc.fabric_m0_publication publish_work (declared frontier on
+// ResolvedOutputObligations until a run-path ending consumes that join).
+// Witnesses below exercise both arms.
 fn resolve_output_obligations(
   contract: WorkContract,
   requirements: ExecutionRequirements,

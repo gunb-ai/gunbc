@@ -46,8 +46,8 @@ test fn e0599_b0_freemonoid_empty_test_is_target_api() -> Bool {
 }
 
 test fn e0599_b0_freemonoid_tail_iterate_is_target_api() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "iter", receiver_expr: "(*__fm)")) == "FreeMonoidTailIterate"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "iter", receiver_expr: "(*__fm)")) == "TargetApiRequirement"
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "skip", receiver_expr: "__fm")) == "FreeMonoidTailIterate"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "skip", receiver_expr: "__fm")) == "TargetApiRequirement"
 }
 
 test fn e0599_b0_freemonoid_head_extract_is_owned_deconstruction() -> Bool {
@@ -81,7 +81,7 @@ test fn e0599_b0_head_extract_and_empty_test_are_different_causes() -> Bool {
 
 test fn e0599_b0_target_api_is_not_ownership_removable() -> Bool {
   e0599_requirement_cause_label(cause: e0599_cause_for(method: "is_empty", receiver_expr: "__fm")) != "CloneSharedRequirement"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "iter", receiver_expr: "(*__fm)")) != "CloneSharedRequirement"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "skip", receiver_expr: "__fm")) != "CloneSharedRequirement"
 }
 
 test fn e0599_b0_owned_deconstruction_is_not_ownership_removable() -> Bool {

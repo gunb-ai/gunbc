@@ -1625,6 +1625,8 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_reduce_passthrough(folded: folded)
   } else if emitted == ^dag_surface_fn_decl {
     body_lower_reduce_or_keep(o: body_lower_fn_decl_to_arrow(shell: folded), folded: folded)
+  } else if emitted == ^dag_surface_test_fn_decl {
+    body_lower_reduce_or_keep(o: body_lower_test_fn_decl_to_member(shell: folded), folded: folded)
   } else {
     outcome_accepted(value: folded)
   }
@@ -1952,6 +1954,40 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol) -> Node {
       Edge { label: Named { name: fn_name }, target: arrow }
     ]
   )
+}
+
+// A `test fn` declaration lowers to the SAME named-member arrow a plain `fn` lowers to: the
+// production is the contextual `sequence(ident("test"), fn_decl)` (see dag_grammar_test_fn_decl_expr
+// for why `test` is not a reserved keyword), the fold has already lowered the nested fn_decl child
+// by the time this shell reduces, and this arm lifts the member out of the sequence's right
+// projection after checking the marker lexeme really is "test". A non-"test" marker is a typed
+// refusal, never a retained wrapper. The TEST-NESS marker is deliberately not reified into the
+// member node: the native route's universe derivation is the floor's own source-scan authority
+// (v2.workflow.floor_discovery discover_floor_rows_for_source), which reads the surface text, and
+// resolve/infer see an ordinary function — a stated divergence, not a silent one.
+fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_seq_child(node: captured, name: ^grammar_sequence_left_node_projection) {
+        Absent => body_lower_wrapper_retained_shell(shell: shell)
+        Present { value: marker_node } =>
+          match dag_binding_branded_atom_identity(node: marker_node) {
+            Present { value: marker } =>
+              if marker == ^test {
+                match body_lower_seq_child(node: captured, name: ^grammar_sequence_right_node_projection) {
+                  Absent => body_lower_wrapper_retained_shell(shell: shell)
+                  Present { value: member } => outcome_accepted(value: member)
+                }
+              } else {
+                outcome_rejected(
+                  d: body_lower_diagnostic(reason: ^body_lowering_reason_test_marker_not_test, n: marker_node)
+                )
+              }
+            Absent => body_lower_wrapper_retained_shell(shell: shell)
+          }
+      }
+  }
 }
 
 fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
@@ -4457,6 +4493,8 @@ fn body_lower_fn_body_shell(shell: Node) -> Outcome<Node> {
 fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
   if emitted == ^dag_surface_fn_decl {
     body_lower_fn_decl_to_arrow(shell: shell)
+  } else if emitted == ^dag_surface_test_fn_decl {
+    body_lower_test_fn_decl_to_member(shell: shell)
   } else if emitted == ^dag_surface_fn_body {
     body_lower_fn_body_shell(shell: shell)
   } else if emitted == ^dag_surface_match_expr {

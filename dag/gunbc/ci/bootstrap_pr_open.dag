@@ -112,9 +112,16 @@ fn rest_ok(outcome: RestOutcome) -> Bool {
 // A 403 is the organisation setting, not a defect here, and a 422 is upstream saying a pull
 // request already exists on this branch -- which is why no precheck lists them. Both are named so
 // the reader learns which without reading this module.
+//
+// NO CAST ON status. HttpStatus IS `Int where range(min: 100, max: 599)` -- a refinement, not a
+// wrapper -- so `status as Int` is a no-op the interpreter refuses with
+// TypeError { msg: "cannot cast Int to Int" }. Run 34506290069 issued the POST, got a non-201,
+// and then CRASHED HERE WHILE FORMATTING THE REFUSAL, so the status it existed to report was
+// never printed. A reporting path that dies on the error it reports is worse than none: it
+// converts a diagnosable refusal into an opaque one.
 fn create_refusal_text(status: HttpStatus, body: String) -> String {
   join([
-    "BootstrapPullRequestRefused: GitHub answered status ", to_string(status as Int),
+    "BootstrapPullRequestRefused: GitHub answered status ", to_string(status),
     ". 403 means the organisation setting 'Allow GitHub Actions to create and approve pull requests' is disabled -- a control-plane setting, not a defect in this operation. 422 usually means a pull request already exists for this branch. Body: ",
     body
   ], "")
