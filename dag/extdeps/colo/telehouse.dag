@@ -1,12 +1,16 @@
 module extdeps.colo.telehouse
 
 import std.types { NonEmptyStr, List }
+import std.algebra { FreeSemigroup }
 import std.measure { watt, volt_ampere }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly,
+  CabinetDensityClaim, DensityPublished, PublishedDensityFigure,
   PublishedRealPower, PublishedApparentPower,
+  PublishedPowerQuantity, MarketedAtMost, marketed_apparent_interval,
+  CoolingMediumStanding, CoolingMediumUnspecified,
+  FigureVerificationStanding, WordingVerbatim,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum,
 }
 
@@ -44,10 +48,35 @@ data telehouse_chelsea: ColoFacilityRow = ColoFacilityRow {
   facility_note: "60,000 square feet of Tier 3 colocation in Chelsea with NYIIX on-net, 60-plus carriers and 160-plus connectivity members per the operator page read 2026-09-08. 365 Data Centers lists a 7th-floor suite in this building under its own module.",
 }
 
-data telehouse_chelsea_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedApparentPower { power: volt_ampere(count: 5000) },
-  claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
-  citation: "telehouse.com New York Chelsea page (sitemap loc /telehouse-new-york-chelsea/). Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 159838 bytes. Subject control in RAW bytes: Chelsea=17. Token kW=0; kVA=4. find+slice on '3.5kVA' prints one <li> under <h3>Power:</h3> (under <h2>Data Center Infrastructure</h2> after <h1>Telehouse New York Chelsea</h1>): 'Standard power to rack at 3.5kVA with scalable options to 5kVA' - one element, qualifier inside the same <li>, not a truncated 5kVA cell. The modelled figure is the 5 kVA scalable option, not the 3.5 kVA standard. Apparent power is not converted to watts: no power factor is published.",
+// THE PAGE PUBLISHES A RANGE AND THE PREVIOUS CARRIER COULD ONLY HOLD ONE END OF IT. #10867 modelled
+// the 5 kVA scalable option and said so in the citation - "The modelled figure is the 5 kVA scalable
+// option, not the 3.5 kVA standard" - because the only figure-bearing arms were single-ended maxima, so
+// the 3.5 kVA standard had nowhere to go and survived as prose. Both ends are now carried: the wording
+// is one authored <li> stating both, and a range whose endpoints are ordered by construction is what it
+// actually says. Nothing was re-read; the discarded numeral was already in the citation.
+//
+// NO COOLING MEDIUM IS NAMED. The page's power block states kVA and nothing about air or liquid, so the
+// medium is unspecified and this figure answers no air or liquid request - it is inventoried and
+// screenable at no medium, which is the honest reading of a page that never mentions cooling.
+//
+// APPARENT POWER IS NOT CONVERTED. No power factor is published, so this bounds real power from ABOVE
+// (kW <= kVA) and covers nothing from below.
+data telehouse_chelsea_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: marketed_apparent_interval(
+        lower: volt_ampere(count: 3500),
+        upper: volt_ampere(count: 5000),
+      ),
+      wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
+      citation: "telehouse.com New York Chelsea page (sitemap loc /telehouse-new-york-chelsea/). Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 159838 bytes. Subject control in RAW bytes: Chelsea=17. Token kW=0; kVA=4. find+slice on '3.5kVA' prints one <li> under <h3>Power:</h3> (under <h2>Data Center Infrastructure</h2> after <h1>Telehouse New York Chelsea</h1>): 'Standard power to rack at 3.5kVA with scalable options to 5kVA' - one element, qualifier inside the same <li>, not a truncated 5kVA cell. Both stated endpoints are modelled - 3.5 kVA standard and 5 kVA scalable - because the quantity carrier holds an ordered range; an earlier cut kept only the 5 kVA option because the arms available then were single-ended. Apparent power is not converted to watts: no power factor is published.",
+      verification: WordingVerbatim {
+        retrieval: "Raw fetch 2026-09-09 under two User-Agents, both HTTP 200 at 159838 bytes, with a subject control (Chelsea=17) and a markup-grain check: find+slice on 3.5kVA prints ONE complete <li> under <h3>Power:</h3>, qualifier inside the same element rather than a truncated 5kVA cell. That is verbatim at markup grain, which is what licenses carrying both endpoints rather than only the one a summarizing read would have kept.",
+      },
+    },
+    tail: [],
+  },
 }
 
 data telehouse_chelsea_retail_grain: RetailGrainStanding = SingleCabinetOffered {
@@ -67,10 +96,23 @@ data telehouse_teleport: ColoFacilityRow = ColoFacilityRow {
   facility_note: "162,000 square feet on the Port Authority Teleport campus, opened 1989, home of NYIIX, with diverse NY and NJ utility feeds and 10 MW available power per the operator page read 2026-09-08. 365 Data Centers lists an in-building POP here under its own module.",
 }
 
-data telehouse_teleport_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 20000) },
-  claim_wording: "Up to 20kW per cabinet maximum capacity",
-  citation: "telehouse.com New York Teleport page (sitemap loc /telehouse-new-york-teleport-data-center/). Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 164583 bytes. Subject control in RAW bytes: Teleport=21. The one RAW kW is the modelled sentence 'Up to 20kW per cabinet maximum capacity' (not generator capacity). find+slice on '20kW' prints one complete <li> under <h3>Data Center Infrastructure</h3> after <h2>About Telehouse New York Teleport Datacenter</h2>. Page <h1> reads 'Telehouse Data Center in New Jersey and New York' - dual-metro chrome, not a second facility's density block wrapping this <li>.",
+// A MARKETED MAXIMUM, AND NO COOLING MEDIUM. "Up to 20kW per cabinet maximum capacity" is a product
+// ceiling: it excludes a requirement above 20 kW on published evidence and establishes nothing about
+// what any cabinet supplies below it. The page states no air or liquid figure, so the medium is
+// unspecified and no medium request reaches this figure.
+data telehouse_teleport_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: MarketedAtMost { upper: PublishedRealPower { power: watt(count: 20000) } },
+      wording: "Up to 20kW per cabinet maximum capacity",
+      citation: "telehouse.com New York Teleport page (sitemap loc /telehouse-new-york-teleport-data-center/). Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 164583 bytes. Subject control in RAW bytes: Teleport=21. The one RAW kW is the modelled sentence 'Up to 20kW per cabinet maximum capacity' (not generator capacity). find+slice on '20kW' prints one complete <li> under <h3>Data Center Infrastructure</h3> after <h2>About Telehouse New York Teleport Datacenter</h2>. Page <h1> reads 'Telehouse Data Center in New Jersey and New York' - dual-metro chrome, not a second facility's density block wrapping this <li>.",
+      verification: WordingVerbatim {
+        retrieval: "Raw fetch 2026-09-09 under two User-Agents, both HTTP 200 at 164583 bytes, with a subject control (Teleport=21) and a markup-grain check: find+slice on 20kW prints one complete <li>, and the sole raw kW on the page is this sentence rather than a generator figure. The dual-metro <h1> was checked and is page chrome, not a second facility's density block wrapping the element.",
+      },
+    },
+    tail: [],
+  },
 }
 
 data telehouse_teleport_retail_grain: RetailGrainStanding = CageOrSuiteMinimum {
