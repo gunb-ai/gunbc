@@ -4,7 +4,7 @@ import std.types { Bool, List, String, NonEmptyStr }
 import std.measure { hardware_thread_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.scoped_authorization { AttemptIdentity }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import product.fabric.identity { WorkKey }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
@@ -49,7 +49,13 @@ import gunbc.fabric_m0_completion {
   admit_job_publication,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// READS THE LIVE TREE, AND THE STAMP HAD TO CHANGE WITH THE BODY. This file previously declared
+// SubstrateInputsOnly and was correct to: it was a pure fold over authored fixtures. Deleting the
+// fixture mint makes it call read_origin_staged_file over a committed repository path, which reaches
+// a live-checkout sink, so the old stamp would be a declaration asserting something its own body
+// contradicts -- and nothing in the toolchain compares the two. A stamp that outlives the body it
+// describes is the same stale-evidence class this PR repairs everywhere else, one scale down.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE TWO SUBJECTS EXERCISE BOTH KINDS, which the earlier two-roster shape could not: an artifact
 // obligation and a terminal-result obligation are different owed subjects even under one id, so a

@@ -30,7 +30,7 @@ import gunbc.fabric_m0_completion {
   PublishFinalizationFailed,
   PublishPendingReconciliation,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.fabric_m0_origin_readback {
   OriginReading,
   OriginReadingOutcome,
@@ -52,7 +52,13 @@ import gunbc.fabric_m0_commit {
   CommitNamespace,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// READS THE LIVE TREE, AND THE STAMP HAD TO CHANGE WITH THE BODY. This file previously declared
+// SubstrateInputsOnly and was correct to: it was a pure fold over authored fixtures. Deleting the
+// fixture mint makes it call read_origin_staged_file over a committed repository path, which reaches
+// a live-checkout sink, so the old stamp would be a declaration asserting something its own body
+// contradicts -- and nothing in the toolchain compares the two. A stamp that outlives the body it
+// describes is the same stale-evidence class this PR repairs everywhere else, one scale down.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // EVERY CONFIRMING READ BELOW IS A REAL READ. There is no fixture mint any more, and that is the
 // point rather than an inconvenience: an earlier revision of this file called an admitted

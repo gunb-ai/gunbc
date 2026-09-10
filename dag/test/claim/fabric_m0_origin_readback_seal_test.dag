@@ -56,16 +56,46 @@ fn keyed_count(source: String, wanted_class: String, wanted_subject: String) -> 
   }
 }
 
+// THE COMPLETE BLOCKING KEY SET of a compile, as (class, subject) pairs. Comparing these between
+// the two arms of the producer is what shows the shared closure cancelling: every row either
+// appears on both sides and drops out, or is a real delta and must be accounted for.
+fn blocking_keys(source: String) -> List<String> {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      census_blocking_rows(rows: rows) |> map(r => (r.diagnostic_class as String) + "|" + r.subject_name)
+    CensusNotRunnable { cause: _ } => ["CENSUS-NOT-RUNNABLE"]
+  }
+}
+
+fn keys_only_in(a: List<String>, b: List<String>) -> List<String> {
+  a |> filter(k => (b |> filter(x => x == k)).count() == 0)
+}
+
 fn sole_constructor_on_origin_reading(source: String) -> Int {
   keyed_count(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: "OriginReading")
 }
 
+// THE ONE-AXIS PRODUCER. Both arms below come from THIS function, so their module header, their
+// import block and their signature are byte-identical and the ONLY thing that differs is the
+// expression that produces the reading. That is what makes the closure cancellation SHOWN rather
+// than asserted: an earlier revision compared two hand-written sources whose imports differed, so
+// the shared closure was assumed to cancel and never demonstrated.
+fn probe_source(body: String) -> String {
+  "module probe_fabric_m0_axis\nimport std.types { NonEmptyStr }\nimport gunbc.fabric_m0_origin_readback { OriginReading, OriginReadingOutcome, read_origin_staged_file }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn subject(p: NonEmptyStr) -> "
+    + body + "\n"
+}
+
 // RED 1: an ordinary module pairs a digest with a file it never read. This is the laundering in its
 // exact production shape -- a real 64-hex SHA-256 stamped onto a path of the author's choosing.
-data forged_reading_source: String = "module probe_fabric_m0_forged_reading\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReading {\n  OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } }\n}\n"
+data forged_reading_source: String = "OriginReading {\n  OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } }\n}"
 
+// The GREEN arm of the same producer: the sanctioned route, same imports, same signature shape.
+data sanctioned_body: String = "OriginReadingOutcome {\n  read_origin_staged_file(staged_path: p)\n}"
+
+// EXACTLY ONE refusal is the proposition, so the assertion says one. `>= 1` would hide a second,
+// unintended refusal on the same key.
 test fn a_forged_origin_reading_is_refused_at_compile() -> Bool {
-  sole_constructor_on_origin_reading(source: forged_reading_source) >= 1
+  sole_constructor_on_origin_reading(source: probe_source(body: forged_reading_source)) == 1
 }
 
 // RED 2: the same forgery reached through the CARRIER a caller actually holds. The commit
@@ -75,7 +105,7 @@ test fn a_forged_origin_reading_is_refused_at_compile() -> Bool {
 data forged_manifest_read_source: String = "module probe_fabric_m0_forged_manifest_read\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_commit { ManifestReadbackObservation, ManifestRead }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> ManifestReadbackObservation {\n  ManifestRead { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
 
 test fn a_forged_manifest_read_is_refused_at_compile() -> Bool {
-  sole_constructor_on_origin_reading(source: forged_manifest_read_source) >= 1
+  sole_constructor_on_origin_reading(source: forged_manifest_read_source) == 1
 }
 
 // RED 3: the completion authority's own confirming arm, for the same reason. The manifest is one
@@ -84,7 +114,7 @@ test fn a_forged_manifest_read_is_refused_at_compile() -> Bool {
 data forged_readback_confirmed_source: String = "module probe_fabric_m0_forged_confirmed\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReadback {\n  ReadbackConfirmed { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
 
 test fn a_forged_confirmed_readback_is_refused_at_compile() -> Bool {
-  sole_constructor_on_origin_reading(source: forged_readback_confirmed_source) >= 1
+  sole_constructor_on_origin_reading(source: forged_readback_confirmed_source) == 1
 }
 
 // RED 4: THE ESCAPE THAT WAS ACTUALLY OPEN, kept as a permanent regression control (DESIGN 4b(4)).
@@ -98,43 +128,69 @@ test fn a_forged_confirmed_readback_is_refused_at_compile() -> Bool {
 // so the assertion is on the unresolved-reference class rather than on sole_constructor.
 data wrapper_proxy_source: String = "module probe_fabric_m0_wrapper_proxy\nimport test.claim.fabric_m0_commit_witness { witness_reading }\nimport gunbc.fabric_m0_commit { ManifestReadbackObservation, ManifestRead }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> ManifestReadbackObservation {\n  ManifestRead { reading: witness_reading(d: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex }) }\n}\n"
 
-fn probe_is_refused_somehow(source: String) -> Bool {
-  match census_of(source: source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) >= 1
-    CensusNotRunnable { cause: _ } => false
-  }
+// KEYED ON THE MEASURED SUBJECT, and the previous form of this control is why that matters. It read
+// `any blocking diagnostic anywhere >= 1`, and this probe's closure carries FORTY-FIVE of them --
+// UnresolvedType on Time, Memory, Frequency and thirty more, plus an InternalError cascade. So the
+// control was satisfied by closure noise: if the wrapper came back AND any unrelated blocking row
+// existed, it would stay green and report the escape as still closed. That is the exact
+// stale-evidence shape this PR exists to close, sitting in the probe meant to prevent it.
+//
+// The proposition is `the wrapper symbol is gone`, the row that says so is MissingExport on
+// witness_reading, and there is exactly one of it -- measured by dumping the blocking key set, not
+// guessed. If the wrapper is reintroduced this count goes to 0 and the control reds, whatever else
+// is in the closure.
+fn missing_export_of_wrapper(source: String) -> Int {
+  keyed_count(source: source, wanted_class: "MissingExport", wanted_subject: "witness_reading")
 }
 
 test fn the_deleted_wrapper_proxy_route_no_longer_compiles() -> Bool {
-  probe_is_refused_somehow(source: wrapper_proxy_source)
+  missing_export_of_wrapper(source: wrapper_proxy_source) == 1
 }
 
 // GREEN CONTROL, KEYED: the sanctioned route -- the real read -- draws no violation ON THIS
 // SUBJECT. Without it every red above is satisfied by a harness that refuses everything.
-data sanctioned_route_source: String = "module probe_fabric_m0_sanctioned\nimport std.types { NonEmptyStr }\nimport gunbc.fabric_m0_origin_readback { OriginReadingOutcome, read_origin_staged_file }\nfn taken(p: NonEmptyStr) -> OriginReadingOutcome { read_origin_staged_file(staged_path: p) }\n"
-
 test fn the_sanctioned_read_route_draws_no_violation() -> Bool {
-  sole_constructor_on_origin_reading(source: sanctioned_route_source) == 0
+  sole_constructor_on_origin_reading(source: probe_source(body: sanctioned_body)) == 0
 }
 
-// CALIBRATION, AND IT IS NOT "CensusObserved". That arm only says the census RAN; the census module
-// states plainly that it is not evidence the probed module compiled clean, because the rows span
-// the imported closure. What makes the green control meaningful is that it is a DIFFERENTIAL
-// against RED 1 on one axis -- same subject, same class, same closure -- so the shared closure
-// cancels and the difference is attributable to the forged literal alone.
-test fn the_green_and_red_differ_on_this_subject_alone() -> Bool {
-  (sole_constructor_on_origin_reading(source: forged_reading_source) >= 1)
-    && (sole_constructor_on_origin_reading(source: sanctioned_route_source) == 0)
-    && (sole_constructor_on_origin_reading(source: sanctioned_route_source)
-          < sole_constructor_on_origin_reading(source: forged_reading_source))
+// THE DIFFERENTIAL, AND IT IS A REAL ONE NOW. Both sources come from probe_source and differ on
+// exactly one axis -- the expression that produces the reading. The comparison is over the COMPLETE
+// blocking key set of each compile, not over a chosen target key: every row that appears on both
+// sides cancels, and what survives on the RED side must be exactly the one key this wall is about,
+// with nothing surviving on the GREEN side at all. An earlier revision compared two hand-written
+// sources whose IMPORTS DIFFERED and called the target-key comparison a differential; the shared
+// closure was assumed to cancel rather than shown to. This form rejects every other delta.
+test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
+  let red = blocking_keys(source: probe_source(body: forged_reading_source))
+  let green = blocking_keys(source: probe_source(body: sanctioned_body))
+  let only_red = keys_only_in(a: red, b: green)
+  let only_green = keys_only_in(a: green, b: red)
+  (only_red.count() == 1)
+    && (match only_red |> first {
+          Present { value: k } => k == "SoleConstructorViolation|OriginReading"
+          Absent => false
+        })
+    && (only_green.count() == 0)
+}
+
+// CALIBRATION: the census actually RAN for both arms. Without this, a CensusNotRunnable on both
+// sides would cancel in the differential above and read as agreement -- the sentinel key is carried
+// into the key set precisely so it cannot hide there, and this arm names it.
+test fn both_arms_of_the_differential_actually_compiled() -> Bool {
+  (keys_only_in(a: ["CENSUS-NOT-RUNNABLE"], b: blocking_keys(source: probe_source(body: forged_reading_source))).count() == 1)
+    && (keys_only_in(a: ["CENSUS-NOT-RUNNABLE"], b: blocking_keys(source: probe_source(body: sanctioned_body))).count() == 1)
 }
 
 // Printed diagnostics: the integer behind each verdict, so a wrong count is distinguishable from
 // CensusNotRunnable (-1) without re-deriving the battery.
 fn diag_forged_reading_count() -> Int {
-  sole_constructor_on_origin_reading(source: forged_reading_source)
+  sole_constructor_on_origin_reading(source: probe_source(body: forged_reading_source))
 }
 
 fn diag_sanctioned_count() -> Int {
-  sole_constructor_on_origin_reading(source: sanctioned_route_source)
+  sole_constructor_on_origin_reading(source: probe_source(body: sanctioned_body))
+}
+
+fn diag_wrapper_missing_export_count() -> Int {
+  missing_export_of_wrapper(source: wrapper_proxy_source)
 }
