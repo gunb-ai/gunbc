@@ -12,6 +12,7 @@ import extdeps.colo.types {
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
   retail_grain_single_cabinet_wording,
   density_unread_reading,
+  NoPublishedSurface,
 }
 import extdeps.colo.databank {
   databank_lga4_density, databank_lga4_retail_grain,

@@ -9,6 +9,7 @@ import extdeps.colo.types {
   ColoFacilityRow, AddressListed,
   RetailRateStanding, RatesQuoteOnly, CrossConnectFee, RemoteHandsWindowRate,
   CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread,
+  NoPublishedSurface,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }

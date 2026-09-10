@@ -9,6 +9,7 @@ import extdeps.colo.types {
   TransitAllocation, UnmeteredPort, Ipv4Allocation, Ipv4Usable,
   SetupCharge, SetupUnread, RetailRateStanding, RatesPublished,
   CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered,
+  NoPublishedSurface,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
