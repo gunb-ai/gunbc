@@ -17,6 +17,10 @@ import gunbc.v2_compile_obligation_census {
   CompileDoor,
   RequiredRootLens,
   ExecutedOnPath,
+  ExecutedPendingVerification,
+  standing_carries_premise,
+  unverified_entry_premise,
+  unverified_gate_admission_premise,
   RouteGapHeld,
   RouteReach,
   NotNamedByAnyExecutingRoute,
@@ -295,7 +299,7 @@ fn fully_executing_exact_claim_fixture_row() -> V2CompileObligation {
 }
 
 // THE UNVERIFIED-ENTRY DEBT IS COUNTED, NOT ASSUMED. A row whose subject survives both subtractions
-// reports ExecutedPendingEntryVerification and is counted as debt; a row whose subject is frozen and
+// reports ExecutedPendingVerification and is counted as debt; a row whose subject is frozen and
 // excluded reports neither and is not. Without the second arm a constant-true reader would be
 // indistinguishable from a correct one, and the debt number would equal the row count forever.
 //
@@ -335,4 +339,38 @@ fn this_witnesss_own_subject() -> WitnessSubject {
     function: "v2_compile_obligation_gate_closure_subtraction_is_asked_holds",
     module_path: "test.claim.v2_compile_obligation_census_witness_test"
   )
+}
+
+// THE TWO PENDING PREMISES ARE DISTINGUISHED BY THE PREMISE, NOT BY THE ARM. Both counts read 9 on
+// the live roster today, so a reader could reasonably suspect the second is the first under another
+// name — and in the first cut of that pair it WAS, folding the same predicate twice. This arm builds
+// a standing carrying only the entry premise and shows the gate premise is absent from it, which is
+// the shape neither count can produce from the live roster and the only thing that makes "two
+// numbers, two premises" a claim rather than a coincidence.
+test fn v2_compile_obligation_pending_premises_are_read_individually_holds() -> Bool {
+  standing_carries_premise(p: entry_only_pending_standing(), premise: unverified_entry_premise)
+    && !standing_carries_premise(
+      p: entry_only_pending_standing(),
+      premise: unverified_gate_admission_premise
+    )
+    && standing_carries_premise(p: both_premises_pending_standing(), premise: unverified_entry_premise)
+    && standing_carries_premise(
+      p: both_premises_pending_standing(),
+      premise: unverified_gate_admission_premise
+    )
+    && !standing_carries_premise(p: non_executing_arm(), premise: unverified_entry_premise)
+}
+
+fn entry_only_pending_standing() -> PathExecution {
+  ExecutedPendingVerification {
+    instrument: "fixture instrument" as NonEmptyStr,
+    unverified_premises: [unverified_entry_premise]
+  }
+}
+
+fn both_premises_pending_standing() -> PathExecution {
+  ExecutedPendingVerification {
+    instrument: "fixture instrument" as NonEmptyStr,
+    unverified_premises: [unverified_entry_premise, unverified_gate_admission_premise]
+  }
 }

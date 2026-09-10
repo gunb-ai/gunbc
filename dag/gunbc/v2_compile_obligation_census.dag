@@ -1,7 +1,7 @@
 module gunbc.v2_compile_obligation_census
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.guarantee_rung {
   GuaranteeRung,
@@ -84,7 +84,7 @@ type WitnessSubject {
 // acceptance path can spend. NoWitnessNamesIt: no witness names this obligation on this route.
 type PathExecution
   = ExecutedOnPath { instrument: NonEmptyStr }
-  | ExecutedPendingEntryVerification { instrument: NonEmptyStr, unverified: DeclarationRef }
+  | ExecutedPendingVerification { instrument: NonEmptyStr, unverified_premises: List<DeclarationRef> }
   | DeclinedOutsideGateClosure { gate: DeclarationRef }
   | ExcludedFromDiscovery { frontier: DeclarationRef }
   | FrozenPathDeferred { roster: DeclarationRef }
@@ -220,11 +220,13 @@ fn witness_subject_is_inside_gate_closure(w: WitnessSubject) -> Bool {
 // and that is precisely why it had to be asked rather than assumed: a subtraction that happens to
 // be satisfied is not a subtraction that was checked.
 //
-// THE PREFIX TEST IS A CONTAINMENT TEST, AND THE DIRECTION OF THAT IMPRECISION IS NAMED. The floor
+// THE PREFIX TEST IS A CONTAINMENT TEST, AND IT HAS ITS OWN TRIGGER AND ITS OWN NUMBER. The floor
 // matches a module path PREFIX; the substrate offers string_contains and no prefix primitive, so a
-// module merely CONTAINING a rostered string reads as admitted. Containment admits a superset, so
-// this can only ever say ADMITTED where the gate would decline — the same optimistic direction as
-// the unverified entry, and carried by the same declared debt rather than a second one.
+// module merely CONTAINING a rostered string reads as admitted. Containment matches a superset of
+// prefixes, so the derivation is SOUND IN THE DECLINE DIRECTION — a module the test says is outside
+// really is outside — and approximate only in the admit direction. That is why the decline arm is
+// reported flatly while the admit arm is pending: see gate_prefix_approximation_trigger and
+// obligations_on_an_unverified_gate_admission.
 //
 // WHAT IS NOT ASKED is whether the entry file still exists at that path. A moved or deleted entry is
 // covered by neither roster, so "not frozen and not excluded" would answer EXECUTING for a witness
@@ -273,6 +275,23 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
   decl_name: "entry_existence_verification_trigger"
 )
 
+// THE SECOND PREMISE, AND THE REASON IT IS ITS OWN TRIGGER RATHER THAN A CLAUSE ON THE FIRST. An
+// earlier cut named the containment-for-prefix imprecision and then discharged it as "carried by the
+// same declared debt" as the entry premise. That was false and review 63226 caught it: the entry
+// trigger is scoped strictly to whether a witness FILE is still present at its path, and retiring it
+// would leave the prefix approximation standing with nothing to retire it and no number beside the
+// coverage number. A trigger that does not cover what it is cited for is the class this same change
+// files in the ledger, asserted about a trigger this change authored — the second time in one
+// module, which is why the repair is a separate declaration and not a longer sentence.
+data gate_prefix_approximation_trigger: DissolutionCondition = unbound_dissolution(
+  description: "the substrate gains a prefix predicate over String — the operation v2.workflow.required_floor required_gate_prefixes actually performs — so witness_subject_is_inside_gate_closure_in stops standing a containment test where a prefix test belongs. Until it exists the derivation is SOUND IN THE DECLINE DIRECTION and approximate in the admit direction: containment matches a superset of prefixes, so a module the roster does not admit can only be read as admitted, never the reverse, and every row admitted through it is counted by obligations_on_an_unverified_gate_admission" as NonEmptyStr
+)
+
+data unverified_gate_admission_premise: DeclarationRef = decl_ref(
+  module_path: "gunbc.v2_compile_obligation_census",
+  decl_name: "gate_prefix_approximation_trigger"
+)
+
 fn any_witness_survives_every_subtraction(ws: List<WitnessSubject>) -> Bool {
   fold(ws, init: false, f: fn(found, w) { found || witness_subject_survives_every_subtraction(w: w) })
 }
@@ -296,9 +315,9 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
     }
   } else {
     if any_witness_survives_every_subtraction(ws: o.witnesses) {
-      ExecutedPendingEntryVerification {
-        instrument: "claim_executor --required-ci --source-root dag --source-root src/v2: the discovery walk reaches this entry, no exclusion row and no freeze row subtracts it, and its module is inside the required floor's gate closure" as NonEmptyStr,
-        unverified: unverified_entry_premise
+      ExecutedPendingVerification {
+        instrument: "claim_executor --required-ci --source-root dag --source-root src/v2: the discovery walk reaches this entry, no exclusion row and no freeze row subtracts it, and its module reads as inside the required floor's gate closure" as NonEmptyStr,
+        unverified_premises: [unverified_entry_premise, unverified_gate_admission_premise]
       }
     } else {
       if all_witnesses_frozen(ws: o.witnesses) {
@@ -844,7 +863,7 @@ data v2_compile_obligation_census: List<V2CompileObligation> = [
 fn path_execution_is_executing(p: PathExecution) -> Bool {
   match p {
     ExecutedOnPath { instrument: _ } => true
-    ExecutedPendingEntryVerification { instrument: _, unverified: _ } => true
+    ExecutedPendingVerification { instrument: _, unverified_premises: _ } => true
     DeclinedOutsideGateClosure { gate: _ } => false
     ExcludedFromDiscovery { frontier: _ } => false
     FrozenPathDeferred { roster: _ } => false
@@ -969,15 +988,38 @@ fn obligation_route_coverage_rung(o: V2CompileObligation) -> GuaranteeRung {
 // executing_interpreted today; the two are separate folds because the day one entry is verified they
 // diverge, and a single number could not show that.
 fn obligation_executes_on_an_unverified_entry(o: V2CompileObligation) -> Bool {
-  match interpreted_standing(o: o) {
+  obligation_is_pending_on(o: o, premise: unverified_entry_premise)
+}
+
+// TWO PREMISES, TWO NUMBERS, EACH READING ITS OWN PREMISE. They are equal today and they retire on
+// different days, which is exactly the situation in which one number would hide the other — and the
+// first cut of this pair made that mistake in miniature by folding the same predicate twice under
+// two names, which would have made the second number track the first forever instead of tracking the
+// premise it is named for.
+fn standing_carries_premise(p: PathExecution, premise: DeclarationRef) -> Bool {
+  match p {
+    ExecutedPendingVerification { instrument: _, unverified_premises: ps } =>
+      fold(ps, init: false, f: fn(found, r) { found || declaration_ref_eq(a: r, b: premise) })
     ExecutedOnPath { instrument: _ } => false
-    ExecutedPendingEntryVerification { instrument: _, unverified: _ } => true
     DeclinedOutsideGateClosure { gate: _ } => false
     ExcludedFromDiscovery { frontier: _ } => false
     FrozenPathDeferred { roster: _ } => false
     RouteGapHeld { stall: _ } => false
     NoWitnessNamesIt { note: _ } => false
   }
+}
+
+fn obligation_is_pending_on(o: V2CompileObligation, premise: DeclarationRef) -> Bool {
+  standing_carries_premise(p: interpreted_standing(o: o), premise: premise)
+}
+
+fn obligations_on_an_unverified_gate_admission() -> Int {
+  list_length(
+    items: filter(
+      v2_compile_obligation_census,
+      o => obligation_is_pending_on(o: o, premise: unverified_gate_admission_premise)
+    )
+  )
 }
 
 fn obligations_executing_on_an_unverified_entry() -> Int {
@@ -1031,8 +1073,8 @@ fn obligation_kind_label(k: ObligationKind) -> String {
 fn path_execution_label(p: PathExecution) -> String {
   match p {
     ExecutedOnPath { instrument: _ } => "executes"
-    ExecutedPendingEntryVerification { instrument: _, unverified: _ } =>
-      "executes-pending-entry-verification"
+    ExecutedPendingVerification { instrument: _, unverified_premises: _ } =>
+      "executes-pending-verification"
     DeclinedOutsideGateClosure { gate: _ } => "declined-outside-gate-closure"
     ExcludedFromDiscovery { frontier: _ } => "excluded-from-discovery"
     FrozenPathDeferred { roster: _ } => "frozen-deferral"
@@ -1108,7 +1150,10 @@ fn census_counts() -> String {
                 concat(" inflated_rung=", to_string(obligations_with_inflated_rung())),
                 concat(
                   concat(" claiming_above_ceiling=", to_string(obligations_claiming_above_their_ceiling())),
-                  concat(" unverified_entry=", to_string(obligations_executing_on_an_unverified_entry()))
+                  concat(
+                    concat(" unverified_entry=", to_string(obligations_executing_on_an_unverified_entry())),
+                    concat(" unverified_gate_admission=", to_string(obligations_on_an_unverified_gate_admission()))
+                  )
                 )
               )
             )
