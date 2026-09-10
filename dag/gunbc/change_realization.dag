@@ -1,6 +1,7 @@
 module gunbc.change_realization
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.algebra { FreeSemigroup }
 
 // THE classification a MemberChanged{from,to} carries into apply: given that an occurrence survived
 // and only its value moved, HOW is that move realized? This is the table that makes MemberChanged
@@ -41,10 +42,8 @@ fn address_continuity<A>(from: A, to: A, address_eq: fn(A, A) -> Bool) -> Addres
 // because nobody modeled the intermediate state. gunbc.build_cache_instance already says IN PROSE
 // that a managed unit must clear a stale endpoint on start — and a sentence in prose is the one
 // place no machine can read it (DESIGN §4c: any machine-consumed fact belongs in a typed carrier).
-// StagedIntermediates is that sentence given a carrier. Emptiness is unrepresentable by
-// construction (head + tail, not a List that could be []), because a staged replacement whose
-// intermediate list is empty is precisely the srv4 state: a transition that believed it had nothing
-// to retire.
+// StagedIntermediates dissolved: a nonempty sequence of StagedIntermediate is
+// std.algebra FreeSemigroup. Emptiness is unrepresentable by construction.
 
 type StagedIntermediate
   = RetirePriorEndpoint { endpoint: NonEmptyStr }
@@ -52,24 +51,19 @@ type StagedIntermediate
   | StopPriorUnit { unit: NonEmptyStr }
   | DrainPriorConsumers { description: NonEmptyStr }
 
-type StagedIntermediates {
-  first: StagedIntermediate
-  rest: List<StagedIntermediate>
+fn staged_intermediates_all(steps: FreeSemigroup<StagedIntermediate>) -> List<StagedIntermediate> {
+  concat([steps.head], steps.tail)
 }
 
-fn staged_intermediates_all(steps: StagedIntermediates) -> List<StagedIntermediate> {
-  concat([steps.first], steps.rest)
-}
-
-fn staged_intermediates_count(steps: StagedIntermediates) -> Int {
-  1 + count(steps.rest)
+fn staged_intermediates_count(steps: FreeSemigroup<StagedIntermediate>) -> Int {
+  1 + count(steps.tail)
 }
 
 type ChangeRealization
   = AtomicCompareAndSwap
   | AtomicTreeTransformation
   | InPlaceUpdate
-  | StagedReplacement { intermediates: StagedIntermediates }
+  | StagedReplacement { intermediates: FreeSemigroup<StagedIntermediate> }
 
 // A staged replacement whose intermediates were never declared REFUSES; it does not fall back to an
 // in-place update and it does not proceed with an empty plan. Both fallbacks are the absorbing
@@ -98,7 +92,7 @@ fn classify_change(
   subject: ChangeSubject,
   subject_label: NonEmptyStr,
   continuity: AddressContinuity,
-  declared_intermediates: StagedIntermediates?,
+  declared_intermediates: FreeSemigroup<StagedIntermediate>?,
 ) -> ChangeRealizationClassification {
   match subject {
     ScmRefSubject => ChangeRealized { realization: AtomicCompareAndSwap }

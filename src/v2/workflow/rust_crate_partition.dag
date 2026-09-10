@@ -489,6 +489,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "extdeps_languages_rust_emit", to: "std_trait_derive_shape"),
     stage0_module_dag_edge(from: "std_source_annotation", to: "std_types"),
     stage0_module_dag_edge(from: "std_source_annotation", to: "std_occurrence_identity"),
+    stage0_module_dag_edge(from: "std_source_annotation", to: "std_algebra"),
     stage0_module_dag_edge(from: "std_literal_elaboration", to: "std_decl_ref"),
     stage0_module_dag_edge(from: "std_literal_elaboration", to: "std_syntax"),
     stage0_module_dag_edge(from: "std_literal_elaboration", to: "std_types"),
