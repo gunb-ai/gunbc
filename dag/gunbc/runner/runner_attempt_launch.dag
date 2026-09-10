@@ -13,7 +13,6 @@ import extdeps.virtualization.firecracker {
   FirecrackerBootSource,
   firecracker_requires_kvm_device,
   firecracker_jailer_run_command,
-  jailer_cgroup_version_flag_places_the_process,
 }
 import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, OfferKey }
 import product.fabric.execution { ExecutionGrant }
@@ -151,13 +150,8 @@ type EnvelopeStanding
   | EnvelopePayloadBelowFloor { bytes: ByteSize }
   | EnvelopePayloadAboveCeiling { bytes: ByteSize }
 
-type HostPid1RefusalOutsideThisPlanner
-  = NoBootSecretArrived
-  | Stage2RootTransitionRefused
-
-type PlacementBeforeExec
-  = CgroupJoinThenExec
-  | PlacementNotEstablished
+// PID1 refusals (no boot secret, stage2 missing files) have no constructor on AttemptLaunchPlan.
+// That is the census: they are outside this per-attempt planner by construction, not by a Bool.
 
 type AttemptLaunchPlan
   = LaunchRefusedUnauthorized { authorization: GrantAuthorization }
@@ -176,7 +170,6 @@ type AttemptLaunchPlan
       kvm_device: FilePath
       vm_config: FirecrackerVmConfig
       jailer: ArgvCommand
-      placement: PlacementBeforeExec
     }
 
 fn envelope_floor_is_required() -> Bool {
@@ -235,24 +228,6 @@ fn refuse_or_normalize_envelope(standing: EnvelopeStanding) -> EnvelopeStanding 
     EnvelopePayloadBelowFloor { bytes: _ } => standing
     EnvelopePayloadAboveCeiling { bytes: _ } => standing
   }
-}
-
-fn host_pid1_refusal_is_outside_this_planner(r: HostPid1RefusalOutsideThisPlanner) -> Bool {
-  match r {
-    NoBootSecretArrived => true
-    Stage2RootTransitionRefused => true
-  }
-}
-
-fn placement_is_cgroup_join_then_exec(p: PlacementBeforeExec) -> Bool {
-  match p {
-    CgroupJoinThenExec => true
-    PlacementNotEstablished => false
-  }
-}
-
-fn jailer_cgroup_flag_is_not_placement() -> Bool {
-  !jailer_cgroup_version_flag_places_the_process()
 }
 
 fn with_guest_ip_boot_arg(config: FirecrackerVmConfig, ip_arg: String) -> FirecrackerVmConfig {
@@ -392,7 +367,6 @@ fn plan_authorized_steps(
           exec_file: firecracker_binary,
           chroot_base_dir: runner_microvm_attempt_jail_base(attempt: attempt),
         ),
-        placement: CgroupJoinThenExec,
       }
     }
   }
@@ -412,7 +386,6 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
       kvm_device: _,
       vm_config: _,
       jailer: _,
-      placement: _,
     } => 1
     LaunchRefusedUnauthorized { authorization: _ } => 0
     LaunchRefusedEnvelope { standing: _ } => 0
@@ -425,10 +398,4 @@ type WorkStandingFromVmm = WorkNotEstablished { vmm_exit: Int }
 
 fn work_standing_from_vmm_exit(exit_code: Int) -> WorkStandingFromVmm {
   WorkNotEstablished { vmm_exit: exit_code }
-}
-
-fn vmm_exit_establishes_work(standing: WorkStandingFromVmm) -> Bool {
-  match standing {
-    WorkNotEstablished { vmm_exit: _ } => false
-  }
 }

@@ -37,14 +37,11 @@ import gunbc.runner_attempt_launch {
   EnvelopeNonceMismatch, EnvelopeBoundToDifferentAttempt, EnvelopePayloadDigestMismatch,
   EnvelopePayloadBelowFloor, EnvelopePayloadAboveCeiling,
   plan_attempt_launch, planned_jailer_launches,
-  work_standing_from_vmm_exit, vmm_exit_establishes_work,
-  jailer_cgroup_flag_is_not_placement, placement_is_cgroup_join_then_exec,
+  work_standing_from_vmm_exit, WorkNotEstablished,
   production_may_dispatch_attempt_launch,
   recovered_host_image_source_dissolution_satisfied,
   reported_attempt_launch_rung,
   host_boot_cutover_frontier, jit_mint_http_realization_frontier,
-  host_pid1_refusal_is_outside_this_planner,
-  NoBootSecretArrived, Stage2RootTransitionRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -158,7 +155,6 @@ test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
               kvm_device: _,
               vm_config: _,
               jailer: _,
-              placement: _,
             } => false
           }
         Empty {} => false
@@ -226,11 +222,9 @@ test fn an_authorized_launch_consumes_network_slice_workspace_and_jailer() -> Bo
               kvm_device: kvm,
               vm_config: cfg,
               jailer: jailer,
-              placement: place,
             } => {
               let words = join(argv_words(command: jailer), " ")
-              placement_is_cgroup_join_then_exec(p: place)
-                && (tap as String) == (runner_slot_tap_device_name(slot: a.slot) as String)
+              (tap as String) == (runner_slot_tap_device_name(slot: a.slot) as String)
                 && nft == runner_microvm_nft_ruleset_text()
                 && string_contains(s: ws, pattern: runner_microvm_attempt_dir(attempt: a))
                 && (kvm as String) == (firecracker_requires_kvm_device as String)
@@ -261,12 +255,16 @@ test fn an_authorized_launch_consumes_network_slice_workspace_and_jailer() -> Bo
 }
 
 test fn a_clean_vmm_exit_is_not_evidence_that_work_ran() -> Bool {
-  !vmm_exit_establishes_work(standing: work_standing_from_vmm_exit(exit_code: 0))
-    && !vmm_exit_establishes_work(standing: work_standing_from_vmm_exit(exit_code: 1))
+  match work_standing_from_vmm_exit(exit_code: 0) {
+    WorkNotEstablished { vmm_exit: z } =>
+      match work_standing_from_vmm_exit(exit_code: 1) {
+        WorkNotEstablished { vmm_exit: o } => z == 0 && o == 1
+      }
+  }
 }
 
 test fn the_jailer_cgroup_flag_does_not_place_the_process() -> Bool {
-  jailer_cgroup_flag_is_not_placement() && !jailer_cgroup_version_flag_places_the_process()
+  !jailer_cgroup_version_flag_places_the_process()
 }
 
 test fn production_does_not_dispatch_the_shadow_planner() -> Bool {
@@ -300,11 +298,6 @@ test fn the_mint_frontier_names_github_pr_10923() -> Bool {
   !dissolution_is_bound(condition: jit_mint_http_realization_frontier)
     && string_contains(s: d, pattern: "10923")
     && string_contains(s: d, pattern: "github_effect_perform")
-}
-
-test fn host_pid1_refusals_are_outside_the_per_attempt_planner() -> Bool {
-  host_pid1_refusal_is_outside_this_planner(r: NoBootSecretArrived)
-    && host_pid1_refusal_is_outside_this_planner(r: Stage2RootTransitionRefused)
 }
 
 test fn every_x_envelope_refusal_arm_yields_zero_jailer_launches() -> Bool {
