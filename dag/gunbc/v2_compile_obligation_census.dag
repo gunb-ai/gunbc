@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.guarantee_rung {
   GuaranteeRung,
   guarantee_rung_label,
+  guarantee_rung_index,
   OutsideTheLadder,
   Mitigatable,
   MechanicallyPreventable,
@@ -756,18 +757,8 @@ fn obligation_executed_rung(o: V2CompileObligation) -> GuaranteeRung {
 // claimed > executed counts. DESIGN section 4b(1): the reported rung must EQUAL the rung executed
 // evidence establishes, and citing the stronger side while another path stays silent is the
 // inflation, which is worse than sitting low because an inflated class never ranks for climbing.
-fn guarantee_rung_rank(r: GuaranteeRung) -> Int {
-  match r {
-    OutsideTheLadder => 0
-    Mitigatable => 1
-    MechanicallyPreventable => 2
-    StructurallyGuaranteed => 3
-    StructurallyImpossible => 4
-  }
-}
-
 fn obligation_rung_is_inflated(o: V2CompileObligation) -> Bool {
-  guarantee_rung_rank(r: o.claimed_rung) > guarantee_rung_rank(r: obligation_executed_rung(o: o))
+  guarantee_rung_index(r: o.claimed_rung) > guarantee_rung_index(r: obligation_executed_rung(o: o))
 }
 
 fn obligations_with_inflated_rung() -> Int {
@@ -779,7 +770,7 @@ fn obligations_with_inflated_rung() -> Int {
 // row claiming above its own ceiling has asserted something its own record says is unreachable. The
 // RED is authorable at the fixture boundary and is authored there.
 fn obligation_claim_exceeds_its_ceiling(o: V2CompileObligation) -> Bool {
-  guarantee_rung_rank(r: o.claimed_rung) > guarantee_rung_rank(r: o.ceiling)
+  guarantee_rung_index(r: o.claimed_rung) > guarantee_rung_index(r: o.ceiling)
 }
 
 fn obligations_claiming_above_their_ceiling() -> Int {
