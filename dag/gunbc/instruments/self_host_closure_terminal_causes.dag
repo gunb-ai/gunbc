@@ -56,6 +56,46 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // established. Each cause carries how its per-file join was backed, and the two backings are not
 // the same rung - see JoinEvidence.
 
+// THIS CARRIER'S STANDING: A HAND-AUTHORED, REVISION-SCOPED SNAPSHOT. It is stated here because the
+// table is not one kind of thing, and only half of it is a projection.
+//
+// The PROJECTED half is the population and the terminal causes. The v2-native lane's context fold
+// (gunbc.witness_v2_native_route) already emits exactly one {path, head_reason, fatal_reason} row per
+// source, and closure_module_manifest is likewise derivable from the emitted crate's per-module
+// headers. Those rows are hand-applied here, which is the manual-application-committed-as-source tell,
+// and they are the part that should stop being authored.
+// dissolve-on: an emission target for this table plus a drift gate over it, in the shape
+// gunbc.generated_artifact_gate already carries - at which point the projected rows are generated and
+// the hand-authored copy is deleted, not migrated.
+//
+// The AUTHORED half is the cause roster and the per-file attribution: eighteen defects, each with a
+// reproducer, a positive control, a nearest-alternative control and its join evidence. No producer in
+// this repository emits those, because they are the output of reduction - prefix isolation, a ladder
+// of single edits, and delta-debugging - and not of a fold. Generating this table today would
+// therefore cover the projected half and fork the authored half away from it, which is a worse state
+// than one carrier that says which half is which.
+// dissolve-on: reduction becomes a modeled fold whose result the lane can emit; until that capability
+// exists this half has no producer to name, and saying otherwise would be naming an instrument that
+// does not exist.
+
+// WHO CONSUMES THIS TABLE, AND BY WHAT ROUTE. Stated as one of DESIGN 3c's three honest states rather
+// than left for a reader to infer: this is the SECOND state - a declared frontier with its trigger
+// beside it - and not the first.
+//
+// TODAY: nothing outside this module's own witness reads these rows by execution. The witness asserts
+// properties OF THE TABLE, which is a real check of this artifact but is not an executing consumer of
+// the measurement, and the repair lanes that cite causes by key do so as readers, which is citation
+// and not a route.
+//
+// THE NAMED CONSUMER AND ITS TRIGGER: v2.workflow.compile_door_ledger cause_ownership_lookup, joined
+// at FATAL grain against every terminal_reason carried below. That join is not authorable on this
+// base: known_frontier_causes here carries four causes and all four are HEAD-grain, none of the five
+// terminal reasons this table reports among them, so a witness asserting the join would be red today
+// and would green on the repair - the wrong direction for every subject involved. The grain-keyed
+// lookup and the fatal-grain ownership rows for exactly these five causes land with #10882; when that
+// is on main, the join becomes an executing route with an authorable red - a row naming a cause the
+// ledger does not own at fatal grain turns it false - and this frontier closes.
+
 // THE PIN. Every row is an observation of ONE tree through ONE binary. The emitted closure's own
 // reported identity is byte-derived and therefore unstable across emissions (the seed emitter emits
 // its re-export lines in unordered-set order), so an ORDER-INSENSITIVE digest is carried beside it
