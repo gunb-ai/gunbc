@@ -5,6 +5,7 @@ import product.fan_tach { FanTachWindow }
 import gunbc.fleet_fan_tach_expectation {
   HostFanTachExpectation,
   chassis_tach_expected,
+  expected_tach_headers,
   srv1_fan_tach_expectation,
   srv2_fan_tach_expectation,
   srv3_fan_tach_expectation,
@@ -20,9 +21,24 @@ import product.fan_tach_health {
   DuplicateExpectedHeader,
   DuplicateObservedHeader,
   ExpectedHeaderObservationMissing,
+  ExpectedRotationNotObserved,
+  UnexpectedRotation,
+  FanTachDeviation,
+  FanTachHealthy,
+  FanTachJudgement,
   FanTachSubject,
   HostIdentityMismatch,
+  JudgedDeviant,
+  JudgedHealthy,
+  JudgedUnknown,
+  ObservationForUndeclaredHeader,
+  RotationCorrectlyAbsent,
   RotationDegraded,
+  RotationObserved,
+  authority_gap_count,
+  fan_tach_goal,
+  fan_tach_judgements,
+  fan_tach_observed,
   fan_tach_subject,
   inspect_fan_tach,
   observation_gap_count,
@@ -200,4 +216,111 @@ test fn a_well_formed_question_does_not_refuse() -> Bool {
         other => true
       }
   }
+}
+
+// ---------------------------------------------------------------------------
+// THE PER-HEADER PICTURE, which is a different question from the verdict.
+//
+// These five conjuncts were carried by gunbc.fleet_fan_tach_health_witness, a WET witness that
+// this change deletes. It was not dropped for being wet: it was referenced by nothing -- absent
+// from `local_repo_wet_schedule`, named by no lane, no roster and no CI step -- so its claims had
+// never executed on any merge path. A module that looks like coverage while being inert is worse
+// than an absent one, because it is cited as the safety net it is not (DESIGN section 5,
+// specification-without-execution; section 3c, a witness no roster reads).
+//
+// So the claims move to where they run, and the inert module dies with them rather than lingering
+// as an attractor. They fold the judgements directly, because "srv1 has two degraded endpoints AND
+// three healthy ones" is a statement about five headers, and the algebra carries evidence on the
+// satisfied arm alone.
+fn judgements_of(
+  expectation: HostFanTachExpectation,
+  windows: List<FanTachWindow>,
+) -> List<FanTachJudgement> {
+  fan_tach_judgements(
+    goal: fan_tach_goal(expectation: expectation, minimum_rotating: rotating_floor),
+    observed: fan_tach_observed(windows: windows),
+  )
+}
+
+fn tag_of(j: FanTachJudgement) -> NonEmptyStr {
+  match j {
+    JudgedHealthy { healthy: h } =>
+      match h {
+        RotationObserved { header: hd, speed: sp } => "spin"
+        RotationCorrectlyAbsent { header: hd } => "nominal-absent"
+      }
+    JudgedDeviant { deviation: d } =>
+      match d {
+        ExpectedRotationNotObserved { header: hd, role: r, absence: ab } => "no-rotation"
+        RotationDegraded { header: hd, role: r, rotating_count: rc, sample_count: sc } => "degraded"
+        UnexpectedRotation { header: hd, speed: sp } => "drift"
+        ObservationForUndeclaredHeader { header: hd } => "authority-gap"
+      }
+    JudgedUnknown { unknown: u } =>
+      match u {
+        ExpectedHeaderObservationMissing { header: hd, role: r } => "obs-gap"
+      }
+  }
+}
+
+fn tags_of(
+  expectation: HostFanTachExpectation,
+  windows: List<FanTachWindow>,
+) -> List<NonEmptyStr> {
+  map(judgements_of(expectation: expectation, windows: windows), j => tag_of(j: j))
+}
+
+fn count_of(tags: List<NonEmptyStr>, tag: NonEmptyStr) -> Int {
+  fold(tags, init: 0, f: (acc, t) => if t == tag { acc + 1 } else { acc })
+}
+
+// DEGRADED IS ITS OWN VERDICT, AND THIS IS THE CONTROL THAT FORCED IT TO EXIST. srv1/FAN4 rotates
+// 9 times in 20 and srv1/FAN5 four times, against 16-20 for the same fans on the control host at
+// the same duty. A two-state vocabulary put them in the wrong bucket either way: "not rotating"
+// reads as a hardware emergency, "rotating" reads as nothing at all. The three healthy endpoints
+// are asserted BESIDE them, which is the half the verdict arm cannot carry.
+test fn srv1_carries_two_degraded_endpoints_beside_three_healthy_ones() -> Bool {
+  let tags = tags_of(expectation: srv1_fan_tach_expectation, windows: srv1_windows)
+  count_of(tags: tags, tag: "degraded") == 2
+    && count_of(tags: tags, tag: "no-rotation") == 0
+    && count_of(tags: tags, tag: "spin") == 3
+}
+
+// AN INTERMITTENT ZERO IS NOT A FAULT. srv2 reads zero on every chassis endpoint 2-4 times in 20
+// while healthy, so a judgement keying on "any zero" would condemn a working machine. This is the
+// conjunct that makes the RATE load-bearing rather than decorative.
+test fn an_ordinary_dropout_is_not_a_fault() -> Bool {
+  let tags = tags_of(expectation: srv2_fan_tach_expectation, windows: srv2_windows)
+  count_of(tags: tags, tag: "no-rotation") == 0 && count_of(tags: tags, tag: "degraded") == 0
+}
+
+// UNAVAILABLE AND NEVER-ROTATED ARE DIFFERENT ABSENCES. srv3/FAN2 publishes nothing because
+// nothing is wired to it; that is not the same as a rotor that was read and never turned.
+test fn an_unwired_endpoint_is_nominal_not_a_missing_rotation() -> Bool {
+  let tags = tags_of(expectation: srv3_fan_tach_expectation, windows: srv3_windows)
+  count_of(tags: tags, tag: "nominal-absent") == 1
+    && count_of(tags: tags, tag: "no-rotation") == 0
+    && count_of(tags: tags, tag: "spin") == 4
+}
+
+// A HEADER THE AUTHORITY DOES NOT DECLARE IS AN AUTHORITY GAP, not a fan condition: the fleet
+// roster is what is wrong, and it belongs to whoever maintains the inventory.
+test fn a_header_outside_the_roster_is_an_authority_gap() -> Bool {
+  let tags = tags_of(
+    expectation: HostFanTachExpectation {
+      host: srv4_fan_tach_expectation.host,
+      headers: filter(srv4_fan_tach_expectation.headers, row => row.header != "FAN4"),
+    },
+    windows: srv4_windows,
+  )
+  count_of(tags: tags, tag: "authority-gap") == 1
+}
+
+// TWO HOSTS WITH THE SAME HEADER COUNT ARE STILL DIFFERENT ROSTERS. Nothing about the SHAPE of a
+// srv3/srv4 pairing is wrong, which is exactly why the identity has to be checked rather than the
+// arity -- and why the cross-host refusal above is not made redundant by counting.
+test fn srv3_and_srv4_differ_by_identity_not_by_count() -> Bool {
+  let a = expected_tach_headers(expectation: srv3_fan_tach_expectation)
+  let b = expected_tach_headers(expectation: srv4_fan_tach_expectation)
+  a.length() == 4 && b.length() == 4 && a != b
 }
