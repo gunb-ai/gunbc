@@ -422,14 +422,11 @@ fn run_compile_clean_diagnostic_census() -> InvocationOutcome {
         census.identity.closure_digest,
     ));
     for entry in &census.classes {
-        let disposition = match entry.disposition {
-            cli_run::DiagnosticCensusDisposition::Advisory => "advisory",
-            cli_run::DiagnosticCensusDisposition::Blocking => "blocking",
-        };
         message.push_str(&format!(
-            "\n{} disposition={} diagnostics={} distinct_modules={} distinct_positions={}",
+            "\n{} gate={} severity={} diagnostics={} distinct_modules={} distinct_positions={}",
             entry.class_name,
-            disposition,
+            cli_run::census_gate_tag(&entry.gate),
+            cli_run::census_severity_tag(&entry.severity),
             entry.diagnostics,
             entry.distinct_modules,
             entry.distinct_positions,

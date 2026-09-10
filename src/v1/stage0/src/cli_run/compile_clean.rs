@@ -695,29 +695,43 @@ fn unlisted_import_rows_from_resolved(
     Ok(rows)
 }
 
-/// Disposition of one observed diagnostic class, carried as an ATTRIBUTE of the census row —
-/// never a filter on whether the row exists. This is the raw-census rework's central move
-/// (review 2026-09-09, finding 1): the census this replaced partitioned by severity before
-/// counting, so a class whose disposition changed vanished from the instrument exactly when the
-/// change happened, and the zero assertion went vacuous over the rows that mattered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DiagnosticCensusDisposition {
-    Advisory,
+/// The census's projection of the authority's GATE axis (`v1.std.core`
+/// `DiagnosticGateDisposition`), carried as an ATTRIBUTE of the census row — never a filter on
+/// whether the row exists. All three gate states are carried: collapsing
+/// `GateRenderedUncounted` into a binary advisory/blocking value would file `ComplexityUnknown`
+/// as advisory and pull it into advisory-ceiling reasoning it is expressly excluded from
+/// (review 2026-09-10, finding 1). Mirrors `gunbc.target_binding`
+/// `DiagnosticCensusGateDisposition`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CensusGateDisposition {
     Blocking,
+    AdvisoryTypecheck,
+    RenderedUncounted { reason: String },
+}
+
+/// The census's projection of the authority's SEVERITY axis (`v1.std.core`
+/// `DiagnosticSeverity`) — independent of the gate, because the repository models the two axes
+/// independently (`DeclaredTypeInhabitanceUndecided` is SeverityError + GateAdvisoryTypecheck).
+/// Mirrors `gunbc.target_binding` `DiagnosticCensusSeverity`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CensusSeverity {
+    Error,
+    NonError,
 }
 
 /// One diagnostic class counted over the whole-tree compile-clean closure, BEFORE any severity
 /// decision. Mirrors `gunbc.target_binding` `RawDiagnosticClassObservation`.
 ///
-/// THE ROW KEY IS (CLASS, DISPOSITION), NOT CLASS ALONE. Disposition is a per-INSTANCE fact:
+/// THE ROW KEY IS (CLASS, GATE, SEVERITY), NOT CLASS ALONE. Gate is a per-INSTANCE fact:
 /// `diagnostic_disposition` decides `WhereRefinementUnenforced` by the instance's reason (six
 /// advisory reason strings; any other reason blocks), so one class can carry instances on both
-/// sides of the partition. A mixed class produces one row per disposition rather than a single
-/// row carrying a fabricated class-level answer.
+/// sides of the partition. A mixed class produces one row per observed (gate, severity) pair
+/// rather than a single row carrying a fabricated class-level answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawDiagnosticClassObservation {
     pub class_name: String,
-    pub disposition: DiagnosticCensusDisposition,
+    pub gate: CensusGateDisposition,
+    pub severity: CensusSeverity,
     pub diagnostics: usize,
     pub distinct_modules: usize,
     pub distinct_positions: usize,
@@ -778,6 +792,20 @@ pub enum CompileCleanDiagnosticCensusRefusal {
         class_name: String,
     },
     IdentityUnavailable(String),
+    SchemaAuthorityAbsent(String),
+    SchemaSpecimenDuplicate {
+        class_name: String,
+    },
+    SchemaCountMismatch {
+        specimen: usize,
+        authority: usize,
+    },
+    SchemaConstructorUnrepresented {
+        constructor_name: String,
+    },
+    SchemaSpecimenUnknownToAuthority {
+        class_name: String,
+    },
 }
 
 /// Renders each cause in the modeled vocabulary (`gunbc.instrument_targets`
@@ -808,13 +836,35 @@ pub fn diagnostic_census_refusal_rendered(cause: &CompileCleanDiagnosticCensusRe
             "two ceiling rows name one diagnostic class: {class_name}"
         ),
         CompileCleanDiagnosticCensusRefusal::CeilingRosterStale { class_name } => format!(
-            "a ceiling row names a class outside the schema or no longer advisory: {class_name}"
+            "a ceiling row names a class outside the schema or no longer advisory-typecheck: {class_name}"
         ),
         CompileCleanDiagnosticCensusRefusal::CeilingRosterUncovered { class_name } => format!(
-            "an observed advisory class carries no ceiling row: {class_name}"
+            "an observed advisory-typecheck class carries no ceiling row: {class_name}"
         ),
         CompileCleanDiagnosticCensusRefusal::IdentityUnavailable(which) => format!(
             "an identity digest could not be computed; the observation would be unbound: {which}"
+        ),
+        CompileCleanDiagnosticCensusRefusal::SchemaAuthorityAbsent(detail) => format!(
+            "the CompilerDiagnostic coproduct authority is absent from the compiled closure: {detail}"
+        ),
+        CompileCleanDiagnosticCensusRefusal::SchemaSpecimenDuplicate { class_name } => format!(
+            "two schema specimens project one class identity: {class_name}"
+        ),
+        CompileCleanDiagnosticCensusRefusal::SchemaCountMismatch {
+            specimen,
+            authority,
+        } => format!(
+            "the schema specimen count disagrees with the authority constructor census: specimen={specimen} authority={authority}"
+        ),
+        CompileCleanDiagnosticCensusRefusal::SchemaConstructorUnrepresented {
+            constructor_name,
+        } => format!(
+            "an authority constructor has no schema specimen: {constructor_name}"
+        ),
+        CompileCleanDiagnosticCensusRefusal::SchemaSpecimenUnknownToAuthority {
+            class_name,
+        } => format!(
+            "a schema specimen names no authority constructor: {class_name}"
         ),
     }
 }
@@ -831,23 +881,59 @@ fn census_identity_digest(parts: &[&[u8]]) -> String {
     h
 }
 
-/// One resolve of the policy closure, reading the ceiling-roster projection the bijection
-/// witness joins against the observed population, and returning the closure sources the
-/// resolver-policy digest binds. The UnlistedImportUse disposition bool is deliberately NOT read
-/// here: the partition's single authority is `compile_clean_diagnostic_is_hard`, whose cached
-/// read the census preflights (and thereby primes) before counting.
-fn compile_clean_diagnostic_policy_census_read(
-) -> Result<(Vec<String>, Vec<Rc<v1_compiler_compile::SourceFile>>), String> {
+/// ONE IMMUTABLE READ of the diagnostic policy closure (review 2026-09-10, finding 2): the
+/// closure's source vector is acquired once, canonicalized once, and resolved once, and every
+/// policy fact the census uses — the UnlistedImportUse staging decision, the ceiling-roster
+/// identities, and the resolver-policy digest — is derived from that one vector in one
+/// interpreter context. The census path must NOT call the process-global cached accessor
+/// (`compile_clean_unlisted_import_use_blocks_cached`): a classification read from a cached
+/// earlier snapshot while the receipt's digest binds a later one would certify a policy the
+/// classification never read.
+struct DiagnosticPolicySnapshot {
+    /// Digest of the exact canonicalized source vector the two reads below were evaluated
+    /// over — the receipt's `resolver_policy_digest`.
+    source_digest: String,
+    /// `compile_clean_unlisted_import_use_blocks`, evaluated in this snapshot's context.
+    unlisted_import_use_blocks: bool,
+    /// `advisory_ceiling_roster_class_names`, evaluated in this snapshot's context.
+    ceiling_roster_class_names: Vec<String>,
+}
+
+fn compile_clean_diagnostic_policy_snapshot() -> Result<DiagnosticPolicySnapshot, String> {
     let roots = default_source_roots();
     let entry = resolve_entry_file_under_roots(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
-    let sources =
+    let mut sources =
         policy_entry_closure_sources(&roots, &entry, "gunbc.compile_clean_diagnostic_policy")?;
-    let (graph, indices) =
-        resolved_graph_from_sources(sources.clone(), ResolveTypecheckGate::Strict)
-            .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
+    // Canonicalize ONCE: the digest and the resolve consume the same vector in the same order.
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    let source_digest = {
+        let mut parts: Vec<&[u8]> = Vec::new();
+        for s in &sources {
+            parts.push(s.path.as_bytes());
+            parts.push(s.content.as_bytes());
+        }
+        census_identity_digest(&parts)
+    };
+    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
+        .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-    let roster = match v1_interpreter::run_in_context_with_args(
+    let unlisted_import_use_blocks = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "compile_clean_unlisted_import_use_blocks",
+        &[],
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => b,
+        Ok(other) => {
+            return Err(format!(
+                "compile_clean_unlisted_import_use_blocks returned `{}`, expected Bool",
+                ctx.format_value(&other)
+            ))
+        }
+        Err(e) => return Err(format!("compile_clean_unlisted_import_use_blocks: {e}")),
+    };
+    let ceiling_roster_class_names = match v1_interpreter::run_in_context_with_args(
         &ctx,
         "advisory_ceiling_roster_class_names",
         &[],
@@ -856,23 +942,69 @@ fn compile_clean_diagnostic_policy_census_read(
         Ok(v) => string_list_from_value(&v, "advisory_ceiling_roster_class_names")?,
         Err(e) => return Err(format!("advisory_ceiling_roster_class_names: {e}")),
     };
-    Ok((roster, sources))
+    Ok(DiagnosticPolicySnapshot {
+        source_digest,
+        unlisted_import_use_blocks,
+        ceiling_roster_class_names,
+    })
+}
+
+/// The (gate, severity) projection of one diagnostic instance, from the single disposition
+/// authority `v1_std_core::diagnostic_disposition`, with the ONE governed override the
+/// authority itself declares: `UnlistedImportUse`'s gate is the staging decision owned by the
+/// `gunbc.compile_clean_diagnostic_policy` row, read here from the census's ONE policy snapshot
+/// rather than from the process-global cached accessor. Severity is never overridden — the
+/// policy row stages the gate only.
+fn census_instance_disposition(
+    d: &Rc<ErrorNode>,
+    unlisted_import_use_blocks: bool,
+) -> (CensusGateDisposition, CensusSeverity) {
+    let disposition = crate::v1_std_core::diagnostic_disposition(d.diagnostic.clone());
+    let severity = match disposition.severity {
+        crate::v1_std_core::DiagnosticSeverity::SeverityError => CensusSeverity::Error,
+        crate::v1_std_core::DiagnosticSeverity::SeverityNonError => CensusSeverity::NonError,
+    };
+    let gate = match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnlistedImportUse { .. } => {
+            if unlisted_import_use_blocks {
+                CensusGateDisposition::Blocking
+            } else {
+                CensusGateDisposition::AdvisoryTypecheck
+            }
+        }
+        _ => match disposition.gate.as_ref() {
+            crate::v1_std_core::DiagnosticGateDisposition::GateBlocking => {
+                CensusGateDisposition::Blocking
+            }
+            crate::v1_std_core::DiagnosticGateDisposition::GateAdvisoryTypecheck => {
+                CensusGateDisposition::AdvisoryTypecheck
+            }
+            crate::v1_std_core::DiagnosticGateDisposition::GateRenderedUncounted { reason } => {
+                CensusGateDisposition::RenderedUncounted {
+                    reason: reason.clone(),
+                }
+            }
+        },
+    };
+    (gate, severity)
 }
 
 /// ONE FABRICATED INSTANCE OF EVERY `CompilerDiagnostic` VARIANT — the diagnostic class schema,
 /// as data the census can hash and evaluate dispositions over.
 ///
-/// COMPLETENESS IS GUARDED IN BOTH DIRECTIONS, and the guards are stated here because neither is
-/// optional. REMOVING or RENAMING a variant breaks the constructor below — compile-time. ADDING a
-/// variant breaks the total match in `compile_clean_diagnostic_histogram_key` (same file, no
-/// wildcard arm) — compile-time — and the repair of that error must add the specimen row IN THE
-/// SAME EDIT; the runtime backstop is the census's bijection witness, which refuses
-/// CeilingRosterStale when a roster row names a class this specimen does not know. The field
-/// values are placeholders with ONE load-bearing exception: `WhereRefinementUnenforced`'s
-/// disposition is decided per-instance from its reason string (`v1.std.core`
-/// `is_where_refinement_unenforced_advisory_reason`), so the specimen carries a reason from the
-/// advisory set — the Stale check asks whether the class is still advisory-CAPABLE, and a
-/// placeholder reason would answer that question with the blocking arm and refuse a live row.
+/// COMPLETENESS IS ENFORCED, NOT DILIGENT (review 2026-09-10, finding 4). REMOVING or RENAMING a
+/// variant breaks the constructor below — compile-time. ADDING a variant breaks the total match
+/// in `compile_clean_diagnostic_histogram_key` (same file, no wildcard arm) — compile-time. The
+/// gap that remained — an author repairing those matches while omitting the specimen — is closed
+/// by execution: the census derives the constructor census from the `v1.std.core`
+/// `CompilerDiagnostic` coproduct in the same compiled graph it counts, and refuses unless this
+/// roster is a bijection onto it (unique class identities, equal counts, no constructor
+/// unrepresented, no specimen unknown to the authority). The field values are placeholders with
+/// ONE load-bearing exception: `WhereRefinementUnenforced`'s disposition is decided per-instance
+/// from its reason string (`v1.std.core` `is_where_refinement_unenforced_advisory_reason`), so
+/// the specimen carries a reason from the advisory set — the Stale check asks whether the class
+/// is still advisory-CAPABLE, and a placeholder reason would answer that question with the
+/// blocking arm and refuse a live row.
 pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
     use crate::v1_std_core::CompilerDiagnostic::*;
     let s = || -> String { "<specimen>".to_string() };
@@ -967,70 +1099,184 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
     ]
 }
 
+/// The diagnostic class schema's AUTHORITY SIDE (review 2026-09-10, finding 4): the
+/// `CompilerDiagnostic` constructor census, derived from the coproduct declaration itself —
+/// never from a hand-maintained roster's own say-so. The read is parse-level over `src/v1`
+/// (`decl_facts_corpus_walk`, the same declaration-fact producer the shard roster consumes),
+/// because the census's subject closure CANNOT carry the authority: the whole-tree roots are
+/// `dag` and `src/v2`, and admitting `src/v1` into that shared flat subject would rebind the
+/// twelve last-segment module collisions the non-executing-prefix roster exists to survive
+/// (`gunbc.ci_layer_roots`). The derivation is the resolver's own `get_variant_names` over the
+/// declaration's `Disj` node — the same projection the duplicate checks consume — and the
+/// schema digest binds the derived projection, so a schema change is a digest change. Zero or
+/// two declarations of the coproduct refuse rather than pick.
+fn compiler_diagnostic_constructor_census(
+) -> Result<Vec<String>, CompileCleanDiagnosticCensusRefusal> {
+    let root = process_workspace_root()
+        .join("src/v1")
+        .to_string_lossy()
+        .into_owned();
+    let walk = decl_facts_corpus_walk(&[root]);
+    let matches: Vec<&DeclFactRaw> = walk
+        .facts
+        .iter()
+        .filter(|f| {
+            f.kind == ItemKind::TypeItem
+                && f.qualified_name == "v1.std.core.CompilerDiagnostic"
+                && f.node.connective == Connective::Disj
+        })
+        .collect();
+    let fact = match matches.as_slice() {
+        [] => {
+            return Err(CompileCleanDiagnosticCensusRefusal::SchemaAuthorityAbsent(
+                "no v1.std.core CompilerDiagnostic coproduct declaration under src/v1".to_string(),
+            ))
+        }
+        [one] => *one,
+        many => {
+            return Err(CompileCleanDiagnosticCensusRefusal::SchemaAuthorityAbsent(
+                format!(
+                "the v1.std.core CompilerDiagnostic coproduct is declared {} times under src/v1",
+                many.len()
+            ),
+            ))
+        }
+    };
+    Ok(crate::v1_compiler_resolve::get_variant_names(
+        fact.node.clone(),
+        fact.source_indices.clone(),
+    )
+    .iter()
+    .cloned()
+    .collect())
+}
+
+/// The gate's rendering in the census's vocabulary — the same spellings
+/// `gunbc.instrument_targets` `diagnostic_census_gate_rendered` emits, so the host printout and
+/// the model cannot diverge.
+pub fn census_gate_tag(gate: &CensusGateDisposition) -> String {
+    match gate {
+        CensusGateDisposition::Blocking => "blocking".to_string(),
+        CensusGateDisposition::AdvisoryTypecheck => "advisory-typecheck".to_string(),
+        CensusGateDisposition::RenderedUncounted { reason } => {
+            format!("rendered-uncounted({reason})")
+        }
+    }
+}
+
+/// The severity's rendering in the census's vocabulary (`gunbc.instrument_targets`
+/// `diagnostic_census_severity_rendered`).
+pub fn census_severity_tag(severity: &CensusSeverity) -> &'static str {
+    match severity {
+        CensusSeverity::Error => "error",
+        CensusSeverity::NonError => "non-error",
+    }
+}
+
 /// Per-class RAW diagnostic census over the whole-tree compile-clean closure.
 ///
-/// THE THREE MOVES THE RAW REWORK MAKES, each answering a named finding of the 2026-09-09
-/// review. FIRST (finding 1): every emitted diagnostic is counted; the disposition is computed
-/// per INSTANCE through `compile_clean_diagnostic_is_hard` — the partition's single authority,
-/// never a restated predicate — and recorded as a row attribute, so a severity change changes an
-/// attribute and cannot change the population. Per-instance rather than per-class because the
-/// authority itself decides per instance: `WhereRefinementUnenforced` reads its reason string,
-/// so one class can carry rows on both sides of the partition. SECOND (finding 2): the whole
-/// source vector is materialized into memory, hashed, and the SAME in-memory bytes are handed
-/// to the compiler, so the source-vector digest is bound to the observation by construction;
-/// the compiler-executable, resolver-policy, class-schema and closure digests bind the rest of
-/// the provenance. THIRD (finding 5): the ceiling roster is joined against the class schema and
-/// the observed population by execution — duplicate, stale and uncovered rows are typed
-/// refusals, not review tells.
+/// THE MOVES THE RAW REWORK MAKES, each answering a named review finding. (2026-09-09 finding
+/// 1): every emitted diagnostic is counted; the disposition is computed per INSTANCE through
+/// the single authority `v1_std_core::diagnostic_disposition` and recorded as a row attribute,
+/// so a disposition change changes an attribute and cannot change the population. Per-instance
+/// rather than per-class because the authority itself decides per instance:
+/// `WhereRefinementUnenforced` reads its reason string, so one class can carry rows on both
+/// sides of the partition. (2026-09-10 finding 1): the attribute carries the authority's FULL
+/// answer — all three gate states, plus severity as the independent axis the repository
+/// models — so `ComplexityUnknown`'s `GateRenderedUncounted` is reported as
+/// rendered-uncounted, never folded into advisory-ceiling reasoning. (2026-09-10 finding 2):
+/// the UnlistedImportUse staging decision, the ceiling roster, and the resolver-policy digest
+/// all come from ONE immutable policy snapshot; this path never calls the process-global
+/// cached policy accessor. (2026-09-09 finding 2, sharpened by 2026-09-10 finding 3): the
+/// whole source vector is materialized into memory, canonicalized ONCE, and that exact vector
+/// is both hashed and compiled, so the source-vector digest identifies the executed vector,
+/// not a canonicalization of a differently ordered one. (2026-09-09 finding 5): the ceiling
+/// roster is joined against the class schema and the observed population by execution —
+/// duplicate, stale and uncovered rows are typed refusals, not review tells. (2026-09-10
+/// finding 4): the class schema is checked against the coproduct authority's own constructor
+/// census, derived parse-level from the authority's declaration — a specimen roster that
+/// drifts from the authority refuses.
 ///
 /// The class key is `compile_clean_diagnostic_histogram_key`'s first component — the total
 /// match over `CompilerDiagnostic` — so a class name here can never drift from the compiler's
 /// own variant identity.
 pub fn compile_clean_diagnostic_census(
 ) -> Result<CompileCleanDiagnosticCensus, CompileCleanDiagnosticCensusRefusal> {
-    // THE CHEAP REFUSALS FIRE BEFORE THE EXPENSIVE WALK. A policy that cannot be read must
-    // refuse the census, not report a population it could not attribute (finding 1's
-    // policy-unreadable-is-not-empty rule); preflighting the cached read also primes it, so
-    // every `compile_clean_diagnostic_is_hard` call below reads one value for the whole run.
-    if let Err(e) = compile_clean_unlisted_import_use_blocks_cached() {
-        return Err(CompileCleanDiagnosticCensusRefusal::PolicyUnreadable(e));
-    }
-    let (roster_names, policy_sources) = compile_clean_diagnostic_policy_census_read()
+    // THE CHEAP REFUSAL FIRES BEFORE THE EXPENSIVE WALK. A policy that cannot be read must
+    // refuse the census, not report a population it could not attribute (the
+    // policy-unreadable-is-not-empty rule). The snapshot is this path's ONLY policy read:
+    // classification, roster, and resolver-policy digest all derive from it.
+    let policy = compile_clean_diagnostic_policy_snapshot()
         .map_err(CompileCleanDiagnosticCensusRefusal::PolicyUnreadable)?;
 
-    // THE CLASS SCHEMA AND ITS DISPOSITIONS, from the specimen through the two total
-    // authorities (histogram key for the name, compile_clean_diagnostic_is_hard for the
-    // partition).
+    // THE CLASS SCHEMA, CHECKED AGAINST THE AUTHORITY (finding 4): the constructor census is
+    // derived parse-level from the `v1.std.core` `CompilerDiagnostic` coproduct declaration
+    // (`compiler_diagnostic_constructor_census` states why the subject closure cannot carry
+    // it), and the specimen roster must be a bijection onto it — unique class identities (a
+    // string key can never overwrite rather than expose), equal counts, every constructor
+    // represented, every specimen known. A new constructor whose author repaired the
+    // exhaustive matches but omitted the specimen refuses here at the next run.
+    let authority_constructors = compiler_diagnostic_constructor_census()?;
     let specimen = compile_clean_diagnostic_class_specimen();
-    let mut schema_names: Vec<String> = Vec::new();
-    let mut disposition_by_class: BTreeMap<String, DiagnosticCensusDisposition> = BTreeMap::new();
+    let mut disposition_by_class: BTreeMap<String, (CensusGateDisposition, CensusSeverity)> =
+        BTreeMap::new();
     for d in &specimen {
         let node = Rc::new(ErrorNode {
             diagnostic: Rc::new(d.clone()),
             module_name: "<specimen>".to_string(),
         });
         let (class, _) = compile_clean_diagnostic_histogram_key(&node);
-        let disposition = if compile_clean_diagnostic_is_hard(&node) {
-            DiagnosticCensusDisposition::Blocking
-        } else {
-            DiagnosticCensusDisposition::Advisory
-        };
-        schema_names.push(class.clone());
-        disposition_by_class.insert(class, disposition);
+        let projection = census_instance_disposition(&node, policy.unlisted_import_use_blocks);
+        if disposition_by_class
+            .insert(class.clone(), projection)
+            .is_some()
+        {
+            return Err(
+                CompileCleanDiagnosticCensusRefusal::SchemaSpecimenDuplicate { class_name: class },
+            );
+        }
     }
-    let diagnostic_class_schema_digest = census_identity_digest(
-        &schema_names
-            .iter()
-            .map(|n| n.as_bytes())
-            .collect::<Vec<_>>(),
-    );
+    if specimen.len() != authority_constructors.len() {
+        return Err(CompileCleanDiagnosticCensusRefusal::SchemaCountMismatch {
+            specimen: specimen.len(),
+            authority: authority_constructors.len(),
+        });
+    }
+    for constructor in &authority_constructors {
+        if !disposition_by_class.contains_key(constructor) {
+            return Err(
+                CompileCleanDiagnosticCensusRefusal::SchemaConstructorUnrepresented {
+                    constructor_name: constructor.clone(),
+                },
+            );
+        }
+    }
+    for class in disposition_by_class.keys() {
+        if !authority_constructors.contains(class) {
+            return Err(
+                CompileCleanDiagnosticCensusRefusal::SchemaSpecimenUnknownToAuthority {
+                    class_name: class.clone(),
+                },
+            );
+        }
+    }
+    let diagnostic_class_schema_digest = {
+        let mut parts: Vec<Vec<u8>> = Vec::new();
+        for (class, (gate, severity)) in &disposition_by_class {
+            parts.push(class.as_bytes().to_vec());
+            parts.push(census_gate_tag(gate).into_bytes());
+            parts.push(census_severity_tag(severity).as_bytes().to_vec());
+        }
+        census_identity_digest(&parts.iter().map(|p| p.as_slice()).collect::<Vec<_>>())
+    };
 
     // THE BIJECTION WITNESS, ROSTER SIDE: no duplicate rows, and no row naming a class the
-    // schema does not know or whose disposition is no longer advisory (a promoted class's row
-    // must delete with the promotion).
+    // schema does not know or whose gate is no longer CensusAdvisoryTypecheck (a promoted
+    // class's row must delete with the promotion, and a rendered-uncounted class was never the
+    // roster's subject).
     {
         let mut seen: BTreeSet<&String> = BTreeSet::new();
-        for name in &roster_names {
+        for name in &policy.ceiling_roster_class_names {
             if !seen.insert(name) {
                 return Err(
                     CompileCleanDiagnosticCensusRefusal::CeilingRosterDuplicate {
@@ -1039,7 +1285,7 @@ pub fn compile_clean_diagnostic_census(
                 );
             }
             match disposition_by_class.get(name) {
-                Some(DiagnosticCensusDisposition::Advisory) => {}
+                Some((CensusGateDisposition::AdvisoryTypecheck, _)) => {}
                 _ => {
                     return Err(CompileCleanDiagnosticCensusRefusal::CeilingRosterStale {
                         class_name: name.clone(),
@@ -1049,11 +1295,11 @@ pub fn compile_clean_diagnostic_census(
         }
     }
 
-    // THE SUBJECT, MATERIALIZED BEFORE IT IS READ: the whole-tree source vector is loaded into
-    // memory ONCE, hashed from those bytes, and the same bytes are compiled — the tree going
-    // A -> B -> A mid-walk cannot produce a mixed population that hashes clean, because nothing
-    // is re-read after the hash.
-    let sources =
+    // THE SUBJECT, MATERIALIZED AND CANONICALIZED BEFORE IT IS READ: the whole-tree source
+    // vector is loaded into memory ONCE, sorted into one canonical order, and that exact
+    // vector is hashed and then compiled — the tree going A -> B -> A mid-walk cannot produce
+    // a mixed population that hashes clean, because nothing is re-read after the hash.
+    let mut sources =
         match witness_layer_roots_compile_clean_sources_for_plan(&CompileCleanScopePlan::WholeTree)
         {
             Ok(Some(s)) => s,
@@ -1064,11 +1310,10 @@ pub fn compile_clean_diagnostic_census(
             }
             Err(e) => return Err(CompileCleanDiagnosticCensusRefusal::ClosureUnresolvable(e)),
         };
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
     let source_vector_digest = {
-        let mut sorted: Vec<&Rc<v1_compiler_compile::SourceFile>> = sources.iter().collect();
-        sorted.sort_by(|a, b| a.path.cmp(&b.path));
         let mut parts: Vec<&[u8]> = Vec::new();
-        for s in &sorted {
+        for s in &sources {
             parts.push(s.path.as_bytes());
             parts.push(s.content.as_bytes());
         }
@@ -1096,19 +1341,15 @@ pub fn compile_clean_diagnostic_census(
     };
 
     // THE RAW COUNT: every emitted diagnostic, no severity filter anywhere on this path. The
-    // row key is (CLASS, DISPOSITION) and the disposition is computed PER INSTANCE through the
-    // same authority the gate reads — `WhereRefinementUnenforced` decides by the instance's
-    // reason string, so a mixed class produces one row per disposition rather than one row
-    // carrying a fabricated class-level answer.
-    let mut by_class: BTreeMap<(String, DiagnosticCensusDisposition), ClassAccumulation> =
+    // row key is (CLASS, GATE, SEVERITY) and the disposition is computed PER INSTANCE through
+    // the same authority the gate reads — `WhereRefinementUnenforced` decides by the
+    // instance's reason string, so a mixed class produces one row per observed (gate,
+    // severity) pair rather than one row carrying a fabricated class-level answer.
+    let mut by_class: BTreeMap<(String, CensusGateDisposition, CensusSeverity), ClassAccumulation> =
         BTreeMap::new();
     for d in result.diagnostics.iter() {
         let (class, _) = compile_clean_diagnostic_histogram_key(d);
-        let disposition = if compile_clean_diagnostic_is_hard(d) {
-            DiagnosticCensusDisposition::Blocking
-        } else {
-            DiagnosticCensusDisposition::Advisory
-        };
+        let (gate, severity) = census_instance_disposition(d, policy.unlisted_import_use_blocks);
         let span = diagnostic_to_span(d.diagnostic.clone());
         let position = if span.file.is_empty() {
             format!("module:{}", d.module_name)
@@ -1119,7 +1360,7 @@ pub fn compile_clean_diagnostic_census(
                 span.start
             )
         };
-        let entry = by_class.entry((class, disposition)).or_default();
+        let entry = by_class.entry((class, gate, severity)).or_default();
         entry.0 += 1;
         entry.1.insert(d.module_name.clone());
         entry.2.insert(position);
@@ -1138,13 +1379,13 @@ pub fn compile_clean_diagnostic_census(
 
     // THE DETAIL-COUNT LAW: the UnlistedImportUse class count and the per-row worklist are two
     // reads of the same vector, and their agreement is checked rather than assumed. The class
-    // count sums across dispositions — the policy row can move the whole class across the
-    // partition, and the law must hold on either side of it.
+    // count sums across (gate, severity) rows — the policy row can move the whole class across
+    // the partition, and the law must hold on either side of it.
     let unlisted_import_rows = unlisted_import_rows_from_resolved(&result)
         .map_err(CompileCleanDiagnosticCensusRefusal::ClosureUnresolvable)?;
     let unlisted_class_count: usize = by_class
         .iter()
-        .filter(|((class, _), _)| class == "UnlistedImportUse")
+        .filter(|((class, _, _), _)| class == "UnlistedImportUse")
         .map(|(_, (n, _, _))| *n)
         .sum();
     if unlisted_class_count != unlisted_import_rows.len() {
@@ -1154,15 +1395,15 @@ pub fn compile_clean_diagnostic_census(
         });
     }
 
-    // THE BIJECTION WITNESS, OBSERVED SIDE: every observed ADVISORY class carries a ceiling row.
-    // This is the reintroduction wall — a class that returns after burning to zero refuses here
-    // until its ceiling is re-declared. Blocking rows need no roster row: the gate already
-    // refuses them, and a roster row for a class that is no longer advisory-capable is the
-    // Stale arm above. Each row reads its own observed disposition, so a mixed class answers
-    // for its advisory arm only.
-    let roster_set: BTreeSet<&String> = roster_names.iter().collect();
-    for (class, disposition) in by_class.keys() {
-        if *disposition == DiagnosticCensusDisposition::Advisory && !roster_set.contains(class) {
+    // THE BIJECTION WITNESS, OBSERVED SIDE: every observed ADVISORY-TYPECHECK class carries a
+    // ceiling row. This is the reintroduction wall — a class that returns after burning to
+    // zero refuses here until its ceiling is re-declared. Blocking rows need no roster row
+    // (the gate already refuses them), and rendered-uncounted rows are expressly outside the
+    // advisory program's governance. Each row reads its own observed gate, so a mixed class
+    // answers for its advisory-typecheck arm only.
+    let roster_set: BTreeSet<&String> = policy.ceiling_roster_class_names.iter().collect();
+    for (class, gate, _) in by_class.keys() {
+        if *gate == CensusGateDisposition::AdvisoryTypecheck && !roster_set.contains(class) {
             return Err(
                 CompileCleanDiagnosticCensusRefusal::CeilingRosterUncovered {
                     class_name: class.clone(),
@@ -1182,24 +1423,15 @@ pub fn compile_clean_diagnostic_census(
                 "compiler executable: {e}"
             ))
         })?;
-    let resolver_policy_digest = {
-        let mut sorted: Vec<&Rc<v1_compiler_compile::SourceFile>> = policy_sources.iter().collect();
-        sorted.sort_by(|a, b| a.path.cmp(&b.path));
-        let mut parts: Vec<&[u8]> = Vec::new();
-        for s in &sorted {
-            parts.push(s.path.as_bytes());
-            parts.push(s.content.as_bytes());
-        }
-        census_identity_digest(&parts)
-    };
 
     let classes = by_class
         .into_iter()
         .map(
-            |((class_name, disposition), (diagnostics, modules, positions))| {
+            |((class_name, gate, severity), (diagnostics, modules, positions))| {
                 RawDiagnosticClassObservation {
                     class_name,
-                    disposition,
+                    gate,
+                    severity,
                     diagnostics,
                     distinct_modules: modules.len(),
                     distinct_positions: positions.len(),
@@ -1211,7 +1443,7 @@ pub fn compile_clean_diagnostic_census(
         identity: CompileCleanDiagnosticCensusIdentity {
             source_vector_digest,
             compiler_executable_digest,
-            resolver_policy_digest,
+            resolver_policy_digest: policy.source_digest,
             diagnostic_class_schema_digest,
             closure_digest,
         },

@@ -19,7 +19,12 @@ import gunbc.target_binding {
   DiagnosticCensusDetailCountMismatch, DiagnosticCensusCeilingRosterDuplicate,
   DiagnosticCensusCeilingRosterStale, DiagnosticCensusCeilingRosterUncovered,
   DiagnosticCensusIdentityUnavailable,
-  DiagnosticCensusDisposition, CensusAdvisory, CensusBlocking,
+  DiagnosticCensusSchemaAuthorityAbsent, DiagnosticCensusSchemaSpecimenDuplicate,
+  DiagnosticCensusSchemaCountMismatch, DiagnosticCensusSchemaConstructorUnrepresented,
+  DiagnosticCensusSchemaSpecimenUnknownToAuthority,
+  DiagnosticCensusGateDisposition, CensusBlocking, CensusAdvisoryTypecheck,
+  CensusRenderedUncounted,
+  DiagnosticCensusSeverity, CensusSeverityError, CensusSeverityNonError,
   RawDiagnosticClassObservation,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted,
@@ -327,8 +332,8 @@ fn diagnostic_class_raw_count(
 // WHAT "HELD" MEANS FOR THIS INSTRUMENT: the class-specific zero wall for the class whose
 // burndown it governs -- the RAW UnlistedImportUse count is zero. Two properties are doing the
 // work, and both are the point of the raw census. FIRST, the count is read over the unfiltered
-// population, so a severity change cannot hide a recurrence: the class row exists with its
-// disposition attribute whether the policy row says FloorNotYet or Enforced, and promoting the
+// population, so a severity change cannot hide a recurrence: the class row exists with its gate
+// and severity attributes whether the policy row says FloorNotYet or Enforced, and promoting the
 // class to blocking does not retire this wall -- it is the same observation. SECOND, the wall is
 // class-specific rather than the all-advisories-empty completion target: while the other advisory
 // classes burn down on their own tracks, this instrument holds exactly when UnlistedImportUse
@@ -362,22 +367,40 @@ fn diagnostic_census_refusal_cause_rendered(c: CompileCleanDiagnosticCensusRefus
     DiagnosticCensusDetailCountMismatch => "class count disagrees with the detailed UnlistedImportUse worklist"
     DiagnosticCensusCeilingRosterDuplicate => "two ceiling rows name one diagnostic class"
     DiagnosticCensusCeilingRosterStale => "a ceiling row names a class outside the schema or no longer advisory"
-    DiagnosticCensusCeilingRosterUncovered => "an observed advisory class carries no ceiling row"
+    DiagnosticCensusCeilingRosterUncovered => "an observed advisory-typecheck class carries no ceiling row"
     DiagnosticCensusIdentityUnavailable => "an identity digest could not be computed; the observation would be unbound"
+    DiagnosticCensusSchemaAuthorityAbsent =>
+      "the CompilerDiagnostic coproduct authority is absent from the compiled closure"
+    DiagnosticCensusSchemaSpecimenDuplicate => "two schema specimens project one class identity"
+    DiagnosticCensusSchemaCountMismatch =>
+      "the schema specimen count disagrees with the authority constructor census"
+    DiagnosticCensusSchemaConstructorUnrepresented =>
+      "an authority constructor has no schema specimen"
+    DiagnosticCensusSchemaSpecimenUnknownToAuthority =>
+      "a schema specimen names no authority constructor"
   }
 }
 
-fn diagnostic_census_disposition_rendered(d: DiagnosticCensusDisposition) -> String {
-  match d {
-    CensusAdvisory => "advisory"
+fn diagnostic_census_gate_rendered(g: DiagnosticCensusGateDisposition) -> String {
+  match g {
     CensusBlocking => "blocking"
+    CensusAdvisoryTypecheck => "advisory-typecheck"
+    CensusRenderedUncounted { reason: r } => join(["rendered-uncounted(", r as String, ")"], "")
+  }
+}
+
+fn diagnostic_census_severity_rendered(s: DiagnosticCensusSeverity) -> String {
+  match s {
+    CensusSeverityError => "error"
+    CensusSeverityNonError => "non-error"
   }
 }
 
 fn raw_diagnostic_class_observation_rendered(e: RawDiagnosticClassObservation) -> String {
   join([
     e.diagnostic_class as String,
-    " disposition=", diagnostic_census_disposition_rendered(d: e.disposition),
+    " gate=", diagnostic_census_gate_rendered(g: e.gate),
+    " severity=", diagnostic_census_severity_rendered(s: e.severity),
     " diagnostics=", to_string(e.diagnostics),
     " distinct_modules=", to_string(e.distinct_modules),
     " distinct_positions=", to_string(e.distinct_positions)

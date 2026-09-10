@@ -219,7 +219,10 @@ data unlisted_import_use_burndown_sizing: UnlistedImportUseSizingObservation = U
   read_as: LiveDiagnosticObservation
 }
 
-// THE PER-CLASS CEILING ROSTER FOR EVERY ADVISORY CLASS THE CENSUS CAN REPORT.
+// THE PER-CLASS CEILING ROSTER FOR EVERY ADVISORY-TYPECHECK CLASS THE CENSUS CAN REPORT.
+// Coverage is scoped to that one gate state: a rendered-uncounted row (ComplexityUnknown) is
+// expressly outside the advisory program's governance, and a blocking row is already refused by
+// the gate itself.
 //
 // The census (gunbc.instrument_targets compile_clean_diagnostic_census_binding) measures the
 // population; this roster records, per class, the ATTAINABLE CEILING the burndown is aimed at --
@@ -228,11 +231,11 @@ data unlisted_import_use_burndown_sizing: UnlistedImportUseSizingObservation = U
 // match over v1.std.core CompilerDiagnostic in the seed projection
 // (cli_run::compile_clean_diagnostic_histogram_key): a class name here joins the census output by
 // string equality. The join is EXECUTED, not advised: the census producer refuses
-// DiagnosticCensusCeilingRosterUncovered on an observed advisory class with no row here,
-// DiagnosticCensusCeilingRosterDuplicate on two rows naming one class, and
+// DiagnosticCensusCeilingRosterUncovered on an observed advisory-typecheck class with no row
+// here, DiagnosticCensusCeilingRosterDuplicate on two rows naming one class, and
 // DiagnosticCensusCeilingRosterStale on a row naming a class the schema does not know or whose
-// disposition is no longer advisory -- the review tell this sentence used to describe is now a
-// typed refusal. No counts are carried: counts are the census's output and rot between
+// gate is no longer CensusAdvisoryTypecheck -- the review tell this sentence used to describe is
+// now a typed refusal. No counts are carried: counts are the census's output and rot between
 // runs (DESIGN 6 -- name the instrument, never transcribe its output).
 //
 // THE WORK ORDER IS THE LIST ORDER, sorted by (population x mechanical-fixability) as measured by
