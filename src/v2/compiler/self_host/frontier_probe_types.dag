@@ -46,14 +46,14 @@ import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
-// Remaining assemble-rejection chains that still mint their own nonempty pair rather than
-// std.algebra FreeSemigroup: NonEmptySymbolChain (this module) and
-// NonEmptyGrammarChoiceAmbiguityRows (v2.std.grammar_choice_ambiguity). The generic carrier is
-// a real construction wall, so these two are migration debt with a reachable destination.
+// Remaining pair carriers that still mint their own nonempty pair rather than
+// std.algebra FreeSemigroup: NonEmptySymbolChain (this module),
+// NonEmptyGrammarChoiceAmbiguityRows (v2.std.grammar_choice_ambiguity), and
+// NonEmptyDiagnostics (v2.std.diagnostic). The generic carrier is a real construction wall.
 // Dissolve triggers: non_empty_symbol_chain_dissolve_trigger (this module);
-// NonEmptyGrammarChoiceAmbiguityRows trigger on v2.std.grammar_choice_ambiguity.
-// NonEmptyDiagnostics is not in this census: it is a host-emit Option alias keyed on that type
-// name, not a pair carrier (std.algebra free_semigroup_grounding_note). Process-node collections
+// non_empty_grammar_choice_ambiguity_rows_dissolve_trigger;
+// non_empty_diagnostics_dissolve_trigger (host emit still hardcodes the type name
+// NonEmptyDiagnostics as the Option inner of Diagnostics). Process-node collections
 // and v2.std.collection FiniteSet already left this set.
 
 data non_empty_symbol_chain_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "migrate_when_free_semigroup_available — NonEmptySymbolChain dissolves into std.algebra FreeSemigroup<Symbol>. RETARGETED: this trigger previously named the promotion of the manual Refined<List<T>> fixture to std, and the generic carrier that landed is a record with a head field rather than that refinement, with the NonEmptyList alias deliberately withheld while the fixture lives - so the event as previously spelled will not occur and this row would have stalled untracked. The construction wall is now available; see std.algebra free_semigroup_grounding_note.")
