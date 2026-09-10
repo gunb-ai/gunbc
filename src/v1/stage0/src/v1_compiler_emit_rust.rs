@@ -13986,7 +13986,16 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     ),
                     wildcard_enum_lines.clone(),
                 );
-                all_lines.clone().join(&"\n".to_string())
+                Rc::new({
+                    let mut __sorted: Vec<_> = all_lines.iter().cloned().collect();
+                    __sorted.sort_by(|a: &String, b: &String| {
+                        let __ka = (|line: String| line.clone())(a.clone());
+                        let __kb = (|line: String| line.clone())(b.clone());
+                        __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                    __sorted
+                })
+                .join(&"\n".to_string())
             }
         }
     }
@@ -14576,7 +14585,18 @@ pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
             }
             __result
         });
-        strip_repeated_use_symbols(covered.clone())
+        Rc::new({
+            let mut __sorted: Vec<_> = strip_repeated_use_symbols(covered.clone())
+                .iter()
+                .cloned()
+                .collect();
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka = (|line: String| line.clone())(a.clone());
+                let __kb = (|line: String| line.clone())(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
+        })
     }
 }
 

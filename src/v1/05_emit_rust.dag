@@ -3290,6 +3290,11 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
 // offers no theory: a correct retraction must not become a second causal story. What it contributes
 // is the localisation -- two named files, pure `pub use` order, two outputs each.
 //
+// THE BYTES ARE NOW SORTED AT THE LAST MERGE. `dedupe_rust_import_lines` (and the per-module
+// `emit_specific_import_block` join) emit `pub use crate::…` lines in UTF-8 lexicographic order, so
+// an unordered-set walk cannot change the file. The two-emission control is
+// `v1.compiler.compiler_tests_rust` `ct_pub_use_crate_lines_two_emission_byte_identity_test`.
+//
 // A SECOND, OLDER LESSON ALSO STANDS. The structural argument "the use-lines ARE the survived arm of
 // the same decision the census counts, so bytes cannot move unless the decision moves" is TRUE, and
 // silent about evaluation order, memoisation and interning. A valid argument with an unstated scope
@@ -6766,7 +6771,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       variant_lines |> filter(l => l != ""),
       wildcard_enum_lines
     )
-    all_lines |> join(separator: "\n")
+    all_lines |> sort_by(line => line) |> join(separator: "\n")
   }
 }
 
@@ -7023,7 +7028,7 @@ fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
       && rust_pub_use_braced_subset_covered(line: line, lines: exact) == false
       && rust_pub_use_braced_equal_prior_covered(line: line, lines: exact) == false
   )
-  strip_repeated_use_symbols(lines: covered)
+  strip_repeated_use_symbols(lines: covered) |> sort_by(line => line)
 }
 
 fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>, module_env: TypeEnv?) -> String {

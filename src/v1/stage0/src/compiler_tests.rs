@@ -531,6 +531,74 @@ mod compiler_tests {
         result.expect("emit_import_lines_follow_resolved_binding_identity panicked");
     }
 
+    #[test]
+    fn pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let zebra = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_zebra.dag".to_string(),
+                    content: "module probe.zebra\ntype Zebra { n: Int }\n".to_string(),
+                });
+                let aardvark = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_aardvark.dag".to_string(),
+                    content: "module probe.aardvark\ntype Aardvark { n: Int }\n".to_string(),
+                });
+                let mongoose = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_mongoose.dag".to_string(),
+                    content: "module probe.mongoose\ntype Mongoose { n: Int }\n".to_string(),
+                });
+                let omega = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_omega.dag".to_string(),
+                    content: "module probe.omega\nimport probe.zebra { Zebra }\nimport probe.aardvark { Aardvark }\nimport probe.mongoose { Mongoose }\nfn keep(z: Zebra, a: Aardvark, m: Mongoose) -> Int { z.n + a.n + m.n }\n".to_string(),
+                });
+                let sources = std::rc::Rc::new(im::vector![zebra, aardvark, mongoose, omega]);
+                let first = crate::v1_compiler_compile::compile_sources(
+                    sources.clone(),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let second = crate::v1_compiler_compile::compile_sources(
+                    sources,
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                assert_eq!(first.files.len(), second.files.len());
+                for (left, right) in first.files.iter().zip(second.files.iter()) {
+                    assert_eq!(left.path, right.path);
+                    assert_eq!(
+                        left.content, right.content,
+                        "two emissions of {} must be byte-identical",
+                        left.path
+                    );
+                }
+                let omega_out = first
+                    .files
+                    .iter()
+                    .find(|f| f.path.contains("probe_omega"))
+                    .expect("omega module must emit");
+                let pub_uses: Vec<&str> = omega_out
+                    .content
+                    .lines()
+                    .filter(|l| l.contains("pub use crate::"))
+                    .collect();
+                assert!(
+                    pub_uses.len() >= 2,
+                    "fixture must emit multiple pub use crate lines; got:\n{}",
+                    omega_out.content
+                );
+                let mut sorted = pub_uses.clone();
+                sorted.sort();
+                assert_eq!(
+                    pub_uses, sorted,
+                    "pub use crate lines must be emitted sorted; got:\n{}",
+                    omega_out.content
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result
+            .expect("pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical panicked");
+    }
+
     /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.
     ///
     /// Every other emitted-bytes assertion in this file is a SPELLING oracle: it reads the
