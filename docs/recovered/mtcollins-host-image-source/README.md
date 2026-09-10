@@ -15,14 +15,21 @@ directory does not retire it: recovering the bytes is not the same as modeling t
 
 What the analysis got wrong is where the artifacts live, and the correction is load-bearing:
 
-- `gunbc.runner.runner_host_image_store` `host_image_store.location` records the export as
+- `gunbc.runner.runner_host_image_store` `host_image_store` carried a `location` field reading
   **`/srv/bmc` on srv1**. There is no `/srv/bmc` on srv1. The export is on **srv2**
   (`/srv/bmc 192.168.1.228(ro,no_subtree_check,insecure,no_root_squash)`), and the seven
   digest-named host ISOs and their `.meta` sidecars are intact there, 6.7 GB.
-- That module's own annotation names the BMC's redirection configuration as the authority for
-  where images live. The location was instead carried as prose in a `NonEmptyStr`, so it was
-  unreachable from the thing that owns it and rotted without either end being touched — a §3
-  citation defect. Correcting the string is not the fix; deriving the location is.
+- That module's own `attachment_authority` names the BMC's redirection configuration as the
+  authority for image presentation, and the same configuration names where images are read from.
+  The location was instead spelled as a literal beside it, so it was unreachable from the thing
+  that owns it and decayed without either end being touched — a §3 second answer to a question the
+  module already routes elsewhere.
+- **The field is deleted in this PR, not corrected.** A freshly-true literal rots exactly as the
+  last one did and restores the confidence that made this expensive, so the row is uprooted (§3
+  delete-first) and the module now answers *what* the store guarantees while refusing to answer
+  *where*. Restoring the field takes the capability named in that module: a modeled read of the
+  BMC's `remote/configurations` yielding serving host and path as an observation with its read
+  time. Nothing short of that.
 
 ## What was recovered
 
@@ -63,21 +70,30 @@ tooling: per the displacement doctrine, X's authority must end in one motion, an
 resolve through X. Until then, no file here may be edited to change behaviour — a fix applied
 here would make this a second live authority, which is exactly what it exists to prevent.
 
-## Recovered-file digests (sha256, first 16 hex)
+## Integrity
+
+**No digest table is transcribed here.** Fourteen copied hex strings would be numbers with no
+producer: nothing recomputes them, so they rot silently the first time a file is touched, and the
+one thing a provenance directory must not do is carry an integrity claim nobody can check (DESIGN
+§6 — name the instrument, never transcribe its output). An earlier revision of this README did
+carry that table, and it listed `build.sh.bak`, which `.gitignore`'s `*.bak` rule had excluded from
+the commit — a hand-maintained table asserting a digest for bytes that were not there. The file is
+now force-added and the table is gone.
+
+Git already holds the content hash of every file here, and it is the producer:
 
 ```
-44cf6c81bb95a3e3  build.sh
-3bae750ad15221a3  envelope.sh
-7c4f7b0c88d872f0  initramfs/init
-5f0c56c901eac0b9  irfs/init
-f4cb81830bd434f8  initramfs/init.prev
-8f1982f93592107f  initramfs/init.pre-verify
-3e3a155dd4e4c49d  initramfs/init.pre-supervisor
-be538270d7a4aeb8  guest/gunbc-runner-init.sh
-1d97baf57fefaca9  guest/gunbc-probe.sh
-22d82a3a448bf543  udhcpc.script
-2d97f20a0a47e6bd  initramfs.spec.in
-196d781734e8f8a1  vm.json
-2fe3e60033e611ad  build.sh.bak
-98087d2c9f8f95ac  cp/cp-signing.pub
+git ls-tree -r HEAD --format='%(objectname) %(path)' docs/recovered/mtcollins-host-image-source
 ```
+
+To check these against the machine they came from, while `/var/tmp/gunbc-hostimage` still exists on
+srv2:
+
+```
+ssh srv2 'cd /var/tmp/gunbc-hostimage && git hash-object build.sh envelope.sh initramfs/init \
+  irfs/init initramfs.spec.in udhcpc.script vm.json'
+```
+
+Those blob hashes are directly comparable to the `git ls-tree` output above. When that build tree is
+gone, this directory becomes the only copy and the comparison is no longer available — which is the
+condition this directory exists to survive, not one it can check its way out of.
