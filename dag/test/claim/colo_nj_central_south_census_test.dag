@@ -35,32 +35,39 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // refused by it. Asking "does the published evidence refuse this many watts" is a question that
 // cannot accidentally admit a candidate.
 
-// THE THREE FIGURES THIS LANE COULD ACTUALLY READ, EACH A DISTINCT CONSTANT. They are asserted
-// separately rather than summed or counted, so a row that silently acquired a neighbour's figure
-// reds here instead of cancelling out in an aggregate. All three are real power: no page read in
-// this region published apparent power, and if one of these ever becomes a kVA publication the
-// established reading must vanish rather than keep the numeral.
-test fn w_central_nj_read_densities_are_their_published_watts() -> Bool {
-  established_watts(d: njfx_wall_density) == 16000
-    && established_watts(d: digital_fortress_piscataway_density) == 15000
-    && established_watts(d: databank_ewr2_density) == 10000
+// A CAPABILITY FLOOR ESTABLISHES NOTHING AND BOUNDS NOTHING, AND THIS WITNESS IS WHAT THE OLD ONE
+// SHOULD HAVE BEEN. Until 2026-09-10 this position held w_central_nj_read_densities_are_their_
+// published_watts, asserting established readings of 16,000 / 15,000 / 10,000 W - and it was GREEN
+// over two rows whose own citations said the integer was a floor. DataBank EWR2 publishes "10kW+"
+// and Digital Fortress publishes availability on request; both are capability floors, and every
+// figure-bearing arm this carrier has is a maximum, so both rows answered a bounding question
+// backwards while a positive control certified them. Both are now DensityUnread, and this asserts
+// the property that actually holds: a demoted floor yields no reading and no ceiling, so nothing
+// downstream can compute a bound from a promise of AT LEAST.
+//
+// It reds if either row is re-promoted into a maximum arm without a quantifier, which is the exact
+// edit that created the defect and the one a carrier rebase could reintroduce by hand.
+test fn w_a_capability_floor_establishes_no_reading_and_bounds_nothing() -> Bool {
+  established_watts(d: databank_ewr2_density) == 0 - 1
+    && !has_ceiling(d: databank_ewr2_density)
+    && established_watts(d: digital_fortress_piscataway_density) == 0 - 1
+    && !has_ceiling(d: digital_fortress_piscataway_density)
 }
 
-// THE SAME FIGURES BOUND THEMSELVES. For a real-power publication the established reading and the
-// upper bound coincide; they diverge only for apparent power. This control is what would red if a
-// real-power row were ever re-encoded as apparent power to make a numeral fit.
-// EACH READ ROW'S CEILING SITS EXACTLY AT ITS PUBLISHED FIGURE, probed from both sides. One watt
-// above the published number is refused on published evidence alone; one watt below is NOT refused
-// - and not-refused is undetermined rather than admitted, which is why this asserts the refusal
-// boundary and never reads a number back out. A row re-encoded as apparent power would move this
-// boundary, and a row whose figure drifted would move it too.
-test fn w_read_rows_refuse_one_watt_above_their_published_figure() -> Bool {
+// A PUBLISHED BAND BOUNDS ABOVE AT ITS MAXIMUM, AND THAT IS THE ONLY ROW IN THIS REGION ENTITLED TO
+// A CEILING. NJFX publishes "from 2 kW to 16 kW per cabinet" - a range, not a floor - so 16 kW is a
+// real upper bound and the maximum arm answers the bounding question forwards. That is why this row
+// survived the 2026-09-10 demotion that took the two floors: the ruling turned on a floor sitting in
+// a maximum arm, and a band's top is not a floor.
+//
+// Probed from both sides, and deliberately never reading the number back out: one watt above is
+// refused on published evidence, one watt below is NOT refused - and not-refused means UNDETERMINED
+// rather than admitted, because the band says a given cabinet may be 2 kW. Pinning the boundary from
+// both directions fixes the figure exactly without ever asserting that any cabinet DELIVERS 16 kW,
+// which is the claim the band does not support and which the deleted witness used to make.
+test fn w_a_published_band_bounds_above_at_its_maximum() -> Bool {
   ceiling_refuses_at(d: njfx_wall_density, required: 16001)
     && !ceiling_refuses_at(d: njfx_wall_density, required: 15999)
-    && ceiling_refuses_at(d: digital_fortress_piscataway_density, required: 15001)
-    && !ceiling_refuses_at(d: digital_fortress_piscataway_density, required: 14999)
-    && ceiling_refuses_at(d: databank_ewr2_density, required: 10001)
-    && !ceiling_refuses_at(d: databank_ewr2_density, required: 9999)
 }
 
 // THE REFUSALS, AND THE MOST IMPORTANT CONTROL IN THIS MODULE. QTS Piscataway markets 65 MW of
@@ -101,7 +108,7 @@ test fn w_grain_does_not_propagate_across_a_campus() -> Bool {
 // EWR2 answer both. QTS answers neither. If the carrier ever let one field imply the other, the
 // first conjunct here would be the one that fails.
 test fn w_density_read_does_not_imply_grain_read() -> Bool {
-  established_watts(d: njfx_wall_density) == 16000
+  ceiling_refuses_at(d: njfx_wall_density, required: 16001)
     && !grain_admits_single_cabinet(g: njfx_wall_retail_grain)
     && grain_admits_single_cabinet(g: digital_fortress_piscataway_retail_grain)
     && grain_admits_single_cabinet(g: databank_ewr2_retail_grain)
