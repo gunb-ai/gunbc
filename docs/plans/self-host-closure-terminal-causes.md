@@ -62,6 +62,34 @@ front-end diagnostics — the same move `SourceRootEvalDriver` already makes for
 verdicts, which is a `CompilerEntryDriver` change and therefore a compiler PR, not a measurement one.
 Until that exists, treat what follows as the method a reader re-executes, not as a component.
 
+## The order-insensitive closure digest, and its exact producer
+
+The emitted closure's reported identity is a digest over bytes, and the seed emitter writes each
+module's `pub use crate::…` re-export lines in unordered-set order, so two emissions of the same head
+report different identities. The carrier therefore pins an ORDER-INSENSITIVE digest beside it as the key
+two runs can join on. This is that field's producer, and it is written out in full because sixteen
+plausible readings of a prose description of it all produced different values on another host:
+
+```
+(cd src && for f in $(find . -type f -not -path './bin/*' | LC_ALL=C sort); do
+   echo "== $f"
+   grep -v '^pub use crate::' "$f" | LC_ALL=C sort
+ done) | sha256sum
+```
+
+run from the emitted crate directory. Every detail is load-bearing: the `== ./path` header line per
+file is inside the hash; the file list is `find`-order sorted under `LC_ALL=C`, not shell glob order;
+the stripped prefix is exactly `pub use crate::` at line start, not `use ` and not any `pub use`; each
+file's surviving lines are sorted under `LC_ALL=C`; and the whole stream is hashed once rather than per
+file. Expect 171 files. A different count means the two emissions differ and no row join between them
+is valid.
+
+**`-not -path './bin/*'` is not incidental.** The reduction probes below are written INTO the emitted
+crate's `src/bin/`, and an earlier revision of this note's digest swept them in — making the pinned
+value a fact about whoever had probed rather than about the emission, and unreproducible by anyone
+else. That is the same unreachable-citation defect this note warns about for the probe binary itself.
+The digest must cover the emitted sources and nothing else.
+
 ## Step 2 — the reduction probe
 
 The stop lexeme a parse refusal reports is where the parser gave up, not the cause; the cause usually

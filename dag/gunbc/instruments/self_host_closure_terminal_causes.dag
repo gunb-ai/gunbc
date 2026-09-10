@@ -103,7 +103,12 @@ import v2.std.text { String }
 // THE PIN. Every row is an observation of ONE tree through ONE binary. The emitted closure's own
 // reported identity is byte-derived and therefore unstable across emissions (the seed emitter emits
 // its re-export lines in unordered-set order), so an ORDER-INSENSITIVE digest is carried beside it
-// as the key two runs can join on. The driver binary digest is the strongest of the three:
+// as the key two runs can join on. That digest covers the EMITTED sources only: an earlier revision
+// pinned a value that also swept in a hand-written probe under src/bin/, which made it a fact about
+// whoever measured rather than about the emission, and no second reader could reproduce it - the
+// unreachable citation this module refuses elsewhere, committed here. Its producer is the exact
+// command in docs/plans/self-host-closure-terminal-causes.md; the corrected value was reproduced
+// independently on another host and architecture over its own emission of the same head. The driver binary digest is the strongest of the three:
 // rebuilding it from a SECOND emission of the same sources produced identical bytes, which is what
 // establishes that the re-export delta is inert rather than merely believed to be.
 //
@@ -359,7 +364,7 @@ type ClosureFileRow {
 data closure_observation_pin: ObservationPin = ObservationPin {
   head_sha: "2fb67b411aecfccfce1c2642ebc724df0a755585"
   emitted_closure_identity_as_reported: "c1136b4a6f89b4a20222f9341e997a47b05d483550db190678f9019229d94321"
-  order_insensitive_closure_digest: "2f926173a675387ec2cbbf1c2229ea23491dda72640578de64b1b567634831a0"
+  order_insensitive_closure_digest: "27d8a7018ec18c43371410a7c0b0d3beabbe0f9021ef81e9e8b2b70cb632c5b3"
   emitted_driver_binary_digest: "f939a936d39d504e320a0f6ab059b0ab7dc1432367536279c48304188a81c182"
   compiler_source_manifest_digest: "9a728cd46a611232fcefc66d7885f31f03e91fa522a01695131427b5bf8330ef"
   grammar_prepare_residue_total: 7
