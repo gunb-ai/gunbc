@@ -1,0 +1,203 @@
+module test.claim.fan_tach_assessment_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import product.fan_tach { FanTachWindow }
+import gunbc.fleet_fan_tach_expectation {
+  HostFanTachExpectation,
+  chassis_tach_expected,
+  srv1_fan_tach_expectation,
+  srv2_fan_tach_expectation,
+  srv3_fan_tach_expectation,
+  srv4_fan_tach_expectation,
+}
+import gunbc.fleet_fan_tach_observation {
+  srv1_windows,
+  srv2_windows,
+  srv3_windows,
+  srv4_windows,
+}
+import product.fan_tach_health {
+  DuplicateExpectedHeader,
+  DuplicateObservedHeader,
+  ExpectedHeaderObservationMissing,
+  FanTachSubject,
+  HostIdentityMismatch,
+  RotationDegraded,
+  fan_tach_subject,
+  inspect_fan_tach,
+  observation_gap_count,
+  rotation_degraded_count,
+}
+import std.goal_assessment {
+  GoalAssessmentRefused,
+  GoalDiverged,
+  GoalIndeterminate,
+  GoalInspected,
+  GoalObservationRefused,
+  GoalSatisfied,
+}
+import v2.std.algebra { non_empty_to_list }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// 12 of 20 is the fleet's declared rotation floor, threaded rather than inlined for the reason the
+// wet witness gives: a number measured on the current fleet must not become the definition of
+// healthy. It is repeated here rather than imported because the wet witness declares it as its own
+// local policy, and importing it would make one lane's threshold the other lane's authority.
+data rotating_floor: Int = 12
+
+fn subject_of(
+  expectation: HostFanTachExpectation,
+  windows: List<FanTachWindow>,
+) -> FanTachSubject {
+  fan_tach_subject(
+    host: expectation.host,
+    expectation: expectation,
+    minimum_rotating: rotating_floor,
+    windows: windows,
+  )
+}
+
+fn drop_window(windows: List<FanTachWindow>, header: NonEmptyStr) -> List<FanTachWindow> {
+  filter(windows, w => w.endpoint.name != header)
+}
+
+// THE CENTRAL WITNESS. srv1 carries two degraded endpoints, so the fleet's own hardware is the
+// discriminating input: a migration that lost the degraded verdict would turn this green.
+test fn srv1_diverges_on_its_two_degraded_endpoints() -> Bool {
+  match inspect_fan_tach(subject: subject_of(expectation: srv1_fan_tach_expectation, windows: srv1_windows)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: ds } =>
+          rotation_degraded_count(deviations: non_empty_to_list(xs: ds)) == 2
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL. Without it the divergence above could be produced by an assessment that
+// never agrees for any input, which would make the wall decoration rather than a check. srv2 is
+// the same fleet, the same floor, and healthy.
+test fn srv2_the_control_host_is_satisfied() -> Bool {
+  match inspect_fan_tach(subject: subject_of(expectation: srv2_fan_tach_expectation, windows: srv2_windows)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalSatisfied { evidence: e } => e.headers_judged == 5 && e.healthy.length() == 5
+        GoalDiverged { deviations: ds } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE FAIL-OPEN CONTROL, AND THE ONE ARM THIS MIGRATION MOVED. Dropping a window entirely is the
+// shape a collector produces when it OMITS an endpoint rather than reporting it absent. Under the
+// coproduct this replaced, that header was a verdict beside the others and the host still read as
+// assessed; nothing about that fan was ever established, so the honest answer is indeterminate.
+//
+// The conjunct is deliberately not just "an unknown exists": it also holds that the two degraded
+// endpoints are STILL reported, because an indeterminate result that silently dropped the proved
+// deviations would be a different defect wearing this one's clothes.
+test fn an_omitted_window_is_an_unknown_not_an_assessed_host() -> Bool {
+  let dropped = drop_window(windows: srv1_windows, header: "FAN4")
+  match inspect_fan_tach(subject: subject_of(expectation: srv1_fan_tach_expectation, windows: dropped)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalIndeterminate { known_deviations: kd, unknowns: u } =>
+          observation_gap_count(unknowns: non_empty_to_list(xs: u)) == 1
+            && rotation_degraded_count(deviations: kd) == 1
+        GoalSatisfied { evidence: e } => false
+        GoalDiverged { deviations: ds } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// AND A FULLY READ HOST MUST NOT BE INDETERMINATE, or the witness above would pass on a migration
+// that made every host indeterminate.
+test fn a_fully_read_host_is_not_indeterminate() -> Bool {
+  match inspect_fan_tach(subject: subject_of(expectation: srv2_fan_tach_expectation, windows: srv2_windows)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalSatisfied { evidence: e } => true
+        GoalDiverged { deviations: ds } => true
+        GoalAssessmentRefused { cause: c } => true
+      }
+  }
+}
+
+// THE THREE REFUSAL CAUSES, one witness each. These are the arms whose binding discharges
+// std.goal_assessment's declared GoalAssessmentRefused frontier, so each must be reachable on a
+// real input or the frontier was discharged in name only.
+test fn one_host_expectation_against_another_hosts_windows_refuses() -> Bool {
+  match inspect_fan_tach(subject: fan_tach_subject(
+    host: srv3_fan_tach_expectation.host,
+    expectation: srv3_fan_tach_expectation,
+    minimum_rotating: rotating_floor,
+    windows: srv4_windows,
+  )) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: HostIdentityMismatch } => true
+        other => false
+      }
+  }
+}
+
+test fn a_roster_naming_one_header_twice_refuses() -> Bool {
+  match inspect_fan_tach(subject: subject_of(
+    expectation: HostFanTachExpectation {
+      host: srv3_fan_tach_expectation.host,
+      headers: flat_map(
+        [srv3_fan_tach_expectation.headers, [chassis_tach_expected(header: "FAN3")]],
+        g => g,
+      ),
+    },
+    windows: srv3_windows,
+  )) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: DuplicateExpectedHeader { header: h } } =>
+          h == ("FAN3" as NonEmptyStr)
+        other => false
+      }
+  }
+}
+
+test fn a_collector_answering_twice_for_one_endpoint_refuses() -> Bool {
+  match inspect_fan_tach(subject: subject_of(
+    expectation: srv3_fan_tach_expectation,
+    windows: flat_map([srv3_windows, [srv3_windows.first()]], g => g),
+  )) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: DuplicateObservedHeader { header: h } } =>
+          h == ("FAN1" as NonEmptyStr)
+        other => false
+      }
+  }
+}
+
+// AND A WELL-FORMED QUESTION MUST NOT REFUSE, or the three above would pass on an assessment that
+// refuses everything. This is the same srv3 roster and the same srv3 windows, unduplicated.
+test fn a_well_formed_question_does_not_refuse() -> Bool {
+  match inspect_fan_tach(subject: subject_of(expectation: srv3_fan_tach_expectation, windows: srv3_windows)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: c } => false
+        other => true
+      }
+  }
+}
