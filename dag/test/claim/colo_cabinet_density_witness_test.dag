@@ -25,6 +25,8 @@ import extdeps.colo.types {
   claim_wording_standing,
   density_claim_figures, medium_standing_eq,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
+  retail_grain_single_cabinet_wording,
+  RetailRateStanding, retail_rate_published_plans,
 }
 import extdeps.colo.databank {
   databank_lga4_density, databank_lga4_retail_grain,
@@ -527,11 +529,27 @@ test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
 // A READ DENSITY AND A SELLABLE GRAIN ARE INDEPENDENT FACTS. A cabinet marketed at 30 kW that the
 // operator will only sell as part of a suite is not a candidate for one cabinet, and a 3 kW
 // cabinet sold singly is. Fusing them would have made one of the two unaskable.
-fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
-  match g {
-    SingleCabinetOffered { wording, citation } => true,
-    CageOrSuiteMinimum { wording, citation } => false,
-    RetailGrainUnread { obligation } => false,
+
+// THE HARNESS BOOL, DERIVED RATHER THAN CARRIED. The carrier answers "what is the single-cabinet
+// wording" as an Optional, because the wording is the grain (review 62968). A test asks the yes/no
+// question, so the collapse to Bool happens HERE, in the test layer, exactly as established_watts
+// above collapses an Optional Watt into a comparable Int. One derivation, imported by the sibling
+// New York witness rather than re-declared there - the fork this consolidation removed stays
+// removed.
+// THE RATE HARNESS, beside grain_offers_single_cabinet and for the same reason: the carrier owns
+// the accessor, the witness owns only the collapse to Bool. RetailRateStanding had NO consumer
+// anywhere in the corpus before this - thirty modules author a rate row and nothing read one.
+fn rate_is_published(r: RetailRateStanding) -> Bool {
+  match retail_rate_published_plans(r: r) {
+    Present { value } => true,
+    Absent => false,
+  }
+}
+
+fn grain_offers_single_cabinet(g: RetailGrainStanding) -> Bool {
+  match retail_grain_single_cabinet_wording(g: g) {
+    Present { value } => true,
+    Absent => false,
   }
 }
 
@@ -548,14 +566,14 @@ fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
 // answers an air question, inside the change that exists to remove it. The honest conjunct is that the
 // air request finds NOTHING here while the grain still reads.
 test fn w_density_and_grain_are_separate_facts() -> Bool {
-  grain_admits_single_cabinet(g: databank_lga4_retail_grain)
-    && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
+  grain_offers_single_cabinet(g: databank_lga4_retail_grain)
+    && grain_offers_single_cabinet(g: iron_mountain_nje1_retail_grain)
     && bounds_above(d: air_labelled_cap_fixture, requested: AirCooling)
     && !bounds_above(d: databank_lga4_density, requested: AirCooling)
     && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCooling)
     && density_claim_figures(d: iron_mountain_nje1_density).length() == 1
-    && grain_admits_single_cabinet(g: telehouse_chelsea_retail_grain)
-    && !grain_admits_single_cabinet(g: telehouse_teleport_retail_grain)
+    && grain_offers_single_cabinet(g: telehouse_chelsea_retail_grain)
+    && !grain_offers_single_cabinet(g: telehouse_teleport_retail_grain)
     && !has_figure_for(d: telehouse_teleport_density, requested: AirCooling)
 }
 
@@ -636,8 +654,8 @@ test fn w_nyc_unread_densities_establish_and_bound_nothing() -> Bool {
 }
 
 test fn w_nyc_published_grains_match_their_arms() -> Bool {
-  all(nyc_single_cabinet_grains, g => grain_admits_single_cabinet(g: g))
-    && all(nyc_unread_grains, g => !grain_admits_single_cabinet(g: g))
+  all(nyc_single_cabinet_grains, g => grain_offers_single_cabinet(g: g))
+    && all(nyc_unread_grains, g => !grain_offers_single_cabinet(g: g))
 }
 
 // THE COVERAGE CARRIER'S CONSUMER, ENROLLED FOR THE SAME REASON AS THE ONES ABOVE. Review 62758
@@ -846,7 +864,7 @@ data corridor_cabinet_grain_rows: List<RetailGrainStanding> = [
 // Chicago-area banner, and its grain survived on separate evidence. Nothing but this test stands
 // between a similar withdrawal and a corridor that still claims eight cabinet-grain operators.
 test fn w_every_row_listed_as_cabinet_grain_admits_a_single_cabinet() -> Bool {
-  all(corridor_cabinet_grain_rows, g => grain_admits_single_cabinet(g: g))
+  all(corridor_cabinet_grain_rows, g => grain_offers_single_cabinet(g: g))
 }
 
 // THE PAIRING ITSELF, ON THE ROWS WHERE BOTH AXES ARE KNOWN AND THEY DISAGREE. Summit sells a
@@ -855,7 +873,7 @@ test fn w_every_row_listed_as_cabinet_grain_admits_a_single_cabinet() -> Bool {
 // megawatts, from a peer - this goes red, which is the exact inference the carrier was built to
 // make unwritable and the exact one that was ALREADY attempted here once.
 test fn w_the_corridor_sells_a_cabinet_it_will_not_rate() -> Bool {
-  grain_admits_single_cabinet(g: summit_retail_grain)
+  grain_offers_single_cabinet(g: summit_retail_grain)
     && claim_unread(d: summit_secaucus_density, requested: AirCooling, required: 5000)
     && !bounds_above(d: summit_secaucus_density, requested: AirCooling)
 }
@@ -877,7 +895,7 @@ data corridor_unread_grain_rows: List<RetailGrainStanding> = [
 ]
 
 test fn w_an_unread_grain_never_admits_a_single_cabinet() -> Bool {
-  all(corridor_unread_grain_rows, g => !grain_admits_single_cabinet(g: g))
+  all(corridor_unread_grain_rows, g => !grain_offers_single_cabinet(g: g))
 }
 
 // A PAGE THAT WAS READ PROPERLY AND PUBLISHES NOTHING, WHICH IS A DIFFERENT FACT FROM EVERY
@@ -1306,19 +1324,19 @@ data two_summarized_figures_fixture: CabinetDensityClaim = DensityPublished {
 // Philadelphia suite publishes neither; Netrality publishes both. A consumer reading grain off
 // density, in either direction, breaks here.
 test fn w_pennsylvania_grain_is_independent_of_density() -> Bool {
-  grain_admits_single_cabinet(g: netrality_401_n_broad_retail_grain)
-    && grain_admits_single_cabinet(g: tierpoint_philadelphia_retail_grain)
-    && grain_admits_single_cabinet(g: tierpoint_allentown_retail_grain)
-    && grain_admits_single_cabinet(g: tierpoint_bethlehem_retail_grain)
-    && grain_admits_single_cabinet(g: tierpoint_lehigh_valley_retail_grain)
-    && grain_admits_single_cabinet(g: tierpoint_valley_forge_retail_grain)
-    && grain_admits_single_cabinet(g: h5_philadelphia_retail_grain)
+  grain_offers_single_cabinet(g: netrality_401_n_broad_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_philadelphia_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_allentown_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_bethlehem_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_lehigh_valley_retail_grain)
+    && grain_offers_single_cabinet(g: tierpoint_valley_forge_retail_grain)
+    && grain_offers_single_cabinet(g: h5_philadelphia_retail_grain)
     && density_claim_figures(d: tierpoint_philadelphia_density).length() == 0
-    && !grain_admits_single_cabinet(g: databank_phl1_retail_grain)
-    && !grain_admits_single_cabinet(g: lightwave_philadelphia_retail_grain)
-    && !grain_admits_single_cabinet(g: flexential_philadelphia_collegeville_retail_grain)
-    && !grain_admits_single_cabinet(g: five_9s_allentown_retail_grain)
-    && !grain_admits_single_cabinet(g: three_sixty_five_philadelphia_retail_grain)
+    && !grain_offers_single_cabinet(g: databank_phl1_retail_grain)
+    && !grain_offers_single_cabinet(g: lightwave_philadelphia_retail_grain)
+    && !grain_offers_single_cabinet(g: flexential_philadelphia_collegeville_retail_grain)
+    && !grain_offers_single_cabinet(g: five_9s_allentown_retail_grain)
+    && !grain_offers_single_cabinet(g: three_sixty_five_philadelphia_retail_grain)
 }
 
 // THE REGION'S OWN COVERAGE RECEIPT, FOLDED. Review 62827 found the Pennsylvania survey landing in

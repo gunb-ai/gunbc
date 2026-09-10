@@ -193,20 +193,26 @@ fn manifest_observation(
 
 // The consumer: one call from a real commit attempt to a published outcome.
 //
-// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). Today this function is exercised by the
-// enrolled witnesses and by nothing else: no production route reaches it, so the declarations
-// below are a DECLARED FRONTIER rather than a consumed model, and this annotation is here so
-// that state is legible in the module rather than inferred from an import census.
+// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). gunbc.fabric_m0_publication
+// publish_work is the named join that holds a run's Work and calls this
+// function. That join is itself a DECLARED FRONTIER: today it is reached by
+// enrolled witnesses and by no job-ending on a run path. Rewriting this
+// paragraph as CONSUMED while the route terminated in a test was false.
 //
-// THE FRONTIER TRIGGER, STATED AS THE CAPABILITY THAT CONSUMES IT: a job-publication path that
-// holds a run's required work and decides its ending -- the roadmap's compute-artifact-return-
-// and-materialization capability, where a computation's declared outputs come back identified by
-// content through a manifest the caller reads. When that path exists, it calls this function to
-// turn a commit attempt into an ending, and the frontier closes. Naming a smaller artifact -- one
-// caller, one job, one emitted script -- would be satisfied while the capability stayed dead.
+// THE FRONTIER TRIGGER, STATED AS THE CAPABILITY THAT CONSUMES IT: a
+// required-CI (or other real job) ending that already possesses that run's
+// Work, the attempt's commit transport, and an independent origin readback
+// of the commit manifest -- the roadmap's compute-artifact-return-and-
+// materialization capability -- and that decides the process/check conclusion
+// from the JobPublication this function returns. Naming a smaller artifact --
+// one fold, one witness file, one emitted script -- would be satisfied while
+// the capability stayed dead. Sibling lanes own origin binding and cache;
+// fabricating DurableOriginRead on the required-CI path would be the silent
+// default this gate exists to refuse.
 //
-// This is a consumption frontier, NOT a guarantee drop: the gate's walls are enrolled and
-// executing over the population they are declared for, so no rung is being lowered by the wait.
+// This is a consumption frontier, NOT a guarantee drop: the gate's walls are
+// enrolled and executing over the population they are declared for, so no
+// rung is being lowered by the wait.
 fn publish_after_commit(
   namespace: CommitNamespace,
   attempt: AttemptIdentity,

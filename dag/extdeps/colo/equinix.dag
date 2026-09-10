@@ -89,7 +89,7 @@ data equinix_ny9_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   citation: "equinix.com NY9 products table, read 2026-09-08",
 }
 
-data equinix_facilities: List<ColoFacilityRow> = concat(equinix_secaucus_campus, [equinix_ny1, equinix_ny3, equinix_ny7, equinix_ny9])
+data equinix_facilities: List<ColoFacilityRow> = concat(equinix_secaucus_campus, [equinix_ny1, equinix_ny3, equinix_ny7, equinix_ny9, equinix_ny13])
 
 data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "equinix.com sales",
@@ -230,6 +230,41 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // while the SCREEN stays as empty as it is today, and stays that way until an operator publishes a
 // power factor or a watt figure. The resolve step below also stays owed, because a floor is genuinely
 // not a maximum and the maximum is still unread.
+
+// THE OPERATOR'S ONE NEW YORK-STATE IBX IN THIS REGION, and the census's Equinix rows were until
+// now entirely Secaucus. NY13 sits in Westchester County, which matters because the module's
+// existing quote-only note reasons about a New Jersey campus and a Westchester cabinet is a
+// different route, a different power market and a different latency to Manhattan.
+//
+// FETCH NOTE: equinix.com refuses a bare user-agent with HTTP 403 - a fact about the CLIENT STRING
+// and not about the host, which answers normally over HTTPS to a full browser user-agent. The
+// reading below was taken directly from the operator's own NY13 page on 2026-09-08, and the 403 is
+// recorded so the next reader does not conclude the page is gone.
+//
+// The earlier phrasing here said the reading was taken "over a plain HTTP client", which is
+// ambiguous between a client KIND and the http:// SCHEME - and it produced a false positive in a
+// scan for modules citing Https while having been read over HTTP (review 63016 found a real one in
+// extdeps.colo.vastnet). A word that reads as evidence for a proposition it does not discriminate is
+// the recurring defect this census keeps finding; this one was in my own note.
+data equinix_ny13: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY13",
+  address: AddressListed {
+    street: "401 Fieldcrest Drive, Elmsford, NY 10523",
+    citation: "equinix.com NY13 IBX page, read 2026-09-08",
+  },
+  municipality: "Elmsford",
+  region_code: "NY",
+  facility_note: "Westchester County. The operator's own page describes NY13 as serving large financial, media and enterprise companies with premium interconnection - the same wording family as the Secaucus rows, and the same absence of any retail-grain or density statement.",
+}
+
+data equinix_ny13_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The NY13 page states no kW-per-cabinet figure (read 2026-09-08). Equinix publishes density elsewhere in its marketing; nothing on this facility's page does, and a corporate figure is not a facility reading. Ask for the per-cabinet ceiling at NY13 specifically.",
+}
+
+data equinix_ny13_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The NY13 page names colocation and interconnection but does not state whether a single cabinet is a sellable unit at this IBX. The module's existing rate note asserts the operator sells retail cabinets by quote across the metro; that is an operator-level belief and this row does not convert it into a NY13 reading.",
+}
 
 data equinix_ny1_density: CabinetDensityClaim = DensityUnread {
   obligation: "The operator's own NY1 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny1, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY1 occurs 19 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"2kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why this row is still UNCONVERTED rather than unrepresentable: the carrier now holds a floor in apparent power as CapabilityAtLeast over PublishedApparentPower, so the wall this row once waited on has landed and the remaining debt is that nobody has retyped these seven readings off the operator's pages. Reading the numeral out of this obligation is NOT that conversion. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY1 (165 Halsey Street, Newark)."
