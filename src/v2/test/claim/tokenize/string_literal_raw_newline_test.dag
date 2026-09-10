@@ -6,6 +6,7 @@ import v2.std.compilers.lexing { ModeledLexRules, TokenStream }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex_rules }
 import v2.std.diagnostic { ByteRange, Textual, WholeFile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

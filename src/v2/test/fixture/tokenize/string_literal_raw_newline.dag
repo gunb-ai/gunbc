@@ -1,9 +1,0 @@
-module v2.test.fixture.tokenize.string_literal_raw_newline
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-// Identity-join plant for the 8-file lexer class: a string literal whose body
-// contains a raw line feed. v1.compiler.tokenize scan_string_body admits this;
-// dag_string_literal_lex_rule must admit the same and nothing further.
-data d: String = "line one
-line two"

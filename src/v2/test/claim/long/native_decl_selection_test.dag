@@ -1,4 +1,4 @@
-module v2.test.native_decl_selection
+module v2.test.long.native_decl_selection
 
 import v2.compiler.compile {
   native_test_context_from_ingest,
