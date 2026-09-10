@@ -174,7 +174,7 @@ data binding_chosen_by_pool_membership_rather_than_by_the_declared_rule: Recurri
 
     "That is not thin coverage, it is DESIGN section 5's fabricated-plausible-output arm: the compiler invents the dependency that makes the program work and says nothing. ",
 
-    "The type channel additionally has a whole-tree census (v1.compiler.cli_run compile_clean_unlisted_import_census); the value channel had neither a census nor a diagnostic. ",
+    "The type channel additionally has a whole-tree census (v1.compiler.cli_run compile_clean_diagnostic_census, whose unlisted_import_rows carry this class); the value channel had neither a census nor a diagnostic. ",
 
     "THE MECHANISM, EXECUTED RATHER THAN READ, and it is sharper than pool membership as this row has stated it so far: A MODULE WITH ZERO IMPORT LINES HAS ITS CROSS-MODULE DEPENDENCIES MANUFACTURED FROM ITS BARE REFERENCES, AND A MODULE WITH AT LEAST ONE IMPORT LINE DOES NOT. ",
 
