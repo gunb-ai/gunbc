@@ -67,15 +67,6 @@ fn firecracker_release_binary_path_in_tarball(rel: FirecrackerRelease) -> String
   ], "")
 }
 
-// THE JAILER IS A SEPARATE BINARY IN THE SAME TARBALL. Production starts Firecracker through it;
-// a path that execs Firecracker directly is a different operation and is not this builder.
-fn firecracker_release_jailer_path_in_tarball(rel: FirecrackerRelease) -> String {
-  join([
-    "release-", rel.version as String, "-", rel.arch as String,
-    "/jailer-", rel.version as String, "-", rel.arch as String,
-  ], "")
-}
-
 data firecracker_release_aarch64_tarball_sha256: NonEmptyStr = "8d0e69f6d6f9a1724551f607f18504052c16c1828ee3d4d7b6e6c73380871e0e" as NonEmptyStr
 
 // `firecracker --version` prints `Firecracker v<version>` on its first line; the readback compares

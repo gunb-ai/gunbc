@@ -129,13 +129,6 @@ fn runner_microvm_attempt_vm_config_path(attempt: MicroVmAttempt) -> String {
   join([runner_microvm_attempt_dir(attempt: attempt), "/vm-config.json"], "")
 }
 
-// FRESHNESS IS A PROPERTY OF CREATION, NOT OF CLEANUP. The workspace is a file under the
-// attempt root that did not exist a moment ago, so there is no prior tenant to erase. A
-// template copied per attempt would be equivalent only while nobody wrote to the template.
-fn runner_microvm_attempt_workspace_path(attempt: MicroVmAttempt) -> String {
-  join([runner_microvm_attempt_dir(attempt: attempt), "/work.img"], "")
-}
-
 // THE JAILER'S CHROOT BASE IS ATTEMPT-OWNED. A shared /run/jail is a prior-resource collision
 // across attempts; the attempt directory is already the storage isolation this module owns.
 fn runner_microvm_attempt_jail_base(attempt: MicroVmAttempt) -> String {
