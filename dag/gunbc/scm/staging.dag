@@ -344,6 +344,21 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
 // immediately below, so the two cannot disagree unless something separates them -- and now nothing
 // does. Found by applying external review's rule (carry the relationship as one value, do not compare
 // independently supplied peers) to the level above the one it was reported at.
+// WHY THE REMAINING TWO ARGUMENTS ARE NOT A PEER SEAM, STATED SO IT NEED NOT BE RE-DERIVED.
+//
+// This function still takes a repository and a record, and the entries it carries come from the RECORD
+// while the basis comes from a root resolved against the REPOSITORY. That is the shape peer seams wear,
+// so it is worth saying exactly why it is not one: the root is not supplied, it is resolved FROM
+// `record.identity.locator`. A locator is the content hash of the manifest's own entries, and the store
+// refuses to bind one locator to two objects -- so a manifest found at that locator in ANY store has the
+// same entries as `record`. Either the resolution finds that manifest, in which case basis and entries
+// describe the same content by construction, or it does not, in which case this refuses. There is no
+// third case in which they silently disagree.
+//
+// THE SAFETY IS THEREFORE INHERITED FROM CONTENT-ADDRESSING, NOT FROM THE ARGUMENT LIST. It is stated
+// here because that is a real premise a future change could remove -- a non-hash locator, a store that
+// tolerates collisions, or a resolution keyed on anything but the record's own identity would each turn
+// these two arguments back into peers, and the type system would not notice.
 fn stage_standing_against_base(
   repository: RepositoryEnvelope,
   record: CorpusManifestRecord,
