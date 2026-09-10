@@ -1,6 +1,7 @@
 module extdeps.github.repository_contents
 
 import std.types { Int, List, NonEmptyStr, String, Secret }
+import std.measure { ByteSize, byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -42,12 +43,37 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // 47d7383d049b36ff8eaba50912176928143dd9e9 returns .github/workflows/main.yml at blob
 // 99f1255bbfa20a11197716a8fdb4c4e3359a588b, 5172 bytes, base64-encoded.
 //
-// ENCODING IS CARRIED RATHER THAN ASSUMED. The documented encoding for a file this size is
-// base64, and the endpoint answers differently above one megabyte - it returns an empty content
-// string with encoding "none" and expects the caller to use the blob or raw endpoint instead. A
-// consumer that assumed base64 would silently decode an empty file into an empty workflow and
-// find no jobs in it, which is a fabricated observation rather than a refusal. The field is here
-// so that arm is representable and can be refused by whoever reads it.
+// THE SIZE BANDS ARE UPSTREAM'S OWN, AND THERE ARE THREE OF THEM RATHER THAN ONE. The contents
+// reference states them verbatim: "1 MB or smaller: All features of this endpoint are supported";
+// "Between 1-100 MB: Only the raw or object custom media types are supported"; "Greater than
+// 100 MB: This endpoint is not supported." So a JSON read of a file in the middle band comes back
+// 200 with an empty content string and encoding "none", and a file above the top band is not
+// served by this endpoint at all - which arrives as an ordinary REST refusal rather than as a
+// decodable body.
+//
+// THE CEILINGS ARE ByteSize AND THE RESPONSE'S OWN size FIELD IS NOT, and the split is deliberate
+// rather than half-done. std.measure owns byte quantities, so a bound this repository ASSERTS is a
+// ByteSize - anything else would re-mint the concept one module over, which section 2's "net
+// concepts must not grow by re-invention" forbids, and extdeps.github.hosted_runners already types
+// its memory and storage figures that way.
+//
+// The size FIELD is a different kind of thing: it is not a magnitude this repository asserts, it
+// is the shape of a JSON number upstream sends, and section 3 says an extdeps module models what
+// the API actually returns. hosted_runners is not a counter-example on inspection - its ByteSize
+// rows are AUTHORED catalog data read off a documentation page, not a decoded response body, and
+// no response type anywhere in extdeps decodes into a Measure. Converting at the boundary, once,
+// in a named function is the move available when an inward consumer needs the magnitude; nothing
+// in this change has one yet, so nothing converts yet.
+//
+// THE CEILINGS ARE DECLARED AND THE CLASSIFIER DOES NOT KEY ON THEM, which is deliberate rather
+// than an oversight. What upstream actually SIGNALS is the encoding - "none" is the endpoint
+// telling us it declined to inline the bytes - and re-deriving that decision from a threshold of
+// our own would be a second representation of one fact, free to disagree with the vendor the day
+// they move the band. The ceilings are here because a refusal that cannot say what bound it hit is
+// a refusal a reader cannot act on, so the arm CARRIES them; the vendor's own signal DECIDES.
+data contents_api_inline_ceiling: ByteSize = byte_size(count: 1000000)
+data contents_api_supported_ceiling: ByteSize = byte_size(count: 100000000)
+
 type RepositoryFileContent {
   name: String
   path: String

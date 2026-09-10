@@ -2,6 +2,7 @@ module gunbc.ci_workflow_source_read
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
 import std.resources { Network }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.transports.rest {
   classify_rest_outcome,
   RestExchangeSucceeded, RestExchangePerformance,
@@ -12,7 +13,9 @@ import extdeps.github.code_search {
 }
 import extdeps.github.repository_contents {
   RepositoryFileContent, contents_base64_encoding, contents_absent_encoding,
+  contents_api_inline_ceiling, contents_api_supported_ceiling,
 }
+import std.measure { byte_size_count }
 
 // THE READ HALF OF A PUBLIC CI-WORKFLOW SCAN, AND NOTHING ELSE.
 //
@@ -25,6 +28,23 @@ import extdeps.github.repository_contents {
 // EACH READ RETURNS A TYPED OUTCOME RATHER THAN A VALUE-OR-EMPTY. A scan that cannot tell a
 // rate-limit refusal from a repository with no matching workflow will fold both into "no
 // candidate here", and the deficit that shrank the population never ranks for fixing.
+
+// DECLARED FRONTIER (DESIGN section 3c), stated rather than left for a reader to notice. The
+// classifiers below are consumed by execution in this change - the claims drive the same functions
+// the effectful reads call - but the SCAN this module is named for is not in this diff: nothing
+// outside test.claim walks the search pages or canonicalizes their survivors, so
+// perform_code_search_page, perform_workflow_source_read and canonicalize_hit have no production
+// caller yet.
+//
+// NAMED CONSUMER: a scan producer that pages perform_code_search_page to exhaustion under a
+// declared bound, reads each survivor's workflow through perform_workflow_source_read at an exact
+// ref, and canonicalizes the survivors into workflow-source identities against a run receipt.
+// TRIGGER: a production func outside test.claim calls perform_code_search_page in a page walk and
+// canonicalize_hit on its results. SUFFICIENT FOR deleting this row. NOT satisfied by another
+// witness importing these functions, and NOT satisfied by a caller that reads one page - the
+// obligation this row carries is the page walk and its receipt, which is where a bounded scan
+// becomes a declared population rather than a sample nobody sized.
+data ci_workflow_scan_producer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a scan producer that pages perform_code_search_page under a declared bound, reads each survivor through perform_workflow_source_read at an exact ref, and canonicalizes them against a run receipt. TRIGGER: a production func outside test.claim calls perform_code_search_page in a page walk and canonicalize_hit on its results. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing these functions, nor by a caller that reads a single page." as NonEmptyStr)
 
 // -------------------------------------------------------------------------------------
 // A PAGE OF CODE SEARCH IS THREE OUTCOMES, NOT TWO, BECAUSE UPSTREAM SAYS SO. GitHub returns
@@ -87,7 +107,13 @@ type WorkflowSourceRead
   | WorkflowSourceEncodingUnrecognized { file: RepositoryFileContent, cause: NonEmptyStr }
   | WorkflowSourceRefused { performance: RestExchangePerformance }
 
-data workflow_source_too_large_cause: NonEmptyStr = "the contents endpoint answered 200 with encoding 'none' and an empty content string, which is what it does above its size ceiling; the file was NOT read and this is not a repository without a workflow. Re-read it through the git blob endpoint before recording anything about its jobs."
+fn workflow_source_too_large_cause() -> NonEmptyStr {
+  join(["the contents endpoint answered 200 with encoding 'none' and an empty content string, which is what it does for a file above the ",
+    to_string(byte_size_count(b: contents_api_inline_ceiling)),
+    "-byte band it will inline. The file was NOT read, and this is not a repository without a workflow. Re-read it through the git blob endpoint before recording anything about its jobs - and note that above ",
+    to_string(byte_size_count(b: contents_api_supported_ceiling)),
+    " bytes this endpoint serves nothing at all, which arrives as a REST refusal rather than through this arm."], "")
+}
 
 data workflow_source_unknown_encoding_cause: NonEmptyStr = "the contents endpoint answered 200 with an encoding this reader does not model; the bytes were not decoded and nothing may be concluded about the file's contents."
 
@@ -99,7 +125,7 @@ fn classify_workflow_source(file: RepositoryFileContent) -> WorkflowSourceRead {
   if file.encoding == contents_base64_encoding {
     WorkflowSourceObserved { file: file }
   } else if file.encoding == contents_absent_encoding {
-    WorkflowSourceTooLargeForContentsApi { file: file, cause: workflow_source_too_large_cause }
+    WorkflowSourceTooLargeForContentsApi { file: file, cause: workflow_source_too_large_cause() }
   } else {
     WorkflowSourceEncodingUnrecognized { file: file, cause: workflow_source_unknown_encoding_cause }
   }

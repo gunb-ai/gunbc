@@ -2,6 +2,7 @@ module test.claim.ci_workflow_source_read_witness_test
 
 import std.logic { Bool }
 import std.types { Int, String, Secret }
+import std.measure { byte_size }
 import extdeps.github.code_search {
   CodeSearchPage, CodeSearchHit, CodeSearchRepository, code_search_hits_read,
   hermetic_code_search_repository, hermetic_code_search_path, hermetic_code_search_name,
