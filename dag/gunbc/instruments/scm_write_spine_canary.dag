@@ -693,9 +693,22 @@ fn race_publications(
 // of the acceptance slice: an independent-edit merge must MERGE, and a genuine conflict must CONFLICT.
 // An instrument that merely printed what happened would be green on either, which is exactly the
 // change-detector shape a merge-blocking check may not have.
+// TWO OF THESE ARMS ARE INVERSE CONTROLS, AND THEY EXIST BECAUSE "THE CHILD EXITED NONZERO" IS NOT A
+// CONTROL. An acceptance driver proving that an independent-edit pair does NOT conflict used to do it
+// by invoking `--expect conflict` and requiring any nonzero exit. That is satisfied just as well by an
+// unreadable slot, a commit selection that does not resolve, or an unrecognised expectation -- none of
+// which observed the merge at all, so an earlier unrelated failure could satisfy the very step meant
+// to prove the merge came out clean.
+//
+// `MergedThoughConflictExpected` and `ConflictedThoughMergeExpected` exit SUCCESS only on the ONE
+// outcome that is the intended mismatch, and refuse every other arm including the refusal arms.
+// Neither PUBLISHES: they are asserting a negative, and a control that mutated the repository to
+// prove something did not happen would change the state the next step reads.
 type MergeExpectation
   = ExpectMerge
   | ExpectConflict
+  | MergedThoughConflictExpected
+  | ConflictedThoughMergeExpected
   | ExpectationUnrecognized { given: String }
 
 fn merge_expectation(expect: String) -> MergeExpectation {
@@ -703,6 +716,10 @@ fn merge_expectation(expect: String) -> MergeExpectation {
     ExpectMerge
   } else if expect == "conflict" {
     ExpectConflict
+  } else if expect == "merged-though-conflict-expected" {
+    MergedThoughConflictExpected
+  } else if expect == "conflicted-though-merge-expected" {
+    ConflictedThoughMergeExpected
   } else {
     ExpectationUnrecognized { given: expect }
   }
@@ -718,9 +735,21 @@ func spine_squash(
 ) -> ProcessExit {
   match merge_expectation(expect: expect) {
     ExpectationUnrecognized { given: g } =>
-      exit_failure(reason: join(["squash refused: --arg expect must be merge or conflict, not ", g], ""))
-    ExpectMerge => spine_squash_expecting(root: root, key: key, target: target, source: source, message: message, expectation: ExpectMerge)
-    ExpectConflict => spine_squash_expecting(root: root, key: key, target: target, source: source, message: message, expectation: ExpectConflict)
+      exit_failure(
+        reason: join([
+          "squash refused: --arg expect must be merge, conflict, merged-though-conflict-expected ",
+          "or conflicted-though-merge-expected, not ", g,
+        ], "")
+      )
+    other =>
+      spine_squash_expecting(
+        root: root,
+        key: key,
+        target: target,
+        source: source,
+        message: message,
+        expectation: other,
+      )
   }
 }
 
@@ -813,6 +842,36 @@ func squash_from(
   )
   match expectation {
     ExpectationUnrecognized { given: _ } => exit_failure(reason: "unreachable")
+    MergedThoughConflictExpected =>
+      match outcome {
+        SquashMerged { repository: _, reference: _ } => ExitSuccess
+        SquashMergeConflicted { conflicts: _ } =>
+          exit_failure(
+            reason: "control failed: these edits CONFLICTED, so they are not the independent pair this asserts"
+          )
+        other =>
+          exit_failure(
+            reason: join([
+              "control failed: expected a clean merge under a conflict expectation and the squash was refused with ",
+              squash_outcome_wire(outcome: other),
+            ], "")
+          )
+      }
+    ConflictedThoughMergeExpected =>
+      match outcome {
+        SquashMergeConflicted { conflicts: _ } => ExitSuccess
+        SquashMerged { repository: _, reference: _ } =>
+          exit_failure(
+            reason: "control failed: these edits MERGED, so they are not the conflicting pair this asserts"
+          )
+        other =>
+          exit_failure(
+            reason: join([
+              "control failed: expected a conflict under a merge expectation and the squash was refused with ",
+              squash_outcome_wire(outcome: other),
+            ], "")
+          )
+      }
     ExpectConflict =>
       match outcome {
         SquashMergeConflicted { conflicts: _ } => ExitSuccess
