@@ -202,7 +202,7 @@ test fn prior_resources_refuse_rather_than_reuse() -> Bool {
   }
 }
 
-test fn an_authorized_launch_consumes_network_slice_workspace_and_jailer() -> Bool {
+test fn an_authorized_plan_carries_network_slice_workspace_and_jailer_command() -> Bool {
   match issued_pairs() {
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 4, id: "ok1") {
