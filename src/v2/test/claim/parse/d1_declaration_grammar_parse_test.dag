@@ -10,20 +10,14 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound
 }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  Outcome,
-  Rejected,
-  Suggested,
-  bind_outcome,
-  node_locus
-}
+import v2.std.algebra { list_snoc_item }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Edge, Named, Node }
+import v2.std.node { Edge, Named, Node, Positional }
 import v2.std.optional { Absent, Optional, Present }
-import v2.std.witness { Holds, Violates, Witness, witness_violates }
+import v2.std.text { string_join }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -98,31 +92,46 @@ fn d1_find_where_host_conj(root: Node) -> Optional<Node> {
   }
 }
 
-fn d1_where_clause_survive_witness(root: Node) -> Witness<Node> {
-  match parse_subtree_find_production_captured(
-    root: root,
-    emitted: ^dag_surface_where_refinement_clause
-  ) {
-    ParseSubtreeFound { captured: captured } => Holds { value: captured }
-    ParseSubtreeAbsent =>
-      match d1_find_where_host_conj(root: root) {
-        Present { value: host } =>
-          witness_violates(
-            diagnostic: Diagnostic {
-              reason: ^where_clause_absent_from_admitted_tree,
-              at: node_locus(node: host),
-              correction: Suggested { node: host }
-            }
-          )
-        Absent =>
-          witness_violates(
-            diagnostic: Diagnostic {
-              reason: ^where_clause_host_conj_absent,
-              at: node_locus(node: root),
-              correction: Suggested { node: root }
-            }
-          )
-      }
+fn d1_edge_label_text(e: Edge) -> String {
+  match e.label {
+    Named { name: n } => symbol_lexeme(sym: n)
+    Positional => "positional"
+  }
+}
+
+fn d1_child_labels(n: Node) -> String {
+  string_join(
+    fields: fold(n.children, init: [], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: d1_edge_label_text(e: e))
+    }),
+    separator: ", "
+  )
+}
+
+fn d1_find_flag(root: Node) -> String {
+  match d1_tree_carries_where_clause(root: root) {
+    true => "find=true"
+    false => "find=false"
+  }
+}
+
+fn d1_locus_from_root(root: Node) -> String {
+  match d1_find_where_host_conj(root: root) {
+    Present { value: host } =>
+      string_join(
+        fields: ["variant_conj: [", d1_child_labels(n: host), "] ", d1_find_flag(root: root)],
+        separator: ""
+      )
+    Absent =>
+      string_join(
+        fields: [
+          "host-conj-absent: root children [",
+          d1_child_labels(n: root),
+          "] ",
+          d1_find_flag(root: root)
+        ],
+        separator: ""
+      )
   }
 }
 
@@ -158,39 +167,44 @@ test fn cause_a_where_reproducer_normalizes_holds() -> Bool {
   d1_normalize_accepted(text: d1_where_reproducer, file: ^d1_where_norm)
 }
 
-fn cause_a_where_clause_survives_normalize_locus() -> Witness<Node> {
+fn cause_a_where_clause_survives_normalize_locus() -> String {
   match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_norm) {
     Rejected { diagnostics: r } =>
-      witness_violates(diagnostic: r.head)
+      string_join(
+        fields: ["parse-refused: ", symbol_lexeme(sym: r.head.reason)],
+        separator: ""
+      )
     Accepted { value: brand_tree, diagnostics: _ } =>
-      match d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_carry_norm_bare) {
+      match normalize(parse_tree: brand_tree) {
         Rejected { diagnostics: r } =>
-          witness_violates(diagnostic: r.head)
-        Accepted { value: bare_tree, diagnostics: _ } =>
-          match normalize(parse_tree: brand_tree) {
-            Rejected { diagnostics: r } =>
-              witness_violates(diagnostic: r.head)
-            Accepted { value: brand_normalized, diagnostics: _ } =>
-              match d1_where_clause_survive_witness(root: brand_normalized.root) {
-                Violates { diagnostic: d } =>
-                  witness_violates(diagnostic: d)
-                Holds { value: _ } =>
-                  match normalize(parse_tree: bare_tree) {
-                    Rejected { diagnostics: r } =>
-                      witness_violates(diagnostic: r.head)
-                    Accepted { value: bare_normalized, diagnostics: _ } =>
-                      d1_where_clause_survive_witness(root: bare_normalized.root)
-                  }
-              }
-          }
+          string_join(
+            fields: ["normalize-refused: ", symbol_lexeme(sym: r.head.reason)],
+            separator: ""
+          )
+        Accepted { value: brand_normalized, diagnostics: _ } =>
+          d1_locus_from_root(root: brand_normalized.root)
       }
   }
 }
 
 test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
-  match cause_a_where_clause_survives_normalize_locus() {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+  match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_norm) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: brand_tree, diagnostics: _ } =>
+      match d1_tokenize_parse(text: d1_where_bare, file: ^d1_where_carry_norm_bare) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: bare_tree, diagnostics: _ } =>
+          match normalize(parse_tree: brand_tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: brand_normalized, diagnostics: _ } =>
+              match normalize(parse_tree: bare_tree) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: bare_normalized, diagnostics: _ } =>
+                  d1_tree_carries_where_clause(root: brand_normalized.root)
+                    && d1_tree_carries_where_clause(root: bare_normalized.root)
+              }
+          }
+      }
   }
 }
 

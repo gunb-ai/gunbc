@@ -10,20 +10,14 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound
 }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  Outcome,
-  Rejected,
-  Suggested,
-  bind_outcome,
-  node_locus
-}
+import v2.std.algebra { list_snoc_item }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Edge, Named, Node }
+import v2.std.node { Edge, Named, Node, Positional }
 import v2.std.optional { Absent, Optional, Present }
-import v2.std.witness { Holds, Violates, Witness, witness_violates }
+import v2.std.text { string_join }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -95,31 +89,51 @@ fn where_refinement_find_host_conj(root: Node) -> Optional<Node> {
   }
 }
 
-fn where_refinement_survive_witness(root: Node) -> Witness<Node> {
-  match parse_subtree_find_production_captured(
-    root: root,
-    emitted: ^dag_surface_where_refinement_clause
-  ) {
-    ParseSubtreeFound { captured: captured } => Holds { value: captured }
-    ParseSubtreeAbsent =>
-      match where_refinement_find_host_conj(root: root) {
-        Present { value: host } =>
-          witness_violates(
-            diagnostic: Diagnostic {
-              reason: ^where_clause_absent_from_admitted_tree,
-              at: node_locus(node: host),
-              correction: Suggested { node: host }
-            }
-          )
-        Absent =>
-          witness_violates(
-            diagnostic: Diagnostic {
-              reason: ^where_clause_host_conj_absent,
-              at: node_locus(node: root),
-              correction: Suggested { node: root }
-            }
-          )
-      }
+fn where_refinement_edge_label_text(e: Edge) -> String {
+  match e.label {
+    Named { name: n } => symbol_lexeme(sym: n)
+    Positional => "positional"
+  }
+}
+
+fn where_refinement_child_labels(n: Node) -> String {
+  string_join(
+    fields: fold(n.children, init: [], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: where_refinement_edge_label_text(e: e))
+    }),
+    separator: ", "
+  )
+}
+
+fn where_refinement_find_flag(root: Node) -> String {
+  match where_refinement_tree_carries_clause(root: root) {
+    true => "find=true"
+    false => "find=false"
+  }
+}
+
+fn where_refinement_locus_from_root(root: Node) -> String {
+  match where_refinement_find_host_conj(root: root) {
+    Present { value: host } =>
+      string_join(
+        fields: [
+          "variant_conj: [",
+          where_refinement_child_labels(n: host),
+          "] ",
+          where_refinement_find_flag(root: root)
+        ],
+        separator: ""
+      )
+    Absent =>
+      string_join(
+        fields: [
+          "host-conj-absent: root children [",
+          where_refinement_child_labels(n: root),
+          "] ",
+          where_refinement_find_flag(root: root)
+        ],
+        separator: ""
+      )
   }
 }
 
@@ -142,19 +156,25 @@ fn where_refinement_positive_parse_carries_clause_holds() -> Bool {
   }
 }
 
-fn where_refinement_clause_survives_normalize_locus() -> Witness<Node> {
+fn where_refinement_clause_survives_normalize_locus() -> String {
   match where_refinement_tokenize_parse(
     text: where_refinement_positive_bare_source,
     file: ^where_refinement_normalize_bare
   ) {
     Rejected { diagnostics: r } =>
-      witness_violates(diagnostic: r.head)
+      string_join(
+        fields: ["parse-refused: ", symbol_lexeme(sym: r.head.reason)],
+        separator: ""
+      )
     Accepted { value: tree, diagnostics: _ } =>
       match normalize(parse_tree: tree) {
         Rejected { diagnostics: r } =>
-          witness_violates(diagnostic: r.head)
+          string_join(
+            fields: ["normalize-refused: ", symbol_lexeme(sym: r.head.reason)],
+            separator: ""
+          )
         Accepted { value: normalized, diagnostics: _ } =>
-          where_refinement_survive_witness(root: normalized.root)
+          where_refinement_locus_from_root(root: normalized.root)
       }
   }
 }
@@ -171,9 +191,17 @@ test fn where_refinement_clause_parses_and_is_carried_holds() -> Bool {
 }
 
 test fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
-  match where_refinement_clause_survives_normalize_locus() {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+  match where_refinement_tokenize_parse(
+    text: where_refinement_positive_bare_source,
+    file: ^where_refinement_normalize_bare_bool
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: normalized, diagnostics: _ } =>
+          where_refinement_tree_carries_clause(root: normalized.root)
+      }
   }
 }
 
