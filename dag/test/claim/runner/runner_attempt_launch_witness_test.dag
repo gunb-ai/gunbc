@@ -24,14 +24,26 @@ import gunbc.runner_microvm_attempt {
 import gunbc.runner_microvm_network {
   runner_slot_tap_device_name, runner_microvm_nft_ruleset_text,
 }
+import std.dissolution { dissolution_description, dissolution_is_bound }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, OutsideTheLadder, StructurallyGuaranteed, StructurallyImpossible }
 import gunbc.runner_attempt_launch {
   AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedUnauthorized,
-  LaunchRefusedEmptyOrShortCredential, LaunchRefusedPriorResources,
+  LaunchRefusedEnvelope, LaunchRefusedPriorResources,
   LaunchRefusedConfigUnresolved,
   AttemptGround, GroundClear, GroundOccupied,
+  EnvelopeStanding, EnvelopeAdmitted, EnvelopeAbsent, EnvelopeMalformed,
+  EnvelopeSignatureRejected, EnvelopeBoundToDifferentUnit, EnvelopeBoundToDifferentBoot,
+  EnvelopeNonceMismatch, EnvelopeBoundToDifferentAttempt, EnvelopePayloadDigestMismatch,
+  EnvelopePayloadBelowFloor, EnvelopePayloadAboveCeiling,
   plan_attempt_launch, planned_jailer_launches,
   work_standing_from_vmm_exit, vmm_exit_establishes_work,
   jailer_cgroup_flag_is_not_placement, placement_is_cgroup_join_then_exec,
+  production_may_dispatch_attempt_launch,
+  recovered_host_image_source_dissolution_satisfied,
+  reported_attempt_launch_rung,
+  host_boot_cutover_frontier, jit_mint_http_realization_frontier,
+  host_pid1_refusal_is_outside_this_planner,
+  NoBootSecretArrived, Stage2RootTransitionRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -73,7 +85,7 @@ fn plan_for(
   pair: IssuedPair,
   account: MoneyAccount,
   attempt: MicroVmAttempt,
-  bytes: Int,
+  envelope: EnvelopeStanding,
   ground: AttemptGround,
 ) -> AttemptLaunchPlan {
   plan_attempt_launch(
@@ -84,11 +96,27 @@ fn plan_for(
     demand: pair.grant.context.demand,
     offer: pair.grant.object.offer,
     attempt: attempt,
-    credential_bytes: bytes,
+    envelope: envelope,
     ground: ground,
     jailer_binary: "/bin/jailer",
     firecracker_binary: "/bin/firecracker",
   )
+}
+
+fn admitted(n: Int) -> EnvelopeStanding {
+  EnvelopeAdmitted { bytes: n }
+}
+
+fn launches_for(
+  pair: IssuedPair,
+  account: MoneyAccount,
+  attempt: MicroVmAttempt,
+  envelope: EnvelopeStanding,
+  ground: AttemptGround,
+) -> Int {
+  planned_jailer_launches(plan: plan_for(
+    pair: pair, account: account, attempt: attempt, envelope: envelope, ground: ground,
+  ))
 }
 
 test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
@@ -96,12 +124,40 @@ test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
     Cons { head: pair, tail: _ } =>
       match accepted_attempt(i: 1, id: "cred0") {
         Cons { head: a, tail: _ } =>
-          match plan_for(pair: pair, account: pair.account, attempt: a, bytes: 0, ground: GroundClear) {
-            LaunchRefusedEmptyOrShortCredential { bytes: n } =>
-              n == 0 && planned_jailer_launches(plan: plan_for(
-                pair: pair, account: pair.account, attempt: a, bytes: 0, ground: GroundClear,
-              )) == 0
-            _ => false
+          match plan_for(pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 0), ground: GroundClear) {
+            LaunchRefusedEnvelope { standing: s } =>
+              match s {
+                EnvelopePayloadBelowFloor { bytes: n } =>
+                  n == 0 && launches_for(
+                    pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 0), ground: GroundClear,
+                  ) == 0
+                EnvelopeAdmitted { bytes: _ } => false
+                EnvelopeAbsent => false
+                EnvelopeMalformed => false
+                EnvelopeSignatureRejected => false
+                EnvelopeBoundToDifferentUnit => false
+                EnvelopeBoundToDifferentBoot => false
+                EnvelopeNonceMismatch => false
+                EnvelopeBoundToDifferentAttempt => false
+                EnvelopePayloadDigestMismatch => false
+                EnvelopePayloadAboveCeiling { bytes: _ } => false
+              }
+            LaunchRefusedUnauthorized { authorization: _ } => false
+            LaunchRefusedPriorResources => false
+            LaunchRefusedConfigUnresolved { cause: _ } => false
+            LaunchAuthorized {
+              authorization: _,
+              tap_device: _,
+              guest_ip_boot_arg: _,
+              nft_ruleset: _,
+              slice: _,
+              workspace_path: _,
+              workspace_format: _,
+              kvm_device: _,
+              vm_config: _,
+              jailer: _,
+              placement: _,
+            } => false
           }
         Empty {} => false
       }
@@ -115,12 +171,12 @@ test fn an_unauthorized_grant_yields_zero_jailer_launches() -> Bool {
       match accepted_attempt(i: 2, id: "unauth") {
         Cons { head: a, tail: _ } =>
           match plan_for(
-            pair: pair, account: exhausted_account, attempt: a, bytes: 4096, ground: GroundClear,
+            pair: pair, account: exhausted_account, attempt: a, envelope: admitted(n: 4096), ground: GroundClear,
           ) {
             LaunchRefusedUnauthorized { authorization: _ } =>
-              planned_jailer_launches(plan: plan_for(
-                pair: pair, account: exhausted_account, attempt: a, bytes: 4096, ground: GroundClear,
-              )) == 0
+              launches_for(
+                pair: pair, account: exhausted_account, attempt: a, envelope: admitted(n: 4096), ground: GroundClear,
+              ) == 0
             _ => false
           }
         Empty {} => false
@@ -135,11 +191,11 @@ test fn prior_resources_refuse_rather_than_reuse() -> Bool {
       match accepted_attempt(i: 3, id: "prior") {
         Cons { head: a, tail: _ } =>
           match plan_for(
-            pair: pair, account: pair.account, attempt: a, bytes: 4096, ground: GroundOccupied,
+            pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 4096), ground: GroundOccupied,
           ) {
-            LaunchRefusedPriorResources => planned_jailer_launches(plan: plan_for(
-              pair: pair, account: pair.account, attempt: a, bytes: 4096, ground: GroundOccupied,
-            )) == 0
+            LaunchRefusedPriorResources => launches_for(
+              pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 4096), ground: GroundOccupied,
+            ) == 0
             _ => false
           }
         Empty {} => false
@@ -154,7 +210,7 @@ test fn an_authorized_launch_consumes_network_slice_workspace_and_jailer() -> Bo
       match accepted_attempt(i: 4, id: "ok1") {
         Cons { head: a, tail: _ } =>
           match plan_for(
-            pair: pair, account: pair.account, attempt: a, bytes: 4096, ground: GroundClear,
+            pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 4096), ground: GroundClear,
           ) {
             LaunchAuthorized {
               authorization: _,
@@ -184,11 +240,11 @@ test fn an_authorized_launch_consumes_network_slice_workspace_and_jailer() -> Bo
                 && (fmt.program as String) == "mke2fs"
                 && count(cfg.drives) == 3
                 && planned_jailer_launches(plan: plan_for(
-                  pair: pair, account: pair.account, attempt: a, bytes: 4096, ground: GroundClear,
+                  pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 4096), ground: GroundClear,
                 )) == 1
             }
             LaunchRefusedUnauthorized { authorization: _ } => false
-            LaunchRefusedEmptyOrShortCredential { bytes: _ } => false
+            LaunchRefusedEnvelope { standing: _ } => false
             LaunchRefusedPriorResources => false
             LaunchRefusedConfigUnresolved { cause: _ } => false
           }
@@ -206,3 +262,64 @@ test fn a_clean_vmm_exit_is_not_evidence_that_work_ran() -> Bool {
 test fn the_jailer_cgroup_flag_does_not_place_the_process() -> Bool {
   jailer_cgroup_flag_is_not_placement() && !jailer_cgroup_version_flag_places_the_process()
 }
+
+test fn production_does_not_dispatch_the_shadow_planner() -> Bool {
+  !production_may_dispatch_attempt_launch()
+}
+
+test fn recovered_dissolution_is_not_satisfied_by_y_beside_x() -> Bool {
+  !recovered_host_image_source_dissolution_satisfied()
+}
+
+test fn reported_rung_is_the_minimum_across_paths_and_is_mitigatable() -> Bool {
+  match reported_attempt_launch_rung() {
+    Mitigatable => true
+    OutsideTheLadder => false
+    MechanicallyPreventable => false
+    StructurallyGuaranteed => false
+    StructurallyImpossible => false
+  }
+}
+
+test fn the_cutover_frontier_names_the_capability_and_is_unbound() -> Bool {
+  let d = dissolution_description(condition: host_boot_cutover_frontier)
+  !dissolution_is_bound(condition: host_boot_cutover_frontier)
+    && string_contains(s: d, pattern: "Y execs at host boot")
+    && string_contains(s: d, pattern: "host image is built from Y")
+    && string_contains(s: d, pattern: "NOT satisfied by this planner compiling")
+}
+
+test fn the_mint_frontier_names_github_pr_10923() -> Bool {
+  let d = dissolution_description(condition: jit_mint_http_realization_frontier)
+  !dissolution_is_bound(condition: jit_mint_http_realization_frontier)
+    && string_contains(s: d, pattern: "10923")
+    && string_contains(s: d, pattern: "github_effect_perform")
+}
+
+test fn host_pid1_refusals_are_outside_the_per_attempt_planner() -> Bool {
+  host_pid1_refusal_is_outside_this_planner(r: NoBootSecretArrived)
+    && host_pid1_refusal_is_outside_this_planner(r: Stage2RootTransitionRefused)
+}
+
+test fn every_x_envelope_refusal_arm_yields_zero_jailer_launches() -> Bool {
+  match issued_pairs() {
+    Cons { head: pair, tail: _ } =>
+      match accepted_attempt(i: 5, id: "envx") {
+        Cons { head: a, tail: _ } =>
+          launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeAbsent, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeMalformed, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeSignatureRejected, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeBoundToDifferentUnit, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeBoundToDifferentBoot, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeNonceMismatch, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeBoundToDifferentAttempt, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadDigestMismatch, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadBelowFloor { bytes: 100 }, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadAboveCeiling { bytes: 70000 }, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 70000), ground: GroundClear) == 0
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+

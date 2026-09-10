@@ -22,6 +22,9 @@ import product.fabric.grant_issue {
   GrantAuthorizesDifferentWork, GrantAnswersDifferentDemand, GrantIssuedAgainstDifferentOffer,
   grant_authorizes_reservation,
 }
+import gunbc.guarantee_rung {
+  GuaranteeRung, Mitigatable, MechanicallyPreventable, guarantee_rung_index,
+}
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, jit_admission_axis_standing,
   AxisRequired, HostEnvelopeNonemptyAndFresh,
@@ -47,14 +50,53 @@ import extdeps.systemd.systemd_run { SystemdRunProperty }
 
 data runner_attempt_launch_disposition: Disposition = SingleAuthority
 
-// DECLARED FRONTIER (DESIGN 3c). Step 6's mint is a GitHub HTTP effect. A separate lane is
-// building the GitHubEffect performer; this module must not grow a second one. NAMED CONSUMER:
-// plan_attempt_launch's credential arm, which currently takes a presented byte count. TRIGGER:
-// that performer lands and this planner obtains encoded_jit_config through it. SUFFICIENT FOR
-// deleting this row. NOT satisfied by wget or a host HTTP server.
-data jit_mint_http_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_attempt_launch plan_attempt_launch credential arm. TRIGGER: the GitHubEffect performer lane lands a modeled HTTP realization of generate-jitconfig; this planner then takes the minted blob from that effect rather than a presented byte count. SUFFICIENT FOR deleting this row. NOT satisfied by a second HTTP stack in this module." as NonEmptyStr,
+// THE CUTOVER CAPABILITY, NOT AN ARTIFACT. Shadow Y is this planner. The transition fires when
+// THIS planner (or its successor of the same root) EXECUTES AT HOST BOOT and the host image is
+// BUILT FROM THAT MODEL, so X's ISO path has no remaining production consumer. NAMED CONSUMER:
+// the host-image build that carries this fold as PID 1's per-attempt driver. TRIGGER: that
+// capability — Y execs at host boot, image built from Y — not a binary in a checkout, not a
+// witness, not recovered/ remaining as evidence. SUFFICIENT FOR deleting recovered/ and this
+// frontier together. NOT satisfied by this module existing beside the recovered init.
+data host_boot_cutover_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the host-image build whose per-attempt driver is gunbc.runner_attempt_launch plan_attempt_launch executed at host boot on tmpfs. TRIGGER: that capability holds — Y execs at host boot and the host image is built from Y — so the recovered initramfs/init path has zero production consumers. SUFFICIENT FOR deleting docs/recovered/mtcollins-host-image-source and this row in one motion. NOT satisfied by this planner compiling, by a gunbc binary in a checkout, or by Y sitting beside X." as NonEmptyStr,
 )
+
+// DECLARED FRONTIER (DESIGN 3c). Step 6's mint is a GitHub HTTP effect. Do not take a dependency
+// on unmerged gunbc#10923. NAMED CONSUMER: plan_attempt_launch's envelope arm. TRIGGER: #10923
+// merges gunbc.github_effect_perform (classify_github_http_outcome / github_effect_http_path for
+// GenerateOrganizationJitConfig) and this planner obtains encoded_jit_config through that
+// realization. SUFFICIENT FOR deleting this row. NOT satisfied by wget, a host HTTP server, or a
+// second performer in this module.
+data jit_mint_http_realization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_attempt_launch plan_attempt_launch envelope arm. TRIGGER: gunbc#10923 merges gunbc.github_effect_perform so generate-jitconfig is a classified GitHubEffect HTTP realization; this planner then takes the minted blob from that effect rather than a presented EnvelopeStanding. SUFFICIENT FOR deleting this row. NOT satisfied by wget, a second HTTP stack here, or an unmerged #10923." as NonEmptyStr,
+)
+
+// SHADOW MEANS SHADOW. No fleet-converge entry, no dual dispatch, no "use Y when available".
+fn production_may_dispatch_attempt_launch() -> Bool {
+  false
+}
+
+// recovered/'s dissolution is NOT this PR. Y beside X does not satisfy it.
+fn recovered_host_image_source_dissolution_satisfied() -> Bool {
+  false
+}
+
+// §4b(1): the reported rung is the MINIMUM across in-scope paths. The planner-witness path has
+// executed REDs in this change. The host-boot jailer-exec path has not: mtcollins1 is powered off
+// and placeability is still access-refused. Claiming MechanicallyPreventable for the class would
+// be inflation.
+data attempt_launch_planner_witness_rung: GuaranteeRung = MechanicallyPreventable
+
+data attempt_launch_host_boot_exec_rung: GuaranteeRung = Mitigatable
+
+fn reported_attempt_launch_rung() -> GuaranteeRung {
+  if guarantee_rung_index(r: attempt_launch_host_boot_exec_rung)
+    <= guarantee_rung_index(r: attempt_launch_planner_witness_rung) {
+    attempt_launch_host_boot_exec_rung
+  } else {
+    attempt_launch_planner_witness_rung
+  }
+}
 
 // THE JAILER FILESYSTEM CANNOT CARRY noexec OR nodev: the stock jailer copies the VMM into the
 // chroot and mknods /dev/kvm there. Containment is chroot, namespaces, cgroup, and the uid drop.
@@ -85,13 +127,35 @@ type AttemptGround
   = GroundClear
   | GroundOccupied
 
+// X's run_attempt admission order after a fetch: absent, malformed, signature, unit, boot,
+// nonce, attempt, payload digest, floor, ceiling. Presented here because mint is still the
+// #10923 frontier; the planner must still refuse every arm so the later cut does not erase a
+// correctness distinction. Host-once refusals (no boot secret, stage2 missing files) are PID 1
+// and are outside this per-attempt planner.
+type EnvelopeStanding
+  = EnvelopeAdmitted { bytes: Int }
+  | EnvelopeAbsent
+  | EnvelopeMalformed
+  | EnvelopeSignatureRejected
+  | EnvelopeBoundToDifferentUnit
+  | EnvelopeBoundToDifferentBoot
+  | EnvelopeNonceMismatch
+  | EnvelopeBoundToDifferentAttempt
+  | EnvelopePayloadDigestMismatch
+  | EnvelopePayloadBelowFloor { bytes: Int }
+  | EnvelopePayloadAboveCeiling { bytes: Int }
+
+type HostPid1RefusalOutsideThisPlanner
+  = NoBootSecretArrived
+  | Stage2RootTransitionRefused
+
 type PlacementBeforeExec
   = CgroupJoinThenExec
   | PlacementNotEstablished
 
 type AttemptLaunchPlan
   = LaunchRefusedUnauthorized { authorization: GrantAuthorization }
-  | LaunchRefusedEmptyOrShortCredential { bytes: Int }
+  | LaunchRefusedEnvelope { standing: EnvelopeStanding }
   | LaunchRefusedPriorResources
   | LaunchRefusedConfigUnresolved { cause: String }
   | LaunchAuthorized {
@@ -123,6 +187,54 @@ fn credential_bytes_admit(bytes: Int) -> Bool {
   envelope_floor_is_required()
     && bytes >= jit_config_byte_floor
     && bytes <= jit_config_byte_ceiling
+}
+
+fn envelope_admits_launch(standing: EnvelopeStanding) -> Bool {
+  match standing {
+    EnvelopeAdmitted { bytes: n } => credential_bytes_admit(bytes: n)
+    EnvelopeAbsent => false
+    EnvelopeMalformed => false
+    EnvelopeSignatureRejected => false
+    EnvelopeBoundToDifferentUnit => false
+    EnvelopeBoundToDifferentBoot => false
+    EnvelopeNonceMismatch => false
+    EnvelopeBoundToDifferentAttempt => false
+    EnvelopePayloadDigestMismatch => false
+    EnvelopePayloadBelowFloor { bytes: _ } => false
+    EnvelopePayloadAboveCeiling { bytes: _ } => false
+  }
+}
+
+fn refuse_or_normalize_envelope(standing: EnvelopeStanding) -> EnvelopeStanding {
+  match standing {
+    EnvelopeAdmitted { bytes: n } =>
+      if credential_bytes_admit(bytes: n) {
+        standing
+      } else {
+        if n < jit_config_byte_floor {
+          EnvelopePayloadBelowFloor { bytes: n }
+        } else {
+          EnvelopePayloadAboveCeiling { bytes: n }
+        }
+      }
+    EnvelopeAbsent => standing
+    EnvelopeMalformed => standing
+    EnvelopeSignatureRejected => standing
+    EnvelopeBoundToDifferentUnit => standing
+    EnvelopeBoundToDifferentBoot => standing
+    EnvelopeNonceMismatch => standing
+    EnvelopeBoundToDifferentAttempt => standing
+    EnvelopePayloadDigestMismatch => standing
+    EnvelopePayloadBelowFloor { bytes: _ } => standing
+    EnvelopePayloadAboveCeiling { bytes: _ } => standing
+  }
+}
+
+fn host_pid1_refusal_is_outside_this_planner(r: HostPid1RefusalOutsideThisPlanner) -> Bool {
+  match r {
+    NoBootSecretArrived => true
+    Stage2RootTransitionRefused => true
+  }
 }
 
 fn placement_is_cgroup_join_then_exec(p: PlacementBeforeExec) -> Bool {
@@ -177,7 +289,7 @@ fn plan_attempt_launch(
   demand: FabricIdentity<NonEmptyStr, DemandKey>,
   offer: FabricIdentity<NonEmptyStr, OfferKey>,
   attempt: MicroVmAttempt,
-  credential_bytes: Int,
+  envelope: EnvelopeStanding,
   ground: AttemptGround,
   jailer_binary: String,
   firecracker_binary: String,
@@ -194,7 +306,7 @@ fn plan_attempt_launch(
     GrantAuthorizes => plan_after_authorization(
       authorization: authorization,
       attempt: attempt,
-      credential_bytes: credential_bytes,
+      envelope: envelope,
       ground: ground,
       jailer_binary: jailer_binary,
       firecracker_binary: firecracker_binary,
@@ -209,7 +321,7 @@ fn plan_attempt_launch(
 fn plan_after_authorization(
   authorization: GrantAuthorization,
   attempt: MicroVmAttempt,
-  credential_bytes: Int,
+  envelope: EnvelopeStanding,
   ground: AttemptGround,
   jailer_binary: String,
   firecracker_binary: String,
@@ -217,15 +329,15 @@ fn plan_after_authorization(
   match ground {
     GroundOccupied => LaunchRefusedPriorResources
     GroundClear =>
-      if !credential_bytes_admit(bytes: credential_bytes) {
-        LaunchRefusedEmptyOrShortCredential { bytes: credential_bytes }
-      } else {
+      if envelope_admits_launch(standing: envelope) {
         plan_authorized_steps(
           authorization: authorization,
           attempt: attempt,
           jailer_binary: jailer_binary,
           firecracker_binary: firecracker_binary,
         )
+      } else {
+        LaunchRefusedEnvelope { standing: refuse_or_normalize_envelope(standing: envelope) }
       }
   }
 }
@@ -290,7 +402,7 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
       placement: _,
     } => 1
     LaunchRefusedUnauthorized { authorization: _ } => 0
-    LaunchRefusedEmptyOrShortCredential { bytes: _ } => 0
+    LaunchRefusedEnvelope { standing: _ } => 0
     LaunchRefusedPriorResources => 0
     LaunchRefusedConfigUnresolved { cause: _ } => 0
   }
