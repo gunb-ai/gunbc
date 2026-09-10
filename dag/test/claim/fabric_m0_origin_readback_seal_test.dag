@@ -67,30 +67,60 @@ fn blocking_keys(source: String) -> List<String> {
   }
 }
 
-fn keys_only_in(a: List<String>, b: List<String>) -> List<String> {
-  a |> filter(k => (b |> filter(x => x == k)).count() == 0)
+fn key_count(keys: List<String>, k: String) -> Int {
+  (keys |> filter(x => x == k)).count()
+}
+
+fn distinct_keys(xs: List<String>) -> List<String> {
+  fold(xs, init: [], f: (acc, k) => if key_count(keys: acc, k: k) == 0 { concat(acc, [k]) } else { acc })
+}
+
+// COMPARED AS A MULTISET, PER KEY, because a set difference cancels multiplicity. An earlier
+// revision filtered "keys of a not present in b", so a key occurring TWICE on the red side and once
+// on green cancelled completely and a second unintended refusal on an already-shared key was
+// invisible -- the exact failure the `== 1` assertions elsewhere in this file exist to close, left
+// open in the comparison that was supposed to be the strictest thing here.
+fn key_delta_is_exactly(red: List<String>, green: List<String>, target: String) -> Bool {
+  distinct_keys(xs: concat(red, green))
+    |> all(k =>
+         if k == target {
+           key_count(keys: red, k: k) == key_count(keys: green, k: k) + 1
+         } else {
+           key_count(keys: red, k: k) == key_count(keys: green, k: k)
+         })
 }
 
 fn sole_constructor_on_origin_reading(source: String) -> Int {
   keyed_count(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: "OriginReading")
 }
 
-// THE ONE-AXIS PRODUCER. Both arms below come from THIS function, so their module header, their
-// import block and their signature are byte-identical and the ONLY thing that differs is the
-// expression that produces the reading. That is what makes the closure cancellation SHOWN rather
-// than asserted: an earlier revision compared two hand-written sources whose imports differed, so
-// the shared closure was assumed to cancel and never demonstrated.
+// THE ONE-AXIS PRODUCER, AND THE AXIS IS NOW GENUINELY ONE. Both arms come from this function, so
+// module header, import block, signature AND RETURN TYPE are byte-identical; the only thing that
+// differs is the expression that produces the reading.
+//
+// AN EARLIER REVISION VARIED TWO AXES and called it one, which is the same overclaim class this PR
+// exists to repair. Its arms returned OriginReading and OriginReadingOutcome respectively, because
+// the sanctioned route yields an Outcome by construction, so a delta attributable to the RETURN TYPE
+// alone was not excluded by the comparison. The fix is not a disclosure: both arms return
+// OriginReadingOutcome. That is authorable because OriginReadingOutcome is an ordinary coproduct
+// whose OriginReadingTaken variant CARRIES the sealed record -- so the forged arm still has to write
+// the forbidden literal, and still refuses on it, while the shapes on either side match exactly.
+//
+// Worth stating because it is the wall itself: a same-return-type pair around the BARE OriginReading
+// is NOT authorable, and cannot be. A green arm returning a bare reading would have to unwrap the
+// Outcome, whose unavailable branch would then need to produce an OriginReading from nothing -- which
+// is precisely what has no constructor. The seal is what makes that pair unwritable.
 fn probe_source(body: String) -> String {
-  "module probe_fabric_m0_axis\nimport std.types { NonEmptyStr }\nimport gunbc.fabric_m0_origin_readback { OriginReading, OriginReadingOutcome, read_origin_staged_file }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn subject(p: NonEmptyStr) -> "
-    + body + "\n"
+  "module probe_fabric_m0_axis\nimport std.types { NonEmptyStr }\nimport gunbc.fabric_m0_origin_readback { OriginReading, OriginReadingOutcome, OriginReadingTaken, read_origin_staged_file }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn subject(p: NonEmptyStr) -> OriginReadingOutcome {\n  "
+    + body + "\n}\n"
 }
 
 // RED 1: an ordinary module pairs a digest with a file it never read. This is the laundering in its
 // exact production shape -- a real 64-hex SHA-256 stamped onto a path of the author's choosing.
-data forged_reading_source: String = "OriginReading {\n  OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } }\n}"
+data forged_reading_source: String = "OriginReadingTaken { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }"
 
-// The GREEN arm of the same producer: the sanctioned route, same imports, same signature shape.
-data sanctioned_body: String = "OriginReadingOutcome {\n  read_origin_staged_file(staged_path: p)\n}"
+// The GREEN arm of the same producer: the sanctioned route, identical in every respect above.
+data sanctioned_body: String = "read_origin_staged_file(staged_path: p)"
 
 // EXACTLY ONE refusal is the proposition, so the assertion says one. `>= 1` would hide a second,
 // unintended refusal on the same key.
@@ -163,22 +193,17 @@ test fn the_sanctioned_read_route_draws_no_violation() -> Bool {
 test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
   let red = blocking_keys(source: probe_source(body: forged_reading_source))
   let green = blocking_keys(source: probe_source(body: sanctioned_body))
-  let only_red = keys_only_in(a: red, b: green)
-  let only_green = keys_only_in(a: green, b: red)
-  (only_red.count() == 1)
-    && (match only_red |> first {
-          Present { value: k } => k == "SoleConstructorViolation|OriginReading"
-          Absent => false
-        })
-    && (only_green.count() == 0)
+  key_delta_is_exactly(red: red, green: green, target: "SoleConstructorViolation|OriginReading")
+    && (key_count(keys: red, k: "SoleConstructorViolation|OriginReading") == 1)
+    && (key_count(keys: green, k: "SoleConstructorViolation|OriginReading") == 0)
 }
 
 // CALIBRATION: the census actually RAN for both arms. Without this, a CensusNotRunnable on both
 // sides would cancel in the differential above and read as agreement -- the sentinel key is carried
 // into the key set precisely so it cannot hide there, and this arm names it.
 test fn both_arms_of_the_differential_actually_compiled() -> Bool {
-  (keys_only_in(a: ["CENSUS-NOT-RUNNABLE"], b: blocking_keys(source: probe_source(body: forged_reading_source))).count() == 1)
-    && (keys_only_in(a: ["CENSUS-NOT-RUNNABLE"], b: blocking_keys(source: probe_source(body: sanctioned_body))).count() == 1)
+  (key_count(keys: blocking_keys(source: probe_source(body: forged_reading_source)), k: "CENSUS-NOT-RUNNABLE") == 0)
+    && (key_count(keys: blocking_keys(source: probe_source(body: sanctioned_body)), k: "CENSUS-NOT-RUNNABLE") == 0)
 }
 
 // PRINTED DIAGNOSTICS, and their consumer is named rather than left to be inferred (DESIGN 3c).
