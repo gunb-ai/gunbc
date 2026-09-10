@@ -2620,30 +2620,6 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         .collect())
 }
 
-/// Annotation-erased source identity: non-empty lines that are not standalone `//` comments.
-///
-/// THE REPAIR DISCRIMINATOR for `gunbc.recurring_failure_mode.fail_closed_gate_refuses_its_own_repair`.
-/// A base blob the census parser cannot read is unobservable as declarations; pretending it was
-/// empty is the silent narrow. The one comparison that does not invent a baseline is against the
-/// HEAD bytes with both sides stripped of the only construct the current `.dag` annotation
-/// channel admits — standalone `//` lines. If those remainders are equal, the head removed
-/// (or relocated) annotation grain and nothing else; declaration identity is the head's, and
-/// substituting the head records as the base side is identity, not a fabricated parse. A code
-/// edit riding with a comment hoist makes the remainders differ and stays `NotEvaluated`.
-pub fn is_annotation_grain_repair(base_source: &str, head_source: &str) -> bool {
-    annotation_erased_lines(base_source) == annotation_erased_lines(head_source)
-}
-
-fn annotation_erased_lines(source: &str) -> Vec<&str> {
-    source
-        .lines()
-        .filter(|line| {
-            let trimmed = line.trim();
-            !trimmed.is_empty() && !trimmed.starts_with("//")
-        })
-        .collect()
-}
-
 /// Run the wall for one required CI invocation.
 ///
 /// THE BASE INDEX IS THE HEAD INDEX WITH THE DIFF APPLIED IN REVERSE, at file grain — the
@@ -2737,28 +2713,16 @@ pub fn run_required_wave_admission(
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
-            Err(reason) => {
-                let head_src = git_stdout(&workspace, &["show", &format!("{head}:{rel}")]).ok();
-                let repair = head_src
-                    .as_deref()
-                    .is_some_and(|src| is_annotation_grain_repair(&content, src));
-                if !repair {
-                    return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
-                }
-                let mut copied = 0usize;
-                for record in index_records(head_index) {
-                    if record.rel_path == **rel {
-                        crate::cli_run::declaration_index::index_insert(
-                            &mut base_index,
-                            record.clone(),
-                        );
-                        copied += 1;
-                    }
-                }
-                if copied == 0 {
-                    return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
-                }
-            }
+            // A BASE THIS PARSER CANNOT READ IS UNEVALUATED, FULL STOP. The annotation case that
+            // used to be repaired here is now answered truthfully upstream: `base_records` reads
+            // the real base declarations out of an annotation-refused parse via
+            // `annotation_erased_readable`, so the only reason left to reach this arm is a base
+            // carrying NON-annotation diagnostics. Substituting head records there is exactly the
+            // fabricated parse the readable path exists to avoid -- the remainders would still
+            // compare equal whenever the head touched only comments, so the old discriminator
+            // would happily certify a baseline for a file that failed to parse for an unrelated
+            // reason. The residual case argues for deletion, not for retention.
+            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         }
     }
 
