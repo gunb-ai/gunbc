@@ -489,8 +489,19 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
   sharing_type_is_wrapped_for_target(target: Rust, type_name: type_name)
 }
 
+// Rc::new(panic!(...)) is unreachable_code under -D warnings: panic diverges, so the
+// constructor call never returns. Native cargo of the 00_compile closure refused on
+// v2_std_collection wrapping the keyed-container inhabitant panic. A diverging inner
+// is already a value of every type; wrapping it is not a sharing realization.
 fn rust_shared_wrap_ctor(inner_expr: String) -> String {
-  sharing_wrap_ctor_for_target(target: Rust, inner_expr: inner_expr)
+  if starts_with(s: inner_expr, prefix: "panic!(")
+    || starts_with(s: inner_expr, prefix: "compile_error!(")
+    || starts_with(s: inner_expr, prefix: "unreachable!(")
+  {
+    inner_expr
+  } else {
+    sharing_wrap_ctor_for_target(target: Rust, inner_expr: inner_expr)
+  }
 }
 
 fn rust_shared_wrap_ctor_prefix() -> String {
@@ -8223,6 +8234,9 @@ fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
 // THE ACCESSOR RETURNS T BY VALUE FROM &self, so `__val.clone()` must be T::clone, not the
 // reference's; without `T: Clone` on the impl rustc clones the `&T` (E0308 expected `T`, found
 // `&T`, six generic carriers). The bound is on the impl the accessor lives in, not on the enum.
+// A field whose type rides a recursion cycle is stored Box<T> (rust_field_carrier_final_type, same
+// needs_box_wrapping predicate), so the match binds &Box<T> while the accessor owes the declared T
+// -- the struct-field projection already carries this deref, and the enum arm must carry it too.
 fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
@@ -8260,7 +8274,16 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
       } else if variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices) {
         concat("            ", variant_path, "(_) => panic!(\"no ", fname, " on positional-payload variant\"),")
       } else {
-        concat("            ", variant_path, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => ", apply_type_template1(template: sharing.clone_value, arg0: "__val"), ",")
+        let arm_field_boxed = match child.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
+          Present { value: f } => needs_box_wrapping(n: resolved_type(n: f), recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices)
+          Absent => false
+        }
+        let clone_expr = if arm_field_boxed {
+          apply_type_template1(template: sharing.deref_clone, arg0: "*__val")
+        } else {
+          apply_type_template1(template: sharing.clone_value, arg0: "__val")
+        }
+        concat("            ", variant_path, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => ", clone_expr, ",")
       }
     )
     let arms_str = arms |> join(separator: "\n")
@@ -10184,6 +10207,32 @@ fn collect_pattern_rc_variant_guards(pattern: MatchPattern, rc_analysis: RcPatte
   }
 }
 
+// A let-else over `.as_ref()` is irrefutable when the pattern is structurally irrefutable
+// (wildcard/bind) OR when the variant is the enum's only inhabitant. Rust treats a
+// single-variant coproduct match as irrefutable (`-D irrefutable-let-patterns`); the
+// dag-level `match_pattern_is_irrefutable` is false for every VariantPattern, which is how
+// `DiscoveredSourceRefsDigestUnavailableCause` (one variant) emitted
+// `let Cause::NoRefList {..} = cause.as_ref() else { unreachable!() }` and refused the native
+// cargo under RUSTFLAGS=-D warnings.
+fn rust_as_ref_let_is_irrefutable(pattern: MatchPattern, emit_info: EmitGraphInfo) -> Bool {
+  if match_pattern_is_irrefutable(pattern: pattern) { true }
+  else {
+    match pattern {
+      VariantPattern { name: n, parent_enum: parent, field_bindings: _ } =>
+        let resolved = pattern_parent_enum(name: qualified_last_segment(name: n), parent_enum: parent, scrut_type: "", type_summaries: emit_info.type_summaries)
+        match resolved {
+          Present { value: enum_name } =>
+            match map_get(emit_info.type_summaries, enum_name) {
+              Present { value: summary } => (sorted_map_keys(summary.variant_name_set) |> count) <= 1
+              Absent => false
+            }
+          Absent => false
+        }
+      _ => false
+    }
+  }
+}
+
 fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
@@ -10212,12 +10261,17 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat_here, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
             if inner_analysis.needs_rc_pattern {
               let aware = emit_pattern_rc_aware(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              let head = concat("let ", aware, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref() else { unreachable!() };")
+              let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
+                ";"
+              } else {
+                " else { unreachable!() };"
+              }
+              let head = concat("let ", aware, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)
               let inner_preludes = rc_pattern_preludes(pattern: fb_pat_here, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
               if inner_preludes == "" { [head] } else { [concat(head, " ", inner_preludes)] }
             } else {
               let bound_str = emit_pattern(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              let tail = if match_pattern_is_irrefutable(pattern: fb_pat_here) {
+              let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
                 ";"
               } else {
                 " else { unreachable!() };"
@@ -12580,8 +12634,16 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
   is_fm && empty_fillable && cons_fillable
 }
 
+// THE TAIL IS A STRUCTURAL SKIP, NEVER A COPY. `im::Vector::skip` is O(log n) — it shares the
+// RRB tree — while `iter().skip(1).cloned().collect()` materializes the whole tail: every
+// cons-match in every emitted program paid O(n) per step, so every fold over a FreeMonoid was
+// quadratic. Measured on the required-v2-native lane's first run (2026-09-09): the self-hosted
+// lexer, which tails the remaining source per character and per rule attempt, parsed a 22KB
+// file in 23.3s against 70ms for 899B (333x time for 25x size), projecting a multi-hour
+// whole-corpus context fold — the lane's dominant term, ahead of the cargo build the envelope
+// had priced as dominant. DESIGN section 6 prices a copied accumulator as always-fixed.
 fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
-  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ") }
+  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new(__fm.skip(1)); ") }
 }
 
 fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -16382,6 +16444,8 @@ data compiler_entry_driver_type_name: String = "CompilerEntryDriver"
 
 data compiler_entry_retained_host_driver: String = "RetainedHostCliKernel"
 
+data compiler_entry_source_root_eval_driver: String = "SourceRootEvalDriver"
+
 type CompilerPipelineEntryDecl {
   module_name: String
   driver: String
@@ -16435,6 +16499,13 @@ fn compiler_pipeline_entry_module_name(modules: List<TypedModule>) -> String {
 fn compiler_pipeline_entry_is_retained_host(modules: List<TypedModule>) -> Bool {
   match compiler_pipeline_entry_decl(modules: modules) {
     Present { value: d } => d.driver == compiler_entry_retained_host_driver
+    Absent => false
+  }
+}
+
+fn compiler_pipeline_entry_is_source_root_eval(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.driver == compiler_entry_source_root_eval_driver
     Absent => false
   }
 }
@@ -16510,6 +16581,9 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     )
   }
   if corpus_has_compiler_pipeline(modules: modules) && (retained_host_pipeline == false) {
+    if compiler_pipeline_entry_is_source_root_eval(modules: modules) {
+      return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+    }
     return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
   }
   if workflow_funcs |> count == 0 && retained_host_pipeline == false {
@@ -16600,6 +16674,201 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
       "            std::process::exit(1);\n",
       "        }\n",
       "    }\n",
+      "}\n")
+  }
+}
+
+// THE SOURCE-ROOT EVAL DRIVER'S MAIN, AND THE CONTRACT ITS PROCESS MAKES WITH THE LANE HOST.
+//
+// THE UNIVERSE FILE IS THE WHOLE CONTRACT. One line per qualified test identity --
+// `module<TAB>declaration` -- derived by the lane host from the exact tested tree. This binary
+// performs NO discovery and NO filtering: it executes exactly the identities it is handed, so
+// the host-side join (expected universe == observed rows, no duplicates, no foreign rows) is a
+// join between what the host derived and what this process actually produced. A binary that
+// discovered its own population would make that join tautological.
+//
+// PROCESS EXIT IS LANE-LEVEL, NEVER TEST-LEVEL. Exit 0 plus the terminal marker row means every
+// universe member reached exactly one observation row; a failing or refused TEST is data
+// (NativeTestReturnedFalse / NativeTestRefused), not a process failure. Exit 1 is a whole-context
+// refusal (the ingest fold rejected -- one bad source anywhere fails the lane, never a silent
+// skip). Exit 2 is harness-level: bad argv, unreadable files, malformed or duplicate universe
+// lines. A crash mid-population shows up host-side as a missing terminal marker or a row-count
+// shortfall, which is why the marker carries the count.
+//
+// THE PREPARE-REFUSAL FAN-OUT keeps the no-silent-remainder invariant when a whole module fails
+// resolve/infer: every declaration of that module gets its own Prepare-stage refusal row naming
+// the same head reason, so the row count still equals the universe size and the refusal stays
+// located per test identity.
+//
+// THE FILESYSTEM READ IS THE HOST BOUNDARY THE DRIVER OWNS (std.compiler_entry): the rendered
+// main walks the declared source roots, reads the bytes, and mints one DagSourceReadWitness per
+// path -- the .dag pipeline itself never touches IO.
+fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+  let pipeline_mod = module_to_filename(name: pipeline_module)
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.\n\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
+      "use std::rc::Rc;\n\n",
+      "use ", crate_name, "::extdeps_communication_medium::\{DecodeFidelity, Medium\};\n",
+      "use ", crate_name, "::", pipeline_mod, "::{\n",
+      "    native_test_context_from_ingest, native_test_eval_one, native_test_prepare_module,\n",
+      "    NativeTestObservation, NativeTestStage, NativeTestVerdict,\n",
+      "};\n",
+      "use ", crate_name, "::v2_compiler_source_authority::\{source_root_for_storage_path, DagSourceReadWitness\};\n",
+      "use ", crate_name, "::v2_std_artifact::\{Artifact, ArtifactKind\};\n",
+      "use ", crate_name, "::v2_std_diagnostic::Outcome;\n",
+      "\n",
+      "fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> {\n",
+      "    let entries = match std::fs::read_dir(dir) {\n",
+      "        Ok(entries) => entries,\n",
+      "        Err(cause) => return Err(format!(\"could not walk source root {}: \{cause\}\", dir.display())),\n",
+      "    };\n",
+      "    for entry in entries {\n",
+      "        let entry = match entry {\n",
+      "            Ok(entry) => entry,\n",
+      "            Err(cause) => return Err(format!(\"could not read entry under {}: \{cause\}\", dir.display())),\n",
+      "        };\n",
+      "        let path = entry.path();\n",
+      "        if path.is_dir() {\n",
+      "            collect_dag_paths(&path, out)?;\n",
+      "        } else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) {\n",
+      "            out.push(path.to_string_lossy().into_owned());\n",
+      "        }\n",
+      "    }\n",
+      "    Ok(())\n",
+      "}\n",
+      "\n",
+      "fn main() {\n",
+      "    let mut args = std::env::args().skip(1);\n",
+      "    let universe_path = match args.next() {\n",
+      "        Some(path) => path,\n",
+      "        None => {\n",
+      "            eprintln!(\"REFUSED: no universe file given -- usage: ", crate_name, " <universe.tsv> <source-root>...\");\n",
+      "            std::process::exit(2);\n",
+      "        }\n",
+      "    };\n",
+      "    let source_roots: Vec<String> = args.collect();\n",
+      "    if source_roots.is_empty() {\n",
+      "        eprintln!(\"REFUSED: no source roots given -- usage: ", crate_name, " <universe.tsv> <source-root>...\");\n",
+      "        std::process::exit(2);\n",
+      "    }\n",
+      "    let universe_text = match std::fs::read_to_string(&universe_path) {\n",
+      "        Ok(text) => text,\n",
+      "        Err(cause) => {\n",
+      "            eprintln!(\"REFUSED: could not read universe file \{universe_path\}: \{cause\}\");\n",
+      "            std::process::exit(2);\n",
+      "        }\n",
+      "    };\n",
+      "    let mut universe: Vec<(Rc<im::vector::Vector<String>>, String)> = Vec::new();\n",
+      "    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();\n",
+      "    for line in universe_text.lines() {\n",
+      "        if line.is_empty() || line.starts_with('#') {\n",
+      "            continue;\n",
+      "        }\n",
+      "        match line.split_once('\\t') {\n",
+      "            Some((module, declaration)) if !module.is_empty() && !declaration.is_empty() => {\n",
+      "                if !seen.insert(line.to_string()) {\n",
+      "                    eprintln!(\"REFUSED: duplicate universe line: \{line\}\");\n",
+      "                    std::process::exit(2);\n",
+      "                }\n",
+      "                universe.push((\n",
+      "                    Rc::new(module.split('.').map(|segment| segment.to_string()).collect::<im::vector::Vector<String>>()),\n",
+      "                    declaration.to_string(),\n",
+      "                ));\n",
+      "            }\n",
+      "            _ => {\n",
+      "                eprintln!(\"REFUSED: malformed universe line (expected module<TAB>declaration): \{line\}\");\n",
+      "                std::process::exit(2);\n",
+      "            }\n",
+      "        }\n",
+      "    }\n",
+      "    if universe.is_empty() {\n",
+      "        eprintln!(\"REFUSED: universe file \{universe_path\} carried no test identities\");\n",
+      "        std::process::exit(2);\n",
+      "    }\n",
+      "    let mut paths: Vec<String> = Vec::new();\n",
+      "    for root in &source_roots {\n",
+      "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) {\n",
+      "            eprintln!(\"REFUSED: \{cause\}\");\n",
+      "            std::process::exit(2);\n",
+      "        }\n",
+      "    }\n",
+      "    paths.sort();\n",
+      "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();\n",
+      "    for path in &paths {\n",
+      "        let text = match std::fs::read_to_string(path) {\n",
+      "            Ok(text) => text,\n",
+      "            Err(cause) => {\n",
+      "                eprintln!(\"REFUSED: could not read \{path\}: \{cause\}\");\n",
+      "                std::process::exit(2);\n",
+      "            }\n",
+      "        };\n",
+      "        reads.push(Rc::new(DagSourceReadWitness {\n",
+      "            source: Rc::new(Medium {\n",
+      "                carried: text,\n",
+      "                fidelity: DecodeFidelity::Lossless,\n",
+      "                _phantom: std::marker::PhantomData,\n",
+      "            }),\n",
+      "            artifact: Rc::new(Artifact {\n",
+      "                kind: ArtifactKind::SourceFile,\n",
+      "                id: path.clone(),\n",
+      "                file_path: path.clone(),\n",
+      "            }),\n",
+      "            compilation_unit: path.clone(),\n",
+      "            source_root: source_root_for_storage_path(path.clone()),\n",
+      "        }));\n",
+      "    }\n",
+      "    let context = match &*native_test_context_from_ingest(Rc::new(reads.into())) {\n",
+      "        Outcome::Accepted { value, .. } => value.clone(),\n",
+      "        Outcome::Rejected { diagnostics } => {\n",
+      "            eprintln!(\"CONTEXT-REFUSED: \{diagnostics:#?\}\");\n",
+      "            std::process::exit(1);\n",
+      "        }\n",
+      "    };\n",
+      "    for refusal in context.file_refusals.iter() {\n",
+      "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));\n",
+      "    }\n",
+      "    let mut module_order: Vec<(String, Rc<im::vector::Vector<String>>)> = Vec::new();\n",
+      "    let mut module_decls: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();\n",
+      "    for (qn, declaration) in &universe {\n",
+      "        let dotted = qn.iter().cloned().collect::<Vec<String>>().join(\".\");\n",
+      "        if !module_decls.contains_key(&dotted) {\n",
+      "            module_order.push((dotted.clone(), qn.clone()));\n",
+      "            module_decls.insert(dotted.clone(), Vec::new());\n",
+      "        }\n",
+      "        module_decls.get_mut(&dotted).unwrap().push(declaration.clone());\n",
+      "    }\n",
+      "    let mut rows: u64 = 0;\n",
+      "    for (dotted, qn) in &module_order {\n",
+      "        let declarations = &module_decls[dotted];\n",
+      "        match &*native_test_prepare_module(context.clone(), qn.clone()) {\n",
+      "            Outcome::Accepted { value: prepared, .. } => {\n",
+      "                for declaration in declarations {\n",
+      "                    let observation = native_test_eval_one(prepared.clone(), declaration.clone());\n",
+      "                    println!(\"{}\", serde_json::to_string(&observation).unwrap());\n",
+      "                    rows += 1;\n",
+      "                }\n",
+      "            }\n",
+      "            Outcome::Rejected { diagnostics } => {\n",
+      "                let reason = diagnostics.tail.last().map(|d| d.reason.clone()).unwrap_or_else(|| diagnostics.head.reason.clone());\n",
+      "                for declaration in declarations {\n",
+      "                    let observation = NativeTestObservation {\n",
+      "                        module: qn.clone(),\n",
+      "                        declaration: declaration.clone(),\n",
+      "                        verdict: Rc::new(NativeTestVerdict::NativeTestRefused {\n",
+      "                            stage: NativeTestStage::NativeTestStagePrepare,\n",
+      "                            reason: reason.clone(),\n",
+      "                        }),\n",
+      "                    };\n",
+      "                    println!(\"{}\", serde_json::to_string(&observation).unwrap());\n",
+      "                    rows += 1;\n",
+      "                }\n",
+      "            }\n",
+      "        }\n",
+      "    }\n",
+      "    println!(\"{}\", serde_json::json!(\{ \"_terminal\": \"complete\", \"rows\": rows, \"file_refusals\": context.file_refusals.len() \}));\n",
       "}\n")
   }
 }
