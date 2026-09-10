@@ -57,5 +57,7 @@ data evocative_ewr1_retail_grain: RetailGrainStanding = SingleCabinetOffered {
 }
 
 data evocative_ewr1_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The EWR1 facility page read 2026-09-08 carries no per-cabinet, per-rack or per-server kW figure, and prints no street address either. The module's existing facility note carries 10 MW via two 5 MW feeds from the 2026-08-18 read - a building fact, not a cabinet one. Resolve by asking what a single-server and a full-cabinet order may draw, and confirm the operator of record at 1 Enterprise Avenue N in the same conversation.",
+  cause: NoPublishedSurface {
+    obligation: "The EWR1 facility page read 2026-09-08 carries no per-cabinet, per-rack or per-server kW figure, and prints no street address either. The module's existing facility note carries 10 MW via two 5 MW feeds from the 2026-08-18 read - a building fact, not a cabinet one. Resolve by asking what a single-server and a full-cabinet order may draw, and confirm the operator of record at 1 Enterprise Avenue N in the same conversation.",
+  },
 }

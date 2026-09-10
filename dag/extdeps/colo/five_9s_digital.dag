@@ -49,7 +49,9 @@ data five_9s_allentown: ColoFacilityRow = ColoFacilityRow {
 }
 
 data five_9s_allentown_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's portfolio page read 2026-09-08 states facility megawatts and no per-cabinet figure at all. 11.1 MW is a building fact; dividing it by any assumed cabinet count would fabricate a density. Raw-byte confirmed 2026-09-09 (HTTP 200, full browser user-agent): 'kW' and 'kVA' occur zero times case-sensitively; the earlier case-insensitive matches were image asset URLs. THE SUBJECT CONTROL HERE IS WEAK AND THAT IS PART OF THE READING: 'Allentown' occurs once, because this is the operator's portfolio page rather than a facility page. A zero on a page that barely names the subject is evidence about the portfolio surface, not about the facility - the operator publishes no per-site page this census could find, and finding one is the first thing this obligation asks for. Read a facility spec sheet or obtain a quote.",
+  cause: NoPublishedSurface {
+    obligation: "The operator's portfolio page read 2026-09-08 states facility megawatts and no per-cabinet figure at all. 11.1 MW is a building fact; dividing it by any assumed cabinet count would fabricate a density. Raw-byte confirmed 2026-09-09 (HTTP 200, full browser user-agent): 'kW' and 'kVA' occur zero times case-sensitively; the earlier case-insensitive matches were image asset URLs. THE SUBJECT CONTROL HERE IS WEAK AND THAT IS PART OF THE READING: 'Allentown' occurs once, because this is the operator's portfolio page rather than a facility page. A zero on a page that barely names the subject is evidence about the portfolio surface, not about the facility - the operator publishes no per-site page this census could find, and finding one is the first thing this obligation asks for. Read a facility spec sheet or obtain a quote.",
+  },
 }
 
 data five_9s_allentown_retail_grain: RetailGrainStanding = RetailGrainUnread {

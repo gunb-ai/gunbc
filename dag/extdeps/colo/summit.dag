@@ -61,7 +61,9 @@ data summit_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // because here the two facilities share one operator and one page rather than two pages. A
 // rendered capture cannot show you the banner a figure sits under; only the byte order can.
 data summit_secaucus_density: CabinetDensityClaim = DensityUnread {
-  obligation: "summithq.com publishes exactly two per-cabinet kW figures - \"42U rack space 5 kW of 208V/30A A+B redundant power\" at 1,600 USD a month and \"42U rack space 12 kW of 2x 208V/50A A+B redundant power\" at 3,600 USD a month, both confirmed in raw bytes 2026-09-09 - and both sit inside a promotional block headed \"Limited Time: Chicago-Area Facility\". Neither is stated for Secaucus, and summithq.com's Secaucus facility page read 2026-09-08 states no per-cabinet figure at all. Resolve by asking whether the High-Density package is orderable at 1 Enterprise Avenue N and at what price; if it is, this becomes the corridor's first PRICED dense cabinet and the answer matters more than any other quote in this census.",
+  cause: NoPublishedSurface {
+    obligation: "summithq.com publishes exactly two per-cabinet kW figures - \"42U rack space 5 kW of 208V/30A A+B redundant power\" at 1,600 USD a month and \"42U rack space 12 kW of 2x 208V/50A A+B redundant power\" at 3,600 USD a month, both confirmed in raw bytes 2026-09-09 - and both sit inside a promotional block headed \"Limited Time: Chicago-Area Facility\". Neither is stated for Secaucus, and summithq.com's Secaucus facility page read 2026-09-08 states no per-cabinet figure at all. Resolve by asking whether the High-Density package is orderable at 1 Enterprise Avenue N and at what price; if it is, this becomes the corridor's first PRICED dense cabinet and the answer matters more than any other quote in this census.",
+  },
 }
 
 // AND THE PRICED PACKAGES ARE RECORDED WITHOUT BEING CLAIMED FOR THIS CORRIDOR. They are the

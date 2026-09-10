@@ -63,7 +63,9 @@ data continuity_centers_woodbury: ColoFacilityRow = ColoFacilityRow {
 }
 
 data continuity_centers_density: CabinetDensityClaim = DensityUnread {
-  obligation: "No per-cabinet power figure appears on the operator's site (read 2026-09-09), and no directory profile found for it states one either - so this is unread at both evidence grades rather than merely unconfirmed.",
+  cause: NoPublishedSurface {
+    obligation: "No per-cabinet power figure appears on the operator's site (read 2026-09-09), and no directory profile found for it states one either - so this is unread at both evidence grades rather than merely unconfirmed.",
+  },
 }
 
 data continuity_centers_retail_grain: RetailGrainStanding = RetailGrainUnread {

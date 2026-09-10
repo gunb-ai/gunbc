@@ -3,7 +3,11 @@ module test.claim.ny_colo_census_rows_witness
 import std.types { Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
-import test.claim.colo_cabinet_density_witness { established_watts, grain_offers_single_cabinet }
+import test.claim.colo_cabinet_density_witness {
+  established_watts,
+  grain_offers_single_cabinet,
+  density_reading_was_read,
+}
 import extdeps.colo.types { ColoFacilityRow, AddressStanding, address_street }
 import extdeps.colo.databank { databank_lga3_density, databank_lga3_retail_grain, databank_lga3_orangeburg }
 import extdeps.colo.critical_systems_realty {
@@ -83,7 +87,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // IF ANY OF THESE STARTS YIELDING A VALUE WITHOUT ITS PAGE HAVING CHANGED, someone has re-typed a
 // floor as a maximum and the census is asserting an inverted bound again.
 test fn w_ny_read_figures_establish_nothing_until_the_carrier_carries_DIRECTION() -> Bool {
-  established_watts(d: databank_lga3_density) == 0 - 1
+  density_reading_was_read(d: databank_lga3_density)
+    && density_reading_was_read(d: hivelocity_ogb1_density)
+    && density_reading_was_read(d: csr_orny1_density)
+    && density_reading_was_read(d: long_island_interconnect_density)
+    && density_reading_was_read(d: nyi_long_island_density)
+    && established_watts(d: databank_lga3_density) == 0 - 1
     && established_watts(d: hivelocity_ogb1_density) == 0 - 1
     && established_watts(d: csr_orny1_density) == 0 - 1
     && established_watts(d: long_island_interconnect_density) == 0 - 1
@@ -101,7 +110,13 @@ test fn w_ny_read_figures_establish_nothing_until_the_carrier_carries_DIRECTION(
 // below and the density folds above to have equal arity is expecting the wrong thing. If any of
 // these ever yields a value without its page having changed, someone has filled in a guess.
 test fn w_ny_unread_densities_establish_nothing() -> Bool {
-  established_watts(d: tierpoint_hawthorne_density) == 0 - 1
+  density_reading_was_read(d: tierpoint_hawthorne_density) == false
+    && density_reading_was_read(d: equinix_ny13_density) == false
+    && density_reading_was_read(d: three_sixty_five_commack_density) == false
+    && density_reading_was_read(d: stafford_density) == false
+    && density_reading_was_read(d: vastnet_density) == false
+    && density_reading_was_read(d: continuity_centers_density) == false
+    && established_watts(d: tierpoint_hawthorne_density) == 0 - 1
     && established_watts(d: equinix_ny13_density) == 0 - 1
     && established_watts(d: three_sixty_five_commack_density) == 0 - 1
     && established_watts(d: stafford_density) == 0 - 1

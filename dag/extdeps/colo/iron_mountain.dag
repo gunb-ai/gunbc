@@ -81,7 +81,9 @@ data iron_mountain_wpa1: ColoFacilityRow = ColoFacilityRow {
 }
 
 data iron_mountain_wpa1_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's Pennsylvania page, read 2026-09-08, states 15.5 MW facility capacity and the cooling design but NO per-rack or per-cabinet density. A secondary review asserted 20 kW cabinets here; that figure was not found on the page and is not carried. Read the facility spec sheet or obtain a quote before any density is attributed to this site.",
+  cause: NoPublishedSurface {
+    obligation: "The operator's Pennsylvania page, read 2026-09-08, states 15.5 MW facility capacity and the cooling design but NO per-rack or per-cabinet density. A secondary review asserted 20 kW cabinets here; that figure was not found on the page and is not carried. Read the facility spec sheet or obtain a quote before any density is attributed to this site.",
+  },
 }
 
 data iron_mountain_wpa1_retail_grain: RetailGrainStanding = SingleCabinetOffered {

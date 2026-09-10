@@ -76,7 +76,11 @@ data hivelocity_ogb1_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // landlord may be describing a different hall. What a consumer may NOT do is treat the pair as
 // corroboration - they are two claims, and the quote decides which is purchasable.
 data hivelocity_ogb1_density: CabinetDensityClaim = DensityUnread {
-  obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE THIS CARRIER CANNOT HOLD POINTING THE RIGHT WAY. The operator publishes, verbatim: 'High density raised floor environment, 20 kW+ per cabinet'. The plus sign is the operator's own, so this is a capability FLOOR - at least twenty kilowatts - while the figure-bearing arms here are marketed MAXIMA. Typed as a maximum the census would assert that a cabinet advertised at twenty kilowatts OR MORE refuses 20,001 W. RESOLVE by re-typing as a floor-carrying figure once the carrier expresses a quantity's direction; the numeral and wording above are the reading and NO RE-FETCH IS REQUIRED. RETRIEVAL EVIDENCE: hivelocity.net New York 4 page, confirmed against raw HTML 2026-09-09 - the page reachable only under that name, while the operator's location index calls the site Orangeburg (OGB1). 'RAISED FLOOR' IS NOT A COOLING MEDIUM: it correlates with air in practice, which is exactly what makes reading it as one an inference rather than a reading. THIS IS THE TENANT'S OWN CLAIM and is a factor of two above its landlord's 10KW+ for the same building; each row carries its own operator's reading and neither corrects the other.",
+  cause: FigureReadButUnrepresentable {
+    obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE THIS CARRIER CANNOT HOLD POINTING THE RIGHT WAY. The operator publishes, verbatim: 'High density raised floor environment, 20 kW+ per cabinet'. The plus sign is the operator's own, so this is a capability FLOOR - at least twenty kilowatts - while the figure-bearing arms here are marketed MAXIMA. Typed as a maximum the census would assert that a cabinet advertised at twenty kilowatts OR MORE refuses 20,001 W. RESOLVE by re-typing as a floor-carrying figure once the carrier expresses a quantity's direction; the numeral and wording above are the reading and NO RE-FETCH IS REQUIRED. RETRIEVAL EVIDENCE: hivelocity.net New York 4 page, confirmed against raw HTML 2026-09-09 - the page reachable only under that name, while the operator's location index calls the site Orangeburg (OGB1). 'RAISED FLOOR' IS NOT A COOLING MEDIUM: it correlates with air in practice, which is exactly what makes reading it as one an inference rather than a reading. THIS IS THE TENANT'S OWN CLAIM and is a factor of two above its landlord's 10KW+ for the same building; each row carries its own operator's reading and neither corrects the other.",
+    wording: "High density raised floor environment, 20 kW+ per cabinet",
+    citation: "hivelocity.net",
+  },
 }
 
 data hivelocity_ogb1_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -90,7 +94,9 @@ data hivelocity_ogb1_retail_grain: RetailGrainStanding = RetailGrainUnread {
 // would be the peer-facility inference this carrier was built to make unwritable, so JFK1's density
 // is UNREAD and the tempting number is named here as the thing NOT to import.
 data hivelocity_jfk1_density: CabinetDensityClaim = DensityUnread {
-  obligation: "hivelocity.net publishes no per-cabinet kW figure for Newark JFK1: the operator's data-centers index read 2026-09-08 lists Newark (JFK1) as an EDGE location with a buy-server route and no colocation facility page, and the operator's own colocation product pages that do carry \"20 kW+ per cabinet\" are for New York 4 at 1 Ramland Rd, Orangeburg, NY, read the same day. Do not carry the Orangeburg figure to Newark. Resolve by asking whether colocation, as opposed to dedicated servers, is sold at 165 Halsey at all, and at what per-cabinet draw.",
+  cause: NoPublishedSurface {
+    obligation: "hivelocity.net publishes no per-cabinet kW figure for Newark JFK1: the operator's data-centers index read 2026-09-08 lists Newark (JFK1) as an EDGE location with a buy-server route and no colocation facility page, and the operator's own colocation product pages that do carry \"20 kW+ per cabinet\" are for New York 4 at 1 Ramland Rd, Orangeburg, NY, read the same day. Do not carry the Orangeburg figure to Newark. Resolve by asking whether colocation, as opposed to dedicated servers, is sold at 165 Halsey at all, and at what per-cabinet draw.",
+  },
 }
 
 data hivelocity_jfk1_retail_grain: RetailGrainStanding = RetailGrainUnread {

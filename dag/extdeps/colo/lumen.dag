@@ -83,7 +83,9 @@ data lumen_weehawken: ColoFacilityRow = ColoFacilityRow {
 // fabrication in two directions, so all three corridor facilities are DensityUnread and the
 // operator's own sentence is preserved as the thing to resolve against.
 data lumen_cabinet_density: CabinetDensityClaim = DensityUnread {
-  obligation: "lumen.com/en-us/edge-cloud/data-centers.html, read 2026-09-08, publishes cabinet power densities of \"3kW - 12kW\" as a portfolio range and names no individual site; a second Lumen surface renders the same range as 3kW-15kW, which is a further reason not to treat either as a site reading. No per-site figure has been read for Newark, Jersey City or Weehawken. Resolve by naming the facility in a quote and asking for its air-cooled per-cabinet maximum.",
+  cause: NoPublishedSurface {
+    obligation: "lumen.com/en-us/edge-cloud/data-centers.html, read 2026-09-08, publishes cabinet power densities of \"3kW - 12kW\" as a portfolio range and names no individual site; a second Lumen surface renders the same range as 3kW-15kW, which is a further reason not to treat either as a site reading. No per-site figure has been read for Newark, Jersey City or Weehawken. Resolve by naming the facility in a quote and asking for its air-cooled per-cabinet maximum.",
+  },
 }
 
 data lumen_retail_grain: RetailGrainStanding = SingleCabinetOffered {

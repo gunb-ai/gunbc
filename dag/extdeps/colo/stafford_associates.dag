@@ -52,7 +52,9 @@ data stafford_setauket: ColoFacilityRow = ColoFacilityRow {
 // or per-cabinet power figure. The marketplace is not the operator, and the census's rule is that
 // a density is a reading of the operator's own surface or it is unread.
 data stafford_density: CabinetDensityClaim = DensityUnread {
-  obligation: "Neither staffordnet.com/hosting_colocation.php nor stafforddatacenter.com states watts, kilowatts or amps per rack (read 2026-09-08). Obtain the per-cabinet allocation in writing, and specifically test the unconfirmed 6 kW-per-rack figure that a colocation marketplace listing attributes to this operator's second Long Island hall - including whether a second hall exists and whether the 1U product is sold in it.",
+  cause: NoPublishedSurface {
+    obligation: "Neither staffordnet.com/hosting_colocation.php nor stafforddatacenter.com states watts, kilowatts or amps per rack (read 2026-09-08). Obtain the per-cabinet allocation in writing, and specifically test the unconfirmed 6 kW-per-rack figure that a colocation marketplace listing attributes to this operator's second Long Island hall - including whether a second hall exists and whether the 1U product is sold in it.",
+  },
 }
 
 data stafford_retail_grain: RetailGrainStanding = SingleCabinetOffered {

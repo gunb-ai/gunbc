@@ -77,7 +77,9 @@ data halsey_165_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // framing and the 360k sqft of colocation space, and no cabinet density, no watts per square foot,
 // and no minimum footprint. Both figures it does carry are building facts.
 data halsey_165_cabinet_density: CabinetDensityClaim = DensityUnread {
-  obligation: "165halsey.com colocation page, read 2026-09-08: no per-cabinet or per-rack kW figure and no watts-per-square-foot figure. The building markets over 80 MW, which is a building fact and not a cabinet one. Note that three separate operators sell inside this building - DataBank EWR1 on floor 5, Equinix NY1 on floor 8, Hivelocity JFK1 on floor 9 - and DataBank's suite page is the only surface in the building that states a per-cabinet figure at all; a figure read there belongs to that operator's suite and not to the building.",
+  cause: NoPublishedSurface {
+    obligation: "165halsey.com colocation page, read 2026-09-08: no per-cabinet or per-rack kW figure and no watts-per-square-foot figure. The building markets over 80 MW, which is a building fact and not a cabinet one. Note that three separate operators sell inside this building - DataBank EWR1 on floor 5, Equinix NY1 on floor 8, Hivelocity JFK1 on floor 9 - and DataBank's suite page is the only surface in the building that states a per-cabinet figure at all; a figure read there belongs to that operator's suite and not to the building.",
+  },
 }
 
 data halsey_165_retail_grain: RetailGrainStanding = RetailGrainUnread {

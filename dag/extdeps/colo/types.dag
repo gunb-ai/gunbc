@@ -156,7 +156,38 @@ type CabinetDensityClaim
       citation: NonEmptyStr
     }
   | DensityUnread {
+      cause: DensityUnreadCause
+    }
+
+// WHY THE CAUSE IS TYPED RATHER THAN LEFT TO THE OBLIGATION PROSE. DensityUnread was carrying two
+// materially different contracts under one name - the DESIGN section 3 meaning fork - and the tell
+// was that a witness over these rows had to hand-type two row lists to separate them, because the
+// carrier could not discriminate them. "No operator surface states a per-cabinet figure" is the
+// ABSENCE of a reading. "A figure was read and this carrier has no arm that points the right way"
+// is a PRESENT reading the carrier cannot hold: a floor, an average, a range, a per-U figure. The
+// second is a permanent category in a census, not a transient one - the next page that publishes a
+// percentile or a reversed range lands there again - so it is typed here rather than described.
+//
+// The obligation stays on both arms because both owe a resolution; what differs is what discharges
+// it. NoPublishedSurface owes a FETCH. FigureReadButUnrepresentable owes NO re-fetch at all - the
+// numeral is already in hand - it owes a CARRIER that expresses a quantity's direction and kind,
+// which is why that arm carries the wording and the citation beside the obligation: the reading is
+// evidence already paid for and must not be re-acquired to discharge the obligation.
+//
+// MEMBERSHIP IS HAND-AUDITED, NOT PATTERN-MATCHED, and that is a load-bearing fact about this type.
+// A scripted classifier over the obligation prose was written and discarded: it read "4 x 180 kW"
+// and "Two 600 kW redundant generators" as cabinet densities, which is the census's cardinal error
+// - facility power is a fact about a BUILDING and is not density - and its quote extraction split
+// an English apostrophe mid-sentence. A row joins this arm only where its obligation states that a
+// PER-CABINET or PER-RACK figure was read from the operator's own surface.
+type DensityUnreadCause
+  = NoPublishedSurface {
       obligation: NonEmptyStr
+    }
+  | FigureReadButUnrepresentable {
+      obligation: NonEmptyStr
+      wording: NonEmptyStr
+      citation: NonEmptyStr
     }
 
 // THE ESTABLISHED REAL-POWER READING, AND THERE IS NO OTHER TOTAL ONE. The previous accessor
@@ -170,11 +201,29 @@ type CabinetDensityClaim
 // nobody published a figure, or somebody published apparent power and no power factor exists to
 // convert it. Either way there is no established watt reading, and an admission decision that
 // needs one must refuse.
+// THE VERBATIM READING BEHIND AN UNREAD DENSITY, WHERE ONE EXISTS. This is what makes the two
+// causes of DensityUnread discriminable by a fold instead of by an author. Present means a figure
+// was read from the operator's own surface and no arm of this carrier points the right way to hold
+// it; Absent means no such figure was read at all. It returns the WORDING rather than a Bool
+// because the wording is the reading - a caller resolving the obligation needs the operator's own
+// text, not the news that text exists - and because a Bool would put the answer on the same axis
+// as a real density reading while carrying none of it.
+fn density_unread_reading(d: CabinetDensityClaim) -> NonEmptyStr? {
+  match d {
+    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Absent,
+    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Absent,
+    DensityUnread { cause } => match cause {
+      NoPublishedSurface { obligation } => Absent,
+      FigureReadButUnrepresentable { obligation, wording, citation } => Present { value: wording },
+    },
+  }
+}
+
 fn cabinet_density_air_established(d: CabinetDensityClaim) -> Watt? {
   match d {
     DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
     DensityMarketedAirOnly { air_cooled, claim_wording, citation } => cabinet_power_established(f: air_cooled),
-    DensityUnread { obligation } => Absent,
+    DensityUnread { cause } => Absent,
   }
 }
 
@@ -209,7 +258,7 @@ fn cabinet_density_air_ceiling(d: CabinetDensityClaim) -> CabinetPowerCeiling? {
   match d {
     DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
     DensityMarketedAirOnly { air_cooled, claim_wording, citation } => Present { value: cabinet_power_ceiling(f: air_cooled) },
-    DensityUnread { obligation } => Absent,
+    DensityUnread { cause } => Absent,
   }
 }
 

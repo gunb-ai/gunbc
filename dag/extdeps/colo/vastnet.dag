@@ -58,7 +58,9 @@ data vastnet_melville: ColoFacilityRow = ColoFacilityRow {
 }
 
 data vastnet_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The cabinet page publishes power per cabinet as 15 A (one-third), 15 A (half) and 20 A (full) with NO voltage stated anywhere on the page (read 2026-09-08). Amps without volts is not a kilowatt figure and this census does not assume one. Obtain the voltage and the continuous-load derating in writing; at 120 V a 20 A feed derates to roughly 1.9 kW continuous, which would make this the least dense cabinet in the census, and at 208 V it is roughly 3.3 kW - the difference decides the candidate, so guessing it would decide it wrongly.",
+  cause: NoPublishedSurface {
+    obligation: "The cabinet page publishes power per cabinet as 15 A (one-third), 15 A (half) and 20 A (full) with NO voltage stated anywhere on the page (read 2026-09-08). Amps without volts is not a kilowatt figure and this census does not assume one. Obtain the voltage and the continuous-load derating in writing; at 120 V a 20 A feed derates to roughly 1.9 kW continuous, which would make this the least dense cabinet in the census, and at 208 V it is roughly 3.3 kW - the difference decides the candidate, so guessing it would decide it wrongly.",
+  },
 }
 
 data vastnet_retail_grain: RetailGrainStanding = SingleCabinetOffered {

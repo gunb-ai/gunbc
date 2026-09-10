@@ -67,5 +67,7 @@ data coresite_secaucus_retail_grain: RetailGrainStanding = SingleCabinetOffered 
 }
 
 data coresite_secaucus_density: CabinetDensityClaim = DensityUnread {
-  obligation: "Neither the NY2 page, the NY3 page, nor the NY3 spec-sheet page carries a per-cabinet or per-rack kW figure (all read 2026-09-08). The pages do carry building facts - 256,000+ sqft at NY2, up to 18 critical MW at full build-out, 138,000+ sqft at NY3 - and NONE of those is a cabinet density. Resolve from the downloadable facility spec-sheet PDF or from a quote naming the air-cooled per-cabinet maximum in the NY3 halls.",
+  cause: NoPublishedSurface {
+    obligation: "Neither the NY2 page, the NY3 page, nor the NY3 spec-sheet page carries a per-cabinet or per-rack kW figure (all read 2026-09-08). The pages do carry building facts - 256,000+ sqft at NY2, up to 18 critical MW at full build-out, 138,000+ sqft at NY3 - and NONE of those is a cabinet density. Resolve from the downloadable facility spec-sheet PDF or from a quote naming the air-cooled per-cabinet maximum in the NY3 halls.",
+  },
 }

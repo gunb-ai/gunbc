@@ -11,6 +11,7 @@ import extdeps.colo.types {
   CabinetPowerCeiling, CeilingAt, ceiling_refuses,
   RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum, RetailGrainUnread,
   retail_grain_single_cabinet_wording,
+  density_unread_reading,
 }
 import extdeps.colo.databank {
   databank_lga4_retail_grain,
@@ -178,6 +179,19 @@ fn grain_offers_single_cabinet(g: RetailGrainStanding) -> Bool {
   }
 }
 
+// THE READ-BUT-UNHOLDABLE HARNESS, beside grain_offers_single_cabinet and for the same reason: the
+// carrier owns the accessor and the witness owns only the collapse to Bool. Before the cause was
+// typed, the New York witness partitioned its unread rows into "a figure was read" and "no page
+// states one" with two hand-typed lists that asserted the IDENTICAL predicate - so a row moved
+// between them changed nothing and the partition was prose. This makes the two lists assert
+// opposite facts, which is what makes moving a row red.
+fn density_reading_was_read(d: CabinetDensityClaim) -> Bool {
+  match density_unread_reading(d: d) {
+    Present { value } => true,
+    Absent => false,
+  }
+}
+
 test fn w_density_and_grain_are_separate_facts() -> Bool {
   grain_offers_single_cabinet(g: databank_lga4_retail_grain)
     && grain_offers_single_cabinet(g: iron_mountain_nje1_retail_grain)
@@ -312,7 +326,9 @@ data fixture_published_claim: CabinetDensityClaim = DensityMarketedAirOnly {
 }
 
 data fixture_unread_claim: CabinetDensityClaim = DensityUnread {
-  obligation: "witness fixture: a claim nobody read, constructed here so the fold has an unread arm to skip",
+  cause: NoPublishedSurface {
+    obligation: "witness fixture: a claim nobody read, constructed here so the fold has an unread arm to skip",
+  },
 }
 
 data two_claim_fixture: RegionCoverage = RegionCoverage {

@@ -100,7 +100,9 @@ data equinix_ny13: ColoFacilityRow = ColoFacilityRow {
 }
 
 data equinix_ny13_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The NY13 page states no kW-per-cabinet figure (read 2026-09-08). Equinix publishes density elsewhere in its marketing; nothing on this facility's page does, and a corporate figure is not a facility reading. Ask for the per-cabinet ceiling at NY13 specifically.",
+  cause: NoPublishedSurface {
+    obligation: "The NY13 page states no kW-per-cabinet figure (read 2026-09-08). Equinix publishes density elsewhere in its marketing; nothing on this facility's page does, and a corporate figure is not a facility reading. Ask for the per-cabinet ceiling at NY13 specifically.",
+  },
 }
 
 data equinix_ny13_retail_grain: RetailGrainStanding = RetailGrainUnread {
@@ -218,31 +220,59 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // a maximum and the maximum is still unread.
 
 data equinix_ny1_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's own NY1 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny1, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY1 occurs 19 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"2kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY1 (165 Halsey Street, Newark)."
+  cause: FigureReadButUnrepresentable {
+    obligation: "The operator's own NY1 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny1, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY1 occurs 19 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"2kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY1 (165 Halsey Street, Newark).",
+    wording: "Minimum Cabinet Density 2kVA",
+    citation: "www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny1",
+  },
 }
 
 data equinix_ny2_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's own NY2 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny2, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY2 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"2kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY2 (275 Hartz Way, Secaucus)."
+  cause: FigureReadButUnrepresentable {
+    obligation: "The operator's own NY2 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny2, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY2 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"2kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY2 (275 Hartz Way, Secaucus).",
+    wording: "Minimum Cabinet Density 2kVA",
+    citation: "www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny2",
+  },
 }
 
 data equinix_ny3_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's own NY3 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny3, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY3 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"8kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY3 (600 Jefferson Ave, Secaucus)."
+  cause: FigureReadButUnrepresentable {
+    obligation: "The operator's own NY3 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny3, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY3 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"8kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY3 (600 Jefferson Ave, Secaucus).",
+    wording: "Minimum Cabinet Density 8kVA",
+    citation: "www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny3",
+  },
 }
 
 data equinix_ny4_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's own NY4 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny4, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY4 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"5kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY4 (800 Secaucus Road, Secaucus)."
+  cause: FigureReadButUnrepresentable {
+    obligation: "The operator's own NY4 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny4, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY4 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"5kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY4 (800 Secaucus Road, Secaucus).",
+    wording: "Minimum Cabinet Density 5kVA",
+    citation: "www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny4",
+  },
 }
 
 data equinix_ny5_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's own NY5 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny5, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY5 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"5kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY5 (800 Secaucus Road, Secaucus)."
+  cause: FigureReadButUnrepresentable {
+    obligation: "The operator's own NY5 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny5, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY5 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"5kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY5 (800 Secaucus Road, Secaucus).",
+    wording: "Minimum Cabinet Density 5kVA",
+    citation: "www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny5",
+  },
 }
 
 data equinix_ny6_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's own NY6 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny6, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY6 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"5kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY6 (800 Secaucus Road, Secaucus)."
+  cause: FigureReadButUnrepresentable {
+    obligation: "The operator's own NY6 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny6, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY6 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"5kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY6 (800 Secaucus Road, Secaucus).",
+    wording: "Minimum Cabinet Density 5kVA",
+    citation: "www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny6",
+  },
 }
 
 data equinix_ny7_density: CabinetDensityClaim = DensityUnread {
-  obligation: "The operator's own NY7 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny7, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY7 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"4kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY7 (5851 Westside Ave, North Bergen)."
+  cause: FigureReadButUnrepresentable {
+    obligation: "The operator's own NY7 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny7, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY7 occurs 13 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"4kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY7 (5851 Westside Ave, North Bergen).",
+    wording: "Minimum Cabinet Density 4kVA",
+    citation: "www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny7",
+  },
 }
 data equinix_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "Same correction as the density obligation: the operator's reachable index carries no cabinet, cage or suite wording, so no minimum footprint has been read from its own surface. Whether a single cabinet is contractable, and at which of the seven corridor IBXs, is a quote question.",
