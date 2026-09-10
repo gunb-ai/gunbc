@@ -14,7 +14,7 @@ import gunbc.v1_consumer_census {
   v1_shim_partition, v1_shim_items, v1_consumer_population_for, v1_claimed_successors,
   v1_rows_undecided, v1_undecided_row_count, v1_deletion_worklist, v1_worklist_is_a_permutation,
   v1_worklist_leading_unjudged_count, v1_worklist_leads_with_the_unjudged,
-  v1_blocking_consumers, v1_blocking_uncitable, v1_pending_pr_10882_consumers, v1_pending_head_row_count,
+  v1_blocking_consumers, v1_native_lane_consumers, v1_native_lane_row_count,
   v1_row_key, v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
 }
 import tools.v1_consumer_discovery { v1_discovery_keys_at_name }
@@ -220,17 +220,18 @@ test fn consumer_census_worklist_is_a_permutation_that_leads_with_the_unjudged()
     && v1_worklist_leads_with_the_unjudged(rows: planted_all_judged_rows)
 }
 
-// THE UNMERGED HEAD IS ROSTERED AND IS NOT IN THE POPULATION THE GATE READS. A frontier row folded
-// into the live roster would make the census a mixture of two trees and the failure would be
-// silent: the count would simply be larger. The pending rows are carried in the census's UNCITABLE
-// shape -- their consumers are declarations only the unmerged head declares -- so the disjointness
-// is executed by showing the live uncitable column is empty while the pending list is not, and that
-// every pending row's disposition blocks. A pending row that had drifted into the live population
-// would break the first conjunct.
-test fn consumer_census_pending_head_rows_are_rostered_and_disjoint() -> Bool {
-  v1_pending_head_row_count() > 0
+// THE NATIVE-LANE RELATIONS ARE IN THE POPULATION THE GATE READS, which is the assertion that
+// replaces the disjointness one. While gunbc#10882 was unmerged they were carried in the uncitable
+// shape and deliberately OUTSIDE v1_consumers(), because a row about a tree main did not contain
+// would have made the population a mixture of two observations. The merge dissolved that frontier,
+// so the check inverts: every native-lane relation is now a rostered row, and the live uncitable
+// column is empty. The second conjunct is what stops this passing vacuously -- a frontier list that
+// had simply been deleted rather than promoted would satisfy the first.
+test fn consumer_census_native_lane_rows_joined_the_population() -> Bool {
+  v1_native_lane_row_count() > 0
     && count(v1_uncitable_consumers()) == 0
-    && count(v1_blocking_uncitable(uncitable: v1_pending_pr_10882_consumers())) == v1_pending_head_row_count()
+    && (v1_native_lane_consumers()
+        |> all(row => v1_row_keys(rows: v1_consumers()) |> any(k => k == v1_row_key(r: row))))
 }
 
 // THE DISCOVERY PROJECTION RESTORES THE ROOT PREFIX, and the RED half is the one that matters: a
@@ -315,4 +316,28 @@ data signature_table_name: String = "gunbc.v1_consumer_census.v1_literal_signatu
 test fn discovery_fold_does_not_count_its_own_signature_table() -> Bool {
   count(v1_literal_signatures()) > 0
     && count(v1_discovery_keys_at_name(qualified_name: signature_table_name)) == 0
+}
+
+// THE PRODUCER'S COVERAGE BOUNDARY, MEASURED AND THEN ASSERTED. Review 63229 found relations the
+// roster did not carry, and the cause is a real blind spot rather than a missed row: a declaration
+// whose initializer IS the literal -- `data devboot_program_package: String = "v1-compiler"` --
+// yields a DeclFact whose node does not carry that lexeme through the corpus's own literal reader.
+// Measured, not inferred: the keyed read FINDS the declaration (decl_facts_at returns it), and
+// v2.std.fn_index atom_identities_in_node over its node does not contain "v1-compiler", while the
+// same reader over a list-literal initializer does. So the fold sees list and call positions and is
+// blind to the bare String-initializer position.
+//
+// THIS ASSERTS THE BOUNDARY RATHER THAN HIDING IT, which is the only honest arm available here: the
+// repair is in the declaration-fact projection for data items, not in this instrument, and reaching
+// past it would mean re-deriving a literal reader beside the one the corpus already owns -- the
+// section 3 fork. The assertion is written so it goes RED WHEN THE BLIND SPOT CLOSES, which is
+// exactly what a reader wants: the day the projection carries the lexeme, this witness fails and
+// whoever fixes it deletes the boundary note, widens the producer's claim, and re-runs the gate.
+// The paired positive control is the list position, above, so this cannot pass by the fold having
+// stopped working altogether.
+data devboot_program_package_name: String = "gunbc.devboot.program.devboot_program_package"
+
+test fn discovery_fold_is_blind_to_a_bare_string_initializer() -> Bool {
+  count(v1_discovery_keys_at_name(qualified_name: devboot_program_package_name)) == 0
+    && count(v1_discovery_keys_at_name(qualified_name: devboot_offered_programs_name)) > 0
 }
