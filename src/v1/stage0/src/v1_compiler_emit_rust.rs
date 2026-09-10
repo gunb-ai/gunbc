@@ -21733,7 +21733,7 @@ pub fn rust_as_ref_let_is_irrefutable(
                 match resolved {
                     Some(enum_name) => match emit_info.type_summaries.get(&enum_name).cloned() {
                         Some(summary) => {
-                            v1_rt::sorted_map_keys(&summary.variant_name_set.clone()).len() <= 1
+                            v1_rt::sorted_map_keys(summary.variant_name_set.as_ref()).len() <= 1
                         }
                         None => false,
                     },
