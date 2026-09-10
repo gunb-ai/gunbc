@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.heads_only_index_counts_braces_inside_string_literals
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data heads_only_index_counts_braces_inside_string_literals: RecurringFailureMode = RecurringFailureMode {
+  identity: "heads_only_index_counts_braces_inside_string_literals" as NonEmptyStr,
+
+  receipts: [
+    "**the heads-only module index counts braces inside string literals, so a `--format` template or a shell function body ends the enclosing declaration early and the module refuses to parse** (INVALID STATE: a `.dag` source whose string literal contains `{` or `}` is treated as ending the declaration at that brace. HARM: authors route around the reader by flattening shell into three-command assignment sequences and concat-built remote programs, which is the DESIGN section 5 workaround — noticing it is the line-stop, not a landing state. ",
+
+    "Specimen, gunbc#10697 withdrew `capacity_probe_script` rather than landing flattened remote bash: a `.dag` string that contained `{` or `}` still cannot parse, so the class remains. The harm named here is the author-side workaround, not a licensed actuator. ",
+
+    "Rung: mitigatable — the module fails closed on parse rather than accepting a truncated declaration, but the author-side workaround is live. ",
+
+    "Ceiling: structurally guaranteed once string literals are a lexical production the heads-only pass does not enter, so braces inside strings cannot close a declaration. ",
+
+    "Next-rung trigger: a heads-only (or full) module index whose brace matching is token-aware, sufficient for a `--format` template or a shell function body to inhabit a `.dag` string without flattening. ",
+  ],
+
+  evidence: [],
+}

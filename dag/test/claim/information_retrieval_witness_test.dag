@@ -1,0 +1,69 @@
+module test.claim.information_retrieval_witness
+
+import std.types { NonEmptyStr, Bool }
+import std.claim_evidence { RecordedFactId, EvidenceSupports }
+import extdeps.http.client
+import extdeps.uri { uri_wire }
+import gunbc.information_retrieval { information_retrieve_evidence }
+import gunbc.information_query {
+  TimeInvariant,
+  SoleRetrieval,
+  InformationEvidenceUnavailable,
+  InformationEvidenceUnobservable,
+  InformationEvidenceInferred,
+}
+import test.claim.information_query_witness {
+  fixture_expected_hex,
+  fixture_digest,
+  fixture_target,
+  fixture_authority,
+  fixture_provenance,
+}
+
+// THE FIXTURES ARE IMPORTED, NOT COPIED. The hermetic witness module already owns this specimen --
+// the same locator, subject, pin and provenance -- and a second transcription would be two
+// authorities for one fixture (DESIGN sections 2 and 3): they drift, and this run would then measure
+// a different subject than the run it is supposed to correspond to.
+
+// THIS IS A HERMETIC WITNESS, AND AN EARLIER REVISION LIED ABOUT THAT. It was named and annotated as
+// a wet, real-network witness. Under the merge envelope http.Client.GetBounded answers from its
+// mock_response, which is fixed { success: false }, so no live fetch happens on the path that
+// actually gates: the claim was true only when I ran it by hand.
+//
+// WHAT IT THEREFORE PINS, and it is a real red rather than a decoration: under the fixed mock the
+// transport cannot succeed, so information_retrieve_evidence MUST reach InformationEvidenceUnavailable.
+// A regression that returned Unobservable regardless of the transport turns this false. The oracle is
+// the transport's own answer rather than a disjunction over the arms, so the two cannot drift apart.
+//
+// WHAT IT CANNOT COVER is the success -> Unobservable arm, because the mock never succeeds and both
+// this probe and the function under test read that same mock. That gap is NOT papered over here: it
+// is recorded in gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall,
+// whose population names it and whose trigger names the capability that would close it. Enrolling
+// this file as a bin_wet row was the obvious move and is refused deliberately -- that lane has run
+// nothing since 2026-08-15 (excl_bin_wet_reason), so it would convert a partly-covered witness into
+// an uncovered one that the roster reports as covered.
+test fn w_retrieval_arm_agrees_with_the_transport() -> Bool {
+  match fixture_digest(hex: fixture_expected_hex) {
+    Absent => false
+    Present { value: expected } => {
+      let target = fixture_target(expected: expected)
+      let probe = http.Client.GetBounded(url: uri_wire(uri: target.expected_pin.subject.access_route))
+      match information_retrieve_evidence(
+        target: target,
+        observed_at: 1788825000000,
+        fact_id: "information-retrieval-wet-witness-fact" as RecordedFactId,
+        scope: TimeInvariant,
+        direction: EvidenceSupports,
+        authority: fixture_authority(),
+        provenance: fixture_provenance(),
+        freshness_basis: "unused: no representation is reconciled on either arm" as NonEmptyStr,
+        fidelity_losses: [],
+        independence: SoleRetrieval,
+      ) {
+        InformationEvidenceUnobservable { detail: _ } => probe.success
+        InformationEvidenceUnavailable { cause: _ } => !probe.success
+        InformationEvidenceInferred { inference: _ } => false
+      }
+    }
+  }
+}

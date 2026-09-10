@@ -20,6 +20,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_base_dir,
   fabric_cell_slice_name,
 }
+import gunbc.runner_slot_allocation { CpuQuotaRefused }
 import gunbc.fabric_cell_effect {
   FabricCellRealization,
   CellPlanRealizable,
@@ -33,9 +34,13 @@ import gunbc.fabric_cell_effect {
   CellChangeNotYetRealizable,
   CellTeardownNotYetRealizable,
   CellRosterDuplicateKey,
+  CellCpuQuotaSurveyRefused,
   fabric_cell_realization,
   fabric_cell_realization_refusal_count,
   fabric_cell_plan_effects,
+  fabric_cell_boundary_add_realization,
+  AddressRefused,
+  AddressRealizable,
 }
 
 fn srv3_fabric_slot() -> RunnerSlotIdentity {
@@ -83,7 +88,7 @@ test fn witness_empty_cell_actions_realize_no_effects() -> Bool {
 // on a comment describing a two-arm shape the tree no longer had. When the wall's premise died the
 // expecting-red row flipped to this permanent positive control: a full cell of three additions
 // realizes FOUR effects -- the host-scoped base directory, two address directories, and one slice
-// ensure carrying all five desired
+// ensure carrying all six desired
 // directives -- and a regression that re-refuses the boundary goes red here.
 test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool {
   let full_cell = [
@@ -97,7 +102,7 @@ test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool 
         && fold(es, init: false, f: (acc, e) => acc || (match e {
           FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
             (u as String) == fabric_cell_slice_name(slot: srv3_fabric_slot())
-              && list_length(items: ds) == 5
+              && list_length(items: ds) == 6
           FabricCellDirectoryEnsure { path: _, owner: _ } => false
         }))
     CellPlanRefused { refusals: _ } => false
@@ -214,6 +219,7 @@ fn is_teardown_unrealizable(r: FabricCellRealization) -> Bool {
         CellTeardownRefusedByOwnership { address_wire: _, cause: _ } => false
         CellRosterDuplicateKey { address_wire: _ } => false
         CellChangeNotYetRealizable { address_wire: _ } => false
+        CellCpuQuotaSurveyRefused { address_wire: _, cause: _ } => false
       }))
     CellPlanRealizable { effects: _ } => false
   }
@@ -227,6 +233,7 @@ fn is_ownership_refusal(r: FabricCellRealization) -> Bool {
         CellRosterDuplicateKey { address_wire: _ } => false
         CellChangeNotYetRealizable { address_wire: _ } => false
         CellTeardownNotYetRealizable { address_wire: _ } => false
+        CellCpuQuotaSurveyRefused { address_wire: _, cause: _ } => false
       }))
     CellPlanRealizable { effects: _ } => false
   }
@@ -240,7 +247,26 @@ fn is_change_unrealizable(r: FabricCellRealization) -> Bool {
         CellTeardownRefusedByOwnership { address_wire: _, cause: _ } => false
         CellRosterDuplicateKey { address_wire: _ } => false
         CellTeardownNotYetRealizable { address_wire: _ } => false
+        CellCpuQuotaSurveyRefused { address_wire: _, cause: _ } => false
       }))
     CellPlanRealizable { effects: _ } => false
+  }
+}
+
+test fn witness_a_refused_cpu_quota_survey_refuses_boundary_add_rather_than_emitting_five_directives() -> Bool {
+  match fabric_cell_boundary_add_realization(
+    slot: srv3_fabric_slot(),
+    quota: CpuQuotaRefused { cause: "fixture: cores-per-slot unresolved" },
+  ) {
+    AddressRealizable { effect: _ } => false
+    AddressRefused { refusal: r } =>
+      match r {
+        CellCpuQuotaSurveyRefused { address_wire: _, cause: c } =>
+          c == "fixture: cores-per-slot unresolved"
+        CellTeardownRefusedByOwnership { address_wire: _, cause: _ } => false
+        CellRosterDuplicateKey { address_wire: _ } => false
+        CellChangeNotYetRealizable { address_wire: _ } => false
+        CellTeardownNotYetRealizable { address_wire: _ } => false
+      }
   }
 }

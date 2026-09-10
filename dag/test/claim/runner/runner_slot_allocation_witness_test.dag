@@ -14,6 +14,11 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_allocation_wall_holds,
   gunbc_runner_slot_oversubscription_within_slice,
   gunbc_runner_slot_desired,
+  gunbc_runner_cores_per_slot,
+  CoresPerSlotResolved,
+  CoresPerSlotUnresolved,
+  CpuQuotaResolved,
+  CpuQuotaRefused,
   gunbc_runner_slots_per_host,
   host_memory_admitted_width,
   host_memory_width_is_established,
@@ -38,7 +43,7 @@ import gunbc.runner_slot_allocation {
   FloorCgroupLeafEventAtEntry,
   RunnerSlotEffectiveCapMeasured,
 }
-import std.measure { byte_size, byte_size_count }
+import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -381,4 +386,16 @@ test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
     && host_github_slot_count(host: operator_host_srv3)
          == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
+}
+
+test fn the_slot_row_quota_is_the_surveyed_cores_per_slot() -> Bool {
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotUnresolved { cause: _ } => false
+    CoresPerSlotResolved { threads: t } =>
+      match gunbc_runner_slot_desired().cpu_quota {
+        CpuQuotaRefused { cause: _ } => false
+        CpuQuotaResolved { threads: q } =>
+          hardware_thread_count_value(t: t) == hardware_thread_count_value(t: q)
+      }
+  }
 }
