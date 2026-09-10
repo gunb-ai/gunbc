@@ -5205,9 +5205,10 @@ type ReferenceDerivedProviderBinding {
 // iteration and as the input to `dedupe_rust_import_lines`, so first-binder-wins and the
 // "prior" cover predicates see a determined line order rather than first-seen of an unordered walk.
 fn canonical_string_set(items: List<String>) -> List<String> {
-  sorted_map_keys(items |> fold(init: empty_map(), f: (acc, item) =>
+  let presence = items |> fold(init: empty_map(), f: (acc, item) =>
     if item == "" { acc } else { map_insert(acc, item, true) }
-  ))
+  )
+  sorted_map_keys(presence)
 }
 
 fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {

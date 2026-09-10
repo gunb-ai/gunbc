@@ -9778,16 +9778,19 @@ pub struct ReferenceDerivedProviderBinding {
 }
 
 pub fn canonical_string_set(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    Rc::new(v1_rt::sorted_map_keys(&items.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, item: String| {
-            if (item.clone() == "".to_string()) {
-                acc.clone()
-            } else {
-                v1_rt::rc_map_insert(acc.clone(), item.clone(), true)
-            }
-        },
-    )))
+    {
+        let presence = items.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, item: String| {
+                if (item.clone() == "".to_string()) {
+                    acc.clone()
+                } else {
+                    v1_rt::rc_map_insert(acc.clone(), item.clone(), true)
+                }
+            },
+        );
+        Rc::new(v1_rt::sorted_map_keys(&presence))
+    }
 }
 
 pub fn reference_derived_use_line_plan(
