@@ -3,28 +3,47 @@ module gunbc.colo_census_coverage
 import std.types { NonEmptyStr, Int, List, Bool }
 import extdeps.colo.types {
   ColoFacilityRow, CabinetDensityClaim,
-  DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
+  ClaimWordingStanding, ClaimWordingVerified, ClaimWordingSummarized, ClaimWordingUnread,
+  claim_wording_standing,
 }
 import extdeps.colo.equinix {
   equinix_ny1_density, equinix_ny2_density, equinix_ny3_density, equinix_ny4_density,
-  equinix_ny5_density, equinix_ny6_density, equinix_ny7_density, equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7 }
-import extdeps.colo.coresite { coresite_ny2, coresite_ny3, coresite_secaucus_density }
-import extdeps.colo.colocation_america { colocation_america_njdc2_secaucus, colocation_america_cabinet_density }
+  equinix_ny5_density, equinix_ny6_density, equinix_ny7_density, equinix_ny9_density,
+  equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7, equinix_ny9 }
+import extdeps.colo.coresite { coresite_ny1, coresite_ny1_density, coresite_ny2, coresite_ny3, coresite_secaucus_density }
+import extdeps.colo.colocation_america {
+  colocation_america_njdc2_secaucus, colocation_america_cabinet_density,
+  colocation_america_nydc1, colocation_america_nydc1_density,
+  colocation_america_nydc2, colocation_america_nydc2_density,
+}
 import extdeps.colo.centersquare { centersquare_weehawken, centersquare_ewr5_secaucus, centersquare_cabinet_density }
-import extdeps.colo.digital_realty { digital_realty_ewr10, digital_realty_cabinet_density }
+import extdeps.colo.digital_realty {
+  digital_realty_ewr10, digital_realty_cabinet_density,
+  digital_realty_jfk10, digital_realty_jfk10_density,
+  digital_realty_jfk12, digital_realty_jfk12_density,
+  digital_realty_jfk13, digital_realty_jfk13_density,
+}
 import extdeps.colo.three_sixty_five {
   three_sixty_five_carlstadt, three_sixty_five_weehawken, three_sixty_five_cabinet_density,
   three_sixty_five_philadelphia, three_sixty_five_philadelphia_density,
   three_sixty_five_philadelphia_university_city, three_sixty_five_philadelphia_university_city_density,
+  three_sixty_five_nyc_32_sixth, three_sixty_five_nyc_121_varick, three_sixty_five_nyc_111_eighth,
+  three_sixty_five_nyc_60_hudson, three_sixty_five_nyc_325_hudson, three_sixty_five_nyc_375_pearl,
+  three_sixty_five_nyc_85_tenth, three_sixty_five_nyc_65_broadway,
+  three_sixty_five_brooklyn_vanderbilt, three_sixty_five_staten_island_teleport,
+  three_sixty_five_nyc_density_unread,
 }
-import extdeps.colo.dataverge { dataverge_jersey_city, dataverge_cabinet_density }
+import extdeps.colo.dataverge { dataverge_jersey_city, dataverge_cabinet_density, dataverge_brooklyn, dataverge_brooklyn_density }
 import extdeps.colo.evocative { evocative_ewr1, evocative_ewr1_density }
 import extdeps.colo.summit { summit_secaucus, summit_secaucus_density }
-import extdeps.colo.h5 { h5_secaucus, h5_secaucus_density, h5_philadelphia, h5_philadelphia_density }
+import extdeps.colo.h5 { h5_secaucus, h5_secaucus_density, h5_philadelphia, h5_philadelphia_density, h5_nyc_325_hudson, h5_nyc_325_hudson_density }
 import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_density }
 import extdeps.colo.interserver { interserver_secaucus, interserver_teb4_secaucus, interserver_cabinet_density }
 import extdeps.colo.halsey_165 { halsey_165_newark, halsey_165_cabinet_density }
-import extdeps.colo.databank { databank_ewr1_newark, databank_ewr1_density, databank_phl1_philadelphia, databank_phl1_density }
+import extdeps.colo.databank {
+  databank_ewr1_newark, databank_ewr1_density, databank_phl1_philadelphia, databank_phl1_density,
+  databank_lga1_hudson, databank_lga1_density, databank_lga2_eighth, databank_lga2_density,
+}
 import extdeps.colo.tierpoint {
   tierpoint_philadelphia, tierpoint_philadelphia_density,
   tierpoint_allentown, tierpoint_allentown_density,
@@ -37,6 +56,8 @@ import extdeps.colo.flexential { flexential_philadelphia_collegeville, flexentia
 import extdeps.colo.five_9s_digital { five_9s_allentown, five_9s_allentown_density }
 import extdeps.colo.netrality { netrality_401_n_broad, netrality_401_n_broad_density }
 import extdeps.colo.lumen { lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken, lumen_cabinet_density }
+import extdeps.colo.telehouse { telehouse_chelsea, telehouse_chelsea_density, telehouse_teleport, telehouse_teleport_density }
+import extdeps.colo.sabey { sabey_375_pearl, sabey_375_pearl_density }
 import v2.std.optional { Optional, Present, Absent }
 
 // WHERE WE LOOKED AND FOUND NOTHING, WHICH IS A MEASUREMENT AND NOT AN ABSENCE.
@@ -144,17 +165,31 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // measuring the wrong thing, and it would have been read as a regression by whoever saw it first.
 //
 // This is therefore a claim-PRESENCE question over the arms, which is what the coverage roster owns.
-// It is not a second spelling of the ceiling: nothing here reads a figure, a unit, a direction or a
+// It is not a second spelling of a screen: nothing here reads a figure, a unit, a direction or a
 // cooling medium, and no Watt is touched. Requirement-specific usability stays where the operator put
-// it, inside the selection projection, and cabinet_density_air_ceiling remains the sole authority for
-// what a cabinet may draw - this module no longer calls it at all.
+// it, inside the selection projection.
 //
-// AND THIS FUNCTION IS THE HABIT REPEATING, WHICH review 62935 CAUGHT AND THIS FILE ALREADY
-// CONDEMNED IN ADVANCE. Nine lines above, coverage_facility_count carries the sentence "writing the
-// predicate again one module later is the receipt that the first deletion was applied to an instance
-// and not to the habit" - written about cabinet_density_is_read. density_claim_is_read asks the same
-// question over the same coproduct, one module later, in the file carrying that sentence.
-// DISPOSITION: YELLOW, not green.
+// THE SENTENCE THAT USED TO END THIS PARAGRAPH NAMED cabinet_density_air_ceiling AS "the sole
+// authority for what a cabinet may draw". THERE IS NO SUCH AUTHORITY ANY MORE, and its absence is
+// deliberate rather than incidental: that accessor and the whole CabinetPowerCeiling carrier are
+// deleted, because a marketed maximum cannot establish what a cabinet may draw and a type whose
+// contract said it could was minting a physical claim out of a marketing one. What replaced it answers
+// a RELATION - published_requirement_standing says whether a requirement sits outside what a page
+// published - and no arm of it decides placement. So the question this module declines to ask now has
+// no answerer anywhere, which is a stronger reason to decline it than deferring to one.
+//
+// AND THE FUNCTION THIS PARAGRAPH WAS WRITTEN ABOUT IS GONE, WHICH IS THE DISPOSITION IT WAS OWED.
+// review 62935 caught density_claim_is_read as the habit repeating - the sentence nine lines above,
+// written about cabinet_density_is_read, says "writing the predicate again one module later is the
+// receipt that the first deletion was applied to an instance and not to the habit", and this file then
+// carried the third instance under it. It was marked YELLOW pending a carrier route.
+//
+// THAT ROUTE LANDED AND THE PREDICATE IS DELETED RATHER THAN RETYPED. The count now matches
+// claim_wording_standing inline at its single call site: the carrier's own three-state fold, whose
+// Unread arm IS the unread claim, so nothing has to be coined to ask whether a page was read. The
+// paragraph is kept rather than deleted because the HABIT is what it documents, and the habit is not
+// retired by one deletion - it is retired by there being no place left to author the predicate a
+// fourth time.
 //
 // THE DIAGNOSIS ABOVE USED TO SAY THE DEFECT WAS "a Bool arm-matcher over a reusable coproduct". THAT
 // IS WRONG AND IT IS WORTH CORRECTING IN PLACE, because it is the sentence a future reader inherits.
@@ -181,10 +216,13 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 //
 // WHY IT IS NOT REPAIRED IN THIS CHANGE. The right home is the carrier - a presence-shaped accessor
 // that answers "was anything published" without also committing to a direction and a medium, which
-// none of the carrier's direction-committed accessors can do. It cannot be written against today's
-// arms, because the arms this predicate matches on are being replaced wholesale: DensityMarketedMax
-// and DensityMarketedAirOnly dissolve into one DensityPublished carrying a non-empty list of
-// figures, so an accessor authored now would match over a coproduct scheduled for deletion.
+// none of the carrier's direction-committed accessors can do. THAT REPLACEMENT HAS NOW LANDED, so the
+// reason this predicate could not be written has expired: DensityMarketedMax and DensityMarketedAirOnly
+// are deleted and one DensityPublished arm carries a non-empty list of figures, each holding its own
+// medium, quantity, wording and verification. This fold now matches two arms rather than three and
+// commits to no direction and no medium, which is what it wanted. What it still does not have is a
+// home: it belongs beside the carrier rather than in this census module, and the membership
+// derivation that would replace the hand-typed counts below is a separate change.
 //
 // TRIGGER, RESTATED AFTER READING DESIGN SECTION 4b(3) AGAINST IT - THE FIRST WORDING WAS THE EXACT
 // DEFECT THAT RULE DESCRIBES. It read "gunbc#10885 landing". That named an ARTIFACT rather than a
@@ -232,9 +270,17 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // the same fold calls it and this declaration goes. A migration whose destination is named and whose
 // origin has no competing authority is not a throwaway artifact; it is one call site moving.
 //
-// ON REBASE this function is DELETED and coverage_density_read_count asks the carrier, in whatever
-// shape the carrier settles on. It is NOT rewritten against the new arms: that would be the same
-// predicate authored a fourth time in the file that already carries the sentence predicting the third.
+// THE REBASE HAPPENED AND THE FUNCTION IS DELETED, WHICH IS WHAT THE SENTENCE ABOVE PROMISED. The
+// first cut of this merge REWROTE it against the new arms instead - `DensityPublished { figures } =>
+// true` - which is exactly the fourth authoring this file predicted and review 63019 caught. Deleting
+// it was never contingent on anything but the carrier route existing, and the carrier route landed in
+// the same change that broke the old one.
+//
+// THE COUNT NOW ASKS AN AUTHORITY THAT ALREADY ANSWERS. `claim_wording_standing` is the carrier's own
+// three-state fold over a claim and its Unread arm IS the unread claim, so no predicate has to be
+// coined to ask whether a page was read - and matching it costs no traversal, which is what the
+// paragraph below asks for. Spelling it inline at the single call site rather than as a named helper
+// is deliberate: a named one would be the fourth authoring under a new name.
 //
 // AND WHERE THE CARRIER ANSWERS WITH THE FIGURES RATHER THAN THE QUESTION, this fold destructures them
 // rather than measuring them. `length(...) > 0` computes a TOTAL to decide a PRESENCE, which is the
@@ -244,14 +290,6 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // the tempting spelling is the measuring one, and it is tempting precisely where the list is short.
 // Recorded here rather than in a PR thread, because the next reader of this function needs to know it
 // is owed a home, and needs the trigger to be one that can actually be checked.
-fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
-  match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => true,
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => true,
-    DensityUnread { obligation } => false,
-  }
-}
-
 // COUNTS DENSITY CLAIMS, NOT FACILITIES, and the two differ on purpose. Several corridor operators
 // publish one density statement covering every site they run, so a claim is the grain at which the
 // reading actually exists; attributing an operator-level claim to each of its facilities would
@@ -269,7 +307,11 @@ fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
 // a facility-grain number must not be manufactured from it.
 fn coverage_density_read_count(c: RegionCoverage) -> Int? {
   match c.outcome {
-    FacilitiesModelled { facilities, densities } => Present { value: densities.filter(d => density_claim_is_read(d: d)).length() },
+    FacilitiesModelled { facilities, densities } => Present { value: densities.filter(d => match claim_wording_standing(d: d) {
+      ClaimWordingVerified => true,
+      ClaimWordingSummarized { unverified } => true,
+      ClaimWordingUnread => false,
+    }).length() },
     SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Absent,
     RegionUnsurveyed { obligation } => Absent,
   }
@@ -435,6 +477,69 @@ data hudson_valley: RegionCoverage = RegionCoverage {
   },
 }
 
+// NYC FIVE BOROUGHS, surveyed 2026-09-08 by census lane snappy-moth-679. Twenty-four facility rows
+// with five-borough addresses: Equinix NY9; Digital Realty JFK10/JFK12/JFK13 (Manhattan carrier
+// hotels despite the JFK codes); CoreSite NY1; DataVerge Brooklyn; DataBank LGA1 and LGA2; Telehouse
+// Chelsea and Teleport; Sabey 375 Pearl; H5 325 Hudson; Colocation America NYDC1 and NYDC2; 365 Data
+// Centers' eight Manhattan POPs plus Brooklyn Vanderbilt and Staten Island Teleport. DataBank LGA4
+// Orangeburg is Rockland County and is not in this count. Two density reads survive byte verification:
+// Telehouse Chelsea (5 kVA apparent) and Telehouse Teleport (20 kW real). Equinix NY8 is named on a
+// 2021 spec sheet and absent from the live campus listing, so it has no current facility row.
+// Colocation America NYDC3 Hawthorne is Westchester, not this region. Staten Island's building-operator
+// colo is Telehouse Teleport; 365's Teleport listing is an in-building POP in that same campus.
+data nyc_five_boroughs: RegionCoverage = RegionCoverage {
+  region_label: "NYC five boroughs",
+  region_code: "NY",
+  outcome: FacilitiesModelled {
+    facilities: [
+      equinix_ny9,
+      digital_realty_jfk10, digital_realty_jfk12, digital_realty_jfk13,
+      coresite_ny1,
+      dataverge_brooklyn,
+      databank_lga1_hudson, databank_lga2_eighth,
+      telehouse_chelsea, telehouse_teleport,
+      sabey_375_pearl,
+      h5_nyc_325_hudson,
+      colocation_america_nydc1, colocation_america_nydc2,
+      three_sixty_five_nyc_32_sixth, three_sixty_five_nyc_121_varick, three_sixty_five_nyc_111_eighth,
+      three_sixty_five_nyc_60_hudson, three_sixty_five_nyc_325_hudson, three_sixty_five_nyc_375_pearl,
+      three_sixty_five_nyc_85_tenth, three_sixty_five_nyc_65_broadway,
+      three_sixty_five_brooklyn_vanderbilt, three_sixty_five_staten_island_teleport,
+    ],
+    densities: [
+      equinix_ny9_density,
+      digital_realty_jfk10_density, digital_realty_jfk12_density, digital_realty_jfk13_density,
+      coresite_ny1_density,
+      dataverge_brooklyn_density,
+      databank_lga1_density, databank_lga2_density,
+      telehouse_chelsea_density, telehouse_teleport_density,
+      sabey_375_pearl_density,
+      h5_nyc_325_hudson_density,
+      colocation_america_nydc1_density, colocation_america_nydc2_density,
+      three_sixty_five_nyc_density_unread,
+    ],
+  },
+}
+
+// QUEENS AND THE BRONX were searched in the same sweep. Hits resolved to aggregator or
+// lead-generation pages, to DataVerge Brooklyn's connectivity claim that its MMR underpins Queens
+// (not a Queens facility), and to Digital Realty sites whose operator pages place them in Manhattan
+// carrier hotels. No independently cited operator facility page with a Queens or Bronx address was
+// modelled.
+data nyc_queens_and_bronx: RegionCoverage = RegionCoverage {
+  region_label: "Queens and Bronx",
+  region_code: "NY",
+  outcome: SurveyedNoRetailOperator {
+    searched: ["Queens", "Bronx"],
+    causes: [
+      ResolvedToAggregatorsOnly { detail: "directory and marketplace hits for Queens and the Bronx resolved to aggregators or lead-generation pages rather than an operator publishing a facility at a Queens or Bronx street address" },
+      DirectoryClaimContradictedByOperator { detail: "DataVerge Brooklyn's page claims its MMR underpins Queens and Long Island - a connectivity claim, not a second facility in Queens. Digital Realty JFK10/12/13 use JFK codes and sit at Manhattan carrier-hotel addresses on the operator pages" },
+    ],
+    surveyed_on: "2026-09-08",
+    surveyed_by: "census lane: NYC five boroughs (snappy-moth-679)",
+  },
+}
+
 // THIS ROSTER IS INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It
 // carries the regions a lane surveyed, including ones surveyed and found empty; it does not carry a
 // RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding
@@ -482,10 +587,11 @@ data pa_philadelphia_and_lehigh_valley: RegionCoverage = RegionCoverage {
     ],
   },
 }
-
 data census_regions: List<RegionCoverage> = [
   nj_hudson_bergen_essex_corridor,
   southern_new_jersey,
   hudson_valley,
+  nyc_five_boroughs,
+  nyc_queens_and_bronx,
   pa_philadelphia_and_lehigh_valley,
 ]
