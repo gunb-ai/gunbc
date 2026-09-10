@@ -46,7 +46,7 @@ import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
-data non_empty_symbol_chain_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "migrate_when_free_semigroup_available — NonEmptySymbolChain dissolves into std.algebra FreeSemigroup<Symbol>. RETARGETED: this trigger previously named the promotion of the manual Refined<List<T>> fixture to std, and the generic carrier that landed is a record with a head field rather than that refinement, with the NonEmptyList alias deliberately withheld while the fixture lives - so the event as previously spelled will not occur and this row would have stalled untracked.")
+data non_empty_symbol_chain_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "cut_over_assemble_rejection_chain — NonEmptySymbolChain is FreeSemigroup<Symbol> by shape. std.algebra FreeSemigroup is already in the tree. Dissolve when the four mints in v2.compiler.self_host.frontier_probe_assemble_detail (non_empty_symbol_chain_from_non_empty_parse_stage, non_empty_symbol_chain_from_non_empty_diagnostics, and non_empty_symbol_chain_from_diagnostic_list) and the literal in v2.test.fixture.frontier_probe_cause_location_manifest_fixture construct FreeSemigroup<Symbol>, then delete this type. The previous event name migrate_when_free_semigroup_available has already fired.")
 
 // FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the
 // behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g.
