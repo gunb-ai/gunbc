@@ -99,10 +99,13 @@ import gunbc.secret_provision_actuator {
 // payload/data, because a dotted path is a single JSON-pointer key and was why the first live
 // Create looked like RestOk with a null status.
 //
-// THE ATTEMPT GRAIN IS r2_object_read_token_mint_receipt. Two earlier Creates reached Cloudflare
-// under the dotted-path decoder, minted tokens whose values this process did not keep, and were
-// revoked by id after List before this receipt's Create. Those were not commit-ambiguous HTTP
-// arms; they were RestOk with unread fields. A retry into a 5xx/timeout was not done.
+// THE ATTEMPT GRAIN IS r2_object_read_token_mint_receipt. THREE Creates ran. The first two reached
+// Cloudflare under the dotted-path decoder, minted live tokens whose values this process did not
+// keep, and were revoked by id after List: 3cbb99f150c4daec03ab6a8458a2440f and
+// cb444492f55dbc1b40ee7ce17778d7ff (account listing was the only readback of those two). This
+// receipt is the THIRD Create. Those were not commit-ambiguous HTTP arms; they were RestOk with
+// unread fields. A retry into a 5xx/timeout was not done. The class is
+// gunbc.recurring_failure_mode.json_pointer_dot_spelling_reads_nested_fields_as_absent.
 //
 // THE ACCESS KEY ID IS THE TOKEN ID AND IS NOT A SECRET. The token value is not in this file.
 
