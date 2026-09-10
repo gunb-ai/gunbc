@@ -504,12 +504,25 @@ fn grain_admits_single_cabinet(g: RetailGrainStanding) -> Bool {
   }
 }
 
+// IRON MOUNTAIN IS THE PAIR THAT PROVES THE INDEPENDENCE, AND IT PROVES IT IN THE HARDER DIRECTION.
+// Its grain is readable - the operator sells single cabinets - while its density answers NO medium
+// request at all, because its page names no cooling medium. So one axis screens and the other cannot,
+// on one row, which is what "separate facts" has to mean to be worth asserting.
+//
+// THE MEDIUM CAUGHT AN ERROR IN THIS WITNESS RATHER THAN IN A ROW. Merging #10862 re-keyed its
+// `established_watts(iron_mountain_nje1_density) == 30000` to `outside_maximum(..., AirCooling,
+// 30001)`, and that FAILED - correctly. NJE-1 publishes "high-density up to 30 kW/rack" and names no
+// medium, so an air request finds no figure and the screen refuses for absence rather than for the
+// ceiling. The re-key had quietly restored the pre-migration inference that an unlabelled figure
+// answers an air question, inside the change that exists to remove it. The honest conjunct is that the
+// air request finds NOTHING here while the grain still reads.
 test fn w_density_and_grain_are_separate_facts() -> Bool {
   grain_admits_single_cabinet(g: databank_lga4_retail_grain)
     && grain_admits_single_cabinet(g: iron_mountain_nje1_retail_grain)
     && bounds_above(d: air_labelled_cap_fixture, requested: AirCooling)
     && !bounds_above(d: databank_lga4_density, requested: AirCooling)
-    && outside_maximum(d: iron_mountain_nje1_density, requested: AirCooling, required: 30001)
+    && !has_figure_for(d: iron_mountain_nje1_density, requested: AirCooling)
+    && density_claim_figures(d: iron_mountain_nje1_density).length() == 1
 }
 
 // AN UNREAD DENSITY REFUSES NOTHING, WHICH IS THE ARM THAT KEEPS THE CEILING FROM BEING A FREE
