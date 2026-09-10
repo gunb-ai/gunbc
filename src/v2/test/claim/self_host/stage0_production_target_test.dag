@@ -1,5 +1,6 @@
 module v2.test.self_host.stage0_production_target
 
+import v2.compiler.emit_module { emit_module_decl_separator }
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.self_host.candidate_generation {
   generate_rust_module_emission_candidate
@@ -92,7 +93,15 @@ fn stage0_boundary_emitted_source_for(target: TargetModel) -> Stage0BoundaryEmis
   }
 }
 
-data stage0_boundary_expected_source: String = "pub fn add(x: i64, y: i64) -> i64 { x + y }"
+// THE DECLARATION SEPARATOR IS PART OF THE EXPECTED TEXT because the door emits a MODULE, not a
+// bare declaration: v2.compiler.emit_produced emit_produced_module terminates every declaration
+// including the last, exactly as v2.compiler.emit_module does, and gunbc#10907 routed the door's
+// every nonempty population through that one authority. Composed from the separator authority
+// rather than transcribed, so a change to the module convention reds here rather than drifting
+// silently apart from the emitter that produces it. The declaration text stays a literal: it is
+// the fixture golden this claim exists to pin, and reading it from the profile under test would
+// stop it discriminating.
+data stage0_boundary_expected_source: String = concat("pub fn add(x: i64, y: i64) -> i64 { x + y }", emit_module_decl_separator)
 
 data stage0_boundary_visibility_keyword: String = "pub "
 
