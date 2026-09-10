@@ -1,0 +1,172 @@
+module extdeps.github.code_search
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.github { default_api_base, max_per_page }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome, RestOk }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/search/search#search-code"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.code_search",
+      decl_name: "github.CodeSearch",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// GITHUB CODE SEARCH IS A BOUNDED, SELF-DECLARING-INCOMPLETE INSTRUMENT, and both halves of that
+// sentence are modelled here because a consumer that forgets either one turns a sample into a
+// census. The endpoint caps a query at 1000 results however many exist, paginates at 100, is rate
+// limited far more tightly than the rest of the REST surface, and returns a boolean saying
+// whether it gave up early. So a population discovered this way is a DECLARED population, never
+// "all of GitHub", and the receipt that says which is the consumer's obligation.
+//
+// A SEARCH ITEM IS A HINT, NOT AN OBSERVATION. It says a string occurred somewhere in a file at
+// some indexed revision; it does not say which job selected it, whether the file still contains
+// it, or what commit the indexed content belonged to. Canonicalizing a hit into an observation
+// means re-reading the file at an exact ref, which is extdeps.github.repository_contents' job.
+// The type name carries that: what comes back is a CodeSearchHit.
+
+// -------------------------------------------------------------------------------------
+// total_count IS NOT THE NUMBER OF THINGS THIS ENDPOINT WILL GIVE YOU, and the field is modelled
+// anyway because refusing to model what upstream returns would leave a consumer nowhere to see
+// that. MEASURED 2026-09-10 on the query "depot-ubuntu-24.04-arm" path:.github/workflows: all
+// three pages reported total_count 250, while the pages actually returned 100, 100 and 91 items -
+// 291 distinct (repository, path, sha) triples, MORE than the reported total. A population size
+// taken from this field would have been wrong by 41 in the direction that under-counts.
+//
+// This is the same class the workload census already found on actions/runs, where total_count
+// reported a 40000 cap wearing the shape of a total. The rule both instances teach is the same:
+// a population size is the number of things COUNTED over a recorded window, and a number the
+// server volunteers about the size of its own index is not that.
+data code_search_total_count_is_not_a_count: NonEmptyStr = "The search API's total_count is an index-side estimate and does not agree with the items delivered. Measured 2026-09-10: three pages of \"depot-ubuntu-24.04-arm\" path:.github/workflows each reported total_count 250 while delivering 291 items in total. Count what you read; never report this field as a population size."
+
+// UPSTREAM'S OWN HONESTY FIELD. GitHub returns incomplete_results: true when the search timed out
+// and it is handing back whatever it had. It is the only signal that a page is a truncation
+// rather than an answer, and a scan that discards it cannot tell a small population from an
+// abandoned query.
+// THE REPOSITORY THIS ENDPOINT RETURNS IS NOT extdeps.github.github.Repository, and modelling it
+// as one would have been a fabricated field rather than a shared shape. Observed 2026-09-10, the
+// repository object inside a code-search item carries id, name, full_name, owner, private, fork,
+// description, node_id and a long list of URL templates - and it does NOT carry default_branch,
+// which Repository requires. GitHub returns a deliberately reduced repository representation on
+// its listing and search endpoints; that is a different upstream shape, not a subset someone
+// forgot to fill in, so it gets its own row. What is modelled is what a scan actually asks of it.
+//
+// `fork` is here because it bears on population quality, and the 2026-09-10 depot-arm query
+// showed exactly how little it settles. All 124 distinct repositories that query returned report
+// fork: false - and whether that is because this index excludes forks or because no fork matched
+// is NOT established by the observation, so neither reading is asserted here. Meanwhile that same
+// population contains several independent copies of one upstream project under different owners,
+// none of them GitHub forks and all of them counted separately. So the flag is carried because
+// upstream returns it, and a scan that deduplicates on it alone has not deduplicated.
+type CodeSearchRepository {
+  id: Int
+  name: String
+  full_name: String
+  private: Bool
+  fork: Bool
+}
+
+type CodeSearchHit {
+  name: String
+  path: String
+  sha: String
+  repository: CodeSearchRepository
+}
+
+type CodeSearchPage {
+  total_count: Int
+  incomplete_results: Bool
+  items: List<CodeSearchHit>
+}
+
+// The number of hits this page ACTUALLY delivered, which is the only count a consumer may fold
+// into a population size. Named as a function beside the field it exists to displace, so that a
+// reader choosing between them meets the reason.
+fn code_search_hits_read(page: CodeSearchPage) -> Int {
+  count(page.items)
+}
+
+data hermetic_code_search_repository: CodeSearchRepository = CodeSearchRepository {
+  id: 75821432,
+  name: "llvm-project",
+  full_name: "llvm/llvm-project",
+  private: false,
+  fork: false,
+}
+
+data hermetic_code_search_path: String = ".github/workflows/premerge.yaml"
+data hermetic_code_search_name: String = "premerge.yaml"
+data hermetic_code_search_blob_sha: String = "9ba6fbbf627a0afdec053411e3382271588b372f"
+data hermetic_code_search_total_count: Int = 250
+data hermetic_code_search_incomplete: Bool = false
+data hermetic_code_search_outcome: RestOutcome = RestOk
+
+// THE QUERY IS AN INPUT AND NEVER A LITERAL HERE: which strings this repository searches for is a
+// fact about the scan being run, not about GitHub's API, and baking one in would be the
+// policy-in-extdeps layer inversion DESIGN section 3 names. per_page and page are inputs for the
+// same reason - the pagination WALK belongs to the caller that has to record how far it got.
+service github.CodeSearch {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation SearchCode {
+    input {
+      auth_token: Secret
+      q: String
+      per_page: Int = max_per_page
+      page: Int = 1
+    }
+    output {
+      page: CodeSearchPage
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/search/code",
+      query: { q: q, per_page: per_page, page: page }
+    }
+    response {
+      200 => CodeSearchPage
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      422 => GitHubErrorShape
+      503 => GitHubErrorShape
+    }
+    mock_response {
+      200 => {
+        page: {
+          total_count: hermetic_code_search_total_count,
+          incomplete_results: hermetic_code_search_incomplete,
+          items: [
+            {
+              name: hermetic_code_search_name,
+              path: hermetic_code_search_path,
+              sha: hermetic_code_search_blob_sha,
+              repository: hermetic_code_search_repository
+            }
+          ]
+        },
+        outcome: hermetic_code_search_outcome
+      } "hermetic decoded-200 shape for GET /search/code, carrying the first real hit of the 2026-09-10 depot-arm query and that query's real total_count of 250 beside a single delivered item - so the fixture itself exhibits the total_count-is-not-a-count defect rather than describing it"
+    }
+  }
+}

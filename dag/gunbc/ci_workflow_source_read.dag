@@ -1,0 +1,156 @@
+module gunbc.ci_workflow_source_read
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
+import std.resources { Network }
+import extdeps.transports.rest {
+  classify_rest_outcome,
+  RestExchangeSucceeded, RestExchangePerformance,
+  RestReadExchange,
+}
+import extdeps.github.code_search
+import extdeps.github.repository_contents
+import extdeps.github.code_search {
+  CodeSearchPage, CodeSearchHit, CodeSearchRepository, code_search_hits_read,
+}
+import extdeps.github.repository_contents {
+  RepositoryFileContent, contents_base64_encoding, contents_absent_encoding,
+}
+
+// THE READ HALF OF A PUBLIC CI-WORKFLOW SCAN, AND NOTHING ELSE.
+//
+// Two reads: a bounded page of code search, and one file at one exact ref. No contact of any
+// kind is reachable from here, no third-party code is executed, and nothing below constructs an
+// outreach admission or a trial authorization - those are refused structurally in the acquisition
+// authority and this module never touches them. What it produces is evidence about a workflow
+// file, which is the only thing a public repository can be asked for without asking anybody.
+//
+// EACH READ RETURNS A TYPED OUTCOME RATHER THAN A VALUE-OR-EMPTY. A scan that cannot tell a
+// rate-limit refusal from a repository with no matching workflow will fold both into "no
+// candidate here", and the deficit that shrank the population never ranks for fixing.
+
+// -------------------------------------------------------------------------------------
+// A PAGE OF CODE SEARCH IS THREE OUTCOMES, NOT TWO, BECAUSE UPSTREAM SAYS SO. GitHub returns
+// incomplete_results: true when its own search timed out and it is handing back what it had.
+// That is neither a successful page nor a transport failure: the request succeeded and the
+// ANSWER is short by an unknown amount. Folding it into the success arm turns an abandoned query
+// into a small population, which is the one error a discovery scan cannot detect later.
+// -------------------------------------------------------------------------------------
+
+type CodeSearchPageRead
+  = CodeSearchPageComplete { page: CodeSearchPage, hits_read: Int }
+  | CodeSearchPageTruncated { page: CodeSearchPage, hits_read: Int, cause: NonEmptyStr }
+  | CodeSearchPageRefused { performance: RestExchangePerformance }
+
+data code_search_truncation_cause: NonEmptyStr = "GitHub returned incomplete_results: true for this page, meaning its own search timed out and returned what it had. The number of hits NOT returned is not reported and cannot be derived, so any population counted from this page is a lower bound of unknown tightness and may not be described as a census."
+
+func perform_code_search_page(
+  auth_token: Secret,
+  q: String,
+  per_page: Int,
+  page: Int,
+) -> CodeSearchPageRead uses net: Network {
+  let got = github.CodeSearch.SearchCode(auth_token: auth_token, q: q, per_page: per_page, page: page)
+  match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
+    RestExchangeSucceeded =>
+      if got.page.incomplete_results {
+        CodeSearchPageTruncated {
+          page: got.page,
+          hits_read: code_search_hits_read(page: got.page),
+          cause: code_search_truncation_cause,
+        }
+      } else {
+        CodeSearchPageComplete { page: got.page, hits_read: code_search_hits_read(page: got.page) }
+      }
+    other => CodeSearchPageRefused { performance: other }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// ONE WORKFLOW FILE AT ONE EXACT REF. The oversized arm is the reason this is not a two-way
+// answer: above one megabyte the contents endpoint returns HTTP 200 with an empty content string
+// and encoding "none", so a consumer that decoded unconditionally would get an empty file, find
+// no jobs in it, and record a repository as having no CI - a fabricated observation that arrives
+// through the success path with no error anywhere.
+// -------------------------------------------------------------------------------------
+
+type WorkflowSourceRead
+  = WorkflowSourceObserved { file: RepositoryFileContent }
+  | WorkflowSourceTooLargeForContentsApi { file: RepositoryFileContent, cause: NonEmptyStr }
+  | WorkflowSourceEncodingUnrecognized { file: RepositoryFileContent, cause: NonEmptyStr }
+  | WorkflowSourceRefused { performance: RestExchangePerformance }
+
+data workflow_source_too_large_cause: NonEmptyStr = "the contents endpoint answered 200 with encoding 'none' and an empty content string, which is what it does above its size ceiling; the file was NOT read and this is not a repository without a workflow. Re-read it through the git blob endpoint before recording anything about its jobs."
+
+data workflow_source_unknown_encoding_cause: NonEmptyStr = "the contents endpoint answered 200 with an encoding this reader does not model; the bytes were not decoded and nothing may be concluded about the file's contents."
+
+func perform_workflow_source_read(
+  auth_token: Secret,
+  owner: String,
+  repo: String,
+  path: String,
+  ref: String,
+) -> WorkflowSourceRead uses net: Network {
+  let got = github.RepositoryContents.GetContent(
+    auth_token: auth_token, owner: owner, repo: repo, path: path, ref: ref)
+  match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
+    RestExchangeSucceeded =>
+      if got.file.encoding == contents_base64_encoding {
+        WorkflowSourceObserved { file: got.file }
+      } else if got.file.encoding == contents_absent_encoding {
+        WorkflowSourceTooLargeForContentsApi { file: got.file, cause: workflow_source_too_large_cause }
+      } else {
+        WorkflowSourceEncodingUnrecognized { file: got.file, cause: workflow_source_unknown_encoding_cause }
+      }
+    other => WorkflowSourceRefused { performance: other }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// A HIT IS NOT AN OBSERVATION, AND THE TYPE SAYS SO. A code-search item names a repository, a
+// path and a blob sha at whatever revision GitHub's index held; the ref is not recorded and the
+// index moves. Promoting a hit to a workflow-source observation means going back to the file at
+// an exact ref, which is the read above. This function is the only bridge, and it takes the ref
+// as an argument precisely so that no caller can promote a hint without naming one.
+// -------------------------------------------------------------------------------------
+
+type WorkflowSourceIdentity {
+  repository_full_name: String
+  repository_id: Int
+  repository_is_fork: Bool
+  ref: String
+  workflow_path: String
+  blob_sha: String
+}
+
+fn hit_repository(hit: CodeSearchHit) -> CodeSearchRepository {
+  hit.repository
+}
+
+type HitCanonicalization
+  = HitCanonicalized { identity: WorkflowSourceIdentity }
+  | HitNotCanonicalized { repository_full_name: String, path: String, cause: NonEmptyStr }
+
+fn canonicalize_hit(hit: CodeSearchHit, ref: String, read: WorkflowSourceRead) -> HitCanonicalization {
+  match read {
+    WorkflowSourceObserved { file } => HitCanonicalized {
+      identity: WorkflowSourceIdentity {
+        repository_full_name: hit.repository.full_name,
+        repository_id: hit.repository.id,
+        repository_is_fork: hit.repository.fork,
+        ref: ref,
+        workflow_path: file.path,
+        blob_sha: file.sha,
+      },
+    }
+    WorkflowSourceTooLargeForContentsApi { file, cause } => HitNotCanonicalized {
+      repository_full_name: hit.repository.full_name, path: hit.path, cause: cause,
+    }
+    WorkflowSourceEncodingUnrecognized { file, cause } => HitNotCanonicalized {
+      repository_full_name: hit.repository.full_name, path: hit.path, cause: cause,
+    }
+    WorkflowSourceRefused { performance } => HitNotCanonicalized {
+      repository_full_name: hit.repository.full_name, path: hit.path,
+      cause: "the file could not be read at the named ref, so the hit was not promoted to an observation",
+    }
+  }
+}

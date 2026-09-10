@@ -1,0 +1,162 @@
+module test.claim.ci_workflow_source_read_witness_test
+
+import std.logic { Bool }
+import std.types { Int, String, Secret }
+import extdeps.github.code_search {
+  CodeSearchPage, CodeSearchHit, CodeSearchRepository, code_search_hits_read,
+  hermetic_code_search_repository, hermetic_code_search_path, hermetic_code_search_name,
+  hermetic_code_search_blob_sha, hermetic_code_search_total_count,
+}
+import extdeps.github.repository_contents {
+  RepositoryFileContent, contents_base64_encoding, contents_absent_encoding,
+  hermetic_repository_file_blob_sha, hermetic_repository_file_path, hermetic_repository_file_size,
+}
+import gunbc.ci_workflow_source_read {
+  CodeSearchPageRead, CodeSearchPageComplete, CodeSearchPageTruncated, CodeSearchPageRefused,
+  perform_code_search_page,
+  WorkflowSourceRead, WorkflowSourceObserved, WorkflowSourceTooLargeForContentsApi,
+  WorkflowSourceEncodingUnrecognized, WorkflowSourceRefused,
+  perform_workflow_source_read,
+  HitCanonicalization, HitCanonicalized, HitNotCanonicalized, canonicalize_hit,
+  WorkflowSourceIdentity,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_token: Secret = "hermetic-fixture-token" as Secret
+
+// -------------------------------------------------------------------------------------
+// THE PAGE READ, BOUND TO THE HERMETIC FIXTURE. The green here is the published mock shape, not a
+// live GitHub search - and the fixture's own numbers are what the claim asserts, so a live page
+// substituted for it would go red rather than pass quietly.
+// -------------------------------------------------------------------------------------
+
+test fn a_code_search_page_binds_the_hermetic_fixture_hit() -> Bool {
+  match perform_code_search_page(auth_token: fixture_token, q: "\"depot-ubuntu-24.04-arm\" path:.github/workflows", per_page: 100, page: 1) {
+    CodeSearchPageComplete { page, hits_read } =>
+      hits_read == 1
+        && count(page.items) == 1
+        && first(page.items).sha == hermetic_code_search_blob_sha
+        && first(page.items).path == hermetic_code_search_path
+        && first(page.items).repository.full_name == hermetic_code_search_repository.full_name
+    CodeSearchPageTruncated { page, hits_read, cause } => false
+    CodeSearchPageRefused { performance } => false
+  }
+}
+
+// THE DEFECT THE FIXTURE ITSELF CARRIES. total_count says 250 and one item was delivered. A
+// consumer that folded total_count into a population size would read this page as 250 repositories
+// and be wrong by 249 on the strength of a field the server volunteered. The claim asserts the
+// disagreement rather than describing it, so it goes red the day the two are made to agree.
+test fn total_count_disagrees_with_the_hits_actually_read() -> Bool {
+  match perform_code_search_page(auth_token: fixture_token, q: "any", per_page: 100, page: 1) {
+    CodeSearchPageComplete { page, hits_read } =>
+      page.total_count == hermetic_code_search_total_count
+        && page.total_count != hits_read
+        && hits_read == code_search_hits_read(page: page)
+    other => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// THE FILE READ, AND THE TWO ARMS THAT EXIST BECAUSE 200 IS NOT ALWAYS AN ANSWER.
+// -------------------------------------------------------------------------------------
+
+test fn a_workflow_source_read_binds_the_hermetic_blob_identity() -> Bool {
+  match perform_workflow_source_read(
+    auth_token: fixture_token, owner: "biomejs", repo: "biome",
+    path: ".github/workflows/main.yml", ref: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  ) {
+    WorkflowSourceObserved { file } =>
+      file.sha == hermetic_repository_file_blob_sha
+        && file.path == hermetic_repository_file_path
+        && file.size == hermetic_repository_file_size
+        && file.encoding == contents_base64_encoding
+    other => false
+  }
+}
+
+// THE OVERSIZED ARM, WHICH IS THE ONE THAT WOULD OTHERWISE FABRICATE. Above its size ceiling the
+// contents endpoint answers 200 with encoding "none" and no content; a reader that decoded
+// unconditionally would record a repository as having an empty workflow and therefore no jobs.
+// This claim constructs that response shape directly, because the mock publishes only one result
+// and the arm still has to be shown to refuse.
+data oversized_response: RepositoryFileContent = RepositoryFileContent {
+  name: "main.yml",
+  path: ".github/workflows/main.yml",
+  sha: "0000000000000000000000000000000000000000",
+  size: 1200000,
+  encoding: "none",
+  content: "",
+}
+
+data unknown_encoding_response: RepositoryFileContent = RepositoryFileContent {
+  name: "main.yml",
+  path: ".github/workflows/main.yml",
+  sha: "1111111111111111111111111111111111111111",
+  size: 10,
+  encoding: "utf-16",
+  content: "??",
+}
+
+fn read_of(file: RepositoryFileContent) -> WorkflowSourceRead {
+  if file.encoding == contents_base64_encoding {
+    WorkflowSourceObserved { file: file }
+  } else if file.encoding == contents_absent_encoding {
+    WorkflowSourceTooLargeForContentsApi { file: file, cause: "constructed for this claim" }
+  } else {
+    WorkflowSourceEncodingUnrecognized { file: file, cause: "constructed for this claim" }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// A HIT IS NOT AN OBSERVATION. Canonicalization must be reachable only through a read at a named
+// ref, and it must refuse when the read did not produce bytes - otherwise a scan promotes an
+// index entry into an identity and records a blob sha nobody fetched.
+// -------------------------------------------------------------------------------------
+
+data fixture_hit: CodeSearchHit = CodeSearchHit {
+  name: hermetic_code_search_name,
+  path: hermetic_code_search_path,
+  sha: hermetic_code_search_blob_sha,
+  repository: hermetic_code_search_repository,
+}
+
+data fixture_ref: String = "47d7383d049b36ff8eaba50912176928143dd9e9"
+
+data observed_file: RepositoryFileContent = RepositoryFileContent {
+  name: "main.yml",
+  path: ".github/workflows/main.yml",
+  sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  size: 5172,
+  encoding: "base64",
+  content: "ZmFrZQ==",
+}
+
+test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> Bool {
+  match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read_of(file: observed_file)) {
+    HitCanonicalized { identity } =>
+      identity.ref == fixture_ref
+        && identity.blob_sha == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
+        && identity.workflow_path == ".github/workflows/main.yml"
+        && identity.repository_full_name == "llvm/llvm-project"
+        && identity.repository_is_fork == false
+    HitNotCanonicalized { repository_full_name, path, cause } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE PROMOTION: an unread file must NOT become an identity, however
+// complete the hit that pointed at it was. Both non-reading arms are exercised, because a scan
+// that refused only the oversized one would still fabricate on an unrecognized encoding.
+test fn an_unread_file_never_becomes_an_identity() -> Bool {
+  let oversized_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read_of(file: oversized_response)) {
+    HitCanonicalized { identity } => false
+    HitNotCanonicalized { repository_full_name, path, cause } => repository_full_name == "llvm/llvm-project"
+  }
+  let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read_of(file: unknown_encoding_response)) {
+    HitCanonicalized { identity } => false
+    HitNotCanonicalized { repository_full_name, path, cause } => true
+  }
+  oversized_refused && unknown_encoding_refused
+}
