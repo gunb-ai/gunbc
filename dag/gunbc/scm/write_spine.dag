@@ -104,10 +104,10 @@ fn candidate_record(repository: RepositoryEnvelope) -> CandidateRecord {
     CandidateRefused { cause: c } => CandidateRecordRefused { cause: c }
     CandidateEmptyCorpus =>
       CandidateRecordIs(StagingBase { repository: repository, base: none })
-    CandidateFromStage { record: r } =>
-      CandidateRecordIs(StagingBase { repository: repository, base: Present { value: r } })
-    CandidateInheritedFromBase { record: r } =>
-      CandidateRecordIs(StagingBase { repository: repository, base: Present { value: r } })
+    CandidateFromStage { candidate: c } =>
+      CandidateRecordIs(StagingBase { repository: repository, base: Present { value: c.record } })
+    CandidateInheritedFromBase { candidate: c } =>
+      CandidateRecordIs(StagingBase { repository: repository, base: Present { value: c.record } })
   }
 }
 

@@ -168,10 +168,10 @@ fn stg_commit(build: StgBuild, message: String) -> StgBuild {
       match effective_candidate(repository: repository) {
         CandidateRefused { cause: _ } => StgSetupFailed
         CandidateEmptyCorpus => StgSetupFailed
-        CandidateFromStage { record: r } =>
-          stg_mint(repository: repository, candidate: r.identity, message: message)
-        CandidateInheritedFromBase { record: r } =>
-          stg_mint(repository: repository, candidate: r.identity, message: message)
+        CandidateFromStage { candidate: c } =>
+          stg_mint(repository: repository, candidate: c.record.identity, message: message)
+        CandidateInheritedFromBase { candidate: c } =>
+          stg_mint(repository: repository, candidate: c.record.identity, message: message)
       }
   }
 }

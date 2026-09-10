@@ -145,9 +145,40 @@ type StagingRefusal
 // `store_path_unique_manifest`. Found by external review. Carrying
 // the record keeps the provenance attached, which is what lets `gunbc.scm.write_spine` derive a
 // `PathUniqueManifestEntries` and stop matching a duplicate arm it cannot reach.
+// THE CANDIDATE IS BOUND TO THE STORE IT WAS FOUND IN, AND THE 64-BIT LOCATOR IS WHY.
+//
+// An earlier revision carried a bare `CorpusManifestRecord` here and let `stage_standing_against_base`
+// take it beside a repository as two independently obtained values. I argued that pair was safe because
+// the root is resolved FROM `record.identity.locator`, so content-addressing made them agree. THAT
+// ARGUMENT WAS FALSE, and external review falsified it with the fact the model states about itself:
+// `ObjectId` is a 64-BIT NONCRYPTOGRAPHIC locator, and a store refuses unequal records at one locator
+// only WITHIN itself. Two stores share no such admission. So:
+//
+//   store A holds manifest MA at locator L, sources complete
+//   store B holds a DIFFERENT manifest MB at the same L, one source absent, but does hold MA's sources
+//   stage_standing_against_base(repository: B, record: MA)
+//     -> resolves L in B, obtaining the root for MB
+//     -> carries MA's entries into the change
+//     -> completeness vouches for MA's entries against B, which holds them
+//     -> the basis freezes MB, whose own sources were never observed
+//
+// The completeness observation vouches for one manifest while the basis freezes another. Resolving from
+// the record's own locator establishes that SOMETHING of manifest kind sits there; it does not establish
+// that what sits there IS this record. `repository_root_by_resolving` returns a root branded from the
+// record it FOUND and does not carry that found record forward, which is exactly the fact my argument
+// assumed away.
+//
+// So the binding happens where it is actually known: `effective_candidate` reads the record OUT OF this
+// repository's store, so at that instant the pair is true by observation rather than by inference. The
+// carrier freezes that instant. Nothing downstream re-derives it, and no caller can assemble one.
+type ResolvedCandidateManifest sole_constructor {
+  repository: RepositoryEnvelope
+  record: CorpusManifestRecord
+}
+
 type EffectiveCandidate
-  = CandidateFromStage { record: CorpusManifestRecord }
-  | CandidateInheritedFromBase { record: CorpusManifestRecord }
+  = CandidateFromStage { candidate: ResolvedCandidateManifest }
+  | CandidateInheritedFromBase { candidate: ResolvedCandidateManifest }
   | CandidateEmptyCorpus
   | CandidateRefused { cause: StagingRefusal }
 
@@ -155,7 +186,10 @@ fn effective_candidate(repository: RepositoryEnvelope) -> EffectiveCandidate {
   match repository.staged {
     Present { value: reference } =>
       match find_corpus_manifest_record(store: repository.store, identity: reference.locator) {
-        CorpusManifestFound(record) => CandidateFromStage { record: record }
+        CorpusManifestFound(record) =>
+          CandidateFromStage {
+            candidate: ResolvedCandidateManifest { repository: repository, record: record },
+          }
         CorpusManifestAbsent { identity: r } =>
           CandidateRefused { cause: StageManifestMissingFromStore { staged: r } }
         CorpusManifestIsAuthoredSource { identity: r } =>
@@ -175,7 +209,10 @@ fn candidate_inherited_from_base(repository: RepositoryEnvelope) -> EffectiveCan
         Absent => CandidateRefused { cause: StageBaseUnresolved { reference: reference } }
         Present { value: commit } =>
           match find_corpus_manifest_record(store: repository.store, identity: commit.root.locator) {
-            CorpusManifestFound(record) => CandidateInheritedFromBase { record: record }
+            CorpusManifestFound(record) =>
+              CandidateInheritedFromBase {
+                candidate: ResolvedCandidateManifest { repository: repository, record: record },
+              }
             CorpusManifestAbsent { identity: r } =>
               CandidateRefused { cause: StageBaseManifestMissingFromStore { root: r } }
             CorpusManifestIsAuthoredSource { identity: r } =>
@@ -198,8 +235,10 @@ fn staged_entries(repository: RepositoryEnvelope) -> StagedEntries {
   match effective_candidate(repository: repository) {
     CandidateRefused { cause: c } => StagedEntriesRefused { cause: c }
     CandidateEmptyCorpus => StagedEntries { entries: [] }
-    CandidateFromStage { record: record } => StagedEntries { entries: record.entries }
-    CandidateInheritedFromBase { record: record } => StagedEntries { entries: record.entries }
+    CandidateFromStage { candidate: candidate } =>
+      StagedEntries { entries: candidate.record.entries }
+    CandidateInheritedFromBase { candidate: candidate } =>
+      StagedEntries { entries: candidate.record.entries }
   }
 }
 
@@ -292,10 +331,10 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
   match effective_candidate(repository: repository) {
     CandidateRefused { cause: c } => StageStandingRefused { cause: c }
     CandidateEmptyCorpus => NoCandidateAndNoBase
-    CandidateInheritedFromBase { record: record } =>
-      stage_standing_against_base(repository: repository, record: record)
-    CandidateFromStage { record: record } =>
-      stage_standing_against_base(repository: repository, record: record)
+    CandidateInheritedFromBase { candidate: candidate } =>
+      stage_standing_against_base(candidate: candidate)
+    CandidateFromStage { candidate: candidate } =>
+      stage_standing_against_base(candidate: candidate)
   }
 }
 
@@ -344,6 +383,18 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
 // immediately below, so the two cannot disagree unless something separates them -- and now nothing
 // does. Found by applying external review's rule (carry the relationship as one value, do not compare
 // independently supplied peers) to the level above the one it was reported at.
+// THE ROOT IS NOT A PARAMETER OF A SIBLING, BECAUSE IT IS DERIVED HERE FROM THIS RECORD.
+//
+// The resolved branch below was a call to `stage_standing_with_root(repository, record, root)`, which
+// took the record and the root as independent peers -- so a caller could hand it a record from one
+// repository and a root resolved in another, and receive a `FreezableChange` whose entries and basis
+// describe different manifests. That is the same peer seam the commit path was just sealed against,
+// one function further up, and sealing `FreezableChange` alone would NOT have reached it: the
+// constructor would still have been handed a mispaired argument from inside its own module, which is
+// the one place `sole_constructor` does not guard. The root is resolved from `record.identity.locator`
+// immediately below, so the two cannot disagree unless something separates them -- and now nothing
+// does. Found by applying external review's rule (carry the relationship as one value, do not compare
+// independently supplied peers) to the level above the one it was reported at.
 // WHY THE REMAINING TWO ARGUMENTS ARE NOT A PEER SEAM, STATED SO IT NEED NOT BE RE-DERIVED.
 //
 // This function still takes a repository and a record, and the entries it carries come from the RECORD
@@ -359,10 +410,9 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
 // here because that is a real premise a future change could remove -- a non-hash locator, a store that
 // tolerates collisions, or a resolution keyed on anything but the record's own identity would each turn
 // these two arguments back into peers, and the type system would not notice.
-fn stage_standing_against_base(
-  repository: RepositoryEnvelope,
-  record: CorpusManifestRecord,
-) -> StageStanding {
+fn stage_standing_against_base(candidate: ResolvedCandidateManifest) -> StageStanding {
+  let repository = candidate.repository
+  let record = candidate.record
   match repository_root_by_resolving(
     repository: repository,
     root: CorpusManifestTarget { locator: record.identity.locator },
