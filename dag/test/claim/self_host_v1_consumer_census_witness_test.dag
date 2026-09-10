@@ -15,10 +15,7 @@ import gunbc.v1_consumer_census {
   v1_rows_undecided, v1_undecided_row_count, v1_deletion_worklist, v1_worklist_is_a_permutation,
   v1_worklist_leading_unjudged_count, v1_worklist_leads_with_the_unjudged,
   v1_blocking_consumers, v1_pending_pr_10882_consumers, v1_pending_head_row_count,
-  v1_row_key
-}
-import tools.v1_consumer_discovery {
-  v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
+  v1_row_key, v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
 }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,

@@ -332,12 +332,87 @@ data producer_bin_roster_row: DiscoveryProducer = discovery_producer(
 
 data claim_executor_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.bin.claim_executor", decl_name: "main")
 data gunbc_cli_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.main", decl_name: "main")
+data claim_batch_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.bin.claim_batch", decl_name: "main")
+data regen_stage0_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.bin.regen_stage0", decl_name: "main")
 data codex_session_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.bin.codex_app_server_stdio_session", decl_name: "main")
 data v1_compiler_crate_root: DeclarationRef = decl_ref(module_path: "v1_compiler.lib", decl_name: "lib")
 data stage0_partition_rows: DeclarationRef = decl_ref(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows")
 data invoked_bins_row: DeclarationRef = decl_ref(module_path: "gunbc.ci_release_bins", decl_name: "ci_floor_invoked_bins")
 data declared_release_bins_row: DeclarationRef = decl_ref(module_path: "gunbc.ci_release_bins", decl_name: "witness_declared_release_bins")
 data witness_census_gate: String = "gunbc.v1_witness_census v1_claim_conservation_holds"
+
+// THE LITERAL-TO-AUTHORITY SIGNATURE TABLE, homed here rather than in the producer that folds it.
+// What a `"claim_executor"` atom NAMES is a fact about this census's subjects, and the identity
+// spellings it resolves to are the DeclarationRef declarations directly above; a table living in
+// the instrument would have been a second copy of those references, which is the fork DESIGN
+// section 3 names. The instrument imports it. It also keeps the light half of the producer out of
+// the heavy closure: the paired witness can ask what a lexeme means without pulling the declaration
+// index into a required-floor entry's dependency closure.
+
+type V1LiteralSignature {
+  lexeme: String
+  authority: DeclarationRef
+  medium: ConsumerMedium
+  subject: V1Subject
+}
+
+fn v1cd_signature(lexeme: String, authority: DeclarationRef, subject: V1Subject) -> V1LiteralSignature {
+  V1LiteralSignature { lexeme: lexeme, authority: authority, medium: DagArgvRow, subject: subject }
+}
+
+// THE MATCH THESE ROWS ARE FOR IS WHOLE-ATOM EQUALITY, NEVER A SUBSTRING, and the cost of that is
+// declared rather than discovered. An argv row spells its binary as its own atom; a prose data row
+// that mentions the same word is a sentence and never equals one. Substring matching would sweep
+// every note in the corpus into the consumer population, and a census whose blocking column is
+// mostly prose has stopped meaning anything. What whole-atom equality LOSES is a binary reached
+// through a composed path -- a concat over a prefix and a variable -- and that loss is one of the
+// reasons this population stays PopulationMeasuredLowerBound after the producer lands.
+//
+// THE BARE CLI NAME IS DELIBERATELY ABSENT. "gunbc" is the project's name as well as the v1
+// binary's, so a bare-"gunbc" atom says nothing about which of the two a declaration meant, and
+// admitting it would fill the blocking column with rows nobody can disposition. The path-qualified
+// spellings are the discriminating ones, and the exclusion is EXECUTED by the paired witness rather
+// than asserted here.
+fn v1_literal_signatures() -> List<V1LiteralSignature> {
+  [
+    v1cd_signature(lexeme: "v1-compiler", authority: v1_compiler_crate_root, subject: V1CompilerCrate),
+    v1cd_signature(lexeme: "claim_executor", authority: claim_executor_bin, subject: V1HostedCiBinary),
+    v1cd_signature(lexeme: "target/release/claim_executor", authority: claim_executor_bin, subject: V1HostedCiBinary),
+    v1cd_signature(lexeme: "claim_batch", authority: claim_batch_bin, subject: V1Interpreter),
+    v1cd_signature(lexeme: "target/release/claim_batch", authority: claim_batch_bin, subject: V1Interpreter),
+    v1cd_signature(lexeme: "regen_stage0", authority: regen_stage0_bin, subject: V1HostedCiBinary),
+    v1cd_signature(lexeme: "target/release/gunbc", authority: gunbc_cli_bin, subject: V1Cli),
+    v1cd_signature(lexeme: "target/debug/gunbc", authority: gunbc_cli_bin, subject: V1Cli),
+  ]
+}
+
+fn v1cd_signature_lexemes() -> List<String> {
+  v1_literal_signatures() |> map(sig => sig.lexeme)
+}
+
+fn v1cd_lexeme_is_a_signature(lexeme: String) -> Bool {
+  v1cd_signature_lexemes() |> any(x => x == lexeme)
+}
+
+// THE CONSUMER HALF OF A DISCOVERED KEY IS DERIVED FROM THE DECLARATION FACT, never authored.
+// v2.std.decl_index strips a leading "v2." from the qualified name of a module rooted under src/v2,
+// while this census's rows carry the unstripped path, so the projection restores it from the fact's
+// own rel_path. It takes the three fields rather than the fact so that it is executable without
+// fabricating a declaration node -- and the re-prefixing rule is exactly the half whose failure
+// would silently report every src/v2 consumer as undisposed.
+
+data v1cd_v2_root_prefix: String = "src/v2/"
+
+fn v1cd_module_path_from(qualified_name: String, name: String, rel_path: String) -> String {
+  let suffix_len = name.length() + 1
+  let cut = qualified_name.length() - suffix_len
+  let base = if cut > 0 { qualified_name.substring(start: 0, end: cut) } else { qualified_name }
+  if rel_path.starts_with(prefix: v1cd_v2_root_prefix) {
+    concat("v2.", base)
+  } else {
+    base
+  }
+}
 
 fn retained_open(justification: String) -> ConsumerDisposition {
   RetainSameContract { justification: v1cc_nes(s: justification), coverage: CoverageOpen }
