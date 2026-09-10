@@ -10,7 +10,9 @@ import std.measure {
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.algebra { FreeSemigroup, FreeMonoid }
 import std.interval {
   OrderedClosedInterval, IntervalConstruction, IntervalConstructionFold,
@@ -375,14 +377,16 @@ type CabinetDensityClaim
 // the Duplicated arm rather than by changing list ORDER, which is what a `.first()` test would
 // actually have been measuring - so the structure is worth having twice for now.
 //
-// NEXT-RUNG TRIGGER: a generic count-first unique-lookup over a keyed collection, authored once in
-// std and consumed by both. That is the capability that dissolves this duplicate, and until it lands
-// this file carries a second spelling of a fold - stated, rather than described as a reuse.
-//
 // One-slot-per-medium construction remains the ceiling and would make a duplicate unconstructible
-// rather than merely refused. NEXT-RUNG TRIGGER: the medium-slot record landing in the same motion as
-// identity closure, which is gunbc.colo_census_coverage's lane to take. Until then this refuses, and
-// a refusal is a rung the previous arm did not hold at all.
+// rather than merely refused. Until then this refuses, and a refusal is a rung the previous arm did
+// not hold at all.
+//
+// BOTH DISSOLUTION CONDITIONS ARE TYPED ROWS IN colo_types_frontier_rows AND NOT SENTENCES HERE. This
+// paragraph explains and does not legislate, which is the rule the rest of extdeps/ already follows -
+// and the reason is written into this very file forty lines up: the inverted-interval class carried
+// its trigger as prose, that prose named a capability std.interval had ALREADY SHIPPED, and nothing
+// mechanical could notice, so the class was parked against a condition that could never fire. A
+// trigger a program cannot read is a trigger nobody retires.
 // FOUR ARMS BECAUSE THERE ARE FOUR CAUSES, AND THE EARLIER THREE FUSED TWO OF THEM. `FigureAbsent`
 // was returned both when a published claim simply had no figure for the requested medium AND when
 // nobody had read the operator's page at all - two different obligations wearing one arm. The second
@@ -834,3 +838,19 @@ fn density_claim_figures(d: CabinetDensityClaim) -> List<PublishedDensityFigure>
   }
 }
 
+// THE DISSOLUTION CONDITIONS FOR THIS CARRIER'S TWO KNOWN RESIDUES, AS ROWS A PROGRAM CAN READ. Both
+// were prose until review 63024, which was right that DESIGN section 4c puts a dissolution condition
+// in a typed carrier and that section 4b(2)'s untracked-stall is exactly what two triggers in a
+// comment produce. The carrier is the one ~276 extdeps modules already use, so nothing is minted here.
+data colo_types_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.colo.types", decl_name: "figure_lookup"),
+    reason: "the count-first unique-lookup fold is a second spelling of std.pareto's ReadingLookup shape, re-authored because ReadingLookup is not generic - it carries OrderedClosedInterval readings keyed by DeclarationRef, so it cannot be instantiated over cooling media without widening the wrong authority to fit this consumer",
+    dissolution: unbound_dissolution(description: "feature:generic-count-first-unique-lookup - a unique-lookup over a keyed collection that counts before it selects and returns found/absent/duplicated, authored once in std over a caller-supplied key and consumed by BOTH std.pareto's reading lookup and this one; then figure_lookup, figure_matches_count and DensityFigureLookup's found/absent/duplicated arms are expressed through it and this row deletes. Consume-never-fork: the capability is the generic fold, not a copy of this one moved into std"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.colo.types", decl_name: "DensityFigureLookup"),
+    reason: "a claim carrying two figures for one cooling medium is REFUSED at lookup rather than being unconstructible, so the invalid state is still writable and safety depends on the lookup executing",
+    dissolution: unbound_dissolution(description: "feature:one-slot-per-medium-density-construction - PublishedDensityFigure's medium becomes a slot on a record with one field per CoolingMedium rather than a coordinate on a member of a free list, so a second air figure has no constructor; this requires the medium-slot record AND identity closure over the slot set landing in one motion, since a partial slot record reintroduces the duplicate through the un-slotted remainder. Then figure_lookup's Duplicated arm, FigureDuplicated and RequirementFigureContested delete together with this row"),
+  ),
+]

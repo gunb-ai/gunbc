@@ -21,6 +21,7 @@ import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows 
 import extdeps.github.workflow_runs { conclusion_authority_consolidation_frontier_rows }
 import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
 import extdeps.pin { pin_frontier_rows }
+import extdeps.colo.types { colo_types_frontier_rows }
 import extdeps.pricing.hetzner_dedicated { cpu_description_string_leaf_frontier_rows }
 import extdeps.router.verizon_cr1000a {
   cr1000a_dhcp_lease_transport_frontier_rows,
@@ -64,6 +65,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     vendor_cloudflare_frontier_rows,
     cloudflare_account_api_tokens_frontier_rows,
     cloudflare_r2_frontier_rows,
+    colo_types_frontier_rows,
   ]
 }
 
