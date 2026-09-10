@@ -1,0 +1,23 @@
+module v2.test.native_lane_smoke
+
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// THE required-v2-native LANE'S POSITIVE-POPULATION FLOOR MEMBER (authority:
+// gunbc.witness_v2_native_route, clause native_route_positive_population_present). A universe
+// in which nothing passes proves the route dead, and exclusion attribution alone cannot see
+// that — a route that refuses every member can still be fully owned. So the census requires
+// one member to reach NativeTestPassed where the floor expects pass. The body is deliberately
+// the grounded fragment only: a Bool literal, the shape the lane's live-verdict control pair
+// (v2.native_lane_fixture.control) already proves reaches a verdict — every richer body today
+// meets the node grounding frontier (v2.compiler.infer node_grounding_frontier_note) at the
+// eval gate, measured 2026-09-10 at 261 members across 110 modules. This member is the
+// route's canary, not a stand-in for the frontier: the census's typed exclusion counts carry
+// the frontier's size, and as grounding derivation covers more node kinds the positive
+// population grows into real tests. It does not retire — at every frontier depth, a route
+// that stops reaching verdicts reddens here first.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn native_route_positive_population_smoke() -> Bool {
+  true
+}
