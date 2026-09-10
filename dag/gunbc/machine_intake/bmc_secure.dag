@@ -1,0 +1,467 @@
+module gunbc.machine_intake_bmc_secure
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.types { RedfishAccountRole }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.machine_intake_subject { MachineIntakeSubject }
+import gunbc.machine_intake_phase {
+  Arrival,
+  BmcAccess,
+  BmcSecure,
+  IntakePhase,
+  OperatorAction,
+  QualificationPolicy,
+  QualificationRefusalOwner,
+}
+import gunbc.machine_intake_receipt {
+  EvidenceRef,
+  IntakeProducerIdentity,
+  IntakeReceiptEnvelope,
+  IntakeReceiptResult,
+  MachineIntakeReceiptV1,
+  ReceiptRefused,
+  ReceiptSatisfied,
+  same_intake_subject,
+}
+
+// ROTATION IS A REFUSING STEP, NOT A RECORDED INTENTION (machine-intake design
+// doc §6 and its discriminating control in §16: "Leave factory credential
+// working after rotation | BmcSecure refuses"). The phase's required result is
+// stated there as a CONJUNCTION over two independent readbacks — the unique
+// managed credential works AND the published factory credential no longer
+// works — and the second half is the one every ordinary rotation script drops:
+// creating an account and getting a 201 back says nothing about whether the
+// bootstrap login still opens a session. A phase that recorded only the first
+// half would report BmcSecure satisfied on a machine that any reader of the
+// vendor's published default can still log into, which is the
+// fabricated-plausible-output failure of DESIGN §5 aimed at the one phase whose
+// whole purpose is to close that door.
+//
+// This module owns the WORKFLOW STANDING of that conjunction. It observes
+// nothing: extdeps.bmc owns the external shapes, the effectful rotation
+// actuator owns the observation, and the fold below owns what a set of
+// readbacks may and may not conclude. Its route to a consumer is
+// bmc_secure_phase_receipt, whose envelope is read by
+// gunbc.machine_intake_disposition.derive_fleet_admission exactly as every
+// other phase's is; there is no second admission path for credentials.
+//
+// WHY THE VOCABULARY IS NOT gunbc.bmc_onboarding's. That module is quarantined
+// legacy (machine-intake ruling 2026-08-29, answer (b)): its
+// FactoryDefault -> CredentialsRotated progression ADVANCES ITSELF with pure
+// functions and consumes no readback at all, so it cannot refuse. This is the
+// BMC-security extraction the ruling's §14 names, and it imports nothing from
+// that module by construction — the quarantine witness requires exactly that
+// no name bridges the two.
+
+// WHAT ONE AUTHENTICATION ATTEMPT ESTABLISHED. Three arms, and the third is
+// not the second wearing a softer name: a probe that could not run proves
+// nothing about whether the credential works. Reading Unestablished as
+// Rejected is the absorbing fallback of DESIGN §5 applied to the exact place
+// it does the most damage — an unreachable account service would silently
+// certify that the published credential had been retired.
+type CredentialProbeOutcome
+  = CredentialAccepted { evidence: EvidenceRef, observed_at: EpochMs }
+  | CredentialRejected { evidence: EvidenceRef, observed_at: EpochMs }
+  | CredentialProbeUnestablished { detail: NonEmptyStr }
+
+fn credential_probe_evidence(outcome: CredentialProbeOutcome) -> EvidenceRef? {
+  match outcome {
+    CredentialAccepted { evidence: e, observed_at: _ } => Present { value: e }
+    CredentialRejected { evidence: e, observed_at: _ } => Present { value: e }
+    CredentialProbeUnestablished { detail: _ } => none
+  }
+}
+
+// THE RECEIPT NEVER CONTAINS THE PASSWORD, AND HAS NOWHERE TO PUT ONE (design
+// §6). This is the durable half of a rotation: WHERE the credential lives and
+// WHICH generation it is. There is no Secret-typed field on this record or on
+// anything reachable from it, so redaction is unnecessary — the excluded state
+// has no constructor (DESIGN §4b rung 4) rather than a validator that strips it.
+//
+// The location is a SecretRef because gunbc.secret_provision already owns where
+// this fleet's secrets live (fleet_secret_ref); a fresh `secret_name: NonEmptyStr`
+// beside it — which is what gunbc.bmc_onboarding's plan carries — is the second
+// name for one concept DESIGN §3 forbids.
+type ManagedCredentialReference {
+  account: NonEmptyStr
+  role: RedfishAccountRole
+  secret: SecretRef
+  credential_epoch: Int
+}
+
+// WHETHER THE ROTATION WAS APPLIED AT ALL, and when. applied_at is on the
+// APPLICATION rather than beside it because the two readbacks below are only
+// evidence about the rotation if they were taken after it; a rotation with no
+// time has no ordering to check against, and the ordering is what stops a
+// pre-rotation "the published credential was already rejected" reading from
+// being replayed as the post-rotation proof.
+//
+// WHAT THE ORDERING DOES NOT ESTABLISH, said here so it is not read off the
+// refusal names: these are times carried on SUPPLIED observations, so the fold
+// enforces an ordering AMONG THE READINGS IT WAS HANDED and establishes nothing
+// about whether any BMC was probed at all. That is the boundary DESIGN §4b
+// keeps off the ladder — an external fact, observed at a declared frontier and
+// never fabricated here. The frontier is the effectful rotation actuator that
+// produces BmcCredentialRotationObservation; it does not exist yet, and it is
+// the same producer the machine-intake ruling gates on the gunbc.bmc_onboarding
+// split.
+type CredentialRotationApplication
+  = RotationApplied { reference: ManagedCredentialReference, applied_at: EpochMs, evidence: EvidenceRef }
+  | RotationNotAttempted
+  | AccountManagementUnavailable { detail: NonEmptyStr }
+
+// THE OBSERVATION, BOUND TO ITS SUBJECT AND ITS CONTROLLER. sole_constructor
+// keeps a caller from spelling the record beside the mint; it does not make the
+// caller honest about where the readbacks came from, and this module does not
+// claim it does. What it does hold is that the four readings are carried
+// together with the attempt they were taken for, so a rotation observed on one
+// unit can never be presented as another's — the same join
+// gunbc.machine_intake_access performs before the delivery solver runs.
+//
+// previous_credential_epoch is the epoch this unit stood at BEFORE the attempt:
+// a rotation that re-writes the same generation is not a rotation.
+type BmcCredentialRotationObservation sole_constructor {
+  subject: MachineIntakeSubject
+  endpoint: BmcControllerEndpoint
+  previous_credential_epoch: Int
+  bootstrap_probe: CredentialProbeOutcome
+  rotation: CredentialRotationApplication
+  managed_probe: CredentialProbeOutcome
+  published_probe: CredentialProbeOutcome
+}
+
+fn observed_bmc_credential_rotation(
+  subject: MachineIntakeSubject,
+  endpoint: BmcControllerEndpoint,
+  previous_credential_epoch: Int,
+  bootstrap_probe: CredentialProbeOutcome,
+  rotation: CredentialRotationApplication,
+  managed_probe: CredentialProbeOutcome,
+  published_probe: CredentialProbeOutcome,
+) -> BmcCredentialRotationObservation {
+  BmcCredentialRotationObservation {
+    subject: subject,
+    endpoint: endpoint,
+    previous_credential_epoch: previous_credential_epoch,
+    bootstrap_probe: bootstrap_probe,
+    rotation: rotation,
+    managed_probe: managed_probe,
+    published_probe: published_probe,
+  }
+}
+
+// EVERY WAY THE STEP REFUSES, each naming which reading failed rather than a
+// generic "rotation failed". Two of the three access states the design doc
+// names keep their names from that ruling: CredentialStateUnknown and
+// PreviouslyRotatedCredentialRequired. The third is renamed here to
+// AccountManagementUnreachable, because AccountManagementUnavailable is already
+// the arm of CredentialRotationApplication that says the service did not
+// answer, and one spelling for the OBSERVATION and the REFUSAL derived from it
+// would be one name for two facts — a fork of exactly the kind DESIGN §3 names,
+// inside a single module.
+//
+// PublishedCredentialStillAccepted is the discriminating refusal this phase
+// exists for: everything else about the rotation succeeded and the machine is
+// still open on its published default.
+type BmcSecureRefusalCause
+  = RotationObservationForOtherAttempt { expected: MachineIntakeSubject, found: MachineIntakeSubject }
+  | CredentialStateUnknown { detail: NonEmptyStr }
+  | PreviouslyRotatedCredentialRequired
+  | AccountManagementUnreachable { detail: NonEmptyStr }
+  | CredentialRotationNotApplied
+  | CredentialEpochNotAdvanced { previous: Int, observed: Int }
+  | ManagedCredentialRejected
+  | ManagedCredentialUnestablished { detail: NonEmptyStr }
+  | ManagedCredentialProbePrecedesRotation { applied_at: EpochMs, probed_at: EpochMs }
+  | PublishedCredentialStillAccepted
+  | PublishedCredentialRetirementUnestablished { detail: NonEmptyStr }
+  | PublishedCredentialProbePrecedesRotation { applied_at: EpochMs, probed_at: EpochMs }
+
+// NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design §6: a non-working
+// factory credential is an access state -> PartsHold, not ReturnWindow, absent
+// other evidence). gunbc.machine_intake_disposition routes a UnitHardware
+// refusal to ReturnWindow, which starts a return clock against the seller; a
+// credential the operator has not rotated, an unreachable account service and a
+// readback we could not take are not defects of the unit. Because the receipt's
+// owner is derived here rather than authored at the call site, no caller can
+// file a rotation refusal as a hardware defect.
+fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusalOwner {
+  match cause {
+    RotationObservationForOtherAttempt { expected: _, found: _ } => QualificationPolicy
+    CredentialStateUnknown { detail: _ } => BmcAccess
+    PreviouslyRotatedCredentialRequired => BmcAccess
+    AccountManagementUnreachable { detail: _ } => BmcAccess
+    CredentialRotationNotApplied => OperatorAction
+    CredentialEpochNotAdvanced { previous: _, observed: _ } => OperatorAction
+    ManagedCredentialRejected => OperatorAction
+    ManagedCredentialUnestablished { detail: _ } => BmcAccess
+    ManagedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => QualificationPolicy
+    PublishedCredentialStillAccepted => OperatorAction
+    PublishedCredentialRetirementUnestablished { detail: _ } => BmcAccess
+    PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => QualificationPolicy
+  }
+}
+
+fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
+  match cause {
+    RotationObservationForOtherAttempt { expected: _, found: _ } => "rotation observation belongs to another intake attempt"
+    CredentialStateUnknown { detail: _ } => "bootstrap credential probe did not establish a credential state"
+    PreviouslyRotatedCredentialRequired => "bootstrap credential no longer authenticates; the previously rotated credential is required"
+    AccountManagementUnreachable { detail: _ } => "bmc account management was unreachable"
+    CredentialRotationNotApplied => "no credential rotation was applied"
+    CredentialEpochNotAdvanced { previous: _, observed: _ } => "credential epoch did not advance past the epoch this unit already stood at"
+    ManagedCredentialRejected => "the rotated managed credential does not authenticate"
+    ManagedCredentialUnestablished { detail: _ } => "the rotated managed credential readback did not establish a credential state"
+    ManagedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => "the managed credential readback precedes the rotation it claims to verify"
+    PublishedCredentialStillAccepted => "the published factory credential still authenticates after rotation"
+    PublishedCredentialRetirementUnestablished { detail: _ } => "the published factory credential readback did not establish whether it still authenticates"
+    PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => "the published credential readback precedes the rotation it claims to verify"
+  }
+}
+
+// The satisfied terminal keeps the reference and the readings it rests on, so a
+// later reader can say WHICH rotation secured the unit and WHERE its evidence
+// is. The password is not among them, structurally.
+type BmcSecureOutcome
+  = BmcSecured {
+      endpoint: BmcControllerEndpoint,
+      reference: ManagedCredentialReference,
+      evidence: List<EvidenceRef>,
+      secured_at: EpochMs,
+    }
+  | BmcSecureRefused { cause: BmcSecureRefusalCause }
+
+// THE STANDING CARRIES THE SUBJECT IT WAS ADJUDICATED FOR, AND THE JOIN IS
+// SEALED. An earlier cut returned the outcome alone and had
+// bmc_secure_phase_receipt take the subject as a separate argument, so a
+// standing legitimately derived for host A could be handed to the receipt
+// function beside host B's subject and the receipt read as B's evidence that B
+// had been rotated. Nothing in the types forbade the pairing, and the ledger
+// spine does not repair it: validate_intake_receipt_ledger checks that the
+// receipts in a ledger AGREE on a subject, and a replayed receipt already bears
+// the replacement subject before validation sees it. That is the escape hatch
+// DESIGN §5 rejects outright — the refusal fold is bypassed not by defeating it
+// but by re-addressing its answer.
+//
+// So the subject and the outcome are ONE record and the record is
+// sole_constructor: derive_bmc_secure is its only mint, and the receipt
+// projection reads the subject off the standing rather than accepting one. A
+// cross-attempt replay has no argument left to swap.
+//
+// THE CEILING, SCOPED RATHER THAN OVERCLAIMED, on this repository's own
+// precedent (gunbc.auth.secret_access_admission, and the coproduct-variant form
+// falsified at test.claim.inventory_admitted_ledger_seal_livetree_witness_test):
+// sole_constructor seals RECORDS, not coproduct arms, which is why the pairing
+// and not the outcome is the sealed carrier — a caller may still write a
+// BmcSecured OUTCOME literal, and it reaches nothing, because every consumer
+// takes the standing. And the seal is not claimed for the emitted-Rust path,
+// where DESIGN records by execution that a sole_constructor type's emitted
+// mirror is forgeable; that is a known gap in the mechanism, not a property of
+// this carrier.
+//
+// The seal was taken as a fixture-boundary red once during authoring -- a
+// foreign module writing the record literal refuses with
+// "sole_constructor type 'BmcSecureStanding' cannot be constructed outside its
+// defining module" -- and is not re-enrolled here as a standing gate, because
+// the mechanism's general coverage is gunbc.guarantee_probe_corpus
+// sole_constructor_cross_module_class and its probes; a per-carrier copy of
+// that gate would be the redundant work DESIGN §2 prices. The witness obtains
+// every standing FROM derive_bmc_secure, cross-module, so what is confined is
+// the construction and not the type's usability.
+type BmcSecureStanding sole_constructor {
+  subject: MachineIntakeSubject
+  outcome: BmcSecureOutcome
+}
+
+fn bmc_secure_evidence(
+  bootstrap: CredentialProbeOutcome,
+  rotation_evidence: EvidenceRef,
+  managed: EvidenceRef,
+  published: EvidenceRef,
+) -> List<EvidenceRef> {
+  let head = match credential_probe_evidence(outcome: bootstrap) {
+    Present { value: e } => [e]
+    Absent => []
+  }
+  concat(head, [rotation_evidence, managed, published])
+}
+
+// THE PUBLISHED-CREDENTIAL READBACK, ADJUDICATED LAST AND ADJUDICATED WHOLE.
+// Rejected is the only arm that may reach BmcSecured, and only when it was read
+// after the rotation. Accepted is the design doc's discriminating control.
+// Unestablished refuses rather than widening: "we could not tell" and "it is
+// closed" are different facts, and only one of them is what the phase promises.
+fn adjudicate_published_probe(
+  endpoint: BmcControllerEndpoint,
+  reference: ManagedCredentialReference,
+  applied_at: EpochMs,
+  rotation_evidence: EvidenceRef,
+  bootstrap: CredentialProbeOutcome,
+  managed_evidence: EvidenceRef,
+  published: CredentialProbeOutcome,
+) -> BmcSecureOutcome {
+  match published {
+    CredentialAccepted { evidence: _, observed_at: _ } => BmcSecureRefused { cause: PublishedCredentialStillAccepted }
+    CredentialProbeUnestablished { detail: d } => BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: d } }
+    CredentialRejected { evidence: pe, observed_at: at } =>
+      if at < applied_at {
+        BmcSecureRefused { cause: PublishedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
+      } else {
+        BmcSecured {
+          endpoint: endpoint,
+          reference: reference,
+          evidence: bmc_secure_evidence(bootstrap: bootstrap, rotation_evidence: rotation_evidence, managed: managed_evidence, published: pe),
+          secured_at: at,
+        }
+      }
+  }
+}
+
+// The managed credential must work, and must have been read after the rotation
+// that created it. A pre-rotation acceptance would be a reading of whatever
+// account already answered to that name.
+fn adjudicate_managed_probe(
+  endpoint: BmcControllerEndpoint,
+  reference: ManagedCredentialReference,
+  applied_at: EpochMs,
+  rotation_evidence: EvidenceRef,
+  bootstrap: CredentialProbeOutcome,
+  managed: CredentialProbeOutcome,
+  published: CredentialProbeOutcome,
+) -> BmcSecureOutcome {
+  match managed {
+    CredentialRejected { evidence: _, observed_at: _ } => BmcSecureRefused { cause: ManagedCredentialRejected }
+    CredentialProbeUnestablished { detail: d } => BmcSecureRefused { cause: ManagedCredentialUnestablished { detail: d } }
+    CredentialAccepted { evidence: me, observed_at: at } =>
+      if at < applied_at {
+        BmcSecureRefused { cause: ManagedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
+      } else {
+        adjudicate_published_probe(
+          endpoint: endpoint,
+          reference: reference,
+          applied_at: applied_at,
+          rotation_evidence: rotation_evidence,
+          bootstrap: bootstrap,
+          managed_evidence: me,
+          published: published,
+        )
+      }
+  }
+}
+
+// A rotation that leaves the unit on the generation it already had is not a
+// rotation, however successfully it was applied: re-writing the same epoch is
+// how a replayed run reports progress it did not make.
+fn adjudicate_rotation(
+  observation: BmcCredentialRotationObservation,
+  reference: ManagedCredentialReference,
+  applied_at: EpochMs,
+  rotation_evidence: EvidenceRef,
+) -> BmcSecureOutcome {
+  if (reference.credential_epoch <= observation.previous_credential_epoch) {
+    BmcSecureRefused {
+      cause: CredentialEpochNotAdvanced {
+        previous: observation.previous_credential_epoch,
+        observed: reference.credential_epoch,
+      },
+    }
+  } else {
+    adjudicate_managed_probe(
+      endpoint: observation.endpoint,
+      reference: reference,
+      applied_at: applied_at,
+      rotation_evidence: rotation_evidence,
+      bootstrap: observation.bootstrap_probe,
+      managed: observation.managed_probe,
+      published: observation.published_probe,
+    )
+  }
+}
+
+// THE BOOTSTRAP READING IS AN ACCESS STATE, NEVER A VERDICT ON THE UNIT
+// (design §6). Accepted is the ordinary arrival case and proceeds. Rejected
+// means this controller is already off its published default and the attempt
+// needs the credential a previous rotation minted — a PartsHold owned by
+// BmcAccess, not a defect and not a silent skip: proceeding from here would
+// certify a retirement this attempt never performed.
+fn adjudicate_bootstrap(observation: BmcCredentialRotationObservation) -> BmcSecureOutcome {
+  match observation.bootstrap_probe {
+    CredentialProbeUnestablished { detail: d } => BmcSecureRefused { cause: CredentialStateUnknown { detail: d } }
+    CredentialRejected { evidence: _, observed_at: _ } => BmcSecureRefused { cause: PreviouslyRotatedCredentialRequired }
+    CredentialAccepted { evidence: _, observed_at: _ } =>
+      match observation.rotation {
+        RotationNotAttempted => BmcSecureRefused { cause: CredentialRotationNotApplied }
+        AccountManagementUnavailable { detail: d } => BmcSecureRefused { cause: AccountManagementUnreachable { detail: d } }
+        RotationApplied { reference: r, applied_at: at, evidence: e } =>
+          adjudicate_rotation(observation: observation, reference: r, applied_at: at, rotation_evidence: e)
+      }
+  }
+}
+
+// THE PRODUCER. Attempt binding first — a rotation observed for another
+// attempt is not evidence about this one however well its fields fit — then
+// the bootstrap access state, the rotation itself, the epoch, and the two
+// post-rotation readbacks in that order, so each refusal names the first rule
+// the observation breaks.
+fn derive_bmc_secure(
+  subject: MachineIntakeSubject,
+  observation: BmcCredentialRotationObservation,
+) -> BmcSecureStanding {
+  let outcome = if same_intake_subject(left: subject, right: observation.subject) == false {
+    BmcSecureRefused { cause: RotationObservationForOtherAttempt { expected: subject, found: observation.subject } }
+  } else {
+    adjudicate_bootstrap(observation: observation)
+  }
+  BmcSecureStanding { subject: subject, outcome: outcome }
+}
+
+data bmc_secure_phase: IntakePhase = Arrival { phase: BmcSecure }
+
+fn bmc_secure_receipt_result(standing: BmcSecureStanding) -> IntakeReceiptResult {
+  match standing.outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _ } => ReceiptSatisfied
+    BmcSecureRefused { cause: c } =>
+      ReceiptRefused { owner: bmc_secure_refusal_owner(cause: c), cause: bmc_secure_refusal_label(cause: c) }
+  }
+}
+
+fn bmc_secure_receipt_observations(standing: BmcSecureStanding) -> List<EvidenceRef> {
+  match standing.outcome {
+    BmcSecured { endpoint: _, reference: _, evidence: e, secured_at: _ } => e
+    BmcSecureRefused { cause: _ } => []
+  }
+}
+
+// THE ROUTE TO THE CONSUMER. The standing becomes one ordinary phase receipt on
+// the spine every other phase writes, so gunbc.machine_intake_disposition reads
+// a refused rotation exactly as it reads a refused memory test — and a machine
+// whose published credential still works cannot reach FleetAdmissible, because
+// derive_fleet_admission requires a satisfied receipt for this phase. There is
+// deliberately no second projection: a credential-specific admission path
+// beside the roster would be the parallel authority DESIGN §3 forbids.
+//
+// The subject is READ OFF THE STANDING and is not a parameter, so the receipt
+// this returns can only ever be about the attempt the fold adjudicated.
+fn bmc_secure_phase_receipt(
+  standing: BmcSecureStanding,
+  producer: IntakeProducerIdentity,
+  policy_digest: ContentHash,
+  started_at: EpochMs,
+  ended_at: EpochMs,
+  previous_receipt: ContentHash?,
+) -> IntakeReceiptEnvelope {
+  IntakeReceiptEnvelope {
+    schema: MachineIntakeReceiptV1,
+    subject: standing.subject,
+    phase: bmc_secure_phase,
+    producer: producer,
+    policy_digest: policy_digest,
+    started_at: started_at,
+    ended_at: ended_at,
+    observations: bmc_secure_receipt_observations(standing: standing),
+    result: bmc_secure_receipt_result(standing: standing),
+    previous_receipt: previous_receipt,
+  }
+}
