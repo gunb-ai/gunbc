@@ -24,13 +24,14 @@ fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
   }
 }
 
-// TEN SCOPES, EACH ITS OWN POOL, EACH NAMED ONCE: the seventeen annotations collapsed to ten typed
-// rows because eight GitHub services drew from one core pool. Keys are distinct, the pool
+// ELEVEN SCOPES, EACH ITS OWN POOL, EACH NAMED ONCE: the seventeen annotations collapsed to ten typed
+// rows because eight GitHub services drew from one core pool, and eBay's Buy Browse scope added
+// the eleventh. Keys are distinct, the pool
 // ceiling is the published count, and the period is the published period in seconds.
 test fn every_upstream_scope_is_one_pool_with_the_published_ceiling_and_period() -> Bool {
   let limits = w_all_limits()
   let keys = map(limits, l => upstream_rate_limit_key(l: l) as String)
-  length(limits) == 10
+  length(limits) == 11
     && all(keys, k => length(filter(keys, x => x == k)) == 1)
     && all(limits, l =>
          (quota_partition(limit: l) as String) == join(["quota-", upstream_rate_limit_key(l: l) as String], "")

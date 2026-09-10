@@ -1,0 +1,558 @@
+module extdeps.ebay.browse
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import v2.std.algebra { filter, fold_list }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry }
+import extdeps.currency.currency { CurrencyCode, currency_alphabetic_code }
+import extdeps.ebay.ebay { production_api_base }
+import extdeps.ebay.errors { EbayErrorShape }
+import extdeps.ebay.inventory {
+  ConditionEnum, New, LikeNew, NewOther, NewWithDefects, ManufacturerRefurbished,
+  CertifiedRefurbished, ExcellentRefurbished, VeryGoodRefurbished, GoodRefurbished,
+  SellerRefurbished, UsedExcellent, UsedVeryGood, UsedGood, UsedAcceptable,
+  ForPartsOrNotWorking, PreOwnedExcellent, PreOwnedFair,
+  FormatTypeEnum, format_type_wire_label, condition_wire_label
+}
+
+// THE BUY-SIDE SCOPE OF THE SAME UPSTREAM. The eBay module family already models the Sell
+// Inventory scope; Browse is an additional scope of that one subject, so it lands here beside
+// inventory.dag rather than in a second eBay module tree (DESIGN section 3, external upstream
+// decomposition). Types carry a `Browse` prefix because bare names resolve corpus-wide and the
+// upstream schema names (`Item`, `Image`, `Product`, `Seller`) are generic enough to fork against
+// existing declarations; each type names its upstream schema in its own annotation.
+//
+// PROVENANCE OF THE READ. developer.ebay.com answers HTTP 403 to this repository's fetches, so
+// the response shape below was read from eBay's published OpenAPI contract
+// buy_browse_v1_oas3.json at info.version 1.20.4 (mirrored in github.com/hendt/ebay-api
+// specs/), and the prose facts (call limits, production access, condition IDs, filter grammar)
+// from web.archive.org captures of the cited eBay pages taken 2026-05 and 2026-06.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/api-docs/buy/browse/resources/methods"
+  }
+}
+
+data browse_api_contract_version: NonEmptyStr = "1.20.4"
+
+data browse_buy_requirements_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/api-docs/buy/static/buy-requirements.html"
+  }
+}
+
+data browse_condition_id_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/api-docs/sell/static/metadata/condition-id-values.html"
+  }
+}
+
+data browse_field_filters_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/api-docs/buy/static/ref-buy-browse-filters.html"
+  }
+}
+
+// The subject is the versioned Browse contract; the call limits it is metered by are cited in
+// extdeps.ebay.rate_limits beside the other eBay scopes.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ebay.browse",
+      decl_name: "browse_api_contract_version",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [browse_buy_requirements_citation, browse_condition_id_citation, browse_field_filters_citation]
+}
+
+// PRODUCTION ACCESS IS NOT A PROPERTY OF HOLDING A KEYSET. eBay's Buy APIs Requirements page:
+// "Many of the Buy APIs are a (Limited Release). The use of eBay's Buy APIs in production is
+// intended for eBay partners only. You must apply for production access through the eBay
+// Partner Network ... There is no guarantee that your application for production use of the APIs
+// will be approved." The sandbox is open to any developer account and carries no real listings.
+// A consumer that reads production listings therefore owes an application whose outcome may be a
+// refusal, not only a credential.
+type BrowseProductionAccess {
+  application_route: NonEmptyStr
+  approval_guaranteed: Bool
+  sandbox_open_to_any_developer_account: Bool
+  authority: ExternalAuthority
+}
+
+data browse_production_access: BrowseProductionAccess = BrowseProductionAccess {
+  application_route: "eBay Partner Network production-access application for the Buy APIs",
+  approval_guaranteed: false,
+  sandbox_open_to_any_developer_account: true,
+  authority: browse_buy_requirements_citation
+}
+
+// search: "Max: 200, Default: 50", and "This method can return a maximum of 10,000 items in one
+// results set"; offset must be zero or a multiple of limit.
+data browse_search_limit_max: Int = 200
+
+data browse_search_result_window: Int = 10000
+
+// upstream schema ConvertedAmount. `value` is the decimal string the API returns; `currency` is
+// the ISO 4217 alphabetic code, decoded by extdeps.currency.currency.
+type BrowseConvertedAmount {
+  value: String
+  currency: String
+  convertedFromValue: String?
+  convertedFromCurrency: String?
+}
+
+// upstream schema Image.
+type BrowseImage {
+  imageUrl: String
+  height: Int?
+  width: Int?
+}
+
+// upstream schema TypedNameValue: one item-specific aspect (e.g. name "Capacity", value "64GB").
+type BrowseTypedNameValue {
+  name: String
+  value: String
+  type: String?
+}
+
+// upstream schema Product: the catalog product the listing is matched to, when there is one.
+type BrowseProduct {
+  title: String?
+  brand: String?
+  mpns: List<String>?
+  gtins: List<String>?
+}
+
+// upstream schema Seller (search) and SellerDetail (getItem) share these fields.
+type BrowseSeller {
+  username: String?
+  feedbackPercentage: String?
+  feedbackScore: Int?
+  sellerAccountType: String?
+}
+
+// upstream schema ShippingOptionSummary (search) / ShippingOption (getItem). shippingOptions is
+// "only returned if the X-EBAY-C-ENDUSERCTX header is supplied" for calculated shipping, so a
+// delivered price needs browse_contextual_location_header on the request.
+type BrowseShippingOption {
+  shippingCost: BrowseConvertedAmount?
+  shippingCostType: String?
+  additionalShippingCostPerUnit: BrowseConvertedAmount?
+  quantityUsedForEstimate: Int?
+  minEstimatedDeliveryDate: String?
+  maxEstimatedDeliveryDate: String?
+  guaranteedDelivery: Bool?
+}
+
+// upstream schema EstimatedAvailability.
+type BrowseEstimatedAvailability {
+  estimatedAvailabilityStatus: String?
+  estimatedAvailableQuantity: Int?
+  availabilityThreshold: Int?
+  availabilityThresholdType: String?
+}
+
+// upstream schema TimeDuration.
+type BrowseTimeDuration {
+  unit: String
+  value: Int
+}
+
+// upstream schema ItemReturnTerms.
+type BrowseReturnTerms {
+  returnsAccepted: Bool?
+  returnPeriod: BrowseTimeDuration?
+  returnShippingCostPayer: String?
+}
+
+// upstream schema ItemLocationImpl (search) / Address (getItem); `country` is ISO 3166 alpha-2.
+type BrowseItemLocation {
+  country: String?
+  stateOrProvince: String?
+  postalCode: String?
+}
+
+// upstream schema ItemSummary: one search hit. It carries NO item aspects -- no localizedAspects,
+// no mpn, no product -- so a compatibility attribute cannot be read from a search page at all; it
+// costs one getItem per candidate.
+type BrowseItemSummary {
+  itemId: NonEmptyStr
+  legacyItemId: String?
+  title: String?
+  itemWebUrl: String?
+  price: BrowseConvertedAmount?
+  condition: String?
+  conditionId: String?
+  buyingOptions: List<String>?
+  seller: BrowseSeller?
+  shippingOptions: List<BrowseShippingOption>?
+  itemLocation: BrowseItemLocation?
+  image: BrowseImage?
+}
+
+data structural_coverage_gap_item_summary_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "BrowseItemSummary" },
+      JsonPending { field: "additionalImages" },
+      JsonPending { field: "adultOnly" },
+      JsonPending { field: "availableCoupons" },
+      JsonPending { field: "bidCount" },
+      JsonPending { field: "categories" },
+      JsonPending { field: "compatibilityMatch" },
+      JsonPending { field: "compatibilityProperties" },
+      JsonPending { field: "currentBidPrice" },
+      JsonPending { field: "distanceFromPickupLocation" },
+      JsonPending { field: "energyEfficiencyClass" },
+      JsonPending { field: "epid" },
+      JsonPending { field: "itemAffiliateWebUrl" },
+      JsonPending { field: "itemCreationDate" },
+      JsonPending { field: "itemEndDate" },
+      JsonPending { field: "itemGroupHref" },
+      JsonPending { field: "itemGroupType" },
+      JsonPending { field: "itemHref" },
+      JsonPending { field: "itemOriginDate" },
+      JsonPending { field: "leafCategoryIds" },
+      JsonPending { field: "listingMarketplaceId" },
+      JsonPending { field: "marketingPrice" },
+      JsonPending { field: "pickupOptions" },
+      JsonPending { field: "priceDisplayCondition" },
+      JsonPending { field: "priorityListing" },
+      JsonPending { field: "qualifiedPrograms" },
+      JsonPending { field: "shortDescription" },
+      JsonPending { field: "thumbnailImages" },
+      JsonPending { field: "topRatedBuyingExperience" },
+      JsonPending { field: "tyreLabelImageUrl" },
+      JsonPending { field: "unitPrice" },
+      JsonPending { field: "unitPricingMeasure" },
+      JsonPending { field: "watchCount" }
+    ],
+    trigger: "a Browse consumer needs auction, coupon, group-listing or category fidelity from a search page"
+  }
+]
+
+// upstream schema SearchPagedCollection.
+type BrowseSearchPagedCollection {
+  itemSummaries: List<BrowseItemSummary>?
+  total: Int?
+  limit: Int?
+  offset: Int?
+  next: String?
+  href: String?
+}
+
+data structural_coverage_gap_search_collection_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "BrowseSearchPagedCollection" },
+      JsonPending { field: "autoCorrections" },
+      JsonPending { field: "prev" },
+      JsonPending { field: "refinement" },
+      JsonPending { field: "warnings" }
+    ],
+    trigger: "a Browse consumer requests fieldgroups refinements or auto-correction"
+  }
+]
+
+// upstream schema Item: the full listing. The compatibility attributes a buyer adjudicates live
+// in `localizedAspects`, `mpn` and `product`; the photographs in `image` and `additionalImages`.
+type BrowseItem {
+  itemId: NonEmptyStr
+  legacyItemId: String?
+  title: String?
+  subtitle: String?
+  itemWebUrl: String?
+  price: BrowseConvertedAmount?
+  condition: String?
+  conditionId: String?
+  conditionDescription: String?
+  buyingOptions: List<String>?
+  brand: String?
+  mpn: String?
+  gtin: String?
+  product: BrowseProduct?
+  localizedAspects: List<BrowseTypedNameValue>?
+  image: BrowseImage?
+  additionalImages: List<BrowseImage>?
+  lotSize: Int?
+  quantityLimitPerBuyer: Int?
+  estimatedAvailabilities: List<BrowseEstimatedAvailability>?
+  shippingOptions: List<BrowseShippingOption>?
+  returnTerms: BrowseReturnTerms?
+  seller: BrowseSeller?
+  itemLocation: BrowseItemLocation?
+  itemEndDate: String?
+}
+
+data structural_coverage_gap_item_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "BrowseItem" },
+      JsonPending { field: "addonServices" },
+      JsonPending { field: "adultOnly" },
+      JsonPending { field: "ageGroup" },
+      JsonPending { field: "authenticityGuarantee" },
+      JsonPending { field: "authenticityVerification" },
+      JsonPending { field: "availableCoupons" },
+      JsonPending { field: "bidCount" },
+      JsonPending { field: "categoryId" },
+      JsonPending { field: "categoryIdPath" },
+      JsonPending { field: "categoryPath" },
+      JsonPending { field: "charityTerms" },
+      JsonPending { field: "color" },
+      JsonPending { field: "conditionDescriptors" },
+      JsonPending { field: "currentBidPrice" },
+      JsonPending { field: "description" },
+      JsonPending { field: "ecoParticipationFee" },
+      JsonPending { field: "eligibleForInlineCheckout" },
+      JsonPending { field: "enabledForGuestCheckout" },
+      JsonPending { field: "energyEfficiencyClass" },
+      JsonPending { field: "epid" },
+      JsonPending { field: "gender" },
+      JsonPending { field: "hazardousMaterialsLabels" },
+      JsonPending { field: "immediatePay" },
+      JsonPending { field: "inferredEpid" },
+      JsonPending { field: "itemAffiliateWebUrl" },
+      JsonPending { field: "itemCreationDate" },
+      JsonPending { field: "listingMarketplaceId" },
+      JsonPending { field: "manufacturer" },
+      JsonPending { field: "marketingPrice" },
+      JsonPending { field: "material" },
+      JsonPending { field: "minimumPriceToBid" },
+      JsonPending { field: "pattern" },
+      JsonPending { field: "paymentMethods" },
+      JsonPending { field: "priceDisplayCondition" },
+      JsonPending { field: "primaryItemGroup" },
+      JsonPending { field: "primaryProductReviewRating" },
+      JsonPending { field: "priorityListing" },
+      JsonPending { field: "productFicheWebUrl" },
+      JsonPending { field: "productSafetyLabels" },
+      JsonPending { field: "qualifiedPrograms" },
+      JsonPending { field: "repairScore" },
+      JsonPending { field: "reservePriceMet" },
+      JsonPending { field: "responsiblePersons" },
+      JsonPending { field: "sellerCustomPolicies" },
+      JsonPending { field: "sellerItemRevision" },
+      JsonPending { field: "shipToLocations" },
+      JsonPending { field: "shortDescription" },
+      JsonPending { field: "size" },
+      JsonPending { field: "sizeSystem" },
+      JsonPending { field: "sizeType" },
+      JsonPending { field: "taxes" },
+      JsonPending { field: "topRatedBuyingExperience" },
+      JsonPending { field: "tyreLabelImageUrl" },
+      JsonPending { field: "uniqueBidderCount" },
+      JsonPending { field: "unitPrice" },
+      JsonPending { field: "unitPricingMeasure" },
+      JsonPending { field: "warnings" },
+      JsonPending { field: "watchCount" }
+    ],
+    trigger: "a Browse consumer needs auction, checkout, compliance or item-group fidelity from getItem"
+  }
+]
+
+// NUMERIC CONDITION IDS ARE THE SAME CONCEPT AS THE INVENTORY API'S ConditionEnum, on a different
+// wire. eBay's "Item condition ID and name values" table (browse_condition_id_citation) pairs every numeric ID with its ConditionEnum value;
+// these rows are that table. MANUFACTURER_REFURBISHED has no numeric ID there, so encoding it
+// refuses. Browse returns `conditionId` as a string and says to "gracefully handle any future
+// changes to this list", so an unlisted ID decodes to Absent rather than to a guessed condition.
+type BrowseConditionIdRow {
+  condition_id: Int
+  condition: ConditionEnum
+}
+
+data browse_condition_id_rows: List<BrowseConditionIdRow> = [
+  BrowseConditionIdRow { condition_id: 1000, condition: New },
+  BrowseConditionIdRow { condition_id: 1500, condition: NewOther },
+  BrowseConditionIdRow { condition_id: 1750, condition: NewWithDefects },
+  BrowseConditionIdRow { condition_id: 2000, condition: CertifiedRefurbished },
+  BrowseConditionIdRow { condition_id: 2010, condition: ExcellentRefurbished },
+  BrowseConditionIdRow { condition_id: 2020, condition: VeryGoodRefurbished },
+  BrowseConditionIdRow { condition_id: 2030, condition: GoodRefurbished },
+  BrowseConditionIdRow { condition_id: 2500, condition: SellerRefurbished },
+  BrowseConditionIdRow { condition_id: 2750, condition: LikeNew },
+  BrowseConditionIdRow { condition_id: 2990, condition: PreOwnedExcellent },
+  BrowseConditionIdRow { condition_id: 3000, condition: UsedExcellent },
+  BrowseConditionIdRow { condition_id: 3010, condition: PreOwnedFair },
+  BrowseConditionIdRow { condition_id: 4000, condition: UsedVeryGood },
+  BrowseConditionIdRow { condition_id: 5000, condition: UsedGood },
+  BrowseConditionIdRow { condition_id: 6000, condition: UsedAcceptable },
+  BrowseConditionIdRow { condition_id: 7000, condition: ForPartsOrNotWorking }
+]
+
+fn browse_condition_from_id(raw: String) -> ConditionEnum? {
+  match filter(xs: browse_condition_id_rows, predicate: fn(r) { to_string(r.condition_id) == raw }).first() {
+    Present { value: row } => Present { value: row.condition }
+    Absent => none
+  }
+}
+
+fn browse_condition_id(c: ConditionEnum) -> Int? {
+  match filter(xs: browse_condition_id_rows, predicate: fn(r) { condition_wire_label(c: r.condition) == condition_wire_label(c: c) }).first() {
+    Present { value: row } => Present { value: row.condition_id }
+    Absent => none
+  }
+}
+
+// THE SEARCH FILTER GRAMMAR, from eBay's "Buy API Field Filters" reference
+// (browse_field_filters_citation). Fields are joined by ",";
+// a multi-valued field is "{a|b}". The price field "must be used with the priceCurrency filter",
+// so the one variant renders both and a price without a currency cannot be written. buyingOptions
+// shares its FIXED_PRICE and AUCTION tokens with FormatTypeEnum's wire; BEST_OFFER and
+// CLASSIFIED_AD have no variant until a consumer filters on them.
+type BrowseSearchFilter
+  = BrowsePriceAtMost { max: NonEmptyStr, currency: CurrencyCode }
+  | BrowseBuyingOptionsAnyOf { formats: List<FormatTypeEnum> }
+  | BrowseConditionAnyOf { conditions: List<ConditionEnum> }
+  | BrowseDeliveryCountry { country: NonEmptyStr }
+
+type BrowseFilterRender
+  = BrowseFilterRendered { param: String }
+  | BrowseFilterEmptyValueSet { field: NonEmptyStr }
+  | BrowseFilterConditionHasNoId { condition: ConditionEnum }
+
+fn browse_filter_value_set(values: List<String>) -> String {
+  join(["{", join(values, "|"), "}"], "")
+}
+
+fn browse_render_filter(f: BrowseSearchFilter) -> BrowseFilterRender {
+  match f {
+    BrowsePriceAtMost { max: m, currency: c } => BrowseFilterRendered {
+      param: join(["price:[..", m as String, "],priceCurrency:", currency_alphabetic_code(c: c)], "")
+    }
+    BrowseBuyingOptionsAnyOf { formats: fs } => if length(fs) == 0 {
+      BrowseFilterEmptyValueSet { field: "buyingOptions" }
+    } else {
+      BrowseFilterRendered { param: join(["buyingOptions:", browse_filter_value_set(values: map(fs, x => format_type_wire_label(f: x)))], "") }
+    }
+    BrowseConditionAnyOf { conditions: cs } => if length(cs) == 0 {
+      BrowseFilterEmptyValueSet { field: "conditionIds" }
+    } else {
+      browse_wrap_condition_ids(r: fold_list(
+        xs: cs,
+        empty: BrowseFilterRendered { param: "" },
+        cons: fn(acc, c) {
+          match acc {
+            BrowseFilterRendered { param: p } => match browse_condition_id(c: c) {
+              Present { value: id } => BrowseFilterRendered {
+                param: if p == "" { to_string(id) } else { join([p, "|", to_string(id)], "") }
+              }
+              Absent => BrowseFilterConditionHasNoId { condition: c }
+            }
+            _ => acc
+          }
+        }
+      ))
+    }
+    BrowseDeliveryCountry { country: k } => BrowseFilterRendered { param: join(["deliveryCountry:", k as String], "") }
+  }
+}
+
+fn browse_wrap_condition_ids(r: BrowseFilterRender) -> BrowseFilterRender {
+  match r {
+    BrowseFilterRendered { param: ids } => BrowseFilterRendered { param: join(["conditionIds:{", ids, "}"], "") }
+    _ => r
+  }
+}
+
+// THE WHOLE `filter` QUERY VALUE: the first refusal wins and no partial filter is ever returned,
+// because a dropped field widens the result set silently.
+fn browse_render_filters(filters: List<BrowseSearchFilter>) -> BrowseFilterRender {
+  fold_list(
+    xs: filters,
+    empty: BrowseFilterRendered { param: "" },
+    cons: fn(acc, f) {
+      match acc {
+        BrowseFilterRendered { param: p } => match browse_render_filter(f: f) {
+          BrowseFilterRendered { param: q } => BrowseFilterRendered {
+            param: if p == "" { q } else { join([p, ",", q], "") }
+          }
+          refused => refused
+        }
+        _ => acc
+      }
+    }
+  )
+}
+
+// X-EBAY-C-ENDUSERCTX: "contextualLocation=country%3DUS%2Czip%3D19406" -- the value is the
+// URL-encoded "country=<ISO 3166 alpha-2>,zip=<postal code>". Without it calculated shipping is
+// not returned, and a delivered price cannot be formed.
+fn browse_contextual_location_header(country: NonEmptyStr, postal_code: NonEmptyStr) -> String {
+  join(["contextualLocation=country%3D", country as String, "%2Czip%3D", postal_code as String], "")
+}
+
+// Both methods authorize with an application token minted by client_credentials against
+// extdeps.ebay.oauth api_scope_root. X-EBAY-C-MARKETPLACE-ID is an input rather than omitted:
+// upstream "If the marketplace ID value is invalid or missing, the default value of EBAY_US is
+// used", which is a silent substitution a caller must not rely on.
+service ebay.Browse {
+  config {
+    endpoint: production_api_base
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  operation SearchItemSummaries {
+    input {
+      access_token: Secret
+      marketplace_id: NonEmptyStr
+      end_user_ctx: String
+      q: NonEmptyStr
+      category_ids: String
+      filter: String
+      limit: Int = browse_search_limit_max
+      offset: Int = 0
+    }
+    output {
+      total: Int from "total"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/buy/browse/v1/item_summary/search",
+      headers: { "X-EBAY-C-MARKETPLACE-ID": marketplace_id, "X-EBAY-C-ENDUSERCTX": end_user_ctx },
+      query: { q: q, category_ids: category_ids, filter: filter, limit: limit, offset: offset }
+    }
+    response {
+      200 => BrowseSearchPagedCollection
+      400 => EbayErrorShape
+      409 => EbayErrorShape
+      5xx => EbayErrorShape
+    }
+  }
+
+  operation GetItem {
+    input {
+      access_token: Secret
+      marketplace_id: NonEmptyStr
+      end_user_ctx: String
+      item_id: NonEmptyStr
+    }
+    output {
+      item_id: NonEmptyStr from "itemId"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/buy/browse/v1/item/\{item_id\}",
+      headers: { "X-EBAY-C-MARKETPLACE-ID": marketplace_id, "X-EBAY-C-ENDUSERCTX": end_user_ctx }
+    }
+    response {
+      200 => BrowseItem
+      400 => EbayErrorShape
+      404 => EbayErrorShape
+      409 => EbayErrorShape
+      5xx => EbayErrorShape
+    }
+  }
+}

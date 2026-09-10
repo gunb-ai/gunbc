@@ -37,6 +37,20 @@ fn currency_numeric_code(c: CurrencyCode) -> Int {
   }
 }
 
+// THE ISO 4217 ALPHABETIC CODE, the spelling APIs put on the wire ("USD").
+fn currency_alphabetic_code(c: CurrencyCode) -> String {
+  match c {
+    Eur => "EUR"
+    Usd => "USD"
+  }
+}
+
+fn parse_currency_alphabetic_code(raw: String) -> CurrencyCode? {
+  if raw == "EUR" { Present { value: Eur } }
+  else if raw == "USD" { Present { value: Usd } }
+  else { none }
+}
+
 fn currency_code_eq(a: CurrencyCode, b: CurrencyCode) -> Bool {
   currency_numeric_code(c: a) == currency_numeric_code(c: b)
 }
