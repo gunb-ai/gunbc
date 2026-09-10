@@ -317,6 +317,14 @@ data r2_object_read_token_mint_receipt: R2ObjectReadTokenMintReceipt = R2ObjectR
   commit_ambiguous: false,
 }
 
+// Revoke is named unheld. After the third Create, the singleton named
+// gunbai-fabric-origin-object-read IS the token in r2_object_read_token_mint_receipt. Deleting it
+// and returning ExitSuccess would be a silent wrong answer relative to that name.
+fn object_read_token_id_is_held_in_custody(token_id: String) -> Bool {
+  r2_object_read_token_mint_receipt.credential_custody_established
+    && token_id == r2_object_read_token_mint_receipt.token_id as String
+}
+
 type R2CredentialStored
   = R2CredentialStoredAt { version_resource: String }
   | R2CredentialStoreRefused { cause: NonEmptyStr }
@@ -507,12 +515,17 @@ func revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
                         init: "",
                         f: (acc, row) => if row.name == request.name { row.id as String } else { acc },
                       )
-                      let deleted = cloudflare.AccountTokens.Delete(
-                        auth_token: bootstrap,
-                        account_id: account_id as String,
-                        token_id: token_id,
-                      )
-                      match deleted.outcome {
+                      if object_read_token_id_is_held_in_custody(token_id: token_id) {
+                        exit_failure(reason: concat(
+                          "THE LISTED TOKEN IS THE HELD ORIGIN-READ CREDENTIAL, NOTHING REVOKED: ",
+                          token_id))
+                      } else {
+                        let deleted = cloudflare.AccountTokens.Delete(
+                          auth_token: bootstrap,
+                          account_id: account_id as String,
+                          token_id: token_id,
+                        )
+                        match deleted.outcome {
                         RestStatusRefused { status: status, body: body } =>
                           if mutation_status_is_commit_ambiguous(status: status) {
                             exit_failure(reason: concat(
@@ -547,6 +560,7 @@ func revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
                                 written.error))
                             }
                           }
+                      }
                       }
                     }
                   }

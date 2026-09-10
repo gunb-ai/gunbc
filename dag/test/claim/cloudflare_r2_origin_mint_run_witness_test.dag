@@ -59,6 +59,7 @@ import gunbc.cloudflare.r2_token_mint_run {
   R2MintAdmissionRefused,
   bootstrap_burden_text,
   r2_object_read_token_mint_receipt,
+  object_read_token_id_is_held_in_custody,
 }
 
 // THE CUSTODY RED, NOW BORNE BY A FIXTURE RATHER THAN BY THE DECLARATIONS -- AND THE MOVE IS
@@ -283,6 +284,15 @@ test fn r2_object_read_mint_receipt_names_the_origin_read_pin() -> Bool {
         project_number: fleet_secrets_project_number,
       )
   }
+}
+
+test fn revoke_unheld_refuses_the_held_mint_id() -> Bool {
+  object_read_token_id_is_held_in_custody(
+    token_id: r2_object_read_token_mint_receipt.token_id as String,
+  )
+    && !object_read_token_id_is_held_in_custody(
+      token_id: "3cbb99f150c4daec03ab6a8458a2440f",
+    )
 }
 
 // THE BURDEN IS PRICED BY THE ENTRY, which is the dissolution this change claims for
