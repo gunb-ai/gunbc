@@ -12,10 +12,12 @@ import gunbc.tools.self_host_closure_terminal_causes {
   JoinedByExecutedNeutralizer,
   JoinedBySignatureOverIsolatedDeclaration,
   cause_population,
+  closure_module_count,
   closure_observation_pin,
   closure_refusal_rows,
   every_cause_names_a_row,
   every_row_cause_is_rostered,
+  every_refusing_path_is_a_closure_member,
   every_row_names_a_cause,
   front_end_causes,
   rows_for_cause,
@@ -99,7 +101,6 @@ test fn the_observation_pin_records_every_digest() -> Bool {
     && closure_observation_pin.order_insensitive_closure_digest != ""
     && closure_observation_pin.emitted_driver_binary_digest != ""
     && closure_observation_pin.compiler_source_manifest_digest != ""
-    && closure_observation_pin.reduction_probe_digest != ""
 }
 
 // The residue is the repair lanes' BEFORE number and a lane reports movement against it, so a zero
@@ -110,8 +111,22 @@ test fn the_pinned_grammar_residue_is_a_measured_reading() -> Bool {
   closure_observation_pin.grammar_prepare_residue_total > 0
 }
 
-// The closure is the denominator this whole table exists to keep honest, and a refusing population
-// wider than the closure it was measured over would mean rows had leaked in from the whole-tree run.
-test fn the_refusing_population_fits_inside_the_closure() -> Bool {
-  length(xs: closure_refusal_rows) < closure_observation_pin.closure_module_count
+// THE DENOMINATOR JOIN. The driver's context fold reports a refusal for every source in whatever
+// roots it was handed, so a row whose path is not a closure member is a row that leaked in from a
+// wider run and this table is then measuring something other than the closure it names.
+//
+// An earlier revision compared the ROW COUNT against a width pinned beside it in the same file. Both
+// numerals were authored in one diff, nothing outside it could move either, and no leaked row could
+// make it false - a decoration that would have been cited as coverage. This asks the question at
+// identity grain instead, and its red is authorable: one foreign path in the rows turns it false.
+test fn every_refusing_path_is_a_closure_member_row() -> Bool {
+  every_refusing_path_is_a_closure_member()
+}
+
+// The closure's width is derived from the manifest, so this asserts the manifest is populated at all
+// rather than restating its size: a manifest that read empty would make the membership join above
+// vacuously false for every row, and an empty one silently green is exactly the failure it exists to
+// prevent.
+test fn the_closure_manifest_is_wider_than_the_refusing_population() -> Bool {
+  closure_module_count() > length(xs: closure_refusal_rows)
 }

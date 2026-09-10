@@ -39,12 +39,31 @@ The closure is import-closed, so a source root holding exactly the closure files
 per-file rows in a fraction of the time; a per-file front-end refusal is a function of that file's bytes
 and the prepared grammar alone.
 
+## What is an artifact here, and what is only a recipe
+
+Two different things are described below and they have different standings, so the distinction is
+stated before either.
+
+**The route that produced the table is in this repository and is executable**: the required
+`v2-native` lane (`gunbc.witness_v2_native_route`), whose context fold emits the per-file refusal rows.
+The population and the terminal causes in `gunbc.tools.self_host_closure_terminal_causes` come from
+there and nowhere else, and re-deriving them needs nothing this note invents.
+
+**The per-declaration reduction probes below are RECIPES, not artifacts.** They are hand-written Rust
+that lives in the emitted probe crate for the length of a reduction session and is not committed:
+`src/bin/reduce.rs` is not a tracked path, and the carrier deliberately does not pin a digest of it,
+because a digest of something no reader here can rebuild is an unreachable citation and worse than
+none. Their **dissolution condition**: they die when the model can emit a driver that reports per-file
+front-end diagnostics — the same move `SourceRootEvalDriver` already makes for per-declaration
+verdicts, which is a `CompilerEntryDriver` change and therefore a compiler PR, not a measurement one.
+Until that exists, treat what follows as the method a reader re-executes, not as a component.
+
 ## Step 2 — the reduction probe
 
 The stop lexeme a parse refusal reports is where the parser gave up, not the cause; the cause usually
 lives inside the declaration BEFORE it. Reducing therefore needs a per-file probe that reports the whole
 ordered diagnostic list, through the same path the driver's fold takes so that every stage — tokenize,
-parse, normalize, namespace graft, body lowering — is reachable. Add this as `src/bin/reduce.rs` in the
+parse, normalize, namespace graft, body lowering — is reachable. Reconstruct it as `src/bin/reduce.rs` in the
 emitted probe crate and build it with `cargo build --release --bin reduce`; it costs about 0.3 s per
 file and amortises the grammar preparation across a batch:
 
@@ -124,8 +143,9 @@ Its calibration is that it reproduces the driver's own file-refusal rows cause-f
 
 `prepare_grammar` carries a non-fatal residue, and it is that residue `rejected_with_pending` prepends
 to every parse failure — which is precisely why the head grain discriminates nothing. A repair lane
-adding a production needs it as a BEFORE number, so the carrier pins it rather than leaving it in a
-message. It is measured by a second probe of the same shape as `reduce.rs`, `src/bin/residue.rs`:
+adding a production needs it as a BEFORE number, so the carrier pins THE READING - which is a fact
+about the grammar at a named head, and reproducible from the tree through the lane - while the probe
+that took it stays a recipe of the same standing as `reduce.rs`, `src/bin/residue.rs`:
 
 ```rust
 // The grammar-preparation residue at a pinned head: how many non-fatal diagnostics

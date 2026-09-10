@@ -13,8 +13,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE TERMINAL-CAUSE TABLE FOR THE V2 SELF-HOST CLOSURE, from the native driver's own per-file
 // output. The subject is the INPUT CLOSURE of src/v2/compiler/00_compile.dag - the modules the
 // emitted-native compiler is actually built from - and not the directory census a reader counting
-// *.dag under src/v2/compiler would reach. The closure is a fact about imports, and it is 167
-// modules wide; 68 of them the emitted compiler's own front end refuses.
+// *.dag under src/v2/compiler would reach. The closure is a fact about imports, it is carried below
+// as closure_module_manifest, and its width is closure_module_count's to answer. How much of it the
+// emitted compiler's own front end refuses is length over closure_refusal_rows.
 //
 // WHY THE TERMINAL DIAGNOSTIC AND NOT THE HEAD. A rejection is a LIST, and rejected_with_pending
 // prepends the grammar-global overlap residue to every parse failure, so the head reason is the
@@ -29,15 +30,17 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // parser gave up, never the cause: it is the NEXT declaration's leading keyword as often as it is
 // the offending token.
 //
-// ARE THE CAUSES SHARED ACROSS FILES? Yes, and that is the load-bearing result. Sixty-eight refusing
-// files carry eighteen defects, and the concentration is at both ends: one defect - a module body
-// that reaches no function declaration - accounts for twenty-five of the sixty-eight by itself, and
-// a second - a raw newline inside a string literal - for another eight, so a third of the refusing
-// closure is two defects. The parse class is the mirror image: its twenty-six files are twenty-six
-// files for THIRTEEN different reasons, which is why its count was never its work size. Sharing runs
-// the other way too - one file can carry several defects, so the per-cause populations overlap and do
-// not sum to the row count - and it crosses stop lexemes: the same defect is reported at `fn`, at
-// `data`, at `type` and at its own token depending only on where the parser happened to give up.
+// ARE THE CAUSES SHARED ACROSS FILES? Yes, and that is the load-bearing result. The concentration is
+// at both ends, and cause_population is what says how far: a module body that reaches no function
+// declaration and a raw newline inside a string literal are the two largest slices between them, and
+// the parse class is the mirror image - a single terminal reason standing for the most causes of any,
+// which is why its file count was never its work size. Ask cause_population for a defect's reach and
+// rows_for_cause for its subjects; no count is written here, because the rows beside this note
+// already determine every one of them and a numeral copied out of them rots the moment a lane
+// repairs a row. Sharing runs the other way too - one file can carry several defects, so the
+// per-cause populations overlap and do not sum to the row count - and it crosses stop lexemes: the
+// same defect is reported at `fn`, at `data`, at `type` and at its own token depending only on where
+// the parser happened to give up.
 //
 // HOW THIS TABLE IS RE-DERIVED, so no number here has to be trusted on its own. The population and
 // the terminal causes come from the emitted native compiler's own per-file output, reached by
@@ -67,14 +70,18 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // of the corpus, so a lane adding a production can move it in either direction and a rise is not by
 // itself a regression: a production that overlaps an existing choice adds residue rows even when it
 // parses everything it was added for.
+//
+// WHAT THE PIN DELIBERATELY DOES NOT CARRY is a digest of the per-declaration reduction probe. That
+// probe is a recipe in docs/plans/self-host-closure-terminal-causes.md, not an artifact in this tree,
+// so a digest of it would pin an identity no reader here can reproduce - an unreachable citation,
+// which is worse than none. The route that IS executable from this repository is the one that
+// produced the population and the terminal causes, and it is named below.
 type ObservationPin {
   head_sha: String
   emitted_closure_identity_as_reported: String
   order_insensitive_closure_digest: String
   emitted_driver_binary_digest: String
   compiler_source_manifest_digest: String
-  reduction_probe_digest: String
-  closure_module_count: Int
   grammar_prepare_residue_total: Int
 }
 
@@ -114,6 +121,183 @@ type FrontEndCause {
   join_evidence: JoinEvidence
 }
 
+// THE CLOSURE ITSELF, as the denominator every row is a fraction of. It is derived, not listed by
+// hand: the emitted probe crate writes one Rust file per closure module carrying a `// Source
+// module:` header, and joining those headers against each `.dag` file's own `module` line yields
+// exactly these paths. It is carried because a population without its denominator invites the
+// directory census this table exists to replace - and because it is the only thing a refusal row's
+// path can be joined AGAINST, which is what makes the membership witness a real check rather than a
+// comparison of two numerals authored side by side.
+data closure_module_manifest: List<String> = [
+  "dag/extdeps/cache/catalog_io.dag",
+  "dag/extdeps/cache/catalog_placement.dag",
+  "dag/extdeps/cache/materialization.dag",
+  "dag/extdeps/cache/types.dag",
+  "dag/extdeps/communication/fidelity_carriers.dag",
+  "dag/extdeps/communication/medium.dag",
+  "dag/extdeps/currency/currency.dag",
+  "dag/extdeps/external_authority.dag",
+  "dag/extdeps/languages/rust/capabilities.dag",
+  "dag/extdeps/languages/rust/emit.dag",
+  "dag/extdeps/realization/compile_stage_memo.dag",
+  "dag/extdeps/realization/parse_table_memo.dag",
+  "dag/extdeps/units/dimensionless.dag",
+  "dag/extdeps/units/iec_80000_13.dag",
+  "dag/extdeps/units/iso8601.dag",
+  "dag/extdeps/units/iso_80000_3.dag",
+  "dag/extdeps/uri.dag",
+  "dag/extdeps/uri_path.dag",
+  "dag/gunbc/v1/v1_interpreter_primitive_surface.dag",
+  "dag/std/algebra.dag",
+  "dag/std/bit.dag",
+  "dag/std/cache_identity.dag",
+  "dag/std/cache_interface.dag",
+  "dag/std/checked_arithmetic.dag",
+  "dag/std/compiler_entry.dag",
+  "dag/std/computation.dag",
+  "dag/std/constructors.dag",
+  "dag/std/content_hash.dag",
+  "dag/std/decl_ref.dag",
+  "dag/std/determinism.dag",
+  "dag/std/disposition.dag",
+  "dag/std/dissolution.dag",
+  "dag/std/effects.dag",
+  "dag/std/emit_model.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/execution_mode.dag",
+  "dag/std/induction.dag",
+  "dag/std/integer.dag",
+  "dag/std/interval.dag",
+  "dag/std/keyed_roster.dag",
+  "dag/std/keyed_row.dag",
+  "dag/std/logic.dag",
+  "dag/std/machine_constraints.dag",
+  "dag/std/magnitude.dag",
+  "dag/std/materialization_ladder.dag",
+  "dag/std/measure.dag",
+  "dag/std/nat.dag",
+  "dag/std/occurrence_identity.dag",
+  "dag/std/pareto.dag",
+  "dag/std/perturbation.dag",
+  "dag/std/primitive_identity.dag",
+  "dag/std/primitive_projection.dag",
+  "dag/std/primitives.dag",
+  "dag/std/process_termination.dag",
+  "dag/std/realization.dag",
+  "dag/std/realization_measurement.dag",
+  "dag/std/realization_schedule.dag",
+  "dag/std/realization_width.dag",
+  "dag/std/roster_frontier.dag",
+  "dag/std/source_annotation.dag",
+  "dag/std/termination.dag",
+  "dag/std/trait_derive_shape.dag",
+  "dag/std/types.dag",
+  "dag/std/unicode/types.dag",
+  "dag/std/witness_admission.dag",
+  "src/v2/compiler/body_lowering_fold.dag",
+  "src/v2/compiler/body_producer_forward.dag",
+  "src/v2/compiler/00_compile.dag",
+  "src/v2/compiler/05_emit.dag",
+  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/fold_lowering.dag",
+  "src/v2/compiler/04_infer.dag",
+  "src/v2/compiler/inferred_tree.dag",
+  "src/v2/compiler/materialization_carriers.dag",
+  "src/v2/compiler/03_name_resolve.dag",
+  "src/v2/compiler/namespace_graft.dag",
+  "src/v2/compiler/03_normalize.dag",
+  "src/v2/compiler/normalized_tree.dag",
+  "src/v2/compiler/02_parse.dag",
+  "src/v2/compiler/parse_diagnostic.dag",
+  "src/v2/compiler/parse_engine_hooks.dag",
+  "src/v2/compiler/program_assembly.dag",
+  "src/v2/compiler/03_resolve.dag",
+  "src/v2/compiler/source_authority.dag",
+  "src/v2/compiler/symbol_index_fill.dag",
+  "src/v2/compiler/07_target_carriers.dag",
+  "src/v2/compiler/01_tokenize.dag",
+  "src/v2/compiler/06_translate.dag",
+  "src/v2/compiler/wrap_decision.dag",
+  "src/v2/extdeps/languages/dag.dag",
+  "src/v2/extdeps/languages/fidelity.dag",
+  "src/v2/extdeps/languages/llvm_ir.dag",
+  "src/v2/extdeps/languages/python.dag",
+  "src/v2/extdeps/languages/typescript.dag",
+  "src/v2/extdeps/runtimes/v2_effect_io_pure.dag",
+  "src/v2/extdeps/runtimes/v2_evaluator.dag",
+  "src/v2/lens/common/construction_justification.dag",
+  "src/v2/lens/complexity_accumulator_copy.dag",
+  "src/v2/lens/complexity_accumulator_copy/analyze.dag",
+  "src/v2/lens/complexity_accumulator_copy/compile_gate.dag",
+  "src/v2/lens/cost.dag",
+  "src/v2/lens/cost/copied_port_citations.dag",
+  "src/v2/lens/cost/copied_port_derivation.dag",
+  "src/v2/lens/determinism.dag",
+  "src/v2/lens/fact_density.dag",
+  "src/v2/lens/lifecycle_carrier.dag",
+  "src/v2/lens/machine_shape.dag",
+  "src/v2/lens/mandatory_tag.dag",
+  "src/v2/lens/undecidable_verdict_collapse.dag",
+  "src/v2/lens/unit_modeling.dag",
+  "src/v2/std/algebra.dag",
+  "src/v2/std/anti_unification.dag",
+  "src/v2/std/artifact.dag",
+  "src/v2/std/bounded_lattice_completeness.dag",
+  "src/v2/std/cardinality.dag",
+  "src/v2/std/coercion.dag",
+  "src/v2/std/collection.dag",
+  "src/v2/std/compilers/body_lowering.dag",
+  "src/v2/std/compilers/lexing.dag",
+  "src/v2/std/compilers/sugar.dag",
+  "src/v2/std/compilers/target_model.dag",
+  "src/v2/std/constraint_satisfaction_predicate.dag",
+  "src/v2/std/constraints.dag",
+  "src/v2/std/cross_tree/import_model.dag",
+  "src/v2/std/cross_tree/resolution.dag",
+  "src/v2/std/determinism.dag",
+  "src/v2/std/diagnostic.dag",
+  "src/v2/std/exact_structural_equality_zip_fold_predicate.dag",
+  "src/v2/std/find_witness.dag",
+  "src/v2/std/fn_index.dag",
+  "src/v2/std/fold_assembly.dag",
+  "src/v2/std/grammar.dag",
+  "src/v2/std/grammar_choice_ambiguity.dag",
+  "src/v2/std/grounding.dag",
+  "src/v2/std/host_run.dag",
+  "src/v2/std/host_transport.dag",
+  "src/v2/std/integer.dag",
+  "src/v2/std/integer_value_set.dag",
+  "src/v2/std/language_model.dag",
+  "src/v2/std/layer.dag",
+  "src/v2/std/live_tree.dag",
+  "src/v2/std/logic.dag",
+  "src/v2/std/machine.dag",
+  "src/v2/std/model_core.dag",
+  "src/v2/std/namespace_alias.dag",
+  "src/v2/std/nat.dag",
+  "src/v2/std/node.dag",
+  "src/v2/std/node_query.dag",
+  "src/v2/std/node_shape.dag",
+  "src/v2/std/occurrence_id.dag",
+  "src/v2/std/optional.dag",
+  "src/v2/std/passing_candidate_fold.dag",
+  "src/v2/std/project_to_core_predicate.dag",
+  "src/v2/std/provenance.dag",
+  "src/v2/std/qualified_name.dag",
+  "src/v2/std/refinement.dag",
+  "src/v2/std/refinement_widening_predicate.dag",
+  "src/v2/std/resolution_policy.dag",
+  "src/v2/std/runtime.dag",
+  "src/v2/std/staging.dag",
+  "src/v2/std/subject_evidence.dag",
+  "src/v2/std/symbol_index.dag",
+  "src/v2/std/test_claim_falsification.dag",
+  "src/v2/std/text.dag",
+  "src/v2/std/verdict.dag",
+  "src/v2/std/verification.dag",
+  "src/v2/std/witness.dag"
+]
+
 // ONE CLOSURE FILE THAT REFUSED, keyed by the path the driver reported. causes names every cause
 // found in the file, so the lists are not disjoint and their lengths do not sum to the row count.
 type ClosureFileRow {
@@ -128,8 +312,6 @@ data closure_observation_pin: ObservationPin = ObservationPin {
   order_insensitive_closure_digest: "2f926173a675387ec2cbbf1c2229ea23491dda72640578de64b1b567634831a0"
   emitted_driver_binary_digest: "f939a936d39d504e320a0f6ab059b0ab7dc1432367536279c48304188a81c182"
   compiler_source_manifest_digest: "9a728cd46a611232fcefc66d7885f31f03e91fa522a01695131427b5bf8330ef"
-  reduction_probe_digest: "96a48a512e3e494d71167b02ac091d1e80af2d9f90fab2f11e38e2fcde5d6808"
-  closure_module_count: 167
   grammar_prepare_residue_total: 7
 }
 
@@ -674,6 +856,12 @@ fn rows_for_path(path: String) -> List<ClosureFileRow> {
   filter(xs: closure_refusal_rows, predicate: fn(row) { row.path == path })
 }
 
+// The closure's width, DERIVED from the manifest rather than pinned beside it. An authored count is a
+// second answer to a question the manifest already answers, and the two can disagree.
+fn closure_module_count() -> Int {
+  length(xs: closure_module_manifest)
+}
+
 fn cause_population(cause: Symbol) -> Int {
   length(xs: rows_for_cause(cause: cause))
 }
@@ -689,6 +877,17 @@ fn every_row_names_a_cause() -> Bool {
 
 fn every_cause_names_a_row() -> Bool {
   !any(xs: front_end_causes, predicate: fn(c) { cause_population(cause: c.key) == 0 })
+}
+
+// EVERY REFUSING PATH IS A CLOSURE MEMBER. This is the join that keeps the subject honest: the
+// driver's context fold reports refusals for every source in whatever roots it was given, so a row
+// whose path is not in the manifest is a row that leaked in from a wider run and the table is then
+// measuring something other than the closure. Its red is authorable - a single foreign path in the
+// rows turns it false - which a comparison of the row count against a pinned width was not.
+fn every_refusing_path_is_a_closure_member() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) {
+    !any(xs: closure_module_manifest, predicate: fn(member) { member == row.path })
+  })
 }
 
 fn every_row_cause_is_rostered() -> Bool {
