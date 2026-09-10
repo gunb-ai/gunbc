@@ -13,6 +13,18 @@ import extdeps.uri { Uri, Https }
 // decomposition rule is explicit: each independently versioned upstream has its own module
 // authority, and a generic hub may not enumerate concrete products or dispatch among them.
 //
+// WHAT CONSUMES THIS MODULE TODAY, STATED BECAUSE A MODULE NOTHING IMPORTS IS THE DANGLING MODELING
+// DESIGN section 3c interrogates. extdeps.pricing.object_storage imports the two pricing citation
+// locators below: those rows previously spelled backblaze.com URLs as bare literals inside a
+// comparison table, which is a Backblaze fact living in someone else authority. So the module is
+// consumed by execution in this change, through the folds that read the object-storage catalog.
+//
+// THE CREDENTIAL SHAPES ARE A DECLARED FRONTIER RATHER THAN A CONSUMED FACT, and they carry rows
+// saying so. Their consumer is the storage-provider comparison that selects between R2 and B2 and
+// then authorizes against whichever it picks; that decision is not this change and the rows name the
+// executing b2_authorize_account as their trigger. They are admitted as a frontier, not asserted to
+// be in use.
+//
 // SO THERE IS DELIBERATELY NO PROVIDER HUB HERE, AND NONE OVER R2 EITHER. The tempting shape, with
 // two object stores finally in the tree, is one ObjectStorageProvider coproduct that both inhabit --
 // and that is the exact construction the rule forbids: adding a third provider would then widen a
@@ -106,10 +118,26 @@ data b2_authorization_returns_endpoints_citation: FactCitation = FactCitation {
 // So this module states the boundary and owns none of the pricing: the rate rows stay where the
 // comparison lives, and their unavailability is retired by an observation, not by this change.
 
+// THE PRICING CITATION LOCATORS LIVE HERE, WHICH IS WHY extdeps.pricing.object_storage NOW IMPORTS
+// THIS MODULE. Two rows in that catalog carried backblaze.com locators as bare literals -- a fact
+// about a Backblaze document authored inside a comparison table. DESIGN section 3: each independently
+// versioned upstream owns its own facts, and a locator naming a vendor page is one of them. Moving
+// them here removes the second place a Backblaze URL is spelled and gives the comparison a single
+// authority to re-derive from when Backblaze reorganizes its pricing page.
+//
+// THEY ARE LOCATORS AND NOT RATES, and that distinction is the whole reason this is safe to move.
+// The rates themselves remain UNAVAILABLE in the catalog, with the measured cause recorded there:
+// the headline per-TB number is client-rendered and absent from the fetched markup, and no
+// machine-readable price list is published. Nothing observed while writing this module changes that,
+// so nothing here retires b2_storage_rate_unavailable.
+data b2_storage_pricing_citation_locator: NonEmptyStr = "backblaze.com/cloud-storage/pricing#rate-not-machine-readable"
+
+data b2_egress_pricing_citation_locator: NonEmptyStr = "backblaze.com/cloud-storage/pricing#egress-beyond-3x"
+
 data backblaze_b2_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "B2ApplicationKeyIdentity"),
-    reason: "no executing b2_authorize_account caller; this module lands ahead of the storage-provider decision it will serve",
+    reason: "no executing b2_authorize_account caller; the credential shapes are a declared frontier while the citation locators below are consumed by extdeps.pricing.object_storage",
     dissolution: unbound_dissolution(
       description: "dissolves when a gunbc declaration authorizes against Backblaze B2 on an executing converge or gunbc-run entry, supplying an application key id and key from custody and consuming the returned account identity; a witness that the shape exists does not fire this"
     )
