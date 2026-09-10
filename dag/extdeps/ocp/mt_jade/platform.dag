@@ -2,7 +2,6 @@ module extdeps.ocp.mt_jade.platform
 
 import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
-import std.nat { Nat }
 import std.measure {
   Hertz,
   MegatransfersPerSecond,
@@ -54,22 +53,6 @@ data mt_jade_motherboard_mechanical: MtJadeMotherboardMechanical = MtJadeMotherb
 // table. It corroborates the processor datasheet: 2DPC is stated at 3200, not at 2933 or 2400.
 data mt_jade_dimm_speed_at_two_dpc: MegatransfersPerSecond = megatransfers_per_second(count: 3200)
 
-// TABLE 3, SAME-CHANNEL RANK MIX. Section 7.4: unlike ranks on the SAME channel are not
-// supported (the 1R & 2R cell is No). Uniform ranks on both slots are the 2DPC-3200 case
-// section 7.1 names. Different-channel mix is a different cell (TBD) and is not this function.
-// Observations about a particular held unit's installed mix are receipts downstream, not
-// facts in this module.
-type TwoSlotRankStanding
-  = TwoSlotRanksUniform { rank_count: Nat }
-  | SameChannelUnlikeRanksNotSupported { slot0_ranks: Nat, slot1_ranks: Nat }
-
-fn mt_jade_two_slot_rank_standing(slot0_ranks: Nat, slot1_ranks: Nat) -> TwoSlotRankStanding {
-  if slot0_ranks == slot1_ranks {
-    TwoSlotRanksUniform { rank_count: slot0_ranks }
-  } else {
-    SameChannelUnlikeRanksNotSupported { slot0_ranks: slot0_ranks, slot1_ranks: slot1_ranks }
-  }
-}
 // THE SOCKET ROLES ARE NAMED IN THE SPEC'S POWER-ON NARRATIVE. Socket 0 is the master socket
 // whose firmware must start first; socket 1 is the slave socket whose reset release is gated
 // through the board CPLD after master-socket firmware asserts ALERT9_N and pulses ALERT3_N.
