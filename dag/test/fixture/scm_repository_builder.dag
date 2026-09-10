@@ -41,6 +41,7 @@ import gunbc.scm.squash_merge {
   SquashMergeRootIsAuthoredSource,
   SquashMergeRootIsSemanticNode,
   SquashMergeResultLocatorCollision,
+  SquashMergeSourceUnrecoverable,
   SquashMergeAllocatorInvalid,
 }
 import gunbc.scm.write_spine {
@@ -199,6 +200,7 @@ fn mb_squash(
         SquashMergeRootMissing { root: _ } => MbSetupFailed
         SquashMergeRootIsAuthoredSource { root: _ } => MbSetupFailed
         SquashMergeRootIsSemanticNode { root: _ } => MbSetupFailed
+        SquashMergeSourceUnrecoverable { cause: _ } => MbSetupFailed
         SquashMergeResultLocatorCollision { identity: _ } => MbSetupFailed
         SquashMergeAllocatorInvalid => MbSetupFailed
       }

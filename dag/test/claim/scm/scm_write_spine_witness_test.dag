@@ -311,3 +311,137 @@ test fn scm_ws_committing_a_real_stage_is_admitted() -> Bool {
       }
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// PUBLICATION ADMISSION: A COMMIT MAY NOT SAVE A SNAPSHOT WHOSE BYTES CANNOT BE RECOVERED.
+// ---------------------------------------------------------------------------------------------
+//
+// The format admits a manifest naming a source the store does not hold, because partial historical
+// and transport state has to be representable. The write path was inheriting that permission as if it
+// meant "publishable": an `add` over a partial base produced a candidate carrying the inherited
+// dangling entry, `commit_staged` saw it differ from the base, and reported `StagedCommitMinted` for a
+// snapshot `checkout` would refuse. Found by external review; these three claims are the controls it
+// named, and the first is the discriminating RED.
+//
+// THE PARTIAL BASE IS BUILT BY DISCARDING THE STORE THE SOURCE WAS WRITTEN INTO, which is the same
+// technique `scm_checkout_verb_witness` uses for its unrecoverable snapshots -- the locator is real and
+// derived exactly as a manifest entry derives it, while the object never enters this repository.
+fn scm_ws_orphan_source() -> AuthoredSourceTarget? {
+  match store_authored_source(store: empty_store(), text: "module never_stored") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => none
+    SourceStored { store: _, source: source } =>
+      Present { value: authored_source_target_of(reference: source) }
+  }
+}
+
+fn scm_ws_partial_base(present: Bool) -> RepositoryEnvelope {
+  match scm_ws_orphan_source() {
+    Absent => empty_repository()
+    Present { value: orphan } =>
+      let seeded =
+        if present {
+          match store_authored_source(store: empty_store(), text: "module never_stored") {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+            SourceStored { store: next, source: _ } => next
+          }
+        } else {
+          empty_store()
+        }
+      match store_corpus_manifest(
+        store: seeded,
+        entries: [CorpusManifestEntry { path: "ghost.dag" as NonEmptyStr, source: orphan }],
+      ) {
+        CorpusManifestDuplicatePath { path: _ } => empty_repository()
+        CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => empty_repository()
+        CorpusManifestStored { store: next, manifest: manifest } =>
+          match mint_repository_commit(
+            repository: RepositoryEnvelope {
+              store: next,
+              commits: [],
+              commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+              checked_out: none,
+              staged: none,
+            },
+            root: CorpusManifestTarget { locator: manifest.locator },
+            message: "partial base",
+            parent: none,
+          ) {
+            RepositoryCommitMinted { repository: minted, reference: reference } =>
+              RepositoryEnvelope {
+                store: minted.store,
+                commits: minted.commits,
+                commit_allocator: minted.commit_allocator,
+                checked_out: Present { value: reference },
+                staged: none,
+              }
+            RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => empty_repository()
+            RepositoryCommitMintParentMissing { parent: _ } => empty_repository()
+            RepositoryCommitMintRootMissing { root: _ } => empty_repository()
+            RepositoryCommitMintRootIsAuthoredSource { root: _ } => empty_repository()
+            RepositoryCommitMintRootIsSemanticNode { root: _ } => empty_repository()
+          }
+      }
+  }
+}
+
+// THE DISCRIMINATING RED. Deleting the source admission from `stage_standing` turns this green-as-
+// refusal into `StagedCommitMinted`, which is the defect review found. The cause must NAME THE PATH:
+// "something is missing" is not actionable, and the path is the only thing an operator can act on.
+test fn scm_ws_committing_over_a_base_with_an_absent_source_refuses_naming_the_path() -> Bool {
+  match stage_source_at_path(
+    repository: scm_ws_partial_base(present: false),
+    path: "added.dag" as NonEmptyStr,
+    text: "module added",
+  ) {
+    StageCandidateRefused { cause: c } => scm_ws_names_the_ghost(cause: c)
+    StageSourceLocatorCollision { identity: _ } => false
+    StageManifestLocatorCollision { identity: _ } => false
+    Staged { repository: repository, manifest: _, source: _ } =>
+      match commit_staged(repository: repository, message: "publish the unpublishable") {
+        StagedCommitCandidateRefused { cause: c } => scm_ws_names_the_ghost(cause: c)
+        StagedCommitMinted { repository: _, reference: _ } => false
+        StagedCommitNothingToFreeze => false
+        StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+      }
+  }
+}
+
+fn scm_ws_names_the_ghost(cause: StagingRefusal) -> Bool {
+  match cause {
+    StageSourceUnrecoverable { cause: c } =>
+      match c {
+        CorpusEntrySourceMissing { path: p, source: _ } => (p as String) == "ghost.dag"
+        CorpusEntrySourceIsSemanticNode { path: _, source: _ } => false
+        CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
+      }
+    StageManifestMissingFromStore { staged: _ } => false
+    StageManifestIsAuthoredSource { staged: _ } => false
+    StageManifestIsSemanticNode { staged: _ } => false
+    StageBaseUnresolved { reference: _ } => false
+    StageBaseManifestMissingFromStore { root: _ } => false
+    StageBaseManifestIsAuthoredSource { root: _ } => false
+    StageBaseManifestIsSemanticNode { root: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, AND IT IS THE SAME REPOSITORY WITH THE SOURCE PRESENT. Without it, an
+// admission that refused EVERY commit would satisfy the claim above, and a verb that never commits is
+// not a safer verb. The two scenes differ in exactly one fact: whether the store holds the bytes.
+test fn scm_ws_the_same_commit_is_admitted_once_the_source_is_present() -> Bool {
+  match stage_source_at_path(
+    repository: scm_ws_partial_base(present: true),
+    path: "added.dag" as NonEmptyStr,
+    text: "module added",
+  ) {
+    StageCandidateRefused { cause: _ } => false
+    StageSourceLocatorCollision { identity: _ } => false
+    StageManifestLocatorCollision { identity: _ } => false
+    Staged { repository: repository, manifest: _, source: _ } =>
+      match commit_staged(repository: repository, message: "publishable") {
+        StagedCommitMinted { repository: _, reference: _ } => true
+        StagedCommitCandidateRefused { cause: _ } => false
+        StagedCommitNothingToFreeze => false
+        StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+      }
+  }
+}

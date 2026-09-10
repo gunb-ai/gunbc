@@ -1674,20 +1674,6 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-/// CpuBoundStanding rehome (2026-09-09, gunbc#10818). `CpuBoundStanding` (and the
-/// `CpuBoundInterfacePresent` constructor `cpu_bound_standing` names) moved from
-/// `gunbc.runner.runner_cpu_bandwidth_receipt` onto `gunbc.runner.runner_guest_egress_attempt`,
-/// which already held the refusal standing, so one coproduct answers for the earlier unread write,
-/// the EPERM refusal, and the later interface-present row. The bandwidth receipt still binds the
-/// two spellings; only the declaring module changed. Required floor run 34341884341 measured
-/// `FloorClean` with the consumption witness planned-and-passed, then refused adjudication on
-/// exactly these two `TargetChanged` binding deltas (and no others). Membership edges this change
-/// also adds auto-admit as `ExplicitlyEvaluatedZeroDelta` and are not listed.
-///
-/// TRIGGER: these two rows go when #10818 merges. The base then binds both spellings to
-/// `gunbc.runner.runner_guest_egress_attempt` inside `cpu_bound_standing`, the deltas stop being
-/// producible, and CONSUMED comes due on the roster's next touch — adjudicated by the
-/// declaring-module join, not by this sentence.
 /// CABLE-PLANT ROSTER-TOUCH OBLIGATION, DISCHARGED ON BOTH SIDES INDEPENDENTLY (2026-09-10).
 /// This branch deleted the 9 `gunbc#10883` cable-plant rows when run 34421135341 reported them
 /// `9 consumed admission(s) due for deletion on this roster-touching change`; `main` removed them too.
@@ -1732,9 +1718,136 @@ pub struct TransitionAdmission {
 /// Adjudicate that deletion by joining each row against main's tree on its own
 /// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
 /// trigger sentence is not evidence that the trigger fired.
+/// CPU-BOUND ROSTER-TOUCH OBLIGATION (2026-09-10). The 2 `gunbc#10818` CpuBoundStanding rows are
+/// deleted: #10818 is in this branch's base, so main itself binds both spellings to
+/// `gunbc.runner.runner_guest_egress_attempt`, and the wall reported each CONSUMED on this
+/// roster-touching change. Owed by CONTACT, not by authorship. 2 named, 2 deleted.
+///
+/// THE NINE ROWS BELOW ARE ONE SOURCE-RECOVERY RE-HOME (gunbc#10729), AND THEY EXIST BECAUSE A WALL
+/// WAS ADDED, NOT BECAUSE A NAME WAS TIDIED. Review found that a local commit could publish a snapshot
+/// whose authored sources this store does not hold -- reported SAVED, refused at checkout. Closing it
+/// required COMMIT and CHECKOUT to share one source-recovery authority, so the per-entry resolver and
+/// its three located causes -- `CorpusEntrySourceMissing`, `CorpusEntrySourceIsSemanticNode`,
+/// `CorpusEntrySourceIsCorpusManifest` -- moved from `gunbc.scm.checkout` down to
+/// `gunbc.scm.object_store`, which owns the entry, the store and the authored-source lookup they need
+/// and is already imported by checkout, staging and write_spine. The reverse direction would have made
+/// `object_store` depend on `checkout` (DESIGN 3, acyclicity).
+///
+/// EVERY ROW IS THE SAME MOTION: a spelling authored on both sides, still denoting THE SAME
+/// DECLARATION, resolving to a different module. Three claims in `scm_checkout_verb_witness` name the
+/// three causes; nothing else in the corpus bound them, which is why nine is the whole population.
+/// Enumerated by exact identity from the wall's own refusal output, never by a pattern over the module
+/// pair.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10729 merges, at which point main
+/// binds each spelling to `gunbc.scm.object_store`, base and head agree, and every row reports
+/// CONSUMED rather than stale -- coming due on this roster's next touch. Adjudicate that deletion by
+/// joining each row against main's tree on its own (module, in_declaration, spelling, target) tuple
+/// rather than trusting this sentence.
+const SCM_SOURCE_RECOVERY_REHOME_LABEL: &str =
+    "gunbc#10729 scm source-recovery re-home into object_store 2026-09-10";
 const SCM_MERGE_BASE_COHOME_LABEL: &str =
     "gunbc#10729 scm merge-base co-home into repository_envelope 2026-09-09";
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
+            spelling: "CorpusEntrySourceMissing",
+            target: "gunbc.scm.object_store",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
+            spelling: "CorpusEntrySourceIsSemanticNode",
+            target: "gunbc.scm.object_store",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix",
+            spelling: "CorpusEntrySourceIsCorpusManifest",
+            target: "gunbc.scm.object_store",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
+            spelling: "CorpusEntrySourceMissing",
+            target: "gunbc.scm.object_store",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
+            spelling: "CorpusEntrySourceIsSemanticNode",
+            target: "gunbc.scm.object_store",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing",
+            spelling: "CorpusEntrySourceIsCorpusManifest",
+            target: "gunbc.scm.object_store",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
+            spelling: "CorpusEntrySourceMissing",
+            target: "gunbc.scm.object_store",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
+            spelling: "CorpusEntrySourceIsSemanticNode",
+            target: "gunbc.scm.object_store",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.scm_checkout_verb_witness",
+            in_declaration:
+                "scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives",
+            spelling: "CorpusEntrySourceIsCorpusManifest",
+            target: "gunbc.scm.object_store",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: SCM_MERGE_BASE_COHOME_LABEL,
         subject: AdmissionSubject::Binding {
@@ -2046,26 +2159,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
                 "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
             spelling: "MergeBaseSourceAlreadyConsumed",
             target: "gunbc.scm.repository_envelope",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10818 CpuBoundStanding rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
-            in_declaration: "cpu_bound_standing",
-            spelling: "CpuBoundStanding",
-            target: "gunbc.runner.runner_guest_egress_attempt",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10818 CpuBoundStanding rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
-            in_declaration: "cpu_bound_standing",
-            spelling: "CpuBoundInterfacePresent",
-            target: "gunbc.runner.runner_guest_egress_attempt",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

@@ -36,6 +36,7 @@ import gunbc.scm.squash_merge {
   SquashMergeRootIsAuthoredSource,
   SquashMergeRootIsSemanticNode,
   SquashMergeResultLocatorCollision,
+  SquashMergeSourceUnrecoverable,
   SquashMergeAllocatorInvalid,
   squash_merge,
 }
@@ -171,6 +172,7 @@ test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool {
             SquashMergeRootMissing { side: _, root: _ } => false
             SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
             SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+            SquashMergeSourceUnrecoverable { cause: _ } => false
             SquashMergeResultLocatorCollision { identity: _ } => false
             SquashMergeAllocatorInvalid => false
           }
@@ -216,6 +218,7 @@ test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -
             SquashMergeRootMissing { side: _, root: _ } => false
             SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
             SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+            SquashMergeSourceUnrecoverable { cause: _ } => false
             SquashMergeResultLocatorCollision { identity: _ } => false
             SquashMergeAllocatorInvalid => false
           }
@@ -262,7 +265,8 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
                 SquashMergeRootMissing { side: _, root: _ } => false
                 SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
                 SquashMergeRootIsSemanticNode { side: _, root: _ } => false
-                SquashMergeResultLocatorCollision { identity: _ } => false
+                SquashMergeSourceUnrecoverable { cause: _ } => false
+            SquashMergeResultLocatorCollision { identity: _ } => false
                 SquashMergeAllocatorInvalid => false
               }
             SquashMergeConflicted { conflicts: _ } => false
@@ -270,6 +274,7 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
             SquashMergeRootMissing { side: _, root: _ } => false
             SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
             SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+            SquashMergeSourceUnrecoverable { cause: _ } => false
             SquashMergeResultLocatorCollision { identity: _ } => false
             SquashMergeAllocatorInvalid => false
           }
@@ -325,7 +330,8 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
                     SquashMergeRootMissing { side: _, root: _ } => false
                     SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
                     SquashMergeRootIsSemanticNode { side: _, root: _ } => false
-                    SquashMergeResultLocatorCollision { identity: _ } => false
+                    SquashMergeSourceUnrecoverable { cause: _ } => false
+            SquashMergeResultLocatorCollision { identity: _ } => false
                     SquashMergeAllocatorInvalid => false
                   }
               }

@@ -752,6 +752,7 @@ fn squash_outcome_wire(outcome: SquashMergeOutcome) -> String {
     SquashMergeRootMissing { side: _, root: _ } => "root-missing"
     SquashMergeRootIsAuthoredSource { side: _, root: _ } => "root-is-authored-source"
     SquashMergeRootIsSemanticNode { side: _, root: _ } => "root-is-semantic-node"
+    SquashMergeSourceUnrecoverable { cause: _ } => "source-unrecoverable"
     SquashMergeResultLocatorCollision { identity: _ } => "result-locator-collision"
     SquashMergeAllocatorInvalid => "allocator-invalid"
   }
