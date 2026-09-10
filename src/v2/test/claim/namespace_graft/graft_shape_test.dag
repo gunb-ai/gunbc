@@ -261,3 +261,59 @@ data claim_namespace_graft_dual_position_refused: TestClaim = EqualsClaim {
 test fn namespace_graft_dual_position_refused_holds() -> Bool {
   !ng_outcome_accepted(out: module_header_containment_graft(root: ng_dual_position_root))
 }
+
+fn ng_production_identity_shell(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^grammar_production_identity_node_projection,
+        target: dag_grammar_atom(id: id)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ng_projection_edge(target: Node) -> Edge {
+  Edge {
+    label: Named { name: ^grammar_production_captured_node_projection },
+    target: target
+  }
+}
+
+data ng_type_decl_unit_root: Node = ng_pre_graft_module_root(
+  qn: ng_module_qn,
+  body_edges: [
+    ng_projection_edge(
+      target: ng_production_identity_shell(id: ^dag_surface_type_decl)
+    )
+  ]
+)
+
+data ng_lost_body_root: Node = ng_pre_graft_module_root(
+  qn: ng_module_qn,
+  body_edges: [
+    ng_projection_edge(
+      target: ng_production_identity_shell(id: ^dag_surface_top_level_item)
+    )
+  ]
+)
+
+fn ng_graft_reason_is(root: Node, reason: Symbol) -> Bool {
+  match module_header_containment_graft(root: root) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
+  }
+}
+
+test fn namespace_graft_type_decl_unit_is_not_dissolved_holds() -> Bool {
+  ng_outcome_accepted(out: module_header_containment_graft(root: ng_type_decl_unit_root))
+}
+
+test fn namespace_graft_lost_top_level_item_without_unit_refuses_RED() -> Bool {
+  ng_graft_reason_is(
+    root: ng_lost_body_root,
+    reason: ^namespace_graft_body_dissolved_refused
+  )
+}

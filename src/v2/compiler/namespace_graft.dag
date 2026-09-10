@@ -142,10 +142,36 @@ fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> 
   }
 }
 
-fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
+fn namespace_graft_is_declaration_forest_unit_id(id: Symbol) -> Bool {
+  (id == ^dag_surface_type_decl)
+    || (id == ^dag_surface_data_decl)
+    || (id == ^dag_surface_fn_decl)
+    || (id == ^dag_surface_import_decl)
+    || (id == ^dag_surface_alias_decl)
+    || (id == ^dag_surface_import_block)
+}
+
+fn namespace_graft_fold_collect_children(node: Node) -> List<Edge> {
   fold(node.children, init: [], f: fn(acc, edge) {
     namespace_graft_collect_body_edge(acc: acc, edge: edge)
   })
+}
+
+fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if namespace_graft_is_declaration_forest_unit_id(id: id) {
+        [
+          Edge {
+            label: Named { name: id },
+            target: node
+          }
+        ]
+      } else {
+        namespace_graft_fold_collect_children(node: node)
+      }
+    Absent => namespace_graft_fold_collect_children(node: node)
+  }
 }
 
 fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
@@ -166,13 +192,17 @@ fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
 
 // The empty-observation narrow made unwritable (operator ruling msg_d18a55de): a
 // collector that cannot express a module's declarations must not report "this module
-// has none". A pre-graft tree that carries top-level declarations (the
-// dag_surface_top_level_item identity atoms survive the normalize fold on every
-// measured shape) while the collected body is EMPTY is the collector failing to
-// carry the forest — a decidable comparison of two trees in hand, refused loudly.
-// A module with no declarations at all (header only) keeps its legitimate empty
-// body: the discriminant is declaration presence, not body emptiness alone. This
-// guard covers total dissolution; partial-drop fidelity is the deeper graft repair.
+// has none". Flattening parse-projection / transparent-sequence spines into a
+// declaration's CHILDREN dropped type/data/import/fn shells (every child is itself
+// a projection), so a module whose declarations contribute no function body looked
+// identical to a LOST forest. Declaration productions are graft-body UNITS: stop
+// flattening at that identity and keep the shell. A pre-graft tree that still
+// carries dag_surface_top_level_item while the collected body is EMPTY is then a
+// genuine loss (the wrapper survived, the unit did not) and still refuses. Header
+// only, and a module whose only declarations are those units, share the same
+// legitimate empty-vs-present distinction: emptiness is absent-by-construction
+// once the units are kept. This guard covers total dissolution; partial-drop
+// fidelity is the deeper graft repair.
 fn namespace_graft_subtree_contains_atom(n: Node, sym: Symbol) -> Bool {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
