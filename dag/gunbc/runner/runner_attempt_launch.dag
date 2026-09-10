@@ -72,14 +72,10 @@ data jit_mint_http_realization_frontier: DissolutionCondition = unbound_dissolut
 )
 
 // SHADOW MEANS SHADOW. No fleet-converge entry, no dual dispatch, no "use Y when available".
-fn production_may_dispatch_attempt_launch() -> Bool {
-  false
-}
+// Production does not import plan_attempt_launch; a Bool in this module cannot decide that.
 
-// recovered/'s dissolution is NOT this PR. Y beside X does not satisfy it.
-fn recovered_host_image_source_dissolution_satisfied() -> Bool {
-  false
-}
+// recovered/'s dissolution is NOT this PR. Y beside X does not satisfy it; that fact is the
+// unbound host_boot_cutover_frontier, not a second false constant.
 
 // §4b(1): the reported rung is the MINIMUM across in-scope paths. The planner-witness path has
 // executed REDs in this change. The host-boot jailer-exec path has not: mtcollins1 is powered off

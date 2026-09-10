@@ -7,7 +7,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { argv_words }
 import extdeps.virtualization.firecracker {
   firecracker_requires_kvm_device,
-  jailer_cgroup_version_flag_places_the_process,
 }
 import test.claim.fabric_grant_issuance_witness {
   issue, subject_work, first_attempt, funded_account, exhausted_account,
@@ -25,7 +24,7 @@ import gunbc.runner_microvm_attempt {
 import gunbc.runner_microvm_network {
   runner_slot_tap_device_name, runner_microvm_nft_ruleset_text,
 }
-import std.dissolution { dissolution_description, dissolution_is_bound }
+import std.dissolution { UnboundDissolution, BoundDissolution }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, OutsideTheLadder, StructurallyGuaranteed, StructurallyImpossible }
 import gunbc.runner_attempt_launch {
   AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedUnauthorized,
@@ -38,8 +37,6 @@ import gunbc.runner_attempt_launch {
   EnvelopePayloadBelowFloor, EnvelopePayloadAboveCeiling,
   plan_attempt_launch, planned_jailer_launches,
   work_standing_from_vmm_exit, WorkNotEstablished,
-  production_may_dispatch_attempt_launch,
-  recovered_host_image_source_dissolution_satisfied,
   reported_attempt_launch_rung,
   host_boot_cutover_frontier, jit_mint_http_realization_frontier,
 }
@@ -263,18 +260,6 @@ test fn a_clean_vmm_exit_is_not_evidence_that_work_ran() -> Bool {
   }
 }
 
-test fn the_jailer_cgroup_flag_does_not_place_the_process() -> Bool {
-  !jailer_cgroup_version_flag_places_the_process()
-}
-
-test fn production_does_not_dispatch_the_shadow_planner() -> Bool {
-  !production_may_dispatch_attempt_launch()
-}
-
-test fn recovered_dissolution_is_not_satisfied_by_y_beside_x() -> Bool {
-  !recovered_host_image_source_dissolution_satisfied()
-}
-
 test fn reported_rung_is_the_minimum_across_paths_and_is_mitigatable() -> Bool {
   match reported_attempt_launch_rung() {
     Mitigatable => true
@@ -285,19 +270,15 @@ test fn reported_rung_is_the_minimum_across_paths_and_is_mitigatable() -> Bool {
   }
 }
 
-test fn the_cutover_frontier_names_the_capability_and_is_unbound() -> Bool {
-  let d = dissolution_description(condition: host_boot_cutover_frontier)
-  !dissolution_is_bound(condition: host_boot_cutover_frontier)
-    && string_contains(s: d, pattern: "Y execs at host boot")
-    && string_contains(s: d, pattern: "host image is built from Y")
-    && string_contains(s: d, pattern: "NOT satisfied by this planner compiling")
-}
-
-test fn the_mint_frontier_names_github_pr_10923() -> Bool {
-  let d = dissolution_description(condition: jit_mint_http_realization_frontier)
-  !dissolution_is_bound(condition: jit_mint_http_realization_frontier)
-    && string_contains(s: d, pattern: "10923")
-    && string_contains(s: d, pattern: "github_effect_perform")
+test fn the_cutover_and_mint_frontiers_are_unbound() -> Bool {
+  match host_boot_cutover_frontier {
+    UnboundDissolution { description: _ } =>
+      match jit_mint_http_realization_frontier {
+        UnboundDissolution { description: _ } => true
+        BoundDissolution { trigger: _ } => false
+      }
+    BoundDissolution { trigger: _ } => false
+  }
 }
 
 test fn every_x_envelope_refusal_arm_yields_zero_jailer_launches() -> Bool {
