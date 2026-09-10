@@ -5,6 +5,8 @@ import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { argv_words }
+import extdeps.tools.mkdir { mkdir_binary_path }
+import gunbc.runner_microvm { gunbc_runner_microvm_declared_size }
 import extdeps.virtualization.firecracker {
   firecracker_requires_kvm_device,
 }
@@ -19,7 +21,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt,
-  runner_microvm_attempt_workspace_path, runner_microvm_attempt_dir,
+  runner_microvm_attempt_jail_base,
 }
 import gunbc.runner_microvm_network {
   runner_slot_tap_device_name, runner_microvm_nft_ruleset_text,
@@ -29,16 +31,17 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, OutsideTheLa
 import gunbc.runner_attempt_launch {
   AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedUnauthorized,
   LaunchRefusedEnvelope, LaunchRefusedPriorResources,
-  LaunchRefusedConfigUnresolved,
   AttemptGround, GroundClear, GroundOccupied,
   EnvelopeStanding, EnvelopeAdmitted, EnvelopeAbsent, EnvelopeMalformed,
   EnvelopeSignatureRejected, EnvelopeBoundToDifferentUnit, EnvelopeBoundToDifferentBoot,
   EnvelopeNonceMismatch, EnvelopeBoundToDifferentAttempt, EnvelopePayloadDigestMismatch,
   EnvelopePayloadBelowFloor, EnvelopePayloadAboveCeiling, EnvelopeAdmissionAxisNotRequired,
   plan_attempt_launch, planned_jailer_launches,
+  attempt_jail_chroot_root, workspace_drive_path_on_host,
   work_standing_from_vmm_exit, WorkNotEstablished,
   reported_attempt_launch_rung,
-  host_boot_cutover_frontier, jit_mint_http_realization_frontier,
+  host_boot_cutover_frontier, jit_mint_http_realization_frontier, jail_jit_device_staging_frontier,
+  jail_workspace_path,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -59,9 +62,13 @@ fn issued_pairs() -> List<IssuedPair> {
     account: funded_account,
     ledger: thread_appropriation,
   ) {
-    GrantCommitted { grant: g, account: a, ledger: _ } =>
-      [IssuedPair { grant: g, account: a }]
-    GrantRefused { refusal: _ } => []
+    Cons { head: o, tail: _ } =>
+      match o {
+        GrantCommitted { grant: g, account: a, ledger: _ } =>
+          [IssuedPair { grant: g, account: a }]
+        GrantRefused { refusal: _ } => []
+      }
+    Empty {} => []
   }
 }
 
@@ -95,6 +102,9 @@ fn plan_for(
     ground: ground,
     jailer_binary: "/bin/jailer",
     firecracker_binary: "/bin/firecracker",
+    kernel_source: "/stage/vmlinux",
+    rootfs_source: "/stage/rootfs.squashfs",
+    guest_size: gunbc_runner_microvm_declared_size,
   )
 }
 
@@ -140,13 +150,16 @@ test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
               }
             LaunchRefusedUnauthorized { authorization: _ } => false
             LaunchRefusedPriorResources => false
-            LaunchRefusedConfigUnresolved { cause: _ } => false
             LaunchAuthorized {
               authorization: _,
               tap_device: _,
               guest_ip_boot_arg: _,
               nft_ruleset: _,
               slice: _,
+              jail_root: _,
+              stage_jail_root: _,
+              stage_kernel: _,
+              stage_rootfs: _,
               workspace_path: _,
               workspace_create: _,
               workspace_format: _,
@@ -157,7 +170,7 @@ test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
           }
         Empty {} => false
       }
-    Empty {} => false
+    Empty {} => true
   }
 }
 
@@ -214,6 +227,10 @@ test fn an_authorized_plan_carries_network_slice_workspace_and_jailer_command() 
               guest_ip_boot_arg: ip,
               nft_ruleset: nft,
               slice: _,
+              jail_root: jail_root,
+              stage_jail_root: stage_root,
+              stage_kernel: stage_k,
+              stage_rootfs: stage_r,
               workspace_path: ws,
               workspace_create: create,
               workspace_format: fmt,
@@ -222,9 +239,17 @@ test fn an_authorized_plan_carries_network_slice_workspace_and_jailer_command() 
               jailer: jailer,
             } => {
               let words = join(argv_words(command: jailer), " ")
+              let create_words = join(argv_words(command: create), " ")
               (tap as String) == (runner_slot_tap_device_name(slot: a.slot) as String)
                 && nft == runner_microvm_nft_ruleset_text()
-                && string_contains(s: ws, pattern: runner_microvm_attempt_dir(attempt: a))
+                && jail_root == attempt_jail_chroot_root(attempt: a, firecracker_binary: "/bin/firecracker")
+                && (stage_root.program as String) == (mkdir_binary_path as String)
+                && (stage_k.program as String) == "cp"
+                && (stage_r.program as String) == "cp"
+                && string_contains(s: ws, pattern: runner_microvm_attempt_jail_base(attempt: a))
+                && string_contains(s: ws, pattern: jail_workspace_path as String)
+                && string_contains(s: create_words, pattern: concat("of=", ws))
+                && workspace_drive_path_on_host(config: cfg) == (jail_workspace_path as String)
                 && (kvm as String) == (firecracker_requires_kvm_device as String)
                 && string_contains(s: ip, pattern: "ip=")
                 && string_contains(s: words, pattern: "--exec-file")
@@ -244,7 +269,6 @@ test fn an_authorized_plan_carries_network_slice_workspace_and_jailer_command() 
             LaunchRefusedUnauthorized { authorization: _ } => false
             LaunchRefusedEnvelope { standing: _ } => false
             LaunchRefusedPriorResources => false
-            LaunchRefusedConfigUnresolved { cause: _ } => false
           }
         Empty {} => false
       }
@@ -275,7 +299,11 @@ test fn the_cutover_and_mint_frontiers_are_unbound() -> Bool {
   match host_boot_cutover_frontier {
     UnboundDissolution { description: _ } =>
       match jit_mint_http_realization_frontier {
-        UnboundDissolution { description: _ } => true
+        UnboundDissolution { description: _ } =>
+          match jail_jit_device_staging_frontier {
+            UnboundDissolution { description: _ } => true
+            BoundDissolution { trigger: _ } => false
+          }
         BoundDissolution { trigger: _ } => false
       }
     BoundDissolution { trigger: _ } => false

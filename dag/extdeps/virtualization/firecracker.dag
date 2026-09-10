@@ -276,3 +276,26 @@ fn firecracker_jailer_run_command(
     ],
   )
 }
+
+// THE JAILER'S CHROOT ROOT ON THE HOST is `<chroot-base-dir>/<exec-file-basename>/<id>/root`.
+// Upstream creates that tree and pivots into `root`; config `path_on_host` values are then
+// names inside that root (`/work.img`), while the supervisor still has to CREATE the files
+// at the host path below. The basename is the last `/`-separated segment of `--exec-file`.
+fn firecracker_jailer_exec_file_basename(exec_file: String) -> String {
+  fold(split(s: exec_file, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}
+
+fn firecracker_jailer_chroot_root(
+  chroot_base_dir: String,
+  exec_file: String,
+  jailer_id: String,
+) -> String {
+  join([
+    chroot_base_dir,
+    "/",
+    firecracker_jailer_exec_file_basename(exec_file: exec_file),
+    "/",
+    jailer_id,
+    "/root",
+  ], "")
+}
