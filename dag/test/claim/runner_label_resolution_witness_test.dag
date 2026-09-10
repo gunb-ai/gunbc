@@ -14,6 +14,8 @@ import extdeps.time.rfc3339 {
 import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow, github_hosted_ubuntu_catalog }
 import gunbc.runner_label_resolution {
   RunnerLabelResolution, RunnerLabelResolved, RunnerLabelSnapshotStale, RunnerLabelAbsentFromSurvey,
+  RunnerLabelAmbiguousAcrossCatalogs,
+  LabelMatch, resolve_from_matches,
   resolve_runner_label,
   ArchitectureReading, ArchitectureFromCatalog, ArchitectureUnresolved, architecture_reading,
   ProviderReading, ProviderFromCatalog, ProviderUnresolved, provider_reading,
@@ -155,6 +157,7 @@ test fn witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation() ->
     RunnerLabelResolved { row, snapshot } => false
     RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => count(stale_snapshots) > 0
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => false
   }
 }
 
@@ -202,6 +205,7 @@ test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> 
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } =>
       count(snapshots_consulted) > 0
         && count(filter(snapshots_consulted, s => snapshot_postdates(snapshot: s, observed_at: observed_at) == false)) == 0
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => false
   }
 }
 
@@ -215,6 +219,7 @@ test fn witness_every_snapshot_the_stale_arm_reports_predates_the_observation() 
       count(stale_snapshots) > 0
         && count(filter(stale_snapshots, s => snapshot_postdates(snapshot: s, observed_at: observed_at))) == 0
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => false
   }
 }
 
@@ -273,8 +278,97 @@ test fn witness_a_resolved_label_carries_its_snapshot_provenance() -> Bool {
   }
 }
 
+// -------------------------------------------------------------------------------------
+// TWO CATALOGS ANSWERING FOR ONE LABEL IS A REFUSAL. An earlier revision took the head of the
+// match list, so a label two catalogs carried got whichever answer was enrolled first - a
+// fail-open relocated from the label's spelling to the survey's ORDER, and one that resolves a
+// genuine disagreement about provider or architecture silently in favour of a line's position.
+//
+// The claims drive resolve_from_matches with constructed match lists rather than the live survey,
+// which is what makes the wall testable at all: a wall reachable only by corrupting the enrolled
+// catalogs is a wall nothing can exercise. Both directions are here - two rows refuse, one row
+// resolves - so the arm cannot be green by refusing everything.
+//
+// THE DISAGREEING PAIR IS THE INTERESTING ONE and the AGREEING pair is the one that must refuse
+// too: two authorities claiming one label is a single-authority defect whether or not they happen
+// to agree this week, and tolerating agreeing duplicates would hide the fork until one changed.
+// -------------------------------------------------------------------------------------
+
+data competing_row_depot: RunnerLabelRow = RunnerLabelRow {
+  provider: depot_provider_identity,
+  label: "contested-label-8",
+  architecture: Aarch64,
+}
+
+data competing_row_github: RunnerLabelRow = RunnerLabelRow {
+  provider: github_actions_provider_identity,
+  label: "contested-label-8",
+  architecture: X86_64,
+}
+
+data agreeing_row_depot_copy: RunnerLabelRow = RunnerLabelRow {
+  provider: depot_provider_identity,
+  label: "contested-label-8",
+  architecture: Aarch64,
+}
+
+data control_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-10T00:00:00Z",
+  declared_scope: "constructed for this claim; not a vendor reading",
+}
+
+fn control_match(row: RunnerLabelRow) -> LabelMatch {
+  LabelMatch { row: row, snapshot: control_snapshot }
+}
+
+fn resolution_is_ambiguous(matches: List<LabelMatch>) -> Bool {
+  match resolve_from_matches(label: "contested-label-8", observed_at: biome_observed_at, matches: matches) {
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } =>
+      count(matches) == 2 && string_length(s: cause) > 0
+    RunnerLabelResolved { row, snapshot } => false
+    RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => false
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => false
+  }
+}
+
+test fn witness_two_catalogs_carrying_one_label_refuse_rather_than_race() -> Bool {
+  let disagreeing_refused = resolution_is_ambiguous(matches: [
+    control_match(row: competing_row_depot), control_match(row: competing_row_github)])
+  let agreeing_refused = resolution_is_ambiguous(matches: [
+    control_match(row: competing_row_depot), control_match(row: agreeing_row_depot_copy)])
+  let order_does_not_decide = resolution_is_ambiguous(matches: [
+    control_match(row: competing_row_github), control_match(row: competing_row_depot)])
+  let single_match_still_resolves = match resolve_from_matches(
+    label: "contested-label-8", observed_at: biome_observed_at,
+    matches: [control_match(row: competing_row_depot)],
+  ) {
+    RunnerLabelResolved { row, snapshot } => row.architecture == Aarch64
+    other => false
+  }
+  disagreeing_refused && agreeing_refused && order_does_not_decide && single_match_still_resolves
+}
+
+// AND THE ARM MUST NOT FIRE ON THE LIVE SURVEY TODAY. If it does, two enrolled catalogs already
+// carry one label and that is a corpus defect to fix rather than a claim to relax - this is the
+// control that says the refusal above is a wall over a real corpus and not one that has already
+// swallowed the ordinary case.
+test fn witness_no_surveyed_label_is_carried_by_two_catalogs() -> Bool {
+  let live_labels = [
+    "depot-ubuntu-24.04-arm-16", "depot-ubuntu-24.04-16", "ubuntu-24.04", "ubuntu-24.04-arm",
+    "ubuntu-slim", "ubuntu-latest-64core", "ubuntu-latest-arm-64core",
+    "ubicloud-standard-16-arm", "blacksmith-16vcpu-ubuntu-2404-arm", "warp-ubuntu-latest-arm64-8x",
+  ]
+  count(filter(live_labels, l =>
+    match resolve_runner_label(label: l, observed_at: biome_observed_at) {
+      RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => true
+      other => false
+    })) == 0
+}
+
 fn all_claims_hold() -> Bool {
-  witness_biome_selected_label_resolves_arm_from_depots_catalog()
+  witness_two_catalogs_carrying_one_label_refuse_rather_than_race()
+    && witness_no_surveyed_label_is_carried_by_two_catalogs()
+    && witness_biome_selected_label_resolves_arm_from_depots_catalog()
     && witness_the_unsuffixed_depot_label_derives_x64()
     && witness_each_surveyed_providers_arm_and_x64_labels_resolve()
     && witness_a_label_outside_every_catalog_yields_no_architecture()

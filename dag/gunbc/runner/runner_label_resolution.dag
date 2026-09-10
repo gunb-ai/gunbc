@@ -1,6 +1,7 @@
 module gunbc.runner_label_resolution
 
 import std.types { Bool, List, NonEmptyStr, String }
+
 import std.decl_ref { DeclarationRef }
 import extdeps.toolchain.types { Aarch64, Architecture }
 import extdeps.ci_runner.types { CatalogSnapshot, RunnerLabelCatalog, RunnerLabelRow }
@@ -79,6 +80,11 @@ type RunnerLabelResolution
       snapshots_consulted: List<CatalogSnapshot>
       cause: NonEmptyStr
     }
+  | RunnerLabelAmbiguousAcrossCatalogs {
+      label: String
+      matches: List<RunnerLabelRow>
+      cause: NonEmptyStr
+    }
 
 // A match carries the snapshot it came from, so the provenance of an answer is produced by the
 // same pass that produced the answer. Looking the snapshot up again afterwards would be a second
@@ -94,6 +100,50 @@ fn catalog_matches(catalog: RunnerLabelCatalog, label: String) -> List<LabelMatc
 
 fn surveyed_matches(label: String) -> List<LabelMatch> {
   fold(surveyed_label_catalogs(), init: [], f: (acc, c) => concat(acc, catalog_matches(catalog: c, label: label)))
+}
+
+// TWO CATALOGS ANSWERING FOR ONE LABEL IS A REFUSAL, NOT A RACE BETWEEN THEM.
+//
+// An earlier revision took the head of the match list. That is the same fail-open this module's
+// header argues against, relocated from the label's spelling to the survey's ORDER: a label two
+// catalogs carry got whichever answer happened to be enrolled first, and if the two disagreed
+// about provider or architecture the disagreement resolved silently, in favour of a line's
+// position in a list nobody thinks of as ordered.
+//
+// It is a live growth surface rather than a hypothetical. gunbc.runner_provider_survey says in so
+// many words that adding a provider is one line in each list, and two of the catalogs already
+// enrolled - the larger-runner families and the standard hosted labels - share one provider
+// identity and one label namespace. They are disjoint TODAY. Nothing structural keeps them
+// disjoint, and the day they overlap the resolver should say so rather than pick.
+//
+// THE ARM REFUSES ON MULTIPLICITY, NOT ON DISAGREEMENT, and that is deliberate. Refusing only
+// when the rows contradict each other would widen on the agreeing case, which is the same
+// absorbing fallback one step quieter: two authorities claiming one label is a single-authority
+// defect (DESIGN section 3) whether or not they happen to agree this week, and a resolver that
+// tolerated agreeing duplicates would hide the fork until the day one of them changed.
+//
+// THE SPLIT IS OVER A MATCH LIST RATHER THAN OVER THE LIVE SURVEY, so the arm has an authorable
+// red: a claim can hand this function two competing rows directly. A wall reachable only by
+// corrupting the enrolled catalogs would be a wall nothing could test.
+fn resolve_from_matches(
+  label: String,
+  observed_at: Rfc3339Timestamp,
+  matches: List<LabelMatch>,
+) -> RunnerLabelResolution {
+  if count(matches) > 1 {
+    RunnerLabelAmbiguousAcrossCatalogs {
+      label: label,
+      matches: map(matches, m => m.row),
+      cause: join(["the label '", label, "' is carried by ",
+        to_string(count(matches)),
+        " surveyed catalogs. One label is one authority's fact, so there is no answer to give here: taking either row would make the result depend on which catalog is enrolled first in gunbc.runner_provider_survey. Remove the label from every catalog but the one that owns it."], ""),
+    }
+  } else if count(matches) > 0 {
+    let hit = first(matches)
+    RunnerLabelResolved { row: hit.row, snapshot: hit.snapshot }
+  } else {
+    unmatched_resolution(label: label, observed_at: observed_at)
+  }
 }
 
 // A snapshot is STALE RELATIVE TO AN OBSERVATION when it was fetched before it. An undecidable
@@ -120,33 +170,31 @@ fn stale_snapshots_for(observed_at: Rfc3339Timestamp) -> List<CatalogSnapshot> {
 
 data label_miss_next_rung_trigger: NonEmptyStr = "A vendor-side label-family recognizer, homed in each provider's own extdeps module and cited to that vendor's own documented naming scheme, would separate 'this label belongs to a family we never modelled' from 'this vendor does not publish this label'. Until it exists, consult the snapshot's declared_scope."
 
-fn resolve_runner_label(label: String, observed_at: Rfc3339Timestamp) -> RunnerLabelResolution {
-  let matches = surveyed_matches(label: label)
-  if count(matches) > 0 {
-    let hit = first(matches)
-    RunnerLabelResolved { row: hit.row, snapshot: hit.snapshot }
+fn unmatched_resolution(label: String, observed_at: Rfc3339Timestamp) -> RunnerLabelResolution {
+  let stale = stale_snapshots_for(observed_at: observed_at)
+  if count(stale) > 0 {
+    RunnerLabelSnapshotStale {
+      label: label,
+      observed_at: observed_at,
+      stale_snapshots: stale,
+      cause: join(["no surveyed runner catalog carries the label '", label,
+        "', and this repository's snapshot of at least one provider was fetched BEFORE the observation at ", observed_at,
+        ", so a catalog could have gained the label in between. This is a coverage obligation on us and the remedy is to re-fetch those vendor pages, NOT a finding about the observed repository."], ""),
+    }
   } else {
-    let stale = stale_snapshots_for(observed_at: observed_at)
-    if count(stale) > 0 {
-      RunnerLabelSnapshotStale {
-        label: label,
-        observed_at: observed_at,
-        stale_snapshots: stale,
-        cause: join(["no surveyed runner catalog carries the label '", label,
-          "', and this repository's snapshot of at least one provider was fetched BEFORE the observation at ", observed_at,
-          ", so a catalog could have gained the label in between. This is a coverage obligation on us and the remedy is to re-fetch those vendor pages, NOT a finding about the observed repository."], ""),
-      }
-    } else {
-      RunnerLabelAbsentFromSurvey {
-        label: label,
-        observed_at: observed_at,
-        snapshots_consulted: surveyed_snapshots(),
-        cause: join(["no surveyed runner catalog carries the label '", label,
-          "', and every snapshot consulted post-dates the observation at ", observed_at,
-          ", so this repository looked later than the thing it was looking at and found nothing. Residual: a snapshot cannot distinguish a label never published from one retired in between, and it cannot see a family this repository never modelled - read the snapshot's declared_scope. ", label_miss_next_rung_trigger], ""),
-      }
+    RunnerLabelAbsentFromSurvey {
+      label: label,
+      observed_at: observed_at,
+      snapshots_consulted: surveyed_snapshots(),
+      cause: join(["no surveyed runner catalog carries the label '", label,
+        "', and every snapshot consulted post-dates the observation at ", observed_at,
+        ", so this repository looked later than the thing it was looking at and found nothing. Residual: a snapshot cannot distinguish a label never published from one retired in between, and it cannot see a family this repository never modelled - read the snapshot's declared_scope. ", label_miss_next_rung_trigger], ""),
     }
   }
+}
+
+fn resolve_runner_label(label: String, observed_at: Rfc3339Timestamp) -> RunnerLabelResolution {
+  resolve_from_matches(label: label, observed_at: observed_at, matches: surveyed_matches(label: label))
 }
 
 // -------------------------------------------------------------------------------------
@@ -180,6 +228,7 @@ fn resolution_cause(r: RunnerLabelResolution) -> NonEmptyStr {
     RunnerLabelResolved { row, snapshot } => "resolved"
     RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => cause
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => cause
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => cause
   }
 }
 
@@ -188,6 +237,7 @@ fn resolution_label(r: RunnerLabelResolution) -> String {
     RunnerLabelResolved { row, snapshot } => row.label
     RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => label
     RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => label
+    RunnerLabelAmbiguousAcrossCatalogs { label, matches, cause } => label
   }
 }
 
