@@ -51,10 +51,11 @@ data bridged_attachment_rejected: GuestAttachment = BridgedToPhysicalSegment {
 
 // THE REJECTED TOPOLOGY IS THE ONE THE ATTEMPT RECEIPT HOLDS. These folds consume
 // egress_outcome and guest_reachability. CONFIG_NETFILTER and CONFIG_NF_NAT are required
-// either way, so the standing is NOT folded into KernelFeatureRequirement.required_for
-// (that field is why an option is required, and it is diagnostic text in
-// verify_built_kernel_config). The typed standing is what runner_host_kernel_config
-// reports on a hold; it does not admit or drop kernel options.
+// either way, so the standing is NOT folded into KernelFeatureRequirement.required_for.
+// verify_kernel_config carries the standing on KernelConfigHolds; the kernel-config witness
+// matches Settled, which is the executing reader. The other three arms are the RED: they are
+// authorable by changing those receipts. The wet ProcessExit still does not refuse on them
+// (kernel-option admission is independent of that probe).
 fn bridged_attempt_left_guest_without_egress() -> Bool {
   match egress_outcome {
     GuestEgressEstablished { via: _ } => false
@@ -87,15 +88,6 @@ fn filtered_egress_topology_standing() -> FilteredEgressTopologyStanding {
 }
 
 data filtered_egress_topology: FilteredEgressTopologyStanding = filtered_egress_topology_standing()
-
-fn filtered_egress_topology_label(standing: FilteredEgressTopologyStanding) -> String {
-  match standing {
-    FilteredEgressTopologySettled => "filtered-egress-topology=settled"
-    BridgedAttemptEstablishedGuestEgress => "filtered-egress-topology=bridge-established-egress"
-    PointToPointTapHasNotReachedGuest => "filtered-egress-topology=p2p-did-not-reach"
-    FilteredEgressTopologyUnsettled => "filtered-egress-topology=unsettled"
-  }
-}
 
 // ── the host uplink is static, on purpose ───────────────────────────────────────────────────────
 
