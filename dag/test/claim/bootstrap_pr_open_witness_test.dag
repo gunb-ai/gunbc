@@ -1,0 +1,118 @@
+module test.claim.bootstrap_pr_open_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool }
+import gunbc.ci_bootstrap_pr_open {
+  BootstrapPrecondition, PreconditionsMet, HeadUnreadable, HeadMoved, PullRequestAlreadyOpen,
+  BootstrapPostcondition, PostconditionsMet, PostconditionMismatch,
+  admit_preconditions, check_postconditions, postcondition_failed_axes,
+  bootstrap_pr_expected_head_sha, bootstrap_pr_expected_author, bootstrap_pr_head_branch
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data good_sha: String = "72d2584a3e0e898e1a6622c7e992696ed4c11366"
+data other_sha: String = "0000000000000000000000000000000000000000"
+
+fn pre(readable: Bool, observed: String, open_count: Int) -> BootstrapPrecondition {
+  admit_preconditions(
+    head_readable: readable,
+    head_detail: "detail",
+    observed_sha: observed,
+    expected_sha: good_sha,
+    open_count: open_count
+  )
+}
+
+// THE HAPPY PATH IS ONE ARM, and it is asserted so the three refusals below are discriminating
+// rather than a function that refuses everything.
+test fn witness_matching_head_with_no_open_pr_is_admitted() -> Bool {
+  match pre(readable: true, observed: good_sha, open_count: 0) {
+    PreconditionsMet => true
+    HeadUnreadable { detail: _ } => false
+    HeadMoved { observed: _, expected: _ } => false
+    PullRequestAlreadyOpen { observed_count: _ } => false
+  }
+}
+
+// A MOVED HEAD REFUSES RATHER THAN RETARGETING. This is the arm the shell form could not test
+// without calling GitHub, and it is the one that decides whether the bot can be made to author
+// content nobody reviewed.
+test fn witness_moved_head_refuses_and_names_both_shas() -> Bool {
+  match pre(readable: true, observed: other_sha, open_count: 0) {
+    HeadMoved { observed, expected } => observed == other_sha && expected == good_sha
+    PreconditionsMet => false
+    HeadUnreadable { detail: _ } => false
+    PullRequestAlreadyOpen { observed_count: _ } => false
+  }
+}
+
+// An unreadable ref is NOT a moved head: they have different remedies, so they are different arms.
+test fn witness_unreadable_head_is_its_own_arm() -> Bool {
+  match pre(readable: false, observed: "", open_count: 0) {
+    HeadUnreadable { detail: _ } => true
+    HeadMoved { observed: _, expected: _ } => false
+    PreconditionsMet => false
+    PullRequestAlreadyOpen { observed_count: _ } => false
+  }
+}
+
+// The precheck is ordered: an already-open pull request refuses even when the head matches.
+test fn witness_already_open_refuses_on_a_matching_head() -> Bool {
+  match pre(readable: true, observed: good_sha, open_count: 1) {
+    PullRequestAlreadyOpen { observed_count } => observed_count == 1
+    PreconditionsMet => false
+    HeadMoved { observed: _, expected: _ } => false
+    HeadUnreadable { detail: _ } => false
+  }
+}
+
+fn post(author: String, sha: String, head_ref: String, base_ref: String) -> BootstrapPostcondition {
+  check_postconditions(
+    observed_author: author,
+    observed_head_sha: sha,
+    observed_head_ref: head_ref,
+    observed_base_ref: base_ref,
+    expected_author: bootstrap_pr_expected_author,
+    expected_head_sha: bootstrap_pr_expected_head_sha,
+    expected_head_ref: bootstrap_pr_head_branch as String,
+    expected_base_ref: "main"
+  )
+}
+
+test fn witness_all_four_axes_matching_is_met() -> Bool {
+  match post(author: "github-actions[bot]", sha: good_sha, head_ref: bootstrap_pr_head_branch as String, base_ref: "main") {
+    PostconditionsMet => true
+    PostconditionMismatch { author_ok: _, head_sha_ok: _, head_ref_ok: _, base_ref_ok: _ } => false
+  }
+}
+
+// EACH AXIS IS CHECKED SEPARATELY, so a postcondition that silently stopped reading one of them
+// goes red here. A single "all four" assertion would pass with three of them deleted.
+test fn witness_each_axis_alone_fails_its_own_flag() -> Bool {
+  match post(author: "briansrls", sha: good_sha, head_ref: bootstrap_pr_head_branch as String, base_ref: "main") {
+    PostconditionMismatch { author_ok, head_sha_ok, head_ref_ok, base_ref_ok } =>
+      !author_ok && head_sha_ok && head_ref_ok && base_ref_ok
+    PostconditionsMet => false
+  } && match post(author: "github-actions[bot]", sha: other_sha, head_ref: bootstrap_pr_head_branch as String, base_ref: "main") {
+    PostconditionMismatch { author_ok, head_sha_ok, head_ref_ok, base_ref_ok } =>
+      author_ok && !head_sha_ok && head_ref_ok && base_ref_ok
+    PostconditionsMet => false
+  } && match post(author: "github-actions[bot]", sha: good_sha, head_ref: "some-other-branch", base_ref: "main") {
+    PostconditionMismatch { author_ok, head_sha_ok, head_ref_ok, base_ref_ok } =>
+      author_ok && head_sha_ok && !head_ref_ok && base_ref_ok
+    PostconditionsMet => false
+  } && match post(author: "github-actions[bot]", sha: good_sha, head_ref: bootstrap_pr_head_branch as String, base_ref: "some-release-branch") {
+    PostconditionMismatch { author_ok, head_sha_ok, head_ref_ok, base_ref_ok } =>
+      author_ok && head_sha_ok && head_ref_ok && !base_ref_ok
+    PostconditionsMet => false
+  }
+}
+
+// The refusal names the axes that failed, so an operator reading the log learns which of four
+// facts was wrong rather than that something was.
+test fn witness_failed_axes_are_named_in_the_refusal() -> Bool {
+  postcondition_failed_axes(p: post(author: "briansrls", sha: other_sha, head_ref: bootstrap_pr_head_branch as String, base_ref: "main"))
+    == " author head_sha"
+    && postcondition_failed_axes(p: post(author: "github-actions[bot]", sha: good_sha, head_ref: bootstrap_pr_head_branch as String, base_ref: "main")) == ""
+}

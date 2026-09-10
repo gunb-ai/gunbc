@@ -114,12 +114,150 @@ data three_sixty_five_philadelphia_university_city: ColoFacilityRow = ColoFacili
   facility_note: "20,500 square foot data center in the Penn Medicine science building in University City, with four 180 kW UPS modules and a 1,000 kW diesel generator and a stated 400 lb per square foot floor loading (read 2026-09-08). Materially smaller in power than the operator's Spring Garden floor, and the smaller of this census's two Philadelphia rows for this operator.",
 }
 
+data three_sixty_five_nyc_32_sixth: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 New York City 32 Sixth Avenue",
+  address: AddressListed {
+    street: "32 6th Avenue, 7th Floor, New York, NY 10013",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "In-building retail presence in the 32 Avenue of the Americas carrier hotel (same building as Digital Realty JFK13 and CoreSite NY1).",
+}
+
+data three_sixty_five_nyc_121_varick: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 New York City 121 Varick",
+  address: AddressListed {
+    street: "121 Varick Street, 4th Floor, New York, NY 10013",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "Manhattan in-building suite listed as a distinct POP on the operator's network map.",
+}
+
+data three_sixty_five_nyc_111_eighth: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 New York City 111 Eighth Avenue",
+  address: AddressListed {
+    street: "111 8th Avenue, Suite 723, New York, NY 10011",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "In-building suite in the 111 Eighth Avenue carrier hotel.",
+}
+
+data three_sixty_five_nyc_60_hudson: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 New York City 60 Hudson",
+  address: AddressListed {
+    street: "60 Hudson Street, New York, NY 10013",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08 (suites 1001, 1101 and 1211 listed as three POPs in one building)",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "Three listed suites in one carrier hotel; modelled as one facility because the operator is one upstream and the building is one physical site.",
+}
+
+data three_sixty_five_nyc_325_hudson: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 New York City 325 Hudson",
+  address: AddressListed {
+    street: "325 Hudson Street, 9th Floor West, New York, NY 10013",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "Manhattan interconnection building distinct from 60 Hudson.",
+}
+
+data three_sixty_five_nyc_375_pearl: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 New York City 375 Pearl",
+  address: AddressListed {
+    street: "375 Pearl Street, New York, NY 10038",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "In-building presence inside Sabey's 375 Pearl purpose-built data center (building operator under extdeps.colo.sabey).",
+}
+
+data three_sixty_five_nyc_85_tenth: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 New York City 85 Tenth Avenue",
+  address: AddressListed {
+    street: "85 10th Avenue, 7th Floor Suite Z, New York, NY 10011",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "In-building suite inside Telehouse Chelsea (building operator under extdeps.colo.telehouse).",
+}
+
+data three_sixty_five_nyc_65_broadway: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 New York City 65 Broadway",
+  address: AddressListed {
+    street: "65 Broadway, 3rd Floor, New York, NY 10006",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "Financial-district suite. A 2023 operator cut sheet (NY10) for this address states 16,000 square feet and UPS/generator figures but no per-cabinet kilowatt ceiling.",
+}
+
+data three_sixty_five_brooklyn_vanderbilt: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 Brooklyn 475 Vanderbilt",
+  address: AddressListed {
+    street: "475 Vanderbilt Avenue, Brooklyn, NY",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08",
+  },
+  municipality: "Brooklyn",
+  region_code: "NY",
+  facility_note: "Brooklyn POP listed on the operator's facilities-network map read 2026-09-08. Zip and suite were not on the map listing.",
+}
+
+data three_sixty_five_staten_island_teleport: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "365 Data Centers",
+  facility_label: "365 Staten Island 7 Teleport Drive",
+  address: AddressListed {
+    street: "7 Teleport Drive, Staten Island, NY",
+    citation: "365datacenters.com facilities-network page, New York City list, read 2026-09-08",
+  },
+  municipality: "Staten Island",
+  region_code: "NY",
+  facility_note: "In-building presence on the Port Authority Teleport campus whose building colo is modelled under extdeps.colo.telehouse.",
+}
+
+data three_sixty_five_nyc_density_unread: CabinetDensityClaim = DensityUnread {
+  obligation: "Operator page-sitemap has no New York City facility URL. The surfaces that exist: facilities-network roster (both UAs HTTP 200, 178955 bytes) names the sites (subject controls e.g. 60 Hudson=3, 325 Hudson=1, 375 Pearl=1, 7 Teleport=1) and has RAW kW=0 - that is an index, so the zero is not a per-site density reading. caged-colocation/ (both UAs HTTP 200, 256736 bytes) is a product page: subject tokens New York=0 and Hudson=0; it names a high-density tier '6kW+' when cabinet draw is higher - product language, excluded from these site rows. Per-site density stays unread until a site cut sheet states a cabinet ceiling.",
+}
+
+data three_sixty_five_nyc_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "Same surfaces as three_sixty_five_nyc_density_unread. Operator page-sitemap has no New York City facility URL. facilities-network names the sites but is an index. caged-colocation/ (both UAs HTTP 200, 256736 bytes) is a company product page: subject tokens New York=0 Hudson=0. The product list 'cabinets, racks, custom cages, and suites' is not a per-site grain; it is the same page whose 6kW+ was excluded from the density rows. Per-site grain stays unread until a site cut sheet names the smallest sellable unit.",
+}
+
 data three_sixty_five_facilities: List<ColoFacilityRow> = [
   three_sixty_five_carlstadt,
   three_sixty_five_bridgewater,
   three_sixty_five_weehawken,
   three_sixty_five_philadelphia,
   three_sixty_five_philadelphia_university_city,
+  three_sixty_five_nyc_32_sixth,
+  three_sixty_five_nyc_121_varick,
+  three_sixty_five_nyc_111_eighth,
+  three_sixty_five_nyc_60_hudson,
+  three_sixty_five_nyc_325_hudson,
+  three_sixty_five_nyc_375_pearl,
+  three_sixty_five_nyc_85_tenth,
+  three_sixty_five_nyc_65_broadway,
+  three_sixty_five_brooklyn_vanderbilt,
+  three_sixty_five_staten_island_teleport,
 ]
 
 // TWO PHILADELPHIA SITES, NEITHER PUBLISHING A CABINET DENSITY. This operator is the census's
