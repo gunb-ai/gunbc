@@ -1,6 +1,7 @@
 module extdeps.github.effect
 
 import std.types { NonEmptyStr, CommitSha, HttpMethod, POST, PATCH }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -161,18 +162,17 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
   }
 }
 
-// EVERY VARIANT OF GitHubEffect IS A MUTATION. A read is not a member of this algebra: the first
-// executing HTTP consumer is GET /user on github.Http, which is a different operation with no
-// commit-ambiguity. Collapsing that read into this type would make github_effect_is_mutation a
-// lie for one arm and would fork the permission question GET /user already answers (metadata).
-fn github_effect_is_mutation(effect: GitHubEffect) -> Bool {
-  match effect {
-    AdvanceRepositoryBranch { repository: _, branch: _, changed_paths: _ } => true
-    DispatchWorkflow { repository: _, workflow: _, subject: _ } => true
-    RegisterOrganizationRunner { organization: _ } => true
-    GenerateOrganizationJitConfig { organization: _ } => true
-  }
-}
+// EVERY VARIANT OF GitHubEffect IS A MUTATION. There is no is-mutation fold: a Bool true for
+// every inhabitant restates the type. classify_github_http_outcome takes mutation as an
+// input; a GitHubEffect perform passes true. GET /user is github.Http with mutation: false —
+// a different operation, not a fifth arm of this algebra.
+
+// DECLARED FRONTIER (§3c). method and path are the REST surface of GitHubEffect. This change
+// does not perform a GitHubEffect. The named later consumer is a GitHubEffect REST perform
+// that issues these values and classifies the RestOutcome as a mutation. TRIGGER: that
+// perform exists. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing
+// these folds. gunbc.runner.runner_jit_mint currently plans mint and is out of this change.
+data github_effect_http_surface_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a GitHubEffect REST perform issues github_effect_http_method and github_effect_http_path and classifies the RestOutcome as a mutation. TRIGGER: that import and call exist. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing the folds." as NonEmptyStr)
 
 fn github_effect_http_method(effect: GitHubEffect) -> HttpMethod {
   match effect {

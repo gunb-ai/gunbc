@@ -12,7 +12,6 @@ import extdeps.github.effect {
   GitBranchRef,
   GitHubWorkflowRef,
   RepositoryPath,
-  github_effect_is_mutation,
   github_effect_http_method,
   github_effect_http_path,
 }
@@ -53,13 +52,6 @@ data register_effect: GitHubEffect = RegisterOrganizationRunner {
 
 data jit_effect: GitHubEffect = GenerateOrganizationJitConfig {
   organization: GitHubOrganizationRef { login: "gunb-ai" }
-}
-
-test fn every_github_effect_is_a_mutation() -> Bool {
-  github_effect_is_mutation(effect: advance_effect)
-    && github_effect_is_mutation(effect: dispatch_effect)
-    && github_effect_is_mutation(effect: register_effect)
-    && github_effect_is_mutation(effect: jit_effect)
 }
 
 test fn github_effect_http_methods_are_the_upstream_verbs() -> Bool {
