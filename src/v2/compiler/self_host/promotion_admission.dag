@@ -39,8 +39,8 @@ import v2.std.text { String }
 // "assume divergent". A receipt whose observation is unavailable can therefore never
 // reach an admitting arm, and never impersonates a divergence either — it refuses
 // under its own name so the deficit stays countable.
-type ObservedVerdict<T>
-  = Observed { value: T }
+type ObservationAvailability<T>
+  = ObservationPresent { value: T }
   | ObservationUnavailable { cause: Symbol }
 
 type EquivalenceOutcome
@@ -83,7 +83,7 @@ type BehavioralEquivalenceReceipt {
   oracle: GenerationIdentity
   corpus: BehavioralCorpus
   cases_compared: Int
-  outcome: ObservedVerdict<EquivalenceOutcome>
+  outcome: ObservationAvailability<EquivalenceOutcome>
 }
 
 // The discriminating RED. A behavioral corpus that cannot fail proves nothing, so a
@@ -94,12 +94,12 @@ type DiscriminatingFaultReceipt {
   subject: GenerationIdentity
   corpus: BehavioralCorpus
   planted_fault: String
-  outcome: ObservedVerdict<FaultOutcome>
+  outcome: ObservationAvailability<FaultOutcome>
 }
 
 type BuildReceipt {
   subject: GenerationIdentity
-  outcome: ObservedVerdict<BuildOutcome>
+  outcome: ObservationAvailability<BuildOutcome>
 }
 
 type GenerationProvenanceReceipt {
@@ -140,9 +140,9 @@ type SelfHostCandidate {
 type BehavioralComparisonObservation {
   corpus: BehavioralCorpus
   cases_compared: Int
-  build: ObservedVerdict<BuildOutcome>
-  equivalence: ObservedVerdict<EquivalenceOutcome>
-  fault: ObservedVerdict<FaultOutcome>
+  build: ObservationAvailability<BuildOutcome>
+  equivalence: ObservationAvailability<EquivalenceOutcome>
+  fault: ObservationAvailability<FaultOutcome>
 }
 
 fn build_receipt_from_observation(
@@ -229,7 +229,7 @@ fn build_receipt_causes(
         xs: stale,
         item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
       )
-    Observed { value: v } =>
+    ObservationPresent { value: v } =>
       match v {
         BuildGreen => stale
         BuildFailed { cause: _ } =>
@@ -296,7 +296,7 @@ fn equivalence_receipt_causes(
         xs: sized,
         item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
       )
-    Observed { value: v } =>
+    ObservationPresent { value: v } =>
       match v {
         BehaviorAgrees => sized
         BehaviorDiverges { at_case: c } =>
@@ -326,7 +326,7 @@ fn fault_receipt_causes(
           cause: c
         }
       )
-    Observed { value: v } =>
+    ObservationPresent { value: v } =>
       match v {
         FaultCaught => stale
         FaultNotCaught { at_case: c } =>
@@ -543,7 +543,7 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
 // makes a real defect unrepresentable rather than merely caught.
 //
 // BehavioralComparisonObservation already separates what a run learned from what it did not:
-// three ObservedVerdicts, each either Observed or ObservationUnavailable carrying a located
+// three ObservationAvailability values, each either ObservationPresent or ObservationUnavailable carrying a located
 // cause. The transports populate it correctly and have all along. What consumed it was a
 // predicate returning Bool, and in the logic transport that predicate collapsed the payload at
 // THREE sites, each spelled `ObservationUnavailable { cause: _ } => false` -- the cause bound and
@@ -579,19 +579,19 @@ type BehavioralReceiptStanding
 fn behavioral_receipt_standing(o: BehavioralComparisonObservation) -> BehavioralReceiptStanding {
   match o.build {
     ObservationUnavailable { cause: c } => ReceiptBuildUnobserved { cause: c }
-    Observed { value: b } =>
+    ObservationPresent { value: b } =>
       match b {
         BuildFailed { cause: c } => ReceiptBuildFailed { cause: c }
         BuildGreen =>
           match o.equivalence {
             ObservationUnavailable { cause: c } => ReceiptEquivalenceUnobserved { cause: c }
-            Observed { value: e } =>
+            ObservationPresent { value: e } =>
               match e {
                 BehaviorDiverges { at_case: a } => ReceiptBehaviorDiverges { at_case: a }
                 BehaviorAgrees =>
                   match o.fault {
                     ObservationUnavailable { cause: c } => ReceiptFaultUnobserved { cause: c }
-                    Observed { value: f } =>
+                    ObservationPresent { value: f } =>
                       match f {
                         FaultNotCaught { at_case: a } => ReceiptFaultNotCaught { at_case: a }
                         FaultCaught => ReceiptHolds

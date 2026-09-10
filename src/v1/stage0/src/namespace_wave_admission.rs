@@ -1718,6 +1718,11 @@ pub struct TransitionAdmission {
 /// Adjudicate that deletion by joining each row against main's tree on its own
 /// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
 /// trigger sentence is not evidence that the trigger fired.
+/// EMPTY IS THE RESTING STATE, AND EMPTY IS NOT PERMISSIVE -- carried across from `main`, which
+/// reached an empty roster by its own route while this branch was open. The roster below is NOT
+/// empty because this branch still carries live SCM admission rows; it says nothing about whether
+/// anyone else's rows were due.
+///
 /// CPU-BOUND ROSTER-TOUCH OBLIGATION (2026-09-10). The 2 `gunbc#10818` CpuBoundStanding rows are
 /// deleted: #10818 is in this branch's base, so main itself binds both spellings to
 /// `gunbc.runner.runner_guest_egress_attempt`, and the wall reported each CONSUMED on this
@@ -3059,6 +3064,12 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
+///
+/// Annotation-grain refusals are the exception named by
+/// `fail_closed_gate_refuses_its_own_repair`: the parser still produced the module (annotation
+/// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
+/// unreadable base sealed the transition that only moves `//` onto the declaration the grain
+/// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -3067,7 +3078,15 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         })]
         .into(),
     ));
-    if !fill.diagnostics.is_empty() {
+    let annotation_erased_readable = !fill.modules.is_empty()
+        && !fill.diagnostics.is_empty()
+        && fill.diagnostics.iter().all(|d| {
+            matches!(
+                *d.diagnostic,
+                crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused { .. }
+            )
+        });
+    if !fill.diagnostics.is_empty() && !annotation_erased_readable {
         return Err(format!(
             "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
              declarations cannot be read",
@@ -3088,6 +3107,30 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         .iter()
         .map(|module| record_from_module(module, &source_indices, rel, &fill.occurrence_transport))
         .collect())
+}
+
+/// Annotation-erased source identity: non-empty lines that are not standalone `//` comments.
+///
+/// THE REPAIR DISCRIMINATOR for `gunbc.recurring_failure_mode.fail_closed_gate_refuses_its_own_repair`.
+/// A base blob the census parser cannot read is unobservable as declarations; pretending it was
+/// empty is the silent narrow. The one comparison that does not invent a baseline is against the
+/// HEAD bytes with both sides stripped of the only construct the current `.dag` annotation
+/// channel admits — standalone `//` lines. If those remainders are equal, the head removed
+/// (or relocated) annotation grain and nothing else; declaration identity is the head's, and
+/// substituting the head records as the base side is identity, not a fabricated parse. A code
+/// edit riding with a comment hoist makes the remainders differ and stays `NotEvaluated`.
+pub fn is_annotation_grain_repair(base_source: &str, head_source: &str) -> bool {
+    annotation_erased_lines(base_source) == annotation_erased_lines(head_source)
+}
+
+fn annotation_erased_lines(source: &str) -> Vec<&str> {
+    source
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with("//")
+        })
+        .collect()
 }
 
 /// Run the wall for one required CI invocation.
@@ -3183,7 +3226,28 @@ pub fn run_required_wave_admission(
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(reason) => {
+                let head_src = git_stdout(&workspace, &["show", &format!("{head}:{rel}")]).ok();
+                let repair = head_src
+                    .as_deref()
+                    .is_some_and(|src| is_annotation_grain_repair(&content, src));
+                if !repair {
+                    return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
+                }
+                let mut copied = 0usize;
+                for record in index_records(head_index) {
+                    if record.rel_path == **rel {
+                        crate::cli_run::declaration_index::index_insert(
+                            &mut base_index,
+                            record.clone(),
+                        );
+                        copied += 1;
+                    }
+                }
+                if copied == 0 {
+                    return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
+                }
+            }
         }
     }
 
