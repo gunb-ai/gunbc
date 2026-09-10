@@ -122,3 +122,8 @@ fn list_at_optional<T>(xs: List<T>, index: Int) -> Optional<T> {
   }
 }
 
+type FiniteSet<T> {
+  head: T
+  tail: List<T>
+}
+

@@ -1,6 +1,6 @@
 module gunbc.process_algebra
 
-import std.algebra { FreeMonoid, FreeSemigroup }
+import std.algebra { FreeMonoid }
 import std.effects { OperationEffect }
 import std.types { Map, NonEmptyStr, Timestamp }
 
@@ -25,6 +25,11 @@ type Attestation {
   evidence: List<AttestationEvidence>
 }
 
+type NonEmptyProcessNodeIds {
+  first: ProcessNodeId
+  rest: List<ProcessNodeId>
+}
+
 type ProcessClosureDecision
   = CanClose
   | CloseRefused(ProcessClosureRefusal)
@@ -34,7 +39,7 @@ type ProcessClosureRefusal
   | ProcessAlreadyClosed
   | ProcessModeNotDeclared
   | ProcessBucketNotDrained
-  | ProcessCompositeHasOpenChildren { open_children: FreeSemigroup<ProcessNodeId> }
+  | ProcessCompositeHasOpenChildren { open_children: NonEmptyProcessNodeIds }
 
 type ClosureEligibilityEffect
   = ClosureImproves
@@ -66,7 +71,7 @@ type ProcessOperation
     }
   | DecomposeProcessNode {
       parent: ProcessNodeId
-      children: FreeSemigroup<ProcessNodeId>
+      children: NonEmptyProcessNodeIds
       attestation: Attestation
     }
   | DrainProcessBucket {
@@ -101,7 +106,7 @@ type ProcessOperation
     }
   | RegressProcessSubtree {
       node: ProcessNodeId
-      retracted_child_ids: FreeSemigroup<ProcessNodeId>
+      retracted_child_ids: NonEmptyProcessNodeIds
       regression: RegressionAttestation
     }
   | AttestedClosureOverride {

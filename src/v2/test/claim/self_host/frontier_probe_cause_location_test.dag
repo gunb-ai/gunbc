@@ -9,13 +9,14 @@ import v2.compiler.self_host.frontier_probe_assemble_detail {
 }
 import v2.compiler.self_host.frontier_probe_types {
   AssembleRejectionDetail,
+  NonEmptySymbolChain,
   CauseLocationNodeNotSerializable,
   CauseLocationInvariantPort,
   CauseLocationSourcePort,
   CauseLocationTextual,
   NoFrontierProbeDetail
 }
-import std.algebra { Cons, Empty, FreeSemigroup }
+import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {
   ByteRange,
@@ -161,7 +162,7 @@ fn paired_reason_of_two() -> Symbol {
     NoFrontierProbeDetail => ^no_detail
     AssembleRejectionDetail { rejection_chain: c, cause: _, at: _ } =>
       match c {
-        FreeSemigroup { head: h, tail: _ } => h
+        NonEmptySymbolChain { head: h, tail: _ } => h
       }
   }
 }

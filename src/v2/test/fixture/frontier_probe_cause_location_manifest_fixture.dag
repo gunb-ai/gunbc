@@ -5,11 +5,12 @@ import v2.compiler.self_host.frontier_probe_types {
   CauseLocationTextual,
   FrontierProbeReceipt,
   FrontierProbeDetailAbsent,
+  NonEmptySymbolChain,
   OtherAssembleRefusal,
   ProbeStageAssemble,
   UnknownProbeCause
 }
-import std.algebra { Empty, FreeSemigroup }
+import std.algebra { Empty }
 import v2.std.diagnostic { ByteRange }
 import v2.std.text { String }
 
@@ -22,7 +23,7 @@ data frontier_probe_cause_location_emitted_receipt: FrontierProbeReceipt = Front
   located_reason: ^tokenize_lex_e1_unrecognized_char,
   detail: FrontierProbeDetailAbsent,
   assemble_detail: AssembleRejectionDetail {
-  rejection_chain: FreeSemigroup {
+  rejection_chain: NonEmptySymbolChain {
   head: ^tokenize_lex_e1_unrecognized_char,
   tail: Empty
 },
