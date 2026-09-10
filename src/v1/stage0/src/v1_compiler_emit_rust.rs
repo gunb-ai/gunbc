@@ -9777,6 +9777,22 @@ pub struct ReferenceDerivedProviderBinding {
     pub provider_module: String,
 }
 
+pub fn canonical_string_set(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
+    {
+        let presence = items.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, item: String| {
+                if (item.clone() == "".to_string()) {
+                    acc.clone()
+                } else {
+                    v1_rt::rc_map_insert(acc.clone(), item.clone(), true)
+                }
+            },
+        );
+        Rc::new(v1_rt::sorted_map_keys(&presence))
+    }
+}
+
 pub fn reference_derived_use_line_plan(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -10118,7 +10134,7 @@ pub fn reference_derived_use_line_plan(
             }
             __result
         });
-        let providers = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let providers = canonical_string_set(Rc::new({
             let mut __result = Vec::new();
             for b in resolved.iter().cloned() {
                 __result.push(b.provider_module.clone());
@@ -10129,7 +10145,7 @@ pub fn reference_derived_use_line_plan(
             let mut __result = Vec::new();
             for provider in providers.iter().cloned() {
                 __result.extend((*{
-            let names = Rc::new({ let mut __result = Vec::new(); for b in Rc::new({ let mut __result = Vec::new(); for b in resolved.iter().cloned() { if (b.provider_module.clone() == provider.clone()) { __result.push(b); } } __result }).iter().cloned() { __result.push(b.name.clone()); } __result });
+            let names = canonical_string_set(Rc::new({ let mut __result = Vec::new(); for b in Rc::new({ let mut __result = Vec::new(); for b in resolved.iter().cloned() { if (b.provider_module.clone() == provider.clone()) { __result.push(b); } } __result }).iter().cloned() { __result.push(b.name.clone()); } __result }));
 let plan_module_env = match v1_rt::map_get(&module_index.by_name.clone(), this_module_name.clone()) {
     Some(tm) => Some(tm.type_env.clone()),
     std::option::Option::None => std::option::Option::None,
@@ -10382,7 +10398,7 @@ pub fn qualified_type_reference_use_lines(
     rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<Vec<String>> {
-    crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+    canonical_string_set(Rc::new({
         let mut __result = Vec::new();
         for r in rows.iter().cloned() {
             __result.extend(
@@ -14554,15 +14570,7 @@ pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
 
 pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
-        let exact = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
-            let mut __result = Vec::new();
-            for line in lines.iter().cloned() {
-                if (line.clone() != "".to_string()) {
-                    __result.push(line);
-                }
-            }
-            __result
-        }));
+        let exact = canonical_string_set(lines.clone());
         let covered = Rc::new({
             let mut __result = Vec::new();
             for line in exact.clone().iter().cloned() {

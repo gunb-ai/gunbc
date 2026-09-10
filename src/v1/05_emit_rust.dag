@@ -3290,6 +3290,23 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
 // offers no theory: a correct retraction must not become a second causal story. What it contributes
 // is the localisation -- two named files, pure `pub use` order, two outputs each.
 //
+// THE RENDER ITERATION NOW USES THE ORDERED KEY PRIMITIVE. `canonical_string_set` inserts the
+// provider/name set into a map and reads it with `sorted_map_keys` -- the constructor
+// `std.primitive_identity` `primitive_sorted_map_keys_traversal` classifies as CanonicalOrder -- so
+// the walk is not HostUnspecifiedOrder (`primitive_map_keys_traversal`) and not a `sort_by` bolted
+// onto an already-built list. `dedupe_rust_import_lines` feeds that same ordered set into
+// first-binder-wins and prior-cover, so a permutation of overlapping `pub use` lines cannot
+// change which survivor remains. Emission control:
+// `v1.compiler.compiler_tests_rust` `ct_pub_use_crate_lines_two_emission_byte_identity_test`.
+// Overlapping-permutation control:
+// `v1.compiler.compiler_tests_rust` `ct_overlapping_use_line_dedupe_permutation_test`.
+// THE V2 DETERMINISM GATE DOES NOT REACH THIS SEED SITE: `determinism_lens` sits in
+// `always_required_root_lenses` of `v2.compiler.compile` and classifies declared primitives; the
+// seed emitter is compiled by stage0. The terminal wall is that gate covering the emitter once it is
+// v2-compiled. SECOND FINDING, NOT A WIDENING: this site previously walked via `unique_strings`
+// (fold + membership map, never `map_keys`), so the lens would NOT have classified it
+// NonDeterministic -- `unique_strings` is not `primitive_map_keys`. Do not invent a second lens.
+//
 // A SECOND, OLDER LESSON ALSO STANDS. The structural argument "the use-lines ARE the survived arm of
 // the same decision the census counts, so bytes cannot move unless the decision moves" is TRUE, and
 // silent about evaluation order, memoisation and interning. A valid argument with an unstated scope
@@ -5183,6 +5200,17 @@ type ReferenceDerivedProviderBinding {
   provider_module: String
 }
 
+// Presence-map then `sorted_map_keys`: one constructor, CanonicalOrder, the obligation
+// `primitive_sorted_map_keys_traversal` already names. Used at the reference-derived render
+// iteration and as the input to `dedupe_rust_import_lines`, so first-binder-wins and the
+// "prior" cover predicates see a determined line order rather than first-seen of an unordered walk.
+fn canonical_string_set(items: List<String>) -> List<String> {
+  let presence = items |> fold(init: empty_map(), f: (acc, item) =>
+    if item == "" { acc } else { map_insert(acc, item, true) }
+  )
+  sorted_map_keys(presence)
+}
+
 fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
@@ -5248,9 +5276,9 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         ItemNotFound => []
       }
     )
-    let providers = unique_strings(items: resolved |> map(b => b.provider_module))
+    let providers = canonical_string_set(items: resolved |> map(b => b.provider_module))
     let lines = providers |> flat_map(provider =>
-      let names = resolved |> filter(b => b.provider_module == provider) |> map(b => b.name)
+      let names = canonical_string_set(items: resolved |> filter(b => b.provider_module == provider) |> map(b => b.name))
       let plan_module_env = match map_get(module_index.by_name, this_module_name) {
         Present { value: tm } => Present { value: tm.type_env }
         Absent => none
@@ -5354,7 +5382,7 @@ fn registry_row_is_type_declared_in(info: ItemInfo, module_name: String) -> Bool
 }
 
 fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>) -> List<String> {
-  unique_strings(items: rows |> flat_map(r =>
+  canonical_string_set(items: rows |> flat_map(r =>
     match r.disposition {
       CandidateSurvived { provider_module: provider } =>
         [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(owner_module: provider, n: qualified_last_segment(name: r.name), registry: registry), ";")]
@@ -7017,7 +7045,7 @@ fn strip_repeated_use_symbols(lines: List<String>) -> List<String> {
 }
 
 fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
-  let exact = unique_strings(items: lines |> filter(line => line != ""))
+  let exact = canonical_string_set(items: lines)
   let covered = exact |> filter(line =>
     rust_pub_use_singleton_covered(line: line, lines: exact) == false
       && rust_pub_use_braced_subset_covered(line: line, lines: exact) == false
