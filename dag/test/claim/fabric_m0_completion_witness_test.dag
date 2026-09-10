@@ -16,6 +16,7 @@ import product.fabric.work {
   resolve_output_obligations, ObligationsJudgedAtJobStart,
   OutputObligationsResolution,
 }
+import gunbc.fabric_m0_origin_readback { OriginReading, witness_origin_reading }
 import gunbc.fabric_m0_completion {
   ComputationOutcome,
   ComputationSucceeded,
@@ -112,6 +113,14 @@ fn the_resolution() -> OutputObligationsResolution {
 // Two distinct fixture digests. The witness needs a SECOND value so the digest comparison is shown
 // to separate rather than answer true for everything -- an equality that never fails would satisfy
 // the positive control on its own.
+// THE ONE ADMITTED FIXTURE ROUTE TO A CONFIRMING READING. OriginReading is sole_constructor, so
+// this file cannot write one; witness_origin_reading admits THIS function by name and no other.
+// These witnesses are about the verdict algebra, so the digest is chosen here -- the computation is
+// measured by the real-execution witness and the seal by test.claim.fabric_m0_origin_readback_seal.
+fn witness_reading(d: Sha256Digest) -> OriginReading {
+  witness_origin_reading(staged_path: "fixture://fabric-m0/completion/subject", observed_digest: d)
+}
+
 fn digest_a() -> Sha256Digest {
   Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
 }
@@ -159,7 +168,7 @@ fn obs_of(subject: ObservationSubject, r: OriginReadback) -> OriginObservation {
 }
 
 fn confirmed(subject: ObservationSubject) -> OriginObservation {
-  obs_of(subject: subject, r: ReadbackConfirmed { observed_digest: digest_a() })
+  obs_of(subject: subject, r: ReadbackConfirmed { reading: witness_reading(d: digest_a()) })
 }
 
 fn all_confirmed() -> List<OriginObservation> {
@@ -385,7 +394,7 @@ test fn a_readback_digest_mismatch_prevents_success() -> Bool {
     committed: concat([
       CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
     ], committed_receipt_only()),
-    obs: reads_with_output(r: ReadbackConfirmed { observed_digest: digest_b() }),
+    obs: reads_with_output(r: ReadbackConfirmed { reading: witness_reading(d: digest_b()) }),
     manifest: good_manifest(),
   ))
 }
@@ -515,7 +524,7 @@ test fn a_receipt_content_mismatch_prevents_success() -> Bool {
     committed: concat(committed_build_only(), [
       CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
     ]),
-    obs: reads_with_receipt(r: ReadbackConfirmed { observed_digest: digest_b() }),
+    obs: reads_with_receipt(r: ReadbackConfirmed { reading: witness_reading(d: digest_b()) }),
     manifest: good_manifest(),
   ))
 }
