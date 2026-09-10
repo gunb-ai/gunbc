@@ -3,6 +3,14 @@ module gunbc.fabric_m0_completion
 import std.types { List, NonEmptyStr, Bool }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import std.scoped_authorization { AttemptIdentity }
+import gunbc.fabric_m0_origin_readback {
+  OriginReading,
+  OriginReadingOutcome,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  origin_reading_digest,
+  origin_reading_path,
+}
 import product.fabric.identity { WorkKey }
 import product.fabric.work {
   OutputObligation,
@@ -65,10 +73,26 @@ fn obligation_subject_name(o: OutputObligation) -> NonEmptyStr {
 // intended object. Folding unknown into either decided arm is the absorbing fallback DESIGN 5
 // forbids: into failure it discards a possibly-committed result and re-executes; into success it
 // publishes green over bytes nobody has read.
+// THE CONFIRMING ARM CARRIES A READING, NOT A DIGEST, and that is the whole difference between
+// this shape and the one it replaces. A digest field admitted any 64-hex value an author cared to
+// write beside any provenance they cared to claim; OriginReading is sole_constructor in
+// gunbc.fabric_m0_origin_readback, so the only way to reach this arm is to have actually digested a
+// file, and the file is named in the same value. See that module for what the seal does and does
+// not close, and for the next-rung trigger; it is cited here rather than restated.
 type OriginReadback
-  = ReadbackConfirmed { observed_digest: Sha256Digest }
+  = ReadbackConfirmed { reading: OriginReading }
   | ReadbackAbsent
   | ReadbackUnknown { cause: NonEmptyStr }
+
+// The pure translation from a read that was attempted to what the authority consumes. An
+// unavailable reading is UNKNOWN, never absence: failing to digest the staged output says nothing
+// about what the origin holds.
+fn origin_readback_of(outcome: OriginReadingOutcome) -> OriginReadback {
+  match outcome {
+    OriginReadingTaken { reading: r } => ReadbackConfirmed { reading: r }
+    OriginReadingUnavailable { staged_path: _, cause: c } => ReadbackUnknown { cause: c }
+  }
+}
 
 type CommittedOutput {
   obligation: OutputObligation
@@ -116,11 +140,15 @@ fn obligation_rank(v: ObligationVerdict) -> Int {
 
 fn readback_digest_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readback: OriginReadback) -> ObligationVerdict {
   match readback {
-    ReadbackConfirmed { observed_digest: observed } =>
-      if content_hash_eq_cryptographic(left: recorded, right: observed) {
+    ReadbackConfirmed { reading: r } =>
+      if content_hash_eq_cryptographic(left: recorded, right: origin_reading_digest(reading: r)) {
         ObligationSatisfied
       } else {
-        ObligationUnsatisfied { subject: subject, cause: "origin readback digest differs from the committed record" }
+        ObligationUnsatisfied {
+          subject: subject,
+          cause: "origin readback digest differs from the committed record; the readback digested "
+            + origin_reading_path(reading: r),
+        }
       }
     ReadbackAbsent => ObligationUnsatisfied { subject: subject, cause: "required artifact absent at origin" }
     ReadbackUnknown { cause: c } => ObligationUndetermined { subject: subject, cause: c }
@@ -147,31 +175,22 @@ fn readback_digest_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readbac
 // and no pure fold can close it. What it does establish is that the AUTHORITY performs the join, so
 // a missing read is structurally distinguishable from a satisfied one instead of being absorbed.
 //
-// THE REMAINING GAP AND ITS TRIGGER, STATED AS A CAPABILITY. An observation's digest is still
-// ASSERTED rather than computed from the bytes read back, which is the rostered class
-// gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parameters -- a value and a
-// summary of it standing side by side with no arm relating them. That row already declares the
-// repair: derive the digest from the value at the point the value is obtained, never accept it as a
-// peer parameter. It is not applied here because it is not CONSTRUCTIBLE here.
+// THE GAP THIS SHAPE USED TO CARRY IS NOW CONSTRUCTED SHUT, AND THE PART THAT IS NOT IS NAMED.
 //
-// NEXT-RUNG TRIGGER, AS A CAPABILITY: a function in the substrate computing SHA-256 over Bytes, so
-// a digest and the bytes it names are produced by one operation. Not "a digest for the manifest" --
-// a trigger naming less than the capability is satisfied while the capability stays dead.
+// An observation's digest used to be ASSERTED beside a provenance stamp -- the rostered class
+// gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters, whose declared
+// repair is to derive the digest from the value at the point the value is obtained. That repair is
+// applied: ReadbackConfirmed carries an OriginReading, sole_constructor in
+// gunbc.fabric_m0_origin_readback, whose only mint computes the digest over the file named in the
+// same value. On the source-to-dag acceptance path there is no constructor that pairs a digest with
+// a file it was not taken from, so that sub-class is structurally impossible rather than validated
+// -- measured, not asserted, by test.claim.fabric_m0_origin_readback_seal.
 //
-// THAT TRIGGER IS THE CLIMB, NOT A PREREQUISITE, AND THE DISTINCTION MATTERS BECAUSE TWO DIGEST
-// SHAPES LOOK ALIKE. extdeps.crypto.hash sha256_digest takes HEX -- an author asserts a digest and
-// nothing computes it. extdeps.tools.sha256sum sha256sum_file_digest_via_shell takes a PATH and
-// COMPUTES over the bytes there, with a typed Sha256FileDigestUnavailable arm; by section 3 that is
-// a handler bound to a digest shape, one of N, and it is live in
-// gunbc.instruments.fabric_control_plane_live_probe. No .dag function takes Bytes and returns a
-// digest, so the rostered repair is reachable exactly where the subject bytes EXIST AT A PATH.
-// These subjects are stored objects, so a durable-origin readback that stages what it fetched puts
-// them at a path and the chain is buildable at a mitigatable rung today.
-//
-// THE CONSTRAINT ON THAT REALIZATION: the digested file must be the ORIGIN readback's own output
-// and never a cache copy. Computing a byte-exact digest over locally-sourced bytes would launder
-// the cache-read refusal in gunbc.fabric_m0_commit manifest_readback_for_slot into a confirmation --
-// a correct computation over the wrong provenance.
+// WHAT REMAINS, and it is what keeps the enclosing class at MITIGATABLE: the staged path is still
+// chosen by whoever calls the mint, so "the digested file was the origin readback's own output and
+// not a cache copy" is not yet constructed. gunbc.fabric_m0_origin_readback owns that boundary and
+// names the capability that closes it; it is cited here, not restated, because a second statement
+// of one trigger is a second authority for it.
 // The manifest is a subject too, but it is not an obligation, so the subject is a coproduct rather
 // than a string. Deriving a string key from an obligation would reintroduce exactly the collision
 // product.fabric.work warns about when ids are concatenated.

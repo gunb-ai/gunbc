@@ -10,7 +10,7 @@ import extdeps.colo.types {
 }
 import test.claim.colo_cabinet_density_witness {
   covered_by_floor, outside_maximum, bounds_above, medium_absent, has_figure_for,
-  unread_density_is_silent, standing_is_verbatim, grain_admits_single_cabinet,
+  unread_density_is_silent, standing_is_verbatim, grain_offers_single_cabinet,
 }
 import extdeps.colo.njfx { njfx_wall_density, njfx_wall_retail_grain, njfx_wall_retail_rates }
 import extdeps.colo.digital_fortress {
@@ -106,7 +106,7 @@ test fn w_facility_megawatts_never_become_cabinet_watts() -> Bool {
 // count of cabinets is a fact about the building exactly as its megawatts are. This control reds if
 // that inventory line is ever promoted to a single-cabinet offer without an operator statement.
 test fn w_a_cabinet_count_is_not_a_retail_offer() -> Bool {
-  !grain_admits_single_cabinet(g: three_sixty_five_bridgewater_retail_grain)
+  !grain_offers_single_cabinet(g: three_sixty_five_bridgewater_retail_grain)
     && unread_density_is_silent(d: three_sixty_five_bridgewater_density)
 }
 
@@ -115,8 +115,8 @@ test fn w_a_cabinet_count_is_not_a_retail_offer() -> Bool {
 // in the same township. A future edit that propagates one building's grain across a campus - the
 // tempting simplification - reds here.
 test fn w_grain_does_not_propagate_across_a_campus() -> Bool {
-  grain_admits_single_cabinet(g: digital_realty_ewr12_retail_grain)
-    && !grain_admits_single_cabinet(g: digital_realty_ewr11_retail_grain)
+  grain_offers_single_cabinet(g: digital_realty_ewr12_retail_grain)
+    && !grain_offers_single_cabinet(g: digital_realty_ewr11_retail_grain)
 }
 
 // DENSITY READ AND GRAIN READ ARE INDEPENDENT IN BOTH DIRECTIONS, and this region supplies the
@@ -126,10 +126,10 @@ test fn w_grain_does_not_propagate_across_a_campus() -> Bool {
 // first conjunct here would be the one that fails.
 test fn w_density_read_does_not_imply_grain_read() -> Bool {
   density_claim_figures(d: njfx_wall_density).length() == 1
-    && !grain_admits_single_cabinet(g: njfx_wall_retail_grain)
-    && grain_admits_single_cabinet(g: digital_fortress_piscataway_retail_grain)
-    && grain_admits_single_cabinet(g: databank_ewr2_retail_grain)
-    && !grain_admits_single_cabinet(g: qts_piscataway_retail_grain)
+    && !grain_offers_single_cabinet(g: njfx_wall_retail_grain)
+    && grain_offers_single_cabinet(g: digital_fortress_piscataway_retail_grain)
+    && grain_offers_single_cabinet(g: databank_ewr2_retail_grain)
+    && !grain_offers_single_cabinet(g: qts_piscataway_retail_grain)
 }
 
 // THE RATE AXIS IS READ AT THE ARM, NOT THROUGH A NEW ACCESSOR. `RetailRateStanding` is a two-arm
