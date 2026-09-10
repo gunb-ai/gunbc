@@ -1,6 +1,7 @@
 module test.claim.machine_intake_bmc_rotation_route_witness_test
 
-import std.types { Bool }
+import std.types { Bool, String }
+import std.decl_ref { DeclField, NamedField, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { OpenBmc, AmiMegaRac }
 import gunbc.machine_intake_bmc_secure {
@@ -37,15 +38,32 @@ test fn openbmc_routes_to_redfish_account_service() -> Bool {
 // THE AVAILABLE ARM'S PAYLOAD IS READ, NOT MERELY CARRIED. Review 63263 found the arm holding a
 // prose path_note that no consumer touched -- dead data by §4c's own test. Replacing the sentence
 // with DeclarationRefs only fixes half of that: a reference nothing reads is still unconsumed. So
-// the witness destructures the arm and asserts the operation it names, which means a route table
-// pointing at the wrong operation reds here rather than being discovered by the actuator later.
+// the witness destructures the arm and asserts the operation it names.
+//
+// AND THE FIRST VERSION OF THIS CHECK DID NOT CHECK THE OPERATION (review 63271). It asserted
+// module_path and decl_name on both refs and never touched `field` -- which is the ONLY position
+// the operation name lives in. So a table returning NamedField { field_name: "DeleteAccount" }
+// would have GREENED, while the comment above it claimed a wrong operation would red. That is a
+// check whose subject is narrower than its stated claim, which is the §4b(1) inflation this PR has
+// now corrected three times in three different rows: the claim must equal what the evidence
+// executes. decl_field_name below reads the field, so the assertion and the sentence now describe
+// the same test.
+fn decl_field_name(f: DeclField) -> String {
+  match f {
+    NamedField { field_name: n } => n as String
+    WholeDeclaration => "" as String
+  }
+}
+
 test fn the_openbmc_route_names_the_set_account_password_operation() -> Bool {
   match rotation_route_for_family(family: OpenBmc) {
     RotationRouteRedfishAccountService { transport_operation: op, action_shape: act } =>
       op.module_path == "extdeps.bmc.http"
         && op.decl_name == "redfish.Http"
+        && decl_field_name(f: op.field) == "SetAccountPassword"
         && act.module_path == "extdeps.bmc.types"
         && act.decl_name == "RedfishSystemAction"
+        && decl_field_name(f: act.field) == "SetAccountPassword"
     RotationRouteUnavailable { family_note: _, detail: _ } => false
   }
 }

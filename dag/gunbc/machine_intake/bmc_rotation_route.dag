@@ -1,7 +1,7 @@
 module gunbc.machine_intake_bmc_rotation_route
 
 import std.types { NonEmptyStr, String }
-import std.disposition { Disposition, SingleAuthority }
+import std.disposition { Disposition, Terminal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.bmc_implementation_dispatch {
   BmcRotationRoute,
@@ -13,7 +13,25 @@ import gunbc.machine_intake_bmc_secure {
   AccountManagementUnavailable,
 }
 
-data bmc_rotation_route_disposition: Disposition = SingleAuthority
+// THIS ROW WAS A TYPE ERROR AND IT COMPILED ANYWAY (review 63271). It read
+// `Disposition = SingleAuthority`, and SingleAuthority is an arm of ConstructionMechanism, not of
+// Disposition -- which has exactly Terminal and Scaffold. Every other `: Disposition =` site in the
+// corpus uses one of those two.
+//
+// THE REVIEW CALLED THE CONSEQUENCE "the module therefore does not compile". IT DOES COMPILE, and
+// that is the worse finding rather than a lesser one. This session's own run resolved the closure
+// containing this row and failed only on a wrong function name, and gunbc#10952 was green on all
+// four required checks with the row present. The reason is a rostered below-floor defect: a wrong
+// COPRODUCT value is accepted into a declared field with no diagnostic, while the same check fires
+// for primitives and unresolved names. So the ordinary compiler floor -- "values inhabit declared
+// types" (DESIGN §4b) -- did not hold, and a plainly wrong row rode four green checks.
+//
+// The value is Terminal because this module is not scaffolding: it holds one fold that binds a
+// route to the application the adjudication refuses on, and there is no construction it dissolves
+// into.
+data bmc_rotation_route_disposition: Disposition = Terminal {
+  reason: "The route-to-application binding is the terminal form: gunbc.bmc_implementation_dispatch decides the route by firmware family, and this module maps that route to the machine_intake CredentialRotationApplication the adjudication refuses on. Nothing here is staged pending a different construction." as NonEmptyStr,
+}
 
 // BINDING A ROUTE TO THE APPLICATION THE ADJUDICATION REFUSES ON. The family-keyed dispatch that
 // picks the route is NOT here: it is gunbc.bmc_implementation_dispatch rotation_route_for_family,
