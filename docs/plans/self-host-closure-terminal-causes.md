@@ -120,6 +120,50 @@ fn main() {
 
 Its calibration is that it reproduces the driver's own file-refusal rows cause-for-cause.
 
+## The grammar-preparation residue, and how to report movement on it
+
+`prepare_grammar` carries a non-fatal residue, and it is that residue `rejected_with_pending` prepends
+to every parse failure — which is precisely why the head grain discriminates nothing. A repair lane
+adding a production needs it as a BEFORE number, so the carrier pins it rather than leaving it in a
+message. It is measured by a second probe of the same shape as `reduce.rs`, `src/bin/residue.rs`:
+
+```rust
+// The grammar-preparation residue at a pinned head: how many non-fatal diagnostics
+// prepare_grammar carries, and their reason histogram. This is the advisory that
+// rejected_with_pending prepends to every parse failure.
+#![allow(clippy::all)]
+use std::collections::BTreeMap;
+use v1_compiled::v2_compiler_parse::prepare_grammar;
+use v1_compiled::v2_std_diagnostic::Outcome;
+
+fn main() {
+    let lm = v1_compiled::v2_extdeps_languages_dag::dag_language_model();
+    match &*prepare_grammar(lm.grammar.clone()) {
+        Outcome::Rejected { diagnostics } => {
+            println!("{}", serde_json::json!({"grammar_prepare": "rejected", "diagnostics": diagnostics}));
+        }
+        Outcome::Accepted { diagnostics, .. } => {
+            let mut hist: BTreeMap<String, usize> = BTreeMap::new();
+            let mut total = 0usize;
+            if let Some(ne) = diagnostics.as_ref() {
+                total += 1;
+                *hist.entry(ne.head.reason.to_string()).or_default() += 1;
+                for d in ne.tail.iter() {
+                    total += 1;
+                    *hist.entry(d.reason.to_string()).or_default() += 1;
+                }
+            }
+            println!("{}", serde_json::json!({"grammar_prepare": "accepted", "residue_total": total, "residue_by_reason": hist}));
+        }
+    }
+}
+```
+
+It is a property of the GRAMMAR, not of the corpus. A lane adding a production can move it in either
+direction, and a rise is not by itself a regression — a production that overlaps an existing choice
+adds residue rows even when it parses everything it was added for. The honest report is the new total
+together with which choices its rows name, never "residue unchanged".
+
 ## Step 3 — the three reduction moves, in the order they pay
 
 1. **Isolate the declaration.** Split the file at module-scope declaration boundaries (`fn`, `test fn`,

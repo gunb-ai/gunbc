@@ -59,6 +59,14 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // as the key two runs can join on. The driver binary digest is the strongest of the three:
 // rebuilding it from a SECOND emission of the same sources produced identical bytes, which is what
 // establishes that the re-export delta is inert rather than merely believed to be.
+//
+// THE GRAMMAR-PREPARE RESIDUE IS PINNED HERE because the repair lanes need a BEFORE number and a
+// number that lives in a message is unreachable from the thing that owns it. It is prepare_grammar's
+// own non-fatal residue at this head - the advisory rejected_with_pending prepends to every parse
+// failure, which is why the head grain discriminates nothing. It is a property of the GRAMMAR and not
+// of the corpus, so a lane adding a production can move it in either direction and a rise is not by
+// itself a regression: a production that overlaps an existing choice adds residue rows even when it
+// parses everything it was added for.
 type ObservationPin {
   head_sha: String
   emitted_closure_identity_as_reported: String
@@ -67,6 +75,7 @@ type ObservationPin {
   compiler_source_manifest_digest: String
   reduction_probe_digest: String
   closure_module_count: Int
+  grammar_prepare_residue_total: Int
 }
 
 // HOW A CAUSE WAS JOINED TO THE FILES IT EXPLAINS. The three arms are different rungs and the
@@ -121,6 +130,7 @@ data closure_observation_pin: ObservationPin = ObservationPin {
   compiler_source_manifest_digest: "9a728cd46a611232fcefc66d7885f31f03e91fa522a01695131427b5bf8330ef"
   reduction_probe_digest: "96a48a512e3e494d71167b02ac091d1e80af2d9f90fab2f11e38e2fcde5d6808"
   closure_module_count: 167
+  grammar_prepare_residue_total: 7
 }
 
 data front_end_causes: List<FrontEndCause> = [

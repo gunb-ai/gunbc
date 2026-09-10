@@ -102,6 +102,14 @@ test fn the_observation_pin_records_every_digest() -> Bool {
     && closure_observation_pin.reduction_probe_digest != ""
 }
 
+// The residue is the repair lanes' BEFORE number and a lane reports movement against it, so a zero
+// here would let a lane report "unchanged" against a value that was never measured. Zero is not a
+// possible reading either: the advisory is what rejected_with_pending prepends, so a grammar carrying
+// none of it would make the head grain informative and this whole table's head/fatal split moot.
+test fn the_pinned_grammar_residue_is_a_measured_reading() -> Bool {
+  closure_observation_pin.grammar_prepare_residue_total > 0
+}
+
 // The closure is the denominator this whole table exists to keep honest, and a refusing population
 // wider than the closure it was measured over would mean rows had leaked in from the whole-tree run.
 test fn the_refusing_population_fits_inside_the_closure() -> Bool {
