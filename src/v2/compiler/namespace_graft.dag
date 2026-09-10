@@ -36,6 +36,7 @@ import v2.extdeps.languages.dag {
   namespace_graft_has_module_header,
   namespace_graft_unwrap_module_working_root,
   parse_production_emitted_identity_optional,
+  dag_surface_is_top_level_item_alternative_emitted,
   qualified_name_from_module_node
 }
 
@@ -142,15 +143,6 @@ fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> 
   }
 }
 
-fn namespace_graft_is_declaration_forest_unit_id(id: Symbol) -> Bool {
-  (id == ^dag_surface_type_decl)
-    || (id == ^dag_surface_data_decl)
-    || (id == ^dag_surface_fn_decl)
-    || (id == ^dag_surface_import_decl)
-    || (id == ^dag_surface_alias_decl)
-    || (id == ^dag_surface_import_block)
-}
-
 fn namespace_graft_fold_collect_children(node: Node) -> List<Edge> {
   fold(node.children, init: [], f: fn(acc, edge) {
     namespace_graft_collect_body_edge(acc: acc, edge: edge)
@@ -160,7 +152,7 @@ fn namespace_graft_fold_collect_children(node: Node) -> List<Edge> {
 fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
-      if namespace_graft_is_declaration_forest_unit_id(id: id) {
+      if dag_surface_is_top_level_item_alternative_emitted(id: id) {
         [
           Edge {
             label: Named { name: id },
@@ -195,8 +187,9 @@ fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
 // has none". Flattening parse-projection / transparent-sequence spines into a
 // declaration's CHILDREN dropped type/data/import/fn shells (every child is itself
 // a projection), so a module whose declarations contribute no function body looked
-// identical to a LOST forest. Declaration productions are graft-body UNITS: stop
-// flattening at that identity and keep the shell. A pre-graft tree that still
+// identical to a LOST forest. An emitted identity that is an alternative of
+// dag_grammar_top_level_item_expr (dag_surface_is_top_level_item_alternative_emitted) is
+// a graft-body UNIT: stop flattening there and keep the shell. A pre-graft tree that still
 // carries dag_surface_top_level_item while the collected body is EMPTY is then a
 // genuine loss (the wrapper survived, the unit did not) and still refuses. Header
 // only, and a module whose only declarations are those units, share the same
