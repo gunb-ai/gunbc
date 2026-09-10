@@ -1,0 +1,91 @@
+module v2.test.parse.expression_bodied_fn_decl_parse
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn g_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn g_parse_accepted(text: String, file: Symbol) -> Bool {
+  match g_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn g_normalize_accepted(text: String, file: Symbol) -> Bool {
+  match g_tokenize_parse(text: text, file: file) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+data expression_bodied_fn_source: String = "module probe.expr_fn\n\nfn f(a: Int) -> Int = a\n"
+
+data expression_bodied_literal_fn_source: String = "module probe.expr_fn_lit\n\nfn f() -> Int = 1\n"
+
+data braced_fn_control_source: String = "module probe.braced_fn\n\nfn f(a: Int) -> Int {\n  a\n}\n"
+
+data empty_eq_fn_source: String = "module probe.empty_eq\n\nfn f(a: Int) -> Int =\n"
+
+fn expression_bodied_fn_decl_parses_holds() -> Bool {
+  g_parse_accepted(text: expression_bodied_fn_source, file: ^probe_expr_fn)
+}
+
+fn expression_bodied_literal_fn_decl_parses_holds() -> Bool {
+  g_parse_accepted(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+}
+
+fn braced_fn_decl_still_parses_holds() -> Bool {
+  g_parse_accepted(text: braced_fn_control_source, file: ^probe_braced_fn)
+}
+
+fn braced_fn_decl_survives_normalize_holds() -> Bool {
+  g_normalize_accepted(text: braced_fn_control_source, file: ^probe_braced_fn)
+}
+
+fn empty_eq_fn_decl_refuses_holds() -> Bool {
+  match g_parse_accepted(text: empty_eq_fn_source, file: ^probe_empty_eq) {
+    true => false
+    false => true
+  }
+}
+
+fn expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
+  g_normalize_accepted(text: expression_bodied_fn_source, file: ^probe_expr_fn)
+}
+
+fn expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
+  g_normalize_accepted(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+}
