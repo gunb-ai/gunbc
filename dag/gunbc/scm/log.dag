@@ -192,12 +192,22 @@ fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
 }
 
 // Whether every logged commit names a corpus manifest this repository actually holds -- held-ness of
-// the SNAPSHOT DESIGNATION, which is not recoverability of its entries; `LoggedCommitManifestHeld`
-// says the manifest object is present, and whether every source it names resolves is the separate
-// observation this function does not perform. A consumer deciding
-// whether the image is usable wants this without walking the rows itself, and it is a FACT rather
-// than a rendering, so it belongs beside the log rather than in whatever eventually prints it.
-fn commit_log_is_fully_held(log: CommitLog) -> Bool {
+// the SNAPSHOT DESIGNATION ALONE. `LoggedCommitManifestHeld` says the manifest OBJECT is present;
+// whether the authored sources that manifest names resolve is a SEPARATE observation this function
+// does not perform, and one that already has its own meaning and authority in this cut
+// (`gunbc.scm.object_store` `observe_corpus_source_completeness`).
+//
+// THE NAME USED TO BE `commit_log_is_fully_held`, and the sentence here used to say a consumer
+// deciding whether the IMAGE IS USABLE wants this. Both promoted the smaller observation into the
+// larger one: a log can answer true here while no source in any manifest is recoverable, so a
+// consumer taking it as usability would be misled by a predicate that never claimed it. Renamed to
+// the operation it performs, which also leaves the recoverability roll-up a name to land under
+// without a meaning collision (DESIGN section 3: a materially different contract needs a materially
+// different name). Found by external review.
+//
+// It is a FACT rather than a rendering, so it belongs beside the log rather than in whatever
+// eventually prints it.
+fn commit_log_manifest_roots_are_held(log: CommitLog) -> Bool {
   match log {
     NoCommitsYet => true
     CommitLogRows { rows: rows } =>
