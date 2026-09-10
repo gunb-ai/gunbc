@@ -28,6 +28,12 @@ import gunbc.ci_layer_roots { WitnessExclusionRow, witness_exclusion_frontier }
 // authority that owns it. DESIGN section 3: a fork is a correctness concern, not a style one — and
 // the correctness it cost here was the census's headline number.
 //
+// TWO FINDINGS THIS CENSUS SURFACED THAT ARE NOT ROWS. Both are filed as their own classes under
+// dag/gunbc/recurring_failure_mode/ — stale_present_tense_coverage_claim_in_the_authority_consulted_first
+// and receipt_subject_is_the_prose_about_the_mechanism — because DESIGN section 4b requires a
+// discovered error class to file a row in that ledger, and an annotation is not a row. They are
+// named here only so a reader of the census reaches them; the ledger files carry the facts.
+//
 // WHAT EACH ROW AUTHORS IS THEREFORE ONLY WHAT NO AUTHORITY OWNS: which witnesses exercise the
 // obligation, what makes them red, and what the seed does outside the obligation's reach. Whether
 // those witnesses execute is ASKED, every time the census is folded.
@@ -60,19 +66,19 @@ type WitnessSubject {
 // declared exclusion row, a witness frozen as never-executed, an obligation no witness names, and a
 // receipt family whose route publishes nothing the acceptance path can spend are four different
 // repairs with four different owners, and a single Absent arm would rank none of them.
+// THE ARMS, IN ORDER. ExecutedOnPath: discovered by the walk and subtracted by nothing, so the
+// required per-PR fold reaches it. ExcludedFromDiscovery: carved out by a gunbc.ci_layer_roots
+// witness_exclusion_frontier pattern — the row that does it is derivable from the entry, and
+// storing a copy of the pattern here would be the fork this module was rebuilt to remove.
+// FrozenPathDeferred: enrolled in the frozen legacy population, declared never-executed and
+// admitted with no executing consumer, so Mitigatable at best by construction of the roster it
+// sits in. RouteGapHeld: a receipt family exists for this route but publishes nothing the
+// acceptance path can spend. NoWitnessNamesIt: no witness names this obligation on this route.
 type PathExecution
-  // Discovered by the walk and subtracted by nothing: the required per-PR fold reaches it.
   = ExecutedOnPath { instrument: NonEmptyStr }
-  // Carved out of per-PR discovery by a gunbc.ci_layer_roots witness_exclusion_frontier pattern.
-  // The row that does it is derivable from the entry; storing a copy of the pattern here would be
-  // the fork this module was rebuilt to remove.
   | ExcludedFromDiscovery { frontier: DeclarationRef }
-  // Enrolled in the frozen legacy population: declared never-executed, admitted with no executing
-  // consumer. Mitigatable at best, by construction of the roster it sits in.
   | FrozenPathDeferred { roster: DeclarationRef }
-  // A receipt family exists for this route but publishes no evidence the acceptance path can spend.
   | RouteGapHeld { stall: DeclarationRef }
-  // No witness names this obligation on this route at all.
   | NoWitnessNamesIt { note: NonEmptyStr }
 
 // AN OBLIGATION WITH NO HOME IS A MODELING OBLIGATION, NOT A CENSUS ROW WITH A BLANK FIELD. DESIGN
@@ -110,28 +116,31 @@ type SeedEscape
   = SeedEscapeOpen { what_the_seed_does: NonEmptyStr }
   | SeedEscapeClosed { by: DeclarationRef }
 
+// THE FIELDS THAT ARE NOT SELF-EXPLANATORY. claimed_rung is the rung the obligation's own
+// declaration claims for itself, read off that declaration and never off this census. witnesses are
+// the entries that exercise it, and their standing is DERIVED rather than stored — see
+// interpreted_standing. discriminating_red and positive_control are the input that makes the
+// obligation refuse and the input that must still be accepted beside it, both required because a
+// refusal with no positive control is satisfied by a mechanism that refuses everything.
+// related_drops carries gunbc.rung_drop identities and never restates those rows.
+//
+// THE native ARM STAYS AUTHORED, and that asymmetry is a finding rather than an oversight: no
+// authority in this repository publishes a per-obligation native execution standing to ask, which
+// is exactly why the native column is the one this census cannot self-correct the way the
+// interpreted column now corrects itself.
 type V2CompileObligation {
   identity: NonEmptyStr
   kind: ObligationKind
   home: Home
-  // The rung the obligation's own declaration claims for itself, read off that declaration.
   claimed_rung: GuaranteeRung
-  // The witnesses that exercise it. Their standing is DERIVED; see interpreted_standing.
   witnesses: List<WitnessSubject>
-  // The input that makes the obligation refuse, and the input that must still be accepted beside
-  // it. A refusal with no positive control is satisfied by a mechanism that refuses everything.
   discriminating_red: NonEmptyStr
   positive_control: NonEmptyStr
-  // The native arm stays AUTHORED because no authority in this repository publishes a per-obligation
-  // native execution standing to ask. That asymmetry is a finding, not an oversight, and it is the
-  // reason the native column is the one this census cannot self-correct.
   native: PathExecution
   route_reach: RouteReach
   ceiling: GuaranteeRung
   next_trigger: NonEmptyStr
   seed_escape: SeedEscape
-  // Identities of gunbc.rung_drop rows that already govern part of this obligation. Joined by
-  // identity; the rows are NOT restated here.
   related_drops: List<NonEmptyStr>
 }
 
@@ -302,17 +311,17 @@ data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
   related_drops: [],
 }
 
+// THE ONLY WallNow IN THE ROSTER, AND THE ONLY ROW WHOSE CLAIM AND EVIDENCE ARE THE FURTHEST
+// APART. Its construction_justification declares WallNow with mandatory_tag_compile_gate as the
+// authority — a wall standing NOW — while every one of its twelve gate witnesses, including
+// mandatory_tag_enrolled_in_root_roster_rejects_violating_module (the one whose entire job is the
+// root-roster enrollment this claim rests on), is a frozen path deferral under test/claim/long.
+// Frozen means declared never-executed. So the strongest claim in the roster is the one with no
+// executing evidence anywhere, which is DESIGN section 4b(1) rung inflation exactly.
 data mandatory_tag_obligation: V2CompileObligation = V2CompileObligation {
   identity: "mandatory_tag_root_lens" as NonEmptyStr,
   kind: RequiredRootLens,
   home: HomeAuthority { authority: decl_ref(module_path: "v2.lens.mandatory_tag", decl_name: "mandatory_tag_compile_gate") },
-  // THE ONLY WallNow IN THE ROSTER, AND THE ONLY ROW WHOSE CLAIM AND EVIDENCE ARE THE FURTHEST
-  // APART. Its construction_justification declares WallNow with mandatory_tag_compile_gate as the
-  // authority — a wall standing NOW — while every one of its twelve gate witnesses, including
-  // mandatory_tag_enrolled_in_root_roster_rejects_violating_module (the one whose entire job is the
-  // root-roster enrollment this claim rests on), is a frozen path deferral under test/claim/long.
-  // Frozen means declared never-executed. So the strongest claim in the roster is the one with no
-  // executing evidence anywhere, which is DESIGN section 4b(1) rung inflation exactly.
   claimed_rung: StructurallyGuaranteed,
   discriminating_red: "a module declaring a mandatory tag with a missing, misnamed, wrongly typed or bogus-scheme value, at parse grain and again at normalized grain, which the gate must reject" as NonEmptyStr,
   positive_control: "the clean and the off-region fixtures, which must be accepted at both grains" as NonEmptyStr,
@@ -355,15 +364,15 @@ data undecidable_verdict_collapse_obligation: V2CompileObligation = V2CompileObl
   related_drops: [],
 }
 
+// MEASURED, NOT READ. hollow_alias_blocked_via_always_required_lenses_holds was executed directly
+// against this tree and returned true — the hollow-alias tree is rejected with reason
+// fact_density_hollow_alias_locus through the always_required_lenses roster. That establishes the
+// assertion HOLDS. It establishes nothing about coverage, and the interpreted column below is why.
 data fact_density_obligation: V2CompileObligation = V2CompileObligation {
   identity: "fact_density_subtree_lens" as NonEmptyStr,
   kind: RequiredSubtreeLens,
   home: HomeAuthority { authority: decl_ref(module_path: "v2.lens.fact_density", decl_name: "fact_density_hollow_alias_gate") },
   claimed_rung: MechanicallyPreventable,
-  // MEASURED, NOT READ. hollow_alias_blocked_via_always_required_lenses_holds was executed directly
-  // against this tree and returned true — the hollow-alias tree is rejected with reason
-  // fact_density_hollow_alias_locus through the always_required_lenses roster. That establishes the
-  // assertion HOLDS. It establishes nothing about coverage, and the interpreted column below is why.
   discriminating_red: "a hollow alias node whose fact bundle names no fact, which run_required_lens_gates must reject with reason fact_density_hollow_alias_locus" as NonEmptyStr,
   positive_control: "the named fact-bundle fixture in the same directory, which must pass the same roster" as NonEmptyStr,
   witnesses: [
@@ -462,12 +471,12 @@ data compile_door_obligation: V2CompileObligation = V2CompileObligation {
 // leaves a program's determinism open: two HostUnspecifiedOrder and the one
 // TraversalOrderUnclassified. Restating the other fourteen would be the fork this module exists to
 // avoid — they are reachable from primitive_declared_traversal_facts and carry no open question.
+// Unclassified is IGNORANCE, and the gate refuses fail-closed on it — so the claim here is the
+// refusal, not a determinism guarantee.
 data primitive_index_by_obligation: V2CompileObligation = V2CompileObligation {
   identity: "primitive_index_by_traversal_unclassified" as NonEmptyStr,
   kind: DeclaredPrimitiveTraversalFact,
   home: HomeAuthority { authority: decl_ref(module_path: "std.primitive_identity", decl_name: "primitive_index_by_traversal") },
-  // Unclassified is IGNORANCE, and the gate refuses fail-closed on it — so the claim here is the
-  // refusal, not a determinism guarantee.
   claimed_rung: MechanicallyPreventable,
   discriminating_red: "any call reaching index_by in a tree handed to the determinism gate, which must refuse because nobody has answered the order question" as NonEmptyStr,
   positive_control: "the same tree with sorted_map_keys in place of index_by, which must be accepted as CanonicalOrder" as NonEmptyStr,
@@ -730,9 +739,3 @@ fn census_counts() -> String {
     )
   )
 }
-
-// TWO FINDINGS THIS CENSUS SURFACED THAT ARE NOT ROWS. Both are filed as their own classes under
-// dag/gunbc/recurring_failure_mode/ — stale_present_tense_coverage_claim_in_the_authority_consulted_first
-// and receipt_subject_is_the_prose_about_the_mechanism — because DESIGN section 4b requires a
-// discovered error class to file a row in that ledger, and an annotation is not a row. They are
-// named here only so a reader of the census reaches them; the ledger files carry the facts.
