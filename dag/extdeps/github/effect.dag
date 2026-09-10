@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.github.actions_jit_runner { org_generate_jitconfig_path }
+import extdeps.github.workflows { workflow_dispatch_path, workflow_dispatch_http_method }
 import extdeps.github.app {
   GitHubAppPermission,
   GitHubPermissionAxis,
@@ -177,7 +178,7 @@ data github_effect_http_surface_consumer_frontier: DissolutionCondition = unboun
 fn github_effect_http_method(effect: GitHubEffect) -> HttpMethod {
   match effect {
     AdvanceRepositoryBranch { repository: _, branch: _, changed_paths: _ } => PATCH
-    DispatchWorkflow { repository: _, workflow: _, subject: _ } => POST
+    DispatchWorkflow { repository: _, workflow: _, subject: _ } => workflow_dispatch_http_method
     RegisterOrganizationRunner { organization: _ } => POST
     GenerateOrganizationJitConfig { organization: _ } => POST
   }
@@ -202,17 +203,10 @@ fn github_effect_http_path(effect: GitHubEffect) -> String {
         ""
       )
     DispatchWorkflow { repository, workflow, subject: _ } =>
-      join(
-        [
-          "/repos/",
-          repository.owner,
-          "/",
-          repository.name,
-          "/actions/workflows/",
-          workflow.file_name as String,
-          "/dispatches",
-        ],
-        ""
+      workflow_dispatch_path(
+        owner: repository.owner,
+        repo: repository.name,
+        workflow_id: workflow.file_name as String
       )
     RegisterOrganizationRunner { organization } =>
       org_registration_token_path(org_login: organization.login)
