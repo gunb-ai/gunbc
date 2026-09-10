@@ -669,12 +669,22 @@ type DashboardInstanceLookup
 // which checkout it was launched from: a harness turn or a belt tick reads its own short hostname
 // and resolves the instance whose host_identity spells it. An unknown host is its own arm.
 //
-// SEVERAL INSTANCES SHARE A HOST — srv1-live and srv1-lab both say srv1 — so host lookup cannot
-// be first-match over the whole roster. Isolated labs are DashboardGitBundle; the instance that
-// answers for the machine is the ExistingRepo clone (the deployment or the operator checkout).
-// That is a structural cut, not a second enumerated list: a new lab cannot steal the host
-// lookup without changing its source_seed, and a second ExistingRepo on one host is a uniqueness
-// failure the witness names rather than a silent first-wins.
+// THE ROSTER ADMITS AT MOST ONE HOST-LOOKUP ANSWER PER HOST. That is the constraint, not a
+// uniqueness-of-ids corollary: two ExistingRepo deployments on one machine are a real ambiguity
+// about which instance is "srv1", and dashboard_host_lookup_subjects_are_unique is the law
+// that names it. A future deployment-shaped instance on a host that already has one must not
+// also answer host lookup — seed it as a bundle, or give it a different host_identity, or the
+// witness is the refusal.
+//
+// SOURCE_SEED IS A PROXY FOR THAT QUESTION, NOT THE QUESTION. "Who answers for this machine" is
+// not "how was this tree seeded". They coincide in the CURRENT population because
+// isolated_dashboard_instance always writes DashboardGitBundle and every instance that today
+// answers for a host (srv1-live, srv2-deploy, macbook-local) is DashboardExistingRepo. That is
+// coincidence of the constructors, not a structural identity. It breaks on an ExistingRepo
+// lab (a dedicated clone on a host that already has a live instance — the srv1-dev shape) and
+// on a bundle-seeded deployment that should answer for the machine. Until host-lookup
+// answering is its own field, those two shapes cannot both be declared honestly, and this
+// predicate is the stated divergence.
 type DashboardInstanceByHost
   = DashboardInstanceForHost { instance: HostDashboardInstance }
   | DashboardInstanceHostUnknown { host: String }
@@ -1176,6 +1186,9 @@ fn dashboard_declared_repo_roots_are_unique() -> Bool {
   all(xs, a => count(xs |> filter(b => b.repo_root == a.repo_root)) == 1)
 }
 
+// AT MOST ONE per host_identity among instances that answer host lookup. Distinct instance_ids
+// do not discharge this: two deployments on srv1 can have different ids and still both claim
+// the hostname.
 fn dashboard_host_lookup_subjects_are_unique() -> Bool {
   let xs = declared_dashboard_instances()
     |> filter(i => dashboard_instance_answers_host_lookup(instance: i))

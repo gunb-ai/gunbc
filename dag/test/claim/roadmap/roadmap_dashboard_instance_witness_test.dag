@@ -948,6 +948,11 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
 // repo root or origin root on one host is the defect, and srv1-lab is a real second instance to
 // hold it over. Retiring this with the slot would have deleted a live obligation along with its
 // most recent example.
+//
+// THE POPULATION FOLD DOES NOT RETIRE THIS PAIR. dashboard_declared_instances_owned_paths_
+// are_pairwise_consistent is the quantification; this named live/lab call is the discriminating
+// control that the binary-overlap class stays closed (DESIGN 4b(4): climb deletes production
+// machinery, never the evidence).
 test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
