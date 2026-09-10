@@ -1,0 +1,9 @@
+module v2.test.fixture.tokenize.string_literal_raw_newline
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Discriminating corpus plant: a string literal whose body contains a raw line
+// feed. v1 scan_string_body admits this; v2 refused it as
+// tokenize_lex_e1_unrecognized_char while StringTextChar excluded 10.
+data planted_multiline_string: String = "line one
+line two"

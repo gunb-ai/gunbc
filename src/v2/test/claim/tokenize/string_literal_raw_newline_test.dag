@@ -1,0 +1,85 @@
+module v2.test.tokenize.string_literal_raw_newline
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  CharPattern,
+  DelimitedPattern,
+  RepeatPattern,
+  StringTextChar,
+  TokenRule,
+  TriviaRule,
+  OneOrMorePattern,
+  WhitespaceChar,
+  LexRuleSet,
+  token_stream_all
+}
+import v2.compiler.tokenize { lex_walk }
+import v2.std.diagnostic { ByteRange, Textual, WholeFile }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn string_only_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+      TokenRule {
+        token_class: ^string,
+        pattern: DelimitedPattern {
+          open: CharPattern { char: 34 },
+          body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+          close: CharPattern { char: 34 }
+        }
+      }
+    ]
+  }
+}
+
+test fn string_literal_with_raw_newline_lexes_holds() -> Bool {
+  match lex_walk(source: chars(s: "\"a\nb\""), file: ^probe, rules: string_only_rules()) {
+    v2.std.diagnostic.Accepted { value: ts, diagnostics: _ } =>
+      match token_stream_all(stream: ts) {
+        Cons { head: t, tail: _ } =>
+          (t.class == ^string) && (t.lexeme == "\"a\nb\"")
+        Empty => false
+      }
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn unrecognized_char_locus_covers_the_offending_character_holds() -> Bool {
+  match lex_walk(source: chars(s: "`"), file: ^probe, rules: string_only_rules()) {
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+      (ds.head.reason == ^tokenize_lex_e1_unrecognized_char) &&
+        match ds.head.at {
+          Textual { file: _, extent: e } =>
+            match e {
+              ByteRange { start: s, end: end_byte } => (s == 0) && (end_byte == 1)
+              WholeFile => false
+            }
+          NodeLocus { anchor: _ } => false
+          SourcePortLocus { anchor: _, file: _, extent: _ } => false
+          InvariantPortLocus { anchor: _, invariant: _ } => false
+        }
+  }
+}
+
+test fn unrecognized_char_locus_after_trivia_covers_the_backtick_holds() -> Bool {
+  match lex_walk(source: chars(s: "  `"), file: ^probe, rules: string_only_rules()) {
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+      (ds.head.reason == ^tokenize_lex_e1_unrecognized_char) &&
+        match ds.head.at {
+          Textual { file: _, extent: e } =>
+            match e {
+              ByteRange { start: s, end: end_byte } => (s == 2) && (end_byte == 3)
+              WholeFile => false
+            }
+          NodeLocus { anchor: _ } => false
+          SourcePortLocus { anchor: _, file: _, extent: _ } => false
+          InvariantPortLocus { anchor: _, invariant: _ } => false
+        }
+  }
+}
