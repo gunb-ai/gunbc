@@ -1,8 +1,12 @@
 module extdeps.colo.colocation_america
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, RetailGrainUnread,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -18,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.colocation_america",
-      decl_name: "colocation_america_njdc1",
+      decl_name: "colocation_america_facilities",
       field: WholeDeclaration
     }
   },
@@ -36,6 +40,46 @@ data colocation_america_njdc1: ColoFacilityRow = ColoFacilityRow {
   municipality: "Clifton",
   region_code: "NJ",
   facility_note: "Retail reseller operating inside the Digital Realty EWR20 building (building rows under extdeps.colo.digital_realty). Sells 1U, 2U, 4U, quarter, half and full cabinets per its navigation and directory profiles read 2026-08-18 - the finest published retail granularity in the Clifton building.",
+}
+
+data colocation_america_nydc1: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Colocation America",
+  facility_label: "Colocation America NYDC1 (in-building at 60 Hudson)",
+  address: AddressListed {
+    street: "60 Hudson Street, 9th Floor, New York, NY 10013",
+    citation: "colocationamerica.com New York page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "Retail reseller selling from the 60 Hudson carrier hotel. Digital Realty JFK12 and DataBank LGA1 occupy the same building under their own modules.",
+}
+
+data colocation_america_nydc1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "colocationamerica.com/data-center-locations/new-york from the operator page-sitemap. Raw fetch 2026-09-09: no User-Agent HTTP 403, 5506 bytes; full Chrome User-Agent HTTP 200, 182447 bytes. Subject control in RAW 200 body: NYDC1=4 and 60 Hudson=8 (not the site token New York). Token cabinet=0. No RAW substring kW. Case-insensitive kw hits are inside the minified Tidio id tudkwjyu, excluded. Not a per-cabinet kilowatt claim.",
+}
+
+data colocation_america_nydc1_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "Same 2026-09-09 full-UA 200 body (182447 bytes, subject NYDC1=4 / 60 Hudson=8): RAW cabinet=0 and cage=0. The New York location page does not restate the 1U-through-cabinet grain on the operator's New Jersey navigation and product pages. Confirm the grain sold in this suite before treating it as a small reversible footprint.",
+}
+
+data colocation_america_nydc2: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Colocation America",
+  facility_label: "Colocation America NYDC2 (in-building at 111 8th)",
+  address: AddressListed {
+    street: "111 8th Avenue, Floor 16, New York, NY 10011",
+    citation: "colocationamerica.com New York page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "Retail reseller selling from the 111 Eighth Avenue carrier hotel. Equinix NY9, Digital Realty JFK10 and DataBank LGA2 occupy the same building under their own modules.",
+}
+
+data colocation_america_nydc2_density: CabinetDensityClaim = DensityUnread {
+  obligation: "Same New York location fetch as NYDC1 (full UA HTTP 200, 182447 bytes). Subject control NYDC2=4. Lists the 16th-floor suite at 111 8th, not a per-cabinet density. No RAW substring kW (Tidio tudkwjyu excluded).",
+}
+
+data colocation_america_nydc2_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "Same as NYDC1: RAW cabinet=0 on the New York location page with subject control NYDC2=4.",
 }
 
 data colocation_america_retail_rates: RetailRateStanding = RatesQuoteOnly {
@@ -83,3 +127,10 @@ data colocation_america_cabinet_density: CabinetDensityClaim = DensityUnread {
 data colocation_america_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "Read, not refused, and now read correctly: the operator's New Jersey locations page (HTTP 200, 178,020 bytes, raw HTML, 2026-09-09) lists Managed Colocation among the services offered at NJDC2 but states no minimum footprint, and the word \"cabinet\" does not appear in the page at all. The 2026-08-18 pass recorded granularity as published without capturing a wording, and nothing in these bytes supplies one. Resolve by asking the quote whether a single cabinet, or a fraction of one, is contractable at 275 Hartz Way.",
 }
+
+data colocation_america_facilities: List<ColoFacilityRow> = [
+  colocation_america_njdc1,
+  colocation_america_njdc2_secaucus,
+  colocation_america_nydc1,
+  colocation_america_nydc2,
+]

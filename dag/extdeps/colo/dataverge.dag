@@ -2,7 +2,11 @@ module extdeps.colo.dataverge
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -18,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.dataverge",
-      decl_name: "dataverge_jersey_city",
+      decl_name: "dataverge_facilities",
       field: WholeDeclaration
     }
   },
@@ -27,6 +31,27 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data dataverge_provenance_note: NonEmptyStr = "DataVerge operates colocation in Brooklyn (882 3rd Ave, Industry City) and Jersey City. Facts read 2026-08-18 from dataverge.com pages and the Inflect marketplace profile for the Jersey City site (CGNJ1 designation appears on Inflect). Space is sold from single rack units through quarter and half racks to private cabinets and cages, which makes this the retail-granular operator physically closest to Jersey City in this census."
+
+data dataverge_brooklyn: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataVerge",
+  facility_label: "DataVerge Brooklyn (Industry City)",
+  address: AddressListed {
+    street: "882 3rd Avenue, Brooklyn, NY 11232",
+    citation: "dataverge.com interconnected-data-center-brooklyn page, read 2026-09-08",
+  },
+  municipality: "Brooklyn",
+  region_code: "NY",
+  facility_note: "50,000 square feet with 40,000 raised floor and 35,000 available for expansion; locking cabinets, cages and private suites; N+1 cooling; 1.75 MW generator backup; 40-plus carriers named including AT&T, Charter, Cogent, Crown Castle, Lightpath, Lumen, Verizon, Zayo, Zenfi per the operator page read 2026-09-08. The page claims this MMR underpins Brooklyn, Queens and Long Island.",
+}
+
+data dataverge_brooklyn_density: CabinetDensityClaim = DensityUnread {
+  obligation: "dataverge.com interconnected-data-center-brooklyn page. Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 532481 bytes. Subject control in RAW bytes: Industry City=9 (not the borough token Brooklyn). No RAW substring kW. The case-insensitive kw hit is ISO country code KW (Kuwait) in embedded JSON, excluded. Publishes raised-floor area, N+1/2N distribution and 1.75 MW generator backup, not a marketed kilowatts-per-cabinet ceiling.",
+}
+
+data dataverge_brooklyn_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Private Cabinet Colocation; racks, locking cabinets, cages and private suites",
+  citation: "dataverge.com interconnected-data-center-brooklyn page, read 2026-09-08",
+}
 
 data dataverge_jersey_city: ColoFacilityRow = ColoFacilityRow {
   operator_label: "DataVerge",
@@ -39,6 +64,8 @@ data dataverge_jersey_city: ColoFacilityRow = ColoFacilityRow {
   region_code: "NJ",
   facility_note: "Inflect profile (read 2026-08-18): 0.6 MW total power, 2N power with N+1 UPS, N+1 cooling, PCI DSS / SOC 2 / HIPAA claimed; on-site carriers listed AT&T, Cogent, Crown Castle, Lightpath, Lumen; DataVerge marketing claims 30-plus carriers across its footprint. Located in the Newport office tower district.",
 }
+
+data dataverge_facilities: List<ColoFacilityRow> = [dataverge_brooklyn, dataverge_jersey_city]
 
 data dataverge_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "quote request or tour scheduling via dataverge.com",

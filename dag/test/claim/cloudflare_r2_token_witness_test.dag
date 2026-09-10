@@ -35,8 +35,7 @@ import extdeps.cloudflare.account_api_tokens {
   PermissionGroupRef,
   admit_account_token_api_mint,
   account_token_policy_create_wire,
-  CreateAccountOwnedToken,
-  credential_supports,
+  AccountApiTokensWrite,
   cloudflare_account_api_tokens_frontier_rows
 }
 import extdeps.cloudflare.r2 {
@@ -50,7 +49,6 @@ import extdeps.cloudflare.r2 {
   r2_object_read_create_request,
   r2_s3_access_pair_from_created_token,
   workers_r2_storage_bucket_item_read_permission_group_id,
-  shape_grants_include_r2_object_read,
   r2_object_read_grant,
   cloudflare_r2_frontier_rows
 }
@@ -66,7 +64,6 @@ import gunbc.cloudflare.r2_token_mint {
   cloudflare_r2_object_read_token_shape,
   admit_r2_object_read_api_mint,
   cloudflare_r2_token_mint_frontier_rows,
-  vendor_cloudflare_frontier_rows,
   cloudflare_r2_token_human_burden
 }
 
@@ -215,12 +212,7 @@ test fn r2_s3_access_key_id_is_the_created_token_id() -> Bool {
 }
 
 test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Bool {
-  credential_supports(
-    shape: cloudflare_bootstrap_token_shape(),
-    capability: CreateAccountOwnedToken
-  )
-    && shape_grants_include_r2_object_read(shape: cloudflare_r2_object_read_token_shape())
-    && !shape_grants_include_r2_object_read(shape: cloudflare_bootstrap_token_shape())
+  cloudflare_bootstrap_token_shape().grants == [AccountApiTokensWrite]
     && human_intervention_count_at(
       burden: cloudflare_r2_token_human_burden(),
       frequency: FleetOnce
@@ -396,7 +388,6 @@ fn frontier_row_names_decl(row: FrontierRow, ref: DeclarationRef) -> Bool {
 
 test fn r2_token_mint_frontier_rows_well_formed() -> Bool {
   frontier_rows_well_formed(rows: cloudflare_r2_token_mint_frontier_rows)
-    && frontier_rows_well_formed(rows: vendor_cloudflare_frontier_rows)
 }
 
 test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
@@ -415,21 +406,11 @@ test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
         row: row,
         ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_access_pair_from_created_token"),
       ))
-    && any(vendor_cloudflare_frontier_rows, row =>
-      frontier_row_names_decl(
-        row: row,
-        ref: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
-      ))
-    && any(cloudflare_r2_token_mint_frontier_rows, row =>
-      frontier_row_names_decl(
-        row: row,
-        ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "cloudflare_r2_token_human_burden"),
-      ))
+
 }
 
 test fn cloudflare_frontier_rows_are_in_the_census() -> Bool {
   all(cloudflare_r2_token_mint_frontier_rows, row => census_contains_frontier_subject(row: row))
-    && all(vendor_cloudflare_frontier_rows, row => census_contains_frontier_subject(row: row))
     && all(cloudflare_account_api_tokens_frontier_rows, row => census_contains_frontier_subject(row: row))
     && all(cloudflare_r2_frontier_rows, row => census_contains_frontier_subject(row: row))
 }

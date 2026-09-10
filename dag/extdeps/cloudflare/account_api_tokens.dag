@@ -6,6 +6,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
 import std.dissolution { unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.transports.rest { RestOutcome }
 import extdeps.cloudflare.client_v4 {
   cloudflare_client_v4_base,
   CloudflareApiError
@@ -82,13 +83,8 @@ type CloudflareCredentialKind
   | UserOwnedApiToken
   | GlobalApiKey
 
-type CloudflareCredentialCapability
-  = CreateAccountOwnedToken
-  | ListAccountTokenPermissionGroups
-
 type CloudflarePermissionGrant
   = AccountApiTokensWrite
-  | AccountApiTokensRead
   | PermissionGroupGrant { group: PermissionGroupRef }
 
 type CloudflareCredentialAcquisition
@@ -110,27 +106,6 @@ type CloudflareAccountTokenShape {
   acquisition: CloudflareCredentialAcquisition
   lifetime: CloudflareCredentialLifetime
   revocation: CloudflareCredentialRevocation
-}
-
-fn grant_supports(
-  grant: CloudflarePermissionGrant,
-  capability: CloudflareCredentialCapability
-) -> Bool {
-  match grant {
-    AccountApiTokensWrite => any(
-      [CreateAccountOwnedToken, ListAccountTokenPermissionGroups],
-      c => c == capability
-    )
-    AccountApiTokensRead => capability == ListAccountTokenPermissionGroups
-    PermissionGroupGrant { group: _ } => false
-  }
-}
-
-fn credential_supports(
-  shape: CloudflareAccountTokenShape,
-  capability: CloudflareCredentialCapability
-) -> Bool {
-  any(shape.grants, g => grant_supports(grant: g, capability: capability))
 }
 
 type CloudflareCredentialFormat
@@ -260,6 +235,27 @@ fn created_account_token_from_create_response(
   }
 }
 
+// THE LISTING ROW, TYPED, BECAUSE THE RAW OPERATION BESIDE IT CANNOT ANSWER. ListPermissionGroupsRaw
+// projects `body` from a response whose envelope has no such field -- Cloudflare answers
+// { result, success, errors, messages } -- so it yields NULL rather than the listing, and null for a
+// missing projection is a fabricated value standing exactly where a typed refusal belongs. That was
+// measured, not inferred: a live GET against this account returned 200 and the operation produced
+// null. The raw operation is left standing with its frontier row rather than silently repaired,
+// because the projection defect is a class worth naming rather than a typo worth patching.
+//
+// SCOPES ARE CARRIED BECAUSE THE QUESTION BEING ASKED IS WHAT A GROUP CAN DO. An id and a name alone
+// let a reader guess from the name, and "Workers R2 Storage Read" versus "Workers R2 Storage Edit"
+// is exactly the guess that must not be made about a grant.
+type AccountPermissionGroupRow {
+  id: NonEmptyStr
+  name: String
+  scopes: List<String>
+}
+
+type AccountPermissionGroupsListResponse {
+  result: List<AccountPermissionGroupRow>
+}
+
 type AccountTokenMetadata {
   id: NonEmptyStr
   name: String
@@ -330,7 +326,6 @@ fn permission_groups_from_grants(
   flat_map(grants, g => match g {
     PermissionGroupGrant { group: grp } => [grp]
     AccountApiTokensWrite => []
-    AccountApiTokensRead => []
   })
 }
 
@@ -407,6 +402,14 @@ fn admit_account_token_api_mint(
   }
 }
 
+// Create DECLARES outcome: RestOutcome BECAUSE ITS FAILURE ARMS ARE THE CALLER'S PROBLEM.
+// The response set already names 401, 403, 422 and 5xx, but without an outcome channel a caller
+// has nowhere to READ which of them happened: a refused status, a transport that never answered,
+// and an undecodable body would all have to be inferred from a value that was never produced.
+// The mutation is non-idempotent -- every accepted Create mints a new token, shown once -- so the
+// distinction between "the service refused" and "the outcome is unknown" decides whether a retry
+// is authorized at all. This mirrors gcp.SecretManager.CreateSecret, which declares it for the
+// same reason and whose callers are the model this repository already follows.
 service cloudflare.AccountTokens {
   config {
     endpoint: cloudflare_client_v4_base
@@ -435,6 +438,28 @@ service cloudflare.AccountTokens {
     }
   }
 
+  operation ListPermissionGroups {
+    input {
+      auth_token: Secret
+      account_id: String
+    }
+    output {
+      groups: List<AccountPermissionGroupRow> from "result"
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/accounts/\{account_id\}/tokens/permission_groups"
+    }
+    response {
+      200 => AccountPermissionGroupsListResponse
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+
   operation Create {
     input {
       auth_token: Secret
@@ -451,6 +476,7 @@ service cloudflare.AccountTokens {
       status: String from "result.status"
       expires_on: Timestamp? from "result.expires_on"
       not_before: Timestamp? from "result.not_before"
+      outcome: RestOutcome
     }
     transport rest {
       method: POST,

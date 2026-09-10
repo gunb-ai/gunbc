@@ -1,0 +1,240 @@
+module v2.test.claim.self_host.rust_module_emission_population
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.compiler.emit_module { emit_module_decl_separator }
+import v2.compiler.emit_produced { produced_decl_conjs_in_tree }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+  observe_provenanced_rust_emission_from_ingest
+}
+import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  direct_rust_door_missing_rules_target
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.rust { rust_source_text, rust_target_model }
+import v2.std.algebra { length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// WHAT THIS FILE IS THE PERMANENT REGRESSION EVIDENCE FOR. The production Rust door
+// (v2.compiler.self_host.candidate_generation generate_rust_module_emission_candidate) used to
+// admit exactly ONE produced declaration, and the collector it admitted from
+// (v2.compiler.emit_produced produced_decl_conjs_in_tree) used to look for a decl-shaped NODE.
+// Both were wrong, and the second was the load-bearing one: a resolved module carries one Named
+// edge into an Arrow PER DECLARATION on a single shell node, so the old node predicate — "a Conj
+// whose FIRST child is a Named edge into an Arrow" — matched the SHELL, stopped there, and
+// emission (which reads children[0]) published declaration 1 and SILENTLY DROPPED 2..N while
+// reporting Accepted. The surplus arm the composition carried for that case, and the
+// rust_module_emission_decl_ambiguous cause it refused with, were therefore UNREACHABLE from any
+// real ingested module: the collector never produced a surplus to refuse. A one-declaration module
+// was right only by coincidence — at N=1 the shell and the declaration are the same node.
+//
+// So the specimens below are all REAL INGESTED .dag MODULES walked by the production observation,
+// never planted decl nodes: only the whole path storage-shaped-read -> assemble -> infer -> collect
+// -> emit_produced_module can discriminate the defect, and a fixture that hands the fold a list of
+// declarations it built itself cannot (which is exactly why the pre-existing module-fold witnesses
+// stayed green through the whole silent-drop period).
+
+data population_module_path: String = "src/v2/test/claim/self_host/rust_module_emission_population_test.dag"
+
+data population_src_add: String = "module module_population_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+data population_src_add2: String = "module module_population_probe\n\nfn add2(x: Int, y: Int) -> Int { x + y }\n"
+
+data population_src_add_then_add2: String = "module module_population_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n\nfn add2(x: Int, y: Int) -> Int { x + y }\n"
+
+data population_src_no_declarations: String = "module module_population_probe\n"
+
+fn population_ingest(src: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: Artifact {
+        kind: SourceFile,
+        id: ^rust_module_emission_population_artifact,
+        file_path: population_module_path
+      },
+      compilation_unit: ^rust_module_emission_population_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn population_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^module_population_probe, tail: Empty }
+    },
+    imports: Empty
+  }
+}
+
+type PopulationStage
+  = PopulationAssemblyRejected
+  | PopulationInferenceRejected
+  | PopulationEmissionRejected
+  | PopulationReceiptRejected
+  | PopulationProduced { text: String }
+
+fn population_observe(src: String, target: TargetModel) -> PopulationStage {
+  match observe_provenanced_rust_emission_from_ingest(
+    ingest: population_ingest(src: src),
+    admission: population_admission(),
+    target: target,
+    module_path: population_module_path
+  ) {
+    AssemblyRejected { diagnostics: _ } => PopulationAssemblyRejected
+    InferenceRejected { diagnostics: _ } => PopulationInferenceRejected
+    EmissionRejected { diagnostics: _ } => PopulationEmissionRejected
+    ProducerReceiptRejected { diagnostics: _ } => PopulationReceiptRejected
+    ArtifactProduced { artifact: a } => PopulationProduced { text: a.source.carried }
+  }
+}
+
+// WHY THESE ARE NULLARY PRODUCERS AND NOT PER-ARM WALKS, measured rather than assumed. Each
+// specimen costs one full ingest -> assemble -> infer -> collect -> emit production walk, and the
+// required floor's per-claim ceiling is 500ms CPU: run 34392489718 refused seven of this file's
+// arms INTERRUPTED-BEFORE-VERDICT at cpu_at_least=501-507ms when every arm walked its own
+// specimen, and the order arms walked three. That is the same shape
+// v2.workflow.floor_pure_producer_share already records for direct_rust_door_specimen_resolved
+// and produced_add_module_source, and it has the same repair: the walk is ONE computation serving
+// several claims, so it is carried once at its consumers' shared ancestor rather than recomputed
+// per claim (DESIGN section 2 -- minimize the demand graph before materializing its answers).
+// These producers are nullary, so the roster's warm path forces them during strict preparation,
+// OUTSIDE every per-claim budget, and each arm then serves the landed fill and compares.
+// THE PRODUCTION WALK IS NOT SHORTCUT BY THIS: the producers ARE the production observation, one
+// per specimen, and their cost is paid in full. What changes is how many times it is paid.
+// The share point is a String, which is fully portable; the InferredTree is deliberately NOT a
+// share point anywhere in this corpus (it carries the facts PartialFunction).
+
+fn population_emitted_text_of(src: String) -> String {
+  match population_observe(src: src, target: rust_target_model()) {
+    PopulationProduced { text: t } => t
+    _ => ""
+  }
+}
+
+fn population_emission_add() -> String {
+  population_emitted_text_of(src: population_src_add)
+}
+
+fn population_emission_add2() -> String {
+  population_emitted_text_of(src: population_src_add2)
+}
+
+fn population_emission_add_then_add2() -> String {
+  population_emitted_text_of(src: population_src_add_then_add2)
+}
+
+fn population_refused_at_emission(src: String, target: TargetModel) -> Bool {
+  match population_observe(src: src, target: target) {
+    PopulationEmissionRejected => true
+    _ => false
+  }
+}
+
+fn population_declarationless_refuses() -> Bool {
+  population_refused_at_emission(
+    src: population_src_no_declarations,
+    target: rust_target_model()
+  )
+}
+
+fn population_unwired_two_declaration_refuses() -> Bool {
+  population_refused_at_emission(
+    src: population_src_add_then_add2,
+    target: direct_rust_door_missing_rules_target
+  )
+}
+
+fn population_declaration_count_of(src: String) -> Int {
+  match assemble_program_from_ingest(
+    ingest: population_ingest(src: src),
+    admission: population_admission(),
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => 0 - 2
+        Accepted { value: inferred, diagnostics: _ } =>
+          length(xs: produced_decl_conjs_in_tree(root: inferred.root))
+      }
+  }
+}
+
+fn population_declaration_count_add() -> Int {
+  population_declaration_count_of(src: population_src_add)
+}
+
+fn population_declaration_count_add_then_add2() -> Int {
+  population_declaration_count_of(src: population_src_add_then_add2)
+}
+
+// THE COUNT IS THE DISCRIMINATING RED for the collector itself, measured one stage before
+// emission so a fold that happened to concatenate correctly could not stand in for a collector
+// that found both declarations. Before the fix this returned 1 for the two-declaration module.
+test fn population_two_declaration_module_collects_two() -> Bool {
+  population_declaration_count_add_then_add2() == 2
+}
+
+test fn population_one_declaration_module_collects_one() -> Bool {
+  population_declaration_count_add() == 1
+}
+
+// A one-declaration module still emits the declaration text followed by the module authority's
+// declared separator. This is the arm that pins the module convention rather than a bare
+// declaration: emit_produced_module terminates EVERY declaration, including the last, exactly as
+// v2.compiler.emit_module does.
+test fn population_one_declaration_module_emits_terminated_declaration() -> Bool {
+  population_emission_add() == concat(rust_source_text, emit_module_decl_separator)
+}
+
+// BOTH declarations, in SOURCE ORDER. The expected text is composed from the two modules each
+// emitted ALONE, so the arm cannot be satisfied by a fold that dropped, duplicated, or reordered a
+// declaration, and it carries no hand-transcribed copy of the emitter's own output.
+test fn population_two_declaration_module_emits_both_in_source_order() -> Bool {
+  population_emission_add_then_add2()
+    == concat(population_emission_add(), population_emission_add2())
+}
+
+// The swapped-order control: same two declarations, same target, so ONLY order distinguishes it.
+test fn population_two_declaration_module_is_not_the_swapped_order() -> Bool {
+  !(population_emission_add_then_add2()
+    == concat(population_emission_add2(), population_emission_add()))
+}
+
+// The zero-declaration refusal survives the ceiling's removal: a module with no declarations
+// refuses at emission, typed and located, rather than publishing an empty module.
+test fn population_declarationless_module_refuses_at_emission() -> Bool {
+  population_declarationless_refuses()
+}
+
+// NO PARTIAL MODULE MAY PUBLISH. A target that declared no produced-declaration rendering rows
+// refuses every declaration, so the module fold must propagate that refusal for the WHOLE
+// two-declaration module rather than returning the declarations it managed to render. This is the
+// module-grain arm of the same fail-closed property v2.test.emit.produced_decl_two_target pins per
+// declaration.
+test fn population_two_declaration_module_refuses_whole_on_unwired_target() -> Bool {
+  population_unwired_two_declaration_refuses()
+}
+
+// The positive control for the arm above: the SAME two-declaration module against a wired target
+// does reach ArtifactProduced, so the refusal is the target's missing rows and not the module.
+test fn population_two_declaration_module_produces_on_wired_target() -> Bool {
+  !(population_emission_add_then_add2() == "")
+}

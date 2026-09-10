@@ -8,6 +8,7 @@ import extdeps.bmc.capability {
   BmcFirmwareReleaseCapabilityRow,
   BmcFirmwareReleaseIdentity,
   CapabilityBootSourceOverride,
+  CapabilityOemRemoteMedia,
   CapabilityPowerControl,
 }
 import extdeps.bmc.access_profile {
@@ -204,21 +205,39 @@ data mtcollins1_access_standing: BmcAccessObservationStanding = BmcAccessObserve
 //   `Power Unit — Power cycle | Asserted` and `System Boot Initiated — Initiated by power up`. The
 //   controller's own event log is a second witness to the effect, not a restatement of the request.
 //
-// WHAT IS DELIBERATELY ABSENT, because absence here is the whole point of the row. CapabilityVirtualMedia,
-// CapabilityOemRemoteMedia, CapabilityNbdProxyVirtualMedia, CapabilityAccountManagement,
-// CapabilityFirmwareUpdate, CapabilityBiosAttributeConfig and CapabilitySerialConsole are NOT members.
-// The REST remote-media surface answered 401 — present, unauthenticated-to, never exercised — and a
-// 401 grounds SurfaceOemRestRemoteMedia in discovered_surfaces (the surface exists) while grounding
-// no capability whatever (nothing was mounted). That split is the model earning its keep: the delivery
-// solver reads CAPABILITIES to choose a transport, so an unexercised media capability authored here
-// would send it down a path nothing has shown this controller can walk. SerialConsole is the sharpest
-// case — SOL was in fact activated and streamed Ampere checkpoint codes, so the capability is very
-// probably real, and it is still omitted because that session was driven by hand from a terminal and
-// not through any modeled route. A capability this row asserts must be one the AUTOMATION can perform.
+//   CapabilityOemRemoteMedia — ADDED 2026-09-05T22:55Z, and this row previously said the opposite.
+//   The earlier text read that the REST remote-media surface "answered 401 — present,
+//   unauthenticated-to, never exercised" and grounded "no capability whatever (nothing was
+//   mounted)". That was true when written and is now false: an authenticated session attached
+//   ubuntu-24.04.3-live-server-arm64.iso from the NFS share, configurations read back
+//   redirection_status 100 with session_index 0, and the host BOOTED IT — GRUB 2.12, an EFI-stub
+//   aarch64 kernel, squashfs and overlayfs, systemd as PID 1. Evidence:
+//   artifacts/bmc/mtcollins1-diskless-boot.json.
+//
+//   The distinction the old text drew is still the right one and is what makes this addition
+//   admissible rather than optimistic: a 401 grounds the SURFACE and no capability, because a
+//   capability is a claim about a WRITE taking effect. What changed is that the write was performed
+//   and its effect observed from the host, which is the same standard CapabilityBootSourceOverride
+//   and CapabilityPowerControl were held to above.
+//
+// WHAT IS STILL DELIBERATELY ABSENT, because absence here is the whole point of the row.
+// CapabilityVirtualMedia, CapabilityNbdProxyVirtualMedia, CapabilityAccountManagement,
+// CapabilityFirmwareUpdate, CapabilityBiosAttributeConfig and CapabilitySerialConsole are NOT
+// members. CapabilityVirtualMedia is the near miss and stays out on a real distinction: this
+// controller serves no Redfish, so what was exercised is the OEM REST remote-media route
+// specifically, and the generic virtual-media capability names a surface this unit does not have.
+// CapabilityAccountManagement is absent because the operation that would exercise it was REMOVED
+// (extdeps.bmc.ipmi records why): rotation has no modeled operation at all, so nothing can perform
+// the write that would ground it. SerialConsole is the sharpest case — SOL was activated and
+// streamed both Ampere checkpoint codes and the entire Ubuntu boot, so the capability is very
+// probably real, and it is still omitted because that session was driven by hand from a terminal
+// and not through any modeled route. A capability this row asserts must be one the AUTOMATION can
+// perform.
 data mtcollins1_capability_row: BmcFirmwareReleaseCapabilityRow = BmcFirmwareReleaseCapabilityRow {
   firmware: mtcollins1_firmware,
   capabilities: [
     CapabilityBootSourceOverride,
     CapabilityPowerControl,
+    CapabilityOemRemoteMedia,
   ],
 }

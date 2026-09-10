@@ -77,7 +77,7 @@ import gunbc.roadmap_belt_actuate {
   BeltTeardownOutcome, ReapedSession, TeardownFailed,
   belt_actuate_spawn_member,
   belt_actuate_teardown_member,
-  BeltObserve, Observed, ObserveRefused,
+  BeltObserve, BeltSessionsObserved, ObserveRefused,
   belt_observe_from_result,
   belt_spawn_session_uuid,
   belt_oracle_refs_for_contract,
@@ -382,7 +382,7 @@ test fn witness_teardown_member_refuses_desired_shape() -> Bool {
 
 fn observe_live_count(o: BeltObserve) -> Int {
   match o {
-    Observed { live: live } => count(live)
+    BeltSessionsObserved { live: live } => count(live)
     ObserveRefused { reason: _ } => -1
   }
 }
@@ -390,7 +390,7 @@ fn observe_live_count(o: BeltObserve) -> Int {
 fn is_observe_refused(o: BeltObserve) -> Bool {
   match o {
     ObserveRefused { reason: _ } => true
-    Observed { live: _ } => false
+    BeltSessionsObserved { live: _ } => false
   }
 }
 
@@ -434,7 +434,7 @@ test fn witness_observe_refuses_connection_refused() -> Bool {
   let stderr = "error connecting to /tmp/tmux-1000/srv1-green (Connection refused)"
   match belt_observe_from_result(success: false, stdout: "", stderr: stderr) {
     ObserveRefused { reason } => string_contains(s: reason, pattern: stderr)
-    Observed { live: _ } => false
+    BeltSessionsObserved { live: _ } => false
   }
 }
 
@@ -455,7 +455,7 @@ test fn witness_observe_refuses_malformed_stdout() -> Bool {
     ObserveRefused { reason } =>
       string_contains(s: reason, pattern: "stdout parse refused")
         && string_contains(s: reason, pattern: "malformed")
-    Observed { live: _ } => false
+    BeltSessionsObserved { live: _ } => false
   }
 }
 
