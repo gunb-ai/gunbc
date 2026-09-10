@@ -77,9 +77,21 @@ import v2.workflow.compile_door_ledger { FatalGrain, cause_ownership_lookup }
 // already emits exactly one {path, head_reason, fatal_reason} row per source, on this base, and
 // closure_module_manifest is likewise derivable from the emitted crate's per-module headers. Those rows are hand-applied here, which is the manual-application-committed-as-source tell,
 // and they are the part that should stop being authored.
-// dissolve-on: an emission target for this table plus a drift gate over it, in the shape
-// gunbc.generated_artifact_gate already carries - at which point the projected rows are generated and
-// the hand-authored copy is deleted, not migrated.
+// dissolve-on: the front end's per-file verdict becoming derivable IN-MODEL, at which point these rows
+// are a fold's output, an emission target and a drift gate can exist for them, and the hand-authored
+// copy is deleted rather than migrated.
+//
+// THAT TRIGGER USED TO NAME gunbc.generated_artifact_gate AND THAT WAS WRONG, in a way worth recording
+// because it invites a specific misreading. Every artifact that gate carries - the workflow YAML, the
+// gitignore, DESIGN.md, the githooks, the stage0 crate layout - is a PROJECTION: a pure fold from .dag
+// authorities, regenerated deterministically in the regen path. These rows are not that. They are an
+// OBSERVATION, produced by emitting a compiler, building it, and running it over a source tree; no
+// fold over model data yields them, and a regen path cannot hold a twenty-five-minute build-and-run.
+// So the lane resolving on this base means the measurement can be RE-TAKEN, which is what makes the
+// table re-derivable and is why the producer is named - it does not mean the model can EMIT these
+// rows, which is what a generated artifact requires. The earlier wording blurred those two, and a
+// reader could reasonably have concluded the projected half could be generated today. It cannot, and
+// the capability that would change that is the one now named.
 //
 // The AUTHORED half is the cause roster and the per-file attribution: eighteen defects, each with a
 // reproducer, a positive control, a nearest-alternative control and its join evidence. No producer in

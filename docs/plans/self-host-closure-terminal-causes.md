@@ -68,6 +68,14 @@ the same head, so a per-file digest would restate what the pin's `head_sha` alre
 Two different things are described below and they have different standings, so the distinction is
 stated before either.
 
+**Re-taking the measurement and emitting it are different capabilities, and only the first exists.**
+The lane below can be run again, which is what makes this table re-derivable and is why its producer is
+named. It does not follow that the model can EMIT these rows: every artifact the drift gate carries is a
+projection — a pure fold from `.dag` authorities, regenerated deterministically in the regen path —
+whereas these rows come from emitting a compiler, building it, and running it over a source tree. A
+regen path cannot hold that, so there is no emission target for them until the front end's per-file
+verdict is derivable in-model. That is the capability the carrier's `dissolve-on:` names.
+
 **The route that produced the table is a required CI lane, and it resolves in this repository.** The
 `v2-native` lane, its authority `gunbc.witness_v2_native_route`, and the `NativeTestFileRefusal` row
 type landed on main with #10882. The population and the terminal causes in
