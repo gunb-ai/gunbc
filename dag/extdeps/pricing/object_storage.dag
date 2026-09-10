@@ -12,6 +12,7 @@ import std.types { NonEmptyStr, List }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.backblaze.b2 { b2_storage_pricing_citation_locator, b2_egress_pricing_citation_locator }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -247,7 +248,7 @@ data b2_storage_rate_unavailable: ObjectStorageClassRow = ObjectStorageClassRow 
   durability: DurabilityUnstated,
   redundancy: RedundancyUnstated,
   tier_lower_bound_gb: 0,
-  pricing_citation: "backblaze.com/cloud-storage/pricing#rate-not-machine-readable",
+  pricing_citation: b2_storage_pricing_citation_locator,
 }
 
 data hetzner_object_storage_rate_unavailable: ObjectStorageClassRow = ObjectStorageClassRow {
@@ -327,7 +328,7 @@ data b2_egress_beyond_free_allowance: ObjectStorageEgressRow = ObjectStorageEgre
     byte_basis: ByteBasisUnstated,
   },
   tier_lower_bound_gb: 0,
-  pricing_citation: "backblaze.com/cloud-storage/pricing#egress-beyond-3x",
+  pricing_citation: b2_egress_pricing_citation_locator,
 }
 
 // Google Cloud Storage prices REPLICATION explicitly and separately: writing to a dual-region or

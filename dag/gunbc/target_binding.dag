@@ -5,7 +5,7 @@ import extdeps.bazel.label {
   render_label, label_canonicality,
 }
 import v2.std.optional { Optional, Present, Absent }
-import std.types { String }
+import std.types { String, List, NonEmptyStr }
 import std.integer { Int }
 
 // A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
@@ -19,6 +19,7 @@ type TargetProducer
   | BehavioralReceiptCensusProducer
   | BehavioralReceiptSelftestProducer
   | HeadsReadingDifferentialProducer
+  | CompileCleanDiagnosticCensusProducer
 
 type TargetBinding {
   target: Label
@@ -252,3 +253,173 @@ type HeadsReadingDifferentialStanding
       cause: HeadsReadingDifferentialSubjectCause
     }
   | HeadsReadingDifferentialRefused { cause: HeadsReadingDifferentialRefusalCause }
+
+// THE RAW DIAGNOSTIC CENSUS, ONE ROW PER OBSERVED (CLASS, DISPOSITION) PAIR, COUNTED BEFORE ANY
+// SEVERITY DECISION. The class name is the compiler's own diagnostic variant name (the same key `cli_run`
+// `compile_clean_diagnostic_histogram_key` derives by total match), never a paraphrase, so a row
+// joins to the diagnostic authority rather than to a second taxonomy. The three counts are the
+// burndown's working grain: total diagnostics, the distinct modules carrying them, and the
+// distinct source positions they occupy -- a class whose positions outrun its modules is diffuse,
+// and one concentrated in a few modules is a per-site repair.
+//
+// DISPOSITION IS AN ATTRIBUTE OF THE ROW, NEVER A FILTER ON WHETHER THE ROW EXISTS. The census
+// this replaced partitioned first and counted the survivors, so a class whose disposition changed
+// -- a policy row unreadable, a promotion to blocking -- vanished from the very instrument meant
+// to watch it, and the zero assertion went vacuous exactly when it mattered. Here every emitted
+// diagnostic is counted, and the disposition recorded beside it is the diagnostic authority's
+// own answer, projected whole: `v1.std.core` `diagnostic_disposition` decides TWO independent
+// axes per instance -- `DiagnosticGateDisposition` (GateBlocking | GateAdvisoryTypecheck |
+// GateRenderedUncounted) and `DiagnosticSeverity` (SeverityError | SeverityNonError) -- and the
+// census carries both, because collapsing them is a false projection: `ComplexityUnknown` sits
+// at (SeverityError, GateRenderedUncounted), expressly rendered-and-uncounted, and a binary
+// advisory/blocking attribute would file it as advisory and pull it into advisory-ceiling
+// reasoning it is expressly excluded from. The one class the authority does not dispose is
+// UnlistedImportUse, whose gate the `gunbc.compile_clean_diagnostic_policy` staging row owns;
+// the census reads that row from the SAME single policy snapshot the provenance digests are
+// computed over, so the classification and the certified policy bytes can never come from two
+// reads. Changing a disposition changes the ATTRIBUTE; it cannot change the POPULATION the zero
+// assertion observes.
+//
+// THE ROW KEY IS (CLASS, GATE, SEVERITY), NOT CLASS ALONE. Gate is a per-INSTANCE fact:
+// `diagnostic_disposition` decides `WhereRefinementUnenforced` by the instance's reason (six
+// advisory reason strings; any other reason blocks), so one class can carry instances on both
+// sides of the partition. A mixed class produces one row per observed (gate, severity) pair
+// rather than a single row carrying a fabricated class-level answer, and a reader aggregating
+// per class sums across the class's rows (gunbc.instrument_targets diagnostic_class_raw_count
+// does exactly this). CEILING-ROSTER COVERAGE APPLIES TO CensusAdvisoryTypecheck ALONE: the
+// advisory ceilings govern the advisory warning program, and a rendered-uncounted row is not
+// advisory -- it is already expressly outside the count's governance.
+type DiagnosticCensusGateDisposition
+  = CensusBlocking
+  | CensusAdvisoryTypecheck
+  | CensusRenderedUncounted { reason: NonEmptyStr }
+
+type DiagnosticCensusSeverity
+  = CensusSeverityError
+  | CensusSeverityNonError
+
+type RawDiagnosticClassObservation {
+  diagnostic_class: NonEmptyStr
+  gate: DiagnosticCensusGateDisposition
+  severity: DiagnosticCensusSeverity
+  diagnostics: Int
+  distinct_modules: Int
+  distinct_positions: Int
+}
+
+// THE OBSERVATION'S PROVENANCE, FIVE DIGESTS THAT EACH CLOSE ONE WAY THE READING COULD BE ABOUT
+// SOMETHING ELSE. The field set is the Step 0 binding-provenance contract's receipt roster
+// (gunbc.namespace_step0_binding_provenance_contract step0_census_receipt_fields) projected onto a
+// census that has no strip: source vector, compiler executable, resolver policy, class schema,
+// closure. What each digest binds:
+//
+//   source_vector_digest -- the bytes compiled. The producer materializes the whole-tree source
+//     vector INTO MEMORY, hashes that vector, and hands the same in-memory bytes to the compiler,
+//     so the digest is bound to the observation by construction: the tree going A -> B -> A
+//     mid-walk cannot produce a mixed population that hashes clean, because nothing is re-read
+//     after the hash. This is the gap the unpinned-live-tree note (gunbc.instrument_targets,
+//     above the instrument roster) names, closed for this instrument at its own boundary.
+//   compiler_executable_digest -- the running binary, so a count produced by a different
+//     compiler is a different observation rather than a silently different oracle.
+//   resolver_policy_digest -- the exact closure of `gunbc.compile_clean_diagnostic_policy` as
+//     read for this run's disposition and ceiling-roster decisions.
+//   diagnostic_class_schema_digest -- the class schema the rows were written against, so a
+//     reader joining observations across a schema change refuses instead of mixing.
+//   closure_digest -- the module population the counts are denominated in.
+type CompileCleanDiagnosticCensusIdentity {
+  source_vector_digest: NonEmptyStr
+  compiler_executable_digest: NonEmptyStr
+  resolver_policy_digest: NonEmptyStr
+  diagnostic_class_schema_digest: NonEmptyStr
+  closure_digest: NonEmptyStr
+}
+
+// The subject is the whole-tree compile-clean closure (the same source set the floor gate
+// compiles), so `closure_modules` is the denominator every per-class count is read against, and
+// `raw_diagnostics` is the unfiltered vector length the per-class counts must sum to -- the
+// conservation law the producer checks before this value may exist.
+//
+// COMPLETION STANDING IS THE STANDING SUM BELOW, NOT A FIELD HERE. The contract's
+// CensusCompletenessStanding asks whether the observation finished, and for this producer the
+// answer is structural: the walk is one in-memory vector consumed in full, a short read is a
+// DiagnosticCensusConservationViolated refusal, and there is no partial-observation state a field
+// could name. A completion field with exactly one constructible value would be permanently green
+// by construction -- the decoration DESIGN 4b rates worse than absent.
+type CompileCleanDiagnosticCensusObservation {
+  identity: CompileCleanDiagnosticCensusIdentity
+  closure_modules: Int
+  raw_diagnostics: Int
+  classes: List<RawDiagnosticClassObservation>
+}
+
+// THE REFUSAL CAUSES, ONE PER WAY THE CENSUS CAN FAIL TO BE THE AUTHORITY IT CLAIMS. The first
+// two are the subject failures: a census over a source closure has no caller-selected subject
+// that can be absent, so the closure failing to resolve, or resolving to no graph, is a typed
+// refusal, never a census of zero. The rest are the authority failures this carrier exists to
+// make loud:
+//
+//   DiagnosticCensusPolicyUnreadable -- the disposition row or the ceiling roster could not be
+//     read. The gate already fails closed on this; the census now refuses on it too, because a
+//     census that cannot read dispositions and reports anyway is the false-zero state this
+//     rework exists to delete.
+//   DiagnosticCensusConservationViolated -- the per-class counts did not sum to the raw
+//     diagnostics vector length: a diagnostic was dropped or invented between emission and
+//     counting.
+//   DiagnosticCensusDetailCountMismatch -- the UnlistedImportUse class count disagrees with the
+//     detailed per-row worklist collected over the same vector.
+//   DiagnosticCensusCeilingRosterDuplicate -- two ceiling rows name one class.
+//   DiagnosticCensusCeilingRosterStale -- a ceiling row names a class the schema does not know,
+//     or one whose gate is no longer CensusAdvisoryTypecheck (a promoted class's row must delete
+//     with the promotion, and a rendered-uncounted class was never the roster's subject).
+//   DiagnosticCensusCeilingRosterUncovered -- an observed CensusAdvisoryTypecheck class carries
+//     no ceiling row. This is the reintroduction wall: a class that returns after burning to
+//     zero refuses here until its ceiling is re-declared. Blocking and rendered-uncounted rows
+//     need no roster row: the gate already refuses the first, and the second is expressly
+//     outside the advisory program's governance.
+//   DiagnosticCensusIdentityUnavailable -- one of the five identity digests could not be
+//     computed, so the observation could not be bound to its source, compiler, policy, schema
+//     and closure; an unbound observation is not a smaller one.
+//
+// THE LAST FOUR ARE THE SCHEMA WITNESS. The class schema was a hand-authored specimen vector an
+// author could update the compiler's exhaustive matches around and forget (review 2026-09-10,
+// finding 4): a new `CompilerDiagnostic` constructor forced the matches, not the specimen, so
+// the schema digest and the ceiling coverage could stay ignorant of a class no live corpus
+// instance yet revealed. The producer now derives the constructor census from the coproduct
+// authority itself -- the `v1.std.core` `CompilerDiagnostic` declaration in the same compiled
+// graph the population is counted from -- and refuses unless the specimen is a bijection onto
+// it: unique class identities (no two specimens projecting one class, so a string key can never
+// overwrite rather than expose), equal counts, no authority constructor unrepresented, no
+// specimen unknown to the authority. A new constructor that skips the specimen now reds the
+// census at the next run, and the histogram key's total match still reds the build itself.
+//   DiagnosticCensusSchemaAuthorityAbsent -- the compiled graph carries no `v1.std.core`
+//     `CompilerDiagnostic` coproduct declaration to derive the constructor census from.
+//   DiagnosticCensusSchemaSpecimenDuplicate -- two specimens project the same class identity.
+//   DiagnosticCensusSchemaCountMismatch -- the specimen count disagrees with the authority's
+//     constructor census.
+//   DiagnosticCensusSchemaConstructorUnrepresented -- an authority constructor has no specimen.
+//   DiagnosticCensusSchemaSpecimenUnknownToAuthority -- a specimen projects a class identity the
+//     authority's coproduct does not declare (a stale specimen).
+type CompileCleanDiagnosticCensusRefusalCause
+  = DiagnosticCensusClosureUnresolvable
+  | DiagnosticCensusGraphAbsent
+  | DiagnosticCensusPolicyUnreadable
+  | DiagnosticCensusConservationViolated
+  | DiagnosticCensusDetailCountMismatch
+  | DiagnosticCensusCeilingRosterDuplicate
+  | DiagnosticCensusCeilingRosterStale
+  | DiagnosticCensusCeilingRosterUncovered
+  | DiagnosticCensusIdentityUnavailable
+  | DiagnosticCensusSchemaAuthorityAbsent
+  | DiagnosticCensusSchemaSpecimenDuplicate
+  | DiagnosticCensusSchemaCountMismatch
+  | DiagnosticCensusSchemaConstructorUnrepresented
+  | DiagnosticCensusSchemaSpecimenUnknownToAuthority
+
+// A completed census holds exactly when the class-specific zero wall says so
+// (gunbc.instrument_targets compile_clean_diagnostic_census_holds): the raw UnlistedImportUse
+// count over this unfiltered population is zero. Every other class row -- advisory or blocking --
+// is reported without deciding, because the all-classes-empty completion target is the program's
+// final state, not this instrument's intermediate admission question.
+type CompileCleanDiagnosticCensusStanding
+  = CompileCleanDiagnosticCensusCompleted { observation: CompileCleanDiagnosticCensusObservation }
+  | CompileCleanDiagnosticCensusRefused { cause: CompileCleanDiagnosticCensusRefusalCause }

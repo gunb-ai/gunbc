@@ -126,6 +126,7 @@ fn fleet_account_key_label(key: FleetPosixAccountKey) -> String {
     FleetAccountAutomation => "automation"
     FleetAccountInferenceService => "inference-service"
     FleetAccountPublicationHelper => "publication-helper"
+    FleetAccountNotificationService => "notification-service"
   }
 }
 

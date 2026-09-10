@@ -48,10 +48,10 @@ test fn witness_identity_that_is_not_a_dns_label_can_still_have_a_hostname() -> 
 }
 
 test fn witness_production_fleet_roster_is_injective() -> Bool {
-  match hostname_allocation_roster_verdict(allocations: gunbc_fleet_hostname_allocations) {
-    HostnameAllocationRosterConsistent => true
-    FleetSlotAllocatedTwice { fleet_slot: _ } => false
-    CanonicalHostnameClaimedTwice { canonical_hostname: _ } => false
+  match hostname_allocation_admission(allocations: gunbc_fleet_hostname_allocations) {
+    AllocationAdmitted { roster: _ } => true
+    AllocationPrimaryKeyRepeated { key: _ } => false
+    AllocationSecondaryKeyRepeated { key: _ } => false
   }
 }
 
@@ -60,10 +60,10 @@ test fn witness_two_identities_may_not_claim_one_canonical_hostname() -> Bool {
     allocation_fixture(slot: "srvA", hostname: "shared"),
     allocation_fixture(slot: "srvB", hostname: "shared"),
   ]
-  match hostname_allocation_roster_verdict(allocations: roster) {
-    CanonicalHostnameClaimedTwice { canonical_hostname: dup } => (dup as String) == "shared"
-    HostnameAllocationRosterConsistent => false
-    FleetSlotAllocatedTwice { fleet_slot: _ } => false
+  match hostname_allocation_admission(allocations: roster) {
+    AllocationSecondaryKeyRepeated { key: dup } => dup == "shared"
+    AllocationAdmitted { roster: _ } => false
+    AllocationPrimaryKeyRepeated { key: _ } => false
   }
 }
 
@@ -72,10 +72,10 @@ test fn witness_one_identity_may_not_be_allocated_two_hostnames() -> Bool {
     allocation_fixture(slot: "srvA", hostname: "first"),
     allocation_fixture(slot: "srvA", hostname: "second"),
   ]
-  match hostname_allocation_roster_verdict(allocations: roster) {
-    FleetSlotAllocatedTwice { fleet_slot: dup } => (dup as String) == "srvA"
-    HostnameAllocationRosterConsistent => false
-    CanonicalHostnameClaimedTwice { canonical_hostname: _ } => false
+  match hostname_allocation_admission(allocations: roster) {
+    AllocationPrimaryKeyRepeated { key: dup } => dup == "srvA"
+    AllocationAdmitted { roster: _ } => false
+    AllocationSecondaryKeyRepeated { key: _ } => false
   }
 }
 
