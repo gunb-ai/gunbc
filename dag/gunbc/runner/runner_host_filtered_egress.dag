@@ -50,11 +50,10 @@ data bridged_attachment_rejected: GuestAttachment = BridgedToPhysicalSegment {
 }
 
 // THE REJECTED TOPOLOGY IS THE ONE THE ATTEMPT RECEIPT HOLDS. These folds consume
-// egress_outcome and guest_reachability. They are not wrapped in an unread data row, not
-// folded into KernelFeatureRequirement.required_for, and not a field of KernelConfigHolds
-// (that verdict answers whether a .config satisfies the option roster). A later change that
-// must branch on the observation imports these functions; grafting them onto kernel-option
-// admission or a constant-folding witness is not that consumer.
+// egress_outcome and guest_reachability. They are retained from gunbc#10818. This change
+// deletes the unread data rows that used to wrap them; it does not add a new unread
+// wrapper, a kernel-option graft, or a constant-folding witness (reviews 63093, 63122,
+// 63143). Deleting the folds themselves would reverse the brief that kept them.
 fn bridged_attempt_left_guest_without_egress() -> Bool {
   match egress_outcome {
     GuestEgressEstablished { via: _ } => false
