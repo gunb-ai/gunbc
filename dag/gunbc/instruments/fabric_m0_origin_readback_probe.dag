@@ -89,9 +89,16 @@ fn expected_other_object_digest() -> Sha256Digest {
   Sha256Digest { hex: "087a9dd54ce8aef4192f5b49cf09666244a10dd5751370d6e7295e968e77642f" as Sha256DigestHex }
 }
 
-// The parameter is named `staged` and not `path`: under whole-corpus preparation a parameter
-// spelled `path` did not bind at all and the probe errored `undefined variable: path` while the
-// same source ran green under a scoped entry compile. Measured on gunbc#10934, run 34441858589.
+// CORRECTION, kept rather than quietly edited because the first version of this comment asserted a
+// cause it had not isolated. It read: the parameter is named `staged` and not `path` because a
+// parameter spelled `path` did not bind under whole-corpus preparation. THAT WAS WRONG. The
+// `undefined variable: path` on gunbc#10934 run 34441858589 came from extdeps.crypto.hash's
+// crypto.Sha256Sum.File mock_response, which interpolated the input path into its canned line and so
+// refused on every hermetic call -- the only such interpolation in any extdeps mock, and one that
+// had therefore never replayed. Two changes went in together (a rename and a move out of hermetic
+// discovery) and the rename got the credit. Isolated afterwards by running a consumer with NO
+// identifier `path` anywhere in it under --dry-run: same refusal. The mock is repaired at its own
+// authority; the parameter name here is now merely a name.
 fn digest_of(staged: NonEmptyStr, expected: Sha256Digest) -> Bool {
   match read_origin_staged_file(staged_path: staged) {
     OriginReadingTaken { reading: r } =>

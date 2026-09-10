@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.crypto.hash { sha256sum_line_digest }
 import extdeps.crypto.hash
-import std.decl_ref { decl_ref }
 
 // THE ONE PLACE A CONFIRMING ORIGIN READBACK CAN COME FROM.
 //
@@ -25,7 +24,18 @@ import std.decl_ref { decl_ref }
 //
 // WHAT THIS CLOSES AND WHAT IT DOES NOT, measured rather than asserted (DESIGN 4b(1)). It closes
 // AUTHORED CONFIRMATION: the confirming digest is computed by this function, over the file named in
-// the same value, and no other constructor exists on the source-to-dag acceptance path. It does NOT
+// the same value, and read_origin_staged_file is the ONLY constructor in the corpus -- there is no
+// fixture mint beside it and no admitted caller list.
+//
+// THERE WAS ONE, AND IT WAS A HOLE, which is worth recording because the shape is general. An
+// earlier revision exported witness_origin_reading(staged_path, observed_digest) under admit_callers
+// naming two witness wrappers. .dag HAS NO MODULE-PRIVATE, so each admitted wrapper was itself an
+// exported unrestricted constructor: a foreign module imported the wrapper, passed any digest, and
+// reached ManifestRead -- 0 blocking errors. admit_callers on the wrapper would only have moved the
+// proxy one hop, since every helper returning a value that CARRIES a reading is the same escape.
+// The repair was to delete the fixture route, not to fence it: the witnesses now digest a committed
+// fixture file through this function like everything else, which the hermetic mock in
+// extdeps.crypto.hash makes possible on the required floor. It does NOT
 // close whether the path handed here is the origin readback's staged output rather than a cache
 // copy -- staged_path is still chosen by the caller, so the class as a whole stays MITIGATABLE and
 // only this sub-class reaches structural impossibility. A class's rung is the minimum across its
@@ -109,29 +119,3 @@ fn origin_reading_path(reading: OriginReading) -> NonEmptyStr {
   reading.staged_path
 }
 
-// THE FIXTURE MINT, AND WHY IT IS NOT A HOLE IN THE SEAL ABOVE.
-//
-// The witnesses that exercise the completion ALGEBRA -- verdict dominance, slot comparison, roster
-// joins -- need a confirming reading whose digest they choose, and they must stay pure folds: making
-// them take a real digest would put a host service call on the required floor for every arm and
-// would tie their verdicts to whatever a mock returned, which is not what those witnesses are about.
-//
-// So this mint exists, and its population is CLOSED BY CONSTRUCTION rather than by convention:
-// admit_callers names the exact functions permitted to call it, and any other caller is refused with
-// ConstructorCallAdmissionRefused at compile. That refusal is measured, not assumed, by
-// test.claim.fabric_m0_origin_readback_seal -- one probe forges the record directly and one calls
-// this mint from an unadmitted module, because those are two different walls and covering one leaves
-// the other free to be absent. Widening the list is a visible edit to this declaration, in this
-// module, against an enumerated roster; it is not something a caller can do to itself.
-//
-// WHAT THIS COSTS, STATED RATHER THAN HIDDEN: the honest claim for the production population is that
-// no constructor exists outside this enumerated admission, not that none exists at all. That is
-// still structural impossibility for every module the fabric-M0 path actually runs through, and
-// DESIGN 4b's own reasoning about fixture-authorable REDs is why a fixture route is admitted rather
-// than treated as a defeat -- a compiler's regression probes are precisely invalid programs.
-fn witness_origin_reading(staged_path: NonEmptyStr, observed_digest: Sha256Digest) -> OriginReading
-  admit_callers: [
-    decl_ref(module_path: "test.claim.fabric_m0_commit_witness", decl_name: "witness_reading"),
-    decl_ref(module_path: "test.claim.fabric_m0_completion_witness", decl_name: "witness_reading"),
-  ]
-  = OriginReading { staged_path: staged_path, observed_digest: observed_digest }

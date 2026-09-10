@@ -16,7 +16,14 @@ import product.fabric.work {
   resolve_output_obligations, ObligationsJudgedAtJobStart,
   OutputObligationsResolution,
 }
-import gunbc.fabric_m0_origin_readback { OriginReading, witness_origin_reading }
+import gunbc.fabric_m0_origin_readback {
+  OriginReading,
+  OriginReadingOutcome,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  origin_reading_digest,
+  read_origin_staged_file,
+}
 import gunbc.fabric_m0_completion {
   ComputationOutcome,
   ComputationSucceeded,
@@ -113,15 +120,32 @@ fn the_resolution() -> OutputObligationsResolution {
 // Two distinct fixture digests. The witness needs a SECOND value so the digest comparison is shown
 // to separate rather than answer true for everything -- an equality that never fails would satisfy
 // the positive control on its own.
-// THE ONE ADMITTED FIXTURE ROUTE TO A CONFIRMING READING. OriginReading is sole_constructor, so
-// this file cannot write one; witness_origin_reading admits THIS function by name and no other.
-// These witnesses are about the verdict algebra, so the digest is chosen here -- the computation is
-// measured by the instrument tools.fabric_m0_origin_readback_probe and the seal by test.claim.fabric_m0_origin_readback_seal.
-fn witness_reading(d: Sha256Digest) -> OriginReading {
-  witness_origin_reading(staged_path: "fixture://fabric-m0/completion/subject", observed_digest: d)
+// EVERY CONFIRMING READ BELOW IS A REAL READ, and the fixture mint that used to stand here is
+// deleted. It took a caller-chosen digest, and because .dag has no module-private the wrapper that
+// called it was itself an exported unrestricted constructor: a foreign module could import it and
+// reach ReadbackConfirmed with any digest at all. Measured, not argued -- that probe compiled with
+// 0 blocking errors. Sealing the wrapper would only have moved the proxy one hop, because every
+// helper returning a value that CARRIES a reading is the same escape.
+//
+// A reading now comes from digesting a file, which is the only way anything can obtain one. Under
+// the hermetic envelope crypto.Sha256Sum.File replays one constant digest for every path, and that
+// is sufficient here: these witnesses are about the verdict algebra, and the axis that separates a
+// matching arm from a mismatching one is the RECORDED digest, not the observed one. An authority
+// cannot choose what it reads back, which is the point.
+data fixture_staged_subject: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
+
+fn read_outcome() -> OriginReadingOutcome {
+  read_origin_staged_file(staged_path: fixture_staged_subject)
 }
 
-fn digest_a() -> Sha256Digest {
+// The digest the origin actually returned, DERIVED from the reading and never authored, so a
+// success arm cannot drift away from what was read.
+fn digest_a(rd: OriginReading) -> Sha256Digest {
+  origin_reading_digest(reading: rd)
+}
+
+fn digest_a_unused_marker() -> Sha256Digest {
+
   Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
 }
 
@@ -137,25 +161,25 @@ fn other_attempt() -> AttemptIdentity {
   "attempt-2" as AttemptIdentity
 }
 
-fn full_membership() -> List<ManifestMember> {
+fn full_membership(rd: OriginReading) -> List<ManifestMember> {
   [
-    ManifestMember { obligation: build_output(), content: digest_a() },
-    ManifestMember { obligation: execution_receipt(), content: digest_a() },
+    ManifestMember { obligation: build_output(), content: digest_a(rd: rd) },
+    ManifestMember { obligation: execution_receipt(), content: digest_a(rd: rd) },
   ]
 }
 
-fn good_manifest() -> CommitManifest {
+fn good_manifest(rd: OriginReading) -> CommitManifest {
   CommitManifest {
     attempt: the_attempt(),
-    manifest_digest: digest_a(),
-    members: full_membership(),
+    manifest_digest: digest_a(rd: rd),
+    members: full_membership(rd: rd),
   }
 }
 
-fn manifest_with(members: List<ManifestMember>) -> CommitManifest {
+fn manifest_with(rd: OriginReading, members: List<ManifestMember>) -> CommitManifest {
   CommitManifest {
     attempt: the_attempt(),
-    manifest_digest: digest_a(),
+    manifest_digest: digest_a(rd: rd),
     members: members,
   }
 }
@@ -167,30 +191,30 @@ fn obs_of(subject: ObservationSubject, r: OriginReadback) -> OriginObservation {
   OriginObservation { subject: subject, readback: r }
 }
 
-fn confirmed(subject: ObservationSubject) -> OriginObservation {
-  obs_of(subject: subject, r: ReadbackConfirmed { reading: witness_reading(d: digest_a()) })
+fn confirmed(rd: OriginReading, subject: ObservationSubject) -> OriginObservation {
+  obs_of(subject: subject, r: ReadbackConfirmed { reading: rd })
 }
 
-fn all_confirmed() -> List<OriginObservation> {
-  [confirmed(subject: ObligationSubject { obligation: build_output() }), confirmed(subject: ObligationSubject { obligation: execution_receipt() }), confirmed(subject: CommitManifestSubject {})]
+fn all_confirmed(rd: OriginReading) -> List<OriginObservation> {
+  [confirmed(rd: rd, subject: ObligationSubject { obligation: build_output() }), confirmed(rd: rd, subject: ObligationSubject { obligation: execution_receipt() }), confirmed(rd: rd, subject: CommitManifestSubject {})]
 }
 
-fn reads_with_output(r: OriginReadback) -> List<OriginObservation> {
-  [obs_of(subject: ObligationSubject { obligation: build_output() }, r: r), confirmed(subject: ObligationSubject { obligation: execution_receipt() }), confirmed(subject: CommitManifestSubject {})]
+fn reads_with_output(rd: OriginReading, r: OriginReadback) -> List<OriginObservation> {
+  [obs_of(subject: ObligationSubject { obligation: build_output() }, r: r), confirmed(rd: rd, subject: ObligationSubject { obligation: execution_receipt() }), confirmed(rd: rd, subject: CommitManifestSubject {})]
 }
 
-fn reads_with_receipt(r: OriginReadback) -> List<OriginObservation> {
-  [confirmed(subject: ObligationSubject { obligation: build_output() }), obs_of(subject: ObligationSubject { obligation: execution_receipt() }, r: r), confirmed(subject: CommitManifestSubject {})]
+fn reads_with_receipt(rd: OriginReading, r: OriginReadback) -> List<OriginObservation> {
+  [confirmed(rd: rd, subject: ObligationSubject { obligation: build_output() }), obs_of(subject: ObligationSubject { obligation: execution_receipt() }, r: r), confirmed(rd: rd, subject: CommitManifestSubject {})]
 }
 
-fn reads_with_manifest(r: OriginReadback) -> List<OriginObservation> {
-  [confirmed(subject: ObligationSubject { obligation: build_output() }), confirmed(subject: ObligationSubject { obligation: execution_receipt() }), obs_of(subject: CommitManifestSubject {}, r: r)]
+fn reads_with_manifest(rd: OriginReading, r: OriginReadback) -> List<OriginObservation> {
+  [confirmed(rd: rd, subject: ObligationSubject { obligation: build_output() }), confirmed(rd: rd, subject: ObligationSubject { obligation: execution_receipt() }), obs_of(subject: CommitManifestSubject {}, r: r)]
 }
 
-fn committed_both() -> List<CommittedOutput> {
+fn committed_both(rd: OriginReading) -> List<CommittedOutput> {
   [
-    CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
-    CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
+    CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) },
+    CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) },
   ]
 }
 
@@ -222,12 +246,12 @@ fn is_pending(p: JobPublication) -> Bool {
   }
 }
 
-fn committed_receipt_only() -> List<CommittedOutput> {
-  [CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() }]
+fn committed_receipt_only(rd: OriginReading) -> List<CommittedOutput> {
+  [CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) }]
 }
 
-fn committed_build_only() -> List<CommittedOutput> {
-  [CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() }]
+fn committed_build_only(rd: OriginReading) -> List<CommittedOutput> {
+  [CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) }]
 }
 
 fn second_output() -> OutputObligation {
@@ -307,34 +331,46 @@ fn three_contract_work() -> WorkKey {
 // publishes anything, which is the shape the brief names explicitly: an implementation refusing
 // every job does not satisfy M0.
 test fn a_complete_attempt_publishes_success() -> Bool {
-  is_success(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_success(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // WITHHOLD THE REQUIRED ARTIFACT. The obligation set must not shrink to match what arrived.
 test fn a_withheld_required_artifact_prevents_success() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_receipt_only(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_receipt_only(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 test fn a_withheld_required_receipt_prevents_success() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_build_only(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_build_only(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // AN UNREADABLE DECLARATION IS NOT AN EMPTY ONE. This is the pair the module's constructor split
@@ -342,159 +378,207 @@ test fn a_withheld_required_receipt_prevents_success() -> Bool {
 // or the refusal above would be satisfied by an authority that simply rejects every zero-length
 // roster and the distinction would carry no information.
 test fn an_unreadable_artifact_declaration_prevents_success() -> Bool {
-  is_obligations_unreadable(p: publish(
-    computation: ComputationSucceeded,
-    resolution: unreadable_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_obligations_unreadable(p: publish(
+        computation: ComputationSucceeded,
+        resolution: unreadable_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 test fn a_declared_empty_artifact_roster_still_succeeds() -> Bool {
-  is_success(p: publish_judging(
-    computation: ComputationSucceeded,
-    resolution: resolution_for(required: [], work: empty_contract_work()),
-    judged_work: empty_contract_work(),
-    committed: [],
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_success(p: publish_judging(
+        computation: ComputationSucceeded,
+        resolution: resolution_for(required: [], work: empty_contract_work()),
+        judged_work: empty_contract_work(),
+        committed: [],
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 test fn an_unreadable_receipt_declaration_prevents_success() -> Bool {
-  is_obligations_unreadable(p: publish(
-    computation: ComputationSucceeded,
-    resolution: unreadable_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_obligations_unreadable(p: publish(
+        computation: ComputationSucceeded,
+        resolution: unreadable_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // A SUCCESSFUL STORAGE FINALIZATION MUST NOT INVERT A FAILED BUILD.
 test fn a_failed_build_stays_failed_though_every_receipt_commits() -> Bool {
-  match publish(
-    computation: ComputationFailed { cause: "compile error" },
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ) {
-    PublishComputationFailed { attempt: _, cause: c } => c == "compile error"
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      match publish(
+        computation: ComputationFailed { cause: "compile error" },
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ) {
+        PublishComputationFailed { attempt: _, cause: c } => c == "compile error"
+        other => false
+      }
   }
 }
 
 // A READBACK THAT DISAGREES WITH THE COMMITTED RECORD IS NOT A HIT.
 test fn a_readback_digest_mismatch_prevents_success() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: concat([
-      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
-    ], committed_receipt_only()),
-    obs: reads_with_output(r: ReadbackConfirmed { reading: witness_reading(d: digest_b()) }),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: concat([
+          CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_b() },
+        ], committed_receipt_only(rd: rd)),
+        obs: reads_with_output(rd: rd, r: ReadbackConfirmed { reading: rd }),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 test fn an_absent_object_at_origin_prevents_success() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: concat([
-      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
-    ], committed_receipt_only()),
-    obs: reads_with_output(r: ReadbackAbsent),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: concat([
+          CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) },
+        ], committed_receipt_only(rd: rd)),
+        obs: reads_with_output(rd: rd, r: ReadbackAbsent),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // A LOST ACKNOWLEDGEMENT IS NEITHER SUCCESS NOR FAILURE. This is the arm that would disappear if
 // unknown were folded into either decided outcome, so it is asserted as pending specifically --
 // not merely as not-success, which ReadbackAbsent already satisfies.
 test fn a_lost_acknowledgement_is_pending_not_decided() -> Bool {
-  is_pending(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: concat([
-      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
-    ], committed_receipt_only()),
-    obs: reads_with_output(r: ReadbackUnknown { cause: "upload acknowledgement lost" }),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_pending(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: concat([
+          CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) },
+        ], committed_receipt_only(rd: rd)),
+        obs: reads_with_output(rd: rd, r: ReadbackUnknown { cause: "upload acknowledgement lost" }),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // A DEFINITELY-MISSING OBJECT DOMINATES AN UNKNOWN ONE, so a job that is already incomplete is not
 // parked in pending forever waiting on a reconcile that cannot complete it.
 test fn a_missing_object_dominates_an_unknown_one() -> Bool {
-  is_finalization_failure(p: publish_judging(
-    computation: ComputationSucceeded,
-    resolution: resolution_for(required: three_required(), work: three_contract_work()),
-    judged_work: three_contract_work(),
-    committed: committed_both(),
-    obs: reads_with_output(r: ReadbackUnknown { cause: "upload acknowledgement lost" }),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish_judging(
+        computation: ComputationSucceeded,
+        resolution: resolution_for(required: three_required(), work: three_contract_work()),
+        judged_work: three_contract_work(),
+        committed: committed_both(rd: rd),
+        obs: reads_with_output(rd: rd, r: ReadbackUnknown { cause: "upload acknowledgement lost" }),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // EVIDENCE FROM A FOREIGN ATTEMPT DOES NOT DISCHARGE THIS ATTEMPT'S OBLIGATIONS.
 test fn a_foreign_attempts_artifact_does_not_satisfy_this_one() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: concat([
-      CommittedOutput { obligation: build_output(), attempt: other_attempt(), recorded_digest: digest_a() },
-    ], committed_receipt_only()),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: concat([
+          CommittedOutput { obligation: build_output(), attempt: other_attempt(), recorded_digest: digest_a(rd: rd) },
+        ], committed_receipt_only(rd: rd)),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 test fn a_manifest_bound_to_another_attempt_prevents_success() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: CommitManifest {
-      attempt: other_attempt(),
-      manifest_digest: digest_a(),
-      members: full_membership(),
-    },
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: CommitManifest {
+          attempt: other_attempt(),
+          manifest_digest: digest_a(rd: rd),
+          members: full_membership(rd: rd),
+        },
+      ))
+  }
 }
 
 test fn an_uncommitted_manifest_prevents_success() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: reads_with_manifest(r: ReadbackAbsent),
-    manifest: CommitManifest {
-      attempt: the_attempt(),
-      manifest_digest: digest_a(),
-      members: full_membership(),
-    },
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: reads_with_manifest(rd: rd, r: ReadbackAbsent),
+        manifest: CommitManifest {
+          attempt: the_attempt(),
+          manifest_digest: digest_a(rd: rd),
+          members: full_membership(rd: rd),
+        },
+      ))
+  }
 }
 
 // THE AGGREGATE MUST NOT ERASE THE EVIDENCE UNDERNEATH IT. One output absent and one receipt
 // undetermined is a failed job WITH work left to reconcile, and a verdict that reported only the
 // absent one left the reconciler nothing to act on.
 test fn a_dominating_failure_still_reports_the_unresolved_receipt() -> Bool {
-  match publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: [
-      CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
-    ],
-    obs: reads_with_receipt(r: ReadbackUnknown { cause: "receipt upload acknowledgement lost" }),
-    manifest: good_manifest(),
-  ) {
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: u } => u.count() == 2
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      match publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: [
+          CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) },
+        ],
+        obs: reads_with_receipt(rd: rd, r: ReadbackUnknown { cause: "receipt upload acknowledgement lost" }),
+        manifest: good_manifest(rd: rd),
+      ) {
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: u } => u.count() == 2
+        other => false
+      }
   }
 }
 
@@ -502,15 +586,19 @@ test fn a_dominating_failure_still_reports_the_unresolved_receipt() -> Bool {
 // beside a committed receipt and a committed manifest must report exactly one item; a field that
 // simply echoed the whole roster would report three and satisfy the test above just as well.
 test fn the_work_list_carries_only_the_unresolved_obligations() -> Bool {
-  match publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_receipt_only(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ) {
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: u } => u.count() == 1
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      match publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_receipt_only(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ) {
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: u } => u.count() == 1
+        other => false
+      }
   }
 }
 
@@ -518,84 +606,108 @@ test fn the_work_list_carries_only_the_unresolved_obligations() -> Bool {
 // observed digest, so any confirmed readback satisfied it -- the artifact path's exact check, absent
 // one carrier over.
 test fn a_receipt_content_mismatch_prevents_success() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: concat(committed_build_only(), [
-      CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
-    ]),
-    obs: reads_with_receipt(r: ReadbackConfirmed { reading: witness_reading(d: digest_b()) }),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: concat(committed_build_only(rd: rd), [
+          CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_b() },
+        ]),
+        obs: reads_with_receipt(rd: rd, r: ReadbackConfirmed { reading: rd }),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // THE MANIFEST MUST NAME THE POPULATION. Every object check passing does not establish that the
 // manifest names those objects, and reconstruction after the worker is gone needs the relation.
 test fn a_manifest_omitting_a_required_object_prevents_success() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: manifest_with(members: [ManifestMember { obligation: execution_receipt(), content: digest_a() }]),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: manifest_with(rd: rd, members: [ManifestMember { obligation: execution_receipt(), content: digest_a(rd: rd) }]),
+      ))
+  }
 }
 
 test fn a_manifest_naming_the_wrong_content_prevents_success() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: manifest_with(members: [
-      ManifestMember { obligation: build_output(), content: digest_b() },
-      ManifestMember { obligation: execution_receipt(), content: digest_a() },
-    ]),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: manifest_with(rd: rd, members: [
+          ManifestMember { obligation: build_output(), content: digest_b() },
+          ManifestMember { obligation: execution_receipt(), content: digest_a(rd: rd) },
+        ]),
+      ))
+  }
 }
 
 // TWO ROWS CLAIMING ONE IDENTITY REFUSE RATHER THAN LETTING POSITION DECIDE.
 test fn conflicting_rows_for_one_identity_refuse() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: concat([
-      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
-      CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_b() },
-    ], committed_receipt_only()),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: concat([
+          CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) },
+          CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_b() },
+        ], committed_receipt_only(rd: rd)),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // A FAILED BUILD KEEPS ITS CAUSE AND STILL REPORTS THE RECONCILIATION WORK.
 test fn a_failed_build_still_reports_an_unresolved_receipt() -> Bool {
-  match publish(
-    computation: ComputationFailed { cause: "compile error" },
-    resolution: the_resolution(),
-    committed: concat(committed_build_only(), [
-      CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
-    ]),
-    obs: reads_with_receipt(r: ReadbackUnknown { cause: "receipt upload acknowledgement lost" }),
-    manifest: good_manifest(),
-  ) {
-    PublishComputationFailed { attempt: _, cause: c, unresolved: u } => (c == "compile error") && (u.count() == 1)
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      match publish(
+        computation: ComputationFailed { cause: "compile error" },
+        resolution: the_resolution(),
+        committed: concat(committed_build_only(rd: rd), [
+          CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) },
+        ]),
+        obs: reads_with_receipt(rd: rd, r: ReadbackUnknown { cause: "receipt upload acknowledgement lost" }),
+        manifest: good_manifest(rd: rd),
+      ) {
+        PublishComputationFailed { attempt: _, cause: c, unresolved: u } => (c == "compile error") && (u.count() == 1)
+        other => false
+      }
   }
 }
 
 // AND A FAILED BUILD WHOSE STORAGE IS WHOLLY RESOLVED CARRIES AN EMPTY WORK LIST, so the field above
 // is not satisfied by always reporting something.
 test fn a_failed_build_with_resolved_storage_reports_no_work() -> Bool {
-  match publish(
-    computation: ComputationFailed { cause: "compile error" },
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ) {
-    PublishComputationFailed { attempt: _, cause: c, unresolved: u } => (c == "compile error") && (u.count() == 0)
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      match publish(
+        computation: ComputationFailed { cause: "compile error" },
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ) {
+        PublishComputationFailed { attempt: _, cause: c, unresolved: u } => (c == "compile error") && (u.count() == 0)
+        other => false
+      }
   }
 }
 
@@ -606,15 +718,19 @@ test fn a_failed_build_with_resolved_storage_reports_no_work() -> Bool {
 // still reach the work list beside an unenumerable roster. Asserting a count of 2 is what
 // distinguishes that from an early return.
 test fn an_unenumerable_roster_still_assesses_the_manifest() -> Bool {
-  match publish(
-    computation: ComputationSucceeded,
-    resolution: unreadable_resolution(),
-    committed: committed_both(),
-    obs: reads_with_manifest(r: ReadbackUnknown { cause: "manifest upload acknowledgement lost" }),
-    manifest: good_manifest(),
-  ) {
-    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: u } => u.count() == 2
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      match publish(
+        computation: ComputationSucceeded,
+        resolution: unreadable_resolution(),
+        committed: committed_both(rd: rd),
+        obs: reads_with_manifest(rd: rd, r: ReadbackUnknown { cause: "manifest upload acknowledgement lost" }),
+        manifest: good_manifest(rd: rd),
+      ) {
+        PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: u } => u.count() == 2
+        other => false
+      }
   }
 }
 
@@ -626,43 +742,55 @@ test fn an_unenumerable_roster_still_assesses_the_manifest() -> Bool {
 // unperformed read reconciles rather than fails, because it says nothing about whether the object
 // is there.
 test fn a_required_object_never_read_back_cannot_publish_success() -> Bool {
-  is_pending(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: [confirmed(subject: ObligationSubject { obligation: execution_receipt() }), confirmed(subject: CommitManifestSubject {})],
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_pending(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: [confirmed(rd: rd, subject: ObligationSubject { obligation: execution_receipt() }), confirmed(rd: rd, subject: CommitManifestSubject {})],
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // THE MANIFEST IS SUBJECT TO THE SAME RULE, and separately, because it is the root a result is
 // reconstructed from: every required object confirmed beneath an unread manifest is a set of
 // objects nobody can prove belong to one another.
 test fn an_unread_manifest_cannot_publish_success() -> Bool {
-  is_pending(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: [confirmed(subject: ObligationSubject { obligation: build_output() }), confirmed(subject: ObligationSubject { obligation: execution_receipt() })],
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_pending(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: [confirmed(rd: rd, subject: ObligationSubject { obligation: build_output() }), confirmed(rd: rd, subject: ObligationSubject { obligation: execution_receipt() })],
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // TWO READS CLAIMING ONE SUBJECT REFUSE rather than letting position pick the agreeable one -- the
 // same law the committed rows already obey, applied to the population that now carries the reads.
 test fn two_reads_claiming_one_subject_refuse() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: [
-      confirmed(subject: ObligationSubject { obligation: build_output() }),
-      obs_of(subject: ObligationSubject { obligation: build_output() }, r: ReadbackAbsent),
-      confirmed(subject: ObligationSubject { obligation: execution_receipt() }),
-      confirmed(subject: CommitManifestSubject {}),
-    ],
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: [
+          confirmed(rd: rd, subject: ObligationSubject { obligation: build_output() }),
+          obs_of(subject: ObligationSubject { obligation: build_output() }, r: ReadbackAbsent),
+          confirmed(rd: rd, subject: ObligationSubject { obligation: execution_receipt() }),
+          confirmed(rd: rd, subject: CommitManifestSubject {}),
+        ],
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // THE SUBSTITUTION THE SEAL CANNOT CATCH. sole_constructor makes a forged resolution unwritable,
@@ -672,38 +800,50 @@ test fn two_reads_claiming_one_subject_refuse() -> Bool {
 // only the gate knows which work it was asked about -- so if this publishes anything but a refusal,
 // a caller can discharge job A's obligations with job B's roster.
 test fn a_resolution_for_another_work_cannot_publish_success() -> Bool {
-  is_obligations_unreadable(p: publish(
-    computation: ComputationSucceeded,
-    resolution: foreign_work_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_obligations_unreadable(p: publish(
+        computation: ComputationSucceeded,
+        resolution: foreign_work_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // AND THE POSITIVE CONTROL FOR IT: the same shape with the CORRECT work still succeeds, so the
 // refusal above is not satisfied by a gate that rejects every resolution.
 test fn a_resolution_for_the_judged_work_publishes_success() -> Bool {
-  is_success(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: committed_both(),
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_success(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: committed_both(rd: rd),
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }
 
 // KIND IS PART OF THE KEY. The committed row carries the right id under the WRONG kind, so a join
 // on id alone would discharge the artifact obligation with a terminal-result row.
 test fn the_same_id_under_another_kind_does_not_discharge_it() -> Bool {
-  is_finalization_failure(p: publish(
-    computation: ComputationSucceeded,
-    resolution: the_resolution(),
-    committed: [
-      CommittedOutput { obligation: build_output_as_terminal(), attempt: the_attempt(), recorded_digest: digest_a() },
-      CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
-    ],
-    obs: all_confirmed(),
-    manifest: good_manifest(),
-  ))
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: rd } =>
+      is_finalization_failure(p: publish(
+        computation: ComputationSucceeded,
+        resolution: the_resolution(),
+        committed: [
+          CommittedOutput { obligation: build_output_as_terminal(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) },
+          CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a(rd: rd) },
+        ],
+        obs: all_confirmed(rd: rd),
+        manifest: good_manifest(rd: rd),
+      ))
+  }
 }

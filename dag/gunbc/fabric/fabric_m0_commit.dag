@@ -130,11 +130,22 @@ fn manifest_read_of(outcome: OriginReadingOutcome) -> ManifestReadbackObservatio
   }
 }
 
-// A CACHE READ HAS NO ROUTE TO A CONFIRMATION, and this function is that fact stated as the only
-// thing a cache read can produce. It is not a check that could be skipped or a stamp that could be
-// edited: ManifestRead is unreachable from here because OriginReading is unreachable from here.
-// The cause is kept rather than collapsed to a bare unknown so the refusal is located -- a reader
-// of a pending job learns which provider answered and why that did not establish durability.
+// WHAT A CALLER THAT KNOWS IT READ A CACHE SHOULD RETURN. This is a SAFE HELPER, not a total
+// classifier, and the difference is the whole honesty of this module.
+//
+// What it does give: nothing on this path can reach a confirmation. ManifestRead is unreachable
+// from here because OriginReading is, so a caller routing through this function cannot publish a
+// cache hit as durability no matter what it writes -- and the cause is kept rather than collapsed
+// to a bare unknown, so a reader of a pending job learns which provider answered and why that did
+// not establish durability.
+//
+// WHAT IT DOES NOT GIVE, stated because an earlier revision of this comment claimed it did: this
+// function does not make a cache read UNABLE to reach a confirmation by some other route. Nothing
+// stops a caller handing a /var/cache path to read_origin_staged_file; the digest would be computed
+// honestly over those bytes and the reading would confirm. That is path PROVENANCE, which is a
+// different fact from the path-digest coherence OriginReading establishes, and it is exactly the
+// mitigatable enclosing class gunbc.fabric_m0_origin_readback declares with its capability trigger.
+// Using this helper is a discipline; the construction underneath it is the digest, not the source.
 fn cache_manifest_read(provider: NonEmptyStr) -> ManifestReadbackObservation {
   ManifestReadUnavailable {
     cause: "manifest read from disposable cache " + provider + ", not the durable origin; durability unestablished",
