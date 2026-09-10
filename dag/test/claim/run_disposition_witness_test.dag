@@ -36,7 +36,10 @@ import gunbc.witness_floor_workflow {
   ReplaceExistingPending,
   RetainPendingQueue,
   RunningSupersessionPolicy,
+  NeverSupersedeRunning,
   SupersedeRunningForEvent,
+  SupersedeMutableHeadRuns,
+  mutable_head_runs_cancel_expression,
   witness_floor_concurrency_policy,
   witness_floor_running_supersession_policy,
   concurrency_of_policy
@@ -118,10 +121,13 @@ data superseding_policy_event: String = "pull_request"
 // AND THE LIVE POLICY ITSELF IS PINNED, which is the arm that actually fails if containment is
 // reverted by accident rather than by decision. It is the reason the fixture above is not simply
 // hiding the change: one witness asserts what the fleet really emits.
-test fn w_live_cancel_policy_supersedes_nothing() -> Bool {
-  supersession_available_under(policy: witness_floor_running_supersession_policy, event: "pull_request") == false
-    && supersession_available_under(policy: witness_floor_running_supersession_policy, event: "push") == false
-    && supersession_available_for_event(event: "pull_request") == false
+test fn w_live_cancel_policy_supersedes_mutable_heads() -> Bool {
+  supersession_available_under(policy: witness_floor_running_supersession_policy, event: "pull_request") == true
+    && supersession_available_under(policy: witness_floor_running_supersession_policy, event: "push") == true
+    && supersession_available_under(policy: witness_floor_running_supersession_policy, event: "merge_group") == false
+    && supersession_available_under(policy: witness_floor_running_supersession_policy, event: "workflow_dispatch") == false
+    && supersession_available_for_event(event: "pull_request") == true
+    && supersession_available_for_event(event: "push") == true
 }
 
 // UNDER THE LIVE POLICY A CANCELLED PULL-REQUEST RUN IS AN EVICTION, NOT A SUPERSESSION, and that
@@ -136,11 +142,31 @@ test fn w_live_cancel_policy_supersedes_nothing() -> Bool {
 // govern this record. Its live-entry counterpart is
 // w_the_live_entry_refuses_to_attribute_a_cancellation_it_cannot_date, and the two together say
 // what the classifier knows and what it declines to invent.
-test fn w_live_policy_makes_a_cancelled_pr_run_an_eviction() -> Bool {
+test fn w_live_policy_makes_a_cancelled_pr_run_a_supersession() -> Bool {
   let pr = cancelled_run(event: "pull_request")
   let d = classify_run_with_provenance(
     provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy },
     record: pr,
+    replacement: ReplacementObserved { lag_seconds: 27 }
+  )
+  disposition_name(disposition: d) == disposition_superseded_name
+}
+
+test fn w_live_policy_makes_a_cancelled_push_run_a_supersession() -> Bool {
+  let push = cancelled_run(event: "push")
+  let d = classify_run_with_provenance(
+    provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy },
+    record: push,
+    replacement: ReplacementObserved { lag_seconds: 27 }
+  )
+  disposition_name(disposition: d) == disposition_superseded_name
+}
+
+test fn w_live_policy_does_not_supersede_a_cancelled_merge_group_run() -> Bool {
+  let mg = cancelled_run(event: "merge_group")
+  let d = classify_run_with_provenance(
+    provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy },
+    record: mg,
     replacement: ReplacementObserved { lag_seconds: 27 }
   )
   disposition_name(disposition: d) == disposition_externally_cancelled_name
@@ -318,7 +344,7 @@ test fn w_RED_the_report_carries_its_classifier_rule() -> Bool {
   count(rows) == 5
     && string_contains(s: join(rows, "\n"), pattern: "lag < 0")
     && string_contains(s: join(rows, "\n"), pattern: "never external")
-    && string_contains(s: join(rows, "\n"), pattern: "unconditionally false")
+    && string_contains(s: join(rows, "\n"), pattern: "newest mutable head")
     && string_contains(
          s: supersession_availability_rule_text_under(spec: superseding_policy()),
          pattern: superseding_policy_event
@@ -550,8 +576,8 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
       match c {
         Present { value: v } =>
           match v {
-            CancelInProgressBool { value: b } => b == false
-            CancelInProgressExpression { expression: _ } => false
+            CancelInProgressBool { value: _ } => false
+            CancelInProgressExpression { expression: e } => e == mutable_head_runs_cancel_expression()
           }
         none => false
       }
@@ -563,8 +589,8 @@ test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
       match c {
         Present { value: v } =>
           match v {
-            QueueMaxCancelInProgressFalse => true
-            QueueMaxCancelInProgressExpression { expression: _ } => false
+            QueueMaxCancelInProgressFalse => false
+            QueueMaxCancelInProgressExpression { expression: e } => e == mutable_head_runs_cancel_expression()
           }
         none => false
       }
@@ -615,6 +641,7 @@ test fn w_an_unobserved_fleet_refuses_to_supersede_a_running_run() -> Bool {
   ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -632,6 +659,7 @@ test fn w_a_single_unobserved_host_holds_the_containment() -> Bool {
   ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -647,6 +675,7 @@ test fn w_a_single_unreadable_host_holds_the_containment() -> Bool {
   ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -666,6 +695,7 @@ test fn w_a_host_still_running_the_cooperative_fifo_is_derived_unsafe() -> Bool 
   ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -681,6 +711,7 @@ test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
   ) {
     SupersedeRunningForEvent { event: e } => e == "pull_request"
     NeverSupersedeRunning => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -690,6 +721,7 @@ test fn w_the_live_fleet_standing_still_refuses_running_supersession() -> Bool {
   match running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -706,6 +738,7 @@ test fn w_a_partially_observed_fleet_is_not_safe() -> Bool {
   ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -720,6 +753,7 @@ test fn w_an_observation_outside_the_roster_does_not_complete_it() -> Bool {
   ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -753,6 +787,7 @@ test fn w_a_server_reclaiming_fleet_restores_supersession() -> Bool {
   ) {
     SupersedeRunningForEvent { event: e } => e == "pull_request"
     NeverSupersedeRunning => false
+    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -775,5 +810,6 @@ test fn w_one_losing_host_among_reclaiming_hosts_holds_the_containment() -> Bool
   ) {
     NeverSupersedeRunning => true
     SupersedeRunningForEvent { event: _ } => false
+    SupersedeMutableHeadRuns => false
   }
 }

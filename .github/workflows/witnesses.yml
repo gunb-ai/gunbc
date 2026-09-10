@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: witness-floor-${{ github.run_id }}
-  cancel-in-progress: false
+  group: witness-floor-${{ github.event_name == 'merge_group' && format('mg-{0}', github.sha) || github.event_name == 'workflow_dispatch' && github.event.inputs.expected_healed_sha != '' && format('heal-{0}', github.event.inputs.expected_healed_sha) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && github.ref || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 env:
   CARGO_TERM_COLOR: always
   GUNBC_EXPECTED_RED_ROSTER_JOIN: expected_red_roster_join.tsv
@@ -405,10 +405,7 @@ jobs:
         if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
   required-v2-native:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 360
-    concurrency:
-      group: required-v2-native-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
+    timeout-minutes: 180
     steps:
       - name: Record runner filesystem at job start
         run: |
