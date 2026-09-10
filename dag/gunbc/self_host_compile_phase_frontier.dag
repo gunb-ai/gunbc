@@ -317,7 +317,7 @@ fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcC
           phase_row(ds: errors, phase: Borrowck, reached: furthest_order >= rustc_phase_order(phase: Borrowck))
         ],
         furthest_phase_reached: furthest,
-      furthest_phase_evidence: ObservedPhaseCountPhaseCount,
+      furthest_phase_evidence: ObservedPhaseCount,
       census_identity_digest: phase_census_digest(parse_refused_files: parse_observation.refused_files, raw_identities: raw_identities),
       total_error_diagnostics: count(errors),
       coded_error_diagnostics: count(coded_identities),
@@ -482,7 +482,7 @@ fn phase_board_from_census_identities(
         } else { RustcPhaseBoardRow { phase: Borrowck, standing: PhaseNotYetReached, identities: [] } }
       ],
       furthest_phase_reached: furthest,
-      furthest_phase_evidence: ObservedPhaseCountPhaseCount,
+      furthest_phase_evidence: ObservedPhaseCount,
       census_identity_digest: phase_census_digest(parse_refused_files: parse_observation.refused_files, raw_identities: raw_identities),
       total_error_diagnostics: count(unique_errors),
       coded_error_diagnostics: count(unique_errors) - count(codeless),

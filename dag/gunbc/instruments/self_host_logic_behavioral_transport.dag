@@ -260,5 +260,3 @@ fn slb_behavioral_receipt_standing() -> BehavioralReceiptStanding {
 fn slb_behavioral_receipt_holds() -> Bool {
   behavioral_receipt_standing_holds(s: slb_behavioral_receipt_standing())
 }
-eipt_standing_holds(s: slb_behavioral_receipt_standing())
-}
