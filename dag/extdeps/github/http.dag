@@ -14,7 +14,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data github_http_handler_layering_note: String = "§3 shape/transport split: GitHubEffect (extdeps.github.effect) is the operation SHAPE for the mutations this fleet already names. This module is ONE bound HTTP realization handler of GitHub's REST surface, not a second algebra and not a policy about which credential to use. Credentials are an input (auth_token: Secret), never an argv word and never an EnvVar baked into this interface. transport rest is the handler; a second operation forked for gh/curl would be transport fused into the interface."
+// §3 shape/transport split: GitHubEffect (extdeps.github.effect) is the operation SHAPE for the
+// mutations this fleet already names. This module is ONE bound HTTP realization handler of
+// GitHub's REST surface, not a second algebra and not a policy about which credential to use.
+// Credentials are an input (auth_token: Secret), never an argv word and never an EnvVar baked
+// into this interface. transport rest is the handler; a second operation forked for gh/curl
+// would be transport fused into the interface.
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

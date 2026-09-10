@@ -15,10 +15,8 @@ import gunbc.secret_provision_actuator { mutation_status_is_commit_ambiguous }
 // not a live GitHub account. That green is not a live 401. Neither wet GET /user witness ever
 // executed; they were deleted rather than kept as specification-without-execution. The
 // next-rung trigger is a required-lane route that may perform network effects against a real
-// credential — not restoring functions onto a lane that cannot run them. This is not structural:
-// an invalid RestOutcome is still writable.
-
-data github_effect_perform_rung_note: String = "classify_github_http_outcome is the production handling for not-success, including undocumented statuses and commit-ambiguous mutations. GET /user is the first bound HTTP consumer of the performer. The hermetic mock proves the bind, not GitHub. Neither wet GET /user witness ever executed; they were deleted rather than kept as a promise. The next-rung trigger is a required-lane route that may perform network effects against a real credential. JIT mint and R2 mint are not callers in this change."
+// credential — not restoring functions onto a lane that cannot run them. JIT mint and R2 mint
+// are not callers in this change. This is not structural: an invalid RestOutcome is still writable.
 
 type GitHubHttpPerformance
   = GitHubHttpSucceeded
