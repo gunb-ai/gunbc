@@ -43,13 +43,10 @@ import gunbc.fleet_posix_accounts {
 // says the AUTOMATION principal owns the export, so converge should run as that principal — rather
 // than the earlier state, which was simply that nobody but root could write there.
 //
-// WHAT THIS ROW DOES NOT YET DO, stated because the gap is easy to miss under a page of prose about
-// authority: NOTHING CONSUMES IT AT THE WRITE BOUNDARY. publish_verified_boot_image calls mv
-// directly and never asks export_ownership_standing anything, so the policy below has no causal
-// position — the program publishes whenever the operating system's permissions happen to allow it,
-// including under root or a world-writable export. The requirement is currently a description of
-// what ought to hold, checked by a probe against fixtures, not a wall. Closing that needs a real
-// stat plus effective-principal observation bound to the path, admitted before the move.
+// THE WRITE BOUNDARY CONSUMES THIS REQUIREMENT. observed_export_ownership_standing is the causal
+// entry; gunbc.machine_intake_boot_image_fetch admit_then_publish_boot_image refuses before the
+// move unless the standing is ExportOwnershipSatisfied. An earlier paragraph in this file said
+// nothing consumed it; that sentence outlived the commit that wired the gate.
 //
 // ROOT IS THE WRONG ANSWER EVEN THOUGH IT WOULD WORK. Escalating the publish step means converge
 // acquires privilege for a file write, and a grant that broad is not proportionate to "put a

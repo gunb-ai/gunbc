@@ -33,12 +33,12 @@ import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 // The unit reported 261972592 KiB available, so a RAM-resident root would be unremarkable here if
 // it were arranged; the memory is not the obstacle.
 data mtcollins1_diskless_boot_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
-  hex: "cefdf6c063544a08c937770f9450ce0d0ee15a06bab2bf35af9f5eaadcda7681",
+  hex: "76340421bccd856be205f14e848c6ccca2dcb15857639ecfba07db03d5133a74",
 })
 
 data mtcollins1_diskless_boot_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-diskless-boot.json"
 
-data mtcollins1_diskless_boot_byte_count: Int = 4361
+data mtcollins1_diskless_boot_byte_count: Int = 5788
 
 data mtcollins1_diskless_boot_observed_at: EpochMs = 1788648900000
 
@@ -65,11 +65,13 @@ data mtcollins1_booted_image_sha256: NonEmptyStr = "2ee2163c9b901ff5926400e80759
 // set command's own return could not distinguish acceptance from indifference. The read-back here
 // is the images listing and the configurations listing.
 //
-// AND THE SHARE LISTING IS NOT STABLE ACROSS FILE ADDITIONS. After a new ISO appeared in the
-// exported directory the controller returned an EMPTY image list, including for the file it had
-// previously enumerated. Re-asserting mount_cd re-scanned it. A caller that reads an empty listing
-// as "the share has no images" will conclude the wrong thing; the listing is a cache, not the
-// share.
+// AND THE IMAGES LISTING IS THE AVAILABLE-TO-ATTACH POOL, NOT THE SHARE. After start-media
+// attaches an image, that name leaves /remote/images for /remote/configurations. An earlier reading
+// treated the shorter listing as a stale cache and advised re-asserting mount_cd; that toggle
+// detaches everything, which is why the name reappeared. The retract lives in
+// gunbc.machine_intake_megarac_media_attach. A caller that reads an empty listing as "the share has
+// no images" will still conclude the wrong thing, but the wrong thing is "already attached" rather
+// than "cache went stale".
 type ControllerWriteReportingAnomaly {
   operation: NonEmptyStr
   http_status: Int

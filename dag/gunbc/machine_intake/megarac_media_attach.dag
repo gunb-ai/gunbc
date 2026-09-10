@@ -13,6 +13,7 @@ import extdeps.languages.json.parse {
   JsonValue,
   json_object_unique_member,
   parse_json_document,
+  some_json_value,
 }
 
 // ATTACHING A REMOTE IMAGE, AS A MODELED OPERATION RATHER THAN A SHELL SCRIPT. extdeps.bmc.megarac
@@ -148,10 +149,10 @@ fn image_index_named(elements: List<JsonValue>, image_name: String) -> String? {
   )
 }
 
-fn images_array_elements(doc: JsonValue) -> List<JsonValue> {
+fn images_array_elements(doc: JsonValue) -> List<JsonValue>? {
   match doc {
-    JsonArray { elements: es } => es
-    _ => []
+    JsonArray { elements: es } => Present { value: es }
+    _ => none
   }
 }
 
@@ -208,12 +209,20 @@ func megarac_attach_remote_image(
     Present { value: doc } => json_string_member(doc: doc, key: "CSRFToken")
   }
 
+  // AN OPENED SESSION WHOSE TOKEN CANNOT BE READ IS STILL AN ALLOCATED SESSION. An earlier
+  // revision returned SessionReleaseNotAttempted here, which is the leak that saturated this
+  // controller: OpenSession succeeded, the cookie was written, and CloseSession never ran because
+  // the renderer treated the arm as "never opened". The DELETE still needs an X-CSRFTOKEN header
+  // by the upstream contract; the cookie is the bearer, so the header is supplied as a sentinel
+  // rather than inventing a second CloseSession shape. A refused or uncertain close remains
+  // SessionReleaseRefused, never NotAttempted.
   return match csrf {
     Absent =>
-      MegaRacAttachResult {
-        outcome: MegaRacSessionTokenUnreadable { detail: session.body },
-        session_release: SessionReleaseNotAttempted,
-      }
+      megarac_release_unreadable_session(
+        bmc_host: bmc_host,
+        cookie_jar: cookie_jar,
+        session_body: session.body,
+      )
     Present { value: token } =>
       megarac_attach_then_release(
         bmc_host: bmc_host,
@@ -221,6 +230,24 @@ func megarac_attach_remote_image(
         csrf_token: token as NonEmptyStr,
         image_name: image_name,
       )
+  }
+}
+
+func megarac_release_unreadable_session(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  session_body: String,
+) -> MegaRacAttachResult
+  uses net: std.resources.Network
+{
+  closed = megarac.Media.CloseSession(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: "unreadable" as NonEmptyStr,
+  )
+  return MegaRacAttachResult {
+    outcome: MegaRacSessionTokenUnreadable { detail: session_body },
+    session_release: if closed.success { SessionReleased } else { SessionReleaseRefused { detail: closed.body } },
   }
 }
 
@@ -273,8 +300,16 @@ func megarac_attach_with_token(
   if presented.success == false {
     return MegaRacConfigurationsUnreadable { detail: presented.body }
   }
-  if configurations_confirm_attachment(body: presented.body, image_name: image_name) {
-    return MegaRacAlreadyAttached { image_name: image_name }
+  // MALFORMED PRESENTED STATE IS UNKNOWN, NOT "NOT ATTACHED". An earlier revision collapsed a
+  // JSON parse failure or a non-array document to false, then walked the available-images list
+  // and could StartMedia over a controller whose current attachment was unreadable. That is the
+  // absorbing-fallback DESIGN §5 forbids: ignorance rendered as the empty case.
+  match presented_media_standing(body: presented.body, image_name: image_name) {
+    PresentedMediaUnreadable { detail: d } =>
+      return MegaRacConfigurationsUnreadable { detail: d }
+    PresentedMediaAttached =>
+      return MegaRacAlreadyAttached { image_name: image_name }
+    PresentedMediaNotAttached => none
   }
 
   images = megarac.Media.GetRemoteImages(
@@ -289,10 +324,19 @@ func megarac_attach_with_token(
   match parse_json_document(s: images.body) {
     JsonDocumentUnreadable { gap: _ } =>
       return MegaRacImageListingUnparseable { detail: images.body }
-    JsonDocumentParsed { value: _ } => none
+    JsonDocumentParsed { value: v } =>
+      match images_array_elements(doc: v) {
+        Absent =>
+          return MegaRacImageListingUnparseable { detail: images.body }
+        Present { value: _ } => none
+      }
   }
   let elements = match parse_json_document(s: images.body) {
-    JsonDocumentParsed { value: v } => images_array_elements(doc: v)
+    JsonDocumentParsed { value: v } =>
+      match images_array_elements(doc: v) {
+        Present { value: es } => es
+        Absent => []
+      }
     JsonDocumentUnreadable { gap: _ } => []
   }
   if (elements |> count) == 0 {
@@ -343,12 +387,25 @@ fn configuration_row_confirms(row: JsonValue, image_name: NonEmptyStr) -> Bool {
   name_ok && active && cd_media
 }
 
-fn configurations_confirm_attachment(body: String, image_name: NonEmptyStr) -> Bool {
-  let rows = match parse_json_document(s: body) {
-    JsonDocumentParsed { value: v } => images_array_elements(doc: v)
-    JsonDocumentUnreadable { gap: _ } => []
+type PresentedMediaStanding
+  = PresentedMediaUnreadable { detail: String }
+  | PresentedMediaAttached
+  | PresentedMediaNotAttached
+
+fn presented_media_standing(body: String, image_name: NonEmptyStr) -> PresentedMediaStanding {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => PresentedMediaUnreadable { detail: body }
+    JsonDocumentParsed { value: v } =>
+      match images_array_elements(doc: v) {
+        Absent => PresentedMediaUnreadable { detail: body }
+        Present { value: rows } =>
+          if rows |> any(r => configuration_row_confirms(row: r, image_name: image_name)) {
+            PresentedMediaAttached
+          } else {
+            PresentedMediaNotAttached
+          }
+      }
   }
-  rows |> any(r => configuration_row_confirms(row: r, image_name: image_name))
 }
 
 // A NON-ZERO START FOLLOWED BY NO CONFIRMATION IS PENDING, NOT REFUSED, and this firmware is why:
@@ -381,13 +438,22 @@ func megarac_start_and_confirm(
     return MegaRacAttachUnconfirmed { image_name: image_name, configurations: configurations.body }
   }
 
-  return if configurations_confirm_attachment(body: configurations.body, image_name: image_name) {
-    MegaRacAttached { image_name: image_name, image_index: image_index }
-  } else {
-    if start.success == false {
-      MegaRacStartRefused { detail: start.body }
-    } else {
+  // THE READ-BACK DECIDES, INCLUDING WHEN START REPORTED FAILURE. This firmware answers HTTP 500
+  // on writes that take effect; mapping start.success == false to MegaRacStartRefused refused an
+  // attach that was merely still mounting, and contradicted the comment this function already
+  // carried. A missing confirmation after any start response is pending (Unconfirmed). StartRefused
+  // is reserved for a start that failed AND whose configurations document is itself unreadable
+  // as JSON — that is, when we cannot even ask the read-back.
+  return match presented_media_standing(body: configurations.body, image_name: image_name) {
+    PresentedMediaAttached =>
+      MegaRacAttached { image_name: image_name, image_index: image_index }
+    PresentedMediaNotAttached =>
       MegaRacAttachUnconfirmed { image_name: image_name, configurations: configurations.body }
-    }
+    PresentedMediaUnreadable { detail: d } =>
+      if start.success == false {
+        MegaRacStartRefused { detail: start.body }
+      } else {
+        MegaRacAttachUnconfirmed { image_name: image_name, configurations: d }
+      }
   }
 }

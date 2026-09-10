@@ -22,7 +22,7 @@
   "diskless_evidence": {
     "kernel_cmdline": "BOOT_IMAGE=/casper/vmlinuz",
     "memory_available_kib": 261972592,
-    "note": "casper runs the squashfs from RAM with a tmpfs overlay; nothing is written to local storage, and this unit has no boot drive to write to",
+    "note": "diskless, not RAM-resident: casper mounts squashfs read-only under a tmpfs overlay, so the WRITABLE layer is memory-backed and no local disk is involved. Casper toram is absent from the observed command line, so the read-only lower layer is presumed to be read from the presented media on demand. A RAM-resident root does not follow from what was observed.",
     "root": "squashfs 4.0 mounted read-only with an overlayfs upper"
   },
   "firmware_behaviours_that_a_modeled_caller_must_expect": {
@@ -32,7 +32,7 @@
       "http": 500,
       "observed": "the write reported failure AND the share re-mounted; images re-enumerated 23s later"
     },
-    "share_rescan": "the controller stopped enumerating the share after a new file appeared, returning an empty image list; re-asserting mount_cd re-scanned it",
+    "share_listing_is_available_pool_not_share_contents": "after start-media attaches an image, that name leaves /remote/images for /remote/configurations and survivors reindex. An empty or shorter images listing is not a stale cache. Re-asserting mount_cd appeared to refresh the listing because the toggle detaches everything and returns names to the available pool; that is not a remedy.",
     "stop_media": {
       "body_code": 1411,
       "http": 500,
