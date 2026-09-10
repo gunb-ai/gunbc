@@ -2,7 +2,7 @@ module extdeps.colo.colocation_america
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -41,4 +41,45 @@ data colocation_america_njdc1: ColoFacilityRow = ColoFacilityRow {
 data colocation_america_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "quote form on colocationamerica.com",
   obligation: "Granularity is published but prices are not on the pages read 2026-08-18; per-U and quarter-cabinet quotes required.",
+}
+
+// RETRACTED, AND THE RETRACTION IS THE POINT. An earlier revision of this branch DELETED the NJDC2
+// facility row and recorded a registry-versus-operator disagreement in its place, on the evidence
+// that the operator's own New Jersey page contained the strings "Secaucus" and "Hartz" zero times.
+// It contains both, twice each. The zero was produced by a tag-stripping pipeline that destroyed the
+// page: measured against the SAME capture, the raw bytes carry "New Jersey" 22 times and the
+// stripped text carries it once. A page about New Jersey reading as containing almost no "New
+// Jersey" was the available tell and it was not taken.
+//
+// So there is no disagreement. PeeringDB and the operator AGREE, and the operator states it in a
+// heading of its own: NEW JERSEY DC 2, 275 HARTZ WAY, SECAUCUS, NEW JERSEY, 07094, with its own
+// phone number, quote route and colocation service list, beside NEW JERSEY DC 1 at 100 DELAWANNA
+// AVE, SUITE 200, CLIFTON, NJ 07014. That 275 Hartz Way is also the building this census models as
+// Equinix NY2 is not a contradiction and never was - one building carrying several operators is the
+// case this census models one row per operator to handle, and it is already carried that way at 165
+// Halsey five times over.
+//
+// THE CLASS IS gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked: a search that
+// never reached its subject returns exactly what a real absence returns, and the reader supplies the
+// interpretation that fits the question being asked. The guard that was missing is one line - assert
+// the instrument resolved its subject before believing a zero - and it is cheap because the control
+// is free: a page whose own URL names New Jersey must contain "New Jersey".
+data colocation_america_njdc2_secaucus: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Colocation America",
+  facility_label: "Colocation America NJDC2 Secaucus",
+  address: AddressListed {
+    street: "275 Hartz Way, Secaucus, NJ 07094",
+    citation: "the operator's own New Jersey locations page www.colocationamerica.com/data-center-locations/new-jersey, fetched 2026-09-09 with a full browser user-agent (HTTP 200, 178,020 bytes) and read from RAW HTML rather than through a stripper, which emits <h3 id=\"h-njdc2\">NEW JERSEY DC 2</h3> immediately followed by <h4>275 HARTZ WAY, SECAUCUS, NEW JERSEY, 07094</h4>. The same address is carried by the operator's own PeeringDB entry for NJDC2, read 2026-09-08; registry and operator agree.",
+  },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "The operator's second New Jersey site and the one inside this corridor - NJDC1 at 100 Delawanna Ave, Clifton is in Passaic County and stays out of the region roster. The page gives NJDC2 its own quote route and phone line and lists Managed Colocation among its services, but publishes no per-cabinet power figure and no minimum footprint, so both of those axes stay unread against a page that WAS read. 275 Hartz Way also carries Equinix NY2; the census models one row per operator per building.",
+}
+
+data colocation_america_cabinet_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The operator's New Jersey locations page was fetched 2026-09-09 with a full browser user-agent (HTTP 200, 178,020 bytes) and read from RAW HTML, and it publishes no per-cabinet power figure for either New Jersey site - not for NJDC2 at 275 Hartz Way, Secaucus, and not for NJDC1 at 100 Delawanna Ave, Clifton. The string \"cabinet\" does not occur in the page bytes at all. This obligation has been wrong twice and both errors were mine: it first said the operator refused a fetch, when the refusal was a missing user-agent, and it then said the operator's pages do not name a Secaucus site, when they name it in a heading - a zero produced by a stripper that destroyed the page. Resolve by quote: ask what a cabinet at NJDC2 may draw. Do NOT resolve it by reading the Equinix NY2 density for the same building; one address carrying two operators is not one operator's density.",
+}
+
+data colocation_america_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "Read, not refused, and now read correctly: the operator's New Jersey locations page (HTTP 200, 178,020 bytes, raw HTML, 2026-09-09) lists Managed Colocation among the services offered at NJDC2 but states no minimum footprint, and the word \"cabinet\" does not appear in the page at all. The 2026-08-18 pass recorded granularity as published without capturing a wording, and nothing in these bytes supplies one. Resolve by asking the quote whether a single cabinet, or a fraction of one, is contractable at 275 Hartz Way.",
 }

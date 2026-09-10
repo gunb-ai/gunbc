@@ -9,9 +9,15 @@ import extdeps.systemd.unit_file {
   slice_memory_swap_max,
   slice_tasks_max,
   slice_cpu_weight,
+  slice_cpu_quota,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_desired,
+  RunnerSlotCpuQuota,
+  CpuQuotaResolved,
+  CpuQuotaRefused,
+}
 import gunbc.membership_reconcile {
   MemberAction,
   MemberAdded,
@@ -91,31 +97,58 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // cannot occur -- permanently red by staleness, the mirror of the permanently-green decoration
 // DESIGN 4b forbids.
 //
-// FIVE DIRECTIVES, ZERO LITERALS. Every magnitude comes from gunbc_runner_slot_desired -- the same
-// row fabric_cell_resource_boundary_state_digest renders into the desired member digest -- so the
+// FIVE BASE DIRECTIVES PLUS THE QUOTA, OR A TYPED REFUSAL. Every magnitude comes from
+// gunbc_runner_slot_desired -- the same row fabric_cell_resource_boundary_state_digest renders
+// into the desired member digest, quota included via systemd_cpu_quota_per_sec_of_threads -- so the
 // directives this effect applies and the digest reconcile compares are two projections of one
 // authority and cannot disagree by drift.
+//
+// A REFUSED SURVEY DOES NOT RENDER FIVE DIRECTIVES. That list is a slice with memory and weight
+// ceilings and no CPUQuota -- unbounded CPU that looks provisioned, the widen DESIGN §5 forbids
+// and this module already named at the all-or-nothing fold. Substituting a fabricated percentage
+// is the other fail-open. The honest arm is SliceDirectivesQuotaSurveyRefused, consumed by
+// realization as CellCpuQuotaSurveyRefused so an ADD of an absent cell cannot apply the slice.
 //
 // WHY DIRECTIVES AND NOT A SystemdUnitFile: the effect's production realization is
 // `systemctl set-property <slice> <Property>=<value>...` -- systemd renders and owns the persisted
 // drop-in itself, so the privileged boundary is crossed by exactly these typed words and by no
 // authored file bytes (see the closed-sum note above). A unit-file carrier here would be a
 // representation of an artifact nothing constructs.
-fn fabric_cell_slice_desired_directives() -> List<SystemdSliceDirective> {
+type FabricCellSliceDesiredDirectives
+  = SliceDirectivesComplete { directives: List<SystemdSliceDirective> }
+  | SliceDirectivesQuotaSurveyRefused { cause: String }
+
+fn fabric_cell_slice_desired_directives_for(quota: RunnerSlotCpuQuota) -> FabricCellSliceDesiredDirectives {
   let desired = gunbc_runner_slot_desired()
-  [
+  let base = [
     slice_memory_max(bytes: desired.memory_max),
     slice_memory_high(bytes: desired.memory_high),
     slice_memory_swap_max(bytes: desired.memory_swap_max),
     slice_tasks_max(count: desired.tasks_max),
     slice_cpu_weight(weight: desired.cpu_weight),
   ]
+  match fabric_cell_slice_quota_directives(quota: quota) {
+    SliceCpuQuotaDirective { directive: d } =>
+      SliceDirectivesComplete { directives: concat(base, [d]) }
+    SliceCpuQuotaSurveyRefused { cause: c } =>
+      SliceDirectivesQuotaSurveyRefused { cause: c }
+  }
 }
 
-fn fabric_cell_slice_ensure(slot: RunnerSlotIdentity) -> FabricCellEffect {
-  FabricCellSliceEnsure {
-    slice_unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
-    directives: fabric_cell_slice_desired_directives(),
+fn fabric_cell_slice_desired_directives() -> FabricCellSliceDesiredDirectives {
+  fabric_cell_slice_desired_directives_for(quota: gunbc_runner_slot_desired().cpu_quota)
+}
+
+type CellSliceQuotaDirective
+  = SliceCpuQuotaDirective { directive: SystemdSliceDirective }
+  | SliceCpuQuotaSurveyRefused { cause: String }
+
+fn fabric_cell_slice_quota_directives(quota: RunnerSlotCpuQuota) -> CellSliceQuotaDirective {
+  match quota {
+    CpuQuotaResolved { threads: t } =>
+      SliceCpuQuotaDirective { directive: slice_cpu_quota(threads: t) }
+    CpuQuotaRefused { cause: c } =>
+      SliceCpuQuotaSurveyRefused { cause: c }
   }
 }
 
@@ -130,6 +163,7 @@ type FabricCellRealizationRefusal
   | CellRosterDuplicateKey { address_wire: String }
   | CellChangeNotYetRealizable { address_wire: String }
   | CellTeardownNotYetRealizable { address_wire: String }
+  | CellCpuQuotaSurveyRefused { address_wire: String, cause: String }
 
 type FabricCellAddressRealization
   = AddressRealizable { effect: FabricCellEffect }
@@ -139,7 +173,10 @@ type FabricCellAddressRealization
 // decides WHETHER there is one. Neither axis is collapsed into the other, so a new address and a
 // new action each fail to compile here rather than inheriting an arm that happened to fit.
 //
-// TEARDOWN AND CHANGE REFUSE RATHER THAN BEING REALIZED, while every ADDITION now realizes.
+// TEARDOWN AND CHANGE REFUSE RATHER THAN BEING REALIZED. ADDITION realizes when the address can
+// be constructed: directories always, the slice only when the slot CPU quota survey resolved.
+// A refused survey is CellCpuQuotaSurveyRefused so an absent cell cannot be created without a
+// CPU ceiling.
 // Teardown of a cell root is a DESTRUCTIVE effect on a directory that may hold live
 // attempt state, and change realization is gunbc.change_realization's question -- it classifies a
 // MemberChanged by whether the runtime address survived, and this family has not yet declared its
@@ -167,7 +204,10 @@ fn fabric_cell_address_realization(
             ),
           }
         FabricCellResourceBoundaryAddress =>
-          AddressRealizable { effect: fabric_cell_slice_ensure(slot: m.slot) }
+          fabric_cell_boundary_add_realization(
+            slot: m.slot,
+            quota: gunbc_runner_slot_desired().cpu_quota,
+          )
       }
     MemberChanged { at: _, from: _, to: m } =>
       AddressRefused {
@@ -192,6 +232,28 @@ fn fabric_cell_address_realization(
       AddressRefused {
         refusal: CellRosterDuplicateKey {
           address_wire: fabric_cell_resource_address_wire(address: f.address),
+        },
+      }
+  }
+}
+
+fn fabric_cell_boundary_add_realization(
+  slot: RunnerSlotIdentity,
+  quota: RunnerSlotCpuQuota,
+) -> FabricCellAddressRealization {
+  match fabric_cell_slice_desired_directives_for(quota: quota) {
+    SliceDirectivesComplete { directives: ds } =>
+      AddressRealizable {
+        effect: FabricCellSliceEnsure {
+          slice_unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
+          directives: ds,
+        },
+      }
+    SliceDirectivesQuotaSurveyRefused { cause: c } =>
+      AddressRefused {
+        refusal: CellCpuQuotaSurveyRefused {
+          address_wire: fabric_cell_resource_address_wire(address: FabricCellResourceBoundaryAddress),
+          cause: c,
         },
       }
   }
