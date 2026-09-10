@@ -41,6 +41,7 @@ import gunbc.cloudflare.r2_origin {
   allocated_bucket_name,
   fleet_cloudflare_account_id,
   fabric_durable_origin_read_secret_id,
+  fabric_durable_origin_read_secret_version,
   cloudflare_bootstrap_custody_secret_id,
   FabricCommitManifestsAndContentAddressedOutputs,
 }
@@ -56,6 +57,7 @@ import gunbc.cloudflare.r2_token_mint_run {
   R2MintOriginUnallocated,
   R2MintAdmissionRefused,
   bootstrap_burden_text,
+  r2_object_read_token_mint_receipt,
 }
 
 // THE CUSTODY RED, NOW BORNE BY A FIXTURE RATHER THAN BY THE DECLARATIONS -- AND THE MOVE IS
@@ -256,11 +258,28 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
     DurableOriginAllocated { bucket: bucket } =>
       (bucket.read_credential.secret as String) == (fabric_durable_origin_read_secret_id as String)
         && (bucket.read_credential.project as String) == (fleet_secrets_gcp_project as String)
+        && (bucket.read_credential.version as String) == (fabric_durable_origin_read_secret_version as String)
+        && (bucket.read_credential.version as String) != "latest"
         && (bucket.bucket_name as String) == (declared_bucket_name())
         && match bucket.admits {
              FabricCommitManifestsAndContentAddressedOutputs {} => true
            }
   }
+}
+
+test fn r2_object_read_mint_receipt_establishes_custody_without_commit_ambiguity() -> Bool {
+  r2_object_read_token_mint_receipt.enrolled
+    && r2_object_read_token_mint_receipt.reached_create
+    && r2_object_read_token_mint_receipt.request_transmitted
+    && r2_object_read_token_mint_receipt.response_received
+    && r2_object_read_token_mint_receipt.terminal_outcome_adjudicated
+    && r2_object_read_token_mint_receipt.credential_custody_established
+    && r2_object_read_token_mint_receipt.commit_ambiguous == false
+    && string_contains(
+      s: r2_object_read_token_mint_receipt.version_resource as String,
+      pattern: "/cloudflare-r2-origin-read-token/versions/1")
+    && (r2_object_read_token_mint_receipt.token_id as String)
+      == (r2_object_read_token_mint_receipt.s3_access_key_id as String)
 }
 
 // THE BURDEN IS PRICED BY THE ENTRY, which is the dissolution this change claims for

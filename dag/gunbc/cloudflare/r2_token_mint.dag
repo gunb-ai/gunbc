@@ -1,9 +1,7 @@
 module gunbc.cloudflare.r2_token_mint
 
-import std.types { String, NonEmptyStr, Timestamp }
-import std.decl_ref { decl_ref }
-import std.dissolution { unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.types { String, NonEmptyStr, Timestamp, List }
+import std.roster_frontier { FrontierRow }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
@@ -40,46 +38,12 @@ import extdeps.cloudflare.r2 {
 // second custody path.
 
 // Cluster: admit_r2_object_read_api_mint, admit_account_token_api_mint, and
-// r2_s3_access_pair_from_created_token have no executing AccountTokens.Create in this change.
-// Subjects are DeclarationRefs (std.roster_frontier); rationale is this annotation, not a String field.
-//
-// TWO ROWS DISSOLVED WHEN gunbc.cloudflare.r2_token_mint_run LANDED, AND THREE DELIBERATELY DID NOT.
-// vendor_cloudflare_frontier_rows dissolved on its own stated trigger: gunbc.cloudflare.r2_origin is
-// a gunbc declaration that names this fleet's Cloudflare account and cites extdeps.vendor.cloudflare
-// as the company, and the mint entry reads that standing on its executing refusal path.
-// cloudflare_r2_token_human_burden's row dissolved on its stated trigger too: the entry renders the
-// FleetOnce interventions from the burden on every refusal arm, which is the pricing the row asked
-// for -- not a witness asserting the burden exists.
-//
-// The three rows BELOW stand unchanged, and that is a rung-honesty decision rather than an
-// oversight. Their trigger is an EXECUTING AccountTokens.Create, and the entry that landed refuses
-// for want of an allocated account id and a pinned bootstrap custody version, so no Create has been
-// performed. Deleting them here would retire the rows while the capability stays dead, which is
-// exactly the section 4b(3) failure of satisfying a trigger that names less than the capability it
-// restores. They dissolve in the change that lands an executed receipt.
-data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_read_api_mint"),
-    reason: "no executing AccountTokens.Create; witness is not a consumer",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
-    ),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "admit_account_token_api_mint"),
-    reason: "no executing AccountTokens.Create; witness is not a consumer",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
-    ),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_access_pair_from_created_token"),
-    reason: "no executing AccountTokens.Create; witness is not a consumer",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration invokes cloudflare.AccountTokens.Create on an executing converge or gunbc-run entry, reading bootstrap custody through the existing secret-provision bracket and writing the derived R2 S3 pair the same way; a witness that the Create operation exists does not fire this",
-    ),
-  ),
-]
+// r2_s3_access_pair_from_created_token were Create-triggered frontier subjects. They dissolved
+// when gunbc.cloudflare.r2_token_mint_run executed AccountTokens.Create, stored the token value
+// through gunbc.secret_provision, and recorded the non-secret receipt
+// r2_object_read_token_mint_receipt. An empty list here is the census membership of a retired
+// population, not a missing declaration.
+data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = []
 
 // THE FLEET'S BOOTSTRAP TOKEN EXPIRES, AND THE MODEL SAID IT DID NOT. This shape declared
 // NoExpiryUntilRevoked, which was a convenient default rather than an observed fact, and the token

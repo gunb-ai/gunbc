@@ -1,11 +1,14 @@
 module gunbc.cloudflare.r2_token_mint_run
 
-import std.types { String, NonEmptyStr, Secret, List }
+import std.types { String, NonEmptyStr, Secret, List, Bool, Timestamp }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.human_intervention { HumanIntervention, ProvisioningHumanBurden }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest {
+  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  mutation_status_is_commit_ambiguous,
+}
 import extdeps.cloudflare.account_api_tokens
 import extdeps.cloudflare.account_api_tokens {
   CreateAccountTokenRequest,
@@ -66,7 +69,6 @@ import gunbc.secret_provision_actuator {
   add_initial_version, VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown,
   VersionAddedButUnverified,
   verified_exact_ref,
-  mutation_status_is_commit_ambiguous,
 }
 
 // THE EXECUTING CONSUMER OF THE R2 MINT, AND THE ORDER OF ITS CHECKS IS THE WHOLE DESIGN.
@@ -90,49 +92,19 @@ import gunbc.secret_provision_actuator {
 // there is no downstream position in which a fabricated pair could be constructed. classify_r2_mint
 // is pure and total, so both the refusal and its accepted positive control are executable evidence.
 //
-// THE MUTATION ROUTE IS BLOCKED BY THE EFFECT RECORDER, NOT BY CREDENTIALS, AND THIS WAS MEASURED
-// RATHER THAN PREDICTED. With the account id declared, the bootstrap token in custody at version 1,
-// and a live GCP access token in hand, this entry was run against the real account on 2026-09-10. It
-// read the bootstrap credential out of Secret Manager -- a real GET, logged -- and then aborted
-// BEFORE any Cloudflare request was transmitted, with:
-//   TypeError: fixture cannot record unreplayable value kind "Map" -- refusing to write an unfaithful fixture
-// Every effect call is routed through record/replay, and v1.stage0.recorded_fixture treats Map, Set,
-// Closure and Fn as unreplayable. AccountTokenPolicy.resources is a Map<String, String>, because that
-// is what Cloudflare accepts on the wire -- a JSON object whose KEYS are the IAM resource names. So
-// no operation carrying a Map in its inputs can execute at all, and AccountTokens.Create carries one
-// by construction.
+// THE MUTATION HAS NOW RUN. gunbc#10929 made Map-valued effect inputs recordable. This entry
+// invoked cloudflare.AccountTokens.Create, stored the token VALUE (not the derived S3 secret)
+// through gunbc.secret_provision, and pinned the origin read credential to the verified version.
+// Nested Create projections use JSON-pointer slashes (result/id), matching AccessVersion's
+// payload/data, because a dotted path is a single JSON-pointer key and was why the first live
+// Create looked like RestOk with a null status.
 //
-// THE READ ROUTE IS NOT BLOCKED, WHICH IS WHAT LOCATES THE FAULT. cloudflare.AccountTokens
-// ListPermissionGroups executed live against the same account minutes earlier and returned its rows;
-// its inputs are a Secret and a String. The difference between the two is not authority, not
-// transport and not the endpoint -- it is one Map-valued input.
+// THE ATTEMPT GRAIN IS r2_object_read_token_mint_receipt. Two earlier Creates reached Cloudflare
+// under the dotted-path decoder, minted tokens whose values this process did not keep, and were
+// revoked by id after List before this receipt's Create. Those were not commit-ambiguous HTTP
+// arms; they were RestOk with unread fields. A retry into a 5xx/timeout was not done.
 //
-// THE OBVIOUS ROUTE AROUND IT IS THE WORKAROUND DESIGN SECTION 5 NAMES, so it is not taken here.
-// Respelling resources as a list of key/value pairs would make the call executable today and would
-// model the wire less faithfully: the upstream shape is an object with dynamic keys, and a list of
-// pairs admits duplicates and an order that the wire does not have. That is reshaping the model to
-// fit a limitation of the tooling, and the deficit it conceals is in the substrate layer, which is
-// exactly where section 6 says to root-cause instead.
-//
-// NEXT-RUNG TRIGGER, STATED AS THE CAPABILITY: a fixture encoding that can faithfully record and
-// replay a Map-valued effect input -- keys and values, order-independent -- at which point this
-// entry reaches the Create with no change to the model above it.
-//
-// NO HTTP PERFORMER EXISTS FOR THIS OPERATION YET, AND THAT IS THE SUCCESSOR RATHER THAN A DEFECT
-// HERE. gunbc.github_effect_perform (gunbc#10923, open at this writing) gives one effect family a
-// REST realization whose outcome classification consumes RestOutcome and
-// mutation_status_is_commit_ambiguous; it is a GitHub performer and does not perform
-// AccountTokens.Create. The reusable part is the CLASSIFICATION, which this module consumes below
-// rather than re-minting. SUCCESSOR TRIGGER for the executed receipt, stated as the capability: a
-// REST performer that can carry a Cloudflare service operation, at which point the three mint
-// frontier rows dissolve on a performed Create.
-//
-// WHAT THIS CHANGE DOES NOT DO, STATED SO THE FRONTIER ROWS ARE READ HONESTLY. No AccountTokens.Create
-// has been performed. The three mint rows in gunbc.cloudflare.r2_token_mint dissolve on an EXECUTING
-// Create, and a run that refuses for want of a credential has not performed one, so they stand
-// unchanged. What DOES dissolve here is the human-burden row, whose trigger is an executing entry
-// that PRICES the dashboard bootstrap: the refusal arms below render the FleetOnce interventions and
-// count them, which is that pricing.
+// THE ACCESS KEY ID IS THE TOKEN ID AND IS NOT A SECRET. The token value is not in this file.
 
 // THE ADMITTED REQUEST IS CARRIED WITH THE ACCOUNT AND THE LOCUS IT WAS ADMITTED FOR, never beside
 // them. A request admitted for account A paired at the call site with account B's id would address
@@ -311,6 +283,34 @@ func mint_r2_object_read_token(
 //
 // THE ACCESS KEY ID IS NOT A SECRET AND IS REPORTED, NOT STORED. It is the token's id, which the
 // account's own token listing shows.
+
+data r2_object_read_token_mint_retrieved_at: Timestamp = "2026-09-10T16:02:00Z"
+
+type R2ObjectReadTokenMintReceipt {
+  token_id: NonEmptyStr
+  s3_access_key_id: NonEmptyStr
+  version_resource: NonEmptyStr
+  enrolled: Bool
+  reached_create: Bool
+  request_transmitted: Bool
+  response_received: Bool
+  terminal_outcome_adjudicated: Bool
+  credential_custody_established: Bool
+  commit_ambiguous: Bool
+}
+
+data r2_object_read_token_mint_receipt: R2ObjectReadTokenMintReceipt = R2ObjectReadTokenMintReceipt {
+  token_id: "3f43e1c7f8fbcfc97139cb5d9dc4e984",
+  s3_access_key_id: "3f43e1c7f8fbcfc97139cb5d9dc4e984",
+  version_resource: "projects/582015116396/secrets/cloudflare-r2-origin-read-token/versions/1",
+  enrolled: true,
+  reached_create: true,
+  request_transmitted: true,
+  response_received: true,
+  terminal_outcome_adjudicated: true,
+  credential_custody_established: true,
+  commit_ambiguous: false,
+}
 type R2CredentialStored
   = R2CredentialStoredAt { version_resource: String }
   | R2CredentialStoreRefused { cause: NonEmptyStr }
@@ -367,9 +367,236 @@ func store_minted_token(
               }
             VersionAddedAndVerified { verified: verified } =>
               R2CredentialStoredAt { version_resource: verified_exact_ref(verified) as String }
+            }
           }
       }
-    }
+  }
+}
+
+func list_account_tokens_for_reconcile() -> ProcessExit uses net: Network {
+  match classify_r2_mint(
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintBootstrapCustodyUnrecorded { intervention: intervention } =>
+      exit_failure(reason: concat("NO BOOTSTRAP TOKEN IN CUSTODY: ", intervention.instruction as String))
+    R2MintAccountUnallocated { intervention: intervention } =>
+      exit_failure(reason: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String))
+    R2MintOriginUnallocated { purpose: purpose } =>
+      exit_failure(reason: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)))
+    R2MintAdmissionRefused { standing: standing } =>
+      exit_failure(reason: concat("THE MINT WAS NOT ADMITTED: ", mint_refusal_text(standing: standing)))
+    R2MintReady { account_id: account_id, bootstrap_locus: locus, request: _ } =>
+      match read_supplied_access_token() {
+        SuppliedTokenUnavailable { cause: cause } =>
+          exit_failure(reason: concat("NO GCP ACCESS TOKEN: ", cause as String))
+        SuppliedTokenReady { token: gcp_token } =>
+          match fetch_secret_ref_credential(
+            secret_ref: locus,
+            token_source: OperatorSuppliedToken { token: gcp_token },
+          ) {
+            SecretCredentialAccessUpsertRequired { plan: _ } =>
+              exit_failure(reason: "THE BOOTSTRAP TOKEN COULD NOT BE READ")
+            SecretCredentialFetchRefused { reason: reason } =>
+              exit_failure(reason: concat("THE BOOTSTRAP TOKEN COULD NOT BE READ: ", reason as String))
+            SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+              exit_failure(reason: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode")
+            SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+              exit_failure(reason: concat(concat(
+                "THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested),
+                concat(", answered about ", resolved)))
+            SecretCredentialReady { credential: bootstrap, resolved_version: _ } => {
+              let listed = cloudflare.AccountTokens.List(
+                auth_token: bootstrap,
+                account_id: account_id as String,
+              )
+              match listed.outcome {
+                RestStatusRefused { status: _, body: body } =>
+                  exit_failure(reason: concat("TOKEN LIST REFUSED: ", body))
+                RestTransportRefused { cause: cause } =>
+                  exit_failure(reason: concat("TOKEN LIST GOT NO RESPONSE: ", cause as String))
+                RestBodyUndecodable { status: _, cause: cause } =>
+                  exit_failure(reason: concat("TOKEN LIST BODY DID NOT DECODE: ", cause as String))
+                RestOk => {
+                  let lines = map(listed.tokens, row => join([row.id as String, row.name, row.status], "\t"))
+                  let written = Filesystem.Write(
+                    path: "/tmp/r2-account-token-list.txt",
+                    content: join(lines, "\n"),
+                  )
+                  if written.success {
+                    ExitSuccess
+                  } else {
+                    exit_failure(reason: concat("LIST SUCCEEDED AND THE FILE COULD NOT BE WRITTEN: ", written.error))
+                  }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+func revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
+  match classify_r2_mint(
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintBootstrapCustodyUnrecorded { intervention: intervention } =>
+      exit_failure(reason: concat("NO BOOTSTRAP TOKEN IN CUSTODY: ", intervention.instruction as String))
+    R2MintAccountUnallocated { intervention: intervention } =>
+      exit_failure(reason: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String))
+    R2MintOriginUnallocated { purpose: purpose } =>
+      exit_failure(reason: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)))
+    R2MintAdmissionRefused { standing: standing } =>
+      exit_failure(reason: concat("THE MINT WAS NOT ADMITTED: ", mint_refusal_text(standing: standing)))
+    R2MintReady { account_id: account_id, bootstrap_locus: locus, request: request } =>
+      match read_supplied_access_token() {
+        SuppliedTokenUnavailable { cause: cause } =>
+          exit_failure(reason: concat("NO GCP ACCESS TOKEN: ", cause as String))
+        SuppliedTokenReady { token: gcp_token } =>
+          match fetch_secret_ref_credential(
+            secret_ref: locus,
+            token_source: OperatorSuppliedToken { token: gcp_token },
+          ) {
+            SecretCredentialAccessUpsertRequired { plan: _ } =>
+              exit_failure(reason: "THE BOOTSTRAP TOKEN COULD NOT BE READ")
+            SecretCredentialFetchRefused { reason: reason } =>
+              exit_failure(reason: concat("THE BOOTSTRAP TOKEN COULD NOT BE READ: ", reason as String))
+            SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+              exit_failure(reason: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode")
+            SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+              exit_failure(reason: concat(concat(
+                "THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested),
+                concat(", answered about ", resolved)))
+            SecretCredentialReady { credential: bootstrap, resolved_version: _ } => {
+              let listed = cloudflare.AccountTokens.List(
+                auth_token: bootstrap,
+                account_id: account_id as String,
+              )
+              match listed.outcome {
+                RestStatusRefused { status: _, body: body } =>
+                  exit_failure(reason: concat("TOKEN LIST REFUSED: ", body))
+                RestTransportRefused { cause: cause } =>
+                  exit_failure(reason: concat("TOKEN LIST GOT NO RESPONSE: ", cause as String))
+                RestBodyUndecodable { status: _, cause: cause } =>
+                  exit_failure(reason: concat("TOKEN LIST BODY DID NOT DECODE: ", cause as String))
+                RestOk => {
+                  let hit_count = fold(
+                    listed.tokens,
+                    init: 0,
+                    f: (n, row) => if row.name == request.name { n + 1 } else { n },
+                  )
+                  if hit_count == 0 {
+                    ExitSuccess
+                  } else {
+                    if hit_count != 1 {
+                      exit_failure(reason: concat(
+                        "MORE THAN ONE TOKEN SHARES THE OBJECT-READ NAME, NOTHING REVOKED: ",
+                        request.name))
+                    } else {
+                      let token_id = fold(
+                        listed.tokens,
+                        init: "",
+                        f: (acc, row) => if row.name == request.name { row.id as String } else { acc },
+                      )
+                      let deleted = cloudflare.AccountTokens.Delete(
+                        auth_token: bootstrap,
+                        account_id: account_id as String,
+                        token_id: token_id,
+                      )
+                      match deleted.outcome {
+                        RestStatusRefused { status: status, body: body } =>
+                          if mutation_status_is_commit_ambiguous(status: status) {
+                            exit_failure(reason: concat(
+                              "REVOKE OUTCOME UNKNOWN, AND THIS RUN WILL NOT DELETE AGAIN: ",
+                              body))
+                          } else {
+                            exit_failure(reason: concat("REVOKE REFUSED: ", body))
+                          }
+                        RestTransportRefused { cause: cause } =>
+                          exit_failure(reason: concat(
+                            "REVOKE GOT NO RESPONSE, AND THIS RUN WILL NOT DELETE AGAIN: ",
+                            cause as String))
+                        RestBodyUndecodable { status: _, cause: cause } =>
+                          exit_failure(reason: concat(
+                            "REVOKE BODY DID NOT DECODE, AND THIS RUN WILL NOT DELETE AGAIN: ",
+                            cause as String))
+                        RestOk => {
+                          let written = Filesystem.Write(
+                            path: "/tmp/r2-object-read-revoke-receipt.txt",
+                            content: join(["revoked_token_id=", token_id, "name=", request.name], "\n"),
+                          )
+                          if written.success {
+                            ExitSuccess
+                          } else {
+                            exit_failure(reason: concat(
+                              "REVOKE SUCCEEDED AND THE RECEIPT FILE COULD NOT BE WRITTEN: ",
+                              written.error))
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// ACCESSVERSION BEFORE CREATE. AccountTokens.Create is non-idempotent; a mint issued against a
+// bootstrap path that has not been proven readable can spend a token this run cannot store. This
+// probe is the same bracket run() uses -- OperatorSuppliedToken, exact version, identity join --
+// and it STOPS at the credential. The resolved version resource is written without the payload.
+func probe_bootstrap_access_version() -> ProcessExit uses net: Network {
+  match classify_r2_mint(
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintBootstrapCustodyUnrecorded { intervention: intervention } =>
+      exit_failure(reason: concat("NO BOOTSTRAP TOKEN IN CUSTODY: ", intervention.instruction as String))
+    R2MintAccountUnallocated { intervention: intervention } =>
+      exit_failure(reason: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String))
+    R2MintOriginUnallocated { purpose: purpose } =>
+      exit_failure(reason: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)))
+    R2MintAdmissionRefused { standing: standing } =>
+      exit_failure(reason: concat("THE MINT WAS NOT ADMITTED: ", mint_refusal_text(standing: standing)))
+    R2MintReady { account_id: _, bootstrap_locus: locus, request: _ } =>
+      match read_supplied_access_token() {
+        SuppliedTokenUnavailable { cause: cause } =>
+          exit_failure(reason: concat("NO GCP ACCESS TOKEN: ", cause as String))
+        SuppliedTokenReady { token: gcp_token } =>
+          match fetch_secret_ref_credential(
+            secret_ref: locus,
+            token_source: OperatorSuppliedToken { token: gcp_token },
+          ) {
+            SecretCredentialAccessUpsertRequired { plan: _ } =>
+              exit_failure(reason: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access ensure requires an interactive authentication that this run cannot perform")
+            SecretCredentialFetchRefused { reason: reason } =>
+              exit_failure(reason: concat("THE BOOTSTRAP TOKEN COULD NOT BE READ: ", reason as String))
+            SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+              exit_failure(reason: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode")
+            SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+              exit_failure(reason: concat(concat(
+                "THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested),
+                concat(", answered about ", resolved)))
+            SecretCredentialReady { credential: _, resolved_version: identity } => {
+              let written = Filesystem.Write(
+                path: "/tmp/r2-bootstrap-access-version-identity.txt",
+                content: identity as String,
+              )
+              if written.success {
+                ExitSuccess
+              } else {
+                exit_failure(reason: concat("BOOTSTRAP WAS READ AND THE IDENTITY FILE COULD NOT BE WRITTEN: ", written.error))
+              }
+            }
+          }
+      }
   }
 }
 
@@ -436,7 +663,33 @@ func run() -> ProcessExit uses net: Network {
                   ) {
                     R2CredentialStoreRefused { cause: cause } =>
                       exit_failure(reason: concat("STORE REFUSED: ", cause as String))
-                    R2CredentialStoredAt { version_resource: _ } => ExitSuccess
+                    R2CredentialStoredAt { version_resource: version_resource } => {
+                      let written = Filesystem.Write(
+                        path: "/tmp/r2-object-read-mint-receipt.txt",
+                        content: join(
+                          [
+                            "enrolled=yes",
+                            "reached_create=yes",
+                            "request_transmitted=yes",
+                            "response_received=yes",
+                            "terminal_outcome_adjudicated=yes",
+                            "credential_custody_established=yes",
+                            "commit_ambiguous=no",
+                            concat("token_id=", token.id as String),
+                            concat("s3_access_key_id=", pair.access_key_id as String),
+                            concat("version_resource=", version_resource),
+                          ],
+                          "\n",
+                        ),
+                      )
+                      if written.success {
+                        ExitSuccess
+                      } else {
+                        exit_failure(reason: concat(
+                          "TOKEN WAS MINTED AND STORED BUT THE NON-SECRET RECEIPT FILE COULD NOT BE WRITTEN: ",
+                          written.error))
+                      }
+                    }
                   }
               }
           }

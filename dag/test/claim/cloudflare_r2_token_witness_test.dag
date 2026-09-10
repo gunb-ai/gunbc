@@ -390,23 +390,8 @@ test fn r2_token_mint_frontier_rows_well_formed() -> Bool {
   frontier_rows_well_formed(rows: cloudflare_r2_token_mint_frontier_rows)
 }
 
-test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
-  any(cloudflare_r2_token_mint_frontier_rows, row =>
-    frontier_row_names_decl(
-      row: row,
-      ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_read_api_mint"),
-    ))
-    && any(cloudflare_r2_token_mint_frontier_rows, row =>
-      frontier_row_names_decl(
-        row: row,
-        ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "admit_account_token_api_mint"),
-      ))
-    && any(cloudflare_r2_token_mint_frontier_rows, row =>
-      frontier_row_names_decl(
-        row: row,
-        ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_access_pair_from_created_token"),
-      ))
-
+test fn r2_token_mint_create_frontier_rows_are_retired() -> Bool {
+  cloudflare_r2_token_mint_frontier_rows.length() == 0
 }
 
 test fn cloudflare_frontier_rows_are_in_the_census() -> Bool {
