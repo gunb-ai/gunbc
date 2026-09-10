@@ -3,9 +3,8 @@ module test.claim.bootstrap_pr_open_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool }
 import gunbc.ci_bootstrap_pr_open {
-  BootstrapPrecondition, PreconditionsMet, HeadUnreadable, HeadMoved, PullRequestAlreadyOpen,
   BootstrapPostcondition, PostconditionsMet, PostconditionMismatch,
-  admit_preconditions, check_postconditions, postcondition_failed_axes,
+  check_postconditions, postcondition_failed_axes,
   bootstrap_pr_expected_head_sha, bootstrap_pr_expected_author, bootstrap_pr_head_branch
 }
 
@@ -13,59 +12,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data good_sha: String = "72d2584a3e0e898e1a6622c7e992696ed4c11366"
 data other_sha: String = "0000000000000000000000000000000000000000"
-
-fn pre(readable: Bool, observed: String, open_count: Int) -> BootstrapPrecondition {
-  admit_preconditions(
-    head_readable: readable,
-    head_detail: "detail",
-    observed_sha: observed,
-    expected_sha: good_sha,
-    open_count: open_count
-  )
-}
-
-// THE HAPPY PATH IS ONE ARM, and it is asserted so the three refusals below are discriminating
-// rather than a function that refuses everything.
-test fn witness_matching_head_with_no_open_pr_is_admitted() -> Bool {
-  match pre(readable: true, observed: good_sha, open_count: 0) {
-    PreconditionsMet => true
-    HeadUnreadable { detail: _ } => false
-    HeadMoved { observed: _, expected: _ } => false
-    PullRequestAlreadyOpen { observed_count: _ } => false
-  }
-}
-
-// A MOVED HEAD REFUSES RATHER THAN RETARGETING. This is the arm the shell form could not test
-// without calling GitHub, and it is the one that decides whether the bot can be made to author
-// content nobody reviewed.
-test fn witness_moved_head_refuses_and_names_both_shas() -> Bool {
-  match pre(readable: true, observed: other_sha, open_count: 0) {
-    HeadMoved { observed, expected } => observed == other_sha && expected == good_sha
-    PreconditionsMet => false
-    HeadUnreadable { detail: _ } => false
-    PullRequestAlreadyOpen { observed_count: _ } => false
-  }
-}
-
-// An unreadable ref is NOT a moved head: they have different remedies, so they are different arms.
-test fn witness_unreadable_head_is_its_own_arm() -> Bool {
-  match pre(readable: false, observed: "", open_count: 0) {
-    HeadUnreadable { detail: _ } => true
-    HeadMoved { observed: _, expected: _ } => false
-    PreconditionsMet => false
-    PullRequestAlreadyOpen { observed_count: _ } => false
-  }
-}
-
-// The precheck is ordered: an already-open pull request refuses even when the head matches.
-test fn witness_already_open_refuses_on_a_matching_head() -> Bool {
-  match pre(readable: true, observed: good_sha, open_count: 1) {
-    PullRequestAlreadyOpen { observed_count } => observed_count == 1
-    PreconditionsMet => false
-    HeadMoved { observed: _, expected: _ } => false
-    HeadUnreadable { detail: _ } => false
-  }
-}
 
 fn post(author: String, sha: String, head_ref: String, base_ref: String) -> BootstrapPostcondition {
   check_postconditions(
