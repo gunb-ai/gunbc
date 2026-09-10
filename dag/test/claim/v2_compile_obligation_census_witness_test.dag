@@ -25,11 +25,12 @@ import gunbc.v2_compile_obligation_census {
   SeedEscapeOpen,
   SeedEscapeClosed,
   witness_subject,
-  witness_subject_executes_per_pr,
+  witness_subject_survives_both_subtractions,
   witness_subject_is_frozen,
   witness_subject_is_excluded,
-  obligation_executed_rung,
+  obligation_route_coverage_rung,
   obligation_rung_is_inflated,
+  obligation_executes_on_an_unverified_entry,
   obligation_claim_exceeds_its_ceiling,
   obligation_executes_natively,
   obligation_seed_escape_is_open,
@@ -144,28 +145,28 @@ fn guarantee_rung_is(r: GuaranteeRung, expected: String) -> Bool {
 // because a derivation that had silently lost the freeze lookup would still get the mandatory-tag
 // answer right through the exclusion pattern alone and nobody would notice the missing half.
 test fn v2_compile_obligation_per_pr_standing_is_derived_from_the_live_rosters_holds() -> Bool {
-  !witness_subject_executes_per_pr(w: frozen_and_excluded_subject())
-    && witness_subject_executes_per_pr(w: discovered_subject())
+  !witness_subject_survives_both_subtractions(w: frozen_and_excluded_subject())
+    && witness_subject_survives_both_subtractions(w: discovered_subject())
     && witness_subject_is_frozen(w: frozen_and_excluded_subject())
     && witness_subject_is_excluded(w: frozen_and_excluded_subject())
     && !witness_subject_is_frozen(w: discovered_subject())
     && !witness_subject_is_excluded(w: discovered_subject())
 }
 
-// THE EXECUTED RUNG IGNORES THE CLAIM. Both fixture rows claim StructurallyGuaranteed. The one whose
+// THE ROUTE-COVERAGE RUNG IGNORES THE CLAIM. Both fixture rows claim StructurallyGuaranteed. The one whose
 // paths do not execute must still read Mitigatable, and the one whose paths do execute must read
 // MechanicallyPreventable — so the function is neither a constant nor a reader of claimed_rung. This
 // is DESIGN section 4b(1) applied to the census itself: without this arm a row could raise its own
 // executed rung by restating its claim, which is the exact inflation the census exists to measure.
-test fn v2_compile_obligation_executed_rung_reads_the_paths_not_the_claim_holds() -> Bool {
+test fn v2_compile_obligation_route_coverage_rung_reads_the_paths_not_the_claim_holds() -> Bool {
   guarantee_rung_is(
-    r: obligation_executed_rung(
+    r: obligation_route_coverage_rung(
       o: fixture_row(native_arm: non_executing_arm(), subject: frozen_and_excluded_subject())
     ),
     expected: "Mitigatable"
   )
     && guarantee_rung_is(
-      r: obligation_executed_rung(
+      r: obligation_route_coverage_rung(
         o: fixture_row(native_arm: executing_arm(), subject: discovered_subject())
       ),
       expected: "MechanicallyPreventable"
@@ -288,4 +289,23 @@ fn fully_executing_exact_claim_fixture_row() -> V2CompileObligation {
     seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
     related_drops: [],
   }
+}
+
+// THE UNVERIFIED-ENTRY DEBT IS COUNTED, NOT ASSUMED. A row whose subject survives both subtractions
+// reports ExecutedPendingEntryVerification and is counted as debt; a row whose subject is frozen and
+// excluded reports neither and is not. Without the second arm a constant-true reader would be
+// indistinguishable from a correct one, and the debt number would equal the row count forever.
+//
+// THIS ARM EXISTS BECAUSE THE FIRST CUT WIDENED. "Not frozen and not excluded" was reported as plain
+// ExecutedOnPath, so a moved or deleted entry — covered by neither roster — would have read as
+// covered at exactly the moment the derivation stopped being able to decide. The arm is now
+// separate, loud and counted, and its dissolution is bound to
+// gunbc.v2_compile_obligation_census entry_existence_verification_trigger.
+test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool {
+  obligation_executes_on_an_unverified_entry(
+    o: fixture_row(native_arm: non_executing_arm(), subject: discovered_subject())
+  )
+    && !obligation_executes_on_an_unverified_entry(
+      o: fixture_row(native_arm: non_executing_arm(), subject: frozen_and_excluded_subject())
+    )
 }

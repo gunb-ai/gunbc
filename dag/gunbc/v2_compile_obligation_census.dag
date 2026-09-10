@@ -2,6 +2,7 @@ module gunbc.v2_compile_obligation_census
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, bound_dissolution }
 import gunbc.guarantee_rung {
   GuaranteeRung,
   guarantee_rung_label,
@@ -68,8 +69,10 @@ type WitnessSubject {
 // declared exclusion row, a witness frozen as never-executed, an obligation no witness names, and a
 // receipt family whose route publishes nothing the acceptance path can spend are four different
 // repairs with four different owners, and a single Absent arm would rank none of them.
-// THE ARMS, IN ORDER. ExecutedOnPath: discovered by the walk and subtracted by nothing, so the
-// required per-PR fold reaches it. ExcludedFromDiscovery: carved out by a gunbc.ci_layer_roots
+// THE ARMS, IN ORDER. ExecutedOnPath: discovered by the walk, subtracted by nothing, and its entry
+// verified to exist. ExecutedPendingEntryVerification: the same, MINUS the verification — the arm
+// every derived row currently takes, and it is a separate arm rather than a footnote on the first
+// one because the premise it carries is the one way this derivation can be wrong. ExcludedFromDiscovery: carved out by a gunbc.ci_layer_roots
 // witness_exclusion_frontier pattern — the row that does it is derivable from the entry, and
 // storing a copy of the pattern here would be the fork this module was rebuilt to remove.
 // FrozenPathDeferred: enrolled in the frozen legacy population, declared never-executed and
@@ -78,6 +81,7 @@ type WitnessSubject {
 // acceptance path can spend. NoWitnessNamesIt: no witness names this obligation on this route.
 type PathExecution
   = ExecutedOnPath { instrument: NonEmptyStr }
+  | ExecutedPendingEntryVerification { instrument: NonEmptyStr, unverified: DeclarationRef }
   | ExcludedFromDiscovery { frontier: DeclarationRef }
   | FrozenPathDeferred { roster: DeclarationRef }
   | RouteGapHeld { stall: DeclarationRef }
@@ -181,20 +185,49 @@ fn witness_subject_is_frozen(w: WitnessSubject) -> Bool {
   frozen_path_deferral_covers(entry: w.entry, function: w.function)
 }
 
-// WHAT IS DERIVED AND WHAT IS ASSUMED, STATED WHERE THE ASSUMPTION LIVES. Every entry below is a
-// *_test.dag under dag/ or src/v2/, which is the whole of the discovery walk's positive selection,
-// so the remaining question is exactly the two subtractions — the freeze roster and the exclusion
-// frontier — and both are asked here. What is NOT verified is that the entry file still exists
-// under that path: no cheap reader available from this module can answer it, and a moved file would
-// leave a stale key that both authorities would answer "not covered" for, reading as EXECUTING.
-// That is the one direction this derivation can be wrong, it fails toward optimism, and its trigger
-// is named on the census's own next_trigger below rather than left implicit.
-fn witness_subject_executes_per_pr(w: WitnessSubject) -> Bool {
+// WHAT IS DERIVED, WHAT IS ASSUMED, AND WHY THE ASSUMPTION IS A NAMED ARM RATHER THAN A COMMENT.
+// Every entry below is a *_test.dag under dag/ or src/v2/, which is the whole of the discovery
+// walk's positive selection, so the remaining question is exactly the two subtractions — the freeze
+// roster and the exclusion frontier — and both are ASKED here, of the authorities that own them.
+//
+// WHAT IS NOT ASKED is whether the entry file still exists at that path. A moved or deleted entry is
+// covered by neither roster, so "not frozen and not excluded" would answer EXECUTING for a witness
+// that cannot run — a widen toward coverage at exactly the moment the derivation stops being able to
+// decide, which DESIGN section 5 forbids as a failure arm that widens instead of refusing.
+//
+// SO THE ARM IS LOUD, BOUNDED, AND CARRIES ITS TRIGGER, which is the one carve-out section 5 allows.
+// LOUD: the standing is ExecutedPendingEntryVerification, a distinct arm naming the unverified
+// premise, never plain ExecutedOnPath — and obligations_executing_on_an_unverified_entry counts it,
+// so the debt has a number beside the coverage number rather than hiding inside it. BOUNDED: the
+// population is the entries of the fourteen rows in this file and nothing else; it cannot grow with
+// the corpus. TRIGGER: entry_existence_verification_trigger below, a typed DissolutionCondition
+// bound to the declaration that will answer it — not a sentence.
+//
+// AN EARLIER CUT OF THIS PARAGRAPH SAID THE TRIGGER WAS "named on the census's own next_trigger
+// below" WHEN NO SUCH DECLARATION EXISTED. That is precisely
+// stale_present_tense_coverage_claim_in_the_authority_consulted_first, the class this same change
+// files in the ledger, committed inside the module that files it. The repair is the declaration,
+// not a softer sentence.
+// The two subtractions this module CAN decide. Entry existence is deliberately not folded in here:
+// it is a different question with a different owner, and conflating them is what produced the widen.
+fn witness_subject_survives_both_subtractions(w: WitnessSubject) -> Bool {
   !witness_subject_is_frozen(w: w) && !witness_subject_is_excluded(w: w)
 }
 
-fn any_witness_executes_per_pr(ws: List<WitnessSubject>) -> Bool {
-  fold(ws, init: false, f: fn(found, w) { found || witness_subject_executes_per_pr(w: w) })
+data entry_existence_verification_trigger: DissolutionCondition = bound_dissolution(
+  ref: decl_ref(
+    module_path: "v2.compiler.self_host.compile_obligation_activation",
+    decl_name: "obligation_entry_present_in_tree"
+  )
+)
+
+data unverified_entry_premise: DeclarationRef = decl_ref(
+  module_path: "gunbc.v2_compile_obligation_census",
+  decl_name: "entry_existence_verification_trigger"
+)
+
+fn any_witness_survives_both_subtractions(ws: List<WitnessSubject>) -> Bool {
+  fold(ws, init: false, f: fn(found, w) { found || witness_subject_survives_both_subtractions(w: w) })
 }
 
 fn all_witnesses_frozen(ws: List<WitnessSubject>) -> Bool {
@@ -211,9 +244,10 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
       note: "no witness in the corpus names this obligation" as NonEmptyStr
     }
   } else {
-    if any_witness_executes_per_pr(ws: o.witnesses) {
-      ExecutedOnPath {
-        instrument: "claim_executor --required-ci --source-root dag --source-root src/v2, whose discovery walk reaches this entry and which no exclusion or freeze row subtracts" as NonEmptyStr
+    if any_witness_survives_both_subtractions(ws: o.witnesses) {
+      ExecutedPendingEntryVerification {
+        instrument: "claim_executor --required-ci --source-root dag --source-root src/v2, whose discovery walk reaches this entry and which no exclusion or freeze row subtracts" as NonEmptyStr,
+        unverified: unverified_entry_premise
       }
     } else {
       if all_witnesses_frozen(ws: o.witnesses) {
@@ -256,7 +290,7 @@ fn rung_drop_ref(identity: String) -> DeclarationRef {
 // lens_native_execution and lens_native_route_reach are shared data: it is one capability, and six
 // copies of it would drift on the first correction — five sites updated, one left behind, which is
 // the failure this ledger already carries as declared_trigger_names_a_term_that_is_not_the_cause.
-data native_door_entry_trigger: NonEmptyStr = "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths" as NonEmptyStr
+data native_door_entry_trigger: NonEmptyStr = "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths. AND ENTERING THE DOOR IS NECESSARY BUT NOT SUFFICIENT: what this census can then report is route coverage, so the rung this row reaches on the ladder additionally needs v2.compiler.self_host.compile_obligation_activation to require red-and-green execution receipts before MechanicallyPreventable is reportable at all" as NonEmptyStr
 
 fn witness_subject(entry: String, function: String) -> WitnessSubject {
   WitnessSubject { entry: entry as NonEmptyStr, function: function as NonEmptyStr }
@@ -655,6 +689,7 @@ data v2_compile_obligation_census: List<V2CompileObligation> = [
 fn path_execution_is_executing(p: PathExecution) -> Bool {
   match p {
     ExecutedOnPath { instrument: _ } => true
+    ExecutedPendingEntryVerification { instrument: _, unverified: _ } => true
     ExcludedFromDiscovery { frontier: _ } => false
     FrozenPathDeferred { roster: _ } => false
     RouteGapHeld { stall: _ } => false
@@ -719,11 +754,32 @@ fn obligations_without_a_home() -> Int {
   list_length(items: filter(v2_compile_obligation_census, o => !obligation_has_a_home(o: o)))
 }
 
-// THE EXECUTED RUNG IS THE MINIMUM ACROSS THE IN-SCOPE PATHS (DESIGN section 4b(1)), and this
-// function reads the two path arms and NOT claimed_rung — so a row cannot raise its own executed
-// rung by restating its claim. With the native arm non-executing on every row today, every executed
-// rung here is Mitigatable however strongly the obligation's own declaration speaks.
-fn obligation_executed_rung(o: V2CompileObligation) -> GuaranteeRung {
+// ROUTE COVERAGE IS NOT QUALIFICATION, AND THE NAME SAYS SO BECAUSE AN EARLIER NAME DID NOT. This
+// fold was called obligation_executed_rung, which promised more than it computes. What it reads is
+// whether each ROUTE executes the obligation's witnesses at all — the minimum across the in-scope
+// paths, per DESIGN section 4b(1) — and NOT whether the right lens ran, whether its discriminating
+// red went red, whether its positive control stayed green, on the compiler closure, in the current
+// generation. discriminating_red and positive_control are prose on the row, joined to nothing, and
+// the native standing is an authored field because no per-lens native receipt authority exists to
+// ask. Today the gap is harmless because native execution is 0 everywhere, so the fold bottoms out
+// at Mitigatable regardless; the moment someone flips a native standing to executing, the old name
+// would have called the obligation MechanicallyPreventable on the strength of a route running,
+// having proved nothing about the lens. Renaming is the cheap honest half — the fold's answer did
+// not change, only the claim its name makes about that answer.
+//
+// WHY INFLATION FINDINGS ARE STILL SOUND UNDER THE WEAKER READING. Route coverage is an UPPER BOUND
+// on any qualified rung: an obligation cannot be qualified on a route that does not execute it. So
+// claimed > coverage implies claimed > qualified, and every row this census reports as inflated is
+// inflated under the stronger reading too. What the weaker reading costs is FALSE NEGATIVES — a row
+// whose routes execute but whose red never fires would pass here — and that is the gap the
+// qualification authority closes, not a reason to distrust the 13.
+//
+// THE STRONGER FIX AND WHERE IT LIVES. A QualifiedOnPath arm carrying red-and-green execution
+// receipts, REQUIRED before MechanicallyPreventable can be reported, belongs to
+// v2.compiler.self_host.compile_obligation_activation, which is being authored separately and will
+// consume this census. That authority landing is this fold's next trigger; until it does, this
+// module reports coverage and says coverage.
+fn obligation_route_coverage_rung(o: V2CompileObligation) -> GuaranteeRung {
   if obligation_executes_natively(o: o) && obligation_executes_interpreted(o: o) {
     MechanicallyPreventable
   } else {
@@ -733,7 +789,7 @@ fn obligation_executed_rung(o: V2CompileObligation) -> GuaranteeRung {
 
 // WHO CONSUMES THE COUNTS, STATED AS A DECLARED FRONTIER RATHER THAN LEFT IMPLICIT (DESIGN section
 // 3c). Today the six counts have exactly one executing consumer and it is a human running
-// census_counts; the WITNESS consumes the derivation beneath them — witness_subject_executes_per_pr,
+// census_counts; the WITNESS consumes the derivation beneath them — witness_subject_survives_both_subtractions,
 // interpreted_standing and obligation_executes_natively all execute in
 // test.claim.v2_compile_obligation_census_witness_test — but no required run reads a count. That is
 // the admissible middle state of section 3c and not the red one only because the later consumer and
@@ -747,6 +803,27 @@ fn obligation_executed_rung(o: V2CompileObligation) -> GuaranteeRung {
 // remove, one layer up. The number is a projection of a checked derivation, not an independent
 // claim, and a projection earns a gate when something consumes it, not before.
 
+// THE DEBT'S OWN NUMBER, BESIDE THE COVERAGE NUMBER RATHER THAN INSIDE IT. Every row this census
+// currently reports as executing does so on an unverified entry path, so this count equals
+// executing_interpreted today; the two are separate folds because the day one entry is verified they
+// diverge, and a single number could not show that.
+fn obligation_executes_on_an_unverified_entry(o: V2CompileObligation) -> Bool {
+  match interpreted_standing(o: o) {
+    ExecutedOnPath { instrument: _ } => false
+    ExecutedPendingEntryVerification { instrument: _, unverified: _ } => true
+    ExcludedFromDiscovery { frontier: _ } => false
+    FrozenPathDeferred { roster: _ } => false
+    RouteGapHeld { stall: _ } => false
+    NoWitnessNamesIt { note: _ } => false
+  }
+}
+
+fn obligations_executing_on_an_unverified_entry() -> Int {
+  list_length(
+    items: filter(v2_compile_obligation_census, o => obligation_executes_on_an_unverified_entry(o: o))
+  )
+}
+
 // THE COMPARISON THIS CENSUS IS NAMED FOR, AND IT WAS MISSING FROM THE FIRST TWO CUTS. Claimed
 // versus executing is the whole point of the roster, and until this fold existed claimed_rung was
 // authored on all fourteen rows and read by nothing — DESIGN section 3c's red arm, not its
@@ -758,7 +835,7 @@ fn obligation_executed_rung(o: V2CompileObligation) -> GuaranteeRung {
 // evidence establishes, and citing the stronger side while another path stays silent is the
 // inflation, which is worse than sitting low because an inflated class never ranks for climbing.
 fn obligation_rung_is_inflated(o: V2CompileObligation) -> Bool {
-  guarantee_rung_index(r: o.claimed_rung) > guarantee_rung_index(r: obligation_executed_rung(o: o))
+  guarantee_rung_index(r: o.claimed_rung) > guarantee_rung_index(r: obligation_route_coverage_rung(o: o))
 }
 
 fn obligations_with_inflated_rung() -> Int {
@@ -792,6 +869,8 @@ fn obligation_kind_label(k: ObligationKind) -> String {
 fn path_execution_label(p: PathExecution) -> String {
   match p {
     ExecutedOnPath { instrument: _ } => "executes"
+    ExecutedPendingEntryVerification { instrument: _, unverified: _ } =>
+      "executes-pending-entry-verification"
     ExcludedFromDiscovery { frontier: _ } => "excluded-from-discovery"
     FrozenPathDeferred { roster: _ } => "frozen-deferral"
     RouteGapHeld { stall: _ } => "route-gap-held"
@@ -812,7 +891,7 @@ fn obligation_report_line(o: V2CompileObligation) -> String {
     concat(
       concat(" claimed=", guarantee_rung_label(r: o.claimed_rung)),
       concat(
-        concat(" executed=", guarantee_rung_label(r: obligation_executed_rung(o: o))),
+        concat(" route_coverage=", guarantee_rung_label(r: obligation_route_coverage_rung(o: o))),
         concat(
           concat(" interpreted=", path_execution_label(p: interpreted_standing(o: o))),
           concat(
@@ -864,7 +943,10 @@ fn census_counts() -> String {
               concat(" without_a_home=", to_string(obligations_without_a_home())),
               concat(
                 concat(" inflated_rung=", to_string(obligations_with_inflated_rung())),
-                concat(" claiming_above_ceiling=", to_string(obligations_claiming_above_their_ceiling()))
+                concat(
+                  concat(" claiming_above_ceiling=", to_string(obligations_claiming_above_their_ceiling())),
+                  concat(" unverified_entry=", to_string(obligations_executing_on_an_unverified_entry()))
+                )
               )
             )
           )
