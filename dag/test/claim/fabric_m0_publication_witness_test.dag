@@ -1,0 +1,269 @@
+module test.claim.fabric_m0_publication_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.measure { hardware_thread_count }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.scoped_authorization { AttemptIdentity }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.work {
+  Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, ControlPlaneCapacity, work_for,
+  OutputObligation, OutputArtifactObligation, TerminalResultObligation,
+  DeclaredOutputObligations,
+  resolve_output_obligations, ObligationsJudgedAtAdmissionGate,
+  OutputObligationsResolved, OutputObligationsUnreadable,
+}
+import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }
+import gunbc.fabric_m0_completion {
+  ComputationSucceeded,
+  ComputationFailed,
+  OriginObservation,
+  ObligationSubject,
+  CommittedOutput,
+  ManifestMember,
+  ReadbackConfirmed,
+  PublishSuccess,
+  PublishComputationFailed,
+  PublishFinalizationFailed,
+  PublishPendingReconciliation,
+  PublishObligationsUnreadable,
+}
+import gunbc.fabric_m0_commit {
+  CommitTransportOutcome,
+  StoreAnswered,
+  StoreDidNotAnswer,
+  ManifestReadbackObservation,
+  ManifestRead,
+  DurableOriginRead,
+  DisposableCacheRead,
+  ManifestNotFound,
+  ManifestReadUnavailable,
+  CommitNamespace,
+}
+import gunbc.fabric_m0_publication {
+  JobSuccessAdmission,
+  JobSuccessAdmitted,
+  JobSuccessRefused,
+  publish_work,
+  admit_work_success,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn digest_a() -> Sha256Digest {
+  Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
+}
+
+fn the_attempt() -> AttemptIdentity {
+  "attempt-1" as AttemptIdentity
+}
+
+fn the_namespace() -> CommitNamespace {
+  "fabric-m0/v1/commit" as CommitNamespace
+}
+
+fn our_slot() -> NonEmptyStr {
+  "fabric-m0/v1/commit/attempt-1"
+}
+
+fn answered() -> CommitTransportOutcome {
+  StoreAnswered {
+    slot: our_slot(),
+    outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } },
+  }
+}
+
+fn origin_read() -> ManifestReadbackObservation {
+  ManifestRead { observed_digest: digest_a(), source: DurableOriginRead }
+}
+
+fn build_output() -> OutputObligation {
+  OutputObligation { id: "build-output", kind: OutputArtifactObligation {} }
+}
+
+fn execution_receipt() -> OutputObligation {
+  OutputObligation { id: "execution-receipt", kind: TerminalResultObligation {} }
+}
+
+fn fixture_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(8) },
+      envelope: unstated_envelope(),
+    },
+    capabilities: "linux-arm64",
+    trust_domain: "fleet-owned",
+    isolation: shared_kernel_sandbox_profile(),
+  }
+}
+
+fn the_contract() -> WorkContract {
+  WorkContract {
+    program: "gunbc.fabric-m0.program:1",
+    steps: [WorkStep { step_id: "fabric-m0", resumability: ReceiptSatisfiable }],
+    source: "source:1",
+    inputs: "inputs:1",
+    runtime_closure: "runtime:1",
+    effect_contract: "effects:1",
+    output_contract: "outputs:1",
+    output_obligations: DeclaredOutputObligations { required: [build_output(), execution_receipt()] },
+  }
+}
+
+fn the_work() -> Work<NonEmptyStr> {
+  work_for(principal: "gunbc" as NonEmptyStr, contract: the_contract(), requirements: fixture_requirements())
+}
+
+fn committed_both() -> List<CommittedOutput> {
+  [
+    CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
+    CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
+  ]
+}
+
+fn members_both() -> List<ManifestMember> {
+  [
+    ManifestMember { obligation: build_output(), content: digest_a() },
+    ManifestMember { obligation: execution_receipt(), content: digest_a() },
+  ]
+}
+
+fn object_reads() -> List<OriginObservation> {
+  [
+    OriginObservation { subject: ObligationSubject { obligation: build_output() }, readback: ReadbackConfirmed { observed_digest: digest_a() } },
+    OriginObservation { subject: ObligationSubject { obligation: execution_receipt() }, readback: ReadbackConfirmed { observed_digest: digest_a() } },
+  ]
+}
+
+fn is_admitted(a: JobSuccessAdmission) -> Bool {
+  match a {
+    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => true
+    JobSuccessRefused { location: _, cause: _ } => false
+  }
+}
+
+test fn fixture_work_resolves_two_obligations() -> Bool {
+  match resolve_output_obligations(
+    contract: the_work().contract,
+    requirements: the_work().requirements,
+    work_key: the_work().id.key,
+    judgment: ObligationsJudgedAtAdmissionGate,
+  ) {
+    OutputObligationsResolved { value } =>
+      (value.work_key == the_work().id.key) && (value.required.count() == 2)
+    OutputObligationsUnreadable { contract: _, cause: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL. Job success depends on the publication authority: a
+// complete attempt reaches JobSuccessAdmitted only through publish_work.
+test fn a_complete_work_admits_job_success() -> Bool {
+  match publish_work(
+    work: the_work(),
+    attempt: the_attempt(),
+    computation: ComputationSucceeded,
+    committed: committed_both(),
+    observations: object_reads(),
+    namespace: the_namespace(),
+    manifest_digest: digest_a(),
+    members: members_both(),
+    transport: answered(),
+    observed: origin_read(),
+  ) {
+    PublishSuccess { attempt: _, manifest_digest: _ } =>
+      is_admitted(a: admit_work_success(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationSucceeded,
+        committed: committed_both(),
+        observations: object_reads(),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(),
+        members: members_both(),
+        transport: answered(),
+        observed: origin_read(),
+      ))
+    PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => false
+    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
+  }
+}
+
+// Discriminating RED: a failed computation cannot be inverted by a confirmed store.
+test fn a_failed_computation_refuses_job_success() -> Bool {
+  match admit_work_success(
+    work: the_work(),
+    attempt: the_attempt(),
+    computation: ComputationFailed { cause: "compile failed" },
+    committed: committed_both(),
+    observations: object_reads(),
+    namespace: the_namespace(),
+    manifest_digest: digest_a(),
+    members: members_both(),
+    transport: answered(),
+    observed: origin_read(),
+  ) {
+    JobSuccessRefused { location, cause } => (location == "computation") && (cause == "compile failed")
+    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => false
+  }
+}
+
+// ReadbackUnknown must not collapse into success. A cache hit is not origin confirmation.
+test fn a_cache_manifest_read_refuses_job_success() -> Bool {
+  match admit_work_success(
+    work: the_work(),
+    attempt: the_attempt(),
+    computation: ComputationSucceeded,
+    committed: committed_both(),
+    observations: object_reads(),
+    namespace: the_namespace(),
+    manifest_digest: digest_a(),
+    members: members_both(),
+    transport: answered(),
+    observed: ManifestRead { observed_digest: digest_a(), source: DisposableCacheRead { provider: "local-store" } },
+  ) {
+    JobSuccessRefused { location: _, cause: _ } => true
+    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => false
+  }
+}
+
+// An unanswered write with nothing found is pending, not success and not a decided absence.
+test fn a_lost_ack_without_origin_read_refuses_job_success() -> Bool {
+  match admit_work_success(
+    work: the_work(),
+    attempt: the_attempt(),
+    computation: ComputationSucceeded,
+    committed: committed_both(),
+    observations: object_reads(),
+    namespace: the_namespace(),
+    manifest_digest: digest_a(),
+    members: members_both(),
+    transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
+    observed: ManifestNotFound,
+  ) {
+    JobSuccessRefused { location: _, cause: _ } => true
+    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => false
+  }
+}
+
+test fn an_unavailable_origin_read_refuses_job_success() -> Bool {
+  match admit_work_success(
+    work: the_work(),
+    attempt: the_attempt(),
+    computation: ComputationSucceeded,
+    committed: committed_both(),
+    observations: object_reads(),
+    namespace: the_namespace(),
+    manifest_digest: digest_a(),
+    members: members_both(),
+    transport: answered(),
+    observed: ManifestReadUnavailable { cause: "origin unbound" },
+  ) {
+    JobSuccessRefused { location: _, cause: _ } => true
+    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => false
+  }
+}

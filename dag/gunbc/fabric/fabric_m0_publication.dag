@@ -1,0 +1,129 @@
+module gunbc.fabric_m0_publication
+
+import std.types { List, NonEmptyStr }
+import std.content_hash { Sha256Digest }
+import std.scoped_authorization { AttemptIdentity }
+import product.fabric.work {
+  Work,
+  resolve_output_obligations,
+  ObligationsJudgedAtAdmissionGate,
+}
+import gunbc.fabric_m0_completion {
+  ComputationOutcome,
+  CommittedOutput,
+  OriginObservation,
+  ManifestMember,
+  JobPublication,
+  PublishSuccess,
+  PublishComputationFailed,
+  PublishFinalizationFailed,
+  PublishPendingReconciliation,
+  PublishObligationsUnreadable,
+}
+import gunbc.fabric_m0_commit {
+  CommitNamespace,
+  CommitTransportOutcome,
+  ManifestReadbackObservation,
+  publish_after_commit,
+}
+
+// THE PRODUCTION CONSUMER of admit_job_publication.
+//
+// gunbc.fabric_m0_completion is the authority that MAY call a job successful.
+// Until this module, the only callers were enrolled witnesses: a typecheck,
+// a grep, and a witness that the declaration exists. DESIGN 3c: those are
+// not consumers. This fold is: it holds a run's Work, resolves that Work's
+// obligations at the admission gate, and the job's success verdict is the
+// publication the authority returns. Nothing here selects an origin or a
+// cache -- those are sibling lanes. The commit transport and the origin
+// observations are received, never invented.
+//
+// EXECUTING ROUTE: gunbc.fabric_witness_run publish_required_witnesses_build
+// is the required-build job's ending: it holds that job's Work and calls
+// publish_work. Witnesses of publish_work cover a complete attempt (green)
+// and mutations that must refuse success (red). The required-build
+// ending is separately witnessed so a moving ref cannot skip the gate.
+
+fn publish_work<P>(
+  work: Work<P>,
+  attempt: AttemptIdentity,
+  computation: ComputationOutcome,
+  committed: List<CommittedOutput>,
+  observations: List<OriginObservation>,
+  namespace: CommitNamespace,
+  manifest_digest: Sha256Digest,
+  members: List<ManifestMember>,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation
+) -> JobPublication {
+  publish_after_commit(
+    namespace: namespace,
+    attempt: attempt,
+    computation: computation,
+    resolution: resolve_output_obligations(
+      contract: work.contract,
+      requirements: work.requirements,
+      work_key: work.id.key,
+      judgment: ObligationsJudgedAtAdmissionGate,
+    ),
+    judged_work: work.id.key,
+    committed: committed,
+    observations: observations,
+    manifest_digest: manifest_digest,
+    members: members,
+    transport: transport,
+    observed: observed
+  )
+}
+
+// THE ONLY MINT that may call the job successful. An ambiguous commit REFUSES
+// with a typed, located cause -- located where the author can act. Pending
+// reconciliation is not collapsed into finalization failure: a lost
+// acknowledgement does not establish that a write failed. It also does not
+// admit success.
+type JobSuccessAdmission
+  = JobSuccessAdmitted { attempt: AttemptIdentity, manifest_digest: Sha256Digest }
+  | JobSuccessRefused { location: NonEmptyStr, cause: NonEmptyStr }
+
+fn admit_job_success(publication: JobPublication) -> JobSuccessAdmission {
+  match publication {
+    PublishSuccess { attempt: a, manifest_digest: d } =>
+      JobSuccessAdmitted { attempt: a, manifest_digest: d }
+    PublishComputationFailed { attempt: _, cause: c, unresolved: _ } =>
+      JobSuccessRefused { location: "computation", cause: c }
+    PublishFinalizationFailed { attempt: _, subject: s, cause: c, unresolved: _ } =>
+      JobSuccessRefused { location: s, cause: c }
+    PublishPendingReconciliation { attempt: _, subject: s, cause: c, unresolved: _ } =>
+      JobSuccessRefused { location: s, cause: c }
+    PublishObligationsUnreadable { attempt: _, subject: s, cause: c, unresolved: _ } =>
+      JobSuccessRefused { location: s, cause: c }
+  }
+}
+
+fn admit_work_success<P>(
+  work: Work<P>,
+  attempt: AttemptIdentity,
+  computation: ComputationOutcome,
+  committed: List<CommittedOutput>,
+  observations: List<OriginObservation>,
+  namespace: CommitNamespace,
+  manifest_digest: Sha256Digest,
+  members: List<ManifestMember>,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation
+) -> JobSuccessAdmission {
+  admit_job_success(
+    publication: publish_work(
+      work: work,
+      attempt: attempt,
+      computation: computation,
+      committed: committed,
+      observations: observations,
+      namespace: namespace,
+      manifest_digest: manifest_digest,
+      members: members,
+      transport: transport,
+      observed: observed
+    )
+  )
+}

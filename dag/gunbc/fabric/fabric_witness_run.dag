@@ -1,6 +1,19 @@
 module gunbc.fabric_witness_run
 
 import std.types { NonEmptyStr }
+import std.scoped_authorization { AttemptIdentity }
+import gunbc.fabric_m0_completion {
+  ComputationOutcome,
+  CommittedOutput,
+  OriginObservation,
+  ManifestMember,
+}
+import gunbc.fabric_m0_commit {
+  CommitNamespace,
+  CommitTransportOutcome,
+  ManifestReadbackObservation,
+}
+import gunbc.fabric_m0_publication { JobSuccessAdmission, JobSuccessRefused, admit_work_success }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
@@ -19,7 +32,7 @@ import product.fabric.work {
   declared_terminal_obligations,
   work_for,
 }
-import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value, serialize_content_hash }
 import gunbc.required_ci_phase_roster { BuildLane, WitnessesLane, required_ci_lane_name }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash, git_sha1_object_id }
 import product.fabric.supply {
@@ -656,5 +669,52 @@ fn floor_admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms 
   AdmissionTerms {
     deadline: deadline,
     buy: buy,
+  }
+}
+
+// THE REQUIRED-BUILD JOB'S ENDING. Construction of the Work is not success.
+// Success is admitted only when admit_job_publication, reached through
+// publish_work, returns PublishSuccess. An unbound Work never reaches the
+// gate: there is no judged work, and fabricating a publication would be
+// the silent default DESIGN 5 forbids.
+fn required_build_refusal_location_text(cause: RequiredBuildWorkRefusal) -> NonEmptyStr {
+  match cause {
+    RequiredBuildMovingRefRefused { ref_name } => concat("source-ref:", ref_name)
+    RequiredBuildWorkingDirectoryRefused { path } => concat("working-directory:", path)
+    RequiredBuildCoordinateMissing { coordinate } => concat("coordinate:", coordinate)
+  }
+}
+
+fn publish_required_witnesses_build(
+  binding: RequiredBuildWorkBinding,
+  attempt: AttemptIdentity,
+  computation: ComputationOutcome,
+  committed: List<CommittedOutput>,
+  observations: List<OriginObservation>,
+  namespace: CommitNamespace,
+  manifest_digest: Sha256Digest,
+  members: List<ManifestMember>,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation,
+) -> JobSuccessAdmission {
+  match binding {
+    RequiredBuildWorkRefused { cause } =>
+      JobSuccessRefused {
+        location: required_build_refusal_location_text(cause: cause),
+        cause: "required-build Work is unbound; publication cannot judge a job that was never possessed",
+      }
+    RequiredBuildWorkBound { work, source_tree_digest: _, environment_materialization_digest: _ } =>
+      admit_work_success(
+        work: work,
+        attempt: attempt,
+        computation: computation,
+        committed: committed,
+        observations: observations,
+        namespace: namespace,
+        manifest_digest: manifest_digest,
+        members: members,
+        transport: transport,
+        observed: observed,
+      )
   }
 }

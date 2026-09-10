@@ -1,0 +1,90 @@
+module test.claim.fabric_m0_publication_required_build_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.scoped_authorization { AttemptIdentity }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }
+import gunbc.fabric_m0_completion { ComputationSucceeded }
+import gunbc.fabric_m0_commit {
+  CommitTransportOutcome,
+  StoreAnswered,
+  ManifestReadbackObservation,
+  ManifestRead,
+  DurableOriginRead,
+  CommitNamespace,
+}
+import gunbc.fabric_m0_publication { JobSuccessAdmitted, JobSuccessRefused }
+import gunbc.fabric_witness_run {
+  RequiredBuildExecutionSpec, RequiredBuildEnvironmentEntry,
+  MovingGitRef,
+  bind_required_witnesses_build_work, build_lane_run_command,
+  publish_required_witnesses_build,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn digest_a() -> Sha256Digest {
+  Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
+}
+
+fn the_attempt() -> AttemptIdentity {
+  "attempt-1" as AttemptIdentity
+}
+
+fn the_namespace() -> CommitNamespace {
+  "fabric-m0/v1/commit" as CommitNamespace
+}
+
+fn our_slot() -> NonEmptyStr {
+  "fabric-m0/v1/commit/attempt-1"
+}
+
+fn answered() -> CommitTransportOutcome {
+  StoreAnswered {
+    slot: our_slot(),
+    outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } },
+  }
+}
+
+fn origin_read() -> ManifestReadbackObservation {
+  ManifestRead { observed_digest: digest_a(), source: DurableOriginRead }
+}
+
+fn fixture_required_spec() -> RequiredBuildExecutionSpec {
+  RequiredBuildExecutionSpec {
+    source: MovingGitRef { ref_name: "main" },
+    checkout_materialization: ["actions/checkout@v4", "fetch-depth=0", "verify-HEAD-tree"],
+    toolchain_provenance: ["rust:1.93.0", "component:rustfmt"],
+    executable_provenance: ["cargo-build:--release --bins", "target/release/claim_executor"],
+    command: build_lane_run_command(),
+    environment: [RequiredBuildEnvironmentEntry { name: "RUSTUP_TOOLCHAIN", value: "1.93.0" }],
+    cache_policy: ["setup-rust-cache=false", "persistent-host-cargo-home", "step-reuse-permitted"],
+    permitted_credential_refs: ["github.actions.checkout-token"],
+    output_manifest: ["required-ci-summary", "required-build-lane-log"],
+    terminal_result_manifest: ["required-ci-exit-status", "required-ci-terminal-summary"],
+  }
+}
+
+// Discriminating RED on the required-build ending: a moving ref never possesses Work,
+// so success cannot be admitted by skipping publish_work.
+test fn an_unbound_required_build_refuses_job_success() -> Bool {
+  match publish_required_witnesses_build(
+    binding: bind_required_witnesses_build_work(
+      principal: "gunbc",
+      spec: fixture_required_spec(),
+    ),
+    attempt: the_attempt(),
+    computation: ComputationSucceeded,
+    committed: [],
+    observations: [],
+    namespace: the_namespace(),
+    manifest_digest: digest_a(),
+    members: [],
+    transport: answered(),
+    observed: origin_read(),
+  ) {
+    JobSuccessRefused { location, cause: _ } => location == "source-ref:main"
+    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => false
+  }
+}
