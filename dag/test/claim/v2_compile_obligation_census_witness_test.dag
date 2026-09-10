@@ -20,7 +20,7 @@ import gunbc.v2_compile_obligation_census {
   ExecutedPendingVerification,
   standing_carries_premise,
   unverified_entry_premise,
-  unverified_gate_admission_premise,
+  unread_native_verdict_premise,
   RouteGapHeld,
   RouteReach,
   NotNamedByAnyExecutingRoute,
@@ -37,7 +37,7 @@ import gunbc.v2_compile_obligation_census {
   obligation_rung_is_inflated,
   obligation_executes_on_an_unverified_entry,
   obligation_claim_exceeds_its_ceiling,
-  obligation_executes_natively,
+  witness_subject_in_native_lane,
   obligation_seed_escape_is_open,
   v2_compile_obligation_census
 }
@@ -100,7 +100,7 @@ fn fixture_reach() -> RouteReach {
   NotNamedByAnyExecutingRoute { note: "fixture reach" as NonEmptyStr }
 }
 
-fn fixture_row(native_arm: PathExecution, subject: WitnessSubject) -> V2CompileObligation {
+fn fixture_row(subject: WitnessSubject) -> V2CompileObligation {
   V2CompileObligation {
     identity: "fixture_row" as NonEmptyStr,
     kind: RequiredRootLens,
@@ -109,7 +109,6 @@ fn fixture_row(native_arm: PathExecution, subject: WitnessSubject) -> V2CompileO
     witnesses: [subject],
     discriminating_red: "fixture red" as NonEmptyStr,
     positive_control: "fixture positive control" as NonEmptyStr,
-    native: native_arm,
     route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
     next_trigger: "fixture trigger" as NonEmptyStr,
@@ -127,7 +126,6 @@ fn closed_escape_fixture_row() -> V2CompileObligation {
     witnesses: [discovered_subject()],
     discriminating_red: "fixture red" as NonEmptyStr,
     positive_control: "fixture positive control" as NonEmptyStr,
-    native: non_executing_arm(),
     route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
     next_trigger: "fixture trigger" as NonEmptyStr,
@@ -168,13 +166,13 @@ test fn v2_compile_obligation_per_pr_standing_is_derived_from_the_live_rosters_h
 test fn v2_compile_obligation_route_coverage_rung_reads_the_paths_not_the_claim_holds() -> Bool {
   guarantee_rung_is(
     r: obligation_route_coverage_rung(
-      o: fixture_row(native_arm: non_executing_arm(), subject: frozen_and_excluded_subject())
+      o: fixture_row(subject: frozen_and_excluded_subject())
     ),
     expected: "Mitigatable"
   )
     && guarantee_rung_is(
       r: obligation_route_coverage_rung(
-        o: fixture_row(native_arm: executing_arm(), subject: discovered_subject())
+        o: fixture_row(subject: discovered_subject())
       ),
       expected: "MechanicallyPreventable"
     )
@@ -185,26 +183,27 @@ test fn v2_compile_obligation_route_coverage_rung_reads_the_paths_not_the_claim_
 // over the roster alone. The closed fixture is what separates them.
 test fn v2_compile_obligation_seed_escape_arms_are_distinguished_holds() -> Bool {
   obligation_seed_escape_is_open(
-    o: fixture_row(native_arm: non_executing_arm(), subject: discovered_subject())
+    o: fixture_row(subject: discovered_subject())
   )
     && !obligation_seed_escape_is_open(o: closed_escape_fixture_row())
 }
 
-// NO ROW EXECUTES NATIVELY TODAY, AS A PREDICATE OVER THE ROWS RATHER THAN A COUNT AGAINST A
-// LITERAL. A number copied from the current tree is not an oracle (DESIGN section 5); the checkable
-// statement is that no row carries a native ExecutedOnPath arm. It flips the day one does, and that
-// flip is this arm's intended dissolution, not a regression — the arm deletes then rather than being
-// repaired back to passing. Its positive control is the executing fixture, which proves an executing
-// arm is representable and would be counted.
-test fn v2_compile_obligation_no_row_executes_natively_holds() -> Bool {
-  fold(
-    v2_compile_obligation_census,
-    init: true,
-    f: (acc, o) => acc && !obligation_executes_natively(o: o)
-  )
-    && obligation_executes_natively(
-      o: fixture_row(native_arm: executing_arm(), subject: discovered_subject())
-    )
+// THE NATIVE COLUMN IS DERIVED, AND ITS PREDECESSOR ARM RETIRED BY ITS OWN DISSOLUTION. Until
+// gunbc#10882 landed, this file asserted that no row executes natively, and said in its own words
+// that the flip "is this arm's intended dissolution, not a regression — the arm deletes then rather
+// than being repaired back to passing". The lane landed, the arm went red, and it is deleted rather
+// than weakened. What replaces it is the check that matters now: native standing is DERIVED from the
+// lane's own universe predicate intersected with floor discovery, so a row is reported as executing
+// natively only when the emitted binary's population actually contains its identity.
+//
+// THE NEGATIVE CONTROL IS AN EXCLUDED SUBJECT, NOT AN OUT-OF-PREFIX ONE, because the prefix half is
+// already covered by the gate-closure arm and because the excluded half is where the first cut of
+// this derivation was wrong: asking the lane's prefix predicate alone reported two carved-out
+// obligations as natively executing.
+test fn v2_compile_obligation_native_standing_intersects_discovery_holds() -> Bool {
+  witness_subject_in_native_lane(w: discovered_subject())
+    && !witness_subject_in_native_lane(w: frozen_and_excluded_subject())
+    && !witness_subject_in_native_lane(w: this_witnesss_own_subject())
 }
 
 // THE CENSUS'S HEADLINE COMPARISON, EXERCISED ON FOUR ROWS THAT DIFFER ON BOTH AXES. Inflation is
@@ -225,12 +224,12 @@ test fn v2_compile_obligation_no_row_executes_natively_holds() -> Bool {
 // arm doing its job on its own author.
 test fn v2_compile_obligation_rung_inflation_is_a_strict_inequality_holds() -> Bool {
   obligation_rung_is_inflated(
-    o: fixture_row(native_arm: non_executing_arm(), subject: frozen_and_excluded_subject())
+    o: fixture_row(subject: frozen_and_excluded_subject())
   )
     && !obligation_rung_is_inflated(o: honestly_claimed_fixture_row())
     && !obligation_rung_is_inflated(o: fully_executing_exact_claim_fixture_row())
     && obligation_rung_is_inflated(
-      o: fixture_row(native_arm: executing_arm(), subject: discovered_subject())
+      o: fixture_row(subject: discovered_subject())
     )
 }
 
@@ -240,7 +239,7 @@ test fn v2_compile_obligation_rung_inflation_is_a_strict_inequality_holds() -> B
 test fn v2_compile_obligation_claim_above_its_own_ceiling_is_detected_holds() -> Bool {
   obligation_claim_exceeds_its_ceiling(o: over_ceiling_fixture_row())
     && !obligation_claim_exceeds_its_ceiling(
-      o: fixture_row(native_arm: non_executing_arm(), subject: discovered_subject())
+      o: fixture_row(subject: discovered_subject())
     )
 }
 
@@ -253,7 +252,6 @@ fn honestly_claimed_fixture_row() -> V2CompileObligation {
     witnesses: [frozen_and_excluded_subject()],
     discriminating_red: "fixture red" as NonEmptyStr,
     positive_control: "fixture positive control" as NonEmptyStr,
-    native: non_executing_arm(),
     route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
     next_trigger: "fixture trigger" as NonEmptyStr,
@@ -271,7 +269,6 @@ fn over_ceiling_fixture_row() -> V2CompileObligation {
     witnesses: [discovered_subject()],
     discriminating_red: "fixture red" as NonEmptyStr,
     positive_control: "fixture positive control" as NonEmptyStr,
-    native: non_executing_arm(),
     route_reach: fixture_reach(),
     ceiling: Mitigatable,
     next_trigger: "fixture trigger" as NonEmptyStr,
@@ -289,7 +286,6 @@ fn fully_executing_exact_claim_fixture_row() -> V2CompileObligation {
     witnesses: [discovered_subject()],
     discriminating_red: "fixture red" as NonEmptyStr,
     positive_control: "fixture positive control" as NonEmptyStr,
-    native: executing_arm(),
     route_reach: fixture_reach(),
     ceiling: StructurallyGuaranteed,
     next_trigger: "fixture trigger" as NonEmptyStr,
@@ -310,10 +306,10 @@ fn fully_executing_exact_claim_fixture_row() -> V2CompileObligation {
 // gunbc.v2_compile_obligation_census entry_existence_verification_trigger.
 test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool {
   obligation_executes_on_an_unverified_entry(
-    o: fixture_row(native_arm: non_executing_arm(), subject: discovered_subject())
+    o: fixture_row(subject: discovered_subject())
   )
     && !obligation_executes_on_an_unverified_entry(
-      o: fixture_row(native_arm: non_executing_arm(), subject: frozen_and_excluded_subject())
+      o: fixture_row(subject: frozen_and_excluded_subject())
     )
 }
 
@@ -341,8 +337,8 @@ fn this_witnesss_own_subject() -> WitnessSubject {
   )
 }
 
-// THE TWO PENDING PREMISES ARE DISTINGUISHED BY THE PREMISE, NOT BY THE ARM. Both counts read 9 on
-// the live roster today, so a reader could reasonably suspect the second is the first under another
+// THE PENDING PREMISES ARE DISTINGUISHED BY THE PREMISE, NOT BY THE ARM. The per-premise counts move
+// together on the live roster, so a reader could reasonably suspect one is the other under another
 // name — and in the first cut of that pair it WAS, folding the same predicate twice. This arm builds
 // a standing carrying only the entry premise and shows the gate premise is absent from it, which is
 // the shape neither count can produce from the live roster and the only thing that makes "two
@@ -351,12 +347,12 @@ test fn v2_compile_obligation_pending_premises_are_read_individually_holds() -> 
   standing_carries_premise(p: entry_only_pending_standing(), premise: unverified_entry_premise)
     && !standing_carries_premise(
       p: entry_only_pending_standing(),
-      premise: unverified_gate_admission_premise
+      premise: unread_native_verdict_premise
     )
     && standing_carries_premise(p: both_premises_pending_standing(), premise: unverified_entry_premise)
     && standing_carries_premise(
       p: both_premises_pending_standing(),
-      premise: unverified_gate_admission_premise
+      premise: unread_native_verdict_premise
     )
     && !standing_carries_premise(p: non_executing_arm(), premise: unverified_entry_premise)
 }
@@ -371,6 +367,6 @@ fn entry_only_pending_standing() -> PathExecution {
 fn both_premises_pending_standing() -> PathExecution {
   ExecutedPendingVerification {
     instrument: "fixture instrument" as NonEmptyStr,
-    unverified_premises: [unverified_entry_premise, unverified_gate_admission_premise]
+    unverified_premises: [unverified_entry_premise, unread_native_verdict_premise]
   }
 }

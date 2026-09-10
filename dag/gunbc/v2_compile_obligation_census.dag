@@ -3,6 +3,7 @@ module gunbc.v2_compile_obligation_census
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when, next_rung_trigger_render }
 import gunbc.guarantee_rung {
   GuaranteeRung,
   guarantee_rung_label,
@@ -15,11 +16,26 @@ import gunbc.guarantee_rung {
 import gunbc.witness_deferral_freeze { frozen_path_deferral_covers }
 import gunbc.ci_layer_roots { WitnessExclusionRow, witness_exclusion_frontier }
 import v2.workflow.required_floor { required_gate_prefixes }
+import gunbc.witness_v2_native_route { native_route_universe_member, required_v2_native_job_name }
 
 // WHY THIS CENSUS EXISTS, IN ONE SENTENCE THE OPERATOR ASKED FOR (2026-09-10): v2 exists so that
 // classes like nondeterministic emission are UNWRITABLE, and this roster says, per compile-time
-// obligation v2 declares, whether that is true ON A ROUTE THAT EXECUTES or only claimed in a
+// obligation it carries, whether that is true ON A ROUTE THAT EXECUTES or only claimed in a
 // declaration nobody runs.
+//
+// WHAT THE ROSTER IS, AND WHAT IT IS NOT: IT IS NOT PROVEN COMPLETE. The rows were enumerated by
+// hand from v2.compiler.compile's two enrolled lens rosters, std.primitive_identity's declared
+// traversal facts, and two classes surfaced by measurement — and nothing here joins that set to
+// those authorities at identity grain, because the enrolled rosters are the CONTENTS of two list
+// literals and no reader available to this module can walk them. So a lens de-enrolled from
+// always_required_root_lenses, or one added to it, leaves this roster stale and silent.
+//
+// THE CENSUS THEREFORE CLAIMS COVERAGE OF ITS OWN ROWS AND NOT OF v2's OBLIGATIONS AS A WHOLE, and
+// every count below is denominated in obligations_claimed rather than in a population anyone has
+// proved closed. Reading these numbers as "v2's obligations" is the completeness inflation this
+// module would otherwise commit in its own headline — the same shape it measures. The closure is a
+// declared frontier, not a silence: it lands when the roster is derived from those authorities
+// rather than authored beside them.
 //
 // THE DISPOSITIONS ARE DERIVED, NOT AUTHORED, AND THE FIRST CUT OF THIS MODULE PROVED WHY. That cut
 // hand-wrote each row's interpreted standing from a reading of gunbc.ci_layer_roots
@@ -146,10 +162,9 @@ type V2CompileObligation {
   witnesses: List<WitnessSubject>
   discriminating_red: NonEmptyStr
   positive_control: NonEmptyStr
-  native: PathExecution
   route_reach: RouteReach
   ceiling: GuaranteeRung
-  next_trigger: NonEmptyStr
+  next_trigger: NextRungTrigger
   seed_escape: SeedEscape
   related_drops: List<DeclarationRef>
 }
@@ -198,7 +213,7 @@ fn witness_subject_is_inside_gate_closure_in(prefixes: List<String>, w: WitnessS
   fold(
     prefixes,
     init: false,
-    f: fn(found, prefix) { found || string_contains(s: w.module_path, pattern: prefix) }
+    f: fn(found, prefix) { found || starts_with(s: w.module_path, prefix: prefix) }
   )
 }
 
@@ -220,13 +235,13 @@ fn witness_subject_is_inside_gate_closure(w: WitnessSubject) -> Bool {
 // and that is precisely why it had to be asked rather than assumed: a subtraction that happens to
 // be satisfied is not a subtraction that was checked.
 //
-// THE PREFIX TEST IS A CONTAINMENT TEST, AND IT HAS ITS OWN TRIGGER AND ITS OWN NUMBER. The floor
-// matches a module path PREFIX; the substrate offers string_contains and no prefix primitive, so a
-// module merely CONTAINING a rostered string reads as admitted. Containment matches a superset of
-// prefixes, so the derivation is SOUND IN THE DECLINE DIRECTION — a module the test says is outside
-// really is outside — and approximate only in the admit direction. That is why the decline arm is
-// reported flatly while the admit arm is pending: see gate_prefix_approximation_trigger and
-// obligations_on_an_unverified_gate_admission.
+// THE PREFIX TEST IS A PREFIX TEST. Two cuts of this module used string_contains here and declared
+// the imprecision as debt — first discharged onto the wrong trigger, then given its own. Both were
+// answers to a question with a better answer: starts_with IS in the substrate, and
+// gunbc.witness_v2_native_route native_route_universe_member calls it for exactly this purpose one
+// module over. A declared debt for a capability that already exists is not honesty, it is a
+// permanent excuse with a receipt attached — so the premise, its trigger and its number are DELETED
+// rather than kept as documentation of a problem that no longer exists.
 //
 // WHAT IS NOT ASKED is whether the entry file still exists at that path. A moved or deleted entry is
 // covered by neither roster, so "not frozen and not excluded" would answer EXECUTING for a witness
@@ -237,9 +252,10 @@ fn witness_subject_is_inside_gate_closure(w: WitnessSubject) -> Bool {
 // LOUD: the standing is ExecutedPendingEntryVerification, a distinct arm naming the unverified
 // premise, never plain ExecutedOnPath — and obligations_executing_on_an_unverified_entry counts it,
 // so the debt has a number beside the coverage number rather than hiding inside it. BOUNDED: the
-// population is the entries of the fourteen rows in this file and nothing else; it cannot grow with
+// population is the entries of the rows in this file and nothing else -- obligations_claimed is its
+// size -- and it cannot grow with
 // the corpus. TRIGGER: entry_existence_verification_trigger below, a typed DissolutionCondition
-// bound to the declaration that will answer it — not a sentence.
+// naming the capability that retires it — not a sentence in a comment.
 //
 // AN EARLIER CUT OF THIS PARAGRAPH SAID THE TRIGGER WAS "named on the census's own next_trigger
 // below" WHEN NO SUCH DECLARATION EXISTED. That is precisely
@@ -275,23 +291,6 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
   decl_name: "entry_existence_verification_trigger"
 )
 
-// THE SECOND PREMISE, AND THE REASON IT IS ITS OWN TRIGGER RATHER THAN A CLAUSE ON THE FIRST. An
-// earlier cut named the containment-for-prefix imprecision and then discharged it as "carried by the
-// same declared debt" as the entry premise. That was false and review 63226 caught it: the entry
-// trigger is scoped strictly to whether a witness FILE is still present at its path, and retiring it
-// would leave the prefix approximation standing with nothing to retire it and no number beside the
-// coverage number. A trigger that does not cover what it is cited for is the class this same change
-// files in the ledger, asserted about a trigger this change authored — the second time in one
-// module, which is why the repair is a separate declaration and not a longer sentence.
-data gate_prefix_approximation_trigger: DissolutionCondition = unbound_dissolution(
-  description: "the substrate gains a prefix predicate over String — the operation v2.workflow.required_floor required_gate_prefixes actually performs — so witness_subject_is_inside_gate_closure_in stops standing a containment test where a prefix test belongs. Until it exists the derivation is SOUND IN THE DECLINE DIRECTION and approximate in the admit direction: containment matches a superset of prefixes, so a module the roster does not admit can only be read as admitted, never the reverse, and every row admitted through it is counted by obligations_on_an_unverified_gate_admission" as NonEmptyStr
-)
-
-data unverified_gate_admission_premise: DeclarationRef = decl_ref(
-  module_path: "gunbc.v2_compile_obligation_census",
-  decl_name: "gate_prefix_approximation_trigger"
-)
-
 fn any_witness_survives_every_subtraction(ws: List<WitnessSubject>) -> Bool {
   fold(ws, init: false, f: fn(found, w) { found || witness_subject_survives_every_subtraction(w: w) })
 }
@@ -317,7 +316,7 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
     if any_witness_survives_every_subtraction(ws: o.witnesses) {
       ExecutedPendingVerification {
         instrument: "claim_executor --required-ci --source-root dag --source-root src/v2: the discovery walk reaches this entry, no exclusion row and no freeze row subtracts it, and its module reads as inside the required floor's gate closure" as NonEmptyStr,
-        unverified_premises: [unverified_entry_premise, unverified_gate_admission_premise]
+        unverified_premises: [unverified_entry_premise]
       }
     } else {
       if all_witnesses_frozen(ws: o.witnesses) {
@@ -333,9 +332,27 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
   }
 }
 
-// EVERY LENS ROW SHARES THESE TWO NATIVE VALUES because every lens is enrolled behind one door and
-// the door is reached by one driver; the refusal that stops short of the gates is upstream of all
-// of them, so splitting it per row would be copies of one fact.
+// THE NATIVE COLUMN IS NOW DERIVED TOO, AND THE ANSWER CHANGED. Every earlier cut of this module
+// reported RouteGapHeld on every row, on the true observation that the self-host behavioral receipt
+// family publishes nothing the acceptance path can spend. That is still true of THAT family and it
+// is no longer the whole native story: gunbc#10882 landed the required-v2-native lane, whose subject
+// is the emitted compiler binary executing a derived v2.test.* population through its own
+// SourceRootEvalDriver and reaching a terminal NativeTestVerdict per identity. A lens gate exercised
+// by one of those tests runs INSIDE THE EMITTED BINARY, which is native execution of the obligation
+// in the only sense the census ever meant.
+//
+// SO THE ROSTER IS ASKED, NOT ASSUMED, exactly like the interpreted column: the lane declares its
+// own universe predicate, gunbc.witness_v2_native_route native_route_universe_member, and this
+// module calls it rather than re-deriving the prefix. A census that hand-authored "RouteGapHeld"
+// after the lane landed would have been the stale present-tense coverage claim in reverse — a
+// pessimistic one, which is not more honest, only wrong in the safer direction.
+//
+// WHAT IS STILL PENDING, AND IT IS A THIRD PREMISE RATHER THAN A SOFTER WORD. Lane membership says
+// the identity is IN the population the emitted binary executes. It does not say which verdict that
+// execution reached: NativeTestPassed, NativeTestReturnedFalse, NativeTestRefused and the stage
+// refusals are a receipt the lane publishes per run, and nothing in this module reads it. So the
+// native standing is ExecutedPendingVerification carrying unread_native_verdict_premise, never
+// ExecutedOnPath, and the rung this census reports stays route coverage rather than qualification.
 //
 // THE NATIVE RECEIPT IS WEAKER THAN ITS ROUTE GAP, WHICH IS WHY THIS VALUE IS RouteGapHeld AND NOT
 // SOMETHING SOFTER. The only behavioral receipt the emitted crate publishes for v2.compiler.compile
@@ -343,7 +360,62 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
 // prose string describing the two roster grains, compared against a nine-line seed module whose
 // whole content is that same string. Not one gate is invoked, so even a spendable receipt would not
 // move if every gate were deleted.
-data lens_native_execution: PathExecution = RouteGapHeld { stall: self_host_route_stall }
+data unread_native_verdict_premise: DeclarationRef = decl_ref(
+  module_path: "gunbc.v2_compile_obligation_census",
+  decl_name: "native_verdict_receipt_trigger"
+)
+
+data native_verdict_receipt_trigger: DissolutionCondition = unbound_dissolution(
+  description: "this census reads the required-v2-native lane's per-identity NativeTestVerdict receipt, so a row whose native execution reached NativeTestReturnedFalse or NativeTestRefused reports a refusal instead of pending execution — at which point the native arm splits into a verified arm and a typed decline, and obligations_executing_natively stops meaning lane membership" as NonEmptyStr
+)
+
+// LANE MEMBERSHIP IS THE PREFIX INTERSECTED WITH FLOOR DISCOVERY, NOT THE PREFIX ALONE, and the
+// first cut of this fold got it wrong in the direction that flatters. native_route_universe_member
+// is the lane's PREDICATE over a module name; the lane's own header states that the population it
+// applies to is "derived by the host harness from the floor's own discovery producer joined against
+// each entry's authored module header". So an entry a gunbc.ci_layer_roots witness_exclusion_frontier
+// pattern carves out of discovery never reaches the native harness either, however well its module
+// name matches. Asking only the predicate reported 11 obligations executing natively and two of them
+// — accumulator_copy and mandatory_tag — are exactly the rows carved out by "claim/complexity/
+// accumulator_copy_roster_gate" and "test/claim/long/". Reporting those two as natively executing
+// would have been this census's own headline defect, committed in the column the census exists to
+// make honest, on the first fold written after the lane landed.
+//
+// FREEZE IS DELIBERATELY NOT APPLIED HERE. A gunbc.witness_deferral_freeze row is an admission fact
+// about the required floor's execution standing, not about the discovery walk, so there is no
+// warrant to assume the native harness consults it. It happens not to matter today — every frozen
+// subject below is also excluded — and where a fact is not established the narrower claim is the
+// honest one.
+fn witness_subject_in_native_lane(w: WitnessSubject) -> Bool {
+  !witness_subject_is_excluded(w: w) && native_route_universe_member(module_qn: w.module_path)
+}
+
+fn any_witness_in_native_lane(ws: List<WitnessSubject>) -> Bool {
+  fold(ws, init: false, f: fn(found, w) { found || witness_subject_in_native_lane(w: w) })
+}
+
+fn native_standing(o: V2CompileObligation) -> PathExecution {
+  if list_length(items: o.witnesses) == 0 {
+    NoWitnessNamesIt {
+      note: "no witness names this obligation, so the native lane has no identity to execute for it" as NonEmptyStr
+    }
+  } else {
+    if any_witness_in_native_lane(ws: o.witnesses) {
+      ExecutedPendingVerification {
+        instrument: concat(
+          "the required-v2-native CI job ",
+          concat(
+            required_v2_native_job_name,
+            ": the emitted compiler binary executes this identity through its own SourceRootEvalDriver"
+          )
+        ) as NonEmptyStr,
+        unverified_premises: [unverified_entry_premise, unread_native_verdict_premise]
+      }
+    } else {
+      RouteGapHeld { stall: self_host_route_stall }
+    }
+  }
+}
 
 data lens_native_route_reach: RouteReach = ReachedByNativeRoute {
   driver: "the emitted SourceRootEvalDriver on the required-v2-native lane, which executes v2.compiler.compile compile_source_root_ingest_with_admission" as NonEmptyStr,
@@ -361,10 +433,10 @@ fn rung_drop_ref(identity: String) -> DeclarationRef {
 }
 
 // THE SIX ROWS WHOSE ONLY REMAINING WALL IS THE NATIVE DOOR SHARE ONE TRIGGER, for the same reason
-// lens_native_execution and lens_native_route_reach are shared data: it is one capability, and six
+// lens_native_route_reach is shared data: it is one capability, and six
 // copies of it would drift on the first correction — five sites updated, one left behind, which is
 // the failure this ledger already carries as declared_trigger_names_a_term_that_is_not_the_cause.
-data native_door_entry_trigger: NonEmptyStr = "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths. AND ENTERING THE DOOR IS NECESSARY BUT NOT SUFFICIENT: what this census can then report is route coverage, so the rung this row reaches on the ladder additionally needs v2.compiler.self_host.compile_obligation_activation to require red-and-green execution receipts before MechanicallyPreventable is reportable at all" as NonEmptyStr
+data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths. AND ENTERING THE DOOR IS NECESSARY BUT NOT SUFFICIENT: what this census can then report is route coverage, so the rung this row reaches on the ladder additionally needs v2.compiler.self_host.compile_obligation_activation to require red-and-green execution receipts before MechanicallyPreventable is reportable at all")
 
 fn witness_subject(entry: String, function: String, module_path: String) -> WitnessSubject {
   WitnessSubject {
@@ -400,10 +472,9 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.claim.complexity.accumulator_copy_roster_gate"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "TWO CAPABILITIES, AND NEITHER IS A FILE MOVE. First, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Second, the native lane enters the door. Until the first lands no required run refuses on a copied-accumulator tree; until the second lands the executed rung stays Mitigatable however green the interpreted side becomes" as NonEmptyStr,
+  next_trigger: climbs_when(capability: "TWO CAPABILITIES, AND NEITHER IS A FILE MOVE. First, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Second, the native lane enters the door. Until the first lands no required run refuses on a copied-accumulator tree; until the second lands the executed rung stays Mitigatable however green the interpreted side becomes"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed's own folds are never presented to this gate, so a copied accumulator authored in stage0 Rust is invisible to the complexity lens that exists to make it unwritable" as NonEmptyStr
   },
@@ -434,7 +505,6 @@ data determinism_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
@@ -463,7 +533,6 @@ data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.claim.machine_shape_construction_wall"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
@@ -504,10 +573,9 @@ data mandatory_tag_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.long.mandatory_tag_extdeps_corpus_test"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "THE CAPABILITY IS AN EXECUTING HOME FOR THIS GATE'S WITNESSES, and it is guarded twice over so a single edit satisfies nothing. The twelve gate functions must leave gunbc.witness_deferral_freeze — a freeze row is a declaration that the identity executes nowhere, and deleting it while the entry stays under the 'test/claim/long/' exclusion pattern would swap one silence for another — AND that exclusion must retire on its own terms, which means the corpus-grain walk these witnesses perform becomes affordable on the fold that would run it. Only then does mandatory_tag_enrolled_in_root_roster_rejects_violating_module refuse on a required run, and only then does the WallNow this row records have any executing evidence at all" as NonEmptyStr,
+  next_trigger: climbs_when(capability: "THE CAPABILITY IS AN EXECUTING HOME FOR THIS GATE'S WITNESSES, and it is guarded twice over so a single edit satisfies nothing. The twelve gate functions must leave gunbc.witness_deferral_freeze — a freeze row is a declaration that the identity executes nowhere, and deleting it while the entry stays under the 'test/claim/long/' exclusion pattern would swap one silence for another — AND that exclusion must retire on its own terms, which means the corpus-grain walk these witnesses perform becomes affordable on the fold that would run it. Only then does mandatory_tag_enrolled_in_root_roster_rejects_violating_module refuse on a required run, and only then does the WallNow this row records have any executing evidence at all"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "stage0 Rust carries no mandatory-tag surface at all, so the seed cannot violate the rule and cannot demonstrate it either" as NonEmptyStr
   },
@@ -536,7 +604,6 @@ data undecidable_verdict_collapse_obligation: V2CompileObligation = V2CompileObl
       module_path: "v2.test.claim.undecidable_verdict_collapse_wall_test"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
@@ -569,7 +636,6 @@ data fact_density_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_fact_density.fact_bundle_compile_lens_passes"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
@@ -598,7 +664,6 @@ data unit_modeling_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
@@ -627,7 +692,6 @@ data lifecycle_carrier_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
@@ -668,10 +732,9 @@ data compile_door_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_application.empty_required_lenses_skip_gate"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "the acceptance path that compiles the corpus routes modules through validate_then_compile, so the two rosters are asked about authored source rather than about fixtures" as NonEmptyStr,
+  next_trigger: climbs_when(capability: "the acceptance path that compiles the corpus routes modules through validate_then_compile, so the two rosters are asked about authored source rather than about fixtures"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed compiles and accepts the entire corpus without ever calling this door, so every lens enrolled behind it is silent on every module the repository actually builds" as NonEmptyStr
   },
@@ -695,10 +758,9 @@ data primitive_index_by_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "any call reaching index_by in a tree handed to the determinism gate, which must refuse because nobody has answered the order question" as NonEmptyStr,
   positive_control: "the same tree with sorted_map_keys in place of index_by, which must be accepted as CanonicalOrder" as NonEmptyStr,
   witnesses: [],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "index_by's realization is read and the row is replaced by a classified order, at which point this census row deletes rather than being marked closed" as NonEmptyStr,
+  next_trigger: climbs_when(capability: "index_by's realization is read and the row is replaced by a classified order, at which point this census row deletes rather than being marked closed"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed calls its own index_by realization directly with no gate between, so an unclassified order is consumed rather than refused" as NonEmptyStr
   },
@@ -724,10 +786,9 @@ data primitive_map_keys_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "a production caller hands emitting trees to validate_then_compile, so a map_keys call on an emission path refuses instead of being classified by non-membership" as NonEmptyStr,
+  next_trigger: climbs_when(capability: "a production caller hands emitting trees to validate_then_compile, so a map_keys call on an emission path refuses instead of being classified by non-membership"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed calls map_keys directly in emission and ordering code with no gate between. THE OBSERVED PUB-USE DIVERGENCE IS NOT THIS ROW AND THE ATTRIBUTION IS WITHDRAWN RATHER THAN SOFTENED: the first cut named that incident here, and measurement on gunbc#10941 found the nondeterministic re-export walk to be v1.05_emit_core_support unique_strings, a fold over a membership map, not a call to this primitive. A fit that survives a plausibility read is not a diagnosis, and leaving it standing would have aimed every repair at a primitive nobody measured. The incident is carried by its own row, determinism_non_primitive_order_exposing_fold" as NonEmptyStr
   },
@@ -748,10 +809,9 @@ data primitive_map_values_obligation: V2CompileObligation = V2CompileObligation 
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
   ],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "the same production routing that closes the map_keys row closes this one; they are one trigger and are written twice only because they are two declared primitives" as NonEmptyStr,
+  next_trigger: climbs_when(capability: "the same production routing that closes the map_keys row closes this one; they are one trigger and are written twice only because they are two declared primitives"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed reads map values directly in emission and ordering code with no gate between" as NonEmptyStr
   },
@@ -786,10 +846,9 @@ data determinism_non_primitive_fold_obligation: V2CompileObligation = V2CompileO
   discriminating_red: "a tree whose declaration calls an order-exposing fold that is not a declared primitive — v1.05_emit_core_support unique_strings is the measured specimen — which the gate must refuse rather than classify Deterministic by non-membership" as NonEmptyStr,
   positive_control: "the same fold rewritten over a sorted key list, which must be accepted; without it a gate that refused every fold would satisfy the red above" as NonEmptyStr,
   witnesses: [],
-  native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "gunbc.rung_drop determinism_transitive_reachability is retired BY ITS OWN TRIGGER — a callee-edge walk whose cost is proportional to what it reaches rather than to the pool it is handed — so a non-primitive order-exposing fold is reachable from the declaration under test" as NonEmptyStr,
+  next_trigger: climbs_when(capability: "gunbc.rung_drop determinism_transitive_reachability is retired BY ITS OWN TRIGGER — a callee-edge walk whose cost is proportional to what it reaches rather than to the pool it is handed — so a non-primitive order-exposing fold is reachable from the declaration under test"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed emitter ran exactly this construct and produced different bytes from the same sha on the same host, 2 of 172 files. The class is live and observed, and it escapes on BOTH counts at once: the emitter is a program the gate is never handed, and unique_strings is a construct the gate would not classify even if it were" as NonEmptyStr
   },
@@ -829,14 +888,11 @@ data realization_cost_fidelity_obligation: V2CompileObligation = V2CompileObliga
   discriminating_red: "a declaration whose authority declares one cost shape and whose emitted realization has another — v2.std.algebra list_append, O(n) declared and O(n^2) emitted, is the measured specimen — which some consumer must refuse" as NonEmptyStr,
   positive_control: "a declaration whose emitted realization matches its declared shape, which must be accepted; and the second specimen, list_snoc_item, whose realization is FASTER than its authority, must also be reported rather than silently passed, or the check is a one-sided ratchet rather than a fidelity comparison" as NonEmptyStr,
   witnesses: [],
-  native: NoWitnessNamesIt {
-    note: "same absence; the native route cannot execute a comparison nothing declares" as NonEmptyStr
-  },
   route_reach: NotNamedByAnyExecutingRoute {
     note: "no door carries this obligation, so no route names it" as NonEmptyStr
   },
   ceiling: StructurallyGuaranteed,
-  next_trigger: "a declaration is authored that joins an authority's declared CostShape to the cost shape of the realization emitted for it, at which point this row gets a home and stops being a modeling obligation" as NonEmptyStr,
+  next_trigger: climbs_when(capability: "a declaration is authored that joins an authority's declared CostShape to the cost shape of the realization emitted for it, at which point this row gets a home and stops being a modeling obligation"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the escape IS the seed's own intercept table — v1.05_emit_rust emit_typed_call builtins — which substitutes a host realization for the modeled one at emission time. That substitution is where both divergences are introduced, and it is the one place no lens reads" as NonEmptyStr
   },
@@ -873,7 +929,7 @@ fn path_execution_is_executing(p: PathExecution) -> Bool {
 }
 
 fn obligation_executes_natively(o: V2CompileObligation) -> Bool {
-  path_execution_is_executing(p: o.native)
+  path_execution_is_executing(p: native_standing(o: o))
 }
 
 fn obligation_executes_interpreted(o: V2CompileObligation) -> Bool {
@@ -947,7 +1003,8 @@ fn obligations_without_a_home() -> Int {
 // claimed > coverage implies claimed > qualified, and every row this census reports as inflated is
 // inflated under the stronger reading too. What the weaker reading costs is FALSE NEGATIVES — a row
 // whose routes execute but whose red never fires would pass here — and that is the gap the
-// qualification authority closes, not a reason to distrust the 13.
+// qualification authority closes, not a reason to distrust what obligations_with_inflated_rung
+// reports.
 //
 // THE STRONGER FIX AND WHERE IT LIVES. A QualifiedOnPath arm carrying red-and-green execution
 // receipts, REQUIRED before MechanicallyPreventable can be reported, belongs to
@@ -984,18 +1041,17 @@ fn obligation_route_coverage_rung(o: V2CompileObligation) -> GuaranteeRung {
 // claim, and a projection earns a gate when something consumes it, not before.
 
 // THE DEBT'S OWN NUMBER, BESIDE THE COVERAGE NUMBER RATHER THAN INSIDE IT. Every row this census
-// currently reports as executing does so on an unverified entry path, so this count equals
-// executing_interpreted today; the two are separate folds because the day one entry is verified they
-// diverge, and a single number could not show that.
+// reports as executing does so on an unverified entry path, so this count tracks
+// obligations_executing_interpreted until one entry is verified; they are separate folds because on
+// that day they diverge, and a single number could not show it.
 fn obligation_executes_on_an_unverified_entry(o: V2CompileObligation) -> Bool {
   obligation_is_pending_on(o: o, premise: unverified_entry_premise)
 }
 
-// TWO PREMISES, TWO NUMBERS, EACH READING ITS OWN PREMISE. They are equal today and they retire on
-// different days, which is exactly the situation in which one number would hide the other — and the
-// first cut of this pair made that mistake in miniature by folding the same predicate twice under
-// two names, which would have made the second number track the first forever instead of tracking the
-// premise it is named for.
+// A PREMISE IS READ BY THE FOLD NAMED FOR IT. An earlier cut folded one predicate twice under two
+// names, which would have made the second number track the first forever instead of the premise it
+// is named for. standing_carries_premise takes the premise as an argument, so a count cannot drift
+// onto a premise it was not asked about.
 fn standing_carries_premise(p: PathExecution, premise: DeclarationRef) -> Bool {
   match p {
     ExecutedPendingVerification { instrument: _, unverified_premises: ps } =>
@@ -1013,24 +1069,31 @@ fn obligation_is_pending_on(o: V2CompileObligation, premise: DeclarationRef) -> 
   standing_carries_premise(p: interpreted_standing(o: o), premise: premise)
 }
 
-fn obligations_on_an_unverified_gate_admission() -> Int {
-  list_length(
-    items: filter(
-      v2_compile_obligation_census,
-      o => obligation_is_pending_on(o: o, premise: unverified_gate_admission_premise)
-    )
-  )
-}
-
 fn obligations_executing_on_an_unverified_entry() -> Int {
   list_length(
     items: filter(v2_compile_obligation_census, o => obligation_executes_on_an_unverified_entry(o: o))
   )
 }
 
+// THE SUBJECTS AS QUALIFIED NAMES, so a consumer that CAN read the tree has one thing to join on and
+// does not re-derive the dotted spelling. The declaration name carries no dots, so module plus
+// declaration is unambiguous in both directions — the same derivation
+// gunbc.witness_v2_native_route makes for the native lane's identities.
+fn witness_subject_qualified_name(w: WitnessSubject) -> String {
+  concat(concat(w.module_path as String, "."), w.function as String)
+}
+
+fn census_witness_subjects() -> List<WitnessSubject> {
+  fold(
+    v2_compile_obligation_census,
+    init: [],
+    f: (acc, o) => concat(acc, o.witnesses)
+  )
+}
+
 // THE COMPARISON THIS CENSUS IS NAMED FOR, AND IT WAS MISSING FROM THE FIRST TWO CUTS. Claimed
 // versus executing is the whole point of the roster, and until this fold existed claimed_rung was
-// authored on all fourteen rows and read by nothing — DESIGN section 3c's red arm, not its
+// authored on every row and read by nothing — DESIGN section 3c's red arm, not its
 // admissible middle, and a title the diff did not make true. Review 63176 named it.
 //
 // INFLATION IS A STRICT INEQUALITY, NOT A DISAGREEMENT. A row whose declaration claims LESS than its
@@ -1100,12 +1163,12 @@ fn obligation_report_line(o: V2CompileObligation) -> String {
         concat(
           concat(" interpreted=", path_execution_label(p: interpreted_standing(o: o))),
           concat(
-            concat(" native=", path_execution_label(p: o.native)),
+            concat(" native=", path_execution_label(p: native_standing(o: o))),
             concat(
               concat(" ceiling=", guarantee_rung_label(r: o.ceiling)),
               concat(
                 concat(" related_drops=", to_string(list_length(items: o.related_drops))),
-                concat(" trigger=", o.next_trigger as String)
+                concat(" trigger=", next_rung_trigger_render(t: o.next_trigger))
               )
             )
           )
@@ -1150,10 +1213,7 @@ fn census_counts() -> String {
                 concat(" inflated_rung=", to_string(obligations_with_inflated_rung())),
                 concat(
                   concat(" claiming_above_ceiling=", to_string(obligations_claiming_above_their_ceiling())),
-                  concat(
-                    concat(" unverified_entry=", to_string(obligations_executing_on_an_unverified_entry())),
-                    concat(" unverified_gate_admission=", to_string(obligations_on_an_unverified_gate_admission()))
-                  )
+                  concat(" unverified_entry=", to_string(obligations_executing_on_an_unverified_entry()))
                 )
               )
             )
