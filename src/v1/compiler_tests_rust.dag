@@ -721,8 +721,8 @@ fn ct_overlapping_use_line_dedupe_permutation_test() -> String {
   concat(
     "    #[test]\n",
     "    fn overlapping_use_lines_dedupe_identically_under_permutation() {\n",
-    "        let wider = \"pub use crate::m::{Bar, Foo};\".to_string();\n",
-    "        let narrower = \"pub use crate::m::{Foo};\".to_string();\n",
+    "        let wider = \"pub use crate::m::\{Bar, Foo};\".to_string();\n",
+    "        let narrower = \"pub use crate::m::\{Foo};\".to_string();\n",
     "        let forward = std::rc::Rc::new(im::vector![wider.clone(), narrower.clone()]);\n",
     "        let reversed = std::rc::Rc::new(im::vector![narrower, wider]);\n",
     "        assert_eq!(\n",
