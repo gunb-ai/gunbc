@@ -151,7 +151,10 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // THE FIGURES ARE THEREFORE CARRIED IN PROSE AND THAT IS A KNOWN DEFECT WITH A NAMED REPLACEMENT
 // ALREADY BUILT. Review 62872 is right that a read numeric fact living in a NonEmptyStr is DESIGN
 // section 2's anemic decomposition: types.dag already carries the quantity as PublishedApparentPower
-// over VoltAmpere, and these seven readings are unreachable by any fold, including density_claim_is_read.
+// over VoltAmpere, and these seven readings are unreachable by ANY fold - including the census's read
+// count, which now matches claim_wording_standing rather than the density_claim_is_read predicate this
+// sentence used to name, and which counts these rows as unread for the same reason either spelling
+// would: they are DensityUnread, whatever asks the question.
 //
 // THE REPLACEMENT IS A DIRECTION-CARRYING FIGURE, AND IT IS NOT THE SHAPE THIS ANNOTATION FIRST NAMED.
 // It is stated as a capability rather than as a pull request because the wording here first named

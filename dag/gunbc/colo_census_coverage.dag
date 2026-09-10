@@ -145,17 +145,31 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // measuring the wrong thing, and it would have been read as a regression by whoever saw it first.
 //
 // This is therefore a claim-PRESENCE question over the arms, which is what the coverage roster owns.
-// It is not a second spelling of the ceiling: nothing here reads a figure, a unit, a direction or a
+// It is not a second spelling of a screen: nothing here reads a figure, a unit, a direction or a
 // cooling medium, and no Watt is touched. Requirement-specific usability stays where the operator put
-// it, inside the selection projection, and cabinet_density_air_ceiling remains the sole authority for
-// what a cabinet may draw - this module no longer calls it at all.
+// it, inside the selection projection.
 //
-// AND THIS FUNCTION IS THE HABIT REPEATING, WHICH review 62935 CAUGHT AND THIS FILE ALREADY
-// CONDEMNED IN ADVANCE. Nine lines above, coverage_facility_count carries the sentence "writing the
-// predicate again one module later is the receipt that the first deletion was applied to an instance
-// and not to the habit" - written about cabinet_density_is_read. density_claim_is_read asks the same
-// question over the same coproduct, one module later, in the file carrying that sentence.
-// DISPOSITION: YELLOW, not green.
+// THE SENTENCE THAT USED TO END THIS PARAGRAPH NAMED cabinet_density_air_ceiling AS "the sole
+// authority for what a cabinet may draw". THERE IS NO SUCH AUTHORITY ANY MORE, and its absence is
+// deliberate rather than incidental: that accessor and the whole CabinetPowerCeiling carrier are
+// deleted, because a marketed maximum cannot establish what a cabinet may draw and a type whose
+// contract said it could was minting a physical claim out of a marketing one. What replaced it answers
+// a RELATION - published_requirement_standing says whether a requirement sits outside what a page
+// published - and no arm of it decides placement. So the question this module declines to ask now has
+// no answerer anywhere, which is a stronger reason to decline it than deferring to one.
+//
+// AND THE FUNCTION THIS PARAGRAPH WAS WRITTEN ABOUT IS GONE, WHICH IS THE DISPOSITION IT WAS OWED.
+// review 62935 caught density_claim_is_read as the habit repeating - the sentence nine lines above,
+// written about cabinet_density_is_read, says "writing the predicate again one module later is the
+// receipt that the first deletion was applied to an instance and not to the habit", and this file then
+// carried the third instance under it. It was marked YELLOW pending a carrier route.
+//
+// THAT ROUTE LANDED AND THE PREDICATE IS DELETED RATHER THAN RETYPED. The count now matches
+// claim_wording_standing inline at its single call site: the carrier's own three-state fold, whose
+// Unread arm IS the unread claim, so nothing has to be coined to ask whether a page was read. The
+// paragraph is kept rather than deleted because the HABIT is what it documents, and the habit is not
+// retired by one deletion - it is retired by there being no place left to author the predicate a
+// fourth time.
 //
 // THE DIAGNOSIS ABOVE USED TO SAY THE DEFECT WAS "a Bool arm-matcher over a reusable coproduct". THAT
 // IS WRONG AND IT IS WORTH CORRECTING IN PLACE, because it is the sentence a future reader inherits.

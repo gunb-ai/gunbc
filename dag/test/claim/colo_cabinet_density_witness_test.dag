@@ -634,8 +634,15 @@ fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
 // and the assertion's whole content is that nobody edited the file. This fixture is the grounding
 // DESIGN section 5 asks for instead - a universe of exactly two density claims whose arms are known
 // by construction, one published and one unread - so the count is checked against a fact about the
-// claims rather than against a copy of itself. It reds if density_claim_is_read ever answers on the
-// wrong arm, which is the only way the derived count can now be wrong.
+// claims rather than against a copy of itself. It reds if the count ever answers on the wrong arm,
+// which is the only way the derived count can now be wrong.
+//
+// WHAT ANSWERS THAT QUESTION CHANGED UNDER THIS FIXTURE AND THE FIXTURE DID NOT HAVE TO. It was
+// density_claim_is_read, a Bool over the claim coproduct authored in the census module; that predicate
+// is deleted and the count now matches claim_wording_standing, the carrier's own three-state fold,
+// inline at its one call site. The fixture is unchanged because it was never written against the
+// implementation - a universe of two claims whose arms are known by construction discriminates any
+// correct answerer from any wrong one, which is the property a controlled fixture is for.
 //
 // ITS CLAIMS ARE CONSTRUCTED HERE RATHER THAN BORROWED FROM THE CENSUS, WHICH THEY WERE UNTIL
 // review 62966. It read databank_ewr1_density and hivelocity_jfk1_density - live production rows -
