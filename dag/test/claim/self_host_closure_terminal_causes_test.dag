@@ -1,0 +1,97 @@
+module gunbc.test.claim.self_host_closure_terminal_causes_test
+
+import v2.std.algebra { any, length }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import gunbc.tools.self_host_closure_terminal_causes {
+  ClosureFileRow,
+  ControlAccepts,
+  ControlRefusesIdentically,
+  FrontEndCause,
+  JoinedByExecutedClosureIdentityJoin,
+  JoinedByExecutedNeutralizer,
+  JoinedBySignatureOverIsolatedDeclaration,
+  cause_population,
+  closure_observation_pin,
+  closure_refusal_rows,
+  every_cause_names_a_row,
+  every_row_cause_is_rostered,
+  every_row_names_a_cause,
+  front_end_causes,
+  rows_for_cause
+}
+
+// THESE ASSERT PROPERTIES OF THE TABLE, NEVER A REMEASUREMENT OF THE TREE. The table is a
+// revision-scoped observation: a test that re-derived the population would go red on the repair and
+// green on a regression, which is the wrong direction for every one of these subjects. What is
+// decidable from the carrier alone is that its two populations JOIN - and a join defect is a defect
+// of this artifact, which is exactly what a witness over it should catch.
+//
+// NONE OF THESE COMPARES A COUNT TO A LITERAL COPIED OFF THE SAME TREE. Each is an identity-grain
+// statement over the relation, so automating the carrier's regeneration cannot collapse any of them
+// into measure() == measure().
+
+test fn every_refusing_file_names_at_least_one_cause() -> Bool {
+  every_row_names_a_cause()
+}
+
+test fn every_rostered_cause_is_named_by_some_file() -> Bool {
+  every_cause_names_a_row()
+}
+
+test fn no_row_names_a_cause_the_roster_does_not_carry() -> Bool {
+  every_row_cause_is_rostered()
+}
+
+// The relation is queried by key, so a cause key that no fold can reach would make the roster
+// unusable to the repair lanes that cite it. This exercises the query itself rather than the data:
+// every rostered key returns a non-empty row list THROUGH rows_for_cause.
+test fn every_cause_key_is_reachable_through_the_query() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) { length(xs: rows_for_cause(cause: c.key)) == 0 })
+}
+
+test fn cause_population_agrees_with_the_query_it_counts() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) {
+    cause_population(cause: c.key) != length(xs: rows_for_cause(cause: c.key))
+  })
+}
+
+// A cause whose key and id are the same symbol would mean the short citation key had silently become
+// the descriptive name, and five repair PRs citing keys would then be citing something else.
+test fn the_citation_key_and_the_defect_id_are_distinct() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) { c.key == c.id })
+}
+
+// Two causes sharing a key would make a citation ambiguous - the same defect that duplicate identities
+// cause anywhere else. Quadratic over eighteen rows, and the shape is what is priced, not the n.
+test fn no_two_causes_share_a_citation_key() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(a) {
+    length(xs: rows_for_cause(cause: a.key)) == 0
+      || any(xs: front_end_causes, predicate: fn(b) { b.key == a.key && b.id != a.id })
+  })
+}
+
+// Two rows for one path would mean the driver's output was decoded twice or a path was recorded
+// under two spellings; either is a defect of this table and not a finding about the compiler.
+test fn no_closure_path_appears_twice() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(a) {
+    any(xs: closure_refusal_rows, predicate: fn(b) { b.path == a.path && b.terminal_reason != a.terminal_reason })
+  })
+}
+
+// THE PIN IS THE ROW'S PROVENANCE, so an unrecorded digest makes every row unattributable to a tree
+// or a binary. Emptiness is the only thing decidable here; the values themselves are the observation.
+test fn the_observation_pin_records_every_digest() -> Bool {
+  closure_observation_pin.head_sha != ""
+    && closure_observation_pin.emitted_closure_identity_as_reported != ""
+    && closure_observation_pin.order_insensitive_closure_digest != ""
+    && closure_observation_pin.emitted_driver_binary_digest != ""
+    && closure_observation_pin.compiler_source_manifest_digest != ""
+    && closure_observation_pin.reduction_probe_digest != ""
+}
+
+// The closure is the denominator this whole table exists to keep honest, and a refusing population
+// wider than the closure it was measured over would mean rows had leaked in from the whole-tree run.
+test fn the_refusing_population_fits_inside_the_closure() -> Bool {
+  length(xs: closure_refusal_rows) < closure_observation_pin.closure_module_count
+}

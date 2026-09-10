@@ -1,0 +1,682 @@
+module gunbc.tools.self_host_closure_terminal_causes
+
+import v2.std.algebra { any, filter, length }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE TERMINAL-CAUSE TABLE FOR THE V2 SELF-HOST CLOSURE, from the native driver's own per-file
+// output. The subject is the INPUT CLOSURE of src/v2/compiler/00_compile.dag - the modules the
+// emitted-native compiler is actually built from - and not the directory census a reader counting
+// *.dag under src/v2/compiler would reach. The closure is a fact about imports, and it is 167
+// modules wide; 68 of them the emitted compiler's own front end refuses.
+//
+// WHY THE TERMINAL DIAGNOSTIC AND NOT THE HEAD. A rejection is a LIST, and rejected_with_pending
+// prepends the grammar-global overlap residue to every parse failure, so the head reason is the
+// same symbol on almost every row and discriminates nothing. The row therefore carries the LAST
+// diagnostic - the cause that actually refused - at the same fatal grain
+// v2.workflow.compile_door_ledger owns its FatalGrain rows at. The cause symbols here are those
+// symbols; nothing is re-coined.
+//
+// WHY A CAUSE ROSTER SEPARATE FROM THE FILE ROWS. One defect surfaces under several stop lexemes
+// and in several files, and one file can carry several defects, so file and cause are two
+// populations joined by a relation - not one row each. The displayed stop lexeme is where the
+// parser gave up, never the cause: it is the NEXT declaration's leading keyword as often as it is
+// the offending token.
+//
+// ARE THE CAUSES SHARED ACROSS FILES? Yes, and that is the load-bearing result. Sixty-eight refusing
+// files carry eighteen defects, and the concentration is at both ends: one defect - a module body
+// that reaches no function declaration - accounts for twenty-five of the sixty-eight by itself, and
+// a second - a raw newline inside a string literal - for another eight, so a third of the refusing
+// closure is two defects. The parse class is the mirror image: its twenty-six files are twenty-six
+// files for THIRTEEN different reasons, which is why its count was never its work size. Sharing runs
+// the other way too - one file can carry several defects, so the per-cause populations overlap and do
+// not sum to the row count - and it crosses stop lexemes: the same defect is reported at `fn`, at
+// `data`, at `type` and at its own token depending only on where the parser happened to give up.
+//
+// HOW THIS TABLE IS RE-DERIVED, so no number here has to be trusted on its own. The population and
+// the terminal causes come from the emitted native compiler's own per-file output, reached by
+// `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane v2-native`
+// (gunbc.witness_v2_native_route), whose context fold emits one NativeTestFileRefusal row per source
+// carrying the head and fatal reason. The per-declaration reduction behind each cause comes from a
+// probe binary in the emitted crate that calls
+// v2.compiler.program_assembly program_assembly_read_to_normalized_root_prepared - the same per-file
+// path that fold takes, so every stage the fold can refuse at is reachable from it.
+//
+// WHAT A READER MAY NOT DO WITH IT. There is no aggregate verdict, because the population IS the
+// finding; a Boolean over it would be a verdict on subjects that have not each been separately
+// established. Each cause carries how its per-file join was backed, and the two backings are not
+// the same rung - see JoinEvidence.
+
+// THE PIN. Every row is an observation of ONE tree through ONE binary. The emitted closure's own
+// reported identity is byte-derived and therefore unstable across emissions (the seed emitter emits
+// its re-export lines in unordered-set order), so an ORDER-INSENSITIVE digest is carried beside it
+// as the key two runs can join on. The driver binary digest is the strongest of the three:
+// rebuilding it from a SECOND emission of the same sources produced identical bytes, which is what
+// establishes that the re-export delta is inert rather than merely believed to be.
+type ObservationPin {
+  head_sha: String
+  emitted_closure_identity_as_reported: String
+  order_insensitive_closure_digest: String
+  emitted_driver_binary_digest: String
+  compiler_source_manifest_digest: String
+  reduction_probe_digest: String
+  closure_module_count: Int
+}
+
+// HOW A CAUSE WAS JOINED TO THE FILES IT EXPLAINS. The three arms are different rungs and the
+// distinction is the point: an executed join re-ran the compiler over a modified subject and
+// watched the refusal go away, a signature join matched the construct in the isolated culprit
+// declaration and did not. Every cause's RULE is executed either way; this field is about the
+// per-file attribution only, and calling a signature match executed would be the inflation the
+// guarantee ladder forbids.
+type JoinEvidence
+  = JoinedByExecutedNeutralizer
+  | JoinedByExecutedClosureIdentityJoin
+  | JoinedBySignatureOverIsolatedDeclaration
+
+// ONE DEFECT. key is the short id the repair lanes cite; id names the defect; terminal_reason is
+// the symbol the driver reported. The three text fields are PROGRAM TEXT, not commentary: the input
+// that refuses, the input that accepts, and the control that separates this cause from its nearest
+// alternative. A line break inside them is written as an escape, because a raw newline inside a
+// string literal is itself one of the causes rostered below.
+// WHAT THE NEAREST-ALTERNATIVE CONTROL ESTABLISHED. Both arms exclude an alternative and they
+// exclude different ones: a control that ACCEPTS shows the neighbouring construct is innocent, so
+// the cause is not the wider class it sits in; a control that REFUSES IDENTICALLY shows the cause
+// does not depend on the detail that control varied. Carrying the verdict as a variant rather than
+// as a sentence is what lets a reader ask which of the two a given control did.
+type ControlVerdict
+  = ControlAccepts
+  | ControlRefusesIdentically
+
+type FrontEndCause {
+  key: Symbol
+  id: Symbol
+  terminal_reason: Symbol
+  rejecting_reproducer: String
+  positive_control: String
+  discriminating_control: String
+  discriminating_control_verdict: ControlVerdict
+  join_evidence: JoinEvidence
+}
+
+// ONE CLOSURE FILE THAT REFUSED, keyed by the path the driver reported. causes names every cause
+// found in the file, so the lists are not disjoint and their lengths do not sum to the row count.
+type ClosureFileRow {
+  path: String
+  terminal_reason: Symbol
+  causes: List<Symbol>
+}
+
+data closure_observation_pin: ObservationPin = ObservationPin {
+  head_sha: "2fb67b411aecfccfce1c2642ebc724df0a755585"
+  emitted_closure_identity_as_reported: "c1136b4a6f89b4a20222f9341e997a47b05d483550db190678f9019229d94321"
+  order_insensitive_closure_digest: "2f926173a675387ec2cbbf1c2229ea23491dda72640578de64b1b567634831a0"
+  emitted_driver_binary_digest: "f939a936d39d504e320a0f6ab059b0ab7dc1432367536279c48304188a81c182"
+  compiler_source_manifest_digest: "9a728cd46a611232fcefc66d7885f31f03e91fa522a01695131427b5bf8330ef"
+  reduction_probe_digest: "96a48a512e3e494d71167b02ac091d1e80af2d9f90fab2f11e38e2fcde5d6808"
+  closure_module_count: 167
+}
+
+data front_end_causes: List<FrontEndCause> = [
+  FrontEndCause {
+    key: ^A
+    id: ^where_refinement_clause
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A = NonEmptyStr where brand(\"A\")"
+    positive_control: "type A = NonEmptyStr"
+    discriminating_control: "type A = NonEmptyStr where true"
+    discriminating_control_verdict: ControlRefusesIdentically
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^B
+    id: ^module_body_without_a_function_declaration
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    rejecting_reproducer: "module m\\n\\ntype A {\\n  x: Int\\n}"
+    positive_control: "module m\\n\\ntype A {\\n  x: Int\\n}\\n\\nfn f() -> Int {\\n  1\\n}"
+    discriminating_control: "module m\\n\\ntest fn t() -> Bool {\\n  true\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedByExecutedClosureIdentityJoin
+  },
+  FrontEndCause {
+    key: ^C
+    id: ^string_literal_containing_a_raw_newline
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    rejecting_reproducer: "data d: String = \"line one<RAW NEWLINE>line two\""
+    positive_control: "data d: String = \"line one\\\\nline two\""
+    discriminating_control: "data d: String = \"an em dash \\u2014 here\""
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedByExecutedClosureIdentityJoin
+  },
+  FrontEndCause {
+    key: ^D
+    id: ^single_arm_match
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    rejecting_reproducer: "match t {\\n  _ => 1\\n}"
+    positive_control: "match t {\\n  A => 1\\n  _ => 2\\n}"
+    discriminating_control: "match t {\\n  A => 1\\n  B { x: v } => v\\n  _ => 3\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^E
+    id: ^sole_constructor_modifier
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type S sole_constructor {\\n  x: Int\\n}"
+    positive_control: "type S {\\n  x: Int\\n}"
+    discriminating_control: "type S {\\n  x: Int\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^F
+    id: ^match_as_a_field_name
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    rejecting_reproducer: "type R {\\n  match: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.match\\n}"
+    positive_control: "type R {\\n  other: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.other\\n}"
+    discriminating_control: "type R {\\n  loop: Int\\n}\\n\\nfn f(r: R) -> Int {\\n  r.loop\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^G
+    id: ^expression_bodied_function
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "fn f(a: Int) -> Int =\\n  a"
+    positive_control: "fn f(a: Int) -> Int {\\n  a\\n}"
+    discriminating_control: "fn f(c: Int) -> Int = c + 0"
+    discriminating_control_verdict: ControlRefusesIdentically
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^H
+    id: ^as_cast_outside_call_argument_position
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "R { a: x as Hex }"
+    positive_control: "R { a: x }"
+    discriminating_control: "g(a: x as Hex)"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^I
+    id: ^match_as_an_infix_operand
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "true && match x {\\n  true => true\\n  false => false\\n}"
+    positive_control: "match x {\\n  true => true\\n  false => false\\n}"
+    discriminating_control: "let y = match x {\\n  true => true\\n  false => false\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^J
+    id: ^numeric_literal_as_a_type_argument
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A = MachineWidth<8>"
+    positive_control: "type A = MachineWidth<Eight>"
+    discriminating_control: "type A = Compose<Int, List<Int>>"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^K
+    id: ^leading_pipe_in_a_variant_declaration
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A\\n  = | B\\n  | C"
+    positive_control: "type A\\n  = B\\n  | C"
+    discriminating_control: "type A =\\n  B\\n  | C"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^L
+    id: ^inline_record_type_alias
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A = { a: Int, b: Int }"
+    positive_control: "type A {\\n  a: Int\\n  b: Int\\n}"
+    discriminating_control: "type A = Map<String, String>"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^M
+    id: ^payload_carrying_constructor
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "type A\\n  = B(Int)\\n  | C"
+    positive_control: "type A\\n  = B\\n  | C"
+    discriminating_control: "match t {\\n  A(s) => 1\\n  B => 2\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^N
+    id: ^brace_literal_as_a_data_value
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "data d: Map<String, String> = {\\n  \"a\": \"b\"\\n}"
+    positive_control: "data d: Int = 1"
+    discriminating_control: "fn f() -> R {\\n  R {\\n    a: 1\\n  }\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^O
+    id: ^negative_numeric_literal
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "fn f() -> Int {\\n  -1\\n}"
+    positive_control: "fn f() -> Int {\\n  1\\n}"
+    discriminating_control: "fn f(a: Int) -> Int {\\n  a - 1\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^P
+    id: ^declaration_keyword_in_expression_position
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "B { module: a }"
+    positive_control: "B { thing: a }"
+    discriminating_control: "fn f(module: Int) -> Int {\\n  1\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  },
+  FrontEndCause {
+    key: ^Q
+    id: ^early_return_statement
+    terminal_reason: ^parse_g0_tokens_remain
+    rejecting_reproducer: "fn f(a: Bool) -> Int {\\n  if a {\\n    return 1\\n  }\\n  2\\n}"
+    positive_control: "fn f(a: Bool) -> Int {\\n  if a {\\n    1\\n  } else {\\n    2\\n  }\\n}"
+    discriminating_control: "fn f(a: Bool) -> Int {\\n  if a {\\n    1\\n  } else {\\n    2\\n  }\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedByExecutedNeutralizer
+  },
+  FrontEndCause {
+    key: ^R
+    id: ^function_value_in_a_data_record_field
+    terminal_reason: ^normalized_tree_reason_wrapper_retention_not_normalized
+    rejecting_reproducer: "data d: A = A {\\n  meet: (a, b) => a\\n}"
+    positive_control: "data d: A = A {\\n  meet: 1\\n}"
+    discriminating_control: "fn f() -> A {\\n  A {\\n    meet: (a, b) => a\\n  }\\n}"
+    discriminating_control_verdict: ControlAccepts
+    join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  }
+]
+
+data closure_refusal_rows: List<ClosureFileRow> = [
+  ClosureFileRow {
+    path: "dag/extdeps/cache/catalog_io.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/cache/catalog_placement.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/communication/medium.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/external_authority.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/languages/rust/emit.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^N]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/realization/compile_stage_memo.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/realization/parse_table_memo.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/units/iso_80000_3.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^K]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/uri.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^E, ^H, ^M]
+  },
+  ClosureFileRow {
+    path: "dag/extdeps/uri_path.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^Q]
+  },
+  ClosureFileRow {
+    path: "dag/gunbc/v1/v1_interpreter_primitive_surface.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "dag/std/bit.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/cache_identity.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A]
+  },
+  ClosureFileRow {
+    path: "dag/std/cache_interface.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A, ^O]
+  },
+  ClosureFileRow {
+    path: "dag/std/compiler_entry.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/constructors.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/content_hash.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A, ^G, ^H, ^K, ^M]
+  },
+  ClosureFileRow {
+    path: "dag/std/decl_ref.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^H]
+  },
+  ClosureFileRow {
+    path: "dag/std/disposition.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/dissolution.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^H]
+  },
+  ClosureFileRow {
+    path: "dag/std/emit_model.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/error_primitives.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/integer.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A, ^J]
+  },
+  ClosureFileRow {
+    path: "dag/std/interval.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^E]
+  },
+  ClosureFileRow {
+    path: "dag/std/machine_constraints.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/magnitude.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/measure.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A, ^G, ^H, ^O]
+  },
+  ClosureFileRow {
+    path: "dag/std/pareto.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^G, ^I, ^L]
+  },
+  ClosureFileRow {
+    path: "dag/std/primitive_identity.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "dag/std/primitive_projection.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "dag/std/process_termination.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "dag/std/realization_schedule.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "dag/std/roster_frontier.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^H, ^I]
+  },
+  ClosureFileRow {
+    path: "dag/std/types.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "dag/std/unicode/types.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^G]
+  },
+  ClosureFileRow {
+    path: "dag/std/witness_admission.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/00_compile.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/02_parse.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/03_resolve.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/05_eval.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/06_translate.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^L]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/inferred_tree.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/normalized_tree.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^E]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/parse_engine_hooks.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/program_assembly.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/compiler/source_authority.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/languages/dag.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^I]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/languages/fidelity.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/languages/typescript.dag"
+    terminal_reason: ^tokenize_lex_e1_unrecognized_char
+    causes: [^C]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/runtimes/v2_effect_io_pure.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/extdeps/runtimes/v2_evaluator.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/lens/machine_shape.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/lens/undecidable_verdict_collapse.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/cardinality.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/compilers/target_model.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^A]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/cross_tree/resolution.dag"
+    terminal_reason: ^parse_g0_tokens_remain
+    causes: [^P]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/grammar_choice_ambiguity.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/integer.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/layer.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/live_tree.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/logic.dag"
+    terminal_reason: ^normalized_tree_reason_wrapper_retention_not_normalized
+    causes: [^R]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/machine.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/model_core.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^D]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/namespace_alias.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/occurrence_id.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/passing_candidate_fold.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/runtime.dag"
+    terminal_reason: ^body_lowering_reason_match_arm_navigation_refused
+    causes: [^F]
+  },
+  ClosureFileRow {
+    path: "src/v2/std/test_claim_falsification.dag"
+    terminal_reason: ^namespace_graft_body_dissolved_refused
+    causes: [^B]
+  }
+]
+
+// THE QUERY THE REPAIR LANES RUN: the files one cause explains, and how many. Folds over the rows,
+// never a second per-cause roster - a hand-authored list beside the rows is the fork this shape
+// exists to avoid.
+fn rows_for_cause(cause: Symbol) -> List<ClosureFileRow> {
+  filter(xs: closure_refusal_rows, predicate: fn(row) { any(xs: row.causes, predicate: fn(c) { c == cause }) })
+}
+
+fn cause_population(cause: Symbol) -> Int {
+  length(xs: rows_for_cause(cause: cause))
+}
+
+// THE TWO DIRECTIONS OF THE FILE-TO-CAUSE RELATION, as functions rather than as a transcribed
+// number: no row is left without a cause, no rostered cause goes unnamed by any row, and no row
+// names a cause the roster does not carry. All three are properties of THIS table, decidable from
+// it alone, which is why a witness can assert them without re-measuring the tree - and why they
+// stay true statements rather than a measure() == measure() change detector.
+fn every_row_names_a_cause() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) { length(xs: row.causes) == 0 })
+}
+
+fn every_cause_names_a_row() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) { cause_population(cause: c.key) == 0 })
+}
+
+fn every_row_cause_is_rostered() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) {
+    any(xs: row.causes, predicate: fn(c) {
+      !any(xs: front_end_causes, predicate: fn(rostered) { rostered.key == c })
+    })
+  })
+}
