@@ -1,5 +1,19 @@
 module tools.fabric_control_plane_live_probe
 
+import product.fabric.provider_route {
+  CompliancePostureRevision, ProviderRouteFacts, ProviderDataPathClosure,
+  ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
+  DownstreamProviderPopulation, NoDownstreamProviders,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
+  DispositionCleared, admit_provider_use,
+  PermitStanding, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
+  PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
+}
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import product.fabric.provider_route { ProviderRoute }
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String, GitRef }
 import std.algebra { trim }
 import v2.std.algebra { HeadAbsent, HeadFound, list_head, list_tail }
@@ -22,6 +36,8 @@ import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
 import product.fabric.demand { Demand }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
+  PermitNamesAnotherWork, PermitNamesAnotherDemand,
   OfferCandidacy, OfferPriced, OfferNotFungible, OfferUnavailableForGrant,
   OfferCannotHoldAnUnboundedGrant, OfferNotPriceable, OfferWrongCurrency,
   OfferUnaffordable, OfferLiabilityOverBuyOrder,
@@ -45,6 +61,7 @@ import gunbc.fabric_executor_class { ExecutorSanction, fleet_cell_sanction, capa
 import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, ReservationLost,
+  PermitNamesAnotherUseForCell,
   StoreUnavailable, AttemptRefused, BudgetRefused,
   CellHoldEnd, CellHoldEnded, HoldEndBudgetRefused, HoldEndSlotNotHeld,
   HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused, release_reserved_cell_at,
@@ -245,6 +262,7 @@ fn cp_probe_code(r: CellReservation) -> Int {
     NoCellAdmissible { considered: c, refused: f } =>
       if f.length() != 0 { 52 } else { if c.length() == 0 { 50 } else { 51 } }
     CellSelectionTieUnresolved { digest: _, considered: _ } => 53
+    PermitNamesAnotherUseForCell { standing: _ } => 54
   }
 }
 
@@ -434,7 +452,7 @@ fn fci1_live_reserve(root: NonEmptyStr, expected: CasExpectation) -> CellReserva
     Fci1DemandBound { demand: demand } => broker_reserve_for_demand(
       root: root,
       demand: demand,
-      roster: cp_probe_roster(executor: "srv3-06"),
+      roster: cp_probe_roster(executor: "srv3-06", work: demand.work),
       sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
       expected: expected,
       account: cp_probe_account(),
@@ -487,12 +505,33 @@ func fci1_live_replace_held(root: NonEmptyStr) -> CellReservation {
 // decision made by the reservation producer; the shell may sequence it but cannot recreate it.
 // Every refusal includes a digest of its typed payload, keeping the renderings disjoint and making
 // newly added CellReservation variants a compile-time obligation here.
+// THE FOUR MISMATCHES ARE FOUR DIFFERENT THINGS TO GO AND FIX, so the wire names which one rather
+// than reporting "the permit did not authorise". An offer mismatch is a real admission carried onto
+// the wrong offer; a route mismatch is the same fault one level down; a work or demand mismatch is
+// a permit minted for a different subject than the one being reserved for -- which is exactly the
+// defect this probe had, and a generic string would have hidden it behind the same text as the
+// other three.
+fn fci1_permit_standing_wire(standing: PermitStanding<NonEmptyStr>) -> String {
+  match standing {
+    PermitAuthorizesUse => "authorizes"
+    PermitNamesAnotherOfferThan { permit_names: n } => join(["another-offer|permit-names=", n.key as String], "")
+    PermitNamesAnotherRouteThan => "another-route"
+    PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+      join(["another-work|permit=", pw.key as String, "|subject=", sw.key as String], "")
+    PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+      join(["another-demand|permit=", pd.key as String, "|subject=", sd.key as String], "")
+  }
+}
+
 fn fci1_cell_reservation_wire(reservation: CellReservation) -> String {
   match reservation {
     CellReserved { offer: offer, slot_key: slot, generation: generation, account: _ } => join([
       "reservation-committed|slot=", slot as String,
       "|generation=", to_string(generation),
       "|offer=", offer.key as String,
+    ], "")
+    PermitNamesAnotherUseForCell { standing: standing } => join([
+      "reservation-permit-names-another-use|", fci1_permit_standing_wire(standing: standing),
     ], "")
     CellSelectionTieUnresolved { digest: digest, considered: considered } => join([
       "reservation-tie-unresolved|digest=", digest as String,
@@ -737,6 +776,7 @@ func fci1_live_reserve_and_observe_available(
     } }
     NoCellAdmissible { considered: _, refused: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     CellSelectionTieUnresolved { digest: _, considered: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
+    PermitNamesAnotherUseForCell { standing: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     BudgetRefused { slot_key: _, refusal: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     ReservationLost { slot_key: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     StoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
@@ -1653,6 +1693,7 @@ fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
     id: cp_probe_offer_id(key: "offer-1"),
     executor: executor,
+    route: probe_route(),
     shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: unstated_envelope() },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
@@ -1668,10 +1709,95 @@ fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
   }
 }
 
-fn cp_probe_roster(executor: NonEmptyStr) -> List<FabricCellCandidate> {
+// THIS PROBE BUILDS ITS OWN ADMISSION RATHER THAN IMPORTING THE WITNESSES' FIXTURE. A production
+// instrument importing test.claim fixture code would be the layer inversion section 3 forbids, and
+// it would make a test-only edit able to change what this probe exercises. The roster below
+// sanctions exactly the route this probe's own offer sits on, so the probe genuinely runs the
+// admission path instead of stepping around it - which is the point, since this row exists to prove
+// the broker carries the market's choice all the way into the store.
+fn cp_probe_located() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_provider"),
+    jurisdiction: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
+    evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_path_evidence"),
+  }
+}
+
+fn cp_probe_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_posture_authority"),
+    revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-posture-r1")),
+  }
+}
+
+// THE PERMIT IS MINTED FOR THE DEMAND'S OWN WORK, NOT FOR A LITERAL BESIDE IT. A transcribed
+// work key here reads as a fixture detail and is actually the subject of the decision: the
+// deciding path compares the permit's work to the demand's, so a probe that seals "work-floor-1"
+// and then reserves for FCI-1's real build id refuses as PermitNamesAnotherUseForCell every time.
+// That is the wall this branch adds, firing correctly on its own instrument. Taking the work as a
+// parameter makes the two impossible to disagree.
+fn cp_probe_admission(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseAdmission<NonEmptyStr> {
+  admit_provider_use(
+    roster: [
+      RouteScopeSanction {
+        route: probe_route(),
+        posture: cp_probe_posture(),
+        customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_customer_profile"),
+        data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_data_handling_profile"),
+        requires_agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_agreement_v1"),
+      },
+    ],
+    facts: ProviderRouteFacts {
+      route: probe_route(),
+      contract_terms: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_contract_terms"),
+      data_paths: ProviderDataPathClosure {
+        execution: cp_probe_located(),
+        durable_storage: cp_probe_located(),
+        backups: cp_probe_located(),
+        logs: cp_probe_located(),
+        telemetry: cp_probe_located(),
+        control_plane: cp_probe_located(),
+        support_access: cp_probe_located(),
+        administrative_access: cp_probe_located(),
+        spill: ProviderPathAbsent {
+          evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_no_spill"),
+        },
+      },
+      downstream: NoDownstreamProviders {
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_no_downstream"),
+      },
+      observed_at: "2026-08-27T00:00:00Z",
+      facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "cp-probe-facts-r1")),
+    },
+    active: cp_probe_posture(),
+    scope: ProviderUseScope {
+      demand: cp_probe_demand_id(key: "demand-floor-1"),
+      work: work,
+      customer_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_customer_profile"),
+      data_handling_profile: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_data_handling_profile"),
+      agreement: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_agreement_v1"),
+      prohibited_use_disposition: DispositionCleared {
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_prohibited_use_cleared"),
+      },
+      sanctions_disposition: DispositionCleared {
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_sanctions_cleared"),
+      },
+      export_disposition: DispositionCleared {
+        evidence: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_export_cleared"),
+      },
+    },
+    offer: cp_probe_offer_id(key: "offer-1"),
+    decision_receipt: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_decision_receipt"),
+  )
+}
+
+fn cp_probe_roster(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>) -> List<FabricCellCandidate> {
   fold(
     match bind_candidate(
       offer: cp_probe_offer_for(executor: executor),
+      admission: cp_probe_admission(executor: executor, work: work),
+      demand: cp_probe_demand_id(key: "demand-floor-1"),
+      work: work,
       dispatch: DispatchInputs {
         offer: cp_probe_offer_id(key: "offer-1"),
         availability: AvailableIndefinitely {
@@ -1693,6 +1819,11 @@ fn cp_probe_roster(executor: NonEmptyStr) -> List<FabricCellCandidate> {
     ) {
       CandidateBound { candidate: c } => [c]
       DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+      OfferNotAdmittedForUse { offer: _, cause: _ } => []
+      PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+      PermitNamesAnotherRoute { offer: _ } => []
+      PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+      PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
     },
     init: [],
     f: (acc, c) =>
@@ -1708,7 +1839,7 @@ fn cp_live_broker_reserves_the_cell_the_market_chose(root: NonEmptyStr) -> Int {
     r: broker_reserve_for_demand(
       root: root,
       demand: cp_probe_demand(),
-      roster: cp_probe_roster(executor: "srv3-06"),
+      roster: cp_probe_roster(executor: "srv3-06", work: cp_probe_demand().work),
       sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
       expected: ExpectSlotAbsent,
       account: cp_probe_account(),
@@ -1872,4 +2003,52 @@ func fci1_live_release_with_receipt(root: NonEmptyStr, path: String) -> ProcessE
       if slot == "srv3-06" { ExitSuccess } else { exit_failure(reason: "release receipt named wrong slot") }
     _ => exit_failure(reason: join(["reservation release refused: ", fci1_cell_hold_end_wire(outcome: outcome)], ""))
   } }
+}
+
+// The route components this probe cites, DECLARED so the citations resolve. They were cited and
+// undeclared, which the corpus citation gate refuses as CITED-DECLARATION-ABSENT - section 3's
+// point that a citation naming nothing is an unheckable second naming scheme. This probe declares
+// its own rather than importing the witnesses' fixture, because a production instrument reaching
+// into test.claim would be a layer inversion.
+data probe_provider: NonEmptyStr = "gunbc-owned-fleet"
+data probe_service: NonEmptyStr = "gunbc-fleet-cells"
+data probe_region: NonEmptyStr = "gunbc-fleet-site"
+
+// THE COMPLIANCE SUBJECTS THIS PROBE CITES, DECLARED SO EACH CITATION NAMES ITS OWN FACT. Review
+// 62873 is right that the previous spelling defeated the point of citing symbols: customer profile
+// and all three cleared dispositions pointed at cp_probe_account, a money-account builder; the
+// data-handling profile and the spill and downstream evidence pointed at cp_probe_slot; the
+// required agreement and the decision receipt pointed at cp_probe_roster, a candidate-roster
+// builder. Every one of those resolves, so the citation gate was satisfied by spelling while the
+// permit carried a fully populated ProviderUseEvidence in which no field named the fact it claimed
+// to record -- validation passing over a realization that lies, which is the shape section 5 names.
+//
+// A citation is only worth more than a string because the NAME is the fact. Pointing eight
+// different obligations at three unrelated builders makes the evidence unreadable in the one
+// direction it exists for: asking later what this permit was actually granted against.
+//
+// These are the probe's own subjects, declared here rather than imported from
+// test.claim.fabric.provider_use_fixture for the reason stated above -- a production instrument
+// reaching into test.claim is the layer inversion section 3 forbids.
+data probe_posture_authority: NonEmptyStr = "probe-posture-authority"
+data probe_customer_profile: NonEmptyStr = "probe-customer-profile"
+data probe_data_handling_profile: NonEmptyStr = "probe-data-handling-profile"
+data probe_agreement_v1: NonEmptyStr = "probe-agreement-v1"
+data probe_contract_terms: NonEmptyStr = "probe-contract-terms"
+data probe_decision_receipt: NonEmptyStr = "probe-decision-receipt"
+data probe_path_evidence: NonEmptyStr = "probe-path-evidence"
+data probe_no_spill: NonEmptyStr = "probe-no-spill"
+data probe_no_downstream: NonEmptyStr = "probe-no-downstream"
+data probe_prohibited_use_cleared: NonEmptyStr = "probe-prohibited-use-cleared"
+data probe_sanctions_cleared: NonEmptyStr = "probe-sanctions-cleared"
+data probe_export_cleared: NonEmptyStr = "probe-export-cleared"
+
+// One fixture route for this witness. provider, service and region are CITED rather than spelled,
+// so an offer and a sanction agree by declaration identity and not by matching strings.
+fn probe_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_provider"),
+    service: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_service"),
+    region: decl_ref(module_path: "tools.fabric_control_plane_live_probe", decl_name: "probe_region"),
+  }
 }

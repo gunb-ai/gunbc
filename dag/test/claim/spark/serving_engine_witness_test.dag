@@ -2,10 +2,10 @@ module test.claim.spark.serving_engine_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, Percent, token_count, percent, PositiveSlotCount, positive_slot_count, positive_measure_count, Millisecond, millisecond }
+import std.measure { TokenCount, token_count, basis_point, PositiveSlotCount, positive_slot_count, positive_measure_count, Millisecond, millisecond }
 import extdeps.memory.types { MemoryKind, UnifiedShared, Dram, Hbm }
 import extdeps.vllm.engine_args {
-  VllmEngineArgs, VllmMemoryUtilization, vllm_memory_utilization,
+  VllmEngineArgs, VllmMemoryRequest, PrefixCachingOmitted,
   VllmKvCacheDtypeRequest, KvFp8,
   VllmDistributedExecutorBackend, ExecutorRay, ExecutorMp, ExecutorExternalLauncher,
   vllm_verified_negatives
@@ -33,7 +33,11 @@ import extdeps.ollama.api { ollama_default_port }
 data fx_args: VllmEngineArgs = VllmEngineArgs {
   prefill_scheduling: none,
   tensor_parallel_size: 2,
-  gpu_memory_utilization: vllm_memory_utilization(fraction: percent(count: 82)),
+  memory_request: VllmMemoryRequest {
+    utilization: Present { value: basis_point(count: 8200) },
+    kv_cache_bytes: none,
+  },
+  prefix_caching_request: PrefixCachingOmitted,
   max_model_len: token_count(count: 262144),
   max_num_seqs: 32,
   kv_cache_dtype: KvFp8,

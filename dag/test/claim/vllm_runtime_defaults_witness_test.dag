@@ -1,0 +1,399 @@
+module test.claim.vllm_runtime_defaults
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { BasisPoint, basis_point, basis_point_count, byte_size, byte_size_count }
+import extdeps.nvidia.management_library { DeviceMemoryObservation, TorchDeviceMemoryObserved, NvmlDeviceMemoryUnsupportedOnUnifiedMemory }
+import extdeps.vllm.server { vllm_source_revision }
+import extdeps.vllm.runtime_defaults {
+  ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627,
+  defaults_source_revision, defaults_gpu_utilization, defaults_authority,
+  VllmDefaultsResolution, VllmDefaultsKnown, VllmDefaultsUnestablished, vllm_runtime_defaults_for,
+  VllmMemoryRequest,
+  ResolvedVllmMemoryPolicy, KvBytesMode, AutoProfiledMode, MemoryResolutionRefused,
+  VllmResolutionOrigin, ExplicitArgument,
+  ExpectedFromClaimedSourceRevision, PredictedForBoundImage,
+  VllmConfigField, GpuMemoryUtilizationField, KvCacheMemoryBytesField, EnablePrefixCachingField,
+  resolve_vllm_memory_policy, vllm_requested_envelope_bytes,
+  VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
+  ResolvedVllmPrefixCaching, PrefixCachingResolved, PrefixCachingUnresolvable,
+  resolve_vllm_prefix_caching,
+}
+
+// THE SUBJECT IS "WHO DECIDED THIS VALUE", and every witness below is written so it can answer
+// differently. A module that resolved every field to the same number no matter what was asked would
+// pass a shape check and establish nothing; these arms are chosen to disagree with each other.
+//
+// THE DEVICE TOTAL IS THE ONE MEASURED ON A SPARK, in exact bytes rather than the 121.69 GiB
+// projection any log prints. 130_662_027_264 bytes is 121.69 GiB, and using the byte figure here is
+// the same discipline the module states: the GiB value is a rendering, the bytes are the authority.
+data w_spark_total_bytes_count: Nat = 130662027264
+
+// THE DEVICE TOTAL ARRIVES AS AN OBSERVATION RATHER THAN A BARE COUNT, because the resolver now
+// refuses one it cannot attribute. This witness holds its own synthetic observation rather than
+// citing the fleet's: a fixture that read gb10_torch_device_memory would red whenever that row moved,
+// which is a host fact changing underneath a rule this file is testing.
+data w_device_observation: DeviceMemoryObservation = TorchDeviceMemoryObserved { bytes: w_spark_total_bytes_count }
+
+// AND AN UNREAD DEVICE HAS NO ENVELOPE. The resolver cannot multiply a fraction by an absence, and
+// the arm that carries no bytes is the one NVML returns on a GB10 -- so this is the fleet's own
+// refusal shape, not an invented one.
+data w_device_unread: DeviceMemoryObservation = NvmlDeviceMemoryUnsupportedOnUnifiedMemory {
+  device_name: "NVIDIA GB10" as NonEmptyStr,
+  error: "NVMLError_NotSupported raised by nvmlDeviceGetMemoryInfo" as NonEmptyStr,
+}
+
+// ── THE OMISSION THE GLM CANARY ACTUALLY MAKES ─────────────────────────────────────────────────
+//
+// This is the witness that would have answered the question that started this program. The canary's
+// serve line carries neither memory flag, and until this module existed nothing could say what its
+// effective policy was.
+test fn an_omitted_memory_request_resolves_to_the_revisions_own_default() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryRequest { utilization: none, kv_cache_bytes: none },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ) {
+    KvBytesMode { bytes_per_rank: _, origin: _, noncausal_utilization: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+    AutoProfiledMode { utilization: u, origin: o, requested_envelope_bytes: _ } =>
+      basis_point_count(bp: u) == 9200 && w_origin_is_runtime_default(o: o)
+  }
+}
+
+// THE ORIGIN IS THE HALF THAT MATTERS, and asserting only the value would let an explicit 9200 pass
+// as though it were the default. "This repository chose 0.92" and "this repository accepted upstream's
+// 0.92" are different facts with different owners when upstream changes it.
+fn w_origin_is_runtime_default(o: VllmResolutionOrigin) -> Bool {
+  match o {
+    ExplicitArgument { field: _ } => false
+    ExpectedFromClaimedSourceRevision { source_revision: _, field: f } => f == GpuMemoryUtilizationField
+    PredictedForBoundImage { image_digest: _, source_revision: _, binding_evidence: _, field: f } => f == GpuMemoryUtilizationField
+  }
+}
+
+fn w_origin_is_explicit(o: VllmResolutionOrigin) -> Bool {
+  match o {
+    ExplicitArgument { field: _ } => true
+    ExpectedFromClaimedSourceRevision { source_revision: _, field: _ } => false
+    PredictedForBoundImage { image_digest: _, source_revision: _, binding_evidence: _, field: _ } => false
+  }
+}
+
+// ── AN EXPLICIT REQUEST MAKES THE DEFAULT NON-CAUSAL ───────────────────────────────────────────
+//
+// The DeepSeek pair route's 82% must not be overwritten by the revision default it shares a runtime
+// family with. The discriminating part is that the SAME defaults are supplied here as in the witness
+// above, so only the request can account for the difference.
+test fn an_explicit_utilization_overrides_the_revision_default() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 8200) }, kv_cache_bytes: none },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ) {
+    KvBytesMode { bytes_per_rank: _, origin: _, noncausal_utilization: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+    AutoProfiledMode { utilization: u, origin: o, requested_envelope_bytes: _ } =>
+      basis_point_count(bp: u) == 8200 && w_origin_is_explicit(o: o)
+  }
+}
+
+// ── EXPLICIT KV BYTES MAKE THE FRACTION NON-CAUSAL ─────────────────────────────────────────────
+//
+// Upstream's precedence, and the arm carries no fraction AT ALL rather than one nothing reads -- so a
+// reader cannot find two numbers here and have to guess which the engine uses.
+test fn explicit_kv_bytes_supersede_utilization_entirely() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryRequest { utilization: none, kv_cache_bytes: Present { value: byte_size(count: 26572776960) } },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ) {
+    AutoProfiledMode { utilization: _, origin: _, requested_envelope_bytes: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+    KvBytesMode { bytes_per_rank: b, origin: o, noncausal_utilization: _ } =>
+      byte_size_count(b: b) == 26572776960 && w_origin_is_explicit(o: o)
+  }
+}
+
+// ── AN UNMODELLED REVISION REFUSES RATHER THAN BORROWING ───────────────────────────────────────
+//
+// THE DISCRIMINATING RED OF THIS MODULE. Both modelled revisions declare 9200, so an implementation
+// that answered 9200 unconditionally passes every witness above. This is the one that fails it. The
+// coincidence is real and it is exactly the shape that let one model's reasoning-field alias answer
+// for another's earlier on this branch.
+test fn an_omission_against_an_unmodelled_revision_refuses() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryRequest { utilization: none, kv_cache_bytes: none },
+    device_total: w_device_observation,
+    defaults: vllm_runtime_defaults_for(revision: vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    )),
+  ) {
+    AutoProfiledMode { utilization: _, origin: _, requested_envelope_bytes: _ } => false
+    KvBytesMode { bytes_per_rank: _, origin: _, noncausal_utilization: _ } => false
+    MemoryResolutionRefused { cause: _ } => true
+  }
+}
+
+// AND THE MODELLED ONES ARE FOUND, without which the refusal above is satisfied by a lookup that
+// never finds anything.
+test fn both_modelled_revisions_resolve_to_their_own_row() -> Bool {
+  w_resolves_known(r: Vllm487ecf187) && w_resolves_known(r: Vllm1967a5627)
+}
+
+fn w_resolves_known(r: ModelledVllmDefaultsRevision) -> Bool {
+  match vllm_runtime_defaults_for(revision: defaults_source_revision(r: r)) {
+    VllmDefaultsUnestablished { revision: _ } => false
+    VllmDefaultsKnown { revision: got } =>
+      (defaults_source_revision(r: got)).full_revision as String == (defaults_source_revision(r: r)).full_revision as String
+  }
+}
+
+// EACH REVISION CITES ITS OWN SOURCE FILE, and this is the witness for the defect where one authority
+// answered for both: a row whose value named 1967a562 while its evidence named 487ecf187. The values
+// agree, so only the citation can distinguish them.
+test fn each_revision_cites_its_own_source_file() -> Bool {
+  w_authority_names_own_revision(r: Vllm487ecf187) && w_authority_names_own_revision(r: Vllm1967a5627)
+}
+
+fn w_authority_names_own_revision(r: ModelledVllmDefaultsRevision) -> Bool {
+  string_contains(
+    s: (defaults_authority(r: r)).uri.locator,
+    pattern: (defaults_source_revision(r: r)).full_revision as String)
+}
+
+// THE TWO REVISIONS AGREE TODAY AND THAT AGREEMENT IS DERIVED, NOT SHARED. Asserting it here records
+// the fact the module refuses to make an authority: if a future edit moves one arm, this witness
+// reports the divergence rather than the two silently staying equal through a common constant.
+test fn the_two_revisions_agree_on_utilisation_by_comparison_not_by_sharing() -> Bool {
+  basis_point_count(bp: defaults_gpu_utilization(r: Vllm487ecf187))
+    == basis_point_count(bp: defaults_gpu_utilization(r: Vllm1967a5627))
+}
+
+// ── THE ENVELOPE IS DERIVED FROM ITS INPUTS, AND IT CEILS ──────────────────────────────────────
+//
+// 111.95 GiB is not a stored fact. This asserts the product, in bytes, against the two figures that
+// produce it -- so a future edit that stored the envelope beside them would have to disagree with
+// arithmetic to pass.
+//
+// THE EXPECTED VALUE CHANGED BY ONE BYTE AND THE FIRST VERSION OF THIS WITNESS WAS WRONG. It asserted
+// 120,209,065,082, the TRUNCATED product, and it passed -- because the implementation truncated too
+// and the value was checked with the same truncating operator. Upstream computes
+// `math.ceil(total * utilization)`, and 130,662,027,264 x 9200 / 10000 is 120,209,065,082.88, so the
+// correct answer is 120,209,065,083.
+//
+// AND THE ENGINE'S LOG CANNOT ARBITRATE THIS. Both values render as 111.95 GiB, so the "verified
+// against the reported envelope" check that accompanied the original witness could not have detected
+// the defect at all. A rounded projection is not an oracle for the byte it rounds away.
+test fn the_requested_envelope_ceils_as_upstream_does() -> Bool {
+  byte_size_count(b: vllm_requested_envelope_bytes(
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    utilization: basis_point(count: 9200),
+  )) == 120209065083
+}
+
+// THE DISCRIMINATOR FOR THE ROUNDING ITSELF, on a case small enough that the two answers are not one
+// byte apart in a twelve-digit number. 7 x 0.92 = 6.44: truncation says 6, ceiling says 7. A
+// truncating implementation passes every large-value witness above by a margin invisible in GiB and
+// fails this one outright.
+test fn a_non_divisible_product_rounds_up_not_down() -> Bool {
+  byte_size_count(b: vllm_requested_envelope_bytes(
+    device_total: byte_size(count: 7),
+    utilization: basis_point(count: 9200),
+  )) == 7
+}
+
+// ── BOTH ARGUMENTS EXPLICIT: THE REQUEST UPSTREAM ACCEPTS ──────────────────────────────────────
+//
+// KV bytes win and the fraction is RETAINED as noncausal, so an observed argv carrying both survives
+// ingestion. A model that dropped the ignored argument could not reproduce the launch it came from.
+test fn both_explicit_arguments_resolve_to_kv_bytes_with_the_fraction_retained() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryRequest {
+      utilization: Present { value: basis_point(count: 8200) },
+      kv_cache_bytes: Present { value: byte_size(count: 26572776960) },
+    },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ) {
+    AutoProfiledMode { utilization: _, origin: _, requested_envelope_bytes: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+    KvBytesMode { bytes_per_rank: b, origin: _, noncausal_utilization: nc } =>
+      byte_size_count(b: b) == 26572776960 && w_retained_fraction_is(nc: nc, expected: 8200)
+  }
+}
+
+fn w_retained_fraction_is(nc: BasisPoint?, expected: Nat) -> Bool {
+  match nc {
+    Absent => false
+    Present { value: f } => basis_point_count(bp: f) == expected
+  }
+}
+
+// AND IT MOVES WITH THE FRACTION, without which the row above passes against a constant.
+test fn a_different_fraction_yields_a_different_envelope() -> Bool {
+  byte_size_count(b: vllm_requested_envelope_bytes(
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    utilization: basis_point(count: 8200),
+  )) < byte_size_count(b: vllm_requested_envelope_bytes(
+    device_total: byte_size(count: w_spark_total_bytes_count),
+    utilization: basis_point(count: 9200),
+  ))
+}
+
+// ── PREFIX CACHING: THE DEFAULT IS A SHARING DECISION ──────────────────────────────────────────
+//
+// The canary omits this flag and therefore enables it. Recording that as a resolved value with a
+// runtime-default origin is what lets a tenancy policy disagree with it; an unmodelled revision
+// leaves whether requesters share a cache domain UNESTABLISHED rather than assuming either answer.
+test fn omitted_prefix_caching_resolves_enabled_from_the_revision() -> Bool {
+  match resolve_vllm_prefix_caching(
+    request: PrefixCachingOmitted,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ) {
+    PrefixCachingUnresolvable { cause: _ } => false
+    PrefixCachingResolved { enabled: e, origin: o } => e && w_origin_is_runtime_default_named(o: o)
+  }
+}
+
+fn w_origin_is_runtime_default_named(o: VllmResolutionOrigin) -> Bool {
+  match o {
+    ExplicitArgument { field: _ } => false
+    ExpectedFromClaimedSourceRevision { source_revision: _, field: f } => f == EnablePrefixCachingField
+    PredictedForBoundImage { image_digest: _, source_revision: _, binding_evidence: _, field: f } => f == EnablePrefixCachingField
+  }
+}
+
+test fn prefix_caching_against_an_unmodelled_revision_is_unresolvable() -> Bool {
+  match resolve_vllm_prefix_caching(
+    request: PrefixCachingOmitted,
+    defaults: vllm_runtime_defaults_for(revision: vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    )),
+  ) {
+    PrefixCachingResolved { enabled: _, origin: _ } => false
+    PrefixCachingUnresolvable { cause: _ } => true
+  }
+}
+
+// ── VALIDATION RUNS BEFORE CAUSALITY SELECTION ────────────────────────────────────────────────
+//
+// THE ROWS BELOW WERE ALL CONSTRUCTIBLE AND POSITIVELY RESOLVED BEFORE THIS. The resolver picked the
+// causal arm first, so an out-of-range fraction was examined only when it happened to be the term
+// that decided sizing -- and upstream does not work that way: its configuration validation sees the
+// field whether or not the field decides anything.
+
+fn w_is_refused(p: ResolvedVllmMemoryPolicy) -> Bool {
+  match p {
+    MemoryResolutionRefused { cause: _ } => true
+    KvBytesMode { bytes_per_rank: _, origin: _, noncausal_utilization: _ } => false
+    AutoProfiledMode { utilization: _, origin: _, requested_envelope_bytes: _ } => false
+  }
+}
+
+// A ZERO FRACTION RESERVES NOTHING AND CANNOT SERVE, and it used to resolve to an AutoProfiledMode
+// with a zero-byte envelope -- a positively resolved answer describing an engine that cannot start.
+test fn a_zero_utilization_is_refused() -> Bool {
+  w_is_refused(p: resolve_vllm_memory_policy(
+    request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 0) }, kv_cache_bytes: none },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ))
+}
+
+// A FRACTION ABOVE THE WHOLE DEVICE IS AN ARITHMETIC ERROR, not a bold setting. 15000 basis points
+// claims 150% of the pool.
+test fn a_utilization_above_the_whole_device_is_refused() -> Bool {
+  w_is_refused(p: resolve_vllm_memory_policy(
+    request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 15000) }, kv_cache_bytes: none },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ))
+}
+
+// THE ORDERING CASE, AND IT IS THE ONE THE OLD SHAPE GOT WRONG. Here the invalid fraction is
+// NONCAUSAL -- explicit KV bytes supersede it for sizing -- so the previous resolver never looked at
+// it and answered KvBytesMode, carrying the invalid value along in `noncausal_utilization` as though
+// being ignored made it well-formed. The engine would refuse this launch at configuration time.
+test fn an_invalid_utilization_beside_valid_kv_bytes_is_still_refused() -> Bool {
+  w_is_refused(p: resolve_vllm_memory_policy(
+    request: VllmMemoryRequest {
+      utilization: Present { value: basis_point(count: 15000) },
+      kv_cache_bytes: Present { value: byte_size(count: 23372437156) },
+    },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ))
+}
+
+// ── ZERO KV BYTES IS UPSTREAM'S TRUTHINESS EDGE ───────────────────────────────────────────────
+//
+// The engine writes `if kv_cache_memory_bytes := ...`, so a supplied zero is FALSY and falls through
+// to profiling; it does not configure a zero-byte cache. Modelling presence as the discriminator --
+// which is what the option type invites -- made `--kv-cache-memory=0` resolve to a KV mode with a
+// zero-byte pool, a state the engine never enters.
+test fn zero_kv_bytes_falls_through_to_profiling_rather_than_configuring_an_empty_cache() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryRequest {
+      utilization: Present { value: basis_point(count: 9200) },
+      kv_cache_bytes: Present { value: byte_size(count: 0) },
+    },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ) {
+    KvBytesMode { bytes_per_rank: _, origin: _, noncausal_utilization: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+    AutoProfiledMode { utilization: u, origin: _, requested_envelope_bytes: _ } => basis_point_count(bp: u) == 9200
+  }
+}
+
+// AND A POSITIVE KV BYTE COUNT STILL TAKES THE EXPLICIT ARM. Without this control the test above is
+// satisfied by a resolver that never selects KV-byte mode at all.
+test fn positive_kv_bytes_still_take_the_explicit_arm() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryRequest {
+      utilization: none,
+      kv_cache_bytes: Present { value: byte_size(count: 23372437156) },
+    },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ) {
+    KvBytesMode { bytes_per_rank: b, origin: _, noncausal_utilization: _ } => byte_size_count(b: b) == 23372437156
+    MemoryResolutionRefused { cause: _ } => false
+    AutoProfiledMode { utilization: _, origin: _, requested_envelope_bytes: _ } => false
+  }
+}
+
+// ── AN UNREAD DEVICE HAS NO ENVELOPE ──────────────────────────────────────────────────────────
+//
+// The resolver took a bare ByteSize, so there was no way to hand it "the device was not read" -- a
+// caller had to invent a number to ask the question at all. On a GB10 that arm is the one NVML
+// actually returns, so this is the fleet's own state rather than a defensive case.
+test fn an_unread_device_refuses_rather_than_sizing_against_a_guess() -> Bool {
+  w_is_refused(p: resolve_vllm_memory_policy(
+    request: VllmMemoryRequest { utilization: none, kv_cache_bytes: none },
+    device_total: w_device_unread,
+    defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
+  ))
+}
+
+// AN EXPLICIT REQUEST AGAINST AN UNMODELLED REVISION STILL RESOLVES, because the revision's default
+// is noncausal when the launch names its own value. A resolver that refused here would be refusing
+// the wrong thing -- the unmodelled revision matters only for what an OMISSION inherits.
+test fn an_explicit_utilization_against_an_unmodelled_revision_resolves() -> Bool {
+  match resolve_vllm_memory_policy(
+    request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 9200) }, kv_cache_bytes: none },
+    device_total: w_device_observation,
+    defaults: VllmDefaultsUnestablished { revision: vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    ) },
+  ) {
+    AutoProfiledMode { utilization: u, origin: _, requested_envelope_bytes: _ } => basis_point_count(bp: u) == 9200
+    KvBytesMode { bytes_per_rank: _, origin: _, noncausal_utilization: _ } => false
+    MemoryResolutionRefused { cause: _ } => false
+  }
+}

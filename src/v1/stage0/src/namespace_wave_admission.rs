@@ -1674,91 +1674,120 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
+/// ASSESSMENT-RENAME TRANSITION (2026-09-09, gunbc#10883). No ordinal is claimed, for the reason
+/// the entries above give. `product.cable_plant_converge` is renamed to
+/// `product.cable_plant_assessment`, and `gunbc.spark.fabric_switch_converge` to
+/// `gunbc.spark.fabric_switch_assessment`. The modules never had an actuation stage; the
+/// `converge` name advertised one, which is how the shape they replaced came to be bound to a
+/// handler that DEMANDED an apply. Renaming an inspect-only home is the last step of that cut.
 ///
-/// STRUCTURAL-TEXT AND LOGIC AUTHORITY REQUALIFICATION (2026-09-09, gunbc#10692). No ordinal is
-/// claimed, for the reason the entries above give. Five binding sites on the v2 self-host branch
-/// stop spelling two type names into the ambient kernel set and name the authority module
-/// instead, which is `TargetChanged` and is not auto-admitted: `EmitSpellingEscape.from/to`,
-/// `apply_emit_spelling_escapes.spelling` and `integer_string_to_decimal_digits_step.s` requalify
-/// `String` to `v2.std.text`; `py_bool_grounding` and `ts_bool_grounding` requalify their
-/// `BooleanAlgebra` parameter `Bool` to `v2.std.logic`.
+/// ONLY NINE ROWS, AND THE ARITHMETIC IS THE POINT. The wave measured eighteen deltas. Nine
+/// auto-admit: the membership half of the same motion reports `SameDeclarationIdentityRebind`
+/// (the old edge, whose every supplied name still denotes the same declaration) or
+/// `ExplicitlyEvaluatedZeroDelta` (the new edge, reached by a name the module authors). The nine
+/// below are the binding half — a spelling authored on BOTH sides that now resolves to a
+/// different module. Consumers whose OWN module was renamed produce no binding delta at all,
+/// because a delta needs the module on both sides; that is why the two witness files this cut
+/// renamed are absent here and `fabric_switch_observed` is not.
 ///
-/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check. The three
-/// `String` sites carry STRUCTURAL text — `v2.std.text.String` is `FreeMonoid<Char>`, and the
-/// chars(String) <- Variant cluster repair (this branch) restored structural reads end-to-end, so
-/// the carriers' types name the structural authority rather than the kernel homonym; the
-/// qualification is also load-bearing for native emission, whose host-String arm keys on
-/// declaration provenance (this branch, `is_host_text_carrier_type`), so an unqualified spelling
-/// would render the host carrier while value-position consumers render the structure. The two
-/// `Bool` sites bind a value whose own declaration already carries the qualified parameter:
-/// `v2.std.logic` declares `type Bool = True | False` and `bool_boolean_algebra:
-/// BooleanAlgebra<Bool>` resolves that spelling to its OWN module's declaration, so a grounding
-/// row annotated `BooleanAlgebra<Bool>` with the kernel reading stated a type its value does not
-/// inhabit. This is the gunbc#9907 namespace-lane requalification reaching five sites the XL-N
-/// closure repair touched.
+/// NONE OF THESE CHANGES WHICH DECLARATION THE SPELLING DENOTES. `CablePlant`, `cable_plant`,
+/// `CableLegReading`, `LegReadingTaken` and `LegNeverRead` are the same declarations at a new
+/// module path. A binding whose MEANING had moved would refuse on its own row rather than be
+/// covered by these, which is why they are enumerated by exact identity rather than by a pattern
+/// over the renamed module pair -- a pattern would admit a genuine rebind that happened to land
+/// in the same pair.
 ///
-/// ONE CHANGE CLASS. Nothing is requalified at the leaf: every spelling is identical on both
-/// sides, and what moved is the declaration behind it — from the ambient kernel type set
-/// (`<kernel>`) to the explicitly named authority module. No membership edge is added or removed
-/// by these five sites (the requalification is by qualified path or an import the module already
-/// carried), which is why the run reports exactly five binding rows and nothing else.
-///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10692 merges. Main then binds
-/// each spelling to the named target, base and head agree, no run can produce these deltas, and
-/// all five report CONSUMED rather than stale — coming due on this roster's next touch.
-/// Adjudicate that deletion by joining each row against main's tree on its own
-/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
-/// a trigger sentence is not evidence that the trigger fired.
-const V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL: &str =
-    "gunbc#10692 structural-text/logic authority requalification 2026-09-09";
+/// TRIGGER: these rows are removed when this PR merges. At that point the base itself binds each
+/// spelling to `product.cable_plant_assessment`, every row reports consumed-at-base, and leaving
+/// them would refuse every unrelated PR -- the exact cost the first 53 rows recorded above.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "v2.extdeps.languages.python",
-            in_declaration: "py_bool_grounding",
-            spelling: "Bool",
-            target: "v2.std.logic",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_cable_plant",
+            spelling: "CablePlant",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "v2.extdeps.languages.typescript",
-            in_declaration: "ts_bool_grounding",
-            spelling: "Bool",
-            target: "v2.std.logic",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_cable_plant",
+            spelling: "cable_plant",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.target_model",
-            in_declaration: "EmitSpellingEscape",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_leg_reading",
+            spelling: "CableLegReading",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "v2.std.compilers.target_model",
-            in_declaration: "apply_emit_spelling_escapes",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_leg_reading",
+            spelling: "LegNeverRead",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "v2.std.integer",
-            in_declaration: "integer_string_to_decimal_digits_step",
-            spelling: "String",
-            target: "v2.std.text",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_leg_reading",
+            spelling: "LegReadingTaken",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_never",
+            spelling: "LegNeverRead",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_never",
+            spelling: "LegReadingTaken",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_taken",
+            spelling: "LegNeverRead",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_taken",
+            spelling: "LegReadingTaken",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

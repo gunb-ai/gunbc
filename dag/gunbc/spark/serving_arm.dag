@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627 }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
 }
@@ -138,6 +139,18 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // `/opt/env/bin/hf` in the DeepSeek runtime and `/usr/local/bin/hf` in the community one -- a single
 // hardcoded path silently produced a container that could not start, reported downstream as a
 // checkpoint whose bytes were wrong.
+// THE IMAGE CLAIMS A SOURCE REVISION AND THE SELF-REPORTED VERSION IS NOT IT. `vllm_version` is what
+// the running process says about itself, and extdeps.vllm.server refuses that as provenance for
+// exactly the right reason: a version prefix is a lexical fact about a response body. Deriving the
+// revision whose DEFAULTS govern this image by parsing that string would be the authority substitution
+// extdeps.vllm.runtime_defaults was written to remove, committed in the module that consumes it.
+//
+// SO THE CLAIM IS ITS OWN FIELD, and what it authorises is narrow. `claimed_defaults_revision` names
+// the revision this image is BUILT FROM according to its publisher, which is enough to say what an
+// omitted flag resolves to for a launch that has already happened and been observed. It is NOT
+// evidence that the image contains that revision's bytes: nothing here has compared them, and
+// extdeps.vllm.runtime_defaults keeps that question in its own binding type rather than folding it
+// into the value.
 type ServingRuntimeRow {
   runtime: ServingRuntime
   image_reference: NonEmptyStr
@@ -146,6 +159,7 @@ type ServingRuntimeRow {
   registers_glm5_next: Bool
   reasoning_projection: ReasoningResponseProjection
   provenance: NonEmptyStr
+  claimed_defaults_revision: ModelledVllmDefaultsRevision
 }
 
 // HOW REASONING COMES BACK IS A RUNTIME PROPERTY WITH TWO SHAPES, AND THE MEMBER NAME IS PART OF IT.
@@ -167,6 +181,7 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   registers_glm5_next: true,
   reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
   provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`" as NonEmptyStr,
+  claimed_defaults_revision: Vllm487ecf187,
 }
 
 data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
@@ -177,6 +192,7 @@ data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   registers_glm5_next: false,
   reasoning_projection: InlineReasoning { end_token: "</think>" as NonEmptyStr },
   provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present" as NonEmptyStr,
+  claimed_defaults_revision: Vllm1967a5627,
 }
 
 fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
