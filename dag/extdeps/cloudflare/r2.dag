@@ -33,6 +33,33 @@ data r2_s3_api_citation: ExternalAuthority = ExternalAuthority {
 
 data r2_tokens_doc_as_of: Timestamp = "2026-08-18"
 
+// ONLY READ IS MODELED, AND A DURABLE ORIGIN MUST PUT. This is the one permission group id this
+// module pins, and it is a READ grant. The write half -- Cloudflare names the groups "Workers R2
+// Storage Read" and "Workers R2 Storage Edit" on its public permission reference -- has no id here,
+// and it is deliberately absent rather than filled in: THAT PAGE PUBLISHES NO IDS (retrieved
+// 2026-09-10), so there is no doc citation to make, and an uncited id would be worse than an absent
+// one because it would be indistinguishable from a checked fact at every later reading.
+//
+// IT IS RESOLVED BY OBSERVATION, AND THE OPERATION THAT RESOLVES IT IS ALREADY MODELED.
+// cloudflare.AccountTokens.ListPermissionGroupsRaw answers GET
+// /accounts/{account_id}/tokens/permission_groups, and its response rows carry both "id" and "name"
+// (developers.cloudflare.com/api/resources/accounts/subresources/tokens/subresources/permission_groups/methods/list,
+// retrieved 2026-09-10 -- the modeled path was checked against that document and agrees with it).
+// So the write grant lands as an OBSERVATION recorded with its retrieval date, in the observing
+// workflow layer, never as a doc-cited fact authored here.
+//
+// A THIRD ID IS IN CIRCULATION AND IS NOT WRITTEN DOWN ANYWHERE IN THIS TREE ON PURPOSE. The
+// operator's existing account token carries permission group 5bc3f8b21c554832afc660159ab75fa4, which
+// is NOT the read id below and is not identified by any published document. Until the listing above
+// is performed, nobody can say whether it is a read grant, a write grant, or the Account API Tokens
+// Write grant the mint model expects of a bootstrap token -- and reshaping the model to whichever
+// answer would make the plan work is the fabrication this note exists to prevent.
+//
+// THE SCOPE AXIS IS A SECOND, INDEPENDENT GAP. r2_bucket_item_read_resources builds a BUCKET-scoped
+// resource map; that operator token grants at ACCOUNT scope ("com.cloudflare.api.account.<id>": "*"),
+// which r2_account_resource_name can already spell and which no policy builder here consumes. Those
+// are materially different grants -- one names a bucket, the other names everything in the account --
+// and the difference is recorded rather than smoothed into the bucket-scoped builder.
 data workers_r2_storage_bucket_item_read_permission_group_id: NonEmptyStr = "6a018a9f2fc74eb6b293b0c548f38b39"
 
 data r2_s3_access_key_is_created_token_id_citation: FactCitation = FactCitation {

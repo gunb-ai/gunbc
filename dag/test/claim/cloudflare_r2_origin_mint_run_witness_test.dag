@@ -1,0 +1,223 @@
+module test.claim.cloudflare_r2_origin_mint_run
+
+import std.types { String, NonEmptyStr, Bool }
+import std.human_intervention { FleetOnce, human_intervention_frequency_eq }
+import extdeps.vendor { Vendor }
+import extdeps.vendor.cloudflare { cloudflare }
+import extdeps.cloudflare.r2 {
+  R2JurisdictionDefault,
+  r2_bucket_resource_name,
+  workers_r2_storage_bucket_item_read_permission_group_id,
+}
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountId,
+  CloudflareAccountAllocated,
+  CloudflareAccountUnallocated,
+  BootstrapCustodyPinned,
+  BootstrapCustodyUnrecorded,
+  fleet_cloudflare_account_standing,
+  cloudflare_account_allocation_intervention,
+  fleet_cloudflare_bootstrap_custody,
+  fabric_durable_origin_standing,
+  DurableOriginAllocated,
+  DurableOriginUnallocated,
+  FabricDurableOrigin,
+  BucketPurpose,
+  R2BucketAllocation,
+  bucket_allocation_roster_verdict,
+  BucketAllocationRosterConsistent,
+  BucketPurposeAllocatedTwice,
+  BucketNameClaimedTwice,
+  gunbc_fleet_r2_bucket_allocations,
+  allocated_bucket_name,
+  fleet_cloudflare_account_id,
+  fabric_durable_origin_read_secret_id,
+  cloudflare_bootstrap_custody_secret_id,
+  FabricCommitManifestsAndContentAddressedOutputs,
+}
+import gunbc.cloudflare.r2_token_mint_run {
+  classify_r2_mint,
+  R2MintReady,
+  R2MintBootstrapCustodyUnrecorded,
+  R2MintAccountUnallocated,
+  R2MintOriginUnallocated,
+  R2MintAdmissionRefused,
+  bootstrap_burden_text,
+}
+
+// THE DISCRIMINATING RED, ON THE DECLARATIONS THE ENTRY ACTUALLY READS. This is not a fixture: it
+// calls classify_r2_mint with fleet_cloudflare_account_standing() and
+// fleet_cloudflare_bootstrap_custody() -- the same two values run() reads -- so it establishes what
+// the executing entry does today. With no bootstrap token in custody the classification is the
+// custody arm, which means no Create call can be reached and no pair can be fabricated downstream.
+//
+// IT ASSERTS THE ARM RATHER THAN "not ready", because a test that only denied readiness would go
+// green for the account arm, for an admission refusal, and for any arm added later. The point of
+// this red is WHICH refusal fires first.
+test fn r2_origin_mint_refuses_for_absent_bootstrap_custody_on_the_declared_path() -> Bool {
+  match classify_r2_mint(
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintBootstrapCustodyUnrecorded { intervention: intervention } =>
+      human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
+        && string_contains(
+          s: intervention.instruction as String,
+          pattern: cloudflare_bootstrap_custody_secret_id as String)
+    R2MintReady { account_id: _, bootstrap_locus: _, request: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+  }
+}
+
+// THE ACCEPTED POSITIVE CONTROL, AND IT IS THE FULL ONE. Pinning custody in a fixture while leaving
+// the account and the origin at their DECLARED values reaches R2MintReady -- which proves two things
+// at once: the custody refusal is not simply always-refusing (a red that cannot be made to pass is a
+// change detector), and the declarations are actually WIRED into the request rather than merely
+// present. The admitted request must carry the declared bucket's R2 resource name under the declared
+// account, addressed at the declared jurisdiction, granting exactly the cited Workers R2 Storage
+// Bucket Item Read permission group. If the bucket roster or the account id were ignored and a
+// literal used anywhere in that chain, this join fails.
+fn fixture_bootstrap_locus() -> SecretRef {
+  SecretRef {
+    project: fleet_secrets_gcp_project,
+    secret: cloudflare_bootstrap_custody_secret_id,
+    version: "7",
+    hash_state: HashPending,
+  }
+}
+
+// AN UNALLOCATED PURPOSE RENDERS A MARKER RATHER THAN AN EMPTY NAME, so a roster that stopped
+// answering makes every join below FAIL rather than compare two empty strings and agree.
+fn declared_bucket_name() -> String {
+  match allocated_bucket_name(purpose: FabricDurableOrigin {}) {
+    Present { value: name } => name as String
+    Absent => "<unallocated>"
+  }
+}
+
+test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> Bool {
+  match classify_r2_mint(
+    account: fleet_cloudflare_account_standing(),
+    custody: BootstrapCustodyPinned { locus: fixture_bootstrap_locus() },
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintReady { account_id: account_id, bootstrap_locus: locus, request: request } =>
+      (account_id as String) == (fleet_cloudflare_account_id as String)
+        && (locus.secret as String) == (cloudflare_bootstrap_custody_secret_id as String)
+        && string_contains(s: request.name, pattern: declared_bucket_name())
+        && all(request.policies, p =>
+             any(p.permission_groups, g =>
+               (g.id as String) == (workers_r2_storage_bucket_item_read_permission_group_id as String))
+             && match map_get(p.resources, r2_bucket_resource_name(
+                  account_id: fleet_cloudflare_account_id as String,
+                  jurisdiction: R2JurisdictionDefault,
+                  bucket_name: declared_bucket_name())) {
+                  Present { value: scope } => scope == "*"
+                  none => false
+                })
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+  }
+}
+
+// THE ACCOUNT ARM IS STILL REACHABLE, WHICH IS WHY IT IS ASSERTED FROM A FIXTURE. This fleet's
+// account is allocated, so the arm is unreachable from the declarations -- and an arm no test can
+// reach is an arm nobody can trust. Section 4b's question is whether the RED is authorable
+// SOMEWHERE a check can run, and a pure classifier handed an unallocated standing is exactly that
+// place.
+test fn r2_origin_mint_refuses_an_unallocated_account_from_a_fixture() -> Bool {
+  match classify_r2_mint(
+    account: CloudflareAccountUnallocated {
+      company: cloudflare,
+      intervention: cloudflare_account_allocation_intervention(),
+    },
+    custody: BootstrapCustodyPinned { locus: fixture_bootstrap_locus() },
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintAccountUnallocated { intervention: intervention } =>
+      human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
+    R2MintReady { account_id: _, bootstrap_locus: _, request: _ } => false
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+  }
+}
+
+// THE ROSTER REFUSES A DUPLICATE ALLOCATION, AND THE LIVE ROSTER IS ASSERTED CONSISTENT IN THE SAME
+// TEST, because a verdict function nobody consults over the real population is an inert check.
+//
+// ONLY ONE OF THE TWO COLLISION ARMS IS REACHABLE TODAY, AND SAYING SO IS THE POINT. BucketPurpose
+// has a single arm, so two rows can only ever collide on the PURPOSE axis -- there is no second
+// purpose with which to claim one bucket name twice, and the second assertion below (same purpose,
+// same name) proves that the purpose check fires FIRST rather than that the name check works.
+// BucketNameClaimedTwice is therefore a wall whose red is not authorable from this module yet; it
+// becomes reachable, and gains its own assertion, with the second allocated purpose. Claiming here
+// that both collisions are executed evidence would be exactly the rung inflation section 4b names.
+test fn r2_bucket_allocation_roster_refuses_a_duplicate_allocation() -> Bool {
+  match bucket_allocation_roster_verdict(allocations: gunbc_fleet_r2_bucket_allocations) {
+    BucketAllocationRosterConsistent => true
+    BucketPurposeAllocatedTwice { purpose: _ } => false
+    BucketNameClaimedTwice { bucket_name: _ } => false
+  }
+    && match bucket_allocation_roster_verdict(allocations: [
+         R2BucketAllocation { purpose: FabricDurableOrigin {}, bucket_name: "a" },
+         R2BucketAllocation { purpose: FabricDurableOrigin {}, bucket_name: "b" },
+       ]) {
+         BucketPurposeAllocatedTwice { purpose: _ } => true
+         BucketAllocationRosterConsistent => false
+         BucketNameClaimedTwice { bucket_name: _ } => false
+       }
+    && match bucket_allocation_roster_verdict(allocations: [
+         R2BucketAllocation { purpose: FabricDurableOrigin {}, bucket_name: "a" },
+         R2BucketAllocation { purpose: FabricDurableOrigin {}, bucket_name: "a" },
+       ]) {
+         BucketPurposeAllocatedTwice { purpose: _ } => true
+         BucketAllocationRosterConsistent => false
+         BucketNameClaimedTwice { bucket_name: _ } => false
+       }
+}
+
+// THE ORIGIN DECLARATION ITSELF, asserted so that a later edit that repoints the read credential
+// somewhere other than the container the mint writes is caught. The two are one fact and they are
+// spelled in one place; this is the join that proves it stayed that way.
+test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
+  match fabric_durable_origin_standing() {
+    DurableOriginUnallocated { purpose: _ } => false
+    DurableOriginAllocated { bucket: bucket } =>
+      (bucket.read_credential.secret as String) == (fabric_durable_origin_read_secret_id as String)
+        && (bucket.read_credential.project as String) == (fleet_secrets_gcp_project as String)
+        && (bucket.bucket_name as String) == (declared_bucket_name())
+        && match bucket.admits {
+             FabricCommitManifestsAndContentAddressedOutputs {} => true
+           }
+  }
+}
+
+// THE BURDEN IS PRICED BY THE ENTRY, which is the dissolution this change claims for
+// cloudflare_r2_token_human_burden's frontier row. The refusal text is derived from the burden's own
+// interventions rather than restated, so this asserts the derivation reaches the dashboard ceremony's
+// words. A row dissolved on a trigger nothing executes is the section 4b(3) failure; this is the
+// executed half of that claim.
+test fn r2_origin_mint_refusal_prices_the_dashboard_bootstrap() -> Bool {
+  string_contains(s: bootstrap_burden_text(), pattern: "Super Administrator")
+    && string_contains(s: bootstrap_burden_text(), pattern: "Account API Tokens Write")
+}
+
+// THE ACCOUNT STANDING CITES THE VENDOR ENTITY, which is the dissolution this change claims for
+// vendor_cloudflare_frontier_rows: a gunbc declaration that names this fleet's Cloudflare account and
+// cites extdeps.vendor.cloudflare as the company.
+test fn r2_origin_account_standing_cites_the_cloudflare_vendor_entity() -> Bool {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: company, intervention: _ } =>
+      company.legal_name == cloudflare.legal_name
+    CloudflareAccountAllocated { company: company, account_id: _ } =>
+      company.legal_name == cloudflare.legal_name
+  }
+}

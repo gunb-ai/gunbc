@@ -1,0 +1,152 @@
+module extdeps.backblaze.b2
+
+import std.types { NonEmptyStr, String, Secret, Timestamp, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.uri { Uri, Https }
+
+// BACKBLAZE B2 IS ITS OWN UPSTREAM AND THEREFORE ITS OWN MODULE. Until now it existed in this
+// repository only as a PRICE row -- b2_storage_rate_unavailable in extdeps.pricing.object_storage --
+// which is a fact about a comparison table, not about the product. DESIGN section 3's external
+// decomposition rule is explicit: each independently versioned upstream has its own module
+// authority, and a generic hub may not enumerate concrete products or dispatch among them.
+//
+// SO THERE IS DELIBERATELY NO PROVIDER HUB HERE, AND NONE OVER R2 EITHER. The tempting shape, with
+// two object stores finally in the tree, is one ObjectStorageProvider coproduct that both inhabit --
+// and that is the exact construction the rule forbids: adding a third provider would then widen a
+// type that Cloudflare's and Backblaze's modules both depend on, so a Backblaze change would require
+// editing Cloudflare's authority. Two upstreams, two modules, and any shared shape is agnostic.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.backblaze.com/apidocs/b2-authorize-account"
+  }
+}
+
+data application_keys_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.backblaze.com/docs/cloud-storage-application-keys"
+  }
+}
+
+data b2_authorize_account_as_of: Timestamp = "2026-09-10"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.backblaze.b2",
+      decl_name: "B2ApplicationKeyIdentity",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [application_keys_citation]
+}
+
+data b2_api_v4_base: NonEmptyStr = "https://api.backblazeb2.com/b2api/v4"
+
+// THE KEY ID AND THE KEY ARE TWO FACTS AND ONLY ONE OF THEM IS A SECRET, which is why they are two
+// declarations with two types rather than one credential blob. b2_authorize_account takes them as
+// HTTP Basic credentials -- applicationKeyId as the user, applicationKey as the password -- so a
+// model that carried them together would make the id, which is ordinary config and appears in logs
+// and dashboards, inherit the handling rules of the value, and would leave nowhere to record the id
+// alone. The upstream spelling is preserved: applicationKeyId, not "access key".
+//
+// THE MASTER KEY AND A RESTRICTED KEY ARE THE SAME SHAPE AND DIFFERENT AUTHORITY, per the
+// application-keys citation: the master key carries all capabilities and no restrictions, a created
+// key may be limited to buckets, a name prefix, and a capability list, and may expire. That
+// distinction is NOT modeled here, because nothing in this repository yet creates or consumes a B2
+// key -- inventing the restriction algebra before a consumer exists is the dangling modeling
+// DESIGN section 3c interrogates.
+type B2ApplicationKeyIdentity {
+  application_key_id: NonEmptyStr
+}
+
+type B2AuthorizedAccountIdentity {
+  account_id: NonEmptyStr
+}
+
+// THE AUTHORIZATION TOKEN IS SHORT-LIVED AND THE DOCUMENT SAYS SO: valid for up to 24 hours. It is
+// carried as a Secret and as its own type rather than as a String, because the failure it invites --
+// storing it as though it were a durable credential -- is exactly what a String would not object to.
+type B2AuthorizationToken {
+  token: Secret
+}
+
+// THE THREE BASE URLS ARE RETURNED BY AUTHORIZATION, NOT CONSTRUCTED. b2_authorize_account answers
+// apiUrl, downloadUrl and s3ApiUrl under storageApi, and a client that built any of them from a
+// template would be asserting a routing fact the service is entitled to change per account.
+type B2StorageApiEndpoints {
+  api_url: NonEmptyStr
+  download_url: NonEmptyStr
+  s3_api_url: NonEmptyStr
+}
+
+data b2_authorization_returns_endpoints_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.backblaze.b2",
+    decl_name: "B2StorageApiEndpoints",
+    field: WholeDeclaration
+  },
+  authority: extdeps_external_authority_anchor
+}
+
+// THE PUBLISHED RATES REMAIN UNAVAILABLE, AND THAT ROW IS NOT RESTATED HERE. extdeps.pricing
+// object_storage already carries b2_storage_rate_unavailable with the measured cause -- the headline
+// per-TB rate is client-rendered on backblaze.com and absent from the fetched markup, with no
+// machine-readable price list published -- and nothing observed while writing this module changes
+// that. Copying the row into this module would be the second representation DESIGN section 3 forbids,
+// and REPLACING an honest unavailability with a remembered number would be worse: a fabricated price
+// that the comparison the fabric storage decision rests on would silently believe.
+//
+// So this module states the boundary and owns none of the pricing: the rate rows stay where the
+// comparison lives, and their unavailability is retired by an observation, not by this change.
+
+data backblaze_b2_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "B2ApplicationKeyIdentity"),
+    reason: "no executing b2_authorize_account caller; this module lands ahead of the storage-provider decision it will serve",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration authorizes against Backblaze B2 on an executing converge or gunbc-run entry, supplying an application key id and key from custody and consuming the returned account identity; a witness that the shape exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "B2StorageApiEndpoints"),
+    reason: "authorization response endpoints have no executing consumer in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration reads apiUrl, downloadUrl or s3ApiUrl from a performed b2_authorize_account on an executing entry; a witness that the shape exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "b2_authorize_account_as_of"),
+    reason: "as-of pin has no reader; ExternalAuthority has no as-of field",
+    dissolution: unbound_dissolution(
+      description: "dissolves when ExternalAuthority or FactCitation carries an as-of date and this pin inhabits that field, or a gunbc executing fold reads b2_authorize_account_as_of as the cited document date"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "B2AuthorizationToken"),
+    reason: "the 24-hour authorization token has no executing holder in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration holds a B2AuthorizationToken returned by a performed b2_authorize_account and spends it on a subsequent B2 call within its lifetime; a witness that the type exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "B2AuthorizedAccountIdentity"),
+    reason: "the authorized account identity has no executing consumer in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a gunbc declaration consumes the accountId returned by a performed b2_authorize_account on an executing entry; a witness that the type exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "b2_api_v4_base"),
+    reason: "no operation is declared against the v4 base in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a service operation in this module is invoked against b2_api_v4_base on an executing entry; a witness that the base string exists does not fire this"
+    )
+  )
+]
