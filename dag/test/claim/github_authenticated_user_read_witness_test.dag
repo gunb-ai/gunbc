@@ -1,0 +1,141 @@
+module test.claim.github_authenticated_user_read
+
+import std.logic { Bool }
+import std.types { String, Secret }
+import extdeps.transports.rest {
+  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  classify_rest_outcome,
+  RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
+  RestExchangeUnreached, RestExchangeUndecodable,
+  RestReadExchange, RestMutationExchange,
+}
+import extdeps.github.users {
+  hermetic_get_authenticated_user_login,
+  hermetic_get_authenticated_user_id,
+  hermetic_get_authenticated_user_type,
+}
+import gunbc.github_authenticated_user_read {
+  GitHubAuthenticatedUserObserved, GitHubAuthenticatedUserRefused,
+  GitHubAuthenticatedUserLoginAbsent,
+  perform_github_authenticated_user_read,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn rest_ok_is_success_for_a_read_and_a_mutation() -> Bool {
+  match classify_rest_outcome(standing: RestReadExchange { rest: RestOk }) {
+    RestExchangeSucceeded => true
+    _ => false
+  }
+    && match classify_rest_outcome(standing: RestMutationExchange { rest: RestOk }) {
+      RestExchangeSucceeded => true
+      _ => false
+    }
+}
+
+// THE DISCRIMINATING READ RED: 401 is a refusal carrying the status, not success and not a throw.
+test fn an_unauthorized_read_is_a_refusal_carrying_401() -> Bool {
+  match classify_rest_outcome(
+    standing: RestReadExchange {
+      rest: RestStatusRefused { status: 401, body: "{\"message\":\"Bad credentials\"}" },
+    },
+  ) {
+    RestExchangeStatusRefused { status, body } => status == 401 && body != ""
+    _ => false
+  }
+}
+
+// AN UNDOCUMENTED STATUS IS STILL NOT-SUCCESS. 418 is not in GitHub's documented set for GET /user;
+// classifying by an enum of known failures would treat it as success or drop it.
+test fn an_undocumented_status_on_a_read_is_still_a_refusal() -> Bool {
+  match classify_rest_outcome(
+    standing: RestReadExchange { rest: RestStatusRefused { status: 418, body: "teapot" } },
+  ) {
+    RestExchangeStatusRefused { status, body: _ } => status == 418
+    _ => false
+  }
+}
+
+test fn a_5xx_on_a_read_is_a_refusal_not_commit_ambiguous() -> Bool {
+  match classify_rest_outcome(
+    standing: RestReadExchange { rest: RestStatusRefused { status: 500, body: "boom" } },
+  ) {
+    RestExchangeStatusRefused { status, body: _ } => status == 500
+    RestExchangeCommitAmbiguous { detail: _ } => false
+    _ => false
+  }
+}
+
+test fn a_5xx_on_a_mutation_is_commit_ambiguous() -> Bool {
+  match classify_rest_outcome(
+    standing: RestMutationExchange { rest: RestStatusRefused { status: 500, body: "boom" } },
+  ) {
+    RestExchangeCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "did not commit")
+    RestExchangeStatusRefused { status: _, body: _ } => false
+    _ => false
+  }
+}
+
+test fn a_403_on_a_mutation_is_a_refusal_not_commit_ambiguous() -> Bool {
+  match classify_rest_outcome(
+    standing: RestMutationExchange { rest: RestStatusRefused { status: 403, body: "no" } },
+  ) {
+    RestExchangeStatusRefused { status, body: _ } => status == 403
+    RestExchangeCommitAmbiguous { detail: _ } => false
+    _ => false
+  }
+}
+
+test fn a_transport_loss_on_a_mutation_is_commit_ambiguous() -> Bool {
+  match classify_rest_outcome(
+    standing: RestMutationExchange { rest: RestTransportRefused { cause: "timeout" } },
+  ) {
+    RestExchangeCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "may or may not have landed")
+    RestExchangeUnreached { cause: _ } => false
+    _ => false
+  }
+}
+
+test fn a_transport_loss_on_a_read_is_unreached() -> Bool {
+  match classify_rest_outcome(
+    standing: RestReadExchange { rest: RestTransportRefused { cause: "timeout" } },
+  ) {
+    RestExchangeUnreached { cause } => cause as String == "timeout"
+    RestExchangeCommitAmbiguous { detail: _ } => false
+    _ => false
+  }
+}
+
+test fn an_undecodable_body_on_a_read_is_undecodable() -> Bool {
+  match classify_rest_outcome(
+    standing: RestReadExchange { rest: RestBodyUndecodable { status: 200, cause: "not json" } },
+  ) {
+    RestExchangeUndecodable { status, cause } => status == 200 && cause as String == "not json"
+    _ => false
+  }
+}
+
+test fn an_undecodable_body_on_a_mutation_is_commit_ambiguous() -> Bool {
+  match classify_rest_outcome(
+    standing: RestMutationExchange { rest: RestBodyUndecodable { status: 201, cause: "not json" } },
+  ) {
+    RestExchangeCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "unread rather than known")
+    RestExchangeUndecodable { status: _, cause: _ } => false
+    _ => false
+  }
+}
+
+// THE MOCK GREEN IS THE FIXTURE LOGIN, NOT A LIVE USER. GetAuthenticatedUser publishes one
+// hermetic result (decoded 200). Asserting that exact spelling is what keeps this from being
+// the wet 401 / live-login witness in disguise.
+test fn perform_authenticated_user_read_binds_the_hermetic_fixture_login() -> Bool {
+  match perform_github_authenticated_user_read(auth_token: "hermetic-fixture-token" as Secret) {
+    GitHubAuthenticatedUserObserved { user } =>
+      user.login == hermetic_get_authenticated_user_login
+        && user.id == hermetic_get_authenticated_user_id
+        && user.type == hermetic_get_authenticated_user_type
+    GitHubAuthenticatedUserRefused { performance: _ } => false
+    GitHubAuthenticatedUserLoginAbsent { user: _ } => false
+  }
+}

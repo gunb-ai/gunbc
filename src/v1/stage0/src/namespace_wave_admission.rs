@@ -1674,42 +1674,56 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-/// CpuBoundStanding rehome (2026-09-09, gunbc#10818). `CpuBoundStanding` (and the
-/// `CpuBoundInterfacePresent` constructor `cpu_bound_standing` names) moved from
-/// `gunbc.runner.runner_cpu_bandwidth_receipt` onto `gunbc.runner.runner_guest_egress_attempt`,
-/// which already held the refusal standing, so one coproduct answers for the earlier unread write,
-/// the EPERM refusal, and the later interface-present row. The bandwidth receipt still binds the
-/// two spellings; only the declaring module changed. Required floor run 34341884341 measured
-/// `FloorClean` with the consumption witness planned-and-passed, then refused adjudication on
-/// exactly these two `TargetChanged` binding deltas (and no others). Membership edges this change
-/// also adds auto-admit as `ExplicitlyEvaluatedZeroDelta` and are not listed.
 ///
-/// TRIGGER: these two rows go when #10818 merges. The base then binds both spellings to
-/// `gunbc.runner.runner_guest_egress_attempt` inside `cpu_bound_standing`, the deltas stop being
-/// producible, and CONSUMED comes due on the roster's next touch — adjudicated by the
-/// declaring-module join, not by this sentence.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10818 CpuBoundStanding rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
-            in_declaration: "cpu_bound_standing",
-            spelling: "CpuBoundStanding",
-            target: "gunbc.runner.runner_guest_egress_attempt",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
+/// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
+/// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
+/// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
+/// mutation_status_is_commit_ambiguous stranded caller (2026-09-10, gunbc#10945). main was RED on
+/// the declarations check: `gunbc.cloudflare.r2_token_mint_run` imported that spelling from
+/// `gunbc.secret_provision_actuator`, which declares no such name, so the base bound it to NOTHING.
+/// NEITHER CONTRIBUTING CHANGE IS WRONG IN ISOLATION and the row says so because a wrong attribution
+/// here would outlive the defect: #10925 wrote that import line at 23598caecca when the fn WAS
+/// declared in `secret_provision_actuator`, and #10923 then deleted the fn at 4024a3a5bdb, rehoming
+/// it to `extdeps.transports.rest` (rest.dag:111) and leaving one edge pointing at the old address.
+/// The defect exists only in their composition — a stranded caller. #10923's floor concluded
+/// 09:50:11Z, four hours before #10925 landed at 13:48:36Z, so the verdict that would have caught the
+/// stranding was computed against a base that did not yet contain the importer it was about to
+/// strand. Not a race: a concluded verdict, correct about the world it measured, and that world no
+/// longer existed at merge time.
+///
+/// The repair points the import at the one module that declares the name, which this module already
+/// imported. Required floor run 34497494076 measured parse 0 and declarations 0 — the break is gone —
+/// and refused adjudication on exactly this one binding delta, `base {} -> head
+/// {extdeps.transports.rest}`, classified `NewPoolCoincidenceResolution`.
+///
+/// THE CLASSIFICATION IS WRONG AND THIS ROW ADMITS IT ANYWAY. By the 2026-08-27 operator ruling in
+/// `gunbc.compiler_frontend_program_interlock`, an author writing the import that resolves a name the
+/// module was ALREADY SPELLING is `AuthoredReferenceResolution`, which auto-admits; that ruling was
+/// made after the wall refused gunbc#9485, a one-line import repair. This is that case exactly. It
+/// lands in the coincidence arm because `locally_authored_claim_added` decides authorship with
+/// `names_leaf`, which reads `c.members` and never `c.target`: base names the leaf (wrong module),
+/// head names it (right module), so `names_leaf(head) && !names_leaf(base)` is false. The predicate
+/// sees a name appearing where it was ABSENT, never a name whose SOURCE changed. The incentive
+/// inversion is what makes this a defect rather than a rough edge: a REDUNDANT blanket import would
+/// have tripped the `blanket_targets` branch and auto-admitted, so the wall is easier to satisfy by
+/// writing worse code. Escalated rather than worked around; admit was ruled, with the predicate fix
+/// to land separately against a green main — repairing a wall in the same motion that asks it for an
+/// exception would make the exception look bought by the fix.
+///
+/// TRIGGER: this row goes when #10945 merges. The base then binds the spelling to
+/// `extdeps.transports.rest` inside `mint_r2_object_read_token`, the delta stops being producible,
+/// and CONSUMED comes due on the roster's next touch — adjudicated by the declaring-module join, not
+/// by this sentence.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "gunbc#10945 mutation_status_is_commit_ambiguous stranded-caller repair",
+    subject: AdmissionSubject::Binding {
+        module: "gunbc.cloudflare.r2_token_mint_run",
+        in_declaration: "mint_r2_object_read_token",
+        spelling: "mutation_status_is_commit_ambiguous",
+        target: "extdeps.transports.rest",
     },
-    TransitionAdmission {
-        label: "gunbc#10818 CpuBoundStanding rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
-            in_declaration: "cpu_bound_standing",
-            spelling: "CpuBoundInterfacePresent",
-            target: "gunbc.runner.runner_guest_egress_attempt",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+    disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -2606,6 +2620,12 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
+///
+/// Annotation-grain refusals are the exception named by
+/// `fail_closed_gate_refuses_its_own_repair`: the parser still produced the module (annotation
+/// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
+/// unreadable base sealed the transition that only moves `//` onto the declaration the grain
+/// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -2614,7 +2634,15 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         })]
         .into(),
     ));
-    if !fill.diagnostics.is_empty() {
+    let annotation_erased_readable = !fill.modules.is_empty()
+        && !fill.diagnostics.is_empty()
+        && fill.diagnostics.iter().all(|d| {
+            matches!(
+                *d.diagnostic,
+                crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused { .. }
+            )
+        });
+    if !fill.diagnostics.is_empty() && !annotation_erased_readable {
         return Err(format!(
             "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
              declarations cannot be read",
@@ -2635,6 +2663,30 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         .iter()
         .map(|module| record_from_module(module, &source_indices, rel, &fill.occurrence_transport))
         .collect())
+}
+
+/// Annotation-erased source identity: non-empty lines that are not standalone `//` comments.
+///
+/// THE REPAIR DISCRIMINATOR for `gunbc.recurring_failure_mode.fail_closed_gate_refuses_its_own_repair`.
+/// A base blob the census parser cannot read is unobservable as declarations; pretending it was
+/// empty is the silent narrow. The one comparison that does not invent a baseline is against the
+/// HEAD bytes with both sides stripped of the only construct the current `.dag` annotation
+/// channel admits — standalone `//` lines. If those remainders are equal, the head removed
+/// (or relocated) annotation grain and nothing else; declaration identity is the head's, and
+/// substituting the head records as the base side is identity, not a fabricated parse. A code
+/// edit riding with a comment hoist makes the remainders differ and stays `NotEvaluated`.
+pub fn is_annotation_grain_repair(base_source: &str, head_source: &str) -> bool {
+    annotation_erased_lines(base_source) == annotation_erased_lines(head_source)
+}
+
+fn annotation_erased_lines(source: &str) -> Vec<&str> {
+    source
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with("//")
+        })
+        .collect()
 }
 
 /// Run the wall for one required CI invocation.
@@ -2730,7 +2782,28 @@ pub fn run_required_wave_admission(
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(reason) => {
+                let head_src = git_stdout(&workspace, &["show", &format!("{head}:{rel}")]).ok();
+                let repair = head_src
+                    .as_deref()
+                    .is_some_and(|src| is_annotation_grain_repair(&content, src));
+                if !repair {
+                    return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
+                }
+                let mut copied = 0usize;
+                for record in index_records(head_index) {
+                    if record.rel_path == **rel {
+                        crate::cli_run::declaration_index::index_insert(
+                            &mut base_index,
+                            record.clone(),
+                        );
+                        copied += 1;
+                    }
+                }
+                if copied == 0 {
+                    return Ok(WaveAdmissionOutcome::NotEvaluated { reason });
+                }
+            }
         }
     }
 

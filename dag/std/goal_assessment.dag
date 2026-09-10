@@ -128,21 +128,26 @@ type ObservationAttempt<Observed, ObserveRefusal>
 // set certifies exactness over a denominator nobody checked (std.observation_completeness carries
 // that argument in full for the join case).
 //
-// AND IT HAS NO CONSTRUCTOR TODAY, WHICH IS STATED HERE RATHER THAN LEFT TO BE DISCOVERED. Both
-// current bindings reach it never: gunbc.repo_ruleset instantiates AssessRefusal at
-// v2.std.cardinality Never because no state of that subject leaves its inputs incomparable, and
-// the realization-selection witness never mints it either. Under DESIGN section 3c that makes this
-// arm a DECLARED FRONTIER, admissible only with its trigger stated beside it, and the trigger is a
-// NAMED CONSUMER rather than a date: product.fan_tach_health already computes exactly this fact --
-// FanTachRefused over DuplicateExpectedHeader, DuplicateObservedHeader and HostIdentityMismatch,
-// each of them an ill-formed question set rather than an unhealthy fan -- and the arm is discharged
-// when that module is bound to this algebra.
+// AND IT IS NOW CONSTRUCTED, WHICH RETIRES THE FRONTIER THAT STOOD HERE. This arm was a DECLARED
+// FRONTIER under DESIGN section 3c -- no binding minted it, so it was admissible only with its
+// trigger stated beside it, and that trigger was a NAMED CONSUMER rather than a date:
+// product.fan_tach_health, which computed the same fact in its own vocabulary. That module is now
+// bound to this algebra and mints this arm on three causes -- a host paired to another host's
+// windows, a roster naming one header twice, a collector answering twice for one endpoint -- each
+// of them an ill-formed question set rather than an unhealthy fan. The frontier note is deleted
+// rather than left standing, because section 4b(4) retires the lower-rung machinery a climb
+// obsoletes and a note describing a state that no longer holds is worse than none: it would cite a
+// constructor that no longer exists and understate the arm's reach.
 //
-// IT IS NOT DELETED IN THE MEANTIME, and the reason is section 5 rather than convenience: the
-// distinction between "the world differs" and "the question was malformed" is one this module
-// exists to keep, and a coproduct that cannot express the second forces the first binding with an
-// ill-formed input to file it as a divergence. The frontier is the honest state; an absent arm
-// would be a wrong one.
+// Two bindings still reach it never, and that is a property of their subjects rather than of this
+// arm: gunbc.repo_ruleset instantiates AssessRefusal at v2.std.cardinality Never because no state
+// of that subject leaves its inputs incomparable, and the realization-selection witness never mints
+// it either. A parameter instantiated at Never is a binding declaring the arm unreachable FOR
+// ITSELF, which is the honest use of it.
+//
+// The distinction the arm keeps is why it would be wrong to drop it even with no consumer: "the
+// world differs" and "the question was malformed" have different owners, and a coproduct that
+// cannot express the second forces a binding with an ill-formed input to file it as a divergence.
 // AND THERE IS DELIBERATELY NO `is_satisfied` PREDICATE OVER THIS CARRIER, which is the design
 // rather than an omission. A `Bool` here is a one-bit summary of four arms whose whole point is
 // that they are not orderable into two: the summary's false side silently merges "proved to
