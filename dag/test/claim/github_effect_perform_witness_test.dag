@@ -1,0 +1,184 @@
+module test.claim.github_effect_perform
+
+import std.logic { Bool }
+import std.types { String, POST, PATCH, CommitSha }
+import extdeps.github.effect {
+  GitHubEffect,
+  AdvanceRepositoryBranch,
+  DispatchWorkflow,
+  RegisterOrganizationRunner,
+  GenerateOrganizationJitConfig,
+  GitHubOrganizationRef,
+  GitBranchRef,
+  GitHubWorkflowRef,
+  RepositoryPath,
+  github_effect_is_mutation,
+  github_effect_http_method,
+  github_effect_http_path,
+}
+import gunbc.repository { gunbc_repository }
+import extdeps.transports.rest {
+  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+}
+import gunbc.github_effect_perform {
+  GitHubHttpSucceeded, GitHubHttpRefused, GitHubHttpCommitAmbiguous,
+  GitHubHttpUnreached, GitHubHttpUndecodable,
+  classify_github_http_outcome,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data advance_effect: GitHubEffect = AdvanceRepositoryBranch {
+  repository: gunbc_repository,
+  branch: GitBranchRef { name: "main" },
+  changed_paths: [RepositoryPath { value: "dag/extdeps/github/effect.dag" }],
+}
+
+data dispatch_effect: GitHubEffect = DispatchWorkflow {
+  repository: gunbc_repository,
+  workflow: GitHubWorkflowRef { file_name: "witnesses.yml" },
+  subject: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha,
+}
+
+data register_effect: GitHubEffect = RegisterOrganizationRunner {
+  organization: GitHubOrganizationRef { login: "gunb-ai" }
+}
+
+data jit_effect: GitHubEffect = GenerateOrganizationJitConfig {
+  organization: GitHubOrganizationRef { login: "gunb-ai" }
+}
+
+test fn every_github_effect_is_a_mutation() -> Bool {
+  github_effect_is_mutation(effect: advance_effect)
+    && github_effect_is_mutation(effect: dispatch_effect)
+    && github_effect_is_mutation(effect: register_effect)
+    && github_effect_is_mutation(effect: jit_effect)
+}
+
+test fn github_effect_http_methods_are_the_upstream_verbs() -> Bool {
+  github_effect_http_method(effect: advance_effect) == PATCH
+    && github_effect_http_method(effect: dispatch_effect) == POST
+    && github_effect_http_method(effect: register_effect) == POST
+    && github_effect_http_method(effect: jit_effect) == POST
+}
+
+test fn github_effect_http_paths_are_derived_from_the_effect() -> Bool {
+  github_effect_http_path(effect: advance_effect) == "/repos/gunb-ai/gunbc/git/refs/heads/main"
+    && github_effect_http_path(effect: dispatch_effect)
+      == "/repos/gunb-ai/gunbc/actions/workflows/witnesses.yml/dispatches"
+    && github_effect_http_path(effect: register_effect)
+      == "/orgs/gunb-ai/actions/runners/registration-token"
+    && github_effect_http_path(effect: jit_effect)
+      == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
+}
+
+test fn rest_ok_is_success_for_a_read_and_a_mutation() -> Bool {
+  match classify_github_http_outcome(rest: RestOk, mutation: false) {
+    GitHubHttpSucceeded => true
+    _ => false
+  }
+    && match classify_github_http_outcome(rest: RestOk, mutation: true) {
+      GitHubHttpSucceeded => true
+      _ => false
+    }
+}
+
+// THE DISCRIMINATING READ RED: 401 is a refusal carrying the status, not success and not a throw.
+test fn an_unauthorized_read_is_a_refusal_carrying_401() -> Bool {
+  match classify_github_http_outcome(
+    rest: RestStatusRefused { status: 401, body: "{\"message\":\"Bad credentials\"}" },
+    mutation: false,
+  ) {
+    GitHubHttpRefused { status, body } => status == 401 && body != ""
+    _ => false
+  }
+}
+
+// AN UNDOCUMENTED STATUS IS STILL NOT-SUCCESS. 418 is not in GitHub's documented set for GET /user;
+// classifying by an enum of known failures would treat it as success or drop it.
+test fn an_undocumented_status_on_a_read_is_still_a_refusal() -> Bool {
+  match classify_github_http_outcome(
+    rest: RestStatusRefused { status: 418, body: "teapot" },
+    mutation: false,
+  ) {
+    GitHubHttpRefused { status, body: _ } => status == 418
+    _ => false
+  }
+}
+
+test fn a_5xx_on_a_read_is_a_refusal_not_commit_ambiguous() -> Bool {
+  match classify_github_http_outcome(
+    rest: RestStatusRefused { status: 500, body: "boom" },
+    mutation: false,
+  ) {
+    GitHubHttpRefused { status, body: _ } => status == 500
+    GitHubHttpCommitAmbiguous { detail: _ } => false
+    _ => false
+  }
+}
+
+test fn a_5xx_on_a_mutation_is_commit_ambiguous() -> Bool {
+  match classify_github_http_outcome(
+    rest: RestStatusRefused { status: 500, body: "boom" },
+    mutation: true,
+  ) {
+    GitHubHttpCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "did not commit")
+    GitHubHttpRefused { status: _, body: _ } => false
+    _ => false
+  }
+}
+
+test fn a_403_on_a_mutation_is_a_refusal_not_commit_ambiguous() -> Bool {
+  match classify_github_http_outcome(
+    rest: RestStatusRefused { status: 403, body: "no" },
+    mutation: true,
+  ) {
+    GitHubHttpRefused { status, body: _ } => status == 403
+    GitHubHttpCommitAmbiguous { detail: _ } => false
+    _ => false
+  }
+}
+
+test fn a_transport_loss_on_a_mutation_is_commit_ambiguous() -> Bool {
+  match classify_github_http_outcome(
+    rest: RestTransportRefused { cause: "timeout" },
+    mutation: true,
+  ) {
+    GitHubHttpCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "may or may not have landed")
+    GitHubHttpUnreached { cause: _ } => false
+    _ => false
+  }
+}
+
+test fn a_transport_loss_on_a_read_is_unreached() -> Bool {
+  match classify_github_http_outcome(
+    rest: RestTransportRefused { cause: "timeout" },
+    mutation: false,
+  ) {
+    GitHubHttpUnreached { cause } => cause as String == "timeout"
+    GitHubHttpCommitAmbiguous { detail: _ } => false
+    _ => false
+  }
+}
+
+test fn an_undecodable_body_on_a_read_is_undecodable() -> Bool {
+  match classify_github_http_outcome(
+    rest: RestBodyUndecodable { status: 200, cause: "not json" },
+    mutation: false,
+  ) {
+    GitHubHttpUndecodable { status, cause } => status == 200 && cause as String == "not json"
+    _ => false
+  }
+}
+
+test fn an_undecodable_body_on_a_mutation_is_commit_ambiguous() -> Bool {
+  match classify_github_http_outcome(
+    rest: RestBodyUndecodable { status: 201, cause: "not json" },
+    mutation: true,
+  ) {
+    GitHubHttpCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "unread rather than known")
+    GitHubHttpUndecodable { status: _, cause: _ } => false
+    _ => false
+  }
+}

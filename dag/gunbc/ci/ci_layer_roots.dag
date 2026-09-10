@@ -858,6 +858,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
+    pattern: "github_effect_perform_real_execution_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_install_media_reason,
+    dissolution: excl_install_media_dissolve},
+  WitnessExclusionRow {
     pattern: "roadmap_belt_actuate_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_bin_wet_reason,
@@ -1353,6 +1358,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/srv3/srv3_seeded_install_media_real_execution_witness_test.dag", f: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_roundtrip_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/github_effect_perform_real_execution_witness_test.dag", f: "github_authenticated_user_read_rejects_a_bogus_token_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/github_effect_perform_real_execution_witness_test.dag", f: "github_authenticated_user_read_observes_login_when_token_present_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_write_owner_only_refuses_when_path_already_exists"),

@@ -1,0 +1,66 @@
+module extdeps.github.http
+
+import std.types { String, Int, Secret }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.github { default_api_base }
+import extdeps.transports.rest { RestOutcome }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/users/users#get-the-authenticated-user"
+  }
+}
+
+data github_http_handler_layering_note: String = "§3 shape/transport split: GitHubEffect (extdeps.github.effect) is the operation SHAPE for the mutations this fleet already names. This module is ONE bound HTTP realization handler of GitHub's REST surface, not a second algebra and not a policy about which credential to use. Credentials are an input (auth_token: Secret), never an argv word and never an EnvVar baked into this interface. transport rest is the handler; a second operation forked for gh/curl would be transport fused into the interface."
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.http",
+      decl_name: "github.Http",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.http.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// GET /user IS THE FIRST CONSUMER ON PURPOSE. It is a read: no commit-ambiguity blast radius, and
+// it still exercises the whole path (Bearer input, REST transport, RestOutcome, typed refusal on
+// not-success). GitHub documents 200 with the authenticated user and 401 for bad credentials;
+// those are observations, not an enumeration this operation treats as its failure set. The
+// response block names only the success decode. Every other status is RestStatusRefused via
+// RestOutcome — including statuses GitHub has not documented.
+type AuthenticatedUser {
+  login: String
+  id: Int
+}
+
+service github.Http {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation GetAuthenticatedUser {
+    input {
+      auth_token: Secret
+    }
+    output {
+      user: AuthenticatedUser
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/user"
+    }
+    response {
+      200 => AuthenticatedUser
+    }
+  }
+}

@@ -1,9 +1,10 @@
 module extdeps.github.effect
 
-import std.types { NonEmptyStr, CommitSha }
+import std.types { NonEmptyStr, CommitSha, HttpMethod, POST, PATCH }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.github.actions_jit_runner { org_generate_jitconfig_path }
 import extdeps.github.app {
   GitHubAppPermission,
   GitHubPermissionAxis,
@@ -157,6 +158,66 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
       [organization_self_hosted_runners_write]
     GenerateOrganizationJitConfig { organization: _ } =>
       [organization_self_hosted_runners_write]
+  }
+}
+
+// EVERY VARIANT OF GitHubEffect IS A MUTATION. A read is not a member of this algebra: the first
+// executing HTTP consumer is GET /user on github.Http, which is a different operation with no
+// commit-ambiguity. Collapsing that read into this type would make github_effect_is_mutation a
+// lie for one arm and would fork the permission question GET /user already answers (metadata).
+fn github_effect_is_mutation(effect: GitHubEffect) -> Bool {
+  match effect {
+    AdvanceRepositoryBranch { repository: _, branch: _, changed_paths: _ } => true
+    DispatchWorkflow { repository: _, workflow: _, subject: _ } => true
+    RegisterOrganizationRunner { organization: _ } => true
+    GenerateOrganizationJitConfig { organization: _ } => true
+  }
+}
+
+fn github_effect_http_method(effect: GitHubEffect) -> HttpMethod {
+  match effect {
+    AdvanceRepositoryBranch { repository: _, branch: _, changed_paths: _ } => PATCH
+    DispatchWorkflow { repository: _, workflow: _, subject: _ } => POST
+    RegisterOrganizationRunner { organization: _ } => POST
+    GenerateOrganizationJitConfig { organization: _ } => POST
+  }
+}
+
+fn org_registration_token_path(org_login: NonEmptyStr) -> String {
+  join(["/orgs/", org_login as String, "/actions/runners/registration-token"], "")
+}
+
+fn github_effect_http_path(effect: GitHubEffect) -> String {
+  match effect {
+    AdvanceRepositoryBranch { repository, branch, changed_paths: _ } =>
+      join(
+        [
+          "/repos/",
+          repository.owner,
+          "/",
+          repository.name,
+          "/git/refs/heads/",
+          branch.name as String,
+        ],
+        ""
+      )
+    DispatchWorkflow { repository, workflow, subject: _ } =>
+      join(
+        [
+          "/repos/",
+          repository.owner,
+          "/",
+          repository.name,
+          "/actions/workflows/",
+          workflow.file_name as String,
+          "/dispatches",
+        ],
+        ""
+      )
+    RegisterOrganizationRunner { organization } =>
+      org_registration_token_path(org_login: organization.login)
+    GenerateOrganizationJitConfig { organization } =>
+      org_generate_jitconfig_path(org_login: organization.login)
   }
 }
 
