@@ -215,7 +215,11 @@ fn parse_dag_module_node(file: &str, source: &str) -> Result<Rc<crate::v1_std_co
         index,
     );
     let parsed = parse_with_table(
-        tokenize(source.to_string(), file.to_string()),
+        tokenize(
+            source.to_string(),
+            file.to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        ),
         indices,
         empty_intern_table(),
     );

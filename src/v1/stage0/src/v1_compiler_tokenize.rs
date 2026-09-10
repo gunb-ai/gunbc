@@ -4,7 +4,6 @@
 use self::EscapeProcessResult::*;
 use self::ScanStep::*;
 use self::StringScanResult::*;
-pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
 use crate::std_source_annotation::AnnotationPlacement::{
     LeadingAfterLineIndent, TrailingAfterSemanticToken,
 };
@@ -12,6 +11,7 @@ pub use crate::std_source_annotation::{
     advance_line_prefix_indent_only_text, placement_from_line_prefix,
 };
 pub use crate::std_source_annotation::{AnnotationPlacement, UnboundAnnotationCapture};
+pub use crate::std_syntax::DagParseEnvironment;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_unicode_types::unicode_scalar;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
@@ -32,8 +32,8 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn is_keyword_text(text: String) -> bool {
-    match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
+pub fn is_keyword_text(text: String, env: Rc<DagParseEnvironment>) -> bool {
+    match v1_rt::lookup(&env.syntax_spec.clone().keyword_set.clone(), text.clone()) {
         Some(_) => true,
         std::option::Option::None => false,
     }
@@ -194,7 +194,11 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
+pub fn tokenize_artifact(
+    source: String,
+    file: String,
+    env: Rc<DagParseEnvironment>,
+) -> Rc<V1LexArtifact> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let src = Rc::new(SourceRef {
@@ -212,6 +216,7 @@ pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
             Rc::new(vec![]),
             initial.clone(),
             (source_len(src.clone()) + 1),
+            env.clone(),
         );
         let eof_span = crate::v1_std_core::make_file_span(
             src.file.clone(),
@@ -228,8 +233,8 @@ pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
     }
 }
 
-pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
-    tokenize_artifact(source.clone(), file.clone())
+pub fn tokenize(source: String, file: String, env: Rc<DagParseEnvironment>) -> Rc<Vec<Rc<Token>>> {
+    tokenize_artifact(source.clone(), file.clone(), env.clone())
         .tokens
         .clone()
 }
@@ -344,7 +349,11 @@ pub fn line_prefix_is_indent_only(source: Rc<SourceRef>, pos: i64) -> bool {
     )
 }
 
-pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
+pub fn scan_next_token(
+    source: Rc<SourceRef>,
+    pos: Rc<TokPos>,
+    env: Rc<DagParseEnvironment>,
+) -> Rc<ScanStep> {
     {
         let ch = source_code_point(source.clone(), pos.pos.clone());
         if (ch.clone() == 10) {
@@ -435,7 +444,7 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanStep> {
             }
         }
         Rc::new(ScanStep::ScannedToken {
-            result: scan_token(source.clone(), pos.clone(), ch.clone()),
+            result: scan_token(source.clone(), pos.clone(), ch.clone(), env.clone()),
         })
     }
 }
@@ -446,6 +455,7 @@ pub fn tokenize_loop(
     mut annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
     mut pos: Rc<TokPos>,
     mut fuel: i64,
+    mut env: Rc<DagParseEnvironment>,
 ) -> Rc<TokenizerState> {
     loop {
         let s = skip_spaces(source.clone(), pos.clone());
@@ -457,7 +467,7 @@ pub fn tokenize_loop(
                 interp_depth: s.interp_depth.clone(),
             });
         }
-        match (*scan_next_token(source.clone(), s.clone())).clone() {
+        match (*scan_next_token(source.clone(), s.clone(), env.clone())).clone() {
             ScanStep::ScannedAnnotation {
                 pos: next_pos,
                 capture,
@@ -491,7 +501,12 @@ pub fn tokenize_loop(
     }
 }
 
-pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanResult> {
+pub fn scan_token(
+    source: Rc<SourceRef>,
+    pos: Rc<TokPos>,
+    ch: i64,
+    env: Rc<DagParseEnvironment>,
+) -> Rc<ScanResult> {
     {
         if (ch.clone() == 34) {
             return scan_string(source.clone(), pos.clone());
@@ -500,7 +515,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
             return scan_number(source.clone(), pos.clone());
         }
         if is_ident_start(ch.clone()) {
-            return scan_ident(source.clone(), pos.clone());
+            return scan_ident(source.clone(), pos.clone(), env.clone());
         }
         let next_ch = if ((pos.pos.clone() + 1) < source_len(source.clone())) {
             source_code_point(source.clone(), (pos.pos.clone() + 1))
@@ -758,14 +773,18 @@ pub fn emit(
     }
 }
 
-pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
+pub fn scan_ident(
+    source: Rc<SourceRef>,
+    pos: Rc<TokPos>,
+    env: Rc<DagParseEnvironment>,
+) -> Rc<ScanResult> {
     {
         let end = source_scan_while(source.clone(), pos.pos.clone(), is_ident_char);
         let text = source_substring(source.clone(), pos.pos.clone(), end.clone());
         let shape = if is_reserved_emit_sentinel(text.clone()) {
             TokenShape::ShUnknown
         } else {
-            if is_keyword_text(text.clone()) {
+            if is_keyword_text(text.clone(), env.clone()) {
                 TokenShape::ShKeyword
             } else {
                 TokenShape::ShIdent

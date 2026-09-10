@@ -156,6 +156,12 @@ pub struct SyntaxSpec {
     pub keyword_set: Rc<HashMap<String, bool>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DagParseEnvironment {
+    pub syntax_spec: Rc<SyntaxSpec>,
+    pub non_name_keywords: Rc<HashMap<String, bool>>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Add;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

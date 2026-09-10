@@ -15,7 +15,8 @@ use crate::std_syntax::ItemFormKind::{
 };
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_syntax::{
-    BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, SyntaxSpec,
+    BinOp, BodyKind, DagParseEnvironment, ItemForm, ItemFormKind, LiteralValue, OperatorSpec,
+    SyntaxSpec,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -349,4 +350,16 @@ pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
             };
         }
     CACHED.with(|c: &Rc<SyntaxSpec>| c.clone())
+}
+
+pub fn dag_parse_environment() -> Rc<DagParseEnvironment> {
+    thread_local! {
+            static CACHED: Rc<DagParseEnvironment> = {
+                Rc::new(DagParseEnvironment {
+        syntax_spec: dag_syntax_spec(),
+        non_name_keywords: dag_non_name_keywords(),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<DagParseEnvironment>| c.clone())
 }
