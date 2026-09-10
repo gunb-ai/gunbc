@@ -716,8 +716,6 @@ fn list_starts_with<T>(xs: FreeMonoid<T>, prefix: FreeMonoid<T>, eq: fn(T, T) ->
   state.matched
 }
 
-data free_semigroup_grounding_note: String = "FreeSemigroup is the free SEMIGROUP over T exactly as FreeMonoid is the free MONOID over T. This change migrated the plain re-inventions whose two fields are one required element plus a list of the same T: std.source_annotation refusals, gunbc.source_admission_selection active-source rows and keys, v2.workflow.dag_acceptance obligations, gunbc.change_realization staged intermediates, gunbc.process_algebra process-node collections, and deleted the unused v2.std.collection FiniteSet. LEFT AS THEIR OWN SHAPE, not grepped-prose leftovers: NonEmptyDiagnostics is the same pair and stays until v1.compiler.emit_rust render_rust_diagnostics_carrier_applied names FreeSemigroup instead of the type name NonEmptyDiagnostics (v2.std.diagnostic non_empty_diagnostics_dissolve_trigger); *RefusalSet / StaleAxes / StateDurabilityBoundaryRequirements additionally seal uniqueness or order; GitPath / GitTreeEntryName / Pep440ReleaseSegments / SecfracDigits / spice port lists / KotlinGrammarRelationRow / TypeExprHeadTail are domain encodings, not generic nonempty collections. Assemble-rejection chains still carry dissolve triggers on NonEmptySymbolChain and NonEmptyGrammarChoiceAmbiguityRows."
-
 fn non_empty_singleton<T>(item: T) -> FreeSemigroup<T> {
   FreeSemigroup { head: item, tail: Empty }
 }
