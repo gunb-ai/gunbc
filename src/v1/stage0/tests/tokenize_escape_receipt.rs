@@ -40,6 +40,7 @@ fn decode_literal(body: &str) -> String {
     let toks = tokenize(
         format!("data x: String = \"{}\"", body),
         "escape_receipt.dag".to_string(),
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
     );
     let lit = toks
         .iter()
@@ -55,7 +56,11 @@ fn assert_literal_refuses(body: &str) {
     let literal_start = source
         .find('"')
         .expect("probe must contain a string literal") as i64;
-    let toks = tokenize(source.clone(), "escape_refusal.dag".to_string());
+    let toks = tokenize(
+        source.clone(),
+        "escape_refusal.dag".to_string(),
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     assert!(
         !toks.iter().any(|t| {
             t.shape == TokenShape::ShLitStr
@@ -235,7 +240,11 @@ fn best_tokenize_time(repeats: usize, samples: usize) -> Duration {
     for _ in 0..samples {
         let s = src.clone();
         let t0 = Instant::now();
-        let toks = tokenize(s, "escape_cost.dag".to_string());
+        let toks = tokenize(
+            s,
+            "escape_cost.dag".to_string(),
+            v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         let dt = t0.elapsed();
         assert!(!toks.is_empty());
         best = best.min(dt);

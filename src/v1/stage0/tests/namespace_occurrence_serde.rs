@@ -28,7 +28,11 @@ fn parse_source(
         build_newline_index(file.to_string(), source.to_string()),
     );
     parse_with_table_in_occurrence_scope(
-        tokenize(source.to_string(), file.to_string()),
+        tokenize(
+            source.to_string(),
+            file.to_string(),
+            v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+        ),
         Rc::new(source_indices),
         empty_intern_table(),
         allocator,
