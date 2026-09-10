@@ -393,3 +393,36 @@ fn glm_native_tp4_launch_render() -> String {
       ], "")
   }
 }
+
+// -- THE DISPATCH TABLE, SO AN EXECUTOR TRANSCRIBES NOTHING ------------------------------------
+//
+// A HAND-COPIED LAUNCH LINE IS A SECOND AUTHORITY FOR THE THING THIS MODULE EXISTS TO DECIDE. The first
+// native cutover was prepared by copying the rendered argv into a shell script -- the digest, the
+// revision path, every flag -- which is the transcribed instrument DESIGN section 6 forbids: the copy
+// cannot follow a change to the model, and the drift is invisible at the moment it matters because both
+// halves still agree with themselves.
+//
+// SO THE MODEL EMITS THE TABLE AND THE EXECUTOR READS IT. One row per rank, tab-separated: the host to
+// reach, the rail address that host advertises, and the exact argv. An executor that splits on tabs and
+// runs the third field is a TRANSPORT holding no values of its own -- the same shape this repository
+// already uses where a workflow file is a projection of its carrier rather than a file maintained beside
+// one.
+//
+// THIS DOES NOT MAKE THE EXECUTION A FOLD, and that remains the declared frontier: something still has to
+// carry these rows to four hosts and run them. What it removes is the narrower and more dangerous gap --
+// that the values being executed were a copy rather than the model's own output.
+fn arm_dispatch_row(l: ArmNodeLaunch) -> String {
+  join([
+    l.node.host as String, "\t",
+    render_ipv4_address(addr: l.node.rail) as String, "\t",
+    join(l.argv, " "),
+  ], "")
+}
+
+fn glm_native_tp4_dispatch_table() -> String {
+  match glm_native_tp4_launch_plan() {
+    ArmLaunchRefused { cause: c } => join(["REFUSED\t", c as String], "")
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      join(map(ls, l => arm_dispatch_row(l: l)), "\n")
+  }
+}
