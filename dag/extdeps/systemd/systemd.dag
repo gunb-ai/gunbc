@@ -6,7 +6,8 @@ import std.algebra { trim }
 import std.types { List }
 import std.nat { Nat }
 import std.measure {
-  ByteSize, byte_size, byte_size_count, Microsecond, microsecond,
+  ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count,
+  HardwareThreadCount, hardware_thread_count_value,
   milli_per_unit, micro_per_unit, seconds_per_minute, minutes_per_hour,
 }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
@@ -53,6 +54,7 @@ type SystemdUnitProperty
   | MemoryHigh
   | CPUWeight
   | CPUQuota
+  | CPUQuotaPerSecUSec
   | MemoryCurrent
   | TasksMax
   | TasksCurrent
@@ -84,6 +86,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     MemoryHigh => "MemoryHigh" as NonEmptyStr
     CPUWeight => "CPUWeight" as NonEmptyStr
     CPUQuota => "CPUQuota" as NonEmptyStr
+    CPUQuotaPerSecUSec => "CPUQuotaPerSecUSec" as NonEmptyStr
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
     TasksMax => "TasksMax" as NonEmptyStr
     TasksCurrent => "TasksCurrent" as NonEmptyStr
@@ -127,6 +130,8 @@ data systemd_cpu_weight_property: NonEmptyStr = systemd_unit_property_wire(prope
 // carrying only the weight -- as this vocabulary did -- left the ceiling unsayable rather than
 // merely unset.
 data systemd_cpu_quota_property: NonEmptyStr = systemd_unit_property_wire(property: CPUQuota)
+
+data systemd_cpu_quota_per_sec_property: NonEmptyStr = systemd_unit_property_wire(property: CPUQuotaPerSecUSec)
 
 data systemd_memory_current_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryCurrent)
 
@@ -208,6 +213,59 @@ fn systemd_duration_usec(text: String) -> Microsecond? {
       Absent => none
       Present { value: n } => Present { value: microsecond(count: n) }
     }
+  }
+}
+
+// THE CONFIGURED SPELLING AND THE READBACK SPELLING ARE DIFFERENT PROPERTIES. `CPUQuota=` is the
+// configuration setting written as a percentage; `systemctl show` reports `CPUQuotaPerSecUSec`, a
+// duration of CPU time permitted per wall second. Reading CPUQuota after writing it compares against
+// a property systemd does not report.
+//
+// An UNSET quota reads back `infinity`, so CpuQuotaUnbounded is the host affirmatively reporting no
+// ceiling. CpuQuotaAbsent is an empty show value (the property was not reported). CpuQuotaUndecodable
+// is an observation failure and carries the unread text: folding it into unbounded or absent would
+// report a cell of unknown standing as a known policy state.
+type SystemdCpuQuotaPerSec
+  = CpuQuotaUnbounded
+  | CpuQuotaPerSec { usec: Microsecond }
+  | CpuQuotaAbsent
+  | CpuQuotaUndecodable { raw: String }
+
+// 100% IS ONE CPU-SECOND PER WALL SECOND. A thread count is a multiple of that unit. The seconds-to-
+// microseconds factor is std.measure micro_per_unit: the scale is a fact about the units, not about
+// systemd.
+fn systemd_cpu_quota_per_sec_of_threads(threads: HardwareThreadCount) -> Microsecond {
+  microsecond(count: hardware_thread_count_value(t: threads) * micro_per_unit())
+}
+
+fn systemd_cpu_quota_per_sec_magnitude_identity(usec: Microsecond) -> String {
+  to_string(microsecond_count(m: usec))
+}
+
+// SYSTEMD PRINTS THIS PROPERTY AS A FORMATTED TIME SPAN. Measured against systemd 255: `infinity`,
+// `100ms`, `1s`, `6s`, and past sixty CPU-seconds per wall second the compound `1min`, `1min 500ms`,
+// `1min 30s`. Fractional forms such as `1.500000s` are undecodable here because truncating them would
+// report a lower ceiling than the host has. Compound spans decode through systemd_duration_usec so
+// `60s` and `1min` are the same magnitude.
+fn parse_systemd_cpu_quota_per_sec_show(raw: String) -> SystemdCpuQuotaPerSec {
+  if trim(s: raw) == "" { CpuQuotaAbsent }
+  else if trim(s: raw) == "infinity" { CpuQuotaUnbounded }
+  else {
+    match systemd_duration_usec(text: raw) {
+      Present { value: u } => CpuQuotaPerSec { usec: u }
+      Absent => CpuQuotaUndecodable { raw: raw }
+    }
+  }
+}
+
+// COMPARABLE ARMS HAVE AN IDENTITY STRING; UNDECODABLE HAS NONE. Desired never produces Undecodable:
+// it renders through systemd_cpu_quota_per_sec_magnitude_identity of of_threads, which is total.
+fn systemd_cpu_quota_per_sec_identity(q: SystemdCpuQuotaPerSec) -> String? {
+  match q {
+    CpuQuotaUnbounded => Present { value: "infinity" }
+    CpuQuotaPerSec { usec: u } => Present { value: systemd_cpu_quota_per_sec_magnitude_identity(usec: u) }
+    CpuQuotaAbsent => Present { value: "" }
+    CpuQuotaUndecodable { raw: _ } => none
   }
 }
 

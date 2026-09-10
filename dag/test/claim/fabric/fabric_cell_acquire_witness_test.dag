@@ -14,6 +14,8 @@ import gunbc.fabric_cell_converge {
   fabric_cell_desired_state_digest,
   fabric_cell_root_path,
   fabric_cell_slice_name,
+  fabric_cell_boundary_state_digest_of,
+  fabric_cell_boundary_address_digest_of,
 }
 import extdeps.systemd { MemoryMax, TasksMax }
 import gunbc.fabric_cell_observe {
@@ -466,6 +468,19 @@ fn converged_boundary_values() -> FabricCellBoundaryReading {
     memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
     tasks_max: to_string(desired.tasks_max),
     cpu_weight: to_string(desired.cpu_weight),
+    cpu_quota_per_sec: "6s",
+  }
+}
+
+fn boundary_values_with_quota_raw(raw: String) -> FabricCellBoundaryReading {
+  let desired = gunbc_runner_slot_desired()
+  BoundaryValuesRead {
+    memory_max: to_string(byte_size_count(b: desired.memory_max)),
+    memory_high: to_string(byte_size_count(b: desired.memory_high)),
+    memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+    tasks_max: to_string(desired.tasks_max),
+    cpu_weight: to_string(desired.cpu_weight),
+    cpu_quota_per_sec: raw,
   }
 }
 
@@ -568,4 +583,34 @@ fn path_kind_is_read(o: FabricCellPathKindObservation) -> Bool {
     PathKindRead { kind: _ } => true
     PathKindReadRefused { cause: _ } => false
   }
+}
+
+test fn witness_acquire_drifted_quota_is_a_different_digest() -> Bool {
+  let desired = fabric_cell_desired_state_digest(slot: witness_slot(), address: FabricCellResourceBoundaryAddress)
+  match fabric_cell_boundary_address_probe(
+    slot: witness_slot(),
+    reading: boundary_values_with_quota_raw(raw: "1s"),
+  ) {
+    AddressStateReadRefused { cause: _ } => false
+    AddressStateRead { state_digest: d } => (d as String) != (desired as String)
+  }
+}
+
+test fn witness_acquire_observed_six_second_quota_matches_desired_threads() -> Bool {
+  address_probe_is_read_as(
+    p: fabric_cell_boundary_address_probe(
+      slot: witness_slot(),
+      reading: boundary_values_with_quota_raw(raw: "6s"),
+    ),
+    digest: fabric_cell_desired_state_digest(slot: witness_slot(), address: FabricCellResourceBoundaryAddress),
+  )
+}
+
+test fn witness_acquire_undecodable_quota_refuses_rather_than_digesting() -> Bool {
+  address_probe_is_refused(
+    p: fabric_cell_boundary_address_probe(
+      slot: witness_slot(),
+      reading: boundary_values_with_quota_raw(raw: "1.500000s"),
+    ),
+  )
 }

@@ -1,0 +1,110 @@
+module test.claim.fabric.ubicloud_binding_witness
+
+import std.types { NonEmptyStr }
+import std.logic { Bool }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import product.fabric.provider_route { provider_route_eq, ProviderRoute }
+import product.supplier.ubicloud {
+  bind_ubicloud_offer, ReadinessMeasured, OfferBound, OfferBindingRefused,
+  UbicloudRegionObservation, UbicloudRegionRead, ubicloud_region_unread,
+  ubicloud_region_unread_obligation,
+}
+import extdeps.pricing.ubicloud { ubicloud_premium_standard_2_price }
+
+// THE SUBJECT IS THE REGION SEAM AND NOTHING ELSE. An earlier revision of
+// product.supplier.ubicloud minted a ProviderRoute whose region cited a RegionNotObserved
+// sentinel, and defended it on the ground that no sanction roster cites that name. That defence
+// is a statement about a roster nobody has written, not about the type: one added roster row and
+// every Ubicloud offer is admitted under a sanction for "unobserved", whatever region it really
+// runs in. These two rows are what makes the replacement construction rather than an assertion -
+// they show the seam refusing in the state production is actually in, and binding in the state it
+// is not yet in, using the same call.
+
+// The witness supplies its own observed region. It is deliberately NOT a declaration inside
+// product.supplier.ubicloud: the point of the read arm is that a region arrives from an
+// observation someone made, and a fixture standing in for that observation belongs to the fixture.
+data observed_region: NonEmptyStr = "observed-region-for-this-witness"
+
+fn a_read_region() -> UbicloudRegionObservation {
+  UbicloudRegionRead {
+    region: decl_ref(
+      module_path: "test.claim.fabric.ubicloud_binding_witness",
+      decl_name: "observed_region"),
+  }
+}
+
+fn bind(region: UbicloudRegionObservation) -> NonEmptyStr {
+  match bind_ubicloud_offer(
+    principal: "gunbc",
+    executor: "gunbc",
+    row: ubicloud_premium_standard_2_price,
+    capabilities: "cap-manifest-1",
+    trust_domain: "trust-domain-1",
+    readiness: ReadinessMeasured {
+      ready_at: "2026-09-08T00:00:00Z",
+      receipt: "gunbc.observation.ubicloud-readiness-1",
+    },
+    region: region,
+    quoted_at: "2026-09-08T00:00:00Z",
+    valid_until: "2026-09-09T00:00:00Z",
+    receipt: "gunbc.observation.ubicloud-quote-1",
+  ) {
+    OfferBound { bound: _ } => "bound"
+    OfferBindingRefused { runs_on_label: _, cause: _ } => "refused"
+  }
+}
+
+fn bound_region_matches(region: UbicloudRegionObservation, expected: ProviderRoute) -> Bool {
+  match bind_ubicloud_offer(
+    principal: "gunbc",
+    executor: "gunbc",
+    row: ubicloud_premium_standard_2_price,
+    capabilities: "cap-manifest-1",
+    trust_domain: "trust-domain-1",
+    readiness: ReadinessMeasured {
+      ready_at: "2026-09-08T00:00:00Z",
+      receipt: "gunbc.observation.ubicloud-readiness-1",
+    },
+    region: region,
+    quoted_at: "2026-09-08T00:00:00Z",
+    valid_until: "2026-09-09T00:00:00Z",
+    receipt: "gunbc.observation.ubicloud-quote-1",
+  ) {
+    OfferBound { bound: b } => provider_route_eq(a: b.offer.route, b: expected)
+    OfferBindingRefused { runs_on_label: _, cause: _ } => false
+  }
+}
+
+// RED - THE STATE PRODUCTION IS ACTUALLY IN REFUSES. Readiness is measured here, so readiness
+// cannot be what refuses; the only thing left is that no cited row names a region. Before this
+// change the same call produced a fully populated offer carrying a sentinel in the region slot.
+test fn w_an_unobserved_region_refuses_to_bind() -> Bool {
+  bind(region: ubicloud_region_unread()) == "refused"
+}
+
+// POSITIVE CONTROL, and it is what stops the row above from being satisfied by a binding that
+// refuses for some unrelated reason: the SAME call with an observed region binds.
+test fn w_an_observed_region_binds() -> Bool {
+  bind(region: a_read_region()) == "bound"
+}
+
+// RED - THE OBSERVED REGION IS THE ONE THAT REACHES THE ROUTE. Binding is not enough: an offer
+// bound onto a route naming some other region would satisfy the control above while still placing
+// work somewhere nobody observed. provider_route_eq compares all three components.
+test fn w_the_observed_region_is_the_one_carried_on_the_route() -> Bool {
+  bound_region_matches(
+    region: a_read_region(),
+    expected: ProviderRoute {
+      provider: decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "extdeps_external_authority_anchor"),
+      service: decl_ref(module_path: "extdeps.cloud.ubicloud", decl_name: "ubicloud_runner_types_authority"),
+      region: decl_ref(
+        module_path: "test.claim.fabric.ubicloud_binding_witness",
+        decl_name: "observed_region"),
+    })
+}
+
+// The standing obligation is a declared row rather than a sentence repeated per caller, so the
+// refusal above names one thing a reader can find.
+test fn w_the_unread_obligation_is_declared_and_nonempty() -> Bool {
+  (ubicloud_region_unread_obligation as NonEmptyStr).length() > 0
+}

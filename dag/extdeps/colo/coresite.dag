@@ -2,7 +2,7 @@ module extdeps.colo.coresite
 
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -54,4 +54,18 @@ data coresite_facilities: List<ColoFacilityRow> = [coresite_ny2, coresite_ny3]
 data coresite_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "coresite.com sales",
   obligation: "No published cabinet pricing (read 2026-08-18). A prior private planning note carried a from-knowledge claim that CoreSite quotes land 15 to 25 percent below Equinix in this metro; that claim has no receipt and only a pair of quotes can ground it.",
+}
+
+// GRAIN READ, DENSITY NOT - and the two facility pages are one reading because they carry the same
+// sentence. Both NY2 and NY3 were fetched 2026-09-08 and both print the same deployment wording
+// and the same absent density. NY3 is marketed as AI-optimized capacity in the operator's own
+// launch material, which is exactly the page a reader would expect to carry a kW-per-cabinet
+// figure; it does not, and the spec-sheet page behind it carries no figure either.
+data coresite_secaucus_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets, cages, private suites and build-to-suit",
+  citation: "coresite.com NY2 and NY3 Secaucus facility pages, both read 2026-09-08",
+}
+
+data coresite_secaucus_density: CabinetDensityClaim = DensityUnread {
+  obligation: "Neither the NY2 page, the NY3 page, nor the NY3 spec-sheet page carries a per-cabinet or per-rack kW figure (all read 2026-09-08). The pages do carry building facts - 256,000+ sqft at NY2, up to 18 critical MW at full build-out, 138,000+ sqft at NY3 - and NONE of those is a cabinet density. Resolve from the downloadable facility spec-sheet PDF or from a quote naming the air-cooled per-cabinet maximum in the NY3 halls.",
 }

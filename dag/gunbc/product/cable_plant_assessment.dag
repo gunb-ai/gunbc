@@ -1,4 +1,4 @@
-module product.cable_plant_converge
+module product.cable_plant_assessment
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
@@ -17,7 +17,8 @@ import std.goal_assessment {
   GoalAssessment,
   GoalInspection,
   inspect_goal,
-  assess_by_deviations,
+  assess_by_deviations_and_unknowns,
+  GoalAssessmentRefused,
 }
 import v2.std.cardinality { Never }
 
@@ -91,8 +92,26 @@ type ObservedLeg sole_constructor {
   observation: CableLegObservation
 }
 
+// THE SNAPSHOT CARRIES THE UNREAD ENDPOINTS. An unread leg is a member of this plant that nobody
+// measured -- a fact inside the snapshot, not a failure to obtain one.
+//
+// THE CEILING, STATED SO IT IS NOT MISTAKEN FOR A GUARANTEE. These unknowns are EXPLICIT: they come
+// from `LegNeverRead` rows a caller authored, not from joining an independently declared expected-leg
+// roster against what was read. gunbc.spark.fabric_switch_assessment CAN do that join because
+// `SwitchIntent.lanes` already declares the expected population; this plant has no such roster --
+// the live subject maps observed lane readings straight into legs -- so a leg omitted from the
+// readings ENTIRELY disappears from the denominator and is not reported. That is a real gap and it
+// is outside this module's guarantee today. NEXT-RUNG TRIGGER: an independently declared expected-leg
+// roster for the fabric plant, at which point the unknowns become an expectation-driven join and
+// omission stops being invisible.
 type CablePlantObserved sole_constructor {
   legs: List<ObservedLeg>
+  unread: List<NonEmptyStr>
+}
+
+// One row per leg nobody read, in the assessment's UnknownFact position.
+type CableLegUnknown sole_constructor {
+  endpoint: NonEmptyStr
 }
 
 // One outcome row per leg: the endpoint that names it and the finding the observation carrier
@@ -103,9 +122,11 @@ type CableLegOutcome sole_constructor {
   finding: CableLegFinding
 }
 
-type CablePlantRefusal
-  = PlantLegNeverRead { endpoint: NonEmptyStr }
-  | PlantHoldsNoLegs { plant: NonEmptyStr }
+// AN EMPTY PLANT IS AN ILL-FORMED QUESTION, NOT A FAILED READ. `PlantLegNeverRead` has left this
+// vocabulary entirely -- it is a member-level unknown now -- and what remains is the one state where
+// there is no denominator to assess against at all.
+type CablePlantAssessRefusal
+  = PlantHoldsNoLegs { required: LinkMode }
 
 type CablePlantReceipt sole_constructor {
   legs_read: Nat
@@ -140,8 +161,8 @@ fn plant_leg_outcome(required: LinkMode, leg: ObservedLeg) -> CableLegOutcome {
   }
 }
 
-fn plant_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<CableLegOutcome> {
-  map(observed.legs, l => plant_leg_outcome(required: subject.required_mode, leg: l))
+fn plant_outcomes(goal: LinkMode, observed: CablePlantObserved) -> List<CableLegOutcome> {
+  map(observed.legs, l => plant_leg_outcome(required: goal, leg: l))
 }
 
 // SELECTION IS THE SAME FOLD, NOT A PREDICATE OVER IT. An `is_divergent(s) -> Bool` beside
@@ -150,8 +171,8 @@ fn plant_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<Cab
 // finding -- and a new LegStanding arm would then need remembering at each predicate rather than
 // being decided once. Each selector matches the classification directly and emits the row or
 // nothing, which is the same shape `plant_unread_endpoints` uses below.
-fn plant_divergent_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<CableLegOutcome> {
-  flat_map(plant_outcomes(subject: subject, observed: observed), o =>
+fn plant_divergent_outcomes(goal: LinkMode, observed: CablePlantObserved) -> List<CableLegOutcome> {
+  flat_map(plant_outcomes(goal: goal, observed: observed), o =>
     match leg_standing(finding: o.finding) {
       LegDiverges => [o]
       LegAgrees => []
@@ -159,8 +180,8 @@ fn plant_divergent_outcomes(subject: CablePlant, observed: CablePlantObserved) -
     })
 }
 
-fn plant_conditional_outcomes(subject: CablePlant, observed: CablePlantObserved) -> List<CableLegOutcome> {
-  flat_map(plant_outcomes(subject: subject, observed: observed), o =>
+fn plant_conditional_outcomes(goal: LinkMode, observed: CablePlantObserved) -> List<CableLegOutcome> {
+  flat_map(plant_outcomes(goal: goal, observed: observed), o =>
     match leg_standing(finding: o.finding) {
       LegAgreesSubjectToFec => [o]
       LegAgrees => []
@@ -168,18 +189,23 @@ fn plant_conditional_outcomes(subject: CablePlant, observed: CablePlantObserved)
     })
 }
 
-// ================= THE FOUR HANDLER STAGES =================
+// ================= THE TWO STAGES =================
+//
+// TWO, NOT FOUR. The heading this replaces counted the stages of the handler record #10814 deleted
+// -- an actuation stage and an unchanged-receipt stage that no longer exist and never ran for this
+// subject. Observation and assessment are the stages this module has.
 
-fn plant_unread_endpoints(subject: CablePlant) -> List<NonEmptyStr> {
-  flat_map(subject.readings, r =>
+// BOTH PARTITIONS TAKE THE READINGS, NOT THE SUBJECT, which carries the required mode.
+fn plant_unread_endpoints(readings: List<CableLegReading>) -> List<NonEmptyStr> {
+  flat_map(readings, r =>
     match r {
       LegNeverRead { endpoint: e } => [e]
       LegReadingTaken { endpoint: e, observation: o } => []
     })
 }
 
-fn plant_read_legs(subject: CablePlant) -> List<ObservedLeg> {
-  flat_map(subject.readings, r =>
+fn plant_read_legs(readings: List<CableLegReading>) -> List<ObservedLeg> {
+  flat_map(readings, r =>
     match r {
       LegReadingTaken { endpoint: e, observation: o } =>
         [ObservedLeg { endpoint: e, observation: o }]
@@ -187,57 +213,82 @@ fn plant_read_legs(subject: CablePlant) -> List<ObservedLeg> {
     })
 }
 
-// UNREAD FIRST, AND EMPTY SECOND. An unread leg refuses the whole plant rather than being dropped
-// from it: a plant reported on its read subset is the absorbing fallback DESIGN section 5 forbids,
-// where narrowing the population to what could be measured makes an unmeasured plant indistinguishable
-// from a healthy one. An empty plant refuses for the same reason one rung further out -- zero legs
-// trivially agree, and a subject that converges because nothing is in it carries no information.
+// THE OBSERVER RECEIVES THE READINGS AND NOTHING ELSE, so it cannot consult `required_mode` to
+// decide which legs to report -- the separation std.goal_assessment now carries in its argument list.
+//
+// THE NOTE THIS REPLACES WAS HALF RIGHT AND REACHED THE WRONG ARM. It argued, correctly, that an
+// unread leg must not be DROPPED: a plant reported on its read subset is the absorbing fallback
+// DESIGN section 5 forbids, where narrowing the population to what could be measured makes an
+// unmeasured plant look healthy. But it concluded that the whole plant must therefore REFUSE, and
+// refusing is not the only alternative to dropping. Refusal on the first unread endpoint discarded
+// every mis-coded leg that HAD been read -- an unknown fact suppressing a proved one, which is the
+// precise harm std.goal_assessment's fourth arm exists to prevent, and the same ordering harm
+// #10814 removed from gunbc.repo_ruleset. Unread legs now travel as unknowns beside the deviations,
+// so a plant with one miscoded leg and one unread leg reports BOTH.
+//
+// IT ALSO CANNOT REFUSE. The readings are declared corpus data; there is no transport whose failure
+// this would report.
 fn observe_cable_plant_attempt(
-  subject: CablePlant,
-  _: Bool,
-) -> ObservationAttempt<CablePlantObserved, CablePlantRefusal> {
-  match plant_unread_endpoints(subject: subject).first() {
-    Present { value: e } => ObservationRefused { cause: PlantLegNeverRead { endpoint: e } }
-    Absent => {
-      let legs = plant_read_legs(subject: subject)
-      match legs.first() {
-        Absent => ObservationRefused { cause: PlantHoldsNoLegs { plant: subject.plant } }
-        Present { value: l } => ObservationEstablished { observed: CablePlantObserved { legs: legs } }
-      }
-    }
+  plant: NonEmptyStr,
+  readings: List<CableLegReading>,
+) -> ObservationAttempt<CablePlantObserved, Never> {
+  ObservationEstablished {
+    observed: CablePlantObserved {
+      legs: plant_read_legs(readings: readings),
+      unread: plant_unread_endpoints(readings: readings),
+    },
   }
 }
 
+fn plant_unknowns(observed: CablePlantObserved) -> List<CableLegUnknown> {
+  map(observed.unread, e => CableLegUnknown { endpoint: e })
+}
+
 fn assess_cable_plant(
-  subject: CablePlant,
+  goal: LinkMode,
   observed: CablePlantObserved,
-) -> GoalAssessment<CablePlantReceipt, CableLegOutcome, Never, Never> {
-  assess_by_deviations(
-    evidence: cable_plant_agreement_receipt(subject: subject, observed: observed),
-    deviations: plant_divergent_outcomes(subject: subject, observed: observed),
-  )
+) -> GoalAssessment<CablePlantReceipt, CableLegOutcome, CableLegUnknown, CablePlantAssessRefusal> {
+  match observed.legs.first() {
+    Absent =>
+      match observed.unread.first() {
+        Absent => GoalAssessmentRefused { cause: PlantHoldsNoLegs { required: goal } }
+        Present { value: u } => assess_by_deviations_and_unknowns(
+          evidence: cable_plant_agreement_receipt(goal: goal, observed: observed),
+          deviations: [],
+          unknowns: plant_unknowns(observed: observed),
+        )
+      }
+    Present { value: l } => assess_by_deviations_and_unknowns(
+      evidence: cable_plant_agreement_receipt(goal: goal, observed: observed),
+      deviations: plant_divergent_outcomes(goal: goal, observed: observed),
+      unknowns: plant_unknowns(observed: observed),
+    )
+  }
 }
 
 // A CONVERGED PLANT STILL CARRIES ITS CONDITIONS. A leg attesting the required mode only under
 // Clause 91 FEC has agreed, and the condition is a fact the deployment must honour -- so it rides in
 // the receipt rather than being discarded on the way to a green.
 fn cable_plant_agreement_receipt(
-  subject: CablePlant,
+  goal: LinkMode,
   observed: CablePlantObserved,
 ) -> CablePlantReceipt {
   CablePlantReceipt {
     legs_read: list_length(items: observed.legs),
-    conditional: plant_conditional_outcomes(subject: subject, observed: observed),
+    conditional: plant_conditional_outcomes(goal: goal, observed: observed),
   }
 }
 
-type CablePlantInspection = GoalInspection<CablePlant, CablePlantObserved, CablePlantReceipt, CableLegOutcome, Never, CablePlantRefusal, Never>
+type CablePlantInspection = GoalInspection<NonEmptyStr, LinkMode, List<CableLegReading>, CablePlantObserved, CablePlantReceipt, CableLegOutcome, CableLegUnknown, Never, CablePlantAssessRefusal>
 
+// `CablePlant` remains the corpus row that declares the three facts together; it is destructured
+// here so no stage receives more than its own question needs.
 fn inspect_cable_plant(subject: CablePlant) -> CablePlantInspection {
   inspect_goal(
-    subject: subject,
-    scope: true,
+    subject: subject.plant,
+    goal: subject.required_mode,
+    request: subject.readings,
     observe: observe_cable_plant_attempt,
-    assess: o => assess_cable_plant(subject: subject, observed: o),
+    assess: assess_cable_plant,
   )
 }

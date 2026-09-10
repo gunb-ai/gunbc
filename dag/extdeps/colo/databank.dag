@@ -59,6 +59,24 @@ data databank_lga4_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // in this metro holds three. That gap between what is marketed and what is published for retail
 // sale is the census's central finding, and it is a reason to obtain quotes rather than a reason
 // to believe a quote will be affordable: nothing here says what 35 kW costs.
+// DEMOTED ON MAIN AND RESTORED HERE BY THE TRIGGER THE DEMOTION ITSELF NAMED. #10862 demoted this row
+// to DensityUnread, and it was right to: on that carrier the only figure-bearing arms were marketed
+// MAXIMA, so "35kW+ Cab Density Air" was typed as an at-most and the census asserted that a cabinet
+// advertised at thirty-five kilowatts OR MORE refuses 35,001 W. That was the LIVE instance rather than
+// a latent one - the positive control that exists to prove the accessor works was asserting
+// established_watts == 35000 over a floor, so a wrong reading executed under a green witness.
+//
+// The obligation that demotion left said in terms: "RESOLVE by re-typing both as floor-carrying
+// figures once the carrier expresses a quantity's direction; the numerals and wording above are the
+// reading and no re-fetch is required." This carrier expresses direction - CapabilityAtLeast carries
+// a floor as a floor - so the trigger has fired and the row is retyped from the reading it already
+// had. No re-fetch was needed and none was done.
+//
+// THE WORDING IS THE CORRECTED ONE, PER CELL. The first cut read "35kW+ air-cooled, 100kW+
+// liquid-cooled", a fused sentence produced by a summarizing fetch tool and not text on the page. The
+// page carries three separate cells: "N+1 Cooling Design", "35kW+ Cab Density Air", "100kW+ Cab
+// Density Liq". The figures survived verification and the fused wording did not, which is why wording
+// now sits on the figure it establishes rather than once above both.
 data databank_lga4_density: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
@@ -100,6 +118,96 @@ data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // returned 404 on 2026-09-08, so no address, capacity or density is carried for it. A tailored
 // deployment for one named tenant would in any case be a different fact from a marketed cabinet
 // maximum, and would need its own arm rather than being read as retail density.
+// PARTIALLY DISCHARGED 2026-09-08. The operator's New Jersey index at databank.com/data-
+// centers/new-jersey/ resolves and names exactly two sites: EWR1 Downtown Newark, now modelled
+// above, and EWR2 Piscataway at 25 Corporate Place South, Piscataway, NJ 08854 with no density
+// figure on the index. The Piscataway facility page beneath it still 404s, and Piscataway is
+// Middlesex County, outside the Hudson-Bergen-Essex corridor this pass surveyed, so EWR2 remains
+// unmodelled: read its facility page and carry its address, critical IT load, cabinet density and
+// retail grain. The 85 kW-per-cabinet claim a secondary review attached to a Piscataway HPC tenant
+// is still unconfirmed by any operator page and is still not a marketed retail density.
+//
+// THE OPERATOR'S NEW JERSEY SITE IN THE HUDSON-BERGEN-ESSEX CORRIDOR, read 2026-09-08 from the
+// operator's own New Jersey index and the EWR1 facility page beneath it. DataBank sells from a
+// suite inside the 165 Halsey carrier hotel, which the census already carries as a building under
+// extdeps.colo.halsey_165 and as a Hivelocity suite under extdeps.colo.hivelocity: one building,
+// three upstream authorities, three rows, exactly as the building-versus-operator rule requires.
+data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank EWR1 Downtown Newark",
+  address: AddressListed {
+    street: "165 Halsey Street Suite #500, Newark, NJ 07102",
+    citation: "databank.com New Jersey index and the Newark 165 Halsey Street suite page, read 2026-09-08; the same address and suite are carried by the operator's own PeeringDB facility entry for DataBank Newark (EWR1), read 2026-09-08",
+  },
+  municipality: "Newark",
+  region_code: "NJ",
+  facility_note: "Operator page read 2026-09-08: 34,360 IT square feet, 1.7 MW critical IT load, 2N power design, 120V and 208V three-phase AC with DC available, 21 on-site carriers. The zColo suite Zayo sold to DataBank in 2020 per the operator's own history. Essex County, on the Newark side of the corridor rather than the Secaucus cluster.",
+}
+
+// DEMOTED 2026-09-09 BY OPERATOR RULING, AND THE FRAMING I BROUGHT TO IT WAS WRONG. I argued this as
+// a question about the census headline: demoting drops the corridor from one read density to zero,
+// and the page WAS read, so calling it unread looked like trading a wrong ceiling for a wrong
+// coverage reading. Seven reviews said otherwise and the ruling settled it on a different axis
+// entirely. "10kW+" is a capability FLOOR carried in a MAXIMUM arm - the only figure-bearing arms
+// this carrier has are maxima - so the row does not overstate a headline, it answers a bounding
+// question BACKWARDS. DESIGN section 5 puts silent wrongness outside the ladder rather than low on
+// it, and no amount of correct prose beside a typed value changes what a consumer computes from it.
+// Demotion replaces a wrong answer with a refusal naming what must be re-read, which is the
+// fail-closed direction and needs no headline argument to justify it.
+//
+// THE EVIDENCE DID NOT MOVE, WHICH IS WHY THIS COSTS NOTHING IT LOOKED LIKE IT WOULD COST. The
+// obligation below carries the operator's verbatim wording and the full retrieval citation, so what
+// the demotion gives up is the TYPED AXIS and not the reading. That is the argument that changed my
+// own recommendation, and it was available from the first review: I spent seven of them defending
+// evidence that was never at risk. The reading is recoverable without a re-fetch the moment the
+// carrier can express a quantity's direction.
+//
+// WHY IT DID NOT WAIT FOR THE CARRIER. "The fix is one rebase away" had been true long enough that
+// seven reviewers were correct while nothing moved, and the carrier change is itself under rework.
+// Demote-then-convert is two cheap edits; a wrong-direction figure standing another day is not.
+//
+// WHAT THE SEVEN EQUINIX ROWS DO AND DO NOT SHOW. They are DensityUnread for a second, independent
+// reason: they publish kVA, this carrier's figures are Watt, and no power factor is published, so
+// they are unrepresentable in any published arm regardless of direction. They were never evidence
+// that the right arm existed for EWR1 - they only show the same destination reached by another road.
+// RESTORED BY THE TRIGGER ITS OWN OBLIGATION NAMED, FOR THE SAME REASON AS LGA4 ABOVE. #10862 demoted
+// this row because "10kW+ Cab Density Air" is a capability FLOOR and that carrier's only figure-bearing
+// arms were marketed MAXIMA, so a census over it would have answered that a cabinet advertised at ten
+// kilowatts OR MORE refuses 10,001 W. The obligation said: "RESOLVE by re-typing this row as a
+// floor-carrying figure once the carrier expresses a quantity's direction, at which point the numeral
+// and wording above are the reading and no re-fetch is required." CapabilityAtLeast is that direction.
+// No re-fetch was needed and none was done; the numeral, the wording, the markup-grain verification
+// and the scope check are carried across verbatim from what that obligation already held.
+//
+// IT IS RESTORED WITH LGA4 AND NOT AFTER IT, BECAUSE ONE ROW WITHOUT ITS NEIGHBOUR IS THE DEFECT THIS
+// FILE WAS ALREADY CORRECTED FOR. Review 62991 caught #10862 applying the demotion to one DataBank row
+// and not the other; doing the restoration to one and not the other is the same inconsistency running
+// backwards.
+//
+// THE SEVEN EQUINIX ROWS ARE NOT RESTORED HERE AND THAT IS DELIBERATE. Their figures are published
+// kVA MINIMUMS, which this carrier can now hold - CapabilityAtLeast over PublishedApparentPower - so
+// their trigger has fired too. They are another reader's readings in another module, and converting
+// seven readings I did not take, off an annotation rather than off the pages, is how a wrong numeral
+// enters a census. That conversion belongs to whoever owns equinix.dag.
+data databank_ewr1_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 10000) } },
+      wording: "10kW+ Cab Density Air",
+      citation: "databank.com Newark 165 Halsey Street suite page, read 2026-09-08 and verified in raw HTML 2026-09-09 at markup grain: the page emits <li><strong>10kW+</strong> Cab Density Air</li> as ONE list item inside the column headed Cooling, beside a sibling item reading N+1 Cooling Design",
+      verification: WordingVerbatim {
+        retrieval: "Markup-grain verification 2026-09-09: the wording is a single authored <li> rather than two cells fused, which matters because an earlier summarized capture of this row DID fuse two cells into one invented sentence and the same fusion was found on three DataBank facilities by three readers. SCOPE was verified separately, which a string check does not answer: the nearest heading above the cell is the facility's own address line, \"(EWR1) 165 Halsey Street Suite #500 - Newark, NJ 07102\", under an h1 of \"Downtown Newark Data Center\", and EWR1 is the only facility code in the page bytes - so the figure is not under another metro's banner and not shared with a second site. The qualifier is intact rather than truncated: the cell says Air, and the operator's own word is what selects the medium rather than it being inferred from an absent liquid cell.",
+      },
+    },
+    tail: [],
+  },
+}
+
+data databank_ewr1_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The EWR1 page names Cabinets among its colocation platforms but states no minimum, so whether one cabinet is sellable on its own at this site is unread. Ask the quote whether a single cabinet is contractable at 165 Halsey Suite 500, and whether the 10 kW cooling figure is available to a one-cabinet order or only inside a larger footprint.",
+}
+
 data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator contributes exactly one modelled facility despite operating several in this metro, which understates it."
 
 // THE SAME OPERATOR IN PENNSYLVANIA, ADDED BY THE PHILADELPHIA AND LEHIGH VALLEY LANE. DataBank

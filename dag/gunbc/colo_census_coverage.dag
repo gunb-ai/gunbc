@@ -1,6 +1,42 @@
 module gunbc.colo_census_coverage
 
-import std.types { NonEmptyStr, Int, List }
+import std.types { NonEmptyStr, Int, List, Bool }
+import extdeps.colo.types {
+  ColoFacilityRow, CabinetDensityClaim,
+  DensityPublished, DensityUnread,
+}
+import extdeps.colo.equinix {
+  equinix_ny1_density, equinix_ny2_density, equinix_ny3_density, equinix_ny4_density,
+  equinix_ny5_density, equinix_ny6_density, equinix_ny7_density, equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7 }
+import extdeps.colo.coresite { coresite_ny2, coresite_ny3, coresite_secaucus_density }
+import extdeps.colo.colocation_america { colocation_america_njdc2_secaucus, colocation_america_cabinet_density }
+import extdeps.colo.centersquare { centersquare_weehawken, centersquare_ewr5_secaucus, centersquare_cabinet_density }
+import extdeps.colo.digital_realty { digital_realty_ewr10, digital_realty_cabinet_density }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_carlstadt, three_sixty_five_weehawken, three_sixty_five_cabinet_density,
+  three_sixty_five_philadelphia, three_sixty_five_philadelphia_density,
+  three_sixty_five_philadelphia_university_city, three_sixty_five_philadelphia_university_city_density,
+}
+import extdeps.colo.dataverge { dataverge_jersey_city, dataverge_cabinet_density }
+import extdeps.colo.evocative { evocative_ewr1, evocative_ewr1_density }
+import extdeps.colo.summit { summit_secaucus, summit_secaucus_density }
+import extdeps.colo.h5 { h5_secaucus, h5_secaucus_density, h5_philadelphia, h5_philadelphia_density }
+import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_density }
+import extdeps.colo.interserver { interserver_secaucus, interserver_teb4_secaucus, interserver_cabinet_density }
+import extdeps.colo.halsey_165 { halsey_165_newark, halsey_165_cabinet_density }
+import extdeps.colo.databank { databank_ewr1_newark, databank_ewr1_density, databank_phl1_philadelphia, databank_phl1_density }
+import extdeps.colo.tierpoint {
+  tierpoint_philadelphia, tierpoint_philadelphia_density,
+  tierpoint_allentown, tierpoint_allentown_density,
+  tierpoint_bethlehem, tierpoint_bethlehem_density,
+  tierpoint_lehigh_valley, tierpoint_lehigh_valley_density,
+  tierpoint_valley_forge, tierpoint_valley_forge_density,
+}
+import extdeps.colo.lightwave_networks { lightwave_philadelphia, lightwave_philadelphia_density }
+import extdeps.colo.flexential { flexential_philadelphia_collegeville, flexential_philadelphia_collegeville_density }
+import extdeps.colo.five_9s_digital { five_9s_allentown, five_9s_allentown_density }
+import extdeps.colo.netrality { netrality_401_n_broad, netrality_401_n_broad_density }
+import extdeps.colo.lumen { lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken, lumen_cabinet_density }
 import v2.std.optional { Optional, Present, Absent }
 
 // WHERE WE LOOKED AND FOUND NOTHING, WHICH IS A MEASUREMENT AND NOT AN ABSENCE.
@@ -23,7 +59,7 @@ import v2.std.optional { Optional, Present, Absent }
 // produces are receipts in the observing layer, never properties of the observed. So it lives
 // under gunbc rather than extdeps, and it cites the facility modules rather than being cited by
 // them.
-
+//
 // What a search actually resolved to, kept because a region is empty for reasons that differ in
 // what they oblige next. A region full of aggregators needs a different follow-up from one where
 // operators exist but sell no retail colocation.
@@ -46,8 +82,8 @@ type EmptyRegionCause
 // error rather than a preserved rationale. They are hoisted here intact.
 type RegionSurveyOutcome
   = FacilitiesModelled {
-      facility_count: Int
-      density_read_count: Int
+      facilities: List<ColoFacilityRow>
+      densities: List<CabinetDensityClaim>
     }
   | SurveyedNoRetailOperator {
       searched: List<NonEmptyStr>
@@ -78,20 +114,181 @@ type RegionCoverage {
 // deletion was applied to an instance and not to the habit.
 fn coverage_facility_count(c: RegionCoverage) -> Int? {
   match c.outcome {
-    FacilitiesModelled { facility_count, density_read_count } => Present { value: facility_count },
+    FacilitiesModelled { facilities, densities } => Present { value: facilities.length() },
     SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Present { value: 0 },
     RegionUnsurveyed { obligation } => Absent,
   }
 }
 
-// THE CORRIDOR ROW, AND THE NUMBER THAT SHOULD WORRY A READER MOST. Twenty-seven facilities
-// modelled in the densest colocation market in the region, and ONE of them publishes a cabinet
-// density anybody has verified against page bytes. That ratio is the census's real finding about
-// the corridor: the facilities are there, the retail density figures are not published, and a
-// planner who wanted a dense cabinet in Hudson-Bergen-Essex would be negotiating rather than
-// shopping.
+// RETRIEVAL COVERAGE AND DECISION UTILITY ARE SEPARATE FACTS, AND THIS FOLD COUNTS THE FIRST.
+// Operator instruction, 2026-09-09: "Do not preserve density_claim_is_read := can make air ceiling."
 //
-// The count is one AFTER an audit, not before it. This region briefly read two: a Summit Secaucus
+// THE PREVIOUS DEFINITION ASKED cabinet_density_air_ceiling AND I DEFENDED IT, WRONGLY. The defence
+// was that routing through the carrier keeps one authority for the word "read" rather than
+// re-matching the coproduct here. That argument answers a different question than the instruction
+// does. "Was a claim read from the operator" and "can this claim bound a cabinet" are not one
+// question asked twice - they are two questions, and the carrier owns only the second. Deriving the
+// first from the second silently makes coverage a function of usability.
+//
+// THE FOUR CASES THAT PROVE THEY COME APART, all from the operator and all real in this census: a
+// verified "10kW+" LOWER bound was read and must not yield an at-most ceiling; a verified "2-16kW"
+// INTERVAL was read and is not one ceiling point; a verified "3kW average" was read and does not
+// bound an individual cabinet; a verified real-power claim with the COOLING MEDIUM unstated was read
+// and must not yield an AIR ceiling. Under the old definition every one of those counts as unread.
+//
+// SO THE CENSUS WOULD HAVE APPEARED TO LOSE READINGS AT THE EXACT MOMENT IT GAINED THEM. Once the
+// carrier can hold a figure's DIRECTION and its APPARENT-POWER unit, this corridor's seven Equinix kVA
+// floors and every interval and average in the census become properly typed claims - and a
+// ceiling-derived count would
+// have reported that improvement as a drop to zero. A metric that falls when the data improves is
+// measuring the wrong thing, and it would have been read as a regression by whoever saw it first.
+//
+// This is therefore a claim-PRESENCE question over the arms, which is what the coverage roster owns.
+// It is not a second spelling of the ceiling: nothing here reads a figure, a unit, a direction or a
+// cooling medium, and no Watt is touched. Requirement-specific usability stays where the operator put
+// it, inside the selection projection, and cabinet_density_air_ceiling remains the sole authority for
+// what a cabinet may draw - this module no longer calls it at all.
+//
+// AND THIS FUNCTION IS THE HABIT REPEATING, WHICH review 62935 CAUGHT AND THIS FILE ALREADY
+// CONDEMNED IN ADVANCE. Nine lines above, coverage_facility_count carries the sentence "writing the
+// predicate again one module later is the receipt that the first deletion was applied to an instance
+// and not to the habit" - written about cabinet_density_is_read. density_claim_is_read asks the same
+// question over the same coproduct, one module later, in the file carrying that sentence.
+// DISPOSITION: YELLOW, not green.
+//
+// THE DIAGNOSIS ABOVE USED TO SAY THE DEFECT WAS "a Bool arm-matcher over a reusable coproduct". THAT
+// IS WRONG AND IT IS WORTH CORRECTING IN PLACE, because it is the sentence a future reader inherits.
+// The shape of an arm-membership question has THREE forms, not two, and the first repair of this note
+// shipped the two-form version:
+//
+//   every arm nullary               -> collapse to an `_eq`. A complete inhabitant exists to name.
+//   payload IS the answer           -> an Optional accessor RETURNING the payload. The very fact that
+//                                      rules out equality - the arm carries fields - is the fact that
+//                                      says return them.
+//   the fact IS the discrimination  -> Bool, with the payload as EVIDENCE FOR the fact rather than the
+//                                      value being requested.
+//
+// CabinetDensityClaim's arms both carry payload, so equality is out either way; the live question is
+// the second branch against the third. This predicate is the third: "did this operator publish a
+// density at all" is a COVERAGE fact, which is what a census roster counts, and the figures are what
+// makes it true rather than what is being asked for. A caller wanting the figures asks the carrier's
+// inventory route for them.
+//
+// SO THE DEFECT IS LOCATION, NOT SHAPE: the question has a home in the carrier and is asked again
+// here. And the shape is not settled by "the arm carries fields" alone - the earlier wording of this
+// note would have sent the next author to a Bool by default, and the one before that to an `_eq` that
+// cannot be written for this type.
+//
+// WHY IT IS NOT REPAIRED IN THIS CHANGE. The right home is the carrier - a presence-shaped accessor
+// that answers "was anything published" without also committing to a direction and a medium, which
+// none of the carrier's direction-committed accessors can do. THAT REPLACEMENT HAS NOW LANDED, so the
+// reason this predicate could not be written has expired: DensityMarketedMax and DensityMarketedAirOnly
+// are deleted and one DensityPublished arm carries a non-empty list of figures, each holding its own
+// medium, quantity, wording and verification. This fold now matches two arms rather than three and
+// commits to no direction and no medium, which is what it wanted. What it still does not have is a
+// home: it belongs beside the carrier rather than in this census module, and the membership
+// derivation that would replace the hand-typed counts below is a separate change.
+//
+// TRIGGER, RESTATED AFTER READING DESIGN SECTION 4b(3) AGAINST IT - THE FIRST WORDING WAS THE EXACT
+// DEFECT THAT RULE DESCRIBES. It read "gunbc#10885 landing". That named an ARTIFACT rather than a
+// CAPABILITY, and section 4b(3) says in capitals that a trigger naming less than the capability it
+// restores "will be satisfied while the capability stays dead". Both halves of that failed here, and
+// checking rather than assuming is what found it:
+//
+//   - #10885 is CLOSED, superseded by #10888. A trigger naming a dead pull request can never be
+//     satisfied by anything, so the obligation had no route to retirement at all.
+//   - #10888 did NOT carry a presence accessor when the trigger was rewritten. Its carrier exposed
+//     figure lookup, wording coverage and ceiling refusal, and no route answering mere publication.
+//     So repointing the trigger at #10888 - the obvious repair, and the one about to be made - would
+//     have fired on that merge and retired this obligation with the accessor still absent.
+//
+// THE CAPABILITY NOW EXISTS, AND STATING IT WITHOUT NAMING THE FUNCTION IS THE FOURTH REVISION OF
+// THIS PARAGRAPH FOR THE SAME REASON. Three earlier wordings each named an artifact - a pull request,
+// then a head SHA, then a function - and each was falsified within hours by that artifact moving. The
+// carrier lane has since ruled one of those functions deleted as a duplicate, so a note naming it
+// would have been wrong a fourth time, for a fourth reason, on a paragraph whose entire subject is
+// that triggers must not name artifacts. Writing the artifact down was the defect each time; the
+// lesson did not transfer until it had cost four edits.
+//
+// SO, NAMING NO ARTIFACT, AND NOT YET ON MAIN: the carrier lane's in-flight change to
+// extdeps.colo.types carries a route from which "did this operator publish any figure" is answerable
+// without committing to a medium or a direction. It is NOT on main, this module still matches arms
+// locally, and the trigger is unmet until that route lands - review 62964 read an earlier present
+// tense here as claiming otherwise, which it should not have. That holds whether the carrier
+// exposes the question directly or exposes the figures and lets presence fall out - over a
+// structurally non-empty figures carrier an empty result IS the unread arm, equal BY CONSTRUCTION and
+// not by coincidence, so both shapes satisfy this trigger and neither is named here.
+//
+// THAT IS THE CAPABILITY-OVER-ARTIFACT RULE PAYING FOR ITSELF RATHER THAN BEING ARGUED FOR. The
+// capability survived the deletion of the function implementing it. Every artifact-shaped wording of
+// this same trigger has now been falsified - the closed pull request, the superseded SHA, the deleted
+// accessor - while the capability sentence has needed no revision on the facts, only on the naming.
+//
+// WHAT MOVES ON REBASE IS THE IMPLEMENTATION SITE, NOT THE QUESTION, and review 62972 read the
+// wording below as declaring a scaffold. It is worth separating, because section 6's scaffold test is
+// "will this artifact survive the terminal architecture and be consumed by it" and the honest answer
+// has two halves. The QUESTION - how many claims in this region were published - is permanent; it is
+// the census's headline and the fold that asks it survives unchanged. This PREDICATE is the current
+// implementation of it, and no other route exists in an accepted program today: the carrier route
+// lives only on the carrier lane's unlanded head, so this is not a second path beside an existing
+// modelled one, which is the parallel-authority tell section 6 actually names. When that route lands,
+// the same fold calls it and this declaration goes. A migration whose destination is named and whose
+// origin has no competing authority is not a throwaway artifact; it is one call site moving.
+//
+// ON REBASE this function is DELETED and coverage_density_read_count asks the carrier, in whatever
+// shape the carrier settles on. It is NOT rewritten against the new arms: that would be the same
+// predicate authored a fourth time in the file that already carries the sentence predicting the third.
+//
+// AND WHERE THE CARRIER ANSWERS WITH THE FIGURES RATHER THAN THE QUESTION, this fold destructures them
+// rather than measuring them. `length(...) > 0` computes a TOTAL to decide a PRESENCE, which is the
+// classic cost shape section 6 says to fix regardless of realized n, since n is not time-stable - and
+// this fold ranges over the whole census where the carrier's own witnesses range over one or two
+// claims. Matching the empty and non-empty arms answers it without a traversal. Stated here because
+// the tempting spelling is the measuring one, and it is tempting precisely where the list is short.
+// Recorded here rather than in a PR thread, because the next reader of this function needs to know it
+// is owed a home, and needs the trigger to be one that can actually be checked.
+fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
+  match d {
+    DensityPublished { figures } => true,
+    DensityUnread { obligation } => false,
+  }
+}
+
+// COUNTS DENSITY CLAIMS, NOT FACILITIES, and the two differ on purpose. Several corridor operators
+// publish one density statement covering every site they run, so a claim is the grain at which the
+// reading actually exists; attributing an operator-level claim to each of its facilities would
+// invent a per-facility reading nobody published - the Summit withdrawal's error arriving by
+// division instead of by proximity. Today the distinction changes nothing, because the single read
+// claim is DataBank's and is facility-level over one site.
+//
+// THE DECISION THE NEXT LANE INHERITS, stated so it is met as a decision rather than as a latent
+// fork. When a multi-site operator does publish a figure, a reader of densities cannot ask how many
+// FACILITIES that claim covers, and the honest answer is that nobody knows unless the operator
+// scoped it. The resolution is one level down, in the claim: were a CabinetDensityClaim to carry
+// the facilities it was published FOR, facility-grain coverage would become derivable exactly where
+// an operator stated the scope and would REFUSE where they did not - which is this module's own
+// distinction, applied to the claim instead of to the region. Until then this count is claims, and
+// a facility-grain number must not be manufactured from it.
+fn coverage_density_read_count(c: RegionCoverage) -> Int? {
+  match c.outcome {
+    FacilitiesModelled { facilities, densities } => Present { value: densities.filter(d => density_claim_is_read(d: d)).length() },
+    SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Absent,
+    RegionUnsurveyed { obligation } => Absent,
+  }
+}
+
+// THE CORRIDOR ROW, AND THE RATIO THAT SHOULD WORRY A READER MOST. The facility rows below are the
+// densest colocation market in the region, and hardly any of them publishes a cabinet density this
+// carrier can hold - a count the fold reports and this paragraph deliberately does not. Ask coverage_density_read_count against
+// coverage_facility_count for the ratio; this paragraph does not carry it, and the sentence that
+// used to sit here transcribed the very numeral it claimed the fold derived - review 62961 caught
+// that, one paragraph above the edit that removed the transcribed counts for the same reason.
+// That ratio, whatever it reads today, is the census's real finding about the corridor: the
+// facilities are there, the retail density figures are not published, and a planner who wanted a
+// dense cabinet in Hudson-Bergen-Essex would be negotiating rather than shopping.
+//
+// THE FIGURE IS POST-AUDIT, NOT PRE-AUDIT, and the audit is the part worth reading. This region
+// briefly read one more than it does now: a Summit Secaucus
 // row citing 12 kW in a 42U cabinet, whose wording reproduced in the page bytes exactly and which
 // sat under a block headed "Limited Time: Chicago-Area Facility". Real figure, published price,
 // wrong metro. The withdrawal is recorded in
@@ -99,22 +296,113 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // because a citation confirmed by string occurrence alone cannot fail on correct text attached to
 // the wrong subject.
 //
-// AND THESE TWO INTEGERS ARE THE WRONG SHAPE, WHICH IS RECORDED HERE BECAUSE THE REPLACEMENT IS
-// ALREADY IN FLIGHT RATHER THAN MERELY WISHED FOR. They are hand-transcribed measurements of our
-// own corpus, and DESIGN section 6 says a measurement is cited by naming the producer that
-// re-derives it. The first one carried 28 and was WRONG - the corridor holds 27 rows, and 17
-// pre-existing ones were added as 18. The witness over this row asserts that read densities never
-// exceed facilities, and 1 <= 28 is exactly as true as 1 <= 27, so a green relation sat beside the
-// error for as long as the error existed. Choosing a relation over a literal was right and the
-// relation chosen was too weak to discriminate; the answer is neither, it is derivation.
-// silent-heron-303 is replacing both fields with the facility and claim ROWS they count, folded on
-// read, which makes a miscount unwritable rather than merely checkable.
+// THE NUMERALS THAT REMAIN BELOW ARE HISTORY, NOT MEASUREMENT, and the distinction is what decides
+// whether prose rots. A sentence asserting what the corpus reads TODAY is falsified by the next row
+// that lands, so it must name the producer instead. A sentence recording what was once typed, what
+// it was corrected to, and why, is a receipt about a past event: no future row can make it wrong,
+// and dropping its numerals would destroy the only evidence that the derivation ever caught
+// anything. So the paragraphs below keep theirs deliberately.
+//
+// THE COUNTS ARE GONE AND THE ROWS ARE HERE INSTEAD, which is review 62780's finding fixed at the
+// root: 28 and 1 were hand-transcribed measurements of the repo's own live corpus, and DESIGN
+// section 6 says a measurement is cited by naming the producer that re-derives it. Deriving them
+// immediately proved the point - 28 had been typed where the rows said 27, because 17 pre-existing
+// rows were added as 18.
+//
+// THE COUNT THEN MOVED TWICE MORE AND NO NUMBER WAS EVER EDITED, which is the property being bought
+// and it is worth recording honestly INCLUDING the move that was my fault. It went 27 -> 26 when
+// Colocation America NJDC2 was demoted on a reading that the operator named no Secaucus site, and
+// 26 -> 27 when that demotion was RETRACTED: the operator names it in a heading of its own, and the
+// zero had come from a tag-stripper that destroyed the page it read. So the fold caught one real
+// miscount and then faithfully carried one of my bad readings for as long as the bad row existed.
+// That is the correct behaviour and the honest summary of it: a derivation is exactly as good as its
+// rows, and its value is that a wrong row is the ONLY thing that has to be fixed - there was never a
+// second number sitting somewhere going stale while the roster changed under it.
+//
+// THE WITNESS WAS GREEN BESIDE THAT ERROR FOR AS LONG AS IT EXISTED. It asserted that read
+// densities never exceed facilities, and 1 <= 28 is exactly as true as 1 <= 27. Choosing a relation
+// over a literal was right - a witness repeating a hand-authored number it cannot re-derive proves
+// only that the file was not edited - and the relation chosen was too weak to discriminate. The
+// answer is neither a literal nor a weak relation but derivation, which is what these rows are.
+//
+// TWO MEMBERSHIP DECISIONS A READER SHOULD NOT HAVE TO INFER. digital_realty_ewr10 IS listed even
+// though its operator no longer does: the field says facilities MODELLED, and a roster that
+// silently disagreed with the corpus would be a second authority on what the census contains. Its
+// withdrawal is recorded where it belongs, on the row itself, and a consumer choosing quote targets
+// must read that rather than this length. And the out-of-corridor rows in these same modules -
+// digital_realty_ewr20 in Clifton, three_sixty_five_bridgewater, h5_philadelphia,
+// colocation_america_njdc1, databank_lga4_orangeburg - are deliberately absent: this row is a
+// region, not an operator inventory.
+//
+// THE DENSITY ROSTER OBEYS THE SAME RULE, AND THE ROW THAT TAUGHT IT IS BACK. An earlier revision
+// removed colocation_america's density because that operator had no facility beside it - correct
+// reasoning on a false premise, since the facility had itself been deleted on a measurement taken
+// through a stripper that destroyed the page it read. The operator names NJDC2 at 275 Hartz Way,
+// Secaucus in a heading of its own, so the facility is restored and its density with it. The rule
+// the episode established still stands and is worth keeping: a density whose facility this region
+// does not model is an orphan, because a density is a claim ABOUT a facility and joins to nothing
+// without one.
+//
+// THAT RULE IS DILIGENCE AND NOT A CHECK, WHICH THIS PARAGRAPH CLAIMED THE OPPOSITE OF UNTIL
+// review 62980. It read "it is now enforced by the two lists agreeing on operators". Nothing joins
+// them: operator_label is never read by any witness, and the only relation over these rows,
+// density_reads_never_exceed_facilities, compares two integers - twenty-one against twenty-seven
+// holds no matter WHICH operators those are. Re-adding a density whose facility had been removed,
+// the exact episode narrated above, still counts and still greens.
+//
+// AND THE INSTRUMENT IS NOT MERELY UNWRITTEN, IT IS UNAUTHORABLE HERE, which is the part that makes
+// the sentence worse than absent rather than merely early. No arm of CabinetDensityClaim carries an
+// operator, a facility or any identity - the arms hold figures, wording, citations and obligations -
+// so a claim cannot be joined to a facility at all from this side. Writing the join today would mean
+// inventing an identity for each claim from its declaration name, which is the positional citation
+// DESIGN section 3 refuses.
+//
+// DESIGN section 4b(1) is explicit that a plan or a note establishes nothing and that reporting a
+// rung above the executed evidence is inflation - the failure being that an inflated class never
+// ranks for climbing. This one had stopped ranking: the note read like a discharged obligation, so a
+// reader who trusted it would have looked for the join rather than for its absence. TRIGGER, as a
+// capability: rows carrying a DeclarationRef identity, so membership can be an identity join rather
+// than a count comparison - which is what DESIGN section 5 means by "Completeness is an identity
+// join, not a count equality". Until then this is a rule the author applies and the corpus does not.
 data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
   region_label: "NJ Hudson-Bergen-Essex corridor",
   region_code: "NJ",
   outcome: FacilitiesModelled {
-    facility_count: 27,
-    density_read_count: 1,
+    facilities: [
+      equinix_ny1, equinix_ny2, equinix_ny3, equinix_ny4, equinix_ny5, equinix_ny6, equinix_ny7,
+      coresite_ny2, coresite_ny3,
+      centersquare_weehawken, centersquare_ewr5_secaucus,
+      colocation_america_njdc2_secaucus,
+      digital_realty_ewr10,
+      three_sixty_five_carlstadt, three_sixty_five_weehawken,
+      dataverge_jersey_city,
+      evocative_ewr1,
+      summit_secaucus,
+      h5_secaucus,
+      hivelocity_jfk1,
+      interserver_secaucus, interserver_teb4_secaucus,
+      halsey_165_newark,
+      databank_ewr1_newark,
+      lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken,
+    ],
+    densities: [
+      equinix_ny1_density, equinix_ny2_density, equinix_ny3_density, equinix_ny4_density,
+      equinix_ny5_density, equinix_ny6_density, equinix_ny7_density,
+      coresite_secaucus_density,
+      centersquare_cabinet_density,
+      digital_realty_cabinet_density,
+      three_sixty_five_cabinet_density,
+      dataverge_cabinet_density,
+      evocative_ewr1_density,
+      summit_secaucus_density,
+      h5_secaucus_density,
+      hivelocity_jfk1_density,
+      interserver_cabinet_density,
+      halsey_165_cabinet_density,
+      databank_ewr1_density,
+      colocation_america_cabinet_density,
+      lumen_cabinet_density,
+    ],
   },
 }
 
@@ -166,16 +454,34 @@ data hudson_valley: RegionCoverage = RegionCoverage {
 // request body: a reader who sees twelve DensityUnread rows and no receipt cannot tell a surveyed
 // market that publishes nothing from a market nobody has opened.
 //
-// The counts are hand-authored, which is the weakness this module already names on the corridor
-// row: they are the author's tally and no fold re-derives them. They are carried because the
-// alternative is no receipt at all, and they dissolve into the derived counts being folded from the
-// facility and claim rows themselves.
+// THE COUNTS DISSOLVED ON MERGE, WHICH IS WHAT THE ROW ITSELF ASKED FOR. This region landed with
+// facility_count: 13 and density_read_count: 1 hand-authored, and its own annotation said they
+// "dissolve into the derived counts being folded from the facility and claim rows themselves".
+// FacilitiesModelled now carries the rows, so that is what happened here: the thirteen facilities
+// and thirteen claims below are the region's membership and the counts are folded from them. The
+// membership is not inferred - it is the roster this lane's own witness executes, twelve claims in
+// w_every_other_pennsylvania_density_establishes_nothing plus the one read density in
+// w_philadelphia_has_exactly_one_established_density.
 data pa_philadelphia_and_lehigh_valley: RegionCoverage = RegionCoverage {
   region_label: "PA Philadelphia and Lehigh Valley",
   region_code: "PA",
   outcome: FacilitiesModelled {
-    facility_count: 13,
-    density_read_count: 1,
+    facilities: [
+      tierpoint_philadelphia, tierpoint_allentown, tierpoint_bethlehem,
+      tierpoint_lehigh_valley, tierpoint_valley_forge,
+      h5_philadelphia, databank_phl1_philadelphia, lightwave_philadelphia,
+      flexential_philadelphia_collegeville, five_9s_allentown,
+      three_sixty_five_philadelphia, three_sixty_five_philadelphia_university_city,
+      netrality_401_n_broad,
+    ],
+    densities: [
+      tierpoint_philadelphia_density, tierpoint_allentown_density, tierpoint_bethlehem_density,
+      tierpoint_lehigh_valley_density, tierpoint_valley_forge_density,
+      h5_philadelphia_density, databank_phl1_density, lightwave_philadelphia_density,
+      flexential_philadelphia_collegeville_density, five_9s_allentown_density,
+      three_sixty_five_philadelphia_density, three_sixty_five_philadelphia_university_city_density,
+      netrality_401_n_broad_density,
+    ],
   },
 }
 
@@ -185,4 +491,3 @@ data census_regions: List<RegionCoverage> = [
   hudson_valley,
   pa_philadelphia_and_lehigh_valley,
 ]
-

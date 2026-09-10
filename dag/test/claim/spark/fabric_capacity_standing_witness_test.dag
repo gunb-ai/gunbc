@@ -1,0 +1,240 @@
+module test.claim.spark.fabric_capacity_standing_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
+import std.measure { concurrent_request_hundredths_count, token_count }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.vllm_kv_layout_observe { KvLayoutUnreadable }
+import gunbc.instruments.fabric_capacity_standing {
+  CapacityProbeRead, ProbeFields, ProbeUnreadable, decode_probe,
+  ProbeReadings, ProbeReadingsReady, ProbeReadingsRefused, readings_from_fields,
+  tokens_from_gpu_kv_cache_size_line, hundredths_from_maximum_concurrency_line,
+  capacity_probe_slots, probe_field_key,
+  ProbeFieldName, Invocation, UnitSha, Container, ImageSha, StartedAt, PoolLine, ConcurrencyLine,
+  AllocatorBlocks, BlockSize, MaxModelLen,
+  LaunchRead, LaunchIdentified, LaunchUnidentified, launch_from_fields,
+}
+
+fn w_cell(name: ProbeFieldName) -> String {
+  match name {
+    Invocation => "inv-a"
+    UnitSha => "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    Container => "deadbeef"
+    ImageSha => "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    StartedAt => "1788000000"
+    PoolLine => "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens"
+    ConcurrencyLine => "Maximum concurrency for 1,048,576 tokens per request: 11.22x"
+    AllocatorBlocks => "54475"
+    BlockSize => "16"
+    MaxModelLen => "1048576"
+  }
+}
+
+fn w_lines() -> String {
+  join(map(capacity_probe_slots(), s => w_cell(name: s.name)), "\n")
+}
+
+fn w_fields() -> CapacityProbeRead {
+  decode_probe(stdout: w_lines())
+}
+
+fn w_foreign_revision() -> VllmSourceRevision {
+  vllm_source_revision(
+    repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+    full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
+  )
+}
+
+fn w_capture() -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" as Sha256DigestHex })
+}
+
+fn w_identity_dash(which: ProbeFieldName) -> String {
+  join(map(capacity_probe_slots(), s =>
+    if probe_field_key(n: s.name) == probe_field_key(n: which) {
+      "-"
+    } else {
+      w_cell(name: s.name)
+    }), "\n")
+}
+
+fn w_slot_value(which: ProbeFieldName, value: String) -> String {
+  join(map(capacity_probe_slots(), s =>
+    if probe_field_key(n: s.name) == probe_field_key(n: which) {
+      value
+    } else {
+      w_cell(name: s.name)
+    }), "\n")
+}
+
+test fn a_dash_for_launch_identity_refuses_rather_than_decoding_as_a_join_key() -> Bool {
+  (match decode_probe(stdout: w_identity_dash(which: Invocation)) {
+     ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "systemd invocation")
+     ProbeFields { fields: _ } => false
+   })
+    && (match decode_probe(stdout: w_identity_dash(which: UnitSha)) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "unit text digest")
+          ProbeFields { fields: _ } => false
+        })
+    && (match decode_probe(stdout: w_identity_dash(which: Container)) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "container id")
+          ProbeFields { fields: _ } => false
+        })
+    && (match decode_probe(stdout: w_identity_dash(which: ImageSha)) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "container image digest")
+          ProbeFields { fields: _ } => false
+        })
+}
+
+test fn decode_identity_fields_are_the_launch_join_keys() -> Bool {
+  match w_fields() {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match launch_from_fields(group: FabricGroupA, head: spark_pair_serving_head(group: FabricGroupA), f: f) {
+        LaunchUnidentified { detail: _ } => false
+        LaunchIdentified { launch: l } => (l.systemd_invocation as String) == "inv-a"
+      }
+  }
+}
+
+// THE LIVE PROBE MUST NOT FILL THE MODELLED REVISION. Stamping vllm_source_revision_read made
+// revision_is_modelled permanently green. An unobserved revision is a refusal, not a default.
+test fn an_unobserved_revision_refuses_rather_than_stamping_the_modelled_constant() -> Bool {
+  match w_fields() {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match readings_from_fields(
+        f: f,
+        observed_revision: none,
+        observed_hash_block_size: Absent,
+        observed_max_num_batched_tokens: Absent,
+        observed_launch: Absent,
+        source_capture_digest: w_capture(),
+      ) {
+        ProbeReadingsRefused { cause: c } => string_contains(s: c as String, pattern: "did not observe the engine's vLLM source revision")
+        ProbeReadingsReady { pool: _, reported: _, receipt: _ } => false
+      }
+  }
+}
+
+test fn a_supplied_revision_without_hash_block_size_refuses_rather_than_copying_the_scheduler_size() -> Bool {
+  match w_fields() {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match readings_from_fields(
+        f: f,
+        observed_revision: Present { value: w_foreign_revision() },
+        observed_hash_block_size: Absent,
+        observed_max_num_batched_tokens: Absent,
+        observed_launch: Absent,
+        source_capture_digest: w_capture(),
+      ) {
+        ProbeReadingsRefused { cause: c } => string_contains(s: c as String, pattern: "did not observe hash_block_size")
+        ProbeReadingsReady { pool: _, reported: _, receipt: _ } => false
+      }
+  }
+}
+
+test fn a_layout_without_a_launch_is_not_evidence() -> Bool {
+  match w_fields() {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match readings_from_fields(
+        f: f,
+        observed_revision: Present { value: w_foreign_revision() },
+        observed_hash_block_size: Present { value: token_count(count: 32) },
+        observed_max_num_batched_tokens: Absent,
+        observed_launch: Absent,
+        source_capture_digest: w_capture(),
+      ) {
+        ProbeReadingsRefused { cause: c } => string_contains(s: c as String, pattern: "bound to a launch")
+        ProbeReadingsReady { pool: _, reported: _, receipt: _ } => false
+      }
+  }
+}
+
+test fn a_supplied_revision_is_the_one_the_readings_carry() -> Bool {
+  match w_fields() {
+    ProbeUnreadable { detail: _ } => false
+    ProbeFields { fields: f } =>
+      match launch_from_fields(group: FabricGroupA, head: spark_pair_serving_head(group: FabricGroupA), f: f) {
+        LaunchUnidentified { detail: _ } => false
+        LaunchIdentified { launch: launch } =>
+          match readings_from_fields(
+            f: f,
+            observed_revision: Present { value: w_foreign_revision() },
+            observed_hash_block_size: Present { value: token_count(count: 32) },
+            observed_max_num_batched_tokens: Present { value: token_count(count: 8192) },
+            observed_launch: Present { value: launch },
+            source_capture_digest: w_capture(),
+          ) {
+            ProbeReadingsRefused { cause: _ } => false
+            ProbeReadingsReady { pool: pool, reported: reported, receipt: receipt } =>
+              (pool.observed_at_revision.full_revision as String) == "0000000000000000000000000000000000000000"
+                && (reported.observed_at_revision.full_revision as String) == "0000000000000000000000000000000000000000"
+                && (pool.observed_at_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String)
+                && (pool.captured_line as String) == "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens"
+                && concurrent_request_hundredths_count(c: reported.max_concurrency) == 1122
+                && (match receipt {
+                      KvLayoutUnreadable { launch: bound, cause: _ } => (bound.systemd_invocation as String) == "inv-a"
+                      _ => false
+                    })
+          }
+      }
+  }
+}
+
+test fn extra_probe_lines_refuse_rather_than_shifting_later_slots() -> Bool {
+  match decode_probe(stdout: join([w_lines(), "\nextra"], "")) {
+    ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "not the ")
+    ProbeFields { fields: _ } => false
+  }
+}
+
+test fn a_negative_capacity_slot_refuses_rather_than_decoding_as_a_count() -> Bool {
+  (match decode_probe(stdout: w_slot_value(which: AllocatorBlocks, value: "-1")) {
+     ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "num_gpu_blocks")
+     ProbeFields { fields: _ } => false
+   })
+    && (match decode_probe(stdout: w_slot_value(which: BlockSize, value: "-1")) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "block_size")
+          ProbeFields { fields: _ } => false
+        })
+    && (match decode_probe(stdout: w_slot_value(which: MaxModelLen, value: "-1")) {
+          ProbeUnreadable { detail: d } => string_contains(s: d, pattern: "max_model_len")
+          ProbeFields { fields: _ } => false
+        })
+}
+
+// THE CAPTURED TEXT IS THE ENGINE'S LINE, NOT A LINE THIS INSTRUMENT WROTE. A bare integer, or a
+// string this module used to synthesize, is not a startup line and cannot inhabit the carrier.
+test fn a_synthesized_or_bare_integer_is_not_a_startup_line() -> Bool {
+  (match tokens_from_gpu_kv_cache_size_line(line: "11767856") { Absent => true  Present { value: _ } => false })
+    && (match hundredths_from_maximum_concurrency_line(line: "Maximum concurrency for tokens per request: 1122 hundredths") {
+          Absent => true
+          Present { value: _ } => false
+        })
+    && (match tokens_from_gpu_kv_cache_size_line(line: "[kv_cache_utils.py:1733] GPU KV cache size: 11,767,856 tokens") {
+          Present { value: n } => n == 11767856
+          Absent => false
+        })
+    && (match hundredths_from_maximum_concurrency_line(line: "Maximum concurrency for 1,048,576 tokens per request: 11.22x") {
+          Present { value: n } => n == 1122
+          Absent => false
+        })
+    && (match hundredths_from_maximum_concurrency_line(line: "Maximum concurrency for 1,048,576 tokens per request: 8.5x") {
+          Absent => true
+          Present { value: _ } => false
+        })
+    && (match hundredths_from_maximum_concurrency_line(line: "Maximum concurrency for 1,048,576 tokens per request: 12.345x") {
+          Absent => true
+          Present { value: _ } => false
+        })
+    && (match hundredths_from_maximum_concurrency_line(line: "Maximum concurrency for 1,048,576 tokens per request: 11x") {
+          Absent => true
+          Present { value: _ } => false
+        })
+}

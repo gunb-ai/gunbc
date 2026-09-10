@@ -10,10 +10,14 @@ import std.durable_compare_and_set {
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable, ExpectSlotGeneration,
   cas_attempt, cas_generation_count,
 }
-import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey, fabric_identity_eq }
 import product.fabric.demand { Demand }
 import product.fabric.supply { SupplierOffer, OfferQuote, offer_quote_currency, PlacementAffinityKey }
 import product.fabric.work { ExecutionRequirements }
+import product.fabric.provider_admission {
+  permit_standing, PermitStanding, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
+  PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
+}
 import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.durable_cas_file_store {
@@ -137,6 +141,16 @@ fn fabric_reservation_payload(
 // Collapsing any pair of these into one arm would hand a caller a symbol it
 // cannot choose a remedy from, which is the state-space conflation this corpus
 // keeps finding.
+// PermitNamesAnotherUseForCell IS THE DECIDING PATH'S OWN USE CHECK. It carries the STANDING
+// rather than a demand pair: the permit can disagree about the offer, the route, the work or the
+// demand, and an arm that reported two demand identities for a WORK mismatch would print two
+// values that are equal beside a refusal - a fabricated plausible output in the sense DESIGN
+// section 5 forbids, and one that would send a reader looking at the wrong field. The roster this broker
+// ranks was bound at some earlier moment, for whatever demand and work the binder was serving
+// then, and nothing in the selection fold re-reads that. So the candidate that WON is checked
+// against the demand actually being served, and a mismatch refuses rather than reserving money and
+// a slot for a use nobody admitted. Before this arm the check existed only in
+// product.fabric.grant_issue's issue_grant, which this path never calls.
 type CellReservation
   = CellReserved {
       offer: FabricIdentity<NonEmptyStr, OfferKey>,
@@ -154,6 +168,7 @@ type CellReservation
     }
   | BudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
   | ReservationLost { slot_key: NonEmptyStr }
+  | PermitNamesAnotherUseForCell { standing: PermitStanding<NonEmptyStr> }
   | StoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
   | AttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
 
@@ -426,15 +441,34 @@ fn broker_reserve_for_demand(
       NoCellAdmissible { considered: c, refused: partition.refused }
     EqualCostTieUnresolved { digest: d, cause: _, considered: c } =>
       CellSelectionTieUnresolved { digest: d, considered: c }
-    OfferSelected { offer: o, cost: k, basis: _, horizon: _, considered: _, tie_policy: _ } =>
-      reserve_priced_cell(
-        root: root,
-        demand_id: demand.id,
-        offer: o,
-        cost: k,
-        expected: expected,
-        account: account,
-      )
+    OfferSelected { candidate: winner, cost: k, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+      match permit_standing(
+        permit: winner.permit,
+        offer: winner.offer.id,
+        route: winner.offer.route,
+        demand: demand.id,
+        work: demand.work,
+      ) {
+      PermitNamesAnotherOfferThan { permit_names: n } =>
+        PermitNamesAnotherUseForCell { standing: PermitNamesAnotherOfferThan { permit_names: n } }
+      PermitNamesAnotherRouteThan =>
+        PermitNamesAnotherUseForCell { standing: PermitNamesAnotherRouteThan }
+      PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+        PermitNamesAnotherUseForCell {
+          standing: PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } }
+      PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+        PermitNamesAnotherUseForCell {
+          standing: PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } }
+      PermitAuthorizesUse =>
+        reserve_priced_cell(
+          root: root,
+          demand_id: demand.id,
+          offer: winner.offer,
+          cost: k,
+          expected: expected,
+          account: account,
+        )
+      }
   }
 }
 

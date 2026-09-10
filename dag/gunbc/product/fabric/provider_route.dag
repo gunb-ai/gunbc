@@ -1,0 +1,175 @@
+module product.fabric.provider_route
+
+import std.types { List, Timestamp }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.content_hash { ContentHash }
+
+// THE ADMITTED SUBJECT IS A ROUTE, NEVER A COMPANY. "Provider X is compliant" is not a fact
+// this substrate can hold, because the same provider is admissible in one region and not
+// another, for ordinary build source and not for regulated data, under one contract revision
+// and not the next, and before a downstream-provider change but not after it. So the identity
+// that carries an admission is provider x service x region x data-path closure x contract
+// revision, and a price row naming only a company can never stand in for it.
+//
+// THE ROUTE IS A PRODUCT OF CITED DECLARATIONS, NOT A BRANDED STRING, and that is a correction
+// the corpus had already ruled rather than a preference. gunbc.fabric_capacity_class_gap's
+// capacity_class_refused_remedies rules out ClassEncodedInTrustDomain on the grounds that a
+// branded NonEmptyStr "is a magic string agreed between producer and consumer - convention where
+// necessity was available, and it reads as coverage while enforcing nothing". A branded
+// ProviderRouteRef is that shape exactly: the adapter that mints one and the sanction roster that
+// matches one agree by spelling, so a route that names a different real region than the offer runs
+// in matches a sanction it should not, and nothing in the type can see it.
+//
+// Citing declarations instead reduces the convention to something the namespace authority already
+// checks (DESIGN section 3: cite the symbol, and a stale name is decidable). Regions are ALREADY
+// modeled this way - extdeps.cloud.hetzner carries HetznerCloudRegion as a closed coproduct - and
+// DESIGN's external-upstream rule is why this type must not enumerate them itself: a generic hub
+// "may not enumerate concrete products", so adding a provider must never widen a type every
+// unrelated consumer recompiles against. A reference is the only shape that satisfies both.
+//
+// WHAT THIS STILL DOES NOT ESTABLISH, stated so the type is not read as more than it is. That the
+// cited region is where the work ACTUALLY runs remains a fact about someone else's machine -
+// DESIGN section 4b's outside-the-modeled-guarantee column, not a rung. It is observed at a
+// declared boundary and carried with its evidence below; it is never fabricated here.
+//
+// AUTHORITY DIRECTION IS FIXED HERE AND IS THE REASON THIS MODULE EXISTS SEPARATELY. Provider
+// modules under extdeps carry facts about the provider - its regions, its service terms, its
+// published subprocessors, its data-handling representations. Whether we are presently willing
+// and authorised to use those facts is a fact about US. An extdeps provider module that
+// imported our posture would let the supplier declare what it is sanctioned to serve, which is
+// exactly the inversion gunbc.fabric_executor_class refuses by keeping the executor sanction
+// roster on our side and refusing an unclassified executor. This module holds only the
+// provider-side route facts; the join against posture and use scope lives one layer up.
+type ProviderRoute {
+  provider: DeclarationRef
+  service: DeclarationRef
+  region: DeclarationRef
+}
+
+// Route identity is declaration-reference equality on all three components. There is no ordering
+// and no prefix relation: a route is the same route or it is a different one, and a sanction for a
+// sibling region inherits nothing.
+fn provider_route_eq(a: ProviderRoute, b: ProviderRoute) -> Bool {
+  declaration_ref_eq(a: a.provider, b: b.provider)
+    && declaration_ref_eq(a: a.service, b: b.service)
+    && declaration_ref_eq(a: a.region, b: b.region)
+}
+
+// The posture is a REVISION, never an ambient "current". A permit records the exact revision it
+// was evaluated against, so a posture change makes standing permits STALE rather than silently
+// tolerated - the difference between a decision that can be re-derived and one that merely
+// happened to be true when nobody was looking.
+//
+// The authority is an open DeclarationRef because THE POSTURE PRODUCER IS NOT IN THIS TREE (see
+// the frontier annotation on product.fabric.provider_admission). The generic fabric must not
+// enumerate whose posture governs it any more than it enumerates jurisdictions.
+type CompliancePostureRevision {
+  authority: DeclarationRef
+  revision: ContentHash
+}
+
+// ONE LOCATION IS NOT A DATA PATH. A Helsinki VM whose backups, telemetry or administrators sit
+// elsewhere is not a Helsinki-contained path, and a vendor region label establishes none of
+// those. Each path answers for itself.
+//
+// THE ABSENT AND UNREAD ARMS ARE SEPARATE AND THAT SEPARATION IS THE WHOLE POINT. An empty
+// backup destination must never ambiguously mean either "backups are disabled" or "nobody
+// examined backups" - the first is a fact that can support an admission and the second is an
+// obligation that must refuse. Collapsing them is how an unexamined path reads as a clean one,
+// which is the same move product.supplier.ubicloud refuses by carrying IsolationNotObserved
+// beside its catalog rows rather than inventing a guarantee from a price list.
+type ProviderPathStanding
+  = ProviderPathLocated {
+      operator: DeclarationRef,
+      jurisdiction: DeclarationRef,
+      evidence: DeclarationRef,
+    }
+  | ProviderPathAbsent { evidence: DeclarationRef }
+  | ProviderPathUnread { obligation: DeclarationRef }
+
+// CLOSED OVER THE PATHS WE PRESENTLY KNOW WE MUST GOVERN, and closed deliberately: adding a
+// material path forces EVERY route to answer for it rather than letting existing rows stay
+// silently incomplete. Object storage, logs, telemetry, backups, support access and spill - not
+// merely the runner VM - plus the control plane and administrative access that reach customer
+// material without appearing in any customer-visible topology.
+type ProviderDataPathClosure {
+  execution: ProviderPathStanding
+  durable_storage: ProviderPathStanding
+  backups: ProviderPathStanding
+  logs: ProviderPathStanding
+  telemetry: ProviderPathStanding
+  control_plane: ProviderPathStanding
+  support_access: ProviderPathStanding
+  administrative_access: ProviderPathStanding
+  spill: ProviderPathStanding
+}
+
+// A provider's own downstream providers are part of our data path whether or not they appear in
+// its price list. The three arms carry the same discipline the path standing does: an
+// enumerated population with its coverage evidence, an explicit and evidenced none, or an
+// unread obligation that refuses.
+type DownstreamProviderPopulation
+  = NoDownstreamProviders { evidence: DeclarationRef }
+  | DownstreamProvidersEnumerated {
+      first: DeclarationRef,
+      further: List<DeclarationRef>,
+      coverage: DeclarationRef,
+    }
+  | DownstreamProvidersUnread { obligation: DeclarationRef }
+
+// provider and service are NOT repeated here: they are components of the route above, and carrying
+// them twice would let a facts row describe one route while naming another.
+//
+// JURISDICTIONS ARE OPEN DECLARATION REFERENCES AND THERE IS DELIBERATELY NO CENTRAL ENUM.
+// "Asia" is not a jurisdiction, a US-or-EU-or-other kernel is a nickname for N distinct legal
+// systems, and adding Germany must be a row in a provider population rather than an edit to a
+// generic type every unrelated consumer recompiles against. The generic fabric knows that a
+// jurisdiction is cited; which jurisdictions exist is not its fact to hold.
+type ProviderRouteFacts {
+  route: ProviderRoute
+  contract_terms: DeclarationRef
+  data_paths: ProviderDataPathClosure
+  downstream: DownstreamProviderPopulation
+  observed_at: Timestamp
+  facts_revision: ContentHash
+}
+
+// THE COPRODUCT IS MATCHED ONCE AND YIELDS THE OBLIGATION DIRECTLY. There is deliberately no
+// Bool predicate here. A path_is_resolved returning Bool DISCARDS exactly the payload a refusal
+// then needs, so the refusal builder has to walk the same value a second time - and that second
+// walk is what forces a seed to exist, which is what made the seed a place to fabricate an
+// obligation. Matching once removes the seed rather than improving it: an empty list is "no
+// obligation", a one-element list IS the located obligation, and neither can lie.
+//
+// The nine paths are visited in a FIXED order, so the reported obligation is deterministic
+// rather than whichever arm a fold happened to reach last.
+fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRef> {
+  fold(
+    [
+      c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
+      c.control_plane, c.support_access, c.administrative_access, c.spill,
+    ],
+    init: [],
+    f: fn(acc, p) {
+      if count(acc) > 0 {
+        acc
+      } else {
+        match p {
+          ProviderPathLocated { operator, jurisdiction, evidence } => acc,
+          ProviderPathAbsent { evidence } => acc,
+          ProviderPathUnread { obligation } => [obligation],
+        }
+      }
+    },
+  )
+}
+
+// Same discipline for the downstream population: one match, and the unread arm's own obligation
+// comes back rather than a provider row standing in for it.
+fn downstream_obligation(d: DownstreamProviderPopulation) -> List<DeclarationRef> {
+  match d {
+    NoDownstreamProviders { evidence } => [],
+    DownstreamProvidersEnumerated { first, further, coverage } => [],
+    DownstreamProvidersUnread { obligation } => [obligation],
+  }
+}
