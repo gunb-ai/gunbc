@@ -257,11 +257,17 @@ func mint_r2_object_read_token(
         cause: concat("Cloudflare refused the token create: ", body) as NonEmptyStr,
       }
     RestExchangeCommitAmbiguous { detail: detail } =>
-      R2TokenMintOutcomeUnknown { cause: detail }
+      R2TokenMintOutcomeUnknown {
+        cause: concat("AccountTokens.Create: ", detail as String) as NonEmptyStr,
+      }
     RestExchangeUnreached { cause: cause } =>
-      R2TokenMintOutcomeUnknown { cause: cause }
+      R2TokenMintOutcomeUnknown {
+        cause: concat("AccountTokens.Create: ", cause as String) as NonEmptyStr,
+      }
     RestExchangeUndecodable { status: _, cause: cause } =>
-      R2TokenMintOutcomeUnknown { cause: cause }
+      R2TokenMintOutcomeUnknown {
+        cause: concat("AccountTokens.Create: ", cause as String) as NonEmptyStr,
+      }
     RestExchangeSucceeded =>
       match created_account_token_from_create_response(
         response: CreatedAccountTokenCreateResponse {
