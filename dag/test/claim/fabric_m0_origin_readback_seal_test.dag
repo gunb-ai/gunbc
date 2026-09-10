@@ -1,0 +1,110 @@
+module test.claim.fabric_m0_origin_readback_seal
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DISCRIMINATING RED FOR THE ORIGIN-READBACK CONSTRUCTION.
+//
+// gunbc.fabric_m0_origin_readback claims that a confirming origin readback cannot be authored: the
+// digest and the file it was taken from are one sealed value, minted only by the operation that
+// takes it. A claim of that shape is established by a REFUSAL THAT EXECUTES on the real acceptance
+// path, never by the presence of the keyword -- so each probe below hands the compiler source that
+// TRIES to build the forbidden state and asserts the diagnostic, with a green control on the
+// sanctioned route beside it so a permanently-red harness cannot pass for a wall.
+//
+// WHY TWO WALLS AND NOT ONE. sole_constructor confines who may write the record LITERAL;
+// admit_callers confines who may call the fixture MINT. They are independent, and covering one
+// leaves the other free to be absent -- which is how an enumerated admission list would quietly
+// become an open door.
+//
+// WHY THE SEAL IS ON A RECORD. sole_constructor on a COPRODUCT does not refuse cross-module variant
+// construction: that is the declared hole measured by
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which is
+// red. Sealing ManifestReadbackObservation or OriginReadback directly would have been permanently
+// green by construction. The record OriginReading, carried by both confirming variants, is the form
+// the wall does refuse -- and f1_probe below is what says so by execution rather than by citation.
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// RED 1: an ordinary module pairs a digest with a file it never read. This is the laundering in its
+// exact production shape -- a real 64-hex SHA-256 stamped onto a path of the author's choosing.
+data forged_reading_source: String = "module probe_fabric_m0_forged_reading\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReading {\n  OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } }\n}\n"
+
+test fn a_forged_origin_reading_is_refused_at_compile() -> Bool {
+  violation_count(source: forged_reading_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// RED 2: the same forgery reached through the CARRIER a caller actually holds. The commit
+// boundary's ManifestRead is an ordinary coproduct variant, so nothing refuses it directly; the
+// refusal has to come from the reading it must carry. This probe is what distinguishes "the record
+// is sealed" from "the state a caller can reach is unwritable".
+data forged_manifest_read_source: String = "module probe_fabric_m0_forged_manifest_read\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_commit { ManifestReadbackObservation, ManifestRead }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> ManifestReadbackObservation {\n  ManifestRead { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
+
+test fn a_forged_manifest_read_is_refused_at_compile() -> Bool {
+  violation_count(source: forged_manifest_read_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// RED 3: the completion authority's own confirming arm, for the same reason. The manifest is one
+// subject among several and a repair that closed only the manifest would leave every required
+// object's readback authorable -- the half-repair the rostered class warns about.
+data forged_readback_confirmed_source: String = "module probe_fabric_m0_forged_confirmed\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReadback {\n  ReadbackConfirmed { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
+
+test fn a_forged_confirmed_readback_is_refused_at_compile() -> Bool {
+  violation_count(source: forged_readback_confirmed_source, wanted: "SoleConstructorViolation") >= 1
+}
+
+// RED 4: the fixture mint called from a module it does not admit. This is the wall that keeps the
+// enumerated admission list from being a door -- without it, sealing the literal would only have
+// moved the forgery one call along.
+data unadmitted_mint_source: String = "module probe_fabric_m0_unadmitted_mint\nimport gunbc.fabric_m0_origin_readback { OriginReading, witness_origin_reading }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReading {\n  witness_origin_reading(staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex })\n}\n"
+
+test fn an_unadmitted_call_to_the_fixture_mint_is_refused_at_compile() -> Bool {
+  violation_count(source: unadmitted_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+// GREEN CONTROL: the sanctioned route -- the real read -- compiles clean. Without this, every red
+// above is satisfied by a harness that refuses everything, and the battery would establish nothing
+// about the wall's discrimination.
+data sanctioned_route_source: String = "module probe_fabric_m0_sanctioned\nimport std.types { NonEmptyStr }\nimport gunbc.fabric_m0_origin_readback { OriginReadingOutcome, read_origin_staged_file }\nfn taken(p: NonEmptyStr) -> OriginReadingOutcome { read_origin_staged_file(staged_path: p) }\n"
+
+test fn the_sanctioned_read_route_compiles_clean() -> Bool {
+  violation_count(source: sanctioned_route_source, wanted: "SoleConstructorViolation") == 0
+    && violation_count(source: sanctioned_route_source, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// CALIBRATION: the green control's module really compiled, rather than the census failing to run
+// and every `== 0` above reading a -1 sentinel as agreement. A zero that came from a harness that
+// never ran is the decoration this file exists to avoid producing.
+test fn the_green_control_module_actually_compiled() -> Bool {
+  match census_of(source: sanctioned_route_source) {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+// Printed diagnostics: the integer behind each verdict, so a wrong count is distinguishable from
+// CensusNotRunnable (-1) without re-deriving the battery.
+fn diag_forged_reading_count() -> Int {
+  violation_count(source: forged_reading_source, wanted: "SoleConstructorViolation")
+}
+
+fn diag_unadmitted_mint_count() -> Int {
+  violation_count(source: unadmitted_mint_source, wanted: "ConstructorCallAdmissionRefused")
+}

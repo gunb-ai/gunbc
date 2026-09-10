@@ -1,0 +1,137 @@
+module gunbc.fabric_m0_origin_readback
+
+import std.types { NonEmptyStr, String }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.crypto.hash
+import std.decl_ref { decl_ref }
+
+// THE ONE PLACE A CONFIRMING ORIGIN READBACK CAN COME FROM.
+//
+// fabric-M0's completion authority may call a job successful only when an independent read of the
+// durable origin returned the intended bytes. Until this module, that fact reached the authority as
+// TWO peer values -- an observed digest and a provenance stamp -- supplied side by side by one
+// caller with nothing relating them. That is the rostered class
+// gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters, and in this
+// instance it has a specific consequence the milestone brief states in one sentence: the digested
+// file at commit must be the ORIGIN READBACK'S OWN OUTPUT and never a cache copy, because a valid
+// computation over locally-sourced bytes launders a cache-read refusal into a confirmation.
+//
+// THE REPAIR IS THE ONE THAT ROW ALREADY DECLARES: derive the digest from the value at the point
+// the value is obtained, never accept it as a peer parameter. OriginReading is that carrier, and it
+// is sole_constructor, so read_origin_staged_file below is the ONLY thing in the corpus that can
+// produce one. A caller cannot pair a digest with a file it was not taken from, because a caller
+// cannot write the pair at all.
+//
+// WHAT THIS CLOSES AND WHAT IT DOES NOT, measured rather than asserted (DESIGN 4b(1)). It closes
+// AUTHORED CONFIRMATION: the confirming digest is computed by this function, over the file named in
+// the same value, and no other constructor exists on the source-to-dag acceptance path. It does NOT
+// close whether the path handed here is the origin readback's staged output rather than a cache
+// copy -- staged_path is still chosen by the caller, so the class as a whole stays MITIGATABLE and
+// only this sub-class reaches structural impossibility. A class's rung is the minimum across its
+// paths, so the honest report for the enclosing class is the lower one.
+//
+// NEXT-RUNG TRIGGER, AS A CAPABILITY: a durable-origin read operation that STAGES ITS OWN OUTPUT at
+// a path it mints, so the path a digest is computed over is produced by the read rather than chosen
+// by its caller -- SUFFICIENT FOR removing caller-chosen paths from every confirming readback in
+// fabric-M0, not merely for the commit manifest. A trigger naming one call site would be satisfied
+// while the capability stayed dead (DESIGN 4b(3)).
+//
+// RUNG HONESTY, PATH-SCOPED. The emitted Rust mirror of a sole_constructor type is a public struct
+// with public fields (gunbc.model.population), so a consumer writing Rust against the seed is
+// outside this guarantee; fabric-M0 has no Rust consumer today. The same caveat the sealed roster
+// in gunbc.product.fabric.work records applies here unchanged rather than being re-derived.
+//
+// WHY A RECORD AND NOT A SEALED COPRODUCT, and this is measured, not stylistic: sole_constructor on
+// a COPRODUCT does not refuse cross-module variant construction -- the declared hole measured by
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which is
+// red. Sealing ManifestReadbackObservation or OriginReadback directly would therefore have been a
+// permanently green wall carrying no information, which DESIGN 4b calls worse than absent. Sealing
+// the RECORD the confirming variants CARRY puts the forbidden literal back on the form the wall
+// does refuse.
+type OriginReading sole_constructor {
+  staged_path: NonEmptyStr
+  observed_digest: Sha256Digest
+}
+
+// A reading that could not be taken is NOT the reading of nothing. An unreadable staged file must
+// not reach the authority as a digest, and it must not vanish either: it is a located cause the
+// completion fold renders as undetermined, so the job reconciles rather than publishing or failing.
+type OriginReadingOutcome
+  = OriginReadingTaken { reading: OriginReading }
+  | OriginReadingUnavailable { staged_path: NonEmptyStr, cause: NonEmptyStr }
+
+// THE SOLE MINT. One operation obtains the bytes' digest and the name of the file it was taken
+// from, so the two cannot describe different objects.
+//
+// The digest handler is consumed, not re-implemented: extdeps.crypto.hash owns the SHA-256 citation
+// and the sha256sum transport, one handler of N bound to that shape (DESIGN 3). A native digest
+// realization is a second handler there, not a change here.
+//
+// EVERY NON-DIGEST OUTCOME REFUSES WITH A CAUSE rather than widening to a value: a failed read, a
+// missing digest field, and a field that is not a 64-digit lower-hex SHA-256 are three distinct
+// located causes and none of them produces an OriginReading.
+fn read_origin_staged_file(staged_path: NonEmptyStr) -> OriginReadingOutcome {
+  let observed = crypto.Sha256Sum.File(path: staged_path as String)
+  if observed.success == false {
+    OriginReadingUnavailable {
+      staged_path: staged_path,
+      cause: "sha256sum could not read the origin readback's staged output at " + staged_path,
+    }
+  } else {
+    match sha256sum_line_digest(line: observed.line) {
+      Absent =>
+        OriginReadingUnavailable {
+          staged_path: staged_path,
+          cause: "sha256sum printed no digest field for the origin readback's staged output at " + staged_path,
+        }
+      Present { value: d } =>
+        match sha256_hex_digest(hex: d.hex as String) {
+          Absent =>
+            OriginReadingUnavailable {
+              staged_path: staged_path,
+              cause: "sha256sum printed a field that is not a 64-digit lower-hex SHA-256 for " + staged_path,
+            }
+          Present { value: digest } =>
+            OriginReadingTaken {
+              reading: OriginReading { staged_path: staged_path, observed_digest: digest },
+            }
+        }
+    }
+  }
+}
+
+fn origin_reading_digest(reading: OriginReading) -> Sha256Digest {
+  reading.observed_digest
+}
+
+fn origin_reading_path(reading: OriginReading) -> NonEmptyStr {
+  reading.staged_path
+}
+
+// THE FIXTURE MINT, AND WHY IT IS NOT A HOLE IN THE SEAL ABOVE.
+//
+// The witnesses that exercise the completion ALGEBRA -- verdict dominance, slot comparison, roster
+// joins -- need a confirming reading whose digest they choose, and they must stay pure folds: making
+// them take a real digest would put a host service call on the required floor for every arm and
+// would tie their verdicts to whatever a mock returned, which is not what those witnesses are about.
+//
+// So this mint exists, and its population is CLOSED BY CONSTRUCTION rather than by convention:
+// admit_callers names the exact functions permitted to call it, and any other caller is refused with
+// ConstructorCallAdmissionRefused at compile. That refusal is measured, not assumed, by
+// test.claim.fabric_m0_origin_readback_seal -- one probe forges the record directly and one calls
+// this mint from an unadmitted module, because those are two different walls and covering one leaves
+// the other free to be absent. Widening the list is a visible edit to this declaration, in this
+// module, against an enumerated roster; it is not something a caller can do to itself.
+//
+// WHAT THIS COSTS, STATED RATHER THAN HIDDEN: the honest claim for the production population is that
+// no constructor exists outside this enumerated admission, not that none exists at all. That is
+// still structural impossibility for every module the fabric-M0 path actually runs through, and
+// DESIGN 4b's own reasoning about fixture-authorable REDs is why a fixture route is admitted rather
+// than treated as a defeat -- a compiler's regression probes are precisely invalid programs.
+fn witness_origin_reading(staged_path: NonEmptyStr, observed_digest: Sha256Digest) -> OriginReading
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fabric_m0_commit_witness", decl_name: "witness_reading"),
+    decl_ref(module_path: "test.claim.fabric_m0_completion_witness", decl_name: "witness_reading"),
+  ]
+  = OriginReading { staged_path: staged_path, observed_digest: observed_digest }
