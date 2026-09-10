@@ -9,9 +9,7 @@ import v2.compiler.discovery_enumeration {
   OwnedNodeCorpusInit,
   OwnedOtherInit
 }
-import v2.workflow.floor_discovery {
-  FloorDiscoveryRow
-}
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryProducerResult,
   FloorDiscoveryWalkState,

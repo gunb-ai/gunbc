@@ -30,7 +30,7 @@ import v2.compiler.compile {
   native_lane_declared_module_name,
   native_lane_unowned_row_path
 }
-import v2.workflow.floor_discovery { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryWalkState
 }

@@ -15,11 +15,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.workflow.floor_discovery {
-  FloorDiscoveryRow,
-  FloorDiscoverySidecarKind,
-  FloorDiscoverySidecarViolation
-}
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorDiscoverySidecarKind, FloorDiscoverySidecarViolation }
 import v2.workflow.floor_naming_hygiene {
   floor_entry_is_barren_test_sidecar,
   floor_test_marked_decl_allowed_in_entry,
