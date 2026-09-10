@@ -1,4 +1,4 @@
-module gunbc.github_effect_perform
+module gunbc.github_authenticated_user_read
 
 import std.types { NonEmptyStr, Secret, HttpStatus }
 import std.resources { Network }
@@ -6,6 +6,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.transports.rest {
   classify_rest_outcome,
   RestExchangeSucceeded, RestExchangeUndecodable, RestExchangePerformance,
+  RestReadExchange,
 }
 import extdeps.github.users
 import extdeps.github.github { GitHubUser }
@@ -23,7 +24,7 @@ import extdeps.github.github { GitHubUser }
 // create_secret_for_attempt, add_initial_version, and delete_observed_secret. NAMED CONSUMER for
 // the read perform: a production func that calls it. TRIGGER: that import and call exist outside
 // test.claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness.
-data github_effect_perform_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a production func that calls perform_github_authenticated_user_read. TRIGGER: that import and call exist outside test.claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing it." as NonEmptyStr)
+data github_authenticated_user_read_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a production func that calls perform_github_authenticated_user_read. TRIGGER: that import and call exist outside test.claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing it." as NonEmptyStr)
 
 type GitHubAuthenticatedUserRead
   = GitHubAuthenticatedUserObserved { user: GitHubUser }
@@ -31,7 +32,7 @@ type GitHubAuthenticatedUserRead
 
 func perform_github_authenticated_user_read(auth_token: Secret) -> GitHubAuthenticatedUserRead uses net: Network {
   let got = github.Users.GetAuthenticatedUser(auth_token: auth_token)
-  match classify_rest_outcome(rest: got.outcome, mutation: false) {
+  match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
     RestExchangeSucceeded =>
       if got.user.login == "" {
         GitHubAuthenticatedUserRefused {

@@ -161,9 +161,9 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
 }
 
 // EVERY VARIANT OF GitHubEffect IS A MUTATION. There is no is-mutation fold: a Bool true for
-// every inhabitant restates the type. classify_rest_outcome takes mutation as an input; a
-// GitHubEffect perform passes true. GET /user is github.Users with mutation: false — a
-// different operation, not a fifth arm of this algebra.
+// every inhabitant restates the type. A GitHubEffect perform classifies as RestMutationExchange.
+// GET /user is github.Users and classifies as RestReadExchange — a different operation, not a
+// fifth arm of this algebra.
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

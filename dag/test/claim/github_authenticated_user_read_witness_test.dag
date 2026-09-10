@@ -1,4 +1,4 @@
-module test.claim.github_effect_perform
+module test.claim.github_authenticated_user_read
 
 import std.logic { Bool }
 import std.types { String, Secret }
@@ -7,13 +7,14 @@ import extdeps.transports.rest {
   classify_rest_outcome,
   RestExchangeSucceeded, RestExchangeRefused, RestExchangeCommitAmbiguous,
   RestExchangeUnreached, RestExchangeUndecodable,
+  RestReadExchange, RestMutationExchange,
 }
 import extdeps.github.users {
   hermetic_get_authenticated_user_login,
   hermetic_get_authenticated_user_id,
   hermetic_get_authenticated_user_type,
 }
-import gunbc.github_effect_perform {
+import gunbc.github_authenticated_user_read {
   GitHubAuthenticatedUserObserved, GitHubAuthenticatedUserRefused,
   perform_github_authenticated_user_read,
 }
@@ -22,11 +23,11 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn rest_ok_is_success_for_a_read_and_a_mutation() -> Bool {
-  match classify_rest_outcome(rest: RestOk, mutation: false) {
+  match classify_rest_outcome(standing: RestReadExchange { rest: RestOk }) {
     RestExchangeSucceeded => true
     _ => false
   }
-    && match classify_rest_outcome(rest: RestOk, mutation: true) {
+    && match classify_rest_outcome(standing: RestMutationExchange { rest: RestOk }) {
       RestExchangeSucceeded => true
       _ => false
     }
@@ -35,8 +36,9 @@ test fn rest_ok_is_success_for_a_read_and_a_mutation() -> Bool {
 // THE DISCRIMINATING READ RED: 401 is a refusal carrying the status, not success and not a throw.
 test fn an_unauthorized_read_is_a_refusal_carrying_401() -> Bool {
   match classify_rest_outcome(
-    rest: RestStatusRefused { status: 401, body: "{\"message\":\"Bad credentials\"}" },
-    mutation: false,
+    standing: RestReadExchange {
+      rest: RestStatusRefused { status: 401, body: "{\"message\":\"Bad credentials\"}" },
+    },
   ) {
     RestExchangeRefused { status, body } => status == 401 && body != ""
     _ => false
@@ -47,8 +49,7 @@ test fn an_unauthorized_read_is_a_refusal_carrying_401() -> Bool {
 // classifying by an enum of known failures would treat it as success or drop it.
 test fn an_undocumented_status_on_a_read_is_still_a_refusal() -> Bool {
   match classify_rest_outcome(
-    rest: RestStatusRefused { status: 418, body: "teapot" },
-    mutation: false,
+    standing: RestReadExchange { rest: RestStatusRefused { status: 418, body: "teapot" } },
   ) {
     RestExchangeRefused { status, body: _ } => status == 418
     _ => false
@@ -57,8 +58,7 @@ test fn an_undocumented_status_on_a_read_is_still_a_refusal() -> Bool {
 
 test fn a_5xx_on_a_read_is_a_refusal_not_commit_ambiguous() -> Bool {
   match classify_rest_outcome(
-    rest: RestStatusRefused { status: 500, body: "boom" },
-    mutation: false,
+    standing: RestReadExchange { rest: RestStatusRefused { status: 500, body: "boom" } },
   ) {
     RestExchangeRefused { status, body: _ } => status == 500
     RestExchangeCommitAmbiguous { detail: _ } => false
@@ -68,8 +68,7 @@ test fn a_5xx_on_a_read_is_a_refusal_not_commit_ambiguous() -> Bool {
 
 test fn a_5xx_on_a_mutation_is_commit_ambiguous() -> Bool {
   match classify_rest_outcome(
-    rest: RestStatusRefused { status: 500, body: "boom" },
-    mutation: true,
+    standing: RestMutationExchange { rest: RestStatusRefused { status: 500, body: "boom" } },
   ) {
     RestExchangeCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "did not commit")
     RestExchangeRefused { status: _, body: _ } => false
@@ -79,8 +78,7 @@ test fn a_5xx_on_a_mutation_is_commit_ambiguous() -> Bool {
 
 test fn a_403_on_a_mutation_is_a_refusal_not_commit_ambiguous() -> Bool {
   match classify_rest_outcome(
-    rest: RestStatusRefused { status: 403, body: "no" },
-    mutation: true,
+    standing: RestMutationExchange { rest: RestStatusRefused { status: 403, body: "no" } },
   ) {
     RestExchangeRefused { status, body: _ } => status == 403
     RestExchangeCommitAmbiguous { detail: _ } => false
@@ -90,8 +88,7 @@ test fn a_403_on_a_mutation_is_a_refusal_not_commit_ambiguous() -> Bool {
 
 test fn a_transport_loss_on_a_mutation_is_commit_ambiguous() -> Bool {
   match classify_rest_outcome(
-    rest: RestTransportRefused { cause: "timeout" },
-    mutation: true,
+    standing: RestMutationExchange { rest: RestTransportRefused { cause: "timeout" } },
   ) {
     RestExchangeCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "may or may not have landed")
     RestExchangeUnreached { cause: _ } => false
@@ -101,8 +98,7 @@ test fn a_transport_loss_on_a_mutation_is_commit_ambiguous() -> Bool {
 
 test fn a_transport_loss_on_a_read_is_unreached() -> Bool {
   match classify_rest_outcome(
-    rest: RestTransportRefused { cause: "timeout" },
-    mutation: false,
+    standing: RestReadExchange { rest: RestTransportRefused { cause: "timeout" } },
   ) {
     RestExchangeUnreached { cause } => cause as String == "timeout"
     RestExchangeCommitAmbiguous { detail: _ } => false
@@ -112,8 +108,7 @@ test fn a_transport_loss_on_a_read_is_unreached() -> Bool {
 
 test fn an_undecodable_body_on_a_read_is_undecodable() -> Bool {
   match classify_rest_outcome(
-    rest: RestBodyUndecodable { status: 200, cause: "not json" },
-    mutation: false,
+    standing: RestReadExchange { rest: RestBodyUndecodable { status: 200, cause: "not json" } },
   ) {
     RestExchangeUndecodable { status, cause } => status == 200 && cause as String == "not json"
     _ => false
@@ -122,8 +117,7 @@ test fn an_undecodable_body_on_a_read_is_undecodable() -> Bool {
 
 test fn an_undecodable_body_on_a_mutation_is_commit_ambiguous() -> Bool {
   match classify_rest_outcome(
-    rest: RestBodyUndecodable { status: 201, cause: "not json" },
-    mutation: true,
+    standing: RestMutationExchange { rest: RestBodyUndecodable { status: 201, cause: "not json" } },
   ) {
     RestExchangeCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "unread rather than known")
     RestExchangeUndecodable { status: _, cause: _ } => false
