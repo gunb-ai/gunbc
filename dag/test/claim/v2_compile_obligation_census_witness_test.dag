@@ -29,6 +29,8 @@ import gunbc.v2_compile_obligation_census {
   witness_subject_is_frozen,
   witness_subject_is_excluded,
   obligation_executed_rung,
+  obligation_rung_is_inflated,
+  obligation_claim_exceeds_its_ceiling,
   obligation_executes_natively,
   obligation_seed_escape_is_open,
   v2_compile_obligation_census
@@ -195,4 +197,95 @@ test fn v2_compile_obligation_no_row_executes_natively_holds() -> Bool {
     && obligation_executes_natively(
       o: fixture_row(native_arm: executing_arm(), subject: discovered_subject())
     )
+}
+
+// THE CENSUS'S HEADLINE COMPARISON, EXERCISED ON FOUR ROWS THAT DIFFER ON BOTH AXES. Inflation is
+// claimed > executed, so the arms have to vary the claim AND the paths independently or a passing
+// predicate could be reading only one of them. A row claiming StructurallyGuaranteed on
+// non-executing paths IS inflated (rank 3 over 1). The same row claiming Mitigatable on the same
+// paths is NOT, because claiming no more than your paths establish is honesty and not a defect —
+// that arm is what stops the predicate from being "claim is high". A row whose paths both execute
+// and whose claim is exactly the MechanicallyPreventable that establishes is NOT inflated — that arm
+// is what stops it from being "paths do not execute", and it is the arm that would convict every
+// correctly-claimed row the day the native lane starts executing. And a row whose paths both execute
+// while it still claims StructurallyGuaranteed IS inflated, one rank rather than two, which is what
+// stops the predicate from collapsing to a boolean executes/does-not.
+//
+// THE THIRD ARM WAS WRONG IN THE FIRST CUT AND THE WITNESS CAUGHT IT: it reused the shared fixture,
+// which hardcodes a StructurallyGuaranteed claim, and then asserted the row was not inflated while
+// it executed at MechanicallyPreventable. The witness returned false rather than green, which is the
+// arm doing its job on its own author.
+test fn v2_compile_obligation_rung_inflation_is_a_strict_inequality_holds() -> Bool {
+  obligation_rung_is_inflated(
+    o: fixture_row(native_arm: non_executing_arm(), subject: frozen_and_excluded_subject())
+  )
+    && !obligation_rung_is_inflated(o: honestly_claimed_fixture_row())
+    && !obligation_rung_is_inflated(o: fully_executing_exact_claim_fixture_row())
+    && obligation_rung_is_inflated(
+      o: fixture_row(native_arm: executing_arm(), subject: discovered_subject())
+    )
+}
+
+// A CLAIM ABOVE THE ROW'S OWN CEILING IS INCOHERENT, and unlike the emptiness checks this module
+// deleted, this RED is authorable — the ceiling and the claim are independent fields and a fixture
+// can set them in either order.
+test fn v2_compile_obligation_claim_above_its_own_ceiling_is_detected_holds() -> Bool {
+  obligation_claim_exceeds_its_ceiling(o: over_ceiling_fixture_row())
+    && !obligation_claim_exceeds_its_ceiling(
+      o: fixture_row(native_arm: non_executing_arm(), subject: discovered_subject())
+    )
+}
+
+fn honestly_claimed_fixture_row() -> V2CompileObligation {
+  V2CompileObligation {
+    identity: "fixture_honest" as NonEmptyStr,
+    kind: RequiredRootLens,
+    home: HomeAuthority { authority: fixture_home },
+    claimed_rung: Mitigatable,
+    witnesses: [frozen_and_excluded_subject()],
+    discriminating_red: "fixture red" as NonEmptyStr,
+    positive_control: "fixture positive control" as NonEmptyStr,
+    native: non_executing_arm(),
+    route_reach: fixture_reach(),
+    ceiling: StructurallyGuaranteed,
+    next_trigger: "fixture trigger" as NonEmptyStr,
+    seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
+    related_drops: [],
+  }
+}
+
+fn over_ceiling_fixture_row() -> V2CompileObligation {
+  V2CompileObligation {
+    identity: "fixture_over_ceiling" as NonEmptyStr,
+    kind: RequiredRootLens,
+    home: HomeAuthority { authority: fixture_home },
+    claimed_rung: StructurallyGuaranteed,
+    witnesses: [discovered_subject()],
+    discriminating_red: "fixture red" as NonEmptyStr,
+    positive_control: "fixture positive control" as NonEmptyStr,
+    native: non_executing_arm(),
+    route_reach: fixture_reach(),
+    ceiling: Mitigatable,
+    next_trigger: "fixture trigger" as NonEmptyStr,
+    seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
+    related_drops: [],
+  }
+}
+
+fn fully_executing_exact_claim_fixture_row() -> V2CompileObligation {
+  V2CompileObligation {
+    identity: "fixture_exact" as NonEmptyStr,
+    kind: RequiredRootLens,
+    home: HomeAuthority { authority: fixture_home },
+    claimed_rung: MechanicallyPreventable,
+    witnesses: [discovered_subject()],
+    discriminating_red: "fixture red" as NonEmptyStr,
+    positive_control: "fixture positive control" as NonEmptyStr,
+    native: executing_arm(),
+    route_reach: fixture_reach(),
+    ceiling: StructurallyGuaranteed,
+    next_trigger: "fixture trigger" as NonEmptyStr,
+    seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
+    related_drops: [],
+  }
 }
