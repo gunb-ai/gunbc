@@ -168,21 +168,28 @@ func launch_native_population(ctx: SparkRemoteExecutionContext, plan: ArmLaunchP
 //
 // THE LOG IS COLLECTED BEFORE THE CONTAINER IS REMOVED, because a failed rank whose logs were destroyed
 // teaches nothing about why it failed -- and the next attempt then repeats the failure blind.
+// THE LOG IS RETAINED, NOT MERELY REPORTED AS CAPTURED. A first revision ran `docker logs`, kept a Bool
+// saying it had worked, and discarded the output -- so the receipt asserted "log captured" while nothing
+// held a log. On 2026-09-10 four native ranks started, the endpoint never answered, the ranks were removed
+// with that Bool set true on all four, and the reason the engine never served was destroyed with the
+// containers. A receipt that claims evidence exists must carry it.
 type RankRollbackOutcome
-  = RankCleanedUp { node: ArmNode, log_captured: Bool }
-  | RankCleanupFailed { node: ArmNode, cause: String }
+  = RankCleanedUp { node: ArmNode, log_tail: String }
+  | RankCleanupFailed { node: ArmNode, cause: String, log_tail: String }
 
 fn rank_rollback_text(o: RankRollbackOutcome) -> String {
   match o {
-    RankCleanedUp { node: n, log_captured: c } =>
-      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " removed", if c { " (log captured)" } else { " (LOG NOT CAPTURED)" }], "")
-    RankCleanupFailed { node: n, cause: cz } =>
-      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " CLEANUP FAILED: ", cz], "")
+    RankCleanedUp { node: n, log_tail: l } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " removed; log: ", l], "")
+    RankCleanupFailed { node: n, cause: cz, log_tail: l } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " CLEANUP FAILED: ", cz, "; log: ", l], "")
   }
 }
 
+// THE TAIL IS LARGE ENOUGH TO CARRY A TRACEBACK. A vLLM start-up failure prints a stack through several
+// frames plus the executor's own shutdown lines, so a short tail keeps the symptom and loses the cause.
 fn rank_log_argv(node: ArmNode) -> List<String> {
-  ["docker", "logs", "--tail", "200", glm_native_container_name as String]
+  ["docker", "logs", "--tail", "400", glm_native_container_name as String]
 }
 
 fn rank_remove_argv(node: ArmNode) -> List<String> {
@@ -195,9 +202,9 @@ func rollback_one_rank(ctx: SparkRemoteExecutionContext, node: ArmNode) -> RankR
   let log = spark_exec(ctx: ctx, host: node.host, argv: rank_log_argv(node: node))
   let removed = spark_exec(ctx: ctx, host: node.host, argv: rank_remove_argv(node: node))
   if remote_run_succeeded(r: removed) {
-    RankCleanedUp { node: node, log_captured: remote_run_succeeded(r: log) }
+    RankCleanedUp { node: node, log_tail: remote_run_text(r: log) }
   } else {
-    RankCleanupFailed { node: node, cause: remote_run_text(r: removed) }
+    RankCleanupFailed { node: node, cause: remote_run_text(r: removed), log_tail: remote_run_text(r: log) }
   }
 }
 
@@ -209,7 +216,7 @@ func rollback_started_ranks(ctx: SparkRemoteExecutionContext, started: List<ArmN
 
 fn every_rank_cleaned(outcomes: List<RankRollbackOutcome>) -> Bool {
   count(filter(outcomes, o => match o {
-    RankCleanedUp { node: _, log_captured: _ } => false
-    RankCleanupFailed { node: _, cause: _ } => true
+    RankCleanedUp { node: _, log_tail: _ } => false
+    RankCleanupFailed { node: _, cause: _, log_tail: _ } => true
   })) == 0
 }

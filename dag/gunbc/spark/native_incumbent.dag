@@ -4,7 +4,9 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.glm_canary_converge { go_template_action }
+import gunbc.spark.glm_canary_converge {
+  go_template_action, glm_canary_health_poll_budget, glm_canary_health_poll_interval_seconds,
+}
 import gunbc.spark.remote_execution {
   SparkRemoteExecutionContext, SparkRemoteRun, RemoteRan, RemoteUnreachable,
   spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
@@ -173,11 +175,22 @@ func restore_incumbent(ctx: SparkRemoteExecutionContext, host: HostIdentity) -> 
   }
 }
 
-// THE RESTORE BUDGET IS ITS OWN VALUE AND SHORTER THAN THE NATIVE ARM'S. The incumbent has already loaded
-// its weights once and its container is being restarted rather than created, so a budget sized for a cold
-// four-rank start would hide a restoration that is simply not happening.
-data incumbent_restore_poll_budget: Nat = 40
-data incumbent_restore_poll_interval_seconds: Nat = 15
+// THE RESTORE BUDGET IS THE CANARY MODULE'S OWN, AND AN INVENTED ONE ALREADY PRODUCED A FALSE OUTAGE.
+//
+// A first revision set this to 40 polls of 15 seconds -- 600 seconds -- while
+// gunbc.spark.glm_canary_converge records, in prose beside its own health poll, that "the engine took about
+// twelve minutes to answer". On 2026-09-10 the transaction stopped that engine, failed to bring up the
+// native arm, restarted the incumbent, waited 600 seconds, and reported
+// NativeFailedAndIncumbentLost -- an OUTAGE REQUIRING A PERSON. The incumbent answered about two minutes
+// later. The endpoint was never lost; the budget was shorter than the documented startup of the very engine
+// being restored, and the number that would have prevented it was in this repository the whole time.
+//
+// SO THE FIGURE IS CONSUMED RATHER THAN CHOSEN. glm_canary_health_poll_budget and its interval are the
+// canary route's own decision about how long this engine takes to answer -- 60 polls of 20 seconds -- and
+// a restoration of that engine has no business holding a second opinion. This is the same failure as a
+// transcribed measurement: the instrument existed and a literal was written beside it.
+data incumbent_restore_poll_budget: Nat = glm_canary_health_poll_budget
+data incumbent_restore_poll_interval_seconds: Nat = glm_canary_health_poll_interval_seconds
 
 fn incumbent_sleep_argv() -> List<String> {
   ["sleep", to_string(incumbent_restore_poll_interval_seconds)]
