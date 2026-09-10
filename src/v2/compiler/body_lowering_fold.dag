@@ -503,6 +503,8 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_field_decl_block)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
+    || (emitted == ^dag_surface_where_refinement_clause)
+    || (emitted == ^dag_surface_where_predicate)
 }
 
 fn body_lower_param_ref_atom(source: Node, identity: Symbol) -> Node {
