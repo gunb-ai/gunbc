@@ -216,36 +216,29 @@ data heal_generated_artifacts_job_id: String = "heal-generated-artifacts"
 // admission comparing against a name nothing produces, refusing every candidate forever.
 data witness_floor_workflow_name: String = "witnesses"
 
-// CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling 2026-08-17:
-// every push to main must finish; only pull-request runs may be superseded. The predecessor
-// collapsed both axes into one group keyed on `github.ref` with an unconditional `true`, so
-// consecutive pushes to main landed in the single group `witness-floor-refs/heads/main` and each
-// new push killed the previous commit's run -- main's floor coverage was decided by push arrival,
-// the empty-observation narrow section 5 forbids: a cancelled run reports no verdict, and no
-// verdict was being read as nothing to report.
+// THE GROUP IS PER REF ON MAIN, PER PULL REQUEST ELSEWHERE, AND RUNNING SUPERSESSION STAYS OFF.
 //
-// Setting `cancel_in_progress` false for main is NOT sufficient on its own. GitHub cancels PENDING
-// runs in a group regardless of that flag -- it only protects a run that has already started -- so
-// a main run queued behind a busy fleet could still be superseded before it executed. The group
-// must therefore be unique per main run, which `github.run_id` gives, and the flag must
-// additionally be false there so the two mechanisms agree rather than one relying on the other.
+// Pull requests still key on `github.event.pull_request.number` so synchronize events share a
+// group. Pushes, merge_group, and workflow_dispatch fall through to `github.ref` -- for main that
+// is one group `witness-floor-refs/heads/main`, not a unique `run_id` per push.
 //
-// The cost is that N concurrent main runs may execute where one used to. That is the intended
-// trade -- coverage of every landed commit, at fleet occupancy -- and the reason the dep-info race
-// under `target/` is worth identifying before this is widened further.
+// WHY PER-REF ON MAIN, AND WHY AN IN-FLIGHT MAIN RUN IS ALLOWED TO FINISH. The 2026-08-17 unique
+// `run_id` key made every main commit start its own required run. That was the right occupancy
+// trade when the required wall was the floor lane. The required-v2-native job is a different
+// envelope: its producer is `gunbc.witness_v2_native_route` (the native-route census on the
+// required-v2-native job), and two concurrent main pushes would occupy the shared arm64 runners
+// for that whole envelope at once. Per-ref grouping serializes main. Running supersession stays
+// `NeverSupersedeRunning` because `fleet_compile_cancellation_standing` is still
+// `FleetCancellationNotSafe` -- a GitHub cancel SIGKILLs cargo and permanently leaks host jobserver
+// permits (the 2026-08-30 srv1 measurement that retired the event-expression). Pending
+// replacement (`ReplaceExistingPending`) is the other axis: GitHub drops a not-yet-started
+// same-group run when a newer one arrives, so the backlog is one in-flight plus at most one
+// queued successor, not an unbounded queue of 6h jobs and not N concurrent native jobs.
 //
-// AND QUEUEING IS NOT THE THIRD ARM IT LOOKS LIKE. Sharing one main group with cancellation off
-// makes GitHub QUEUE same-group runs rather than drop them, which reads as coverage without
-// concurrency cost -- but the floor's merge-critical wall runs hours against a main push gap of
-// minutes (run 31672107941, the last main run to complete before the 2026-08-13 measurement), so a
-// queued policy accumulates an unbounded backlog and delivers each verdict long after the commit it
-// judges. A unique key runs them concurrently instead, which is the only arm that yields a verdict
-// per main commit at this arrival rate. This paragraph is carried here because it was the only
-// record of that measurement, and it lived in `gunbc.ci_workflow_expressions` -- a SECOND
-// concurrency authority left behind when the floor cut deleted the workflow it fed. That module's
-// note asserted main was grouped by `github.sha` and "never run_id", which is not what CI runs;
-// its rows are deleted with this one standing as the single authority.
-data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
+// WHAT IS GIVEN UP: a main commit whose run is still PENDING when the next push arrives never
+// starts. The in-flight commit still receives a verdict. That is the occupancy decision, not
+// a silent widen of cancel-in-progress.
+data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.ref }}"
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
 //
@@ -1684,12 +1677,10 @@ fn witness_floor_job() -> Job {
 // the v2 closure emission, one cargo build of the emitted compiler crate, the universe
 // derivation fold (the floor's own discovery producer over the full module inventory), and the
 // native run itself — one process over the derived v2.test.* universe plus the three controls.
-// Measured 2026-09-10 on the 4-core cloud VM, after the lexer accumulation fix
-// (v2.compiler.tokenize lexeme_grow): the native run dominates the envelope — ~70 minutes for
-// the whole-corpus context fold plus the 3467-row eval, observed by the
-// gunbc.witness_v2_native_route census — beside ~10 minutes of emission and ~10 minutes of
-// cargo build. The envelope is 180 minutes, the floor lane's own value, so the merge queue's
-// check_response_timeout (witness_floor_lane_timeout plus margin) still bounds it.
+// THE ENVELOPE IS AN EXECUTION BOUND, NEVER A TARGET. The producer is
+// gunbc.witness_v2_native_route (the required-v2-native census on the live job). Six hours is
+// the declared envelope, ratcheted down later when that producer says the wall has dropped.
+// The merge queue's check_response_timeout reads required_ci_slowest_lane_timeout plus margin.
 //
 // WHAT RED DISCRIMINATES. The admission authority is gunbc.witness_v2_native_route: the observed
 // population must join the derived universe exactly (no duplicates, no foreign rows, no
@@ -1705,7 +1696,7 @@ fn witness_floor_job() -> Job {
 // control and the floor cannot share a job. The lane also builds a second crate (the emitted
 // compiler), a capability envelope the existing lanes do not declare. A job is the smallest
 // boundary that keeps both facts honest.
-data v2_native_lane_timeout: Minute = minute(count: 180)
+data v2_native_lane_timeout: Minute = minute(count: 360)
 
 fn v2_native_lane_build_script() -> String {
   repo_self_build_command(bins: witness_floor_required_bins)
@@ -1775,12 +1766,11 @@ fn v2_native_lane_job() -> Job {
   }
 }
 
-// THE LANE'S EXECUTION ENVELOPE, NAMED BECAUSE A SECOND CONSUMER NOW READS IT. The value did not
-// change; it stopped being a literal. gunbc.repo_ruleset derives the merge queue's
-// check_response_timeout from this row, because a queue whose response timeout is BELOW the
-// repository's own execution envelope manufactures queue failures out of runs that were going to
-// pass -- it dequeues green work for being slow. Two numbers that must not drift apart are one
-// row, read twice (DESIGN section 3).
+// THE FLOOR LANE'S EXECUTION ENVELOPE. The merge queue no longer reads this row alone: the
+// required aggregate's slowest job is required_ci_slowest_lane_timeout (this row and
+// v2_native_lane_timeout), and gunbc.repo_ruleset derives check_response_timeout from that
+// maximum plus margin. Two numbers that must not drift apart stay one fold, read twice
+// (DESIGN section 3).
 //
 // IT IS A Minute AND NOT AN Int, because the fact is a duration and std.measure already owns that
 // carrier. The Actions job field is an Int, so the projection unwraps it at the boundary -- which
@@ -1788,6 +1778,14 @@ fn v2_native_lane_job() -> Job {
 // carries the unit in its spelling, while the value this row hands to a second consumer carries it
 // in its type.
 data witness_floor_lane_timeout: Minute = minute(count: 180)
+
+fn required_ci_slowest_lane_timeout() -> Minute {
+  if minute_count(v2_native_lane_timeout) >= minute_count(witness_floor_lane_timeout) {
+    v2_native_lane_timeout
+  } else {
+    witness_floor_lane_timeout
+  }
+}
 
 // MERGE_GROUP IS ENROLLED SO THE REQUIRED CHECK CAN RUN ON THE COMPOSED COMMIT, NOT ONLY ON EACH
 // BRANCH HEAD. Without this trigger a merge queue would create its merge-group commit and this

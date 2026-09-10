@@ -2,7 +2,7 @@ module test.claim.repo_ruleset_witness_test
 
 import std.types { Bool, String, Int, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
+import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout, v2_native_lane_timeout, required_ci_slowest_lane_timeout }
 import std.measure { minute, minute_count, merge_queue_entry_count, merge_queue_entry_count_value }
 import extdeps.github.actions { github_actions_app_integration_id }
 import gunbc.repo_ruleset {
@@ -348,6 +348,11 @@ test fn w_the_queue_is_commissioned_building_one_entry_at_a_time() -> Bool {
 // literal here would have gone stale on that edit with nothing going red.
 test fn w_the_queue_timeout_is_never_below_the_floors_execution_envelope() -> Bool {
   minute_count(gunbc_merge_queue_proposal.check_response_timeout) > minute_count(witness_floor_lane_timeout)
+}
+
+test fn w_the_queue_timeout_is_never_below_the_native_lanes_execution_envelope() -> Bool {
+  minute_count(gunbc_merge_queue_proposal.check_response_timeout) > minute_count(v2_native_lane_timeout)
+    && minute_count(required_ci_slowest_lane_timeout()) == minute_count(v2_native_lane_timeout)
 }
 
 // A LIVE QUEUE NOBODY SIGNED OFF IS REPORTED. This is the web-form change the module exists to stop

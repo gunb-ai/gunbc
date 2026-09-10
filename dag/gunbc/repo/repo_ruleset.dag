@@ -5,7 +5,7 @@ import std.types { HttpStatus, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
 import gunbc.repository { gunbc_repository }
-import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
+import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, required_ci_slowest_lane_timeout }
 import std.measure { Minute, minute, minute_count, measure_add, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import extdeps.github.actions { github_actions_app_integration_id }
 import extdeps.github.rulesets
@@ -264,14 +264,15 @@ type MergeQueueDesire
 // them. SQUASH is what keeps the queue's publication the same shape as the one this repository
 // already documents.
 //
-// check_response_timeout IS DERIVED FROM THE FLOOR'S OWN ENVELOPE AND IS NOT A CONSTANT HERE. It
-// reads gunbc.witness_floor_workflow witness_floor_lane_timeout and adds a declared margin, both as Minute.
+// check_response_timeout IS DERIVED FROM THE REQUIRED AGGREGATE'S SLOWEST ENVELOPE AND IS NOT A
+// CONSTANT HERE. It reads gunbc.witness_floor_workflow required_ci_slowest_lane_timeout (the
+// max of the floor lane and the v2-native lane) and adds a declared margin, both as Minute.
 // A queue whose response timeout is BELOW the repository's execution envelope manufactures queue
 // failures out of runs that were going to pass: it dequeues green work for being slow, and the
 // author of the next timeout bump would have no way to know a second number tracked the first.
-// Transcribing 180 here would have been exactly that second authority, so the number is read from
-// the row that owns it -- and the witness asserts the ordering rather than the value, so raising
-// the floor's timeout cannot silently invert it.
+// Transcribing a minute count here would have been exactly that second authority, so the
+// number is read from the row that owns it -- and the witness asserts the ordering rather than
+// the value, so raising a required job's timeout cannot silently invert it.
 //
 // THE ENTRY COUNTS ARE COMMISSIONING VALUES, NOT THROUGHPUT VALUES, and the difference is the
 // whole reason they are 1. Merging one at a time means a failure names one pull request rather
@@ -294,7 +295,7 @@ data merge_queue_build_concurrency_increase: DissolutionCondition = unbound_diss
 data merge_queue_response_margin: Minute = minute(count: 30)
 
 fn merge_queue_check_response_timeout() -> Minute {
-  measure_add(a: witness_floor_lane_timeout, b: merge_queue_response_margin)
+  measure_add(a: required_ci_slowest_lane_timeout(), b: merge_queue_response_margin)
 }
 
 // THE CONTENTION THIS PROPOSAL TARGETS IS MEASURED, NOT ARGUED FROM FIRST PRINCIPLES, AND THE

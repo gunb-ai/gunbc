@@ -84,11 +84,19 @@ struct NativeFileRefusalObserved {
 
 /// The emitted compiler, prepared: where the binary is, what its bytes are, and the identity of
 /// the closure it was emitted from.
+/// Seed mirror of `gunbc.witness_v2_native_route` `native_lane_emitted_compiler_rustflags`.
+const NATIVE_LANE_EMITTED_COMPILER_RUSTFLAGS: &str = "-D warnings";
+
 struct EmittedPreparation {
     binary_path: PathBuf,
     binary_identity: String,
     closure_identity: String,
     seed_identity: String,
+    cargo_command: String,
+    effective_rustflags: String,
+    rustc_identity: String,
+    cargo_exit_status: i32,
+    warning_count: u32,
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {
@@ -303,17 +311,28 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
          rss_kb_after={rss_after_kb:?}); cargo build",
         crate_dir.display()
     );
-    let verdict = super::emitted_closure_compile_host::run_cargo(
+    let cargo_run = super::emitted_closure_compile_host::run_cargo_recorded(
         &crate_dir,
         &workspace,
         "v2_native_lane_carries_no_mutation_probe",
+        Some(NATIVE_LANE_EMITTED_COMPILER_RUSTFLAGS),
     );
-    if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
+    let cargo_exit_status = match &cargo_run.verdict {
+        super::emitted_closure_compile_host::CargoVerdict::Completed { status, .. } => *status,
+        _ => -1,
+    };
+    if !super::emitted_closure_compile_host::cargo_verdict_compiled(&cargo_run.verdict) {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — {}",
-            super::emitted_closure_compile_host::cargo_verdict_summary(&verdict)
+            super::emitted_closure_compile_host::cargo_verdict_summary(&cargo_run.verdict)
         ));
     }
+    let rustc_identity = rustc_verbose_identity();
+    eprintln!(
+        "required-ci: v2-native cargo_command={} effective_RUSTFLAGS={} rustc_identity={} \
+         cargo_exit_status={cargo_exit_status} warning_count={}",
+        cargo_run.command, cargo_run.rustflags, rustc_identity, cargo_run.warning_count
+    );
     let binary_path = workspace.join("target").join("release").join(
         super::emitted_closure_compile_host::probe_package_name(NATIVE_COMPILE_ENTRY),
     );
@@ -337,7 +356,24 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
         binary_identity,
         closure_identity,
         seed_identity,
+        cargo_command: cargo_run.command,
+        effective_rustflags: cargo_run.rustflags,
+        rustc_identity,
+        cargo_exit_status,
+        warning_count: cargo_run.warning_count,
     })
+}
+
+fn rustc_verbose_identity() -> String {
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    match Command::new(&rustc).arg("-vV").output() {
+        Ok(output) => String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .next()
+            .unwrap_or("rustc -vV produced no lines")
+            .to_string(),
+        Err(e) => format!("rustc -vV failed: {e}"),
+    }
 }
 
 /// THE OLD-ROUTE WITHDRAWAL, AS A GUARD SO A REFUSAL PATH CANNOT SKIP THE RESTORE. The seed's
@@ -698,6 +734,63 @@ fn optional_verdict_value(
     }
 }
 
+fn optional_int(ctx: &v1_interpreter::InterpContext, value: Option<i64>) -> Value {
+    match value {
+        Some(n) => Value::Variant {
+            type_name: ctx.sym("Optional"),
+            variant_name: ctx.sym("Present"),
+            fields: Rc::new(vec![(ctx.sym("value"), Value::Int(n))]),
+        },
+        None => Value::Variant {
+            type_name: ctx.sym("Optional"),
+            variant_name: ctx.sym("Absent"),
+            fields: Rc::new(vec![]),
+        },
+    }
+}
+
+fn operability_value(
+    ctx: &v1_interpreter::InterpContext,
+    preparation: &EmittedPreparation,
+    route_wall_ms: i64,
+    peak_rss_bytes: Option<i64>,
+    admitted_budget_bytes: Option<i64>,
+    budget_source: &str,
+) -> Value {
+    Value::Record {
+        type_name: ctx.sym("NativeRouteOperability"),
+        fields: Rc::new(vec![
+            (
+                ctx.sym("cargo_command"),
+                str_value(&preparation.cargo_command),
+            ),
+            (
+                ctx.sym("effective_rustflags"),
+                str_value(&preparation.effective_rustflags),
+            ),
+            (
+                ctx.sym("rustc_identity"),
+                str_value(&preparation.rustc_identity),
+            ),
+            (
+                ctx.sym("cargo_exit_status"),
+                Value::Int(i64::from(preparation.cargo_exit_status)),
+            ),
+            (
+                ctx.sym("warning_count"),
+                Value::Int(i64::from(preparation.warning_count)),
+            ),
+            (ctx.sym("route_wall_ms"), Value::Int(route_wall_ms)),
+            (ctx.sym("peak_rss_bytes"), optional_int(ctx, peak_rss_bytes)),
+            (
+                ctx.sym("admitted_budget_bytes"),
+                optional_int(ctx, admitted_budget_bytes),
+            ),
+            (ctx.sym("budget_source"), str_value(budget_source)),
+        ]),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn receipt_value(
     ctx: &v1_interpreter::InterpContext,
@@ -711,6 +804,10 @@ fn receipt_value(
     true_control: Option<&NativeVerdictObserved>,
     malformed_control: Value,
     withdrawn_executable: &str,
+    route_wall_ms: i64,
+    peak_rss_bytes: Option<i64>,
+    admitted_budget_bytes: Option<i64>,
+    budget_source: &str,
 ) -> Value {
     let universe_values: Vec<Value> = universe
         .iter()
@@ -807,6 +904,17 @@ fn receipt_value(
                     )]),
                 },
             ),
+            (
+                ctx.sym("operability"),
+                operability_value(
+                    ctx,
+                    preparation,
+                    route_wall_ms,
+                    peak_rss_bytes,
+                    admitted_budget_bytes,
+                    budget_source,
+                ),
+            ),
         ]),
     }
 }
@@ -818,6 +926,7 @@ fn receipt_value(
 /// `native_route_admission_summary` of that same value, so the terminal line and the admission
 /// fold cannot disagree about what was decided.
 pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
+    let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     let tested_tree = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
 
@@ -959,6 +1068,30 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
             ]),
         }
     };
+    let route_wall_ms = i64::try_from(lane_started.elapsed().as_millis()).unwrap_or(i64::MAX);
+    let (_, cgroup_peak) = super::p1_cohort::p1_cohort_cgroup_memory();
+    let peak_rss_bytes = cgroup_peak
+        .or_else(super::peak_rss_vhwm_bytes)
+        .and_then(|b| i64::try_from(b).ok());
+    let budget_resolution = crate::memory_governor::read_host_budget_resolution();
+    let admitted_budget_bytes = budget_resolution
+        .bytes()
+        .and_then(|b| i64::try_from(b).ok());
+    let budget_source = budget_resolution.label();
+    eprintln!(
+        "required-ci: v2-native receipt fields closure_digest={} emitted_binary_digest={} \
+         cargo_command={} effective_RUSTFLAGS={} rustc_identity={} cargo_exit_status={} \
+         warning_count={} route_wall_ms={route_wall_ms} peak_rss_bytes={peak_rss_bytes:?} \
+         admitted_budget_bytes={admitted_budget_bytes:?} budget_source={budget_source} \
+         (budget authority gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)",
+        preparation.closure_identity,
+        preparation.binary_identity,
+        preparation.cargo_command,
+        preparation.effective_rustflags,
+        preparation.rustc_identity,
+        preparation.cargo_exit_status,
+        preparation.warning_count
+    );
     let receipt = receipt_value(
         &route_ctx,
         &tested_tree,
@@ -971,6 +1104,10 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         true_control.as_ref(),
         malformed_value,
         &withdrawn_executable,
+        route_wall_ms,
+        peak_rss_bytes,
+        admitted_budget_bytes,
+        &budget_source,
     );
 
     // 8. ADMISSION, BY THE AUTHORITY. The lane prints the authority's own summary either way.

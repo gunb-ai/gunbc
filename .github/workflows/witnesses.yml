@@ -17,7 +17,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: witness-floor-${{ github.event.pull_request.number || github.run_id }}
+  group: witness-floor-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 env:
   CARGO_TERM_COLOR: always
@@ -405,7 +405,7 @@ jobs:
         if: always() && steps.heal_commit_push.outputs.heal_author_commit_required == '1'
   required-v2-native:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 180
+    timeout-minutes: 360
     steps:
       - name: Record runner filesystem at job start
         run: |
