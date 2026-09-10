@@ -153,9 +153,14 @@ fn observed_bmc_credential_rotation(
 }
 
 // EVERY WAY THE STEP REFUSES, each naming which reading failed rather than a
-// generic "rotation failed". The three access states the design doc names —
-// CredentialStateUnknown, PreviouslyRotatedCredentialRequired,
-// AccountManagementUnavailable — keep their names from that ruling.
+// generic "rotation failed". Two of the three access states the design doc
+// names keep their names from that ruling: CredentialStateUnknown and
+// PreviouslyRotatedCredentialRequired. The third is renamed here to
+// AccountManagementUnreachable, because AccountManagementUnavailable is already
+// the arm of CredentialRotationApplication that says the service did not
+// answer, and one spelling for the OBSERVATION and the REFUSAL derived from it
+// would be one name for two facts — a fork of exactly the kind DESIGN §3 names,
+// inside a single module.
 //
 // PublishedCredentialStillAccepted is the discriminating refusal this phase
 // exists for: everything else about the rotation succeeded and the machine is
