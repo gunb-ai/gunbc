@@ -71,8 +71,9 @@ Both workflows today select `[self-hosted, linux, arm64]` (public via `gunbc.ci_
 |---|---|---|
 | Size | Required floor: two parallel lanes, 90-minute jobs, clippy-all-targets + witnesses | Smaller witness roster; builds gunbc from **unpinned public main** |
 | Merge consequence | Blocks every gunbc PR | Blocks private PRs (already largely red today) |
-| Instrument | Already has toolchain filesystem probe | Mitigation lane (`warm-badger-62`, `strategy.private_witness_workflow`, private #46) — do not fork that authority here |
+| Adjacent lanes | Filesystem probe already in `witness_floor_workflow`. Typed env-vs-code classification: **still-bear-335** (`adhoc-3b2f737a-7b8`). | Process count: **warm-badger-62** / private #46 — one `gunbc run` per roster row → one process for the enforced half. DESIGN §2, not §5. Do not fork `strategy.private_witness_workflow`. |
 | M1 | **`dogfood-started` is this repo's CI** | Not the year-end exit |
+| `runs-on` | `gunbc.ci_runner_target` `gunbc_ci_selected_runner_spec` | Not a YAML literal. `witnesses_job()` is `SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: Aarch64, custom: []) }`. Per-attempt label goes in `custom`. #46 does not touch `witnesses_job()`. |
 
 **Sequence (shared capability first, then workflows):**
 
@@ -84,6 +85,16 @@ Instinct (private first) is right for **cure of today's red** and for **not taki
 
 Capacity: one Mt. Collins canary is not two 90-minute public lanes plus private. Public cutover needs either serialized lanes, a second canary host, or an honest declared drop of parallelism. That is a cutover-decision input, not something this plan silently assumes.
 
+**The number the microVM arm turns on is the BUILD, not the roster.** After #46 the private witnesses job (run 34512318040) is approximately: checkout+toolchain 12s, **Build gunbc from the public seed 3m 02s**, roster 9m 18s (53 min before #46, ~2 min after on a later measurement). Before #46 the roster was 52.8 of 55.7 minutes and the build was ~5%. After it, the roster is a couple of minutes and **the public-seed `v1-compiler --bin gunbc` build is the dominant term**. That 3m 02s was measured on a fleet slot that had built the crate before. A per-attempt microVM starts cold by construction — that is the isolation being bought. The plan must name one of three arms for those build inputs **before** flipping `runs-on`, and must **measure a genuinely cold build** (cheap, on a disposable guest or a wiped `CARGO_HOME`) rather than treating 3m as the floor:
+
+1. **Warm layer** — a content-addressed cargo/sccache volume attached per attempt, keyed so it cannot be the shared-FS deleter class (another job cannot `unlink` this attempt's rustc). Isolation of *running* binaries is preserved; cache *bytes* are shared under a digest. This is a materialization question (`std.materialization_ladder`), not a leftover host home.
+2. **Prebuilt binary published by public CI** — private consumes an artifact identity from a public required run of the same public SHA it already checks out. Private then does not compile `gunbc` from source on the guest. Requires an artifact-return path the compute contract already names as missing for remote builds; do not invent a second publication channel.
+3. **Accepted cold-build cost per attempt** — isolation with no reused compiler state. Honest only after a cold measurement, which may be considerably more than three minutes. If that number races `timeout-minutes: 60` on public's floor, the arm is a declared capacity fact, not a default.
+
+No measurement of a genuinely cold private `gunbc` build is in this document. **That measurement is a cutover precondition**, not a follow-up.
+
+**Complementary, not subsuming.** Private `timeout-minutes: 60` and a 53-minute roster is why main sat broken: two runs after 2026-09-08 **cancelled at 60 minutes**, so three real defects had nothing reporting. MicroVM isolation stops the deleter class; it does not shorten a 53-minute job. #46's process-count cut (53 min → ~8–12 min job) stops racing that timeout. Neither change covers the other.
+
 ## 4. What is lost, and the staged carve-out
 
 **X (authority that must end in one motion):** the shared-filesystem self-hosted slot — persistent `jit-runner.sh` on srvN, jobs sharing a host kernel and a toolchain tree that another job can `unlink`. Also the recovered host-boot script once Y is PID1.
@@ -94,25 +105,30 @@ Capacity: one Mt. Collins canary is not two 90-minute public lanes plus private.
 
 **Lost on transition, and how it is covered:**
 
-- **Shared toolchain / cargo caches across jobs on one host.** Covered by construction: each guest starts clean. Cost goes up; deleter class becomes unwritable. That is the point of `toolchain_filesystem_probe_dissolution_condition`.
-- **`ci_isolate_toolchain_script` / start-end filesystem probe.** Retired when microVMs make the eviction class impossible — tell the mitigation lane (below).
+- **Shared toolchain / cargo caches across jobs on one host.** Isolation makes the deleter class unwritable (`toolchain_filesystem_probe_dissolution_condition`). Cost is not "goes up a bit": after #46 the **cold-or-warm build of `gunbc` is the job**. Section 3 names the three arms; until a cold measurement exists, "each guest starts clean" is not a priced cover.
+- **`ci_isolate_toolchain_script` / start-end filesystem probe.** Retired when microVMs make the eviction class impossible — that question belongs to **still-bear-335**, not to the process-count PR.
 - **Persistent runner registration.** Replaced by JIT per attempt. Covered only when mint HTTP + jail staging frontiers bind (`jit_mint_http_realization_frontier`, `jail_jit_device_staging_frontier`).
 - **Slot RAM carve / `CARGO_BUILD_JOBS` from `ci_runner_target_memory_regime`.** A guest size is a different envelope (`gunbc.runner_microvm` size decision). The flip must project through `selected_ci_runner_target`, not a literal in YAML.
 - **Canary-only capacity.** Covered by refusing to cut public until capacity is named, or by a declared §4b drop of dual-lane parallelism with a restoration trigger = a second canary host or serialized lanes that still meet the floor.
 
 X may remain as an offline oracle (srv slots keep running **until** the switch). Y must not resolve through X.
 
-## Mitigation lane — what retires their work
+## Adjacent lanes — what this cure does and does not retire
 
-`warm-badger-62` owns `strategy.private_witness_workflow` and private #46. That lane types environmental CI failure and gives private the filesystem instrument public already has. **Mitigation.** This lane is **cure**.
+Three lanes, three questions. An earlier revision of this plan routed the filesystem-instrument dissolution to warm-badger-62. That was wrong.
 
-**Retirement signal for the mitigation (delete when true, not before):**
+| Lane | Question | Relation to this plan |
+|---|---|---|
+| **still-bear-335** (`adhoc-3b2f737a-7b8`) | Typed env-vs-code outcome; private copy of the public filesystem instrument | **Mitigation of the deleter class.** Dissolution of that *instrument* is the microVM arm of `toolchain_filesystem_probe_dissolution_condition`. Typed classification of BMC/host/JIT failure is **not** dissolved by isolation. |
+| **warm-badger-62** (private #46) | Process count: stop re-acquiring the composed world 34 times | **DESIGN §2.** MicroVMs do not replace it. After #46 the build dominates; isolation makes that build colder. Do not edit `strategy.private_witness_workflow`. Do not put a per-attempt label in a function #46 did not touch — use `self_hosted_labels(…, custom: …)`. |
+| This plan | Per-job guest; FCI-3 before jailer; host image from Y | **Cure of the shared-FS eviction class.** Does not shorten a 53-minute roster. Does not classify failures. |
 
-1. Private and public required jobs `runs-on` a per-attempt microVM label, not `[self-hosted, linux, arm64]` fleet slots.
-2. `toolchain_filesystem_probe_dissolution_condition` is eligible to bind on the microVM arm (shared-filesystem eviction class impossible).
-3. Their typed environmental outcome may remain as a **classification** of BMC/host/JIT infrastructure failure — that is FCI-adjacent and is not dissolved by isolation. Only the **shared-FS deleter instrument** is dissolved.
+**Retirement signal for still-bear-335's filesystem instrument (delete when true, not before):**
 
-Do not edit `strategy.private_witness_workflow` from this lane.
+1. Private and public required jobs select a per-attempt microVM label (`custom` on private; `selected_ci_runner_target` on public), not the empty-custom fleet slot.
+2. `toolchain_filesystem_probe_dissolution_condition` is eligible to bind on the microVM arm.
+
+**Not retired by this cure:** private #46's single-process roster; `timeout-minutes: 60` racing a long roster; typed env-vs-code classification.
 
 ## Trigger state (this document's standing)
 
@@ -128,4 +144,4 @@ Do not edit `strategy.private_witness_workflow` from this lane.
 
 ## What this document deliberately does not do
 
-It does not change `selected_ci_runner_target`, private `runs-on`, fleet-converge, or recovered init. It does not exec jailer. It does not archive the mitigation lane. Those are the cutover, which this task forbids.
+It does not change `selected_ci_runner_target`, private `witnesses_job()` labels, fleet-converge, or recovered init. It does not exec jailer. It does not archive still-bear-335 or private #46. Those are the cutover, which this task forbids. The cold-build measurement is named as a precondition and is not taken in this change.
