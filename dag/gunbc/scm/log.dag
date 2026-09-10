@@ -9,7 +9,9 @@ module gunbc.scm.log
 // module is built entirely from what the envelope carries.
 //
 // WHAT THE ENVELOPE CARRIES: a RepositoryCommit has its minted reference, root, message and explicit
-// ancestry. So a log row can name the commit, name the program it points at, and carry the message.
+// ancestry. So a log row can name the commit, name the corpus manifest it points at, and carry the
+// message. (The root was a PROGRAM when this was written and is now a `CorpusManifestObjectRef` -- an
+// authored snapshot, not a semantic node. Found by external review, along with the two below.)
 // TWO FIELDS A USER WOULD EXPECT ARE ABSENT FROM THE MODEL, and their absence is reported
 // here rather than synthesised:
 //
@@ -38,11 +40,13 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 // the same refusal it is derived from.
 // THREE STANDINGS, NOT TWO, BECAUSE THE STORE ANSWERS TWO DIFFERENT NEGATIVES.
 //
-// A commit root must denote a semantic node: it is the thing `checkout` reconstructs. The store also
-// holds authored-source objects, so a locator can be PRESENT and still be the wrong kind of thing
-// for a root. An earlier revision asked `store_contains`, which is deliberately kind-agnostic --
-// it answers about the LOCATOR -- and so reported a file sitting under a commit's root locator as
-// `LoggedCommitRootHeld`: a log row claiming a checkoutable root where checkout refuses. The two
+// A commit root must denote a CORPUS MANIFEST: it is the snapshot `checkout` materializes. The store
+// also holds authored-source objects and semantic nodes, so a locator can be PRESENT and still be the
+// wrong kind of thing for a root. (This paragraph said "semantic node" from when a root WAS a program;
+// the arm it describes is `LoggedCommitManifestHeld`, which already had the corrected name.) An
+// earlier revision asked `store_contains`, which is deliberately kind-agnostic -- it answers about the
+// LOCATOR -- and so reported a file sitting under a commit's root locator as `LoggedCommitRootHeld`: a
+// log row claiming a checkoutable root where checkout refuses. The two
 // negatives have different remedies (fetch the missing object vs. repair a wrong-kind reference), so
 // they are separate arms rather than one Bool.
 //
@@ -60,7 +64,9 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 // is the defect this module's neighbours keep paying for.
 //
 // The wrong-kind arms swapped with the root's kind rather than thinning: a semantic node occupying
-// the root locator is now the wrong kind, and an authored source still is.
+// the root locator is now the wrong kind, and an authored source still is. That swap is exactly why
+// the prose above needed correcting rather than the arms -- the CODE tracked the manifest recut and
+// the sentences describing it did not.
 type LoggedCommitStanding
   = LoggedCommitManifestHeld
   | LoggedCommitRootMissingFromStore
@@ -137,11 +143,20 @@ fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryComm
 // it knows. Found by external review.
 //
 // BUT TWO REAL PRODUCERS DO NOT MAKE THE LIST CHRONOLOGICAL, and this is exactly where a stale premise
-// invites an over-correction. `commits` is also populated by DECODING a document and by importing a
-// history, and neither of those routes appends in any order this function can see. So the honest
-// statement is narrower than either the old claim or its negation: SOME commits now have a producer
-// that defines what appending meant, and the list as a whole still has no ordering basis, because a
-// property that holds of some members of a population is not a property of the population.
+// invites an over-correction. `commits` is also populated by `gunbc.scm.repository_envelope`
+// `decode_repository`, which reconstructs a commit list from a document in whatever order that
+// document happens to carry -- an order this function cannot see and the decoder does not claim to
+// preserve. So the honest statement is narrower than either the old claim or its negation: SOME
+// commits now have a producer that defines what appending meant, and the list as a whole still has no
+// ordering basis, because a property that holds of some members of a population is not a property of
+// the population.
+//
+// (AN EARLIER WRITING OF THIS PARAGRAPH -- MINE, IN THE COMMIT THAT REPLACED THE STALE PREMISE -- also
+// named "importing a history" as a second such route. THERE IS NO IMPORT ROUTE. No producer of that
+// name exists anywhere in `gunbc.scm`, and I invented it while correcting an annotation for asserting
+// a capability the model does not have. Caught by external review asking whether the route I cited had
+// a producer. The argument does not need it: one non-appending route is enough to defeat a claim that
+// every member was appended in order.)
 //
 // This is still not a tiebreak waiting to be chosen -- a tiebreak presumes a partial ordering basis,
 // and here the basis is absent. What would establish one is a per-commit fact every route must supply,
@@ -160,7 +175,10 @@ fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
   }
 }
 
-// Whether every logged commit names a program this repository actually holds. A consumer deciding
+// Whether every logged commit names a corpus manifest this repository actually holds -- held-ness of
+// the SNAPSHOT DESIGNATION, which is not recoverability of its entries; `LoggedCommitManifestHeld`
+// says the manifest object is present, and whether every source it names resolves is the separate
+// observation this function does not perform. A consumer deciding
 // whether the image is usable wants this without walking the rows itself, and it is a FACT rather
 // than a rendering, so it belongs beside the log rather than in whatever eventually prints it.
 fn commit_log_is_fully_held(log: CommitLog) -> Bool {

@@ -16,10 +16,18 @@ module gunbc.scm.ancestry
 // would therefore not be recovering it; it would be inventing it, and the invention would be
 // invisible because it would agree with position by construction.
 //
-// THIS MODULE LANDS BEFORE ANY PRODUCER, WHICH IS THE CHEAPEST MOMENT IT COULD. RepositoryCommit is
-// constructed in exactly two places on main -- its own type home and a witness -- so no production
-// code has yet baked in the assumption that history is a sequence. That is model-before-implement in
-// the order DESIGN prescribes, not a type built speculatively ahead of its consumer.
+// THIS MODULE LANDED BEFORE ANY PRODUCER, WHICH WAS THE CHEAPEST MOMENT IT COULD -- and that is now a
+// statement about WHEN it landed, not about the tree. At the time, `RepositoryCommit` was constructed
+// in exactly two places, its own type home and a witness, so no production code had baked in the
+// assumption that history is a sequence; landing the type first was model-before-implement in the
+// order DESIGN prescribes rather than a type built speculatively ahead of its consumer. That
+// reasoning is preserved because it is why the type has this shape.
+//
+// THE CONSTRUCTION CENSUS IT CITED IS NO LONGER TRUE and has been removed rather than updated. This
+// cut adds real producers -- `gunbc.scm.write_spine` `commit_staged` and `gunbc.scm.squash_merge`
+// `squash_merge` -- so a sentence counting construction sites would need editing on every change that
+// adds one, which is a growth surface no annotation should have. Historical rationale keeps its tense;
+// a live census does not belong beside it. Found by external review.
 
 import std.types { Bool, List }
 import std.minted_identity { MintedId, minted_id_eq }
@@ -65,11 +73,19 @@ import std.minted_identity { MintedId, minted_id_eq }
 // different questions and the model previously answered both with `ObjectId`.
 //
 // THE BOUNDARY RULE, stated so the next author can place a new lookup without matching it against a
-// list of sites: an `ObjectId` is content-addressed, so it genuinely identifies a PROGRAM, and
-// keying an object by it is correct -- uniqueness is the POINT of that identity, not an assumption
-// about it. A commit record is a program PLUS a message PLUS a position in history, and only the
-// last of those is unique. So `ObjectId` is the right key for objects and the wrong key for commit
-// records, and the question to ask at a new lookup is which of the two you are keying.
+// list of sites. An earlier writing said an `ObjectId` "genuinely identifies a PROGRAM" and that
+// uniqueness is "the POINT of that identity". Both overstate what this locator is: it is a 64-BIT
+// NONCRYPTOGRAPHIC value, and the model does not claim it as durable intersubjective identity. What
+// holds is STORE-SCOPED -- collision-refusing admission prevents one admitted `ObjectStore` from
+// holding unequal records at one locator, so within a store the locator distinguishes objects. It
+// establishes nothing across stores, which is the same limit that made a bare commit reference
+// repository-relative above.
+//
+// The boundary itself survives the correction, and is what the rule was always about: an object is
+// keyed by WHAT IT IS, and within one store the locator answers that. A commit record is a program
+// PLUS a message PLUS a position in history, and only the last of those distinguishes it. So
+// `ObjectId` is the right key for objects and the wrong key for commit records, and the question at a
+// new lookup is which of the two you are keying -- with the scope of the answer being one store.
 //
 // THE HISTORY THAT DECIDES IT is an ordinary revert, not a corner case:
 //
