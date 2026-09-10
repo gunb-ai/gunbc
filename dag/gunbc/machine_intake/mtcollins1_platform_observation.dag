@@ -1,0 +1,136 @@
+module gunbc.machine_intake_mtcollins1_platform_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+
+// PLATFORM FACTS OBSERVED WHILE DOING SOMETHING ELSE, which is why they are recorded here rather
+// than left in a session transcript. None of these was the object of a measurement; each surfaced
+// while driving the controller for the netboot lane, and each has an owner outside that lane.
+//
+// THE REDUNDANCY LOSS IS THE ONE THAT MATTERS AND IT IS CURRENT, not historical. PSU2_Status (0xeb)
+// asserts BOTH [Presence detected] AND [Power Supply AC lost] right now, not merely in the event
+// log: the supply is installed and has no AC input. The corroborating sensors agree —
+//
+//   PSU1_POUT      160 Watts        PSU2_POUT      0 Watts
+//   PSU1_FAN_SPEED 5000 RPM         PSU2_FAN_SPEED 0 RPM
+//
+// so one supply is carrying the entire load while the other is inert. The SEL carries the assertion
+// twice, on 09/04 and 09/05 controller time, meaning this predates the netboot work rather than
+// being caused by it.
+//
+// THE OPERATOR HAS ACCEPTED THIS STATE, and the row records the acceptance so the finding does not
+// decay into noise. Left as a bare observation it reads as an unaddressed defect and the next
+// reader re-raises it; recorded as accepted, with its consequence named, it stays useful.
+//
+// WHAT WAS ACCEPTED, precisely: the unit runs on ONE AC path. That is not an electrical problem —
+// PSU1 carries 160 W and these supplies are rated far above it, so nothing is stressed. What is
+// given up is redundancy: a failure anywhere in that single path, supply or cord or breaker or PDU
+// outlet, powers the host off immediately rather than degrading. For a machine being developed
+// against, that is a reasonable trade and the operator made it deliberately on 2026-09-06.
+//
+// THE CONDITION UNDER WHICH IT SHOULD BE REVISITED IS NOT A DATE BUT A ROLE CHANGE. This lane is
+// making Mt. Collins bootable out of band; if it becomes a boot dependency for other machines, its
+// availability becomes theirs, and a single-corded dependency is a different proposition from a
+// single-corded development target. That is the trigger — the machine acquiring dependents — and it
+// is stated here rather than left to be re-derived.
+//
+// AND A SECOND CORD IS NOT AUTOMATICALLY THE REMEDY. If both inlets land on one PDU or one breaker,
+// connecting the second removes the supply as a single point of failure while keeping the feed, so
+// the redundancy gained is smaller than it appears. Independent A/B feeds are where it actually
+// lives.
+type AcceptedPowerRisk {
+  accepted_at: NonEmptyStr
+  accepted_condition: NonEmptyStr
+  revisit_trigger: NonEmptyStr
+}
+
+data mtcollins1_single_ac_path_accepted: AcceptedPowerRisk = AcceptedPowerRisk {
+  accepted_at: "2026-09-06",
+  accepted_condition: "the unit runs on one AC path; PSU2 is installed with no AC input and contributes nothing",
+  revisit_trigger: "this unit acquiring dependents — becoming a boot or serving dependency for other machines, at which point its availability becomes theirs",
+}
+type PowerSupplyStanding {
+  sensor_name: NonEmptyStr
+  present: Bool
+  ac_input_present: Bool
+  output_watts: Int
+  fan_rpm: Int
+}
+
+data mtcollins1_psu1_standing: PowerSupplyStanding = PowerSupplyStanding {
+  sensor_name: "PSU1_Status",
+  present: true,
+  ac_input_present: true,
+  output_watts: 160,
+  fan_rpm: 5000,
+}
+
+data mtcollins1_psu2_standing: PowerSupplyStanding = PowerSupplyStanding {
+  sensor_name: "PSU2_Status",
+  present: true,
+  ac_input_present: false,
+  output_watts: 0,
+  fan_rpm: 0,
+}
+
+data mtcollins1_power_redundancy_observed_at: NonEmptyStr = "2026-09-06T02:30Z"
+
+// A SUPPLY THAT IS PRESENT BUT UNPOWERED IS THE INTERESTING CASE, and it is why presence and AC
+// input are separate fields rather than one health flag. An absent supply is a visible gap in a
+// chassis; a present one with no cord looks correct from the front and reports itself as installed.
+// Redundancy is a property of the POWERED supplies, not the installed ones.
+fn power_supplies_redundant(a: PowerSupplyStanding, b: PowerSupplyStanding) -> Bool {
+  a.present && a.ac_input_present && b.present && b.ac_input_present
+}
+
+// THE CONTROLLER HAS TWO NETWORK INTERFACES AND ONLY ONE IS THE ONE WE USE. 192.168.1.228 is the
+// dedicated management port; 192.168.1.231 is a second interface on the SAME controller, which is
+// established rather than assumed — `mc info` at both addresses reports Device ID 32 and firmware
+// 0.32, and the second answers DHCP with vendor class "udhcp 1.21.1", the BusyBox client the
+// controller's own Linux runs.
+//
+// IT IS RECORDED BECAUSE IT WAS ONCE MISREAD AS THE HOST. A DHCP capture from that address was
+// initially taken for the host PXE-booting; it was not. The host NIC is a third address entirely
+// (28:c1:3c:8a:d6:4a), and the discriminator is the vendor class rather than the MAC's proximity —
+// a PXE client identifies itself as PXEClient:Arch:NNNNN and asks for a boot file, while a Linux
+// DHCP client does neither. A second management address that answers to the same credentials is
+// also a second reachable surface, which is a fact an access policy should know about the unit.
+type ControllerInterface {
+  address: NonEmptyStr
+  mac: NonEmptyStr
+  is_dedicated_management_port: Bool
+}
+
+data mtcollins1_controller_interfaces: List<ControllerInterface> = [
+  ControllerInterface {
+    address: "192.168.1.228",
+    mac: "28:c1:3c:8a:d6:4c",
+    is_dedicated_management_port: true,
+  },
+  ControllerInterface {
+    address: "192.168.1.231",
+    mac: "28:c1:3c:8a:d6:4d",
+    is_dedicated_management_port: false,
+  },
+]
+
+// THE FOLD IS EXERCISED AGAINST THE MEASURED ROWS AND AGAINST A CORRECTED PAIR. The second is what
+// makes the first mean something: a redundancy check that answered "not redundant" unconditionally
+// would pass the live case for the wrong reason, and this unit's live case is the unhappy one.
+data mtcollins1_psu2_if_corded: PowerSupplyStanding = PowerSupplyStanding {
+  sensor_name: "PSU2_Status",
+  present: true,
+  ac_input_present: true,
+  output_watts: 80,
+  fan_rpm: 4800,
+}
+
+func mtcollins1_power_redundancy_probe() -> ProcessExit {
+  if power_supplies_redundant(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_standing) {
+    return exit_failure(reason: "power redundancy: the measured rows were reported REDUNDANT, but PSU2 asserts [Power Supply AC lost] with 0 W output and 0 RPM")
+  }
+  if power_supplies_redundant(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_if_corded) == false {
+    return exit_failure(reason: "power redundancy: two present, powered supplies were NOT reported redundant, so the check cannot distinguish the corded case and its verdict on the live rows carries no information")
+  }
+  return ExitSuccess
+}

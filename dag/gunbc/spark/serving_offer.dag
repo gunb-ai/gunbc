@@ -7,6 +7,7 @@ import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, Tru
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply }
+import product.fabric.provider_route { ProviderRoute }
 import std.measure { Second, second, MoneyRate, money_amount_micro, hardware_thread_count }
 import extdeps.currency.currency { Usd }
 import gunbc.spark.fabric_switch_observed { fabric_group_wire }
@@ -94,6 +95,34 @@ type SparkServingReadiness
   = ServingObserved { ready_at: Timestamp, receipt: ObservationReceiptRef }
   | ServingUnobserved { obligation: NonEmptyStr }
 
+// ── THE ROUTE IS OBSERVED OR THE OFFER DOES NOT EXIST, WHICH IS READINESS'S ARGUMENT AGAIN ────
+//
+// SupplierOffer carries a ProviderRoute because admission is decided over provider x service x
+// region and never over a company. A route's region is therefore an OBSERVATION, exactly as
+// product.supplier.ubicloud ubicloud_route treats it: unread, it refuses as
+// UbicloudRouteRegionUnobserved rather than filling the slot. This module has the same obligation
+// and, today, no observer -- so it refuses for the same reason the readiness arm above refuses.
+// Binding an offer whose route nothing established would put a candidate in front of selection
+// carrying a region no one measured, and every admission decision downstream would be taken
+// against it.
+//
+// THE NEARBY NAME THAT IS NOT THIS ONE: gunbc.spark.serving_deployment_selection
+// serving_topology_region is a DecisionRegion from the Pareto vocabulary -- a region of a decision
+// field, not a place a machine sits. Reusing it here would be one name for two concepts.
+type SparkServingRoute
+  = ServingRouteObserved { route: ProviderRoute }
+  | ServingRouteRegionUnobserved { obligation: NonEmptyStr }
+
+// THE SINGLE PLACE THE STALL IS RECORDED, so the observer replaces one declaration rather than
+// every call site. Restoration trigger: a producer that OBSERVES which site a serving host sits in
+// and returns ServingRouteObserved. Until then every spark serving offer refuses to bind, which is
+// a live capability withdrawn deliberately (operator ruling, 2026-09-09) rather than a defect.
+data spark_serving_route_region_obligation: NonEmptyStr = "gunbc.spark.serving_offer: no producer observes which region a serving host sits in, so the offer's ProviderRoute cannot be constructed and the offer does not bind"
+
+fn spark_serving_route_standing() -> SparkServingRoute {
+  ServingRouteRegionUnobserved { obligation: spark_serving_route_region_obligation }
+}
+
 type SparkOfferBinding<P>
   = SparkOfferBound { bound: SparkOfferProjection<P> }
   | SparkOfferBindingRefused { group_wire: NonEmptyStr, cause: NonEmptyStr }
@@ -125,28 +154,35 @@ fn bind_spark_serving_offer<P>(
   isolation: IsolationProfile,
   seats: Int,
   readiness: SparkServingReadiness,
+  route: SparkServingRoute,
 ) -> SparkOfferBinding<P> {
-  match readiness {
-    ServingUnobserved { obligation: why } =>
+  match route {
+    ServingRouteRegionUnobserved { obligation: why } =>
       SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
-    ServingObserved { ready_at: at, receipt: r } =>
-      SparkOfferBound {
-        bound: SparkOfferProjection {
-          offer: SupplierOffer {
-            id: FabricIdentity { principal: principal, key: spark_serving_offer_key(launch: launch) },
-            executor: executor,
-            shape: spark_serving_shape(),
-            capabilities: spark_serving_capability(model: model),
-            trust_domain: trust_domain,
-            isolation: isolation,
-            quantity_bound: seats,
-            ready_at: at,
-            quote: spark_serving_quote(),
-            billing_quantum: spark_serving_billing_quantum,
-            evidence: ObservedSupply { observed_at: at, receipt: r },
+    ServingRouteObserved { route: r0 } =>
+    match readiness {
+      ServingUnobserved { obligation: why } =>
+        SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
+      ServingObserved { ready_at: at, receipt: r } =>
+        SparkOfferBound {
+          bound: SparkOfferProjection {
+            offer: SupplierOffer {
+              id: FabricIdentity { principal: principal, key: spark_serving_offer_key(launch: launch) },
+              route: r0,
+              executor: executor,
+              shape: spark_serving_shape(),
+              capabilities: spark_serving_capability(model: model),
+              trust_domain: trust_domain,
+              isolation: isolation,
+              quantity_bound: seats,
+              ready_at: at,
+              quote: spark_serving_quote(),
+              billing_quantum: spark_serving_billing_quantum,
+              evidence: ObservedSupply { observed_at: at, receipt: r },
+            },
+            launch: launch,
           },
-          launch: launch,
-        },
-      }
+        }
+    }
   }
 }

@@ -195,6 +195,10 @@ fn vllm_reported_capacity(
       ReportedCapacityRefused {
         cause: "the concurrency figure must be bound to the MaximumConcurrency startup line, not the resolved KV cache format line" as NonEmptyStr,
       }
+    MemoryProfileSummary =>
+      ReportedCapacityRefused {
+        cause: "the concurrency figure must be bound to the MaximumConcurrency startup line, not the memory-profile summary line -- that line carries the residual the KV budget came OUT of, which is a different fact from the concurrency the budget then supports" as NonEmptyStr,
+      }
   }
 }
 

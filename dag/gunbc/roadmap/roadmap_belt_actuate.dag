@@ -2167,7 +2167,7 @@ fn belt_actuate_teardown_member(m: DispatchMember) -> BeltTeardownOutcome {
 }
 
 type BeltObserve
-  = Observed { live: List<DispatchLiveSession> }
+  = BeltSessionsObserved { live: List<DispatchLiveSession> }
   | ObserveRefused { reason: String }
 
 // tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know
@@ -2175,8 +2175,8 @@ type BeltObserve
 // answer (§5 absorbing fallback, ⊤-as-answer vs ⊤-as-ignorance). extdeps.tmux
 // classify_tmux_session_list is the sole authority for tmux ls outcome facts (listed sessions,
 // documented no-server signals, stdout parse refusal, unknowable stderr); this module maps them to
-// belt policy only: TmuxSessionsListed -> filter dispatch sessions into Observed live rows;
-// TmuxNoServer -> Observed []; TmuxListStdoutRefused and TmuxListUnknowable -> ObserveRefused with
+// belt policy only: TmuxSessionsListed -> filter dispatch sessions into BeltSessionsObserved live rows;
+// TmuxNoServer -> BeltSessionsObserved []; TmuxListStdoutRefused and TmuxListUnknowable -> ObserveRefused with
 // located evidence, never a blind spawn/reap. First-tick bootstrap works under either no-server
 // spelling the classifier admits. The decision is a pure fn so every arm is witnessed
 // (belt_observe_from_result witnesses); belt_observe only threads live WitnessBin.Run fields in.
@@ -2203,14 +2203,14 @@ fn belt_observe_from_result(
 ) -> BeltObserve {
   match classify_tmux_session_list(exit_ok: success, stdout: stdout, stderr: stderr) {
     TmuxSessionsListed { entries } =>
-      Observed {
+      BeltSessionsObserved {
         live: dispatch_live_sessions_from_entries(
           entries: entries,
           selection: dispatch_actuator_selection(node_sizing: Unsized),
         ),
       }
     TmuxNoServer { evidence: _ } =>
-      Observed { live: [] }
+      BeltSessionsObserved { live: [] }
     TmuxListStdoutRefused { line_number, raw, reason } =>
       ObserveRefused {
         reason: belt_ls_stdout_refusal_reason(
@@ -3580,7 +3580,7 @@ fn belt_sessions_observe_for_instance(
         TmuxSessionsListed { entries } =>
           match belt_attempt_panes_observe_for_instance(instance: instance) {
             BeltAttemptPanesObserved { panes } =>
-              Observed {
+              BeltSessionsObserved {
                 live: dispatch_live_sessions_with_process(
                   entries: entries,
                   panes: panes,
@@ -3589,7 +3589,7 @@ fn belt_sessions_observe_for_instance(
                 ),
               }
             BeltAttemptPanesRefused { reason } =>
-              Observed {
+              BeltSessionsObserved {
                 live: dispatch_live_sessions_with_process(
                   entries: entries,
                   panes: [],
@@ -3607,7 +3607,7 @@ fn belt_sessions_observe_for_instance(
             ),
           }
         TmuxNoServer { evidence: _ } =>
-          Observed { live: [] }
+          BeltSessionsObserved { live: [] }
         TmuxListUnknowable { stderr: e } =>
           ObserveRefused {
             reason: concat(
@@ -3623,7 +3623,7 @@ fn belt_sessions_observe_for_instance(
         stderr: result.stderr,
       ) {
         TmuxNoServer { evidence: _ } =>
-          Observed { live: [] }
+          BeltSessionsObserved { live: [] }
         TmuxSessionsListed { entries: _ } =>
           ObserveRefused {
             reason: concat(
@@ -5566,7 +5566,7 @@ fn belt_stop_node_for_instance(
     DashboardActuating => {
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
-    Observed { live } => {
+    BeltSessionsObserved { live } => {
       match dispatch_tmux_session_scope(
         node_id: node_id,
         selection: dispatch_actuator_selection(node_sizing: Unsized),
@@ -5739,7 +5739,7 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
         json_kv(key: "observe_refused", value: json_bool(b: true)),
         json_kv(key: "reason", value: json_string(s: r)),
       ])
-    Observed { live } =>
+    BeltSessionsObserved { live } =>
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
         json_kv(key: "observe_refused", value: json_bool(b: false)),
@@ -5793,7 +5793,7 @@ fn belt_sessions_json() -> String {
 fn belt_sessions_http_status(o: BeltObserve) -> Int {
   match o {
     ObserveRefused { reason: _ } => 503
-    Observed { live: _ } => 200
+    BeltSessionsObserved { live: _ } => 200
   }
 }
 
@@ -6014,7 +6014,7 @@ fn belt_launch_host_standing_for_instance_with_capacity(
 
 fn belt_launch_sessions_for_instance(instance: HostDashboardInstance) -> LaunchSessionsStanding {
   match belt_sessions_observe_for_instance(instance: instance) {
-    Observed { live } => LaunchSessionsObserved { live: live }
+    BeltSessionsObserved { live } => LaunchSessionsObserved { live: live }
     ObserveRefused { reason } => LaunchSessionsUnobserved { reason: reason }
   }
 }

@@ -2,7 +2,7 @@ module extdeps.colo.evocative
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
+import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim, DensityUnread, RetailGrainStanding, SingleCabinetOffered }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -45,4 +45,17 @@ data evocative_summit_shared_address_note: NonEmptyStr = "The same 1 Enterprise 
 data evocative_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "quote request via evocative.com",
   obligation: "No pricing is published on the EWR1 page read 2026-08-18. The single-server retail grain the page claims makes this a candidate for the small reversible footprint; the quote must price a 2U placement with BMC isolation and confirm the operator-of-record at 1 Enterprise Avenue N.",
+}
+
+// THE FINEST RETAIL GRAIN IN THE CORRIDOR AND NO DENSITY BEHIND IT. The operator's EWR1 page sells
+// from a single server upward, which is finer than a cabinet and makes this facility reachable for
+// a small reversible footprint - but the same page states no kW figure at any grain, so what a
+// single server may draw here is exactly as unknown as what a cabinet may draw.
+data evocative_ewr1_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Whether you need a single server or an entire suite, we customize our offerings to meet your needs",
+  citation: "evocative.com Secaucus NJ (EWR1) facility page, read 2026-09-08",
+}
+
+data evocative_ewr1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "The EWR1 facility page read 2026-09-08 carries no per-cabinet, per-rack or per-server kW figure, and prints no street address either. The module's existing facility note carries 10 MW via two 5 MW feeds from the 2026-08-18 read - a building fact, not a cabinet one. Resolve by asking what a single-server and a full-cabinet order may draw, and confirm the operator of record at 1 Enterprise Avenue N in the same conversation.",
 }

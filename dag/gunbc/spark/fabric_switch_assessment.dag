@@ -1,0 +1,402 @@
+module gunbc.spark.fabric_switch_assessment
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.mikrotik.crs812 { Crs812LaneSpeed, Crs812FecMode }
+import std.goal_assessment {
+  ObservationAttempt, ObservationEstablished, ObservationRefused,
+  GoalAssessment,
+  GoalInspection,
+  inspect_goal,
+  assess_by_deviations_and_unknowns,
+  GoalAssessmentRefused,
+}
+import v2.std.algebra { any }
+import v2.std.cardinality { Never }
+import gunbc.spark.fabric_switch_desired {
+  DesiredSpeedUndecidedCause,
+  Crs812SwitchIntent, SwitchIntent, SwitchIntentUndecided,
+  Crs812LaneIntent, LaneCarriesLeg, LaneOwnedByItsPair,
+  fabric_switch_intent,
+}
+
+// THE SWITCH AS A CONVERGENCE SUBJECT, WHICH IS A DIFFERENT SUBJECT FROM THE CABLE PLANT.
+//
+// `product.cable_plant_assessment` answers whether the CABLES can carry the required mode.
+// This module answers whether the SWITCH is configured the way the cable plant's answer says it
+// must be. They are two subjects, so they are two bindings of the one `std.goal_assessment`
+// authority rather than one widened handler -- adding the switch adds a binding here and does not
+// touch the assessment authority, which is the property that authority was shaped for.
+//
+// THE DESIRED SIDE IS DERIVED AND CAN REFUSE. `fabric_switch_intent()` is undecided whenever the
+// cable plant is, so this module's ASSESSMENT inherits that refusal rather than re-deciding it --
+// the observe stage cannot refuse at all, because its refusal type is `Never`. One cable fault
+// therefore reports in exactly one place and propagates; it is never re-diagnosed by a second
+// matcher that could disagree with the first.
+
+// WHAT THE SWITCH ACTUALLY REPORTS, AND THE ADMISSION THAT NOBODY HAS ASKED IT YET.
+//
+// No RouterOS reading exists in this repository today: the fleet's lane configuration has never
+// been captured. DESIGN section 3 rules that a missing observation is a coverage obligation
+// DOWNSTREAM, never an `Unobserved` property authored into the upstream module -- so
+// `extdeps.mikrotik.crs812` carries no such field, and the gap surfaces here, as a reading that is
+// structurally absent rather than defaulted. `LaneNeverRead` is not a placeholder to be deleted when
+// the capture lands; it is the permanent arm for a lane the collector could not reach, and the
+// capture merely stops it from being the only arm the fleet produces.
+type Crs812LaneReading
+  = LaneNeverRead { interface: NonEmptyStr }
+  | LaneReadingTaken {
+      interface: NonEmptyStr
+      speed: Crs812LaneSpeed
+      fec: Crs812FecMode
+      enabled: Bool
+    }
+
+type Crs812SwitchSubject sole_constructor {
+  switch: NonEmptyStr
+  intent: Crs812SwitchIntent
+  readings: List<Crs812LaneReading>
+}
+
+fn crs812_switch_subject(
+  switch: NonEmptyStr,
+  intent: Crs812SwitchIntent,
+  readings: List<Crs812LaneReading>,
+) -> Crs812SwitchSubject {
+  Crs812SwitchSubject { switch: switch, intent: intent, readings: readings }
+}
+
+type ObservedLane sole_constructor {
+  interface: NonEmptyStr
+  speed: Crs812LaneSpeed
+  fec: Crs812FecMode
+  enabled: Bool
+}
+
+// THE SNAPSHOT IS WHAT WAS READ, AND NOTHING ELSE. It deliberately does NOT carry an "unread" list:
+// that would make the denominator a fact the OBSERVATION supplies, so a lane omitted from the
+// readings entirely would vanish from both the input and the population it was supposed to be
+// measured against. The expected roster is the GOAL's -- `SwitchIntent.lanes` already is it -- and
+// the assessment joins the two. A caller therefore cannot shrink the denominator by forgetting to
+// author an absence, only by editing the intent, which is the declaration a reviewer reads.
+type Crs812SwitchObserved sole_constructor {
+  lanes: List<ObservedLane>
+}
+
+// One row per lane nobody read. It is a distinct type rather than a bare interface name because it
+// inhabits the UnknownFact position of the assessment, where a reader must be able to tell it from
+// a deviation without consulting which list it arrived in.
+type Crs812LaneUnknown sole_constructor {
+  interface: NonEmptyStr
+}
+
+// ONE DIVERGENCE ROW PER LANE, AND THE CAUSE IS A CLOSED VOCABULARY. A lane can disagree with its
+// intent in exactly the ways the intent can constrain it, so a free-text explanation would be a
+// second, unjoinable naming of a fact the intent type already carries.
+type LaneDivergenceCause
+  = LaneSpeedDisagrees { desired: Crs812LaneSpeed, reported: Crs812LaneSpeed }
+  | LaneFecDisagrees { desired: Crs812FecMode, reported: Crs812FecMode }
+  | LaneShouldCarryLegButIsDisabled
+  | LaneShouldBeOwnedByItsPairButIsEnabled
+  | LaneIsNotInTheIntent
+
+type Crs812LaneDivergence sole_constructor {
+  interface: NonEmptyStr
+  cause: LaneDivergenceCause
+}
+
+// THESE ARE ILL-FORMED QUESTIONS, NOT FAILED READS, and moving them is the second repair. An
+// undecided intent is not an inability to observe the switch -- the lanes read exactly as well
+// without one -- it means there is no desired side to compare against, so it belongs to the
+// assessment. `SwitchLaneNeverRead` is gone entirely: it is now a member-level unknown rather than
+// a whole-subject refusal.
+//
+// `SwitchIntentNamesNoLanes` is the empty-DENOMINATOR refusal, and it asks about the INTENT rather
+// than the readings. A switch nobody read is not empty -- it is unknown, one unknown per expected
+// lane. Only an intent that declares no lanes leaves nothing to assess, and an assessment over that
+// would certify agreement across a population nobody declared.
+type Crs812SwitchAssessRefusal
+  = SwitchIntentUndecidedHere { cause: DesiredSpeedUndecidedCause }
+  | SwitchIntentNamesNoLanes
+
+type Crs812SwitchReceipt sole_constructor {
+  lanes_read: Nat
+}
+
+// ================= THE ONE COMPARISON =================
+//
+// Every equality this module needs is asked of one exhaustive fold per closed vocabulary, so a new
+// lane speed or FEC mode is one row and every comparison re-decides at once. The alternative --
+// comparing at each call site -- is the non-fold residue DESIGN section 6 names, and on a coproduct
+// whose arms are added by an upstream vendor it is the shape that silently keeps answering `false`
+// for a mode nobody taught it about.
+fn crs812_lane_speed_eq(a: Crs812LaneSpeed, b: Crs812LaneSpeed) -> Bool {
+  crs812_lane_speed_ordinal(s: a) == crs812_lane_speed_ordinal(s: b)
+}
+
+fn crs812_lane_speed_ordinal(s: Crs812LaneSpeed) -> Nat {
+  match s {
+    Lane50GCr2 => 0
+    Lane100GCr2 => 1
+    Lane100GCr4 => 2
+    Lane200GCr4 => 3
+    Lane400GCr8 => 4
+  }
+}
+
+fn crs812_fec_mode_eq(a: Crs812FecMode, b: Crs812FecMode) -> Bool {
+  crs812_fec_mode_ordinal(f: a) == crs812_fec_mode_ordinal(f: b)
+}
+
+fn crs812_fec_mode_ordinal(f: Crs812FecMode) -> Nat {
+  match f {
+    FecAuto => 0
+    FecOff => 1
+    Fec74 => 2
+    Fec91 => 3
+  }
+}
+
+fn lane_intent_interface(i: Crs812LaneIntent) -> NonEmptyStr {
+  match i {
+    LaneCarriesLeg { interface: n, speed: s, fec: f } => n
+    LaneOwnedByItsPair { interface: n } => n
+  }
+}
+
+fn intent_for_lane(intent: Crs812SwitchIntent, interface: NonEmptyStr) -> Crs812LaneIntent? {
+  match intent {
+    SwitchIntentUndecided { cause: c } => Absent
+    SwitchIntent {
+      identity: id, board_name: b, management_interface: m, bridge: br, lanes: ls,
+    } => filter(ls, i => lane_intent_interface(i: i) == interface).first()
+  }
+}
+
+// A LANE THE INTENT DOES NOT NAME IS A DIVERGENCE, NOT A LANE TO SKIP. Dropping it would narrow the
+// compared population to the lanes that already agree by construction, which is the absorbing
+// fallback DESIGN section 5 forbids: the switch would converge more easily the more of it went
+// unmodelled.
+fn lane_divergences(intent: Crs812SwitchIntent, lane: ObservedLane) -> List<Crs812LaneDivergence> {
+  match intent_for_lane(intent: intent, interface: lane.interface) {
+    Absent => [Crs812LaneDivergence { interface: lane.interface, cause: LaneIsNotInTheIntent }]
+    Present { value: i } =>
+      match i {
+        LaneOwnedByItsPair { interface: n } =>
+          if lane.enabled {
+            [Crs812LaneDivergence {
+              interface: n, cause: LaneShouldBeOwnedByItsPairButIsEnabled,
+            }]
+          } else { [] }
+        LaneCarriesLeg { interface: n, speed: s, fec: f } =>
+          if lane.enabled {
+            flat_map([
+              if crs812_lane_speed_eq(a: s, b: lane.speed) { [] } else {
+                [Crs812LaneDivergence {
+                  interface: n, cause: LaneSpeedDisagrees { desired: s, reported: lane.speed },
+                }]
+              },
+              if crs812_fec_mode_eq(a: f, b: lane.fec) { [] } else {
+                [Crs812LaneDivergence {
+                  interface: n, cause: LaneFecDisagrees { desired: f, reported: lane.fec },
+                }]
+              },
+            ], d => d)
+          } else {
+            [Crs812LaneDivergence { interface: n, cause: LaneShouldCarryLegButIsDisabled }]
+          }
+      }
+  }
+}
+
+// THE PARTITION TAKES THE READINGS, NOT THE SUBJECT, which carries the intent: a fold that received
+// the subject could branch on the desired state while claiming to report the observed one.
+//
+// THERE IS NO LONGER AN "UNREAD" PARTITION BESIDE THIS ONE. It existed to carry `LaneNeverRead` into
+// the snapshot, and it made the denominator observation-supplied; `switch_unknowns` derives the same
+// facts from the intent's roster instead, which also covers a lane the readings omit entirely.
+fn switch_read_lanes(readings: List<Crs812LaneReading>) -> List<ObservedLane> {
+  flat_map(readings, r =>
+    match r {
+      LaneReadingTaken { interface: n, speed: s, fec: f, enabled: e } =>
+        [ObservedLane { interface: n, speed: s, fec: f, enabled: e }]
+      LaneNeverRead { interface: n } => []
+    })
+}
+
+// ================= THE TWO STAGES =================
+//
+// TWO, NOT FOUR. The heading this replaces counted the stages of the handler record #10814 deleted,
+// and it outlived the thing it described by one release. An unbound actuation stage and an
+// unchanged-receipt stage are not stages of this module; observation and assessment are.
+//
+// THE OBSERVER RECEIVES THE SWITCH AND THE READINGS, AND NO GOAL. It cannot consult the intent to
+// decide what to report, and -- since the repair above -- neither can the value it is handed: the
+// request is no longer computed from the intent either. The earlier wording here said "the readings
+// and nothing else", which was true of the observer's BODY and false twice over: of its argument
+// list, which also carries the subject, and of the request, which the goal used to shape.
+//
+// IT ALSO CANNOT REFUSE. There is no RouterOS transport here: the readings are declared corpus data,
+// so every call yields the snapshot it was handed, and a lane nobody captured is an unread MEMBER of
+// that snapshot rather than a failure to obtain one. `Never` in the refusal position says exactly
+// that, and it is honest rather than optimistic -- when a transport lands, a read that genuinely
+// fails becomes a real inhabitant here and the assessor keeps its meaning unchanged.
+fn observe_fabric_switch_attempt(
+  switch: NonEmptyStr,
+  readings: List<Crs812LaneReading>,
+) -> ObservationAttempt<Crs812SwitchObserved, Never> {
+  ObservationEstablished {
+    observed: Crs812SwitchObserved { lanes: switch_read_lanes(readings: readings) },
+  }
+}
+
+fn switch_divergences(
+  intent: Crs812SwitchIntent,
+  observed: Crs812SwitchObserved,
+) -> List<Crs812LaneDivergence> {
+  flat_map(observed.lanes, l => lane_divergences(intent: intent, lane: l))
+}
+
+// THE EXPECTATION-DRIVEN JOIN. One unknown per lane the INTENT names that the snapshot does not
+// carry -- whether the reading said `LaneNeverRead` or was never supplied at all. This is the
+// difference between a denominator the goal declares and one the observation happens to mention.
+fn observed_lane_interfaces(observed: Crs812SwitchObserved) -> List<NonEmptyStr> {
+  map(observed.lanes, l => l.interface)
+}
+
+fn lane_unknown_if_unread(
+  read: List<NonEmptyStr>,
+  i: Crs812LaneIntent,
+) -> List<Crs812LaneUnknown> {
+  let want = lane_intent_interface(i: i)
+  if any(read, n => n == want) { [] } else { [Crs812LaneUnknown { interface: want }] }
+}
+
+// THE READ INTERFACES ARE PROJECTED ONCE, not once per expected lane. The fold this replaces called
+// `observed_lane_interfaces` INSIDE the loop, so a switch with n intent lanes and m read lanes did
+// n*m work and allocated n copies of the same list to answer one membership question each. DESIGN
+// section 6's standing rule is that a proven cost-shape defect is always fixed regardless of the
+// realized n, because n is not a time-stable fact.
+fn switch_unknowns(
+  lanes: List<Crs812LaneIntent>,
+  observed: Crs812SwitchObserved,
+) -> List<Crs812LaneUnknown> {
+  let read = observed_lane_interfaces(observed: observed)
+  flat_map(lanes, i => lane_unknown_if_unread(read: read, i: i))
+}
+
+// THERE IS NO ACTUATION STAGE, AND ITS ABSENCE SAYS MORE THAN ITS REFUSAL DID. Writing a RouterOS
+// lane configuration is an effect on a device this repository has no modelled transport to, so the
+// shape this module used to bind -- which DEMANDED an apply -- could only be satisfied by a stage
+// that refused. That refusal then had to inhabit the same coproduct as the three causes meaning the
+// switch could not be OBSERVED, so "we never read this lane" and "we read it and it is wrong"
+// arrived as one verdict. The divergent lanes are deviations now, which is where they always
+// belonged: `SwitchCannotBeActuatedHere` restated as a REFUSAL what the difference list already
+// carried as a VALUE, and the weaker copy was the arm a reader reached first.
+//
+// WHEN A TRANSPORT IS MODELLED it is a new stage over this assessment, not an arm reinstated here.
+
+// THE ANSWERS OVER AN ESTABLISHED SNAPSHOT, AND THE REFUSAL IS ABOUT THE GOAL rather than the
+// snapshot. An intent naming no lanes at all is a malformed question -- there is no population to
+// assess -- and that is the ONLY refusal here. An intent that names lanes none of which were read is
+// NOT that: it is a fully unknown assessment, which is indeterminate and reports one unknown per
+// expected lane. The cut before this one called the second case `SwitchHoldsNoLanes` and refused,
+// which reported a declared roster as an absent one.
+fn assess_fabric_switch(
+  goal: Crs812SwitchIntent,
+  observed: Crs812SwitchObserved,
+) -> GoalAssessment<Crs812SwitchReceipt, Crs812LaneDivergence, Crs812LaneUnknown, Crs812SwitchAssessRefusal> {
+  match goal {
+    SwitchIntentUndecided { cause: c } =>
+      GoalAssessmentRefused { cause: SwitchIntentUndecidedHere { cause: c } }
+    SwitchIntent {
+      identity: id, board_name: b, management_interface: m, bridge: br, lanes: ls,
+    } =>
+      match ls.first() {
+        Absent => GoalAssessmentRefused { cause: SwitchIntentNamesNoLanes }
+        Present { value: l } => assess_by_deviations_and_unknowns(
+          evidence: fabric_switch_agreement_receipt(observed: observed),
+          deviations: switch_divergences(intent: goal, observed: observed),
+          unknowns: switch_unknowns(lanes: ls, observed: observed),
+        )
+      }
+  }
+}
+
+fn fabric_switch_agreement_receipt(observed: Crs812SwitchObserved) -> Crs812SwitchReceipt {
+  Crs812SwitchReceipt { lanes_read: list_length(items: observed.lanes) }
+}
+
+type Crs812SwitchInspection = GoalInspection<NonEmptyStr, Crs812SwitchIntent, List<Crs812LaneReading>, Crs812SwitchObserved, Crs812SwitchReceipt, Crs812LaneDivergence, Crs812LaneUnknown, Never, Crs812SwitchAssessRefusal>
+
+// THE THREE FACTS ARE HANDED OVER SEPARATELY. `Crs812SwitchSubject` remains the corpus row that
+// DECLARES them together, which is what a data row is for; it is destructured here so that no stage
+// receives more than its own question needs.
+fn inspect_fabric_switch(subject: Crs812SwitchSubject) -> Crs812SwitchInspection {
+  inspect_goal(
+    subject: subject.switch,
+    goal: subject.intent,
+    request: subject.readings,
+    observe: observe_fabric_switch_attempt,
+    assess: assess_fabric_switch,
+  )
+}
+
+// ================= THE FLEET'S OWN SWITCH =================
+//
+// The readings are `LaneNeverRead` for every lane the intent names, because that is the true state:
+// no RouterOS capture exists.
+//
+// WHAT THIS ENTRY POINT ANSWERS TODAY, corrected: it does NOT refuse at the observe stage. The
+// observer's refusal type is `Never` -- the readings are declared corpus data, so there is no read
+// that can fail -- and it always establishes a snapshot. The refusal comes from the ASSESSMENT, and
+// its cause is the CABLE plant's: `fabric_switch_intent()` is undecided while the plant has not
+// converged, so there is no desired side to compare against. `the_fleet_switch_cannot_be_assessed_
+// because_its_cables_are_uncoded` is the witness that holds this.
+//
+// The sentence this replaces claimed a refusal "with the ONE fact that is missing -- the interface
+// nobody read", which was true of the shape BEFORE this cut and false of the one in the same diff.
+// It is recorded rather than quietly swapped because it is the exact failure this change exists to
+// delete -- a guarantee carried only by prose, surviving one edit past the code it described -- and
+// it reappeared in this module while that change was being written.
+//
+// Once the cables are recoded the intent decides, and the lanes nobody captured become one UNKNOWN
+// each rather than a refusal, with no shape change anywhere.
+// THE REQUEST IS EMPTY BECAUSE NO CAPTURE EXISTS, not because the intent is undecided.
+//
+// THE ROUTE THIS CLOSES. `readings` used to be built by mapping over the intent's own interfaces,
+// so an undecided intent produced an empty request and therefore an empty snapshot -- the GOAL
+// deciding what got read, one level above the observer. Closing the parameter route while the
+// request was still computed from the goal changed the argument's name and kept the mechanism, and
+// it falsified this module's own note three declarations above the observer.
+//
+// EMPTY IS ALSO THE TRUE STATE: there is no RouterOS capture of this switch at all, so nothing was
+// read, and the honest request says so without consulting what anyone wanted. The lanes that go
+// UNKNOWN are still one per intent lane, because `switch_unknowns` joins the intent's declared
+// roster against the snapshot -- on the ASSESSMENT side, which is the stage that is allowed to know
+// the goal. The reported answer is unchanged; what changed is that the goal no longer reaches the
+// read.
+//
+// WHEN A CAPTURE LANDS it replaces this list with what the transport returned, still without
+// consulting the intent.
+// THE INTENT IS A PARAMETER SO THE GOAL-INDEPENDENCE OF THE REQUEST IS TESTABLE. With the intent
+// read from inside, the property "the request does not depend on the goal" has no authorable RED
+// today: the fleet's real intent is undecided, so a goal-derived request and an empty one are the
+// same list, and a control comparing them is permanently green whatever the code does. Taking the
+// intent as a parameter lets a witness supply a DECIDED one and observe that the request is still
+// empty -- which goes red the moment the request is computed from the intent again.
+fn fabric_switch_subject_under(intent: Crs812SwitchIntent) -> Crs812SwitchSubject {
+  crs812_switch_subject(
+    switch: "gunbc-fabric-switch" as NonEmptyStr,
+    intent: intent,
+    readings: [],
+  )
+}
+
+fn fabric_switch_subject() -> Crs812SwitchSubject {
+  fabric_switch_subject_under(intent: fabric_switch_intent())
+}
+
+fn fabric_switch_inspection() -> Crs812SwitchInspection {
+  inspect_fabric_switch(subject: fabric_switch_subject())
+}

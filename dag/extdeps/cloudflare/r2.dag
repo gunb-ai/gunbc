@@ -14,7 +14,6 @@ import extdeps.cloudflare.account_api_tokens {
   PolicyAllow,
   CreateAccountTokenRequest,
   CloudflarePermissionGrant,
-  CloudflareAccountTokenShape,
   permission_groups_from_grants
 }
 
@@ -150,10 +149,6 @@ fn r2_bucket_item_read_permission_group() -> PermissionGroupRef {
 
 fn r2_object_read_grant() -> CloudflarePermissionGrant {
   PermissionGroupGrant { group: r2_bucket_item_read_permission_group() }
-}
-
-fn shape_grants_include_r2_object_read(shape: CloudflareAccountTokenShape) -> Bool {
-  any(shape.grants, g => g == r2_object_read_grant())
 }
 
 fn r2_bucket_item_read_resources(
