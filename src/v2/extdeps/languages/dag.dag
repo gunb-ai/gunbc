@@ -2932,6 +2932,20 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   )
 }
 
+// `test fn` IS A CONTEXTUAL PRODUCTION, NOT A KEYWORD. `test` stays an ordinary identifier
+// everywhere else — dag/extdeps/languages/typescript/program.dag models the TypeScript
+// compiler's own `Cond { test: ... }` field under §3's real-upstream-names rule, and a reserved
+// kw_test would break that module's parse. So the production matches an ident lexeme followed by
+// a fn_decl, and the body-lowering arm refuses any marker lexeme other than "test" with a typed
+// diagnostic. No other top-level item starts with an ident, so the choice arm has no FIRST
+// overlap with the keyword-led alternatives.
+fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    right: dag_grammar_nonterminal(production: ^dag_production_fn_decl)
+  )
+}
+
 fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
@@ -2941,7 +2955,10 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
         left: dag_grammar_nonterminal(production: ^dag_production_type_decl),
         right: dag_grammar_choice(
           left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
-          right: dag_grammar_nonterminal(production: ^dag_production_fn_decl)
+          right: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_fn_decl),
+            right: dag_grammar_nonterminal(production: ^dag_production_test_fn_decl)
+          )
         )
       )
     )
@@ -3189,6 +3206,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_fn_decl_expr(),
     emitted: ^dag_surface_fn_decl
   )
+  let test_fn_decl = dag_grammar_production(
+    name: ^dag_production_test_fn_decl,
+    expression: dag_grammar_test_fn_decl_expr(),
+    emitted: ^dag_surface_test_fn_decl
+  )
   let qualified_name = dag_grammar_production(
     name: ^dag_production_qualified_name,
     expression: dag_grammar_qualified_name_expr(),
@@ -3350,6 +3372,7 @@ fn dag_grammar_root() -> GrammarRoot {
       type_decl,
       data_decl,
       fn_decl,
+      test_fn_decl,
       qualified_name,
       generic_params,
       param_list,
