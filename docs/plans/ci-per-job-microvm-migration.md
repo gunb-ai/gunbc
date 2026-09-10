@@ -77,15 +77,22 @@ Both workflows today select `[self-hosted, linux, arm64]` (public via `gunbc.ci_
 
 **Why order matters — two improvements can compose into a wash.** #46 removes 34 redundant world acquisitions, which *leaves the seed build as the dominant term*. A naive microVM flip that then compiles that seed with no reachable cache reintroduces cost on that same term. Isolation of the deleter class is still a win; the *job wall* can be a wash. That is the argument for sequencing, and it is stronger than "private is smaller".
 
-**The bar is the whole job against 53 minutes and against `timeout-minutes: 60`, not the build step.** Private today (pre-#46) is ~53 minutes; two later runs cancelled at 60 and let unverified merges through. After #46 the job is roughly 8 minutes, of which about 3 is the warm seed build. Subtraction:
+**The bar is the whole job against the pre-#46 job wall and against the timeout that was cancelling runs, not the build step.** Producers, so the subtraction re-derives:
 
-| Seed-build cost | Implied whole-job (8 − 3 + seed) | vs 53 min | vs 60-minute timeout |
+- Pre-#46 job wall: gunbc-private actions run [34462653642](https://github.com/gunb-ai/gunbc-private/actions/runs/34462653642), job `witnesses`, `started_at` 2026-09-10T09:48:16Z / `completed_at` 2026-09-10T10:43:57Z → **3341 s**. Private #46 names this run as the 52.8 / 55.7 minute roster-vs-job split.
+- Post-#46 job wall (still on `session/warm-badger-62`; #46 is unmerged): run [34512318040](https://github.com/gunb-ai/gunbc-private/actions/runs/34512318040), job `witnesses`, `started_at` 2026-09-10T18:06:50Z / `completed_at` 2026-09-10T18:19:29Z → **759 s**. Same job, step `Build gunbc from the public seed`: 2026-09-10T18:07:04Z–18:10:06Z → **182 s**.
+- Timeout-cancel class: run [34523487941](https://github.com/gunb-ai/gunbc-private/actions/runs/34523487941) `conclusion=cancelled`, `startedAt` 2026-09-10T19:57:52Z / `updatedAt` 2026-09-10T20:58:48Z → **~61 min**. Several siblings the same day have the same shape. That is the bar "near timeout", independent of whether the current workflow row says 60 or 90.
+- Local-cold lower bound: BuildBuddy [1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84](https://app.buildbuddy.io/invocation/1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84) `elapsed_sec=238`.
+
+Subtraction is `post_job − warm_seed + candidate_seed` against those two job walls:
+
+| Seed-build cost | Implied whole-job (759 − 182 + seed) | vs 3341 s | vs ~61 min cancel |
 |---|---|---|---|
-| Warm 3m (fleet slot, run 34512318040) | ~8 min | crushing win | not racing |
-| Lower-bound local-cold 4m (this dispatch) | ~9 min | crushing win | not racing |
-| 2× that lower bound (8m seed) | ~12 min | crushing win | not racing |
+| Warm 182 s (run 34512318040 build step) | 759 s | crushing win | not racing |
+| Lower-bound local-cold 238 s (BuildBuddy invocation) | 815 s | crushing win | not racing |
+| 2× that lower bound (476 s seed) | 1053 s | crushing win | not racing |
 
-**Accepted-cold clears the bar.** Every row is a crushing win over 53 minutes and none is near the timeout that was silently cancelling runs. Guest egress and a prebuilt image are therefore **not on the critical path**. Carrying three arms forward after this subtraction would be redundant work.
+**Accepted-cold clears the bar.** Every row is a crushing win over 3341 s and none is near the ~61-minute cancel class. Guest egress and a prebuilt image are therefore **not on the critical path**. Carrying three arms forward after this subtraction would be redundant work.
 
 The 3m 58s figure is a **lower bound, twice over**, not an estimate: (1) `CARGO_HOME` was not wiped, and private wipes `RUNNER_TEMP/cargo`; (2) amd64 BuildBuddy is not the Aarch64 fleet host — different ISA, different dependency set, different registry cache. The number can only be wrong *up*. Twice the lower bound still clears the bar, which is why accepted-cold is the working assumption rather than a guess that 4m will hold on arm64.
 
@@ -105,13 +112,13 @@ The three arms, after the subtraction:
 
 | Arm | Standing |
 |---|---|
-| **Accepted local-cold** | **Working assumption for cutover.** Clears 53-minute and 60-minute bars. Trigger that could demote it: Aarch64 + wiped `CARGO_HOME` seed build that pushes the *whole job* near 60. Does not need guest egress. Does not silence unpinned public main. |
+| **Accepted local-cold** | **Working assumption for cutover.** Clears the 3341 s job wall (run 34462653642) and the ~61-minute cancel class (run 34523487941). Trigger that could demote it: Aarch64 + wiped `CARGO_HOME` seed build that pushes the *whole job* near that cancel class. Does not need guest egress. Does not silence unpinned public main. |
 | **External shared cache** | **Blocked, off the critical path.** `gunbc.runner.runner_guest_egress_attempt` `egress_outcome` is `GuestEgressNotEstablished`. `gunbc.runner.runner_host_filtered_egress` still withholds `DefaultDenyEgress` from the Mt. Collins offer until a filtered-egress acceptance receipt. That is a **capability frontier this lane does not own**. A reader must not discover the block by trying to point the guest at srvN sccache. Reopens only if the Aarch64 cold job fails the 60-minute bar. |
 | **Prebuilt in the image** | **Rejected for private.** Private builds from unpinned public main so a public authority change goes loud. A binary in the image silences that. Not required while accepted-cold holds. |
 
 Named lower-bound dispatch (not a guest): `ctrl-build --remote -- bash -lc '… unset RUSTC_WRAPPER; CARGO_TARGET_DIR=$(mktemp -d); /opt/cargo/bin/cargo build --release -p v1-compiler --bin gunbc'`. Producer: BuildBuddy invocation [1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84](https://app.buildbuddy.io/invocation/1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84). Cargo `Finished release … in 3m 58s`; `elapsed_sec=238`; `rustc_wrapper_at_start=UNSET`.
 
-**Complementary, not subsuming.** #46 stops the 53-minute roster racing `timeout-minutes: 60`. MicroVMs stop the deleter class. Together they do not wash: even a 12-minute cold-seed job after #46 is still a crushing win over 53.
+**Complementary, not subsuming.** #46 stops the 3341 s job (run 34462653642) racing the cancel class of run 34523487941. MicroVMs stop the deleter class. Together they do not wash: even 1053 s after #46 is still a crushing win over 3341 s.
 
 ## 4. What is lost, and the staged carve-out
 
@@ -123,7 +130,7 @@ Named lower-bound dispatch (not a guest): `ctrl-build --remote -- bash -lc '… 
 
 **Lost on transition, and how it is covered:**
 
-- **Shared toolchain / cargo caches across jobs on one host.** Isolation makes the deleter class unwritable. Lost *local* reuse is accepted under the working assumption: a 9–12 minute private job still clears 53 and 60. External sccache is an optimization blocked on `GuestEgressNotEstablished`, not cover for the cut.
+- **Shared toolchain / cargo caches across jobs on one host.** Isolation makes the deleter class unwritable. Lost *local* reuse is accepted under the working assumption: 815–1053 s still clears 3341 s and the ~61-minute cancel class. External sccache is an optimization blocked on `GuestEgressNotEstablished`, not cover for the cut.
 - **`ci_isolate_toolchain_script` / start-end filesystem probe.** Retired when microVMs make the eviction class impossible — that question belongs to **still-bear-335**, not to the process-count PR.
 - **Persistent runner registration.** Replaced by JIT per attempt. Covered only when mint HTTP + jail staging frontiers bind (`jit_mint_http_realization_frontier`, `jail_jit_device_staging_frontier`).
 - **Slot RAM carve / `CARGO_BUILD_JOBS` from `ci_runner_target_memory_regime`.** A guest size is a different envelope (`gunbc.runner_microvm` size decision). The flip must project through `selected_ci_runner_target`, not a literal in YAML.
@@ -138,15 +145,15 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 | Lane | Question | Relation to this plan |
 |---|---|---|
 | **still-bear-335** (`adhoc-3b2f737a-7b8`) | Typed env-vs-code outcome; private copy of the public filesystem instrument | **Mitigation of the deleter class.** Dissolution of that *instrument* is the microVM arm of `toolchain_filesystem_probe_dissolution_condition`. Typed classification of BMC/host/JIT failure is **not** dissolved by isolation. |
-| **warm-badger-62** (private #46) | Process count: stop re-acquiring the composed world 34 times | **DESIGN §2.** MicroVMs do not replace it. After #46 the seed build dominates; whole-job arithmetic says even a cold seed still crushes 53 minutes. Do not edit `strategy.private_witness_workflow`. Per-attempt label: `self_hosted_labels(…, custom: …)`. |
-| This plan | Per-job guest; FCI-3 before jailer; host image from Y | **Cure of the shared-FS eviction class.** Does not shorten a 53-minute roster. Does not classify failures. |
+| **warm-badger-62** (private #46) | Process count: stop re-acquiring the composed world 34 times | **DESIGN §2.** MicroVMs do not replace it. After #46 the seed build dominates; whole-job arithmetic against runs 34462653642 and 34512318040 says even a cold seed still crushes the pre-#46 job wall. Do not edit `strategy.private_witness_workflow`. Per-attempt label: `self_hosted_labels(…, custom: …)`. |
+| This plan | Per-job guest; FCI-3 before jailer; host image from Y | **Cure of the shared-FS eviction class.** Does not shorten the 3341 s roster-dominated job. Does not classify failures. |
 
 **Retirement signal for still-bear-335's filesystem instrument (delete when true, not before):**
 
 1. Private and public required jobs select a per-attempt microVM label (`custom` on private; `selected_ci_runner_target` on public), not the empty-custom fleet slot.
 2. `toolchain_filesystem_probe_dissolution_condition` is eligible to bind on the microVM arm.
 
-**Not retired by this cure:** private #46's single-process roster; `timeout-minutes: 60` racing a long roster; typed env-vs-code classification.
+**Not retired by this cure:** private #46's single-process roster; the timeout-cancel class (run 34523487941); typed env-vs-code classification.
 
 ## Trigger state (this document's standing)
 
@@ -159,7 +166,7 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 | `toolchain_filesystem_probe_dissolution_condition` | Unbound |
 | `dogfood-started` | Not started (public CI still on srv slots) |
 | This plan's cutover | **Not taken** — operator decision |
-| Seed-build cache as a cutover gate | **Retired as a gate.** Working assumption: accepted-cold. Trigger to reopen: Aarch64 + wiped `CARGO_HOME` whole-job near 60. |
+| Seed-build cache as a cutover gate | **Retired as a gate.** Working assumption: accepted-cold. Trigger to reopen: Aarch64 + wiped `CARGO_HOME` whole-job near the cancel class of run 34523487941. |
 | Local-cold `cargo build --release -p v1-compiler --bin gunbc` (empty target dir, no `RUSTC_WRAPPER`) | **3m 58s lower bound** (amd64, `CARGO_HOME` not wiped), invocation `1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84`. |
 | Guest reachability of fleet sccache | **Blocked** on `GuestEgressNotEstablished` / withheld `DefaultDenyEgress`. Off this plan's critical path while accepted-cold holds. Not this lane's frontier. |
 
