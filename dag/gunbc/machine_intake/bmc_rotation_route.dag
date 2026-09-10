@@ -1,0 +1,88 @@
+module gunbc.machine_intake_bmc_rotation_route
+
+import std.types { NonEmptyStr, String }
+import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac }
+import gunbc.machine_intake_bmc_secure {
+  CredentialRotationApplication,
+  AccountManagementUnavailable,
+}
+
+data bmc_rotation_route_disposition: Disposition = SingleAuthority
+
+// WHICH TRANSPORT CAN ROTATE A BMC CREDENTIAL, SELECTED BY THE FIRMWARE THIS UNIT WAS OBSERVED TO
+// RUN. This module is REALIZATION, not interface, and it sits here rather than in either extdeps
+// module for the reason DESIGN §3 gives: the dispatch that selects a realization is itself
+// realization, so it is peripheral and never a fact about the dependency. extdeps.bmc.redfish and
+// extdeps.bmc.megarac each own their own surface and neither should learn the other exists.
+//
+// THE ROUTE IS KEYED ON AN OBSERVATION, NEVER ON AN EXPECTATION. The family comes from a
+// workflow-layer receipt -- for the held unit, gunbc.machine_intake_mtcollins1_access_observation,
+// which carries family AmiMegaRac with committed raw bytes and a digest, and which established
+// Redfish absence against a discriminating control: five Redfish paths refused over TLS while the
+// same host answered 200 on its web root, so "no Redfish service" is separated from "host
+// unreachable". extdeps.ampere.mt_collins_product_brief.bmc holds only an EXPECTATION and forbids
+// its own promotion; nothing here may read it, and this module never takes a family from it.
+
+type BmcRotationRoute
+  = RotationRouteRedfishAccountService { path_note: NonEmptyStr }
+  | RotationRouteUnavailable { family_note: NonEmptyStr, detail: NonEmptyStr }
+
+// THE MEGARAC ARM IS UNAVAILABLE AND THAT IS A GROUNDED STATEMENT, NOT A GAP LEFT BLANK.
+// extdeps.bmc.megarac declares its own admission rule in its scope note: its REST operation rows
+// are "the SP-X interface shape AS EXECUTED on that build - the one place a single-build execution
+// grounds a family-grain row - and carry that provenance explicitly". Six operations are rostered
+// there and every one was executed against the controller. NO USER-MANAGEMENT OPERATION HAS BEEN
+// EXECUTED, so authoring one would put an unexecuted row beside six executed ones under a rule that
+// admits only the executed -- the module contradicting itself in its own file. AMI publishes no
+// SP-X API reference to cite instead; the module's external authority is a product page.
+//
+// AND ONE ATTEMPT IS KNOWN TO HAVE REACHED SOMETHING. gunbc#10630 records a rotation attempt whose
+// REST path answered "attempt to set previous password" against a policy-conforming secret -- a
+// DECIDED response, so an endpoint exists, parses the field and applies a history policy to it. The
+// request that produced it was never committed and cannot be recovered from any diff, which is
+// filed as gunbc.recurring_failure_mode.ad_hoc_hardware_probe_produces_no_receipt. So the honest
+// state is not "MegaRAC cannot rotate" -- it is "we have seen it answer and we cannot say how we
+// asked".
+fn rotation_route_for_family(family: BmcFirmwareFamily) -> BmcRotationRoute {
+  match family {
+    OpenBmc => RotationRouteRedfishAccountService {
+      path_note: "PATCH /redfish/v1/AccountService/Accounts/{account_id} with a JSON Password member; extdeps.bmc.http SetAccountPassword, executed against the srv3 and srv4 controllers by gunbc.tools.bmc_onboard" as NonEmptyStr,
+    }
+    AmiMegaRac => RotationRouteUnavailable {
+      family_note: "AMI MegaRAC serves an SP-X-style /api/ surface and no Redfish service root" as NonEmptyStr,
+      detail: "no executed user-management operation exists on extdeps.bmc.megarac, whose scope note admits an operation row only as executed; a rotation attempt has answered a password-history refusal, so an endpoint exists, but the request that reached it was never committed" as NonEmptyStr,
+    }
+  }
+}
+
+// THE REFUSAL IS PRODUCED BEFORE ANY CONTROLLER WRITE, WHICH IS THE WHOLE POINT OF PUTTING THE
+// ROUTE AHEAD OF THE ATTEMPT. An unavailable route yields AccountManagementUnavailable, which
+// gunbc.machine_intake_bmc_secure already adjudicates into a typed, located BmcSecure refusal whose
+// owner is derived rather than authored -- so a unit whose firmware has no rotation transport
+// FAILS ITS ARRIVAL PHASE and is never certified as secured. It does not silently skip, and it is
+// not filed as a hardware defect: bmc_secure_refusal_owner routes an access state to a PartsHold
+// rather than to the return clock, because a firmware we cannot yet drive is not a defect of the
+// unit the seller shipped.
+fn rotation_application_for_route(route: BmcRotationRoute) -> CredentialRotationApplication? {
+  match route {
+    RotationRouteRedfishAccountService { path_note: _ } => none
+    RotationRouteUnavailable { family_note: f, detail: d } =>
+      Present {
+        value: AccountManagementUnavailable {
+          detail: join([f as String, ": ", d as String], "") as NonEmptyStr,
+        },
+      }
+  }
+}
+
+// WHAT RETIRES THE UNAVAILABLE ARM, NAMED AS THE CAPABILITY RATHER THAN AS THE ROW IT WOULD ADD.
+// Adding a megarac_op_user_password row is the ARTIFACT; the capability is an EXECUTED user-
+// management request against a MegaRAC controller whose request shape and response are committed as
+// evidence, which is what that module's own admission rule requires and what neither prior attempt
+// produced. Until that exists the arm stays Unavailable, and the Arrival phase stays unsatisfied
+// for every MegaRAC unit -- which today is the held Mt. Collins unit and, on arrival, the twenty.
+data megarac_rotation_route_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when an executed MegaRAC user-management request against a live controller commits its request shape and response as evidence, so extdeps.bmc.megarac may roster the operation under its as-executed admission rule and this arm can return a route; NOT satisfied by authoring an operation row from AMI documentation, from the srv3/srv4 Redfish shape, or from the uncommitted attempt recorded in gunbc#10630" as NonEmptyStr,
+)

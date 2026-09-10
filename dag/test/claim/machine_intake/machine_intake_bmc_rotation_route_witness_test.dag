@@ -1,0 +1,60 @@
+module test.claim.machine_intake_bmc_rotation_route_witness_test
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { OpenBmc, AmiMegaRac }
+import gunbc.machine_intake_bmc_secure {
+  CredentialRotationApplication, AccountManagementUnavailable,
+  RotationApplied, RotationNotAttempted,
+}
+import gunbc.machine_intake_bmc_rotation_route {
+  BmcRotationRoute, RotationRouteRedfishAccountService, RotationRouteUnavailable,
+  rotation_route_for_family, rotation_application_for_route,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISCRIMINATING PAIR. Both arms are exercised against the SAME fold, because a witness that
+// only ever asks the unavailable arm cannot tell a correct route table from one that refuses
+// everything -- and refusing everything would also make a MegaRAC unit fail Arrival, for the wrong
+// reason, invisibly.
+
+test fn megarac_has_no_rotation_route_today() -> Bool {
+  match rotation_route_for_family(family: AmiMegaRac) {
+    RotationRouteUnavailable { family_note: _, detail: _ } => true
+    RotationRouteRedfishAccountService { path_note: _ } => false
+  }
+}
+
+test fn openbmc_routes_to_redfish_account_service() -> Bool {
+  match rotation_route_for_family(family: OpenBmc) {
+    RotationRouteRedfishAccountService { path_note: _ } => true
+    RotationRouteUnavailable { family_note: _, detail: _ } => false
+  }
+}
+
+// THE ARM THAT MATTERS FOR SAFETY: an unavailable route must yield the application arm the
+// adjudication refuses on, so a MegaRAC unit cannot reach a controller write at all. A route table
+// that returned `none` here would let the caller proceed with RotationNotAttempted and adjudicate
+// into a DIFFERENT refusal, which would read as "nobody tried" rather than "there is no way to try".
+test fn an_unavailable_route_yields_account_management_unavailable() -> Bool {
+  match rotation_application_for_route(route: rotation_route_for_family(family: AmiMegaRac)) {
+    Present { value: app } =>
+      match app {
+        AccountManagementUnavailable { detail: _ } => true
+        RotationApplied { reference: _, applied_at: _, evidence: _ } => false
+        RotationNotAttempted => false
+      }
+    Absent => false
+  }
+}
+
+// AND THE POSITIVE CONTROL ON THAT SAME FOLD: a route that EXISTS must not manufacture a refusal.
+// Without this, an implementation that returned AccountManagementUnavailable unconditionally would
+// pass the test above and silently block the OpenBMC fleet too.
+test fn an_available_route_yields_no_refusal_application() -> Bool {
+  match rotation_application_for_route(route: rotation_route_for_family(family: OpenBmc)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
