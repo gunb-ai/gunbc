@@ -182,6 +182,7 @@ test fn scm_ws_the_commit_freezes_exactly_the_manifest_that_was_staged() -> Bool
             StagedCommitCandidateRefused { cause: _ } => false
             StagedCommitNothingToFreeze => false
             StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+            StagedCommitSourceUnrecoverable { cause: _ } => false
               }
       }
   }
@@ -211,6 +212,7 @@ test fn scm_ws_the_commit_advances_the_checkout_and_consumes_the_stage() -> Bool
         StagedCommitCandidateRefused { cause: _ } => false
         StagedCommitNothingToFreeze => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitSourceUnrecoverable { cause: _ } => false
       }
   }
 }
@@ -234,6 +236,7 @@ test fn scm_ws_consuming_the_stage_leaves_the_corpus_inherited_rather_than_empty
         StagedCommitCandidateRefused { cause: _ } => false
         StagedCommitNothingToFreeze => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitSourceUnrecoverable { cause: _ } => false
       }
   }
 }
@@ -248,6 +251,7 @@ test fn scm_ws_committing_with_no_stage_and_no_checkout_refuses() -> Bool {
     StagedCommitMinted { repository: _, reference: _ } => false
     StagedCommitCandidateRefused { cause: _ } => false
     StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+    StagedCommitSourceUnrecoverable { cause: _ } => false
   }
 }
 
@@ -272,10 +276,12 @@ test fn scm_ws_committing_again_with_nothing_further_staged_refuses() -> Bool {
             StagedCommitMinted { repository: _, reference: _ } => false
             StagedCommitCandidateRefused { cause: _ } => false
             StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+            StagedCommitSourceUnrecoverable { cause: _ } => false
           }
         StagedCommitCandidateRefused { cause: _ } => false
         StagedCommitNothingToFreeze => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitSourceUnrecoverable { cause: _ } => false
       }
   }
 }
@@ -292,6 +298,7 @@ test fn scm_ws_staging_content_identical_to_the_base_still_freezes_nothing() -> 
         StagedCommitMinted { repository: _, reference: _ } => false
         StagedCommitCandidateRefused { cause: _ } => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitSourceUnrecoverable { cause: _ } => false
       }
     StageCandidateRefused { cause: _ } => false
     StageSourceLocatorCollision { identity: _ } => false
@@ -312,6 +319,7 @@ test fn scm_ws_committing_a_real_stage_is_admitted() -> Bool {
         StagedCommitCandidateRefused { cause: _ } => false
         StagedCommitNothingToFreeze => false
         StagedCommitAllocatorInvalid { next_ordinal: _ } => false
+        StagedCommitSourceUnrecoverable { cause: _ } => false
       }
   }
 }

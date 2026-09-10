@@ -257,19 +257,34 @@ fn base_snapshot(subject: RepositoryManifestRoot) -> BaseSnapshot {
 // of re-asking a question whose answer this type already knows -- and the parent-missing arm it used
 // to need disappears from `gunbc.scm.write_spine` rather than being carried as an unreachable cause.
 // Found by external review.
+// THE FREEZABLE CHANGE -- ONE VALUE, NOT TWO PEERS.
+//
+// The basis names the subject a commit would freeze; the entries are that subject's manifest contents,
+// already read here. An earlier revision carried them as two separate FIELDS and then handed them to
+// the commit as two separate ARGUMENTS, which reopened, on the commit path, exactly the seam the merge
+// path had just closed: `.dag` has no module privacy, so a public helper taking
+// `(repository, entries, basis)` lets a caller supply an EMPTY or unrelated entry population beside a
+// real basis, pass the completeness observation trivially, and mint the unrecoverable candidate the
+// observation exists to refuse. The wall was bypassable by the sibling next to it. Found by external
+// review, which named the rule this type now obeys: do not compare independently supplied peers; carry
+// the relationship as one value.
+//
+// `sole_constructor` puts the only constructor in this module, at the one place that has just resolved
+// the manifest and read its entries -- so a basis and an entry list that do not belong together is not
+// a case the commit has to detect. It cannot be written.
+type FreezableChange sole_constructor {
+  basis: AdmittedCommitBasis
+  entries: List<CorpusManifestEntry>
+}
+
 type StageStanding
   = StageMatchesBase { candidate: CorpusManifestObjectRef }
   | StageDiffersFromBase {
       candidate: RepositoryManifestRoot,
       committed: CorpusManifestObjectRef,
-      basis: AdmittedCommitBasis,
-      entries: List<CorpusManifestEntry>
+      change: FreezableChange
     }
-  | StageWithNoBase {
-      candidate: RepositoryManifestRoot,
-      basis: AdmittedCommitBasis,
-      entries: List<CorpusManifestEntry>
-    }
+  | StageWithNoBase { candidate: RepositoryManifestRoot, change: FreezableChange }
   | NoCandidateAndNoBase
   | StageStandingRefused { cause: StagingRefusal }
 
@@ -317,6 +332,18 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
 // `gunbc.scm.write_spine` re-resolve the same locator at freeze time and answer all three again, above
 // an annotation saying they could not fire there. Carrying the `RepositoryManifestRoot` makes the
 // second question absent instead of unreachable-but-answered. Found by external review.
+// THE ROOT IS NOT A PARAMETER OF A SIBLING, BECAUSE IT IS DERIVED HERE FROM THIS RECORD.
+//
+// The resolved branch below was a call to `stage_standing_with_root(repository, record, root)`, which
+// took the record and the root as independent peers -- so a caller could hand it a record from one
+// repository and a root resolved in another, and receive a `FreezableChange` whose entries and basis
+// describe different manifests. That is the same peer seam the commit path was just sealed against,
+// one function further up, and sealing `FreezableChange` alone would NOT have reached it: the
+// constructor would still have been handed a mispaired argument from inside its own module, which is
+// the one place `sole_constructor` does not guard. The root is resolved from `record.identity.locator`
+// immediately below, so the two cannot disagree unless something separates them -- and now nothing
+// does. Found by applying external review's rule (carry the relationship as one value, do not compare
+// independently supplied peers) to the level above the one it was reported at.
 fn stage_standing_against_base(
   repository: RepositoryEnvelope,
   record: CorpusManifestRecord,
@@ -332,35 +359,27 @@ fn stage_standing_against_base(
     RepositoryManifestRootIsSemanticNode { root: r } =>
       StageStandingRefused { cause: StageManifestIsSemanticNode { staged: r } }
     RepositoryManifestRootResolved(root) =>
-      stage_standing_with_root(repository: repository, record: record, root: root)
+      match base_snapshot(subject: root) {
+        BaseRefused { cause: c } => StageStandingRefused { cause: c }
+        NoBaseSelected =>
+          StageWithNoBase {
+            candidate: root,
+            change: FreezableChange {
+              basis: admit_root_basis(subject: root),
+              entries: record.entries,
+            },
+          }
+        BaseAtCommit { basis: admitted, root: committed } =>
+          if committed.locator == record.identity.locator {
+            StageMatchesBase { candidate: record.identity }
+          } else {
+            StageDiffersFromBase {
+              candidate: root,
+              committed: committed,
+              change: FreezableChange { basis: admitted, entries: record.entries },
+            }
+          }
+      }
   }
 }
 
-fn stage_standing_with_root(
-  repository: RepositoryEnvelope,
-  record: CorpusManifestRecord,
-  root: RepositoryManifestRoot,
-) -> StageStanding {
-  let candidate = record.identity
-  let entries = record.entries
-  match base_snapshot(subject: root) {
-    BaseRefused { cause: c } => StageStandingRefused { cause: c }
-    NoBaseSelected =>
-      StageWithNoBase {
-        candidate: root,
-        basis: admit_root_basis(subject: root),
-        entries: entries,
-      }
-    BaseAtCommit { basis: admitted, root: committed } =>
-      if committed.locator == candidate.locator {
-        StageMatchesBase { candidate: candidate }
-      } else {
-        StageDiffersFromBase {
-          candidate: root,
-          committed: committed,
-          basis: admitted,
-          entries: entries,
-        }
-      }
-  }
-}

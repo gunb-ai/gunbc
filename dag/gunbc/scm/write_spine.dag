@@ -22,7 +22,7 @@ import std.types { String, NonEmptyStr, Int, List }
 import gunbc.scm.object_store {
   ObjectId,
   AuthoredSourceObjectRef, authored_source_target_of,
-  CorpusManifestObjectRef, CorpusManifestEntry, CorpusManifestRecord, CorpusManifestTarget,
+  CorpusManifestObjectRef, CorpusManifestRecord, CorpusManifestTarget,
   SourceStoreOutcome, SourceStored, SourceLocatorCollision, store_authored_source,
   PathUniqueManifestEntries, manifest_entries_with_path_replaced, manifest_entries_of_single,
   UniqueManifestStoreOutcome, UniqueManifestStored, UniqueManifestLocatorCollision,
@@ -50,6 +50,7 @@ import gunbc.scm.staging {
   StageStanding, StageMatchesBase, StageDiffersFromBase, StageWithNoBase,
   NoCandidateAndNoBase, StageStandingRefused,
   StageManifestMissingFromStore, StageManifestIsAuthoredSource, StageManifestIsSemanticNode,
+  FreezableChange,
   stage_standing,
 }
 
@@ -265,51 +266,51 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
     StageStandingRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
     NoCandidateAndNoBase => StagedCommitNothingToFreeze
     StageMatchesBase { candidate: _ } => StagedCommitNothingToFreeze
-    StageWithNoBase { candidate: _, basis: basis, entries: entries } =>
-      commit_admitted_stage(
-        repository: repository,
-        entries: entries,
-        basis: basis,
-        message: message,
-      )
-    StageDiffersFromBase { candidate: _, committed: _, basis: basis, entries: entries } =>
-      commit_admitted_stage(
-        repository: repository,
-        entries: entries,
-        basis: basis,
-        message: message,
-      )
+    StageWithNoBase { candidate: _, change: change } =>
+      commit_admitted_stage(change: change, message: message)
+    StageDiffersFromBase { candidate: _, committed: _, change: change } =>
+      commit_admitted_stage(change: change, message: message)
   }
 }
 
-// PUBLICATION ADMITS ITS SOURCES; READING THEM DOES NOT.
+// PUBLICATION OBSERVES ITS SOURCES; READING THEM DOES NOT.
 //
 // Every entry a commit freezes must name an authored source this store can actually produce. A commit
 // is a PUBLICATION: the manifest it freezes becomes a permanent parent that later commits inherit and
 // that checkout is expected to materialize, so an entry whose source is absent -- or is a semantic node
 // or another manifest wearing a source's locator -- publishes a snapshot that can never be restored.
-// Refusing at read time would be worse than useless (see the note in `gunbc.scm.staging`); refusing HERE
+// Refusing at READ time would be worse than useless (see the note in `gunbc.scm.staging`); refusing here
 // stops the line at the one operation that makes the defect permanent, and it names the offending path.
 //
-// WHAT CARRYING THE ENTRIES ACTUALLY SAVES, STATED NARROWLY. `stage_standing` already resolved the
-// candidate MANIFEST to get its identity, so its entry list arrives on the committable arms and this
-// function does not re-read it -- that is the one lookup avoided. It is NOT free overall: the
-// completeness observation still performs an object-store lookup PER ENTRY, so a commit pays the
-// corpus's path count. An earlier writing here claimed "no second store walk", which overstated a
-// saved manifest read as a saved corpus walk; external review corrected it. The per-entry cost is
-// inherent to the question -- there is no way to know a source resolves without asking the store --
-// and it is paid at publication, which is where it buys something.
-fn commit_admitted_stage(
-  repository: RepositoryEnvelope,
-  entries: List<CorpusManifestEntry>,
-  basis: AdmittedCommitBasis,
-  message: String,
-) -> StagedCommit {
-  match observe_corpus_source_completeness(store: repository.store, entries: entries) {
+// THE SUBJECT IS ONE VALUE, WHICH IS THE WHOLE POINT. An earlier revision took
+// `(repository, entries, basis)` as three peers, and `.dag` has no module privacy, so this function was
+// a public bypass of its own wall: hand it a real basis beside an EMPTY or unrelated entry population
+// and completeness passes vacuously, after which `freeze_committable` mints the very candidate the
+// observation was there to refuse. Same defect class as the merge-side peer seam this cut had already
+// closed, reintroduced one path over. Found by external review.
+//
+// `FreezableChange` is sole-constructed in `gunbc.scm.staging` at the point that resolved the manifest
+// and read its entries, so the entries observed here ARE the entries the basis will freeze -- not a
+// population a caller chose. The repository is derived from the basis rather than supplied beside it,
+// for the same reason: a second way to name the store is a second thing that can disagree.
+//
+// WHAT CARRYING THE ENTRIES SAVES, STATED NARROWLY. `stage_standing` already resolved the candidate
+// MANIFEST to get its identity, so its entry list arrives on the carrier and this function does not
+// re-read it -- that is the one lookup avoided. It is NOT free overall: the completeness observation
+// still performs an object-store lookup PER ENTRY, so a commit pays the corpus's path count. An earlier
+// writing claimed "no second store walk", which overstated a saved manifest read as a saved corpus
+// walk; external review corrected it. The per-entry cost is inherent to the question -- there is no way
+// to know a source resolves without asking the store -- and it is paid at publication, which is where
+// it buys something.
+fn commit_admitted_stage(change: FreezableChange, message: String) -> StagedCommit {
+  match observe_corpus_source_completeness(
+    store: change.basis.subject.repository.store,
+    entries: change.entries,
+  ) {
     CorpusSourceIncomplete { cause: c } => StagedCommitSourceUnrecoverable { cause: c }
     CorpusSourcesComplete =>
       freeze_committable(
-        committable: CommittableStage { basis: basis },
+        committable: CommittableStage { basis: change.basis },
         message: message,
       )
   }
