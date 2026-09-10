@@ -33,7 +33,7 @@ data cause_established: NonEmptyStr = "CONFIG_CFS_BANDWIDTH was unset, so cpu.ma
 
 // THE CAUSE AND THE PLACEMENT RECEIPT ARE IMPORTED, not restated from annotation.
 // cpu_bound_write_refused is the same refusal this rebuild closes -- folded once, next to
-// cpu_bound_failure, not nicknamed here. placement_verdict is folded below rather than restated.
+// cpu_bound_failure, not nicknamed here. placement_verdict is folded into cpu_bound_standing.
 fn placement_was_bidirectional() -> Bool {
   match placement_verdict {
     PlacementBidirectional { cgroup_path: _, pid: _ } => true
@@ -43,12 +43,19 @@ fn placement_was_bidirectional() -> Bool {
   }
 }
 
+fn cpu_max_interface_value() -> NonEmptyStr {
+  match placement_was_bidirectional() {
+    true => "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf"
+    false => "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from a leaf whose placement was not bidirectional"
+  }
+}
+
 // ── what the run shows ─────────────────────────────────────────────────────────────────────────
 
 // CpuBoundStanding lives on the attempt receipt. This row is the later standing: the interface
 // exists; enforcement does not.
 data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
-  value: "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf",
+  value: cpu_max_interface_value(),
   what_this_does_not_show: "that a process exceeding it is actually throttled. No load was applied, so cpu.stat's throttled_usec and nr_throttled were never going to move, and nothing here distinguishes an enforced bound from a stored number",
   closed_a_prior_refusal: cpu_bound_write_refused,
 }

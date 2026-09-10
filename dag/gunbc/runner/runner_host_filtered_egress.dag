@@ -52,8 +52,8 @@ data bridged_attachment_rejected: GuestAttachment = BridgedToPhysicalSegment {
 // THE REJECTED TOPOLOGY IS THE ONE THE ATTEMPT RECEIPT HOLDS, not a second telling of it. Naming
 // that module only in the annotation above was not a citation: DESIGN section 4c erases annotations
 // from every semantic pass, so the cited-symbol check never saw the name and DESIGN section 3c had
-// no consumer. These rows import the attempt and the point-to-point reachability receipt and fold
-// them, which is the citation the annotation pretended to be.
+// no consumer. These folds are consumed by `runner_host_kernel_requirements`, which
+// `gunbc.runner.runner_host_kernel_config` already reads.
 fn bridged_attempt_left_guest_without_egress() -> Bool {
   match egress_outcome {
     GuestEgressEstablished { via: _ } => false
@@ -64,6 +64,20 @@ fn bridged_attempt_left_guest_without_egress() -> Bool {
 fn host_reached_the_guest_on_the_point_to_point_tap() -> Bool {
   guest_reachability.transmitted == guest_reachability.received
     && guest_reachability.transmitted > 0
+}
+
+fn netfilter_required_for() -> NonEmptyStr {
+  match bridged_attempt_left_guest_without_egress() {
+    true => "any packet filtering at all"
+    false => "any packet filtering at all -- the bridged attempt unexpectedly established guest egress"
+  }
+}
+
+fn nat_required_for() -> NonEmptyStr {
+  match host_reached_the_guest_on_the_point_to_point_tap() {
+    true => "source NAT of the guest prefix onto the uplink"
+    false => "source NAT of the guest prefix onto the uplink -- the point-to-point tap has not carried a guest reply"
+  }
 }
 
 // ── the host uplink is static, on purpose ───────────────────────────────────────────────────────
@@ -164,10 +178,10 @@ type KernelFeatureRequirement {
 }
 
 data runner_host_kernel_requirements: List<KernelFeatureRequirement> = [
-  KernelFeatureRequirement { option: "CONFIG_NETFILTER", required_for: "any packet filtering at all" },
+  KernelFeatureRequirement { option: "CONFIG_NETFILTER", required_for: netfilter_required_for() },
   KernelFeatureRequirement { option: "CONFIG_NF_TABLES", required_for: "the ruleset family this fleet already models" },
   KernelFeatureRequirement { option: "CONFIG_NF_CONNTRACK", required_for: "established and related, without which return traffic needs a permanent hole" },
-  KernelFeatureRequirement { option: "CONFIG_NF_NAT", required_for: "source NAT of the guest prefix onto the uplink" },
+  KernelFeatureRequirement { option: "CONFIG_NF_NAT", required_for: nat_required_for() },
   KernelFeatureRequirement { option: "CONFIG_NFT_CT", required_for: "matching connection state from an nftables rule" },
   KernelFeatureRequirement { option: "CONFIG_NFT_NAT", required_for: "expressing NAT in the nftables family" },
   KernelFeatureRequirement { option: "CONFIG_NFT_MASQ", required_for: "masquerade specifically, since the uplink address is not fixed in the ruleset" },
