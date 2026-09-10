@@ -145,6 +145,7 @@ type EnvelopeStanding
   | EnvelopePayloadDigestMismatch
   | EnvelopePayloadBelowFloor { bytes: ByteSize }
   | EnvelopePayloadAboveCeiling { bytes: ByteSize }
+  | EnvelopeAdmissionAxisNotRequired
 
 // PID1 refusals (no boot secret, stage2 missing files) have no constructor on AttemptLaunchPlan.
 // That is the census: they are outside this per-attempt planner by construction, not by a Bool.
@@ -198,20 +199,21 @@ fn envelope_admits_launch(standing: EnvelopeStanding) -> Bool {
     EnvelopePayloadDigestMismatch => false
     EnvelopePayloadBelowFloor { bytes: _ } => false
     EnvelopePayloadAboveCeiling { bytes: _ } => false
+    EnvelopeAdmissionAxisNotRequired => false
   }
 }
 
 fn refuse_or_normalize_envelope(standing: EnvelopeStanding) -> EnvelopeStanding {
   match standing {
     EnvelopeAdmitted { bytes: n } =>
-      if credential_bytes_admit(bytes: n) {
-        standing
+      if !envelope_floor_is_required() {
+        EnvelopeAdmissionAxisNotRequired
+      } else if !measure_le(a: jit_config_byte_floor, b: n) {
+        EnvelopePayloadBelowFloor { bytes: n }
+      } else if !measure_le(a: n, b: jit_config_byte_ceiling) {
+        EnvelopePayloadAboveCeiling { bytes: n }
       } else {
-        if !measure_le(a: jit_config_byte_floor, b: n) {
-          EnvelopePayloadBelowFloor { bytes: n }
-        } else {
-          EnvelopePayloadAboveCeiling { bytes: n }
-        }
+        standing
       }
     EnvelopeAbsent => standing
     EnvelopeMalformed => standing
@@ -223,6 +225,7 @@ fn refuse_or_normalize_envelope(standing: EnvelopeStanding) -> EnvelopeStanding 
     EnvelopePayloadDigestMismatch => standing
     EnvelopePayloadBelowFloor { bytes: _ } => standing
     EnvelopePayloadAboveCeiling { bytes: _ } => standing
+    EnvelopeAdmissionAxisNotRequired => standing
   }
 }
 

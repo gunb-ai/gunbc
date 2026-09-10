@@ -34,7 +34,7 @@ import gunbc.runner_attempt_launch {
   EnvelopeStanding, EnvelopeAdmitted, EnvelopeAbsent, EnvelopeMalformed,
   EnvelopeSignatureRejected, EnvelopeBoundToDifferentUnit, EnvelopeBoundToDifferentBoot,
   EnvelopeNonceMismatch, EnvelopeBoundToDifferentAttempt, EnvelopePayloadDigestMismatch,
-  EnvelopePayloadBelowFloor, EnvelopePayloadAboveCeiling,
+  EnvelopePayloadBelowFloor, EnvelopePayloadAboveCeiling, EnvelopeAdmissionAxisNotRequired,
   plan_attempt_launch, planned_jailer_launches,
   work_standing_from_vmm_exit, WorkNotEstablished,
   reported_attempt_launch_rung,
@@ -136,6 +136,7 @@ test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
                 EnvelopeBoundToDifferentAttempt => false
                 EnvelopePayloadDigestMismatch => false
                 EnvelopePayloadAboveCeiling { bytes: _ } => false
+                EnvelopeAdmissionAxisNotRequired => false
               }
             LaunchRefusedUnauthorized { authorization: _ } => false
             LaunchRefusedPriorResources => false
@@ -296,6 +297,7 @@ test fn every_x_envelope_refusal_arm_yields_zero_jailer_launches() -> Bool {
             && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadDigestMismatch, ground: GroundClear) == 0
             && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadBelowFloor { bytes: byte_size(count: 100) }, ground: GroundClear) == 0
             && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadAboveCeiling { bytes: byte_size(count: 70000) }, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeAdmissionAxisNotRequired, ground: GroundClear) == 0
             && launches_for(pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 70000), ground: GroundClear) == 0
         Empty {} => false
       }
