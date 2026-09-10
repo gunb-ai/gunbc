@@ -47,8 +47,6 @@ import gunbc.cloudflare.r2_origin {
 import gunbc.cloudflare.r2_permission_group_observe {
   ObservedPermissionGroup,
   observed_permission_group_by_id,
-  cloudflare_fleet_bootstrap_observed_permission_group_id,
-  cloudflare_r2_bucket_item_write_observed_permission_group_id,
 }
 import gunbc.cloudflare.r2_token_mint_run {
   classify_r2_mint,
@@ -302,30 +300,3 @@ test fn r2_observed_permission_groups_agree_with_the_pinned_read_id() -> Bool {
   }
 }
 
-// THE BOOTSTRAP TOKEN'S GROUP RESOLVES TO THE GRANT THE MINT MODEL EXPECTS. This is the answer that
-// decided the plan: the token is the bootstrap credential, not an R2 credential, so the mint has the
-// authority it needs and the durable origin still needs a token of its own.
-test fn r2_observed_bootstrap_group_is_account_api_tokens_write() -> Bool {
-  match observed_permission_group_by_id(id: cloudflare_fleet_bootstrap_observed_permission_group_id as String) {
-    Present { value: observed } =>
-      observed.name == "Account API Tokens Write"
-        && observed.scope == "com.cloudflare.api.account"
-    Absent => false
-  }
-}
-
-// THE WRITE GRANT IS BUCKET-SCOPED, WHICH IS THE PROPERTY THAT MATTERS RATHER THAN ITS EXISTENCE.
-// An account-scoped write group also exists and would let a durable-origin credential write
-// EVERYWHERE in the account; the one recorded for that role shares the read group's scope family, so
-// a token minted with it is confined to the named bucket.
-test fn r2_observed_write_grant_is_bucket_scoped_like_the_read_grant() -> Bool {
-  match observed_permission_group_by_id(id: cloudflare_r2_bucket_item_write_observed_permission_group_id as String) {
-    Present { value: write_group } =>
-      write_group.scope == "com.cloudflare.edge.r2.bucket"
-        && match observed_permission_group_by_id(id: workers_r2_storage_bucket_item_read_permission_group_id as String) {
-             Present { value: read_group } => write_group.scope == read_group.scope
-             Absent => false
-           }
-    Absent => false
-  }
-}

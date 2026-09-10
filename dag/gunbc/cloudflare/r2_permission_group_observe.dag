@@ -1,6 +1,9 @@
 module gunbc.cloudflare.r2_permission_group_observe
 
 import std.types { String, NonEmptyStr, Secret, List, Timestamp }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.resources { Network }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloudflare.account_api_tokens
@@ -167,3 +170,41 @@ data cloudflare_fleet_bootstrap_observed_permission_group_id: NonEmptyStr = "5bc
 // declared as a grant in extdeps: the change that teaches the origin to PUT is where it becomes a
 // modeled permission, and doing that here would add a grant no fold consumes.
 data cloudflare_r2_bucket_item_write_observed_permission_group_id: NonEmptyStr = "2efd5506f9c8494dacb1fa10a3e7d5b6"
+
+// THE OBSERVATION ROWS ARE A DECLARED FRONTIER, AND SAYING SO IS THE POINT RATHER THAN AN APOLOGY.
+// One of them is genuinely consumed: observed_permission_group_by_id is joined against
+// extdeps.cloudflare.r2's PINNED read id, which is a cross-authority check -- the pin and the
+// observation are authored by different modules for different reasons, so the join fails if either
+// drifts. The rest are not, and an earlier revision of the witness pretended otherwise by asserting
+// an id literal against a name literal authored eight lines apart in this same file. That is the
+// self-join DESIGN section 5 rules out: a measurement copied from the tree it is checking is not an
+// oracle, and automating its update would collapse the assertion to measure() == measure(). Those
+// two tests are deleted rather than weakened.
+//
+// WHAT WOULD MAKE THEM CONSUMED IS NAMED, NOT WAITED FOR. The write grant becomes a modeled
+// CloudflarePermissionGrant in the change that teaches the durable origin to PUT, and the bootstrap
+// id becomes an input to a check that the credential in custody actually holds the grant its shape
+// declares -- which needs a token-verify read this repository does not model yet.
+data cloudflare_permission_group_observation_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_r2_bucket_item_write_observed_permission_group_id"),
+    reason: "the observed write group id has no modeled grant consuming it; only READ is modeled today",
+    dissolution: unbound_dissolution(
+      description: "dissolves when extdeps.cloudflare.r2 declares a bucket-item WRITE grant built from this observed id and a gunbc entry mints a token carrying it, so the durable origin can PUT; a witness that the id was observed does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_fleet_bootstrap_observed_permission_group_id"),
+    reason: "the bootstrap group id is recorded but nothing verifies the credential in custody holds it",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing entry reads the token's own permission groups from Cloudflare -- a token-verify operation this repository does not model yet -- and refuses when they disagree with cloudflare_bootstrap_token_shape's declared grants; comparing this constant to another authored constant does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "observe_account_permission_groups"),
+    reason: "the listing entry is operator-invoked and has no automated caller",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a converge or required lane invokes this listing and folds its result, rather than an operator running it by hand and transcribing the rows below"
+    )
+  ),
+]
