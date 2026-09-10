@@ -10196,7 +10196,12 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat_here, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
             if inner_analysis.needs_rc_pattern {
               let aware = emit_pattern_rc_aware(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              let head = concat("let ", aware, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref() else { unreachable!() };")
+              let tail = if match_pattern_is_irrefutable(pattern: fb_pat_here) {
+                ";"
+              } else {
+                " else { unreachable!() };"
+              }
+              let head = concat("let ", aware, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)
               let inner_preludes = rc_pattern_preludes(pattern: fb_pat_here, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
               if inner_preludes == "" { [head] } else { [concat(head, " ", inner_preludes)] }
             } else {
