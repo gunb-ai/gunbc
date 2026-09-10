@@ -189,25 +189,25 @@ data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
   psu_efficiency: Gold,
 }
 
-fn rate_at(dimms_per_channel: Nat, rank_count: Nat) -> Nat {
+fn admitted_rate_equals(dimms_per_channel: Nat, rank_count: Nat, expected_mts: Nat) -> Bool {
   match channel_effective_data_rate(
     context: mt_collins_context,
     dimms_per_channel: dimms_per_channel,
     slot0_ranks: rank_count,
     slot1_ranks: rank_count,
   ) {
-    DataRateAdmitted { rate: r } => megatransfers_per_second_count(r: r)
-    TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: _, slot1_ranks: _ } => 0 - 1
+    DataRateAdmitted { rate: r } => megatransfers_per_second_count(r: r) == expected_mts
+    TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: _, slot1_ranks: _ } => false
   }
 }
 
 // 2DPC KEEPS THE RATED RATE ON THE CITED AMPERE TABLE. Rank no longer changes the clock: the
 // held datasheet publishes no rank-dependent ceiling, so every 2DPC rank count stays at 3200.
 test fn two_dpc_keeps_the_cited_rated_rate_across_ranks() -> Bool {
-  rate_at(dimms_per_channel: 2, rank_count: 1) == 3200
-    && rate_at(dimms_per_channel: 2, rank_count: 2) == 3200
-    && rate_at(dimms_per_channel: 2, rank_count: 4) == 3200
-    && rate_at(dimms_per_channel: 1, rank_count: 2) == 3200
+  admitted_rate_equals(dimms_per_channel: 2, rank_count: 1, expected_mts: 3200)
+    && admitted_rate_equals(dimms_per_channel: 2, rank_count: 2, expected_mts: 3200)
+    && admitted_rate_equals(dimms_per_channel: 2, rank_count: 4, expected_mts: 3200)
+    && admitted_rate_equals(dimms_per_channel: 1, rank_count: 2, expected_mts: 3200)
 }
 
 // THE HELD AMPERE SOURCES DO NOT PUBLISH THE OLD 2933/2400 TRANSCRIPTION. The empty table is
