@@ -2,7 +2,7 @@ module gunbc.v2_compile_obligation_census
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.guarantee_rung {
   GuaranteeRung,
   guarantee_rung_label,
@@ -14,6 +14,7 @@ import gunbc.guarantee_rung {
 }
 import gunbc.witness_deferral_freeze { frozen_path_deferral_covers }
 import gunbc.ci_layer_roots { WitnessExclusionRow, witness_exclusion_frontier }
+import v2.workflow.required_floor { required_gate_prefixes }
 
 // WHY THIS CENSUS EXISTS, IN ONE SENTENCE THE OPERATOR ASKED FOR (2026-09-10): v2 exists so that
 // classes like nondeterministic emission are UNWRITABLE, and this roster says, per compile-time
@@ -54,13 +55,15 @@ type ObligationKind
   | DeclaredPrimitiveTraversalFact
   | RealizationCostFidelity
 
-// A WITNESS THIS OBLIGATION IS EXERCISED BY, AT THE GRAIN THE AUTHORITIES ANSWER IN. Both the
-// freeze roster and the exclusion frontier key on the ENTRY PATH — the freeze additionally on the
-// function — so a row that named only a module could not be joined against either. This is the one
-// place the census authors a fact, and it authors the key rather than the answer.
+// A WITNESS THIS OBLIGATION IS EXERCISED BY, AT EVERY GRAIN THE THREE AUTHORITIES ANSWER IN. The
+// freeze roster keys on ENTRY PATH plus FUNCTION, the exclusion frontier on ENTRY PATH, and the
+// required floor's gate closure on MODULE PATH — so a subject that named fewer than all three could
+// not be joined against all three. This is the one place the census authors a fact, and it authors
+// the keys rather than the answers.
 type WitnessSubject {
   entry: NonEmptyStr
   function: NonEmptyStr
+  module_path: NonEmptyStr
 }
 
 // WHERE AN OBLIGATION EXECUTES ON ONE ROUTE, AND WHY THE NON-EXECUTING ARMS ARE FOUR AND NOT ONE.
@@ -82,6 +85,7 @@ type WitnessSubject {
 type PathExecution
   = ExecutedOnPath { instrument: NonEmptyStr }
   | ExecutedPendingEntryVerification { instrument: NonEmptyStr, unverified: DeclarationRef }
+  | DeclinedOutsideGateClosure { gate: DeclarationRef }
   | ExcludedFromDiscovery { frontier: DeclarationRef }
   | FrozenPathDeferred { roster: DeclarationRef }
   | RouteGapHeld { stall: DeclarationRef }
@@ -185,10 +189,42 @@ fn witness_subject_is_frozen(w: WitnessSubject) -> Bool {
   frozen_path_deferral_covers(entry: w.entry, function: w.function)
 }
 
+data required_gate_authority: DeclarationRef = decl_ref(
+  module_path: "v2.workflow.required_floor",
+  decl_name: "required_gate_prefixes"
+)
+
+fn witness_subject_is_inside_gate_closure_in(prefixes: List<String>, w: WitnessSubject) -> Bool {
+  fold(
+    prefixes,
+    init: false,
+    f: fn(found, prefix) { found || string_contains(s: w.module_path, pattern: prefix) }
+  )
+}
+
+fn witness_subject_is_inside_gate_closure(w: WitnessSubject) -> Bool {
+  witness_subject_is_inside_gate_closure_in(prefixes: required_gate_prefixes(), w: w)
+}
+
 // WHAT IS DERIVED, WHAT IS ASSUMED, AND WHY THE ASSUMPTION IS A NAMED ARM RATHER THAN A COMMENT.
 // Every entry below is a *_test.dag under dag/ or src/v2/, which is the whole of the discovery
-// walk's positive selection, so the remaining question is exactly the two subtractions — the freeze
-// roster and the exclusion frontier — and both are ASKED here, of the authorities that own them.
+// walk's positive selection, so the remaining questions are exactly the three subtractions — the
+// freeze roster, the exclusion frontier, and the required floor's gate closure — and all three are
+// ASKED here, of the authorities that own them.
+//
+// THE THIRD ONE WAS MISSING FROM THE FIRST THREE CUTS, and its absence was the same defect as the
+// widen below wearing a bigger coat: the derivation reduced per-PR standing to two questions and
+// then reported discovery-reach as execution, while v2.workflow.required_floor
+// required_gate_prefixes declines every witness whose MODULE is outside the prepared closure. It
+// changes no row's value today — every witness below is under v2.test., which the roster admits —
+// and that is precisely why it had to be asked rather than assumed: a subtraction that happens to
+// be satisfied is not a subtraction that was checked.
+//
+// THE PREFIX TEST IS A CONTAINMENT TEST, AND THE DIRECTION OF THAT IMPRECISION IS NAMED. The floor
+// matches a module path PREFIX; the substrate offers string_contains and no prefix primitive, so a
+// module merely CONTAINING a rostered string reads as admitted. Containment admits a superset, so
+// this can only ever say ADMITTED where the gate would decline — the same optimistic direction as
+// the unverified entry, and carried by the same declared debt rather than a second one.
 //
 // WHAT IS NOT ASKED is whether the entry file still exists at that path. A moved or deleted entry is
 // covered by neither roster, so "not frozen and not excluded" would answer EXECUTING for a witness
@@ -208,17 +244,28 @@ fn witness_subject_is_frozen(w: WitnessSubject) -> Bool {
 // stale_present_tense_coverage_claim_in_the_authority_consulted_first, the class this same change
 // files in the ledger, committed inside the module that files it. The repair is the declaration,
 // not a softer sentence.
-// The two subtractions this module CAN decide. Entry existence is deliberately not folded in here:
+// The three subtractions this module CAN decide. Entry existence is deliberately not folded in here:
 // it is a different question with a different owner, and conflating them is what produced the widen.
-fn witness_subject_survives_both_subtractions(w: WitnessSubject) -> Bool {
-  !witness_subject_is_frozen(w: w) && !witness_subject_is_excluded(w: w)
+fn witness_subject_survives_every_subtraction(w: WitnessSubject) -> Bool {
+  !witness_subject_is_frozen(w: w)
+    && !witness_subject_is_excluded(w: w)
+    && witness_subject_is_inside_gate_closure(w: w)
 }
 
-data entry_existence_verification_trigger: DissolutionCondition = bound_dissolution(
-  ref: decl_ref(
-    module_path: "v2.compiler.self_host.compile_obligation_activation",
-    decl_name: "obligation_entry_present_in_tree"
-  )
+// UNBOUND RATHER THAN BOUND, AND NOT BY PREFERENCE. A bound trigger names a declaration whose
+// appearance retires the obligation, which is the stronger arm and the one this row wants. It is
+// unavailable: v2.compiler.self_host.compile_obligation_activation is being authored separately and
+// no module declares it yet, so the citation refuses at the declarations phase as
+// CITED-MODULE-ABSENT — a forward reference to a DECLARATION inside an existing module is admitted,
+// a reference to a module that does not exist is not. Binding to some other module that happens to
+// exist, so the citation resolves, would be a checkable trigger impersonating a decision: it would
+// name a home the capability is not going to live in, and it would report fired on the day someone
+// added an unrelated declaration there. gunbc.self_host_promotion_obligations reaches the same
+// conclusion in its own words for the same reason. Unbound prose that cannot report itself fired is
+// the honest arm until the module lands; it is still a typed DissolutionCondition and not a
+// sentence in a comment, which is what the review asked for.
+data entry_existence_verification_trigger: DissolutionCondition = unbound_dissolution(
+  description: "v2.compiler.self_host.compile_obligation_activation declares a reader that answers, for one census row, whether its witness entry is still present in the tree at the path the row names — at which point ExecutedPendingEntryVerification splits into a verified arm and a typed refusal, and obligations_executing_on_an_unverified_entry falls to zero by construction rather than by anyone editing this file" as NonEmptyStr
 )
 
 data unverified_entry_premise: DeclarationRef = decl_ref(
@@ -226,12 +273,16 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
   decl_name: "entry_existence_verification_trigger"
 )
 
-fn any_witness_survives_both_subtractions(ws: List<WitnessSubject>) -> Bool {
-  fold(ws, init: false, f: fn(found, w) { found || witness_subject_survives_both_subtractions(w: w) })
+fn any_witness_survives_every_subtraction(ws: List<WitnessSubject>) -> Bool {
+  fold(ws, init: false, f: fn(found, w) { found || witness_subject_survives_every_subtraction(w: w) })
 }
 
 fn all_witnesses_frozen(ws: List<WitnessSubject>) -> Bool {
   fold(ws, init: true, f: fn(ok, w) { ok && witness_subject_is_frozen(w: w) })
+}
+
+fn all_witnesses_outside_gate_closure(ws: List<WitnessSubject>) -> Bool {
+  fold(ws, init: true, f: fn(ok, w) { ok && !witness_subject_is_inside_gate_closure(w: w) })
 }
 
 // THE DERIVED INTERPRETED STANDING. Executing wins over every non-executing arm because one
@@ -244,16 +295,20 @@ fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
       note: "no witness in the corpus names this obligation" as NonEmptyStr
     }
   } else {
-    if any_witness_survives_both_subtractions(ws: o.witnesses) {
+    if any_witness_survives_every_subtraction(ws: o.witnesses) {
       ExecutedPendingEntryVerification {
-        instrument: "claim_executor --required-ci --source-root dag --source-root src/v2, whose discovery walk reaches this entry and which no exclusion or freeze row subtracts" as NonEmptyStr,
+        instrument: "claim_executor --required-ci --source-root dag --source-root src/v2: the discovery walk reaches this entry, no exclusion row and no freeze row subtracts it, and its module is inside the required floor's gate closure" as NonEmptyStr,
         unverified: unverified_entry_premise
       }
     } else {
       if all_witnesses_frozen(ws: o.witnesses) {
         FrozenPathDeferred { roster: frozen_roster_authority }
       } else {
-        ExcludedFromDiscovery { frontier: exclusion_frontier_authority }
+        if all_witnesses_outside_gate_closure(ws: o.witnesses) {
+          DeclinedOutsideGateClosure { gate: required_gate_authority }
+        } else {
+          ExcludedFromDiscovery { frontier: exclusion_frontier_authority }
+        }
       }
     }
   }
@@ -292,8 +347,12 @@ fn rung_drop_ref(identity: String) -> DeclarationRef {
 // the failure this ledger already carries as declared_trigger_names_a_term_that_is_not_the_cause.
 data native_door_entry_trigger: NonEmptyStr = "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths. AND ENTERING THE DOOR IS NECESSARY BUT NOT SUFFICIENT: what this census can then report is route coverage, so the rung this row reaches on the ladder additionally needs v2.compiler.self_host.compile_obligation_activation to require red-and-green execution receipts before MechanicallyPreventable is reportable at all" as NonEmptyStr
 
-fn witness_subject(entry: String, function: String) -> WitnessSubject {
-  WitnessSubject { entry: entry as NonEmptyStr, function: function as NonEmptyStr }
+fn witness_subject(entry: String, function: String, module_path: String) -> WitnessSubject {
+  WitnessSubject {
+    entry: entry as NonEmptyStr,
+    function: function as NonEmptyStr,
+    module_path: module_path as NonEmptyStr
+  }
 }
 data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
   identity: "accumulator_copy_root_lens" as NonEmptyStr,
@@ -306,9 +365,21 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "a rooted tree threading a copied accumulator through a fold, which the gate must reject with a located diagnostic rather than a widened pass" as NonEmptyStr,
   positive_control: "the resolved add fixture, which threads no copy and must pass the root-required roster unchanged (src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag)" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag", function: "gate_red_quadratic_rejects"),
-    witness_subject(entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag", function: "gate_green_identity_accepts_clean"),
-    witness_subject(entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag", function: "roster_machine_code_zero_suspects_within_ratchet"),
+    witness_subject(
+      entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
+      function: "gate_red_quadratic_rejects",
+      module_path: "v2.test.long.accumulator_copy_compile_gate"
+    ),
+    witness_subject(
+      entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
+      function: "gate_green_identity_accepts_clean",
+      module_path: "v2.test.long.accumulator_copy_compile_gate"
+    ),
+    witness_subject(
+      entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
+      function: "roster_machine_code_zero_suspects_within_ratchet",
+      module_path: "v2.test.claim.complexity.accumulator_copy_roster_gate"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -328,9 +399,21 @@ data determinism_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "a tree whose call joins a PrimitiveIdentity carrying HostUnspecifiedOrder or TraversalOrderUnclassified, which the gate must refuse per leaking call node" as NonEmptyStr,
   positive_control: "a tree over CanonicalOrder and OrderFreeResult primitives, which must still compile" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/claim/determinism_contract_test.dag", function: "determinism_perturbation_violation_is_nondeterministic"),
-    witness_subject(entry: "src/v2/test/claim/determinism_contract_test.dag", function: "determinism_perturbation_consistent_is_deterministic"),
-    witness_subject(entry: "src/v2/test/lens_determinism/reach_witness_test.dag", function: "determinism_flags_map_keys_reach"),
+    witness_subject(
+      entry: "src/v2/test/claim/determinism_contract_test.dag",
+      function: "determinism_perturbation_violation_is_nondeterministic",
+      module_path: "v2.test.claim.determinism_contract_test"
+    ),
+    witness_subject(
+      entry: "src/v2/test/claim/determinism_contract_test.dag",
+      function: "determinism_perturbation_consistent_is_deterministic",
+      module_path: "v2.test.claim.determinism_contract_test"
+    ),
+    witness_subject(
+      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
+      function: "determinism_flags_map_keys_reach",
+      module_path: "v2.test.lens_determinism.reach_witness"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -350,8 +433,16 @@ data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "a tree carrying a flat machine-shape scalar where the modeled carrier is required, which the gate must reject" as NonEmptyStr,
   positive_control: "the modeled-carrier fixture in src/v2/test/claim/machine_shape_construction_wall_test.dag, which must pass" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag", function: "gate_red_synthetic_machine_shape_call"),
-    witness_subject(entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag", function: "gate_green_synthetic_shape_from_catalog_call"),
+    witness_subject(
+      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
+      function: "gate_red_synthetic_machine_shape_call",
+      module_path: "v2.test.claim.machine_shape_construction_wall"
+    ),
+    witness_subject(
+      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
+      function: "gate_green_synthetic_shape_from_catalog_call",
+      module_path: "v2.test.claim.machine_shape_construction_wall"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -378,9 +469,21 @@ data mandatory_tag_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "a module declaring a mandatory tag with a missing, misnamed, wrongly typed or bogus-scheme value, at parse grain and again at normalized grain, which the gate must reject" as NonEmptyStr,
   positive_control: "the clean and the off-region fixtures, which must be accepted at both grains" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag", function: "mandatory_tag_enrolled_in_root_roster_rejects_violating_module"),
-    witness_subject(entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag", function: "mandatory_tag_parse_grain_clean_accepts"),
-    witness_subject(entry: "src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag", function: "mandatory_tag_extdeps_corpus_wall_holds"),
+    witness_subject(
+      entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag",
+      function: "mandatory_tag_enrolled_in_root_roster_rejects_violating_module",
+      module_path: "v2.test.long.mandatory_tag_gate_witness"
+    ),
+    witness_subject(
+      entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag",
+      function: "mandatory_tag_parse_grain_clean_accepts",
+      module_path: "v2.test.long.mandatory_tag_gate_witness"
+    ),
+    witness_subject(
+      entry: "src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag",
+      function: "mandatory_tag_extdeps_corpus_wall_holds",
+      module_path: "v2.test.long.mandatory_tag_extdeps_corpus_test"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -403,8 +506,16 @@ data undecidable_verdict_collapse_obligation: V2CompileObligation = V2CompileObl
   discriminating_red: "a tree collapsing an undecidable verdict into a decided one, which the gate must refuse rather than absorb" as NonEmptyStr,
   positive_control: "a tree keeping the undecided arm distinct, which must compile" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/claim/undecidable_verdict_collapse_wall_test.dag", function: "gate_red_bare_variant_collapses_to_literal"),
-    witness_subject(entry: "src/v2/test/claim/undecidable_verdict_collapse_wall_test.dag", function: "gate_green_routing_arm_admits"),
+    witness_subject(
+      entry: "src/v2/test/claim/undecidable_verdict_collapse_wall_test.dag",
+      function: "gate_red_bare_variant_collapses_to_literal",
+      module_path: "v2.test.claim.undecidable_verdict_collapse_wall_test"
+    ),
+    witness_subject(
+      entry: "src/v2/test/claim/undecidable_verdict_collapse_wall_test.dag",
+      function: "gate_green_routing_arm_admits",
+      module_path: "v2.test.claim.undecidable_verdict_collapse_wall_test"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -428,8 +539,16 @@ data fact_density_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "a hollow alias node whose fact bundle names no fact, which run_required_lens_gates must reject with reason fact_density_hollow_alias_locus" as NonEmptyStr,
   positive_control: "the named fact-bundle fixture in the same directory, which must pass the same roster" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses_test.dag", function: "hollow_alias_blocked_via_always_required_lenses_holds"),
-    witness_subject(entry: "src/v2/test/lens_fact_density/fact_bundle_compile_lens_passes_test.dag", function: "fact_bundle_compile_lens_passes_holds"),
+    witness_subject(
+      entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses_test.dag",
+      function: "hollow_alias_blocked_via_always_required_lenses_holds",
+      module_path: "v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses"
+    ),
+    witness_subject(
+      entry: "src/v2/test/lens_fact_density/fact_bundle_compile_lens_passes_test.dag",
+      function: "fact_bundle_compile_lens_passes_holds",
+      module_path: "v2.test.lens_fact_density.fact_bundle_compile_lens_passes"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -449,8 +568,16 @@ data unit_modeling_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "a flat scalar leaf carrying a unit the model does not declare, which the gate must flag" as NonEmptyStr,
   positive_control: "the modeled-unit field and the coordinate-index fixtures, which must NOT be flagged — this gate's positive controls are load-bearing because a gate that flagged every scalar would satisfy every red above" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses_test.dag", function: "unit_modeling_blocked_via_always_required_lenses_holds"),
-    witness_subject(entry: "src/v2/test/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses_test.dag", function: "modeled_unit_field_admitted_via_always_required_lenses_holds"),
+    witness_subject(
+      entry: "src/v2/test/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses_test.dag",
+      function: "unit_modeling_blocked_via_always_required_lenses_holds",
+      module_path: "v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lenses"
+    ),
+    witness_subject(
+      entry: "src/v2/test/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses_test.dag",
+      function: "modeled_unit_field_admitted_via_always_required_lenses_holds",
+      module_path: "v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -470,8 +597,16 @@ data lifecycle_carrier_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "a raw prose String field standing where a typed lifecycle carrier belongs, which the gate must flag (DESIGN section 4c)" as NonEmptyStr,
   positive_control: "a typed carrier in the same position, which must pass" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag", function: "raw_dissolve_on_string_field_is_rejected"),
-    witness_subject(entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag", function: "typed_dissolution_condition_field_is_accepted"),
+    witness_subject(
+      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag",
+      function: "raw_dissolve_on_string_field_is_rejected",
+      module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged"
+    ),
+    witness_subject(
+      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag",
+      function: "typed_dissolution_condition_field_is_accepted",
+      module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -503,8 +638,16 @@ data compile_door_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "a real corpus module carrying a violation of any enrolled lens, handed to the door, which must be Rejected before compile-core" as NonEmptyStr,
   positive_control: "the same module with the violation removed, which must reach compile-core (src/v2/test/lens_application/rejecting_lens_blocks_before_compile_test.dag holds the fixture-grain pair)" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/lens_application/rejecting_lens_blocks_before_compile_test.dag", function: "rejecting_lens_blocks_before_compile_claim_holds"),
-    witness_subject(entry: "src/v2/test/lens_application/empty_required_lenses_skip_gate_test.dag", function: "empty_required_lenses_skip_gate_claim_holds"),
+    witness_subject(
+      entry: "src/v2/test/lens_application/rejecting_lens_blocks_before_compile_test.dag",
+      function: "rejecting_lens_blocks_before_compile_claim_holds",
+      module_path: "v2.test.lens_application.rejecting_lens_blocks_before_compile"
+    ),
+    witness_subject(
+      entry: "src/v2/test/lens_application/empty_required_lenses_skip_gate_test.dag",
+      function: "empty_required_lenses_skip_gate_claim_holds",
+      module_path: "v2.test.lens_application.empty_required_lenses_skip_gate"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -551,8 +694,16 @@ data primitive_map_keys_obligation: V2CompileObligation = V2CompileObligation {
   discriminating_red: "a tree calling map_keys, whose result order is a function of the per-process hash seed and not of the input, which the gate must refuse per leaking call node" as NonEmptyStr,
   positive_control: "the same tree calling sorted_map_keys, which must be accepted" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/lens_determinism/reach_witness_test.dag", function: "determinism_flags_map_keys_reach"),
-    witness_subject(entry: "src/v2/test/lens_determinism/reach_witness_test.dag", function: "determinism_holds_sorted_map_keys_sibling"),
+    witness_subject(
+      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
+      function: "determinism_flags_map_keys_reach",
+      module_path: "v2.test.lens_determinism.reach_witness"
+    ),
+    witness_subject(
+      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
+      function: "determinism_holds_sorted_map_keys_sibling",
+      module_path: "v2.test.lens_determinism.reach_witness"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -572,7 +723,11 @@ data primitive_map_values_obligation: V2CompileObligation = V2CompileObligation 
   discriminating_red: "a tree calling map_values, which exposes the same host order as map_keys and must refuse" as NonEmptyStr,
   positive_control: "a tree whose values are read through a sorted key list, which must be accepted" as NonEmptyStr,
   witnesses: [
-    witness_subject(entry: "src/v2/test/lens_determinism/reach_witness_test.dag", function: "determinism_flags_map_values_reach"),
+    witness_subject(
+      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
+      function: "determinism_flags_map_values_reach",
+      module_path: "v2.test.lens_determinism.reach_witness"
+    ),
   ],
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
@@ -690,6 +845,7 @@ fn path_execution_is_executing(p: PathExecution) -> Bool {
   match p {
     ExecutedOnPath { instrument: _ } => true
     ExecutedPendingEntryVerification { instrument: _, unverified: _ } => true
+    DeclinedOutsideGateClosure { gate: _ } => false
     ExcludedFromDiscovery { frontier: _ } => false
     FrozenPathDeferred { roster: _ } => false
     RouteGapHeld { stall: _ } => false
@@ -789,9 +945,14 @@ fn obligation_route_coverage_rung(o: V2CompileObligation) -> GuaranteeRung {
 
 // WHO CONSUMES THE COUNTS, STATED AS A DECLARED FRONTIER RATHER THAN LEFT IMPLICIT (DESIGN section
 // 3c). Today the six counts have exactly one executing consumer and it is a human running
-// census_counts; the WITNESS consumes the derivation beneath them — witness_subject_survives_both_subtractions,
-// interpreted_standing and obligation_executes_natively all execute in
-// test.claim.v2_compile_obligation_census_witness_test — but no required run reads a count. That is
+// census_counts; the WITNESS consumes the derivation beneath them — witness_subject_survives_every_subtraction,
+// interpreted_standing and obligation_executes_natively are all exercised by
+// test.claim.v2_compile_obligation_census_witness_test, WHICH RUNS ON CHANGES THAT TOUCH ITS OWN
+// CLOSURE AND IS DORMANT ON ORDINARY REQUIRED FLOORS: its module matches no row in
+// v2.workflow.required_floor required_gate_prefixes, so the floor discovers it and dispositions it
+// DeclinedOutsideGateClosure. That is admissible and it is stated at that grain deliberately — an
+// earlier cut of this sentence said the witness simply executes, which is the present-tense coverage
+// claim this same change files in the ledger. No required run reads a count. That is
 // the admissible middle state of section 3c and not the red one only because the later consumer and
 // its trigger are named here: the counts become a receipt line when the required floor publishes an
 // obligation-coverage receipt alongside its claim results, at which point census_counts is that
@@ -811,6 +972,7 @@ fn obligation_executes_on_an_unverified_entry(o: V2CompileObligation) -> Bool {
   match interpreted_standing(o: o) {
     ExecutedOnPath { instrument: _ } => false
     ExecutedPendingEntryVerification { instrument: _, unverified: _ } => true
+    DeclinedOutsideGateClosure { gate: _ } => false
     ExcludedFromDiscovery { frontier: _ } => false
     FrozenPathDeferred { roster: _ } => false
     RouteGapHeld { stall: _ } => false
@@ -871,6 +1033,7 @@ fn path_execution_label(p: PathExecution) -> String {
     ExecutedOnPath { instrument: _ } => "executes"
     ExecutedPendingEntryVerification { instrument: _, unverified: _ } =>
       "executes-pending-entry-verification"
+    DeclinedOutsideGateClosure { gate: _ } => "declined-outside-gate-closure"
     ExcludedFromDiscovery { frontier: _ } => "excluded-from-discovery"
     FrozenPathDeferred { roster: _ } => "frozen-deferral"
     RouteGapHeld { stall: _ } => "route-gap-held"
