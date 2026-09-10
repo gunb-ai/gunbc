@@ -159,6 +159,22 @@ fn ceiling_for_ranks(
   })
 }
 
+fn cited_channel_clock(
+  context: MemoryElectricalContext,
+  dimms_per_channel: Nat,
+  rank_count: Nat,
+) -> MegatransfersPerSecond {
+  if dimms_per_channel <= 1 {
+    altra_cited_two_dpc_rated_rate(context: context)
+  } else {
+    ceiling_for_ranks(
+      table: context.two_dpc_ceilings,
+      rated: altra_cited_two_dpc_rated_rate(context: context),
+      rank_count: rank_count,
+    )
+  }
+}
+
 type ChannelDataRate
   = DataRateAdmitted { rate: MegatransfersPerSecond }
   | TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: Nat, slot1_ranks: Nat }
@@ -170,14 +186,20 @@ fn channel_effective_data_rate(
   slot1_ranks: Nat,
 ) -> ChannelDataRate {
   if dimms_per_channel <= 1 {
-    DataRateAdmitted { rate: altra_cited_two_dpc_rated_rate(context: context) }
+    DataRateAdmitted {
+      rate: cited_channel_clock(
+        context: context,
+        dimms_per_channel: dimms_per_channel,
+        rank_count: slot0_ranks,
+      ),
+    }
   } else {
     match mt_jade_two_slot_rank_standing(slot0_ranks: slot0_ranks, slot1_ranks: slot1_ranks) {
       TwoSlotRanksUniform { rank_count: r } =>
         DataRateAdmitted {
-          rate: ceiling_for_ranks(
-            table: context.two_dpc_ceilings,
-            rated: altra_cited_two_dpc_rated_rate(context: context),
+          rate: cited_channel_clock(
+            context: context,
+            dimms_per_channel: dimms_per_channel,
             rank_count: r,
           ),
         }
@@ -205,24 +227,11 @@ fn memory_bandwidth(
 ) -> Bandwidth {
   let module = population.module
   let dpc = populated_dimms_per_channel(population: population)
-  let er = match channel_effective_data_rate(
+  let er = cited_channel_clock(
     context: context,
     dimms_per_channel: dpc,
-    slot0_ranks: module.rank_count,
-    slot1_ranks: module.rank_count,
-  ) {
-    DataRateAdmitted { rate: r } => r
-    TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: _, slot1_ranks: _ } =>
-      if dpc <= 1 {
-        altra_cited_two_dpc_rated_rate(context: context)
-      } else {
-        ceiling_for_ranks(
-          table: context.two_dpc_ceilings,
-          rated: altra_cited_two_dpc_rated_rate(context: context),
-          rank_count: module.rank_count,
-        )
-      }
-  }
+    rank_count: module.rank_count,
+  )
   let rated = min_nat(
     a: module.data_rate_mts,
     b: megatransfers_per_second_count(r: er),
