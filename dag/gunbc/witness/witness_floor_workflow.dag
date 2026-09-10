@@ -36,6 +36,7 @@ import gunbc.compile_permit_scope {
   FleetCompileCancellationStanding,
   FleetCancellationSafe,
   FleetCancellationNotSafe,
+  OccupancySupersedeMutableHeads,
   fleet_compile_cancellation_standing
 }
 import extdeps.github.actions {
@@ -344,17 +345,14 @@ fn running_supersession_for_fleet_standing(
 ) -> RunningSupersessionPolicy {
   match standing {
     FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
-    FleetCancellationSafe { hosts: _ } => SupersedeRunningForEvent { event: "pull_request" }
+    FleetCancellationSafe { hosts: _ } => SupersedeMutableHeadRuns
+    OccupancySupersedeMutableHeads => SupersedeMutableHeadRuns
   }
 }
 
-// LIVE CANCEL AXIS: newest mutable head wins at workflow grain (P0a.1, 2026-09-10).
-// running_supersession_for_fleet_standing still derives NeverSupersedeRunning while the jobserver
-// leak stands; occupancy starvation of whole predecessor workflows was judged the larger loss for
-// this workflow, so the emitted cancel flag does not wait on that standing.
 data witness_floor_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
   pending: ReplaceExistingPending,
-  running: SupersedeMutableHeadRuns
+  running: running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing)
 }
 
 data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witness_floor_concurrency_policy.running

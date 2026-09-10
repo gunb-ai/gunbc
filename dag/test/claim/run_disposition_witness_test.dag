@@ -709,19 +709,19 @@ test fn w_a_fully_observed_safe_fleet_restores_supersession() -> Bool {
       safe_host(name: "srv2"),
     ]),
   ) {
-    SupersedeRunningForEvent { event: e } => e == "pull_request"
+    SupersedeMutableHeadRuns => true
     NeverSupersedeRunning => false
-    SupersedeMutableHeadRuns => false
+    SupersedeRunningForEvent { event: _ } => false
   }
 }
 
 // THE LIVE ROW STILL PROJECTS WHAT CI ACTUALLY RUNS, so the fixtures above cannot go green while the
 // emitted workflow quietly moves.
-test fn w_the_live_fleet_standing_still_refuses_running_supersession() -> Bool {
+test fn w_the_live_fleet_standing_projects_occupancy_supersession() -> Bool {
   match running_supersession_for_fleet_standing(standing: fleet_compile_cancellation_standing) {
-    NeverSupersedeRunning => true
+    SupersedeMutableHeadRuns => true
+    NeverSupersedeRunning => false
     SupersedeRunningForEvent { event: _ } => false
-    SupersedeMutableHeadRuns => false
   }
 }
 
@@ -785,9 +785,9 @@ test fn w_a_server_reclaiming_fleet_restores_supersession() -> Bool {
   match running_supersession_for_fleet_standing(
     standing: finalize_fleet_standing(acc: reclaiming_fleet_acc(), eligible_hosts: two_host_fleet()),
   ) {
-    SupersedeRunningForEvent { event: e } => e == "pull_request"
+    SupersedeMutableHeadRuns => true
     NeverSupersedeRunning => false
-    SupersedeMutableHeadRuns => false
+    SupersedeRunningForEvent { event: _ } => false
   }
 }
 
