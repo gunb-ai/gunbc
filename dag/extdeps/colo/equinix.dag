@@ -188,10 +188,16 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // refuses and a wrong ceiling admits a wrong answer confidently. The figure is also APPARENT power -
 // kW = kVA x power factor, none published - so 2kVA does not establish 2kW either.
 //
-// THE FIGURES ARE THEREFORE CARRIED IN PROSE AND THAT IS A KNOWN DEFECT WITH A NAMED REPLACEMENT
-// ALREADY BUILT. Review 62872 is right that a read numeric fact living in a NonEmptyStr is DESIGN
+// THE FIGURES ARE NO LONGER CARRIED ONLY IN PROSE, AND THE DEFECT IS NARROWER THAN THIS ANNOTATION
+// FIRST STATED. Review 62872 is right that a read numeric fact living in a NonEmptyStr is DESIGN
 // section 2's anemic decomposition: types.dag already carries the quantity as PublishedApparentPower
-// over VoltAmpere, and these seven readings are unreachable by any fold, including density_claim_is_read.
+// over VoltAmpere. What changed is that DensityUnread now types its CAUSE, so each of these seven
+// rows carries its wording and citation as fields and density_unread_reading reaches them by fold -
+// the sentence here previously said they were unreachable by any fold, and that is no longer true.
+// WHAT REMAINS ANEMIC IS THE ONE THING THAT MATTERS MOST: the wording is a string, so "2kVA" is a
+// numeral a reader parses rather than a quantity with a unit and a DIRECTION. A floor is still not
+// expressible, which is why these rows sit in FigureReadButUnrepresentable rather than in a
+// figure-bearing arm, and why density_claim_is_read still answers false for them.
 //
 // THE REPLACEMENT IS A DIRECTION-CARRYING FIGURE, AND IT IS NOT THE SHAPE THIS ANNOTATION FIRST NAMED.
 // It is stated as a capability rather than as a pull request because the wording here first named

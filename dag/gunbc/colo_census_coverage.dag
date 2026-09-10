@@ -248,7 +248,7 @@ fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
   match d {
     DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => true,
     DensityMarketedAirOnly { air_cooled, claim_wording, citation } => true,
-    DensityUnread { obligation } => false,
+    DensityUnread { cause } => false,
   }
 }
 
