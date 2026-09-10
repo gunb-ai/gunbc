@@ -3,7 +3,8 @@ module gunbc.colo_census_coverage
 import std.types { NonEmptyStr, Int, List, Bool }
 import extdeps.colo.types {
   ColoFacilityRow, CabinetDensityClaim,
-  DensityPublished, DensityUnread,
+  ClaimWordingStanding, ClaimWordingVerified, ClaimWordingSummarized, ClaimWordingUnread,
+  claim_wording_standing,
 }
 import extdeps.colo.equinix {
   equinix_ny1_density, equinix_ny2_density, equinix_ny3_density, equinix_ny4_density,
@@ -235,9 +236,17 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // the same fold calls it and this declaration goes. A migration whose destination is named and whose
 // origin has no competing authority is not a throwaway artifact; it is one call site moving.
 //
-// ON REBASE this function is DELETED and coverage_density_read_count asks the carrier, in whatever
-// shape the carrier settles on. It is NOT rewritten against the new arms: that would be the same
-// predicate authored a fourth time in the file that already carries the sentence predicting the third.
+// THE REBASE HAPPENED AND THE FUNCTION IS DELETED, WHICH IS WHAT THE SENTENCE ABOVE PROMISED. The
+// first cut of this merge REWROTE it against the new arms instead - `DensityPublished { figures } =>
+// true` - which is exactly the fourth authoring this file predicted and review 63019 caught. Deleting
+// it was never contingent on anything but the carrier route existing, and the carrier route landed in
+// the same change that broke the old one.
+//
+// THE COUNT NOW ASKS AN AUTHORITY THAT ALREADY ANSWERS. `claim_wording_standing` is the carrier's own
+// three-state fold over a claim and its Unread arm IS the unread claim, so no predicate has to be
+// coined to ask whether a page was read - and matching it costs no traversal, which is what the
+// paragraph below asks for. Spelling it inline at the single call site rather than as a named helper
+// is deliberate: a named one would be the fourth authoring under a new name.
 //
 // AND WHERE THE CARRIER ANSWERS WITH THE FIGURES RATHER THAN THE QUESTION, this fold destructures them
 // rather than measuring them. `length(...) > 0` computes a TOTAL to decide a PRESENCE, which is the
@@ -247,13 +256,6 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // the tempting spelling is the measuring one, and it is tempting precisely where the list is short.
 // Recorded here rather than in a PR thread, because the next reader of this function needs to know it
 // is owed a home, and needs the trigger to be one that can actually be checked.
-fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
-  match d {
-    DensityPublished { figures } => true,
-    DensityUnread { obligation } => false,
-  }
-}
-
 // COUNTS DENSITY CLAIMS, NOT FACILITIES, and the two differ on purpose. Several corridor operators
 // publish one density statement covering every site they run, so a claim is the grain at which the
 // reading actually exists; attributing an operator-level claim to each of its facilities would
@@ -271,7 +273,11 @@ fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
 // a facility-grain number must not be manufactured from it.
 fn coverage_density_read_count(c: RegionCoverage) -> Int? {
   match c.outcome {
-    FacilitiesModelled { facilities, densities } => Present { value: densities.filter(d => density_claim_is_read(d: d)).length() },
+    FacilitiesModelled { facilities, densities } => Present { value: densities.filter(d => match claim_wording_standing(d: d) {
+      ClaimWordingVerified => true,
+      ClaimWordingSummarized { unverified } => true,
+      ClaimWordingUnread => false,
+    }).length() },
     SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Absent,
     RegionUnsurveyed { obligation } => Absent,
   }

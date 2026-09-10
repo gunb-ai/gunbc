@@ -178,18 +178,28 @@ data equinix_ny7: ColoFacilityRow = ColoFacilityRow {
 // rather than against this annotation, because a numeral copied out of prose is how a census acquires
 // a figure nobody read.
 //
-// TWO PROPERTIES OF THAT DESIGN BEAR ON THESE ROWS. The one this module needed is preserved and
-// enforced by execution rather than by this paragraph: cabinet_density_air_ceiling returns Absent for
-// CapabilityAtLeast, so these figures can be carried at full precision and still contribute nothing
-// to a ceiling. The one neither this module nor its escalation had is that A FLOOR ADMITS - a 2 kVA
-// minimum admits a 2 kVA requirement and refuses nothing, which is a real screen and is precisely
-// what a prose obligation could never supply. Sending a floor to Absent would have been harmless and
-// useless; that is a better answer than the one asked for.
+// TWO PROPERTIES OF THAT DESIGN BEAR ON THESE ROWS, AND THE LANDED CARRIER MATCHES ONE OF THEM AND
+// NOT THE OTHER. This paragraph asserted both as machine behaviour and review 63019 was right that it
+// had gone stale; it is corrected here rather than deleted, because the difference is the whole
+// instruction to whoever converts these rows.
 //
-// WHEN THE CARRIER CAN HOLD A FIGURE'S DIRECTION AND ITS APPARENT-POWER UNIT, these seven rows move
-// from DensityUnread to a floor-shaped published figure carrying the
-// wording they already hold, and the resolve step below stays owed, because a floor is genuinely not
-// a maximum and the maximum is still unread.
+// KEPT: a floor still contributes nothing to an upper bound. `cabinet_density_air_ceiling` no longer
+// exists - nor does any ceiling carrier, since a marketed maximum must not become a physical "cannot
+// exceed" - but CapabilityAtLeast reaches `OutsidePublishedMaximum` on no requirement at all, so the
+// property this module needed survives its accessor.
+//
+// NOT KEPT, AND THIS IS THE PART A CONVERTER MUST READ: A kVA FLOOR ADMITS NOTHING. The claim that "a
+// 2 kVA minimum admits a 2 kVA requirement" is false on the landed carrier. `figure_covers` answers
+// false for every PublishedApparentPower, because kW = kVA x power factor and none is published, so
+// reading a kVA numeral as watts would be one power factor more generous than the operator's own
+// sentence. A CapabilityAtLeast over apparent power therefore lands in `NonBoundingPublication`:
+// carried at full precision, bounding in neither direction.
+//
+// SO THE CONVERSION IS STILL WORTH DOING AND BUYS LESS THAN THIS PARAGRAPH PROMISED. It moves these
+// seven readings out of prose and into figures a fold can reach - which is the section 2 defect -
+// while the SCREEN stays as empty as it is today, and stays that way until an operator publishes a
+// power factor or a watt figure. The resolve step below also stays owed, because a floor is genuinely
+// not a maximum and the maximum is still unread.
 
 data equinix_ny1_density: CabinetDensityClaim = DensityUnread {
   obligation: "The operator's own NY1 page, www.equinix.com/data-centers/americas-colocation/united-states-colocation/new-york-data-centers/ny1, fetched 2026-09-09 with a full browser user-agent (HTTP 200) and read from RAW HTML against a SUBJECT control (NY1 occurs 19 times), emits a spec-table row labelled exactly \"Minimum Cabinet Density\" with the value \"2kVA\". That is a commitment FLOOR in apparent power, not a maximum and not real power; the annotation above this block states once why neither existing figure arm may hold it. RESOLVE by asking the quote for the per-cabinet air-cooled MAXIMUM at NY1 (165 Halsey Street, Newark)."
