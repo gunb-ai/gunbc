@@ -489,11 +489,11 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
   sharing_type_is_wrapped_for_target(target: Rust, type_name: type_name)
 }
 
+// Rc::new(panic!(...)) is unreachable_code under -D warnings: panic diverges, so the
+// constructor call never returns. Native cargo of the 00_compile closure refused on
+// v2_std_collection wrapping the keyed-container inhabitant panic. A diverging inner
+// is already a value of every type; wrapping it is not a sharing realization.
 fn rust_shared_wrap_ctor(inner_expr: String) -> String {
-  // Rc::new(panic!(...)) is unreachable_code under -D warnings: panic diverges, so the
-  // constructor call never returns. Native cargo of the 00_compile closure refused on
-  // v2_std_collection wrapping the keyed-container inhabitant panic. A diverging inner
-  // is already a value of every type; wrapping it is not a sharing realization.
   if starts_with(s: inner_expr, prefix: "panic!(")
     || starts_with(s: inner_expr, prefix: "compile_error!(")
     || starts_with(s: inner_expr, prefix: "unreachable!(")
