@@ -174,12 +174,27 @@ type CabinetDensityClaim
 // which is why that arm carries the wording and the citation beside the obligation: the reading is
 // evidence already paid for and must not be re-acquired to discharge the obligation.
 //
+// THE MEMBERSHIP TEST IS THE OBLIGATION'S REMEDY, NOT THE FIGURE'S GRAIN. Ask what discharges the
+// row: if a FETCH is still owed, it is NoPublishedSurface, whatever numerals the obligation quotes;
+// if no re-fetch is owed and what is missing is a carrier, it is FigureReadButUnrepresentable. That
+// is the arms' own contract and it decides the hard rows without appeal to judgement. CenterSquare
+// publishes "Standard CAGE density: Up to 300W/sq. ft." and then owes a fetch for a per-cabinet
+// maximum, so it is NoPublishedSurface - and the grain argument never has to be had. (It would also
+// go the same way: watts per square foot and watts per cabinet are not one quantity at two
+// resolutions but power-per-area against power-per-enclosure, and converting needs an assumed
+// cabinet footprint, which is this census's cardinal prohibition in a different costume.)
+//
 // MEMBERSHIP IS HAND-AUDITED, NOT PATTERN-MATCHED, and that is a load-bearing fact about this type.
 // A scripted classifier over the obligation prose was written and discarded: it read "4 x 180 kW"
 // and "Two 600 kW redundant generators" as cabinet densities, which is the census's cardinal error
 // - facility power is a fact about a BUILDING and is not density - and its quote extraction split
-// an English apostrophe mid-sentence. A row joins this arm only where its obligation states that a
-// PER-CABINET or PER-RACK figure was read from the operator's own surface.
+// an English apostrophe mid-sentence. A second lane built its own classifier to cross-check this
+// one and reproduced the same failure independently within the hour, so this is a property of the
+// task and not of one script. READING MORE OF THE STRING DOES NOT REPAIR IT: that instrument also
+// matched a clause whose grammatical subject was a DIFFERENT OPERATOR ("DataBank's suite page is
+// the only surface in the building that states a per-cabinet figure at all"), which no amount of
+// read length recovers, because the subject and scope a figure was stated under are not carried by
+// the numeral.
 type DensityUnreadCause
   = NoPublishedSurface {
       obligation: NonEmptyStr
