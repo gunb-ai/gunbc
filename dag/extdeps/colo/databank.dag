@@ -210,21 +210,6 @@ data databank_ewr2_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   citation: "databank.com New Jersey Piscataway data center page, read 2026-09-08. The page lists cabinets alongside cages as the space products for this facility, on the same pattern as LGA4; it does not state a minimum commitment, so the quote still owes the answer for a one-cabinet order.",
 }
 
-// A SECOND SITE THIS OPERATOR RUNS IN NEW JERSEY, NAMED BUT NOT MODELLED. A review relayed into
-// this session cited an 85 kW-per-cabinet deployment at a Piscataway campus for a university HPC
-// tenant. Two fetches of the campus and facility pages under the paths that claim implies both
-// returned 404 on 2026-09-08, so no address, capacity or density is carried for it. A tailored
-// deployment for one named tenant would in any case be a different fact from a marketed cabinet
-// maximum, and would need its own arm rather than being read as retail density.
-// PARTIALLY DISCHARGED 2026-09-08. The operator's New Jersey index at databank.com/data-
-// centers/new-jersey/ resolves and names exactly two sites: EWR1 Downtown Newark, now modelled
-// above, and EWR2 Piscataway at 25 Corporate Place South, Piscataway, NJ 08854 with no density
-// figure on the index. The Piscataway facility page beneath it still 404s, and Piscataway is
-// Middlesex County, outside the Hudson-Bergen-Essex corridor this pass surveyed, so EWR2 remains
-// unmodelled: read its facility page and carry its address, critical IT load, cabinet density and
-// retail grain. The 85 kW-per-cabinet claim a secondary review attached to a Piscataway HPC tenant
-// is still unconfirmed by any operator page and is still not a marketed retail density.
-//
 // THE OPERATOR'S NEW JERSEY SITE IN THE HUDSON-BERGEN-ESSEX CORRIDOR, read 2026-09-08 from the
 // operator's own New Jersey index and the EWR1 facility page beneath it. DataBank sells from a
 // suite inside the 165 Halsey carrier hotel, which the census already carries as a building under
