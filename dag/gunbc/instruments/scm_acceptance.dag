@@ -54,6 +54,7 @@ import tools.scm_acceptance_binary {
   ScmAcceptanceBinarySelectionRefused,
   ScmAcceptanceBinaryDigestRefused,
   ScmAcceptanceBinaryRetentionRefused,
+  ScmAcceptanceBinaryNotRunnableHere,
   acquire_scm_acceptance_binary,
   scm_acceptance_binary_executable,
 }
@@ -915,6 +916,8 @@ fn scm_acceptance_acquisition_exit(acquisition: ScmAcceptanceBinaryAcquisition) 
     ScmAcceptanceBinaryDigestRefused { detail: d } =>
       exit_failure(reason: concat("acceptance refused: ", d))
     ScmAcceptanceBinaryRetentionRefused { detail: d } =>
+      exit_failure(reason: concat("acceptance refused: ", d))
+    ScmAcceptanceBinaryNotRunnableHere { detail: d } =>
       exit_failure(reason: concat("acceptance refused: ", d))
     ScmAcceptanceBinaryReady { binary: binary } =>
       scm_acceptance_exit(outcome: scm_acceptance_population(binary: binary))

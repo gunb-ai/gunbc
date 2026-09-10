@@ -39,12 +39,22 @@ module tools.scm_acceptance_binary
 // path and a digest -- a trusted build subject, target and ABI identity, content-addressed
 // transport, local verification -- and none of that is authored here.
 //
-// BUILD AND EXECUTION MOVE TOGETHER. This acquires on the host the children will run on, so an
-// environment that cannot build the artifact answers a located refusal rather than borrowing an
-// incompatible one built elsewhere. An amd64 artifact and an arm64 child are not a receipt problem;
-// they are two different programs.
+// BUILD AND EXECUTION MOVE TOGETHER, AND THAT IS CHECKED RATHER THAN ASSUMED. An amd64 artifact and
+// an arm64 child are not a receipt problem; they are two different programs. The subtlety is that
+// EVERY OTHER CHECK HERE PASSES for a wrong-architecture binary: it builds, Cargo reports it, it
+// copies, it digests, both digests agree, and the executable bit is set. The failure would surface
+// as `Exec format error` inside the first scenario's first child, presented as a scenario failure --
+// blaming the SCM code for an artifact that was never runnable here.
+//
+// So the last acquisition step RUNS the retained artifact (`--version`, which must succeed if it can
+// execute at all) and refuses as `ScmAcceptanceBinaryNotRunnableHere` when it cannot. This is not
+// hypothetical: in this container `cargo` resolves to a shim that dispatches remotely to a
+// linux/amd64 runner while the session itself is arm64, so an instrument that trusted the executable
+// bit would acquire a binary guaranteed to fail. `IsExecutable` answers a MODE BIT; it does not
+// answer whether this kernel can load the image, and that distinction is the whole check.
 
 import extdeps.shell
+import extdeps.gunbc
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.tools.sha512sum { sha512sum_observe_file, Sha512FileObserved, Sha512FileObservationRefused }
@@ -84,11 +94,19 @@ type ScmAcceptanceBinaryAcquisition
   | ScmAcceptanceBinarySelectionRefused { detail: String }
   | ScmAcceptanceBinaryDigestRefused { detail: String }
   | ScmAcceptanceBinaryRetentionRefused { detail: String }
+  | ScmAcceptanceBinaryNotRunnableHere { detail: String }
 
 data scm_acceptance_target_name: String = "gunbc"
 
+// `--message-format` IS NOT PASSED HERE, and the first wet run is why this comment exists.
+// `BuildManifestMessages` already supplies `--message-format=json` -- that is the whole reason it is
+// a distinct operation from `cargo.Build.Build` -- so naming it again produced `cargo build
+// --message-format=json ... --message-format json`, which cargo refuses with exit 101. The
+// instrument then answered `the acceptance binary did not build`, which was TRUE and pointed at the
+// wrong culprit: nothing was wrong with the tree. Passing a flag the transport already owns is the
+// policy-in-argv leak DESIGN section 3 names, and the refusal it caused was honest but misleading.
 fn scm_acceptance_build_args() -> List<String> {
-  ["--release", "-p", "v1-compiler", "--bin", "gunbc", "--message-format", "json"]
+  ["--release", "-p", "v1-compiler", "--bin", "gunbc"]
 }
 
 // THE DESTINATION DIGEST IS OBSERVED, NOT ASSUMED FROM THE COPY'S EXIT STATUS. `cp` answering zero
@@ -121,16 +139,30 @@ fn retain_acceptance_binary(
         Sha512FileObserved { digest: retained_digest } =>
           if (retained_digest.hex as String) == (source_digest.hex as String) {
             let executable = shell.Test.IsExecutable(path: destination)
-            if executable.executable {
-              ScmAcceptanceBinaryReady {
-                binary: ScmAcceptanceBinary {
-                  executable: destination,
-                  digest: retained_digest,
-                },
-              }
-            } else {
+            if !executable.executable {
               ScmAcceptanceBinaryRetentionRefused {
                 detail: "the retained executable is not executable at its attempt-owned path",
+              }
+            } else {
+              let probe = gunbc.WitnessBin.Run(
+                workdir: hold.path,
+                bin_path: destination,
+                args: ["--version"],
+              )
+              if probe.success {
+                ScmAcceptanceBinaryReady {
+                  binary: ScmAcceptanceBinary {
+                    executable: destination,
+                    digest: retained_digest,
+                  },
+                }
+              } else {
+                ScmAcceptanceBinaryNotRunnableHere {
+                  detail: concat(
+                    "the retained artifact does not execute on this host -- it built and digested, but ",
+                    concat(probe.stderr, " -- build and execution must move together"),
+                  ),
+                }
               }
             }
           } else {
