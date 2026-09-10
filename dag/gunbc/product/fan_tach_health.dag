@@ -16,6 +16,7 @@ import product.fan_tach { FanTachEndpointIdentity, FanTachWindow }
 import v2.std.cardinality { Never }
 import std.goal_assessment {
   GoalAssessment,
+  GoalAssessmentRefused,
   GoalInspection,
   ObservationAttempt,
   ObservationEstablished,

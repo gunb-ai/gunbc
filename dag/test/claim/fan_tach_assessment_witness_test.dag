@@ -57,10 +57,16 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// 12 of 20 is the fleet's declared rotation floor, threaded rather than inlined for the reason the
-// wet witness gives: a number measured on the current fleet must not become the definition of
-// healthy. It is repeated here rather than imported because the wet witness declares it as its own
-// local policy, and importing it would make one lane's threshold the other lane's authority.
+// 12 OF 20 IS THIS WITNESS'S OWN POLICY, AND IT IS NOT AN ORACLE COPIED FROM THE TREE. srv2's
+// healthy endpoints sit at 16-20 and srv1's two bad ones at 4 and 9, so any floor in that gap
+// separates them; 12 is chosen inside that gap and threaded as a parameter rather than frozen into
+// the judgement, so a number measured on the current fleet cannot quietly become the definition of
+// healthy (DESIGN section 5 on literals that are not grounded in an authority).
+//
+// It is declared here rather than imported because product.fan_tach_health deliberately does not
+// own it: the floor is policy about one fleet's telemetry, so the module takes it as a parameter of
+// the goal and the caller supplies it. A shared constant would make this witness's threshold the
+// authority for every future caller, which is the fork that parameter exists to prevent.
 data rotating_floor: Int = 12
 
 fn subject_of(
