@@ -3419,10 +3419,9 @@ fn dag_grammar() -> ParseGrammar {
   ModeledGrammar { root: dag_grammar_root() }
 }
 
-// Graft-body units are the alternatives of dag_grammar_top_level_item_expr (import_decl |
-// alias_decl | type_decl | data_decl | fn_decl), mapped through the grammar roster's emitted
-// identity. The collector must not re-list those productions. import_block is interior to
-// import_decl and is not an alternative.
+// Graft-body units are the emitted identities of nonterminals in
+// dag_grammar_top_level_item_expr, joined through the grammar roster. Interior productions
+// of those alternatives (import_block under import_decl) are not units.
 fn dag_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> List<Symbol> {
   fold_grammar_expr(
     expr: expr,
