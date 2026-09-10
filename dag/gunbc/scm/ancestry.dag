@@ -82,10 +82,15 @@ import std.minted_identity { MintedId, minted_id_eq }
 // repository-relative above.
 //
 // The boundary itself survives the correction, and is what the rule was always about: an object is
-// keyed by WHAT IT IS, and within one store the locator answers that. A commit record is a program
-// PLUS a message PLUS a position in history, and only the last of those distinguishes it. So
-// `ObjectId` is the right key for objects and the wrong key for commit records, and the question at a
-// new lookup is which of the two you are keying -- with the scope of the answer being one store.
+// keyed by WHAT IT IS, and within one store the locator answers that. A COMMIT OCCURRENCE is keyed
+// differently: it carries an authored snapshot, a message, ancestry and integration, and it is
+// distinguished by its minted `RepositoryCommitRef` -- equal snapshots do not collapse distinct
+// occurrences. (This said "a program PLUS a message PLUS a position in history, and only the last of
+// those distinguishes it". Both halves went stale: a root is a corpus manifest rather than a program,
+// and LIST POSITION is presentation rather than identity -- which this module already says elsewhere,
+// so the sentence contradicted its own neighbours. Found by external review.) So `ObjectId` is the
+// right key for objects and the wrong key for commit records, and the question at a new lookup is
+// which of the two you are keying -- with the scope of the answer being one store.
 //
 // THE HISTORY THAT DECIDES IT is an ordinary revert, not a corner case:
 //

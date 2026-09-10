@@ -32,7 +32,8 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 
-// WHETHER THIS COMMIT'S PROGRAM IS ACTUALLY HELD, which is decidable here and therefore reported.
+// WHETHER THIS COMMIT'S CORPUS MANIFEST IS ACTUALLY HELD, which is decidable here and therefore
+// reported. (This heading said PROGRAM, from when a root was a semantic node.)
 // The envelope's own encoder refuses on RepositoryCommitRootNotInStore, so "this commit names a root
 // the store does not contain" is a state the model already knows how to recognise. Listing such a
 // commit without saying so would present a row that cannot be checked out as though it were
@@ -50,11 +51,14 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 // negatives have different remedies (fetch the missing object vs. repair a wrong-kind reference), so
 // they are separate arms rather than one Bool.
 //
-// A CORPUS MANIFEST IS A THIRD SUCH THING, and it arrives by the same route: the store holds one, a
-// locator can be present and be it, and a log row claiming a checkoutable root over one would be the
-// same false report this type was split to prevent. It is named rather than folded into the authored
-// -source arm because a log is read by a person deciding what to repair, and "there is a file here"
-// sends them somewhere different from "there is a corpus manifest here".
+// (THIS PARAGRAPH ONCE CALLED A CORPUS MANIFEST "A THIRD SUCH THING" -- a third WRONG kind whose
+// presence under a root would make a checkoutability claim false. That is now the exact inverse of
+// the model: a corpus manifest is the REQUIRED root kind, as the paragraph directly above states, and
+// `LoggedCommitManifestHeld` is the SUCCESS arm. It was written when a root was a semantic node and
+// was left stale when the root kind changed, so it contradicted its own neighbour rather than
+// recording history. Found by external review.) The two wrong-kind arms are named separately rather
+// than folded together because a log is read by a person deciding what to repair, and "there is a
+// file here" sends them somewhere different from "there is a semantic node here".
 // THE STANDING IS ABOUT THE SNAPSHOT DESIGNATION ALONE, AND ITS SUCCESS ARM IS DELIBERATELY NARROW.
 // `LoggedCommitManifestHeld` says exactly one thing: this store holds a corpus manifest at the root
 // this commit names. It does NOT say the corpus is recoverable, and it must never be rendered as
@@ -115,7 +119,6 @@ fn logged_commit_standing(store: ObjectStore, root: CorpusManifestObjectRef) -> 
 fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryCommit) -> CommitLogAcc {
   CommitLogAcc {
     rows: concat(
-      acc.rows,
       [
         CommitLogRow {
           reference: commit.reference,
@@ -124,11 +127,20 @@ fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryComm
           standing: logged_commit_standing(store: store, root: commit.root),
         },
       ],
+      acc.rows,
     ),
   }
 }
 
 // Rows preserve the authored commit-list order, but references do not derive from that order.
+//
+// THE STEP PREPENDS AND THE FOLD REVERSES ONCE, which is the shape this needs rather than a
+// micro-optimisation. `concat(acc.rows, [row])` copied the whole accumulator per commit, making a
+// log quadratic in the number of commits it lists; DESIGN section 6's bare-minimum-cost rule fixes a
+// proven cost shape regardless of the realized n, because reuse changes n and "few commits here" is
+// not a time-stable fact. The reverse is therefore load-bearing for the order claim above, not
+// cosmetic: dropping it would silently reverse the log. Found by external review; the identical
+// copied accumulator was repaired in `gunbc.scm.checkout` `recover_corpus` in this same cut.
 //
 // WHAT THIS DELIBERATELY DOES NOT CLAIM IS RECENCY, and the reason is a finding rather than a
 // preference: NOTHING IN THE MODEL ESTABLISHES THAT A LATER INDEX IS A NEWER COMMIT. No commit
@@ -145,8 +157,12 @@ fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryComm
 // BUT TWO REAL PRODUCERS DO NOT MAKE THE LIST CHRONOLOGICAL, and this is exactly where a stale premise
 // invites an over-correction. `commits` is also populated by `gunbc.scm.repository_envelope`
 // `decode_repository`, which reconstructs a commit list from a document in whatever order that
-// document happens to carry -- an order this function cannot see and the decoder does not claim to
-// preserve. So the honest statement is narrower than either the old claim or its negation: SOME
+// document happens to carry. The decoder DOES preserve that presentation order -- an earlier writing
+// of this sentence said it did not, which contradicted the order claim at the top of this very block
+// and understated the decoder. What neither the document nor the decoder supplies is any RECENCY
+// semantics for that order, and that is what actually defeats newest-first: the order survives, the
+// chronology was never in it. So the honest statement is narrower than either the old claim or its
+// negation: SOME
 // commits now have a producer that defines what appending meant, and the list as a whole still has no
 // ordering basis, because a property that holds of some members of a population is not a property of
 // the population.
@@ -170,7 +186,7 @@ fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
       init: CommitLogAcc { rows: [] },
       f: fn(acc, c) { commit_log_step(store: envelope.store, acc: acc, commit: c) },
     ) {
-      CommitLogAcc { rows: rows } => CommitLogRows { rows: rows }
+      CommitLogAcc { rows: rows } => CommitLogRows { rows: reverse(rows) }
     }
   }
 }
