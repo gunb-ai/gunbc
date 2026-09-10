@@ -44,6 +44,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // THE HERMETIC FIXTURE LOGIN IS NOT A GITHUB ACCOUNT. mock_response can only publish one result,
 // so the hermetic arm is the decoded-200 shape of GET /user. The spelling is the fixture's
 // identity: a live GitHub user.login cannot be this string, and a live 401 cannot be this 200.
+// mock_response evaluates with an empty env, so RestOk cannot be named inline; the outcome is the
+// module data row, same grain as the fixture login.
 data hermetic_get_authenticated_user_login: String = "hermetic-mock-authenticated-user"
 data hermetic_get_authenticated_user_id: Int = 1
 data hermetic_get_authenticated_user_type: UserType = User
@@ -81,7 +83,6 @@ service github.Users {
         },
         outcome: hermetic_get_authenticated_user_outcome
       } "hermetic GET /user decoded-200 shape; the login is the fixture identity, not a live GitHub account"
-    }
     }
   }
 }
