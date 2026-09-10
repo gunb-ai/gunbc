@@ -1,0 +1,596 @@
+module test.claim.machine_intake_bmc_secure_witness_test
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { ContentHash, content_hash_of_value }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.types { AccountRoleAdministrator, RedfishAccountRole }
+import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
+import gunbc.machine_intake_subject {
+  AssemblyManifest,
+  ComponentIdentity,
+  DimmComponent,
+  FirmwareEntry,
+  FirmwareManifest,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  QualificationSubject,
+  UnitKey,
+  qualification_subject_of,
+}
+import gunbc.machine_intake_phase {
+  Arrival,
+  BmcAccess,
+  BmcSecure,
+  IntakePhase,
+  OperatorAction,
+  QualificationPolicy,
+  QualificationRefusalOwner,
+  StagingInfrastructure,
+  UnitHardware,
+  fleet_admission_required_phases,
+}
+import gunbc.machine_intake_receipt {
+  EvidenceRef,
+  IntakeProducerIdentity,
+  IntakeReceiptEnvelope,
+  IntakeReceiptResult,
+  LedgerRefused,
+  LedgerValidated,
+  MachineIntakeReceiptV1,
+  ReceiptRefused,
+  ReceiptSatisfied,
+  intake_receipt_structural_fingerprint,
+  validate_intake_receipt_ledger,
+}
+import gunbc.machine_intake_disposition {
+  Admitted,
+  FleetAdmissible,
+  FleetAdmissionStanding,
+  FleetNotAdmissible,
+  MachineIntakeDisposition,
+  PartsHold,
+  QualificationUnestablished,
+  RepairOrCull,
+  ReturnWindow,
+  ReturnWindowOpen,
+  derive_disposition,
+  derive_fleet_admission,
+}
+import gunbc.machine_intake_bmc_secure {
+  AccountManagementUnavailable,
+  AccountManagementUnreachable,
+  BmcCredentialRotationObservation,
+  BmcSecureRefusalCause,
+  BmcSecureRefused,
+  BmcSecureStanding,
+  BmcSecured,
+  CredentialAccepted,
+  CredentialEpochNotAdvanced,
+  CredentialProbeOutcome,
+  CredentialProbeUnestablished,
+  CredentialRejected,
+  CredentialRotationNotApplied,
+  CredentialStateUnknown,
+  ManagedCredentialProbePrecedesRotation,
+  ManagedCredentialRejected,
+  ManagedCredentialReference,
+  ManagedCredentialUnestablished,
+  PreviouslyRotatedCredentialRequired,
+  PublishedCredentialProbePrecedesRotation,
+  PublishedCredentialRetirementUnestablished,
+  PublishedCredentialStillAccepted,
+  RotationApplied,
+  RotationNotAttempted,
+  RotationObservationForOtherAttempt,
+  bmc_secure_phase,
+  bmc_secure_phase_receipt,
+  bmc_secure_refusal_owner,
+  derive_bmc_secure,
+  observed_bmc_credential_rotation,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data unit: UnitKey = "BRD-000451" as UnitKey
+
+data assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-1U-ALT",
+  components: [ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-A1" }],
+}
+
+data firmware: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "3.22.00" }],
+  configuration_digests: [],
+}
+
+data subject: QualificationSubject = qualification_subject_of(unit_key: unit, assembly: assembly, firmware: firmware)
+
+data attempt_one: IntakeAttemptId = "intake-20260910-0001" as IntakeAttemptId
+data attempt_two: IntakeAttemptId = "intake-20260910-0002" as IntakeAttemptId
+
+data intake_subject: MachineIntakeSubject = MachineIntakeSubject { subject: subject, attempt_id: attempt_one }
+data other_attempt_subject: MachineIntakeSubject = MachineIntakeSubject { subject: subject, attempt_id: attempt_two }
+
+data controller: BmcControllerEndpoint = BmcControllerEndpoint { host: "192.168.1.192" }
+
+data managed_secret: SecretRef = SecretRef {
+  project: "gunbai-secrets",
+  secret: "bmc-brd000451-admin",
+  version: "1",
+  hash_state: HashPending,
+}
+
+data managed_reference: ManagedCredentialReference = ManagedCredentialReference {
+  account: "intake-admin",
+  role: AccountRoleAdministrator,
+  secret: managed_secret,
+  credential_epoch: 1,
+}
+
+fn evidence(label: NonEmptyStr) -> EvidenceRef {
+  EvidenceRef { label: label, digest: content_hash_of_value(value: label as String) }
+}
+
+data rotation_at: EpochMs = 1788000005000
+
+data bootstrap_accepted: CredentialProbeOutcome = CredentialAccepted { evidence: evidence(label: "bootstrap-login"), observed_at: 1788000001000 }
+data managed_accepted: CredentialProbeOutcome = CredentialAccepted { evidence: evidence(label: "managed-login"), observed_at: 1788000006000 }
+data published_rejected: CredentialProbeOutcome = CredentialRejected { evidence: evidence(label: "published-login-401"), observed_at: 1788000007000 }
+data published_accepted: CredentialProbeOutcome = CredentialAccepted { evidence: evidence(label: "published-login-200"), observed_at: 1788000007000 }
+
+// One rotation observation with the four readings the design doc's BmcSecure
+// row names. Every test below perturbs exactly one of them, so a refusal can
+// only be attributed to the reading it changed.
+fn rotation_observed(
+  subj: MachineIntakeSubject,
+  previous_epoch: Int,
+  bootstrap: CredentialProbeOutcome,
+  reference: ManagedCredentialReference,
+  applied_at: EpochMs,
+  managed: CredentialProbeOutcome,
+  published: CredentialProbeOutcome,
+) -> BmcCredentialRotationObservation {
+  observed_bmc_credential_rotation(
+    subject: subj,
+    endpoint: controller,
+    previous_credential_epoch: previous_epoch,
+    bootstrap_probe: bootstrap,
+    rotation: RotationApplied { reference: reference, applied_at: applied_at, evidence: evidence(label: "account-create-201") },
+    managed_probe: managed,
+    published_probe: published,
+  )
+}
+
+fn nominal_rotation() -> BmcCredentialRotationObservation {
+  rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    published: published_rejected,
+  )
+}
+
+fn is_secured(standing: BmcSecureStanding) -> Bool {
+  match standing {
+    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _ } => true
+    BmcSecureRefused { cause: _ } => false
+  }
+}
+
+fn refusal_cause(standing: BmcSecureStanding) -> BmcSecureRefusalCause? {
+  match standing {
+    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _ } => none
+    BmcSecureRefused { cause: c } => Present { value: c }
+  }
+}
+
+fn refused_with(standing: BmcSecureStanding, expected: BmcSecureRefusalCause) -> Bool {
+  match refusal_cause(standing: standing) {
+    Present { value: c } => c == expected
+    Absent => false
+  }
+}
+
+// POSITIVE CONTROL. The whole conjunction holds — bootstrap opened, the
+// rotation advanced the epoch, the managed credential authenticates after it,
+// the published credential does not — and the phase is satisfied. Without this
+// arm every refusal below would also pass on a function that refused always.
+test fn nominal_rotation_secures_the_bmc() -> Bool {
+  let standing = derive_bmc_secure(subject: intake_subject, observation: nominal_rotation())
+  let satisfied = match standing {
+    BmcSecured { endpoint: e, reference: r, evidence: ev, secured_at: at } =>
+      e == controller && r.credential_epoch == 1 && list_length(items: ev) == 4 && at == 1788000007000
+    BmcSecureRefused { cause: _ } => false
+  }
+  satisfied && is_secured(standing: standing)
+}
+
+// THE AUTHORED RED (machine-intake design §16: "Leave factory credential
+// working after rotation | BmcSecure refuses"). Identical to the positive
+// control in every other reading; the published credential still opens a
+// session, and the phase refuses.
+test fn published_credential_still_working_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    published: published_accepted,
+  )
+  let standing = derive_bmc_secure(subject: intake_subject, observation: observation)
+  refused_with(standing: standing, expected: PublishedCredentialStillAccepted) && (is_secured(standing: standing) == false)
+}
+
+// UNESTABLISHED IS NOT RETIRED. An account service that did not answer must
+// not certify that the published credential stopped working; widening the
+// unknown into the good arm is the absorbing fallback DESIGN §5 names.
+test fn published_credential_retirement_unestablished_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    published: CredentialProbeUnestablished { detail: "connection reset before the login response" },
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: PublishedCredentialRetirementUnestablished { detail: "connection reset before the login response" },
+  )
+}
+
+// A REJECTION READ BEFORE THE ROTATION IS NOT EVIDENCE ABOUT IT. The reading
+// is the right one and the ordering makes it worthless: it describes whatever
+// the controller answered before this attempt changed anything.
+test fn published_probe_before_rotation_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    published: CredentialRejected { evidence: evidence(label: "published-login-401"), observed_at: 1788000002000 },
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: PublishedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000002000 },
+  )
+}
+
+test fn managed_credential_rejected_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: CredentialRejected { evidence: evidence(label: "managed-login-401"), observed_at: 1788000006000 },
+    published: published_rejected,
+  )
+  refused_with(standing: derive_bmc_secure(subject: intake_subject, observation: observation), expected: ManagedCredentialRejected)
+}
+
+test fn managed_credential_unestablished_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: CredentialProbeUnestablished { detail: "no route to the account service" },
+    published: published_rejected,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: ManagedCredentialUnestablished { detail: "no route to the account service" },
+  )
+}
+
+test fn managed_probe_before_rotation_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: CredentialAccepted { evidence: evidence(label: "managed-login"), observed_at: 1788000004000 },
+    published: published_rejected,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: ManagedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000004000 },
+  )
+}
+
+// A ROTATION THAT RE-WRITES THE GENERATION THE UNIT ALREADY STOOD AT reports
+// progress it did not make, and every other reading in this observation is the
+// nominal one.
+test fn credential_epoch_not_advanced_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 1,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    published: published_rejected,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: CredentialEpochNotAdvanced { previous: 1, observed: 1 },
+  )
+}
+
+test fn rotation_not_attempted_refuses() -> Bool {
+  let observation = observed_bmc_credential_rotation(
+    subject: intake_subject,
+    endpoint: controller,
+    previous_credential_epoch: 0,
+    bootstrap_probe: bootstrap_accepted,
+    rotation: RotationNotAttempted,
+    managed_probe: managed_accepted,
+    published_probe: published_rejected,
+  )
+  refused_with(standing: derive_bmc_secure(subject: intake_subject, observation: observation), expected: CredentialRotationNotApplied)
+}
+
+test fn account_management_unavailable_refuses() -> Bool {
+  let observation = observed_bmc_credential_rotation(
+    subject: intake_subject,
+    endpoint: controller,
+    previous_credential_epoch: 0,
+    bootstrap_probe: bootstrap_accepted,
+    rotation: AccountManagementUnavailable { detail: "AccountService returned 501" },
+    managed_probe: managed_accepted,
+    published_probe: published_rejected,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: AccountManagementUnreachable { detail: "AccountService returned 501" },
+  )
+}
+
+// A BOOTSTRAP CREDENTIAL THAT NO LONGER WORKS IS AN ACCESS STATE, NOT A PASS.
+// The controller is off its published default for some reason this attempt did
+// not produce, so the attempt cannot certify the retirement.
+test fn bootstrap_credential_already_rejected_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: CredentialRejected { evidence: evidence(label: "bootstrap-login-401"), observed_at: 1788000001000 },
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    published: published_rejected,
+  )
+  refused_with(standing: derive_bmc_secure(subject: intake_subject, observation: observation), expected: PreviouslyRotatedCredentialRequired)
+}
+
+test fn bootstrap_credential_state_unknown_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: CredentialProbeUnestablished { detail: "tls handshake failed" },
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    published: published_rejected,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: CredentialStateUnknown { detail: "tls handshake failed" },
+  )
+}
+
+// A ROTATION OBSERVED FOR ANOTHER ATTEMPT is not evidence about this one, even
+// on the same unit with every reading nominal.
+test fn rotation_observation_for_other_attempt_refuses() -> Bool {
+  let observation = rotation_observed(
+    subj: other_attempt_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    published: published_rejected,
+  )
+  refused_with(
+    standing: derive_bmc_secure(subject: intake_subject, observation: observation),
+    expected: RotationObservationForOtherAttempt { expected: intake_subject, found: other_attempt_subject },
+  )
+}
+
+data every_refusal_cause: List<BmcSecureRefusalCause> = [
+  RotationObservationForOtherAttempt { expected: intake_subject, found: other_attempt_subject },
+  CredentialStateUnknown { detail: "tls handshake failed" },
+  PreviouslyRotatedCredentialRequired,
+  AccountManagementUnreachable { detail: "AccountService returned 501" },
+  CredentialRotationNotApplied,
+  CredentialEpochNotAdvanced { previous: 1, observed: 1 },
+  ManagedCredentialRejected,
+  ManagedCredentialUnestablished { detail: "no route to the account service" },
+  ManagedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000004000 },
+  PublishedCredentialStillAccepted,
+  PublishedCredentialRetirementUnestablished { detail: "connection reset before the login response" },
+  PublishedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000002000 },
+]
+
+// NO CREDENTIAL REFUSAL IS A HARDWARE DEFECT (design §6: an access state is a
+// PartsHold, not a ReturnWindow). gunbc.machine_intake_disposition routes a
+// UnitHardware refusal to a return clock against the seller; this enumerates
+// every cause the phase can produce and requires that none of them takes that
+// route. The count is asserted beside it so a cause added without an owner
+// decision reds here rather than passing on an unexamined list.
+test fn no_credential_refusal_is_a_hardware_defect() -> Bool {
+  let hardware_owned = fold(
+    every_refusal_cause,
+    init: 0,
+    f: (acc, c) => if (bmc_secure_refusal_owner(cause: c) == UnitHardware) { acc + 1 } else { acc },
+  )
+  hardware_owned == 0 && list_length(items: every_refusal_cause) == 12
+}
+
+data producer: IntakeProducerIdentity = IntakeProducerIdentity {
+  intake_binary: content_hash_of_value(value: "intake-binary-fixture"),
+  staging_service_identity: "intake-staging",
+  agent_artifact: none,
+}
+
+data policy_digest: ContentHash = content_hash_of_value(value: "policy-fixture")
+
+fn satisfied_receipt(phase: IntakePhase) -> IntakeReceiptEnvelope {
+  IntakeReceiptEnvelope {
+    schema: MachineIntakeReceiptV1,
+    subject: intake_subject,
+    phase: phase,
+    producer: producer,
+    policy_digest: policy_digest,
+    started_at: 1788000000000,
+    ended_at: 1788000001000,
+    observations: [],
+    result: ReceiptSatisfied,
+    previous_receipt: none,
+  }
+}
+
+type ChainFold {
+  out: List<IntakeReceiptEnvelope>
+  previous: ContentHash?
+  next_start: EpochMs
+}
+
+// Threads a real chain: each receipt's previous_receipt is the fingerprint of
+// the one before it, and the times ascend, so validate_intake_receipt_ledger
+// admits the ledger and the admission under test is about the PHASE result and
+// not about a broken chain.
+fn chain(receipts: List<IntakeReceiptEnvelope>) -> List<IntakeReceiptEnvelope> {
+  let folded = fold(
+    receipts,
+    init: ChainFold { out: [], previous: none, next_start: 1788000000000 },
+    f: fn(acc, r) {
+      let linked = IntakeReceiptEnvelope {
+        schema: r.schema,
+        subject: r.subject,
+        phase: r.phase,
+        producer: r.producer,
+        policy_digest: r.policy_digest,
+        started_at: acc.next_start,
+        ended_at: acc.next_start + 1000,
+        observations: r.observations,
+        result: r.result,
+        previous_receipt: acc.previous,
+      }
+      ChainFold {
+        out: concat(acc.out, [linked]),
+        previous: Present { value: intake_receipt_structural_fingerprint(envelope: linked) },
+        next_start: acc.next_start + 2000,
+      }
+    },
+  )
+  folded.out
+}
+
+// Every required phase satisfied, except that the BmcSecure row is whatever
+// bmc_secure_phase_receipt derived from the supplied rotation observation.
+fn ledger_with_bmc_secure(standing: BmcSecureStanding) -> List<IntakeReceiptEnvelope> {
+  let receipt = bmc_secure_phase_receipt(
+    standing: standing,
+    subject: intake_subject,
+    producer: producer,
+    policy_digest: policy_digest,
+    started_at: 1788000000000,
+    ended_at: 1788000001000,
+    previous_receipt: none,
+  )
+  fold(
+    fleet_admission_required_phases,
+    init: [],
+    f: (acc, p) => if (p == bmc_secure_phase) { concat(acc, [receipt]) } else { concat(acc, [satisfied_receipt(phase: p)]) },
+  )
+}
+
+fn disposition_with_bmc_secure(standing: BmcSecureStanding) -> MachineIntakeDisposition? {
+  match validate_intake_receipt_ledger(receipts: chain(receipts: ledger_with_bmc_secure(standing: standing))) {
+    LedgerValidated { ledger: l } =>
+      Present {
+        value: derive_disposition(
+          admission: derive_fleet_admission(observed_subject: subject, ledger: l, now: 1788000100000),
+          return_window: ReturnWindowOpen { deadline: 1790000000000 },
+          evidence: [],
+        ),
+      }
+    LedgerRefused { cause: _ } => none
+  }
+}
+
+// THE END-TO-END RED, THROUGH THE ONE ADMISSION PATH. A unit whose published
+// credential still works, with every other required phase satisfied and the
+// return window open, is a PartsHold owned by OperatorAction — never Admitted,
+// and never a ReturnWindow, which would file a credential the operator did not
+// rotate as a defect of the machine.
+test fn published_credential_still_working_blocks_fleet_admission() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    published: published_accepted,
+  )
+  match disposition_with_bmc_secure(standing: derive_bmc_secure(subject: intake_subject, observation: observation)) {
+    Present { value: d } =>
+      match d {
+        PartsHold { reason: r, next_action: _ } =>
+          match r {
+            QualificationUnestablished { phase: p, owner: o, cause: _ } => p == bmc_secure_phase && o == OperatorAction
+            _ => false
+          }
+        Admitted { admission_receipt: _ } => false
+        ReturnWindow { defect: _, evidence: _, return_deadline: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// THE MATCHING POSITIVE. The same ledger with the retirement actually observed
+// admits, so the refusal above is attributable to the published credential and
+// not to anything else in the roster.
+test fn rotated_bmc_admits_the_unit() -> Bool {
+  match disposition_with_bmc_secure(standing: derive_bmc_secure(subject: intake_subject, observation: nominal_rotation())) {
+    Present { value: d } =>
+      match d {
+        Admitted { admission_receipt: _ } => true
+        PartsHold { reason: _, next_action: _ } => false
+        ReturnWindow { defect: _, evidence: _, return_deadline: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// The refused receipt carries the retirement failure as its cause, and the
+// satisfied one carries the four readings it rests on — so a reader of the
+// durable spine can tell which rotation secured the unit without this module.
+test fn phase_receipt_projects_the_standing() -> Bool {
+  let secured = derive_bmc_secure(subject: intake_subject, observation: nominal_rotation())
+  let good = bmc_secure_phase_receipt(standing: secured, subject: intake_subject, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let refused_standing = BmcSecureRefused { cause: PublishedCredentialStillAccepted }
+  let bad = bmc_secure_phase_receipt(standing: refused_standing, subject: intake_subject, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let good_ok = match good.result {
+    ReceiptSatisfied => list_length(items: good.observations) == 4 && good.phase == bmc_secure_phase
+    ReceiptRefused { owner: _, cause: _ } => false
+  }
+  let bad_ok = match bad.result {
+    ReceiptRefused { owner: o, cause: _ } => o == OperatorAction && list_length(items: bad.observations) == 0
+    ReceiptSatisfied => false
+  }
+  good_ok && bad_ok
+}
