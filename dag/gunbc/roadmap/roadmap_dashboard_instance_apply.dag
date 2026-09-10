@@ -3,7 +3,7 @@ module gunbc.roadmap_dashboard_instance_apply
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, Bool, Int, Seconds, List, FilePath, GitRef, CommitSha }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.gunbc
 import extdeps.shell
@@ -101,6 +101,9 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provision_plan,
   macbook_local_dashboard_instance,
   srv2_deploy_dashboard_instance,
+  dashboard_instance_for_id,
+  DashboardInstanceForId,
+  DashboardInstanceIdUnknown,
   dashboard_instance_provision_op_row,
   dashboard_instance_reconcile,
   dashboard_instance_dispatch_worktree_root,
@@ -2194,8 +2197,12 @@ fn dashboard_instance_ensure_dispatch_roots(
   )
 }
 
-fn macbook_local_dashboard_ensure_roots() -> DashboardApplyFold {
-  dashboard_instance_ensure_dispatch_roots(instance: macbook_local_dashboard_instance())
+fn dashboard_instance_ensure_roots_fold_for_id(instance_id: String) -> DashboardApplyFold? {
+  match dashboard_instance_for_id(instance_id: instance_id) {
+    DashboardInstanceForId { instance } =>
+      Present { value: dashboard_instance_ensure_dispatch_roots(instance: instance) }
+    DashboardInstanceIdUnknown { instance_id: _ } => none
+  }
 }
 
 // THE CLI ENTRY, AND WHY IT IS A SEPARATE FUNCTION FROM THE FOLD ABOVE. `gunbc run` maps a run's
@@ -2204,43 +2211,49 @@ fn macbook_local_dashboard_ensure_roots() -> DashboardApplyFold {
 // answer, is wrapped here into the exit the host can act on: a refused step exits non-zero carrying
 // the step and its detail, and a completed plan exits zero. The receipts stay in the printed value
 // either way, because "which roots already existed" is as much of an answer as "it worked".
-fn macbook_local_ensure_roots_cli() -> ProcessExit {
-  let fold = macbook_local_dashboard_ensure_roots()
-  if fold.running {
-    ExitSuccess
-  } else {
-    ExitFailure {
-      code: 1,
-      reason: join([
-        "ensure-roots refused at step ", fold.refused_step, ": ", fold.refused_detail,
-      ], ""),
-    }
+//
+// Selection is by declared instance_id against the roster, not a new named fold per instance:
+// macbook_local_ensure_roots_cli and srv2_deploy_ensure_roots_cli are named entries that pass
+// their id; a newly declared instance uses this function with that id and does not grow another
+// copy of the exit mapping.
+fn dashboard_instance_ensure_roots_cli(instance_id: String) -> ProcessExit {
+  match dashboard_instance_ensure_roots_fold_for_id(instance_id: instance_id) {
+    Present { value: fold } =>
+      if fold.running {
+        ExitSuccess
+      } else {
+        ExitFailure {
+          code: 1,
+          reason: join([
+            "ensure-roots refused at step ", fold.refused_step, ": ", fold.refused_detail,
+          ], ""),
+        }
+      }
+    Absent =>
+      exit_failure(reason: join([
+        "ensure-roots refused: no declared dashboard instance ", instance_id,
+      ], ""))
   }
 }
 
-// THE srv2 DEPLOYMENT'S ROOT PROVISIONING, bound to the same generic fold the MacBook uses. The
-// instance root must exist before any dispatch gate can be evaluated: deployment-transition
-// standing is established by LISTING the root, so an absent directory is not "no inhibition" but
-// "inhibition unreadable", and the gate correctly refuses rather than assuming absence. That is why
-// this is a prerequisite rather than a convenience, and why it is a modeled plan rather than a
-// mkdir -- the roots an instance owns are declared once in its provision plan, and adding one there
-// adds it here with no edit.
+fn macbook_local_dashboard_ensure_roots() -> DashboardApplyFold {
+  dashboard_instance_ensure_dispatch_roots(instance: macbook_local_dashboard_instance())
+}
+
+fn macbook_local_ensure_roots_cli() -> ProcessExit {
+  dashboard_instance_ensure_roots_cli(
+    instance_id: macbook_local_dashboard_instance().instance_id as String,
+  )
+}
+
 fn srv2_deploy_dashboard_ensure_roots() -> DashboardApplyFold {
   dashboard_instance_ensure_dispatch_roots(instance: srv2_deploy_dashboard_instance())
 }
 
 fn srv2_deploy_ensure_roots_cli() -> ProcessExit {
-  let fold = srv2_deploy_dashboard_ensure_roots()
-  if fold.running {
-    ExitSuccess
-  } else {
-    ExitFailure {
-      code: 1,
-      reason: join([
-        "ensure-roots refused at step ", fold.refused_step, ": ", fold.refused_detail,
-      ], ""),
-    }
-  }
+  dashboard_instance_ensure_roots_cli(
+    instance_id: srv2_deploy_dashboard_instance().instance_id as String,
+  )
 }
 
 fn srv1_lab_dashboard_apply() -> DashboardInstanceApplyResult {

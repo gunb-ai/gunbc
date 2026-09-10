@@ -656,10 +656,10 @@ fn dashboard_execution_environment(
 // because a caller that has just been told the root is unknown needs to name it in its own
 // diagnostic.
 //
-// Enumerating only srv1-live is the CURRENT population, not a claim that other declared instances
-// are unreachable: srv1_lab, srv2_preview and srv2_lab all declare repo roots and none has a
-// consumer that resolves by root yet. Adding one is a row here, and after this move it is a row in
-// ONE place.
+// THE SET IS ONE ROSTER. Named constructors remain so a witness can name srv1-live without walking
+// a list, but membership is declared_dashboard_instances, and every lookup folds that list. Adding
+// an instance is a constructor plus one row on that roster; host, repo-root and id resolution do
+// not get a second spelling.
 
 type DashboardInstanceLookup
   = DashboardInstanceResolved { instance: HostDashboardInstance }
@@ -668,33 +668,62 @@ type DashboardInstanceLookup
 // THE INSTANCE BY THE HOST IT RUNS ON, for a caller that knows where it is executing and not
 // which checkout it was launched from: a harness turn or a belt tick reads its own short hostname
 // and resolves the instance whose host_identity spells it. An unknown host is its own arm.
+//
+// SEVERAL INSTANCES SHARE A HOST — srv1-live and srv1-lab both say srv1 — so host lookup cannot
+// be first-match over the whole roster. Isolated labs are DashboardGitBundle; the instance that
+// answers for the machine is the ExistingRepo clone (the deployment or the operator checkout).
+// That is a structural cut, not a second enumerated list: a new lab cannot steal the host
+// lookup without changing its source_seed, and a second ExistingRepo on one host is a uniqueness
+// failure the witness names rather than a silent first-wins.
 type DashboardInstanceByHost
   = DashboardInstanceForHost { instance: HostDashboardInstance }
   | DashboardInstanceHostUnknown { host: String }
 
+type DashboardInstanceById
+  = DashboardInstanceForId { instance: HostDashboardInstance }
+  | DashboardInstanceIdUnknown { instance_id: String }
+
+fn dashboard_instance_answers_host_lookup(instance: HostDashboardInstance) -> Bool {
+  match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => true
+    DashboardGitBundle {
+      controller_repo: _,
+      staged_bundle: _,
+      anchor_ref: _,
+      history_remote: _,
+    } => false
+  }
+}
+
 fn dashboard_instance_for_host(host: String) -> DashboardInstanceByHost {
-  if host == (srv1_live_dashboard_instance().host_identity as String) {
-    DashboardInstanceForHost { instance: srv1_live_dashboard_instance() }
-  } else if host == (srv2_deploy_dashboard_instance().host_identity as String) {
-    DashboardInstanceForHost { instance: srv2_deploy_dashboard_instance() }
-  } else if host == (macbook_local_dashboard_instance().host_identity as String) {
-    DashboardInstanceForHost { instance: macbook_local_dashboard_instance() }
-  } else {
-    DashboardInstanceHostUnknown { host: host }
+  match declared_dashboard_instances()
+    |> filter(i =>
+      i.host_identity as String == host && dashboard_instance_answers_host_lookup(instance: i)
+    )
+    |> first
+  {
+    Present { value: instance } => DashboardInstanceForHost { instance: instance }
+    Absent => DashboardInstanceHostUnknown { host: host }
   }
 }
 
 fn dashboard_instance_for_repo_root(repo_root: String) -> DashboardInstanceLookup {
-  if repo_root == (srv1_live_dashboard_instance().repo_root as String) {
-    DashboardInstanceResolved { instance: srv1_live_dashboard_instance() }
-  } else {
-    if repo_root == (macbook_local_dashboard_instance().repo_root as String) {
-      DashboardInstanceResolved { instance: macbook_local_dashboard_instance() }
-    } else if repo_root == (srv2_deploy_dashboard_instance().repo_root as String) {
-      DashboardInstanceResolved { instance: srv2_deploy_dashboard_instance() }
-    } else {
-      DashboardInstanceRootUnknown { repo_root: repo_root }
-    }
+  match declared_dashboard_instances()
+    |> filter(i => i.repo_root as String == repo_root)
+    |> first
+  {
+    Present { value: instance } => DashboardInstanceResolved { instance: instance }
+    Absent => DashboardInstanceRootUnknown { repo_root: repo_root }
+  }
+}
+
+fn dashboard_instance_for_id(instance_id: String) -> DashboardInstanceById {
+  match declared_dashboard_instances()
+    |> filter(i => i.instance_id as String == instance_id)
+    |> first
+  {
+    Present { value: instance } => DashboardInstanceForId { instance: instance }
+    Absent => DashboardInstanceIdUnknown { instance_id: instance_id }
   }
 }
 
@@ -1119,6 +1148,39 @@ fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
     source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
+  )
+}
+
+// THE DECLARED SET. Lookups fold this; they do not restate membership. Isolated labs belong
+// here because they have repo roots a belt tick can land in — omitting them made those roots
+// DashboardInstanceRootUnknown while the constructors existed, which is the same fork as
+// enumerating production three times.
+fn declared_dashboard_instances() -> List<HostDashboardInstance> {
+  [
+    srv1_live_dashboard_instance(),
+    srv1_lab_dashboard_instance(),
+    srv2_preview_dashboard_instance(),
+    srv2_lab_dashboard_instance(),
+    srv2_deploy_dashboard_instance(),
+    macbook_local_dashboard_instance(),
+  ]
+}
+
+fn dashboard_declared_instance_ids_are_unique() -> Bool {
+  let xs = declared_dashboard_instances()
+  all(xs, a => count(xs |> filter(b => b.instance_id == a.instance_id)) == 1)
+}
+
+fn dashboard_declared_repo_roots_are_unique() -> Bool {
+  let xs = declared_dashboard_instances()
+  all(xs, a => count(xs |> filter(b => b.repo_root == a.repo_root)) == 1)
+}
+
+fn dashboard_host_lookup_subjects_are_unique() -> Bool {
+  let xs = declared_dashboard_instances()
+    |> filter(i => dashboard_instance_answers_host_lookup(instance: i))
+  all(xs, a =>
+    count(xs |> filter(b => b.host_identity == a.host_identity)) == 1
   )
 }
 

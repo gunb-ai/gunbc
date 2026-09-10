@@ -58,6 +58,21 @@ import gunbc.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv2_preview_dashboard_instance,
   srv2_lab_dashboard_instance,
+  srv2_deploy_dashboard_instance,
+  macbook_local_dashboard_instance,
+  declared_dashboard_instances,
+  dashboard_declared_instance_ids_are_unique,
+  dashboard_declared_repo_roots_are_unique,
+  dashboard_host_lookup_subjects_are_unique,
+  dashboard_instance_for_host,
+  dashboard_instance_for_repo_root,
+  dashboard_instance_for_id,
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  DashboardInstanceForHost,
+  DashboardInstanceHostUnknown,
+  DashboardInstanceForId,
+  DashboardInstanceIdUnknown,
   isolated_dashboard_instance,
   DispatchStateScope,
   DispatchStateHostShared,
@@ -649,6 +664,7 @@ test fn dashboard_instance_model_keystone_holds() -> Bool {
     && srv2_lab_is_actuating_unlike_its_preview_sibling()
     && srv2_lab_owns_paths_disjoint_from_preview_and_production()
     && srv2_lab_has_a_provision_plan_bound_to_itself()
+    && declared_dashboard_instance_set_is_the_lookup_authority()
     && dashboard_instance_paths_move_as_one_owned_root()
     && dashboard_lab_and_production_owned_paths_are_disjoint()
     && dashboard_actuation_posture_is_instance_data()
@@ -938,4 +954,67 @@ test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
     && live.repo_root != lab.repo_root
     && live.local_origin_root != lab.local_origin_root
     && dashboard_instances_have_disjoint_owned_paths(a: live, b: lab)
+}
+
+fn roster_has_id(id: NonEmptyStr) -> Bool {
+  any(declared_dashboard_instances(), i => i.instance_id == id)
+}
+
+test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
+  dashboard_declared_instance_ids_are_unique()
+    && dashboard_declared_repo_roots_are_unique()
+    && dashboard_host_lookup_subjects_are_unique()
+    && roster_has_id(id: srv1_live_dashboard_instance().instance_id)
+    && roster_has_id(id: srv1_lab_dashboard_instance().instance_id)
+    && roster_has_id(id: srv2_preview_dashboard_instance().instance_id)
+    && roster_has_id(id: srv2_lab_dashboard_instance().instance_id)
+    && roster_has_id(id: srv2_deploy_dashboard_instance().instance_id)
+    && roster_has_id(id: macbook_local_dashboard_instance().instance_id)
+    && all(
+      declared_dashboard_instances(),
+      i => match dashboard_instance_for_repo_root(repo_root: i.repo_root as String) {
+        DashboardInstanceResolved { instance } => instance.instance_id == i.instance_id
+        DashboardInstanceRootUnknown { repo_root: _ } => false
+      },
+    )
+    && all(
+      declared_dashboard_instances(),
+      i => match dashboard_instance_for_id(instance_id: i.instance_id as String) {
+        DashboardInstanceForId { instance } => instance.instance_id == i.instance_id
+        DashboardInstanceIdUnknown { instance_id: _ } => false
+      },
+    )
+    && match dashboard_instance_for_host(
+      host: srv1_live_dashboard_instance().host_identity as String,
+    ) {
+      DashboardInstanceForHost { instance } =>
+        instance.instance_id == srv1_live_dashboard_instance().instance_id
+      DashboardInstanceHostUnknown { host: _ } => false
+    }
+    && match dashboard_instance_for_host(
+      host: srv2_deploy_dashboard_instance().host_identity as String,
+    ) {
+      DashboardInstanceForHost { instance } =>
+        instance.instance_id == srv2_deploy_dashboard_instance().instance_id
+      DashboardInstanceHostUnknown { host: _ } => false
+    }
+    && match dashboard_instance_for_host(
+      host: macbook_local_dashboard_instance().host_identity as String,
+    ) {
+      DashboardInstanceForHost { instance } =>
+        instance.instance_id == macbook_local_dashboard_instance().instance_id
+      DashboardInstanceHostUnknown { host: _ } => false
+    }
+    && match dashboard_instance_for_host(host: "not-a-host") {
+      DashboardInstanceHostUnknown { host } => host == "not-a-host"
+      DashboardInstanceForHost { instance: _ } => false
+    }
+    && match dashboard_instance_for_id(instance_id: "not-an-instance") {
+      DashboardInstanceIdUnknown { instance_id } => instance_id == "not-an-instance"
+      DashboardInstanceForId { instance: _ } => false
+    }
+    && match dashboard_instance_for_repo_root(repo_root: "/typo/gunbc") {
+      DashboardInstanceRootUnknown { repo_root } => repo_root == "/typo/gunbc"
+      DashboardInstanceResolved { instance: _ } => false
+    }
 }
