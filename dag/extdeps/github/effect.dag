@@ -164,7 +164,7 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
 
 // EVERY VARIANT OF GitHubEffect IS A MUTATION. There is no is-mutation fold: a Bool true for
 // every inhabitant restates the type. classify_github_http_outcome takes mutation as an
-// input; a GitHubEffect perform passes true. GET /user is github.Http with mutation: false —
+// input; a GitHubEffect perform passes true. GET /user is github.Users with mutation: false —
 // a different operation, not a fifth arm of this algebra.
 
 // DECLARED FRONTIER (§3c). method and path are the REST surface of GitHubEffect. This change

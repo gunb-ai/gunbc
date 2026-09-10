@@ -19,7 +19,7 @@ import gunbc.repository { gunbc_repository }
 import extdeps.transports.rest {
   RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
-import extdeps.github.http {
+import extdeps.github.users {
   hermetic_get_authenticated_user_login,
   hermetic_get_authenticated_user_id,
   hermetic_get_authenticated_user_type,

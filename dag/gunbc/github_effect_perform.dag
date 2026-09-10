@@ -2,21 +2,28 @@ module gunbc.github_effect_perform
 
 import std.types { String, NonEmptyStr, Secret, HttpStatus }
 import std.resources { Network }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.transports.rest {
   RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
-import extdeps.github.http
+import extdeps.github.users
 import extdeps.github.github { GitHubUser }
 import gunbc.secret_provision_actuator { mutation_status_is_commit_ambiguous }
 
 // RUNG, HONEST. Classification of a RestOutcome is mechanically preventable on the required
 // hermetic path. perform_github_authenticated_user_read is also reachable hermetically: the
 // GetAuthenticatedUser mock publishes the decoded-200 shape whose login is the fixture identity,
-// not a live GitHub account. That green is not a live 401. Neither wet GET /user witness ever
-// executed; they were deleted rather than kept as specification-without-execution. The
-// next-rung trigger is a required-lane route that may perform network effects against a real
-// credential — not restoring functions onto a lane that cannot run them. JIT mint and R2 mint
-// are not callers in this change. This is not structural: an invalid RestOutcome is still writable.
+// not a live GitHub account. That green is not a live 401. Live GET /user is not executed in
+// this change. The next-rung trigger is a required-lane route that may perform network effects
+// against a real credential. JIT mint and R2 mint are not callers in this change. This is not
+// structural: an invalid RestOutcome is still writable.
+
+// DECLARED FRONTIER (§3c). classify and perform have no production caller in this change; the
+// hermetic witness is not a consumer. NAMED CONSUMER: a production func that calls
+// perform_github_authenticated_user_read, or that classifies a GitHubEffect RestOutcome via
+// classify_github_http_outcome. TRIGGER: that import and call exist outside test.claim.
+// SUFFICIENT FOR deleting this row. NOT satisfied by another witness.
+data github_effect_perform_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: a production func that calls perform_github_authenticated_user_read, or that classifies a GitHubEffect RestOutcome via classify_github_http_outcome. TRIGGER: that import and call exist outside test.claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness importing these declarations." as NonEmptyStr)
 
 type GitHubHttpPerformance
   = GitHubHttpSucceeded
@@ -70,7 +77,7 @@ type GitHubAuthenticatedUserRead
   | GitHubAuthenticatedUserRefused { performance: GitHubHttpPerformance }
 
 func perform_github_authenticated_user_read(auth_token: Secret) -> GitHubAuthenticatedUserRead uses net: Network {
-  let got = github.Http.GetAuthenticatedUser(auth_token: auth_token)
+  let got = github.Users.GetAuthenticatedUser(auth_token: auth_token)
   match classify_github_http_outcome(rest: got.outcome, mutation: false) {
     GitHubHttpSucceeded =>
       if got.user.login == "" {
