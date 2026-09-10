@@ -2922,7 +2922,13 @@ fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_match_arm_list_tail_exhausted(node: Node) -> Bool {
+// A comma-list Repeat tail is Seq(Repeat(optional-comma + item), optional trailing comma).
+// One arm leaves that Repeat empty (empty Conj) and the trailing comma Optional empty.
+// Those nodes are skipped BEFORE extract, so an extract refusal is never discarded and an
+// unknown shape never becomes "no arm here" (review 63228: default-true exhausted was a
+// silent dropped arm). Skip is only: empty Conj, a comma atom, Optional whose element skips,
+// or a sequence whose both sides skip. Anything else is handed to extract, and its Rejected stands.
+fn body_lower_match_arm_repeat_elem_is_separator(node: Node) -> Bool {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   if is_empty_conj_root(n: stripped) {
     true
@@ -2930,40 +2936,18 @@ fn body_lower_match_arm_list_tail_exhausted(node: Node) -> Bool {
     match node_atom_identity_optional(node: stripped) {
       Present { value: id } => id == ^dag_token_comma
       Absent =>
-        match parse_production_emitted_identity_optional(node: stripped) {
-          Present { value: emitted } =>
-            if emitted == ^dag_surface_match_arm {
-              false
-            } else if body_lower_is_pass_through_emitted(emitted: emitted) {
-              match parse_production_captured_child_optional(node: stripped) {
-                Present { value: captured } =>
-                  body_lower_match_arm_list_tail_exhausted(node: captured)
-                Absent => true
-              }
-            } else {
-              false
-            }
+        match sugar_sequence_pair_optional(node: stripped) {
+          Present { value: pair } =>
+            body_lower_match_arm_repeat_elem_is_separator(node: pair.left)
+              && body_lower_match_arm_repeat_elem_is_separator(node: pair.right)
           Absent =>
-            match sugar_sequence_pair_optional(node: stripped) {
-              Present { value: pair } =>
-                body_lower_match_arm_list_tail_exhausted(node: pair.left)
-                  && body_lower_match_arm_list_tail_exhausted(node: pair.right)
-              Absent =>
-                match find_named_child(
-                  root: stripped,
-                  name: ^grammar_optional_element_node_projection
-                ) {
-                  Accepted { value: child, diagnostics: _ } =>
-                    body_lower_match_arm_list_tail_exhausted(node: child)
-                  Rejected { diagnostics: _ } =>
-                    match find_named_child(
-                      root: stripped,
-                      name: ^grammar_repeat_element_node_projection
-                    ) {
-                      Accepted { value: _, diagnostics: _ } => false
-                      Rejected { diagnostics: _ } => true
-                    }
-                }
+            match find_named_child(
+              root: stripped,
+              name: ^grammar_optional_element_node_projection
+            ) {
+              Accepted { value: child, diagnostics: _ } =>
+                body_lower_match_arm_repeat_elem_is_separator(node: child)
+              Rejected { diagnostics: _ } => false
             }
         }
     }
@@ -2976,34 +2960,36 @@ fn body_lower_collect_match_arms_from_repeat_tail(repeat_capture: Node) -> Outco
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: head, diagnostics: _ } =>
-        match body_lower_extract_comma_list_arm_head(node: head) {
-          Rejected { diagnostics: r } =>
-            if body_lower_match_arm_list_tail_exhausted(node: head) {
+        if body_lower_match_arm_repeat_elem_is_separator(node: head) {
+          match find_named_child(
+            root: repeat_capture,
+            name: ^grammar_sequence_right_node_projection
+          ) {
+            Accepted { value: tail, diagnostics: _ } =>
+              body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail)
+            Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
+          }
+        } else {
+          match body_lower_extract_comma_list_arm_head(node: head) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: arm, diagnostics: d } =>
               match find_named_child(
                 root: repeat_capture,
                 name: ^grammar_sequence_right_node_projection
               ) {
                 Accepted { value: tail, diagnostics: _ } =>
-                  body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail)
-                Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
+                  match body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: rest, diagnostics: rd } =>
+                      Accepted {
+                        value: list_append(left: [arm], right: rest),
+                        diagnostics: diagnostics_merge(outer: d, inner: rd)
+                      }
+                  }
+                Rejected { diagnostics: _ } =>
+                  Accepted { value: [arm], diagnostics: d }
               }
-            } else {
-              Rejected { diagnostics: r }
-            }
-          Accepted { value: arm, diagnostics: d } =>
-            match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-              Accepted { value: tail, diagnostics: _ } =>
-                match body_lower_collect_match_arms_from_repeat_tail(repeat_capture: tail) {
-                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  Accepted { value: rest, diagnostics: rd } =>
-                    Accepted {
-                      value: list_append(left: [arm], right: rest),
-                      diagnostics: diagnostics_merge(outer: d, inner: rd)
-                    }
-                }
-              Rejected { diagnostics: _ } =>
-                Accepted { value: [arm], diagnostics: d }
-            }
+          }
         }
       Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
     }
