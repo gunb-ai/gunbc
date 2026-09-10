@@ -1,12 +1,10 @@
 module extdeps.colo.hivelocity
 
 import std.types { NonEmptyStr }
-import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
-  DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower, RetailGrainStanding,
-  RetailGrainUnread, DensityUnread,
+  RetailGrainStanding, RetailGrainUnread, DensityUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -77,10 +75,8 @@ data hivelocity_ogb1_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // reseller may well sell a denser cabinet than the landlord's general marketing claims, and a
 // landlord may be describing a different hall. What a consumer may NOT do is treat the pair as
 // corroboration - they are two claims, and the quote decides which is purchasable.
-data hivelocity_ogb1_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 20000) },
-  claim_wording: "High density raised floor environment, 20 kW+ per cabinet",
-  citation: "hivelocity.net New York 4 colocation page (/products/colocation/new-york-city-4/), read 2026-09-09. The plus sign is the operator's, so this is a marketed floor on a maximum rather than a ceiling. THE PAGE DOES NOT STATE A COOLING MEDIUM: recorded on the air arm because it is printed beside 'raised floor environment' and no liquid figure is published. One path caution from the lane that found it and confirmed here: /products/colocation/new-york-city-3/ served the same New York 4 content and the same address, so cite the -4 path. SCOPE CHECKED IN BYTE ORDER: the headings immediately above the figure are New York 4 and NYC4 Colo Data Center, so it belongs to this building and not to another of the operator's sites listed further down the page. ELEMENT BOUNDARY: the markup is a single <li>High density raised floor environment, 20 kW+ per cabinet</li>, and the 24 MW figure is a SEPARATE <li> in the same list - which is the markup-grain reason the facility note treats that megawatt figure as a neighbouring claim rather than as part of this density.",
+data hivelocity_ogb1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE THIS CARRIER CANNOT HOLD POINTING THE RIGHT WAY. The operator publishes, verbatim: 'High density raised floor environment, 20 kW+ per cabinet'. The plus sign is the operator's own, so this is a capability FLOOR - at least twenty kilowatts - while the figure-bearing arms here are marketed MAXIMA. Typed as a maximum the census would assert that a cabinet advertised at twenty kilowatts OR MORE refuses 20,001 W. RESOLVE by re-typing as a floor-carrying figure once the carrier expresses a quantity's direction; the numeral and wording above are the reading and NO RE-FETCH IS REQUIRED. RETRIEVAL EVIDENCE: hivelocity.net New York 4 page, confirmed against raw HTML 2026-09-09 - the page reachable only under that name, while the operator's location index calls the site Orangeburg (OGB1). 'RAISED FLOOR' IS NOT A COOLING MEDIUM: it correlates with air in practice, which is exactly what makes reading it as one an inference rather than a reading. THIS IS THE TENANT'S OWN CLAIM and is a factor of two above its landlord's 10KW+ for the same building; each row carries its own operator's reading and neither corrects the other.",
 }
 
 data hivelocity_ogb1_retail_grain: RetailGrainStanding = RetailGrainUnread {

@@ -1,12 +1,10 @@
 module extdeps.colo.long_island_interconnect
 
 import std.types { NonEmptyStr }
-import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
-  RetailGrainStanding, SingleCabinetOffered,
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
+  RetailGrainStanding, SingleCabinetOffered, DensityUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -52,10 +50,8 @@ data long_island_interconnect_westbury: ColoFacilityRow = ColoFacilityRow {
 // air claim at DataBank LGA4. A 650 W-per-node fleet fills this cabinet at four nodes. The
 // operator states expansion space is planned for higher-kW cabinets; that is a plan, not a
 // purchasable density, and is carried in the wording rather than in the number.
-data long_island_interconnect_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 3000) },
-  claim_wording: "Cooling level average is 3kW per cabinet; plans to support higher kW cabinets are established for adjacent future expansion space",
-  citation: "longislandinterconnect.com colocation page, read 2026-09-08 and confirmed verbatim against raw HTML 2026-09-09. The figure is stated as a cooling AVERAGE, which is weaker than a marketed per-cabinet maximum: it bounds what the hall sustains, not what one cabinet may draw, and a quote must establish the per-cabinet ceiling. SCOPE CHECKED IN BYTE ORDER: the only heading above the figure is this operator's own single-site page title; the operator runs one facility, so there is no sibling site the number could belong to. ELEMENT BOUNDARY: one <li> under an Environmental Distribution accordion, contiguous but for a non-breaking space after the semicolon - one authored item.",
+data long_island_interconnect_density: CabinetDensityClaim = DensityUnread {
+  obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE THIS CARRIER CANNOT HOLD POINTING THE RIGHT WAY - and here the mismatch is not direction but KIND. The operator publishes, verbatim: 'Cooling level average is 3kW per cabinet; plans to support higher kW cabinets are established for adjacent future expansion space'. That is an AVERAGE, which is neither a floor nor a ceiling: it bounds what the hall sustains across cabinets, not what any one cabinet may draw, and the figure-bearing arms here are marketed MAXIMA. Typed as a maximum the census would assert that this cabinet refuses 3,001 W, which the page does not say and which an average cannot support. RESOLVE by re-typing as a published average once the carrier expresses a quantity's kind; the numeral and wording above are the reading and NO RE-FETCH IS REQUIRED. A quote must still establish the per-cabinet ceiling. RETRIEVAL EVIDENCE: longislandinterconnect.com colocation page, read 2026-09-08 and confirmed verbatim against raw HTML 2026-09-09. ELEMENT BOUNDARY: one <li> under an Environmental Distribution accordion, contiguous but for a non-breaking space after the semicolon - one authored item. 'COOLING' NAMES NO MEDIUM: a liquid hall is cooled too, so the sentence discriminates nothing about medium.",
 }
 
 data long_island_interconnect_retail_grain: RetailGrainStanding = SingleCabinetOffered {

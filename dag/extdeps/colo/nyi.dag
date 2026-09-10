@@ -1,12 +1,10 @@
 module extdeps.colo.nyi
 
 import std.types { NonEmptyStr }
-import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
-  RetailGrainStanding, RetailGrainUnread,
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
+  RetailGrainStanding, RetailGrainUnread, DensityUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -49,10 +47,8 @@ data nyi_long_island: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Nassau County. NYI's own page states generator-backed AC, UPS AC, DC, N+1/2N and 99.982% availability for the site. It is the same street address as the Long Island Interconnect row; both are carried because the operator is the upstream authority each row cites, not the building.",
 }
 
-data nyi_long_island_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 3000) },
-  claim_wording: "Cooling level average is 3kW per cabinet; plans to support higher kW per cabinet are established for an adjacent campus property owned by building",
-  citation: "nyi.net Long Island page, re-read from raw HTML 2026-09-09. THE FIRST READ OF THIS ROW CALLED THIS WORDING IDENTICAL TO THE LONG ISLAND INTERCONNECT PAGE AND IT IS NOT. The FIGURE is identical and the first clause is word-for-word, but the second clause differs: this operator writes 'an adjacent campus property owned by building', where Long Island Interconnect writes 'adjacent future expansion space'. Two surfaces sharing a sentence stem is what one expects of one building described by two sellers; the divergence is where they stop agreeing, and it was invisible until both pages were read as raw text rather than through a summarising fetch. The reading is still one fact about one building, so a consumer counting dense candidates must not count this row and the Long Island Interconnect row as two. SCOPE CHECKED IN BYTE ORDER: the nearest heading above the figure is the page's Long Island section, which matters more here than elsewhere because THIS OPERATOR RUNS SITES IN OTHER METROS and a figure lifted from a sibling section would be the wrong-subject error rather than a wrong-wording one. ELEMENT BOUNDARY, and it is the reason the two pages could look identical: this operator's sentence is ONE <li> assembled from THREE <span dir=ltr role=presentation> fragments, so the string exists only after tag-stripping and a contiguous raw grep for it finds nothing. The last fragment ends mid-phrase at 'owned by building' - that truncation is the page's own, not a clip made here.",
+data nyi_long_island_density: CabinetDensityClaim = DensityUnread {
+  obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE THIS CARRIER CANNOT HOLD POINTING THE RIGHT WAY - an AVERAGE, which is neither floor nor ceiling. The operator publishes, verbatim: 'Cooling level average is 3kW per cabinet; plans to support higher kW per cabinet are established for an adjacent campus property owned by building'. Typed as a marketed maximum the census would assert this cabinet refuses 3,001 W, which an average cannot support. RESOLVE by re-typing as a published average once the carrier expresses a quantity's kind; the numeral and wording above are the reading and NO RE-FETCH IS REQUIRED. RETRIEVAL EVIDENCE: nyi.net Long Island page, re-read from raw HTML 2026-09-09. THE FIRST READ OF THIS ROW CALLED THIS WORDING IDENTICAL TO THE LONG ISLAND INTERCONNECT PAGE AND IT IS NOT: the FIGURE is identical and the first clause is word-for-word, but this operator writes 'an adjacent campus property owned by building' where Long Island Interconnect writes 'adjacent future expansion space'. Two surfaces sharing a sentence stem is what one expects of one building described by two sellers; the divergence is where they stop agreeing. 'COOLING' NAMES NO MEDIUM.",
 }
 
 data nyi_long_island_retail_grain: RetailGrainStanding = RetailGrainUnread {

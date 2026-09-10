@@ -1,12 +1,10 @@
 module extdeps.colo.critical_systems_realty
 
 import std.types { NonEmptyStr }
-import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly, CabinetPowerFigure, PublishedRealPower,
-  RetailGrainStanding, RetailGrainUnread,
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
+  RetailGrainStanding, RetailGrainUnread, DensityUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -53,10 +51,8 @@ data csr_orny1_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // DataBank's 35 kW air claim four miles away this is the same county and a third of the density,
 // which is the sort of spread that only becomes visible once density is a typed field rather than
 // a sentence in a facility note.
-data csr_orny1_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 10000) },
-  claim_wording: "High density 10KW + per cabinets",
-  citation: "1547realty.com ORNY1 page, read 2026-09-08 and CONFIRMED VERBATIM AGAINST RAW HTML 2026-09-09 - the string above is the page's own bytes, as is the 24 MW figure in the facility note. THE PAGE DOES NOT STATE A COOLING MEDIUM: the figure is recorded on the air arm because an unqualified per-cabinet claim is what an ordinary air deployment would be quoted against, and no liquid figure is published to carry. If a quote reveals the 10 kW assumes a liquid path, this row is wrong in the direction that matters and must move. SCOPE CHECKED IN BYTE ORDER: the headings preceding the string are this page's own Orangeburg NY / ORNY1 title, Location Features and Power - no promotion, no other metro. ELEMENT BOUNDARY: the markup is a single <li>High density 10KW + per cabinets</li> in the same list as <li>24 MW provisioned in an N+2 scheme</li> - one authored item, no emphasis tag inside it and nothing joined.",
+data csr_orny1_density: CabinetDensityClaim = DensityUnread {
+  obligation: "THIS PAGE WAS READ AND IT PUBLISHES A FIGURE THIS CARRIER CANNOT HOLD POINTING THE RIGHT WAY. The operator publishes, verbatim: 'High density 10KW + per cabinets'. The plus sign is the operator's own, so this is a capability FLOOR - at least ten kilowatts - while the figure-bearing arms here are marketed MAXIMA. Typed as a maximum the census would assert that a cabinet advertised at ten kilowatts OR MORE refuses 10,001 W. RESOLVE by re-typing as a floor-carrying figure once the carrier expresses a quantity's direction; the numeral and wording above are the reading and NO RE-FETCH IS REQUIRED. RETRIEVAL EVIDENCE: 1547realty.com ORNY1 Orangeburg page, confirmed against raw HTML 2026-09-09. THE PAGE STATES NO COOLING MEDIUM - not air, not liquid - so no medium may be inferred from it either; 'high density' names neither.",
 }
 
 data csr_orny1_retail_grain: RetailGrainStanding = RetailGrainUnread {

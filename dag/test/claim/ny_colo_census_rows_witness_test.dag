@@ -55,37 +55,39 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and pushing an in-band sentinel into extdeps would undo the very change that replaced the
 // zero-for-unread accessor with Watt?.
 //
-// WHAT MAKES THESE ASSERTIONS SOMETHING OTHER THAN THE ROWS RESTATED. Each integer below is the
-// numeral the operator published, quoted verbatim in that row's claim_wording and confirmed
-// against the page's own bytes - an external authority, which is what section 5 requires of a
-// literal in a merge-blocking test. Editing a row's watt value without the operator having
-// changed its page turns one of these red, which is the discrimination the test exists for.
+// WHAT MAKES THESE ASSERTIONS SOMETHING OTHER THAN THE ROWS RESTATED, now that no New York row
+// carries a watt: the discrimination has MOVED from the numeral to the arm. It used to be that
+// editing a row's watt value without its page changing turned a test red. Every published New York
+// figure is a floor or an average, so those numerals now live in obligation prose where no fold
+// reads them - and the assertions below are that the carrier establishes NOTHING from them. What
+// reds is re-typing a floor into a figure-bearing arm, which is the edit that would silently invert
+// a bound. The external authority is unchanged: each numeral and its verbatim wording remain in the
+// row, confirmed against the page's own bytes, so the reading survives its arm being wrong for it.
 
-// THE READ DENSITIES, each against the numeral its operator published. DataBank LGA4 is NOT among
-// them and its absence is deliberate: it was on main before this lane began and is asserted by the
-// carrier's own witness, so reading it here would be this file claiming a row it does not own.
+// FIVE FIGURES WERE READ AND NONE OF THEM ESTABLISHES A WATT, WHICH IS NOT A CONTRADICTION.
+// Every New York page that publishes a per-cabinet number publishes a FLOOR or an AVERAGE:
+// "35kW+", "100kW+", "20 kW+", "10KW +", and twice "Cooling level average is 3kW per cabinet".
+// The carrier's figure-bearing arms are marketed MAXIMA. Typing a floor as a maximum asserts that a
+// cabinet advertised at twenty kilowatts OR MORE refuses 20,001 W - the reading inverted, which is
+// worse than no reading, and is the defect main corrected on databank_lga4 by moving it to
+// DensityUnread with the numerals preserved in the obligation. These five follow that standard: the
+// only rows left in a figure-bearing arm anywhere in the census are the two whose wording says
+// "up to".
 //
-// NO COUNT APPEARS IN THIS ANNOTATION AND THAT IS THE POINT. An earlier draft said "the six read
-// densities", was corrected to five, and was still wrong in kind - a numeral in prose restates what
-// the conjunction below already says (DESIGN section 4c: an annotation must not restate what the
-// declaration structurally says) AND has no dependency edge to the rows it counts, so the next row
-// added falsifies it silently with nothing going red. That is not hypothetical: this census already
-// carried an obligation string reading "exactly one modelled facility" that a row added in another
-// file made false without touching the sentence. Correcting such a numeral treats the instance; the
-// class is fixed by not writing one.
+// SO THIS TEST ASSERTS THE FAIL-CLOSED HALF OF A READING THAT EXISTS. The pages were read, the
+// numerals and verbatim wordings are carried in each obligation, and NO RE-FETCH IS REQUIRED to
+// restore them - what is missing is a carrier that can say which direction a quantity points. Until
+// then the honest answer to "how many watts does this cabinet take" is that the census does not
+// know, and this is where that refusal is enforced rather than promised.
 //
-// ROCKLAND SPANS AN ORDER OF MAGNITUDE across independently governed operators, and two of them -
-// 1547 as
-// landlord and Hivelocity as its in-building tenant - describe the SAME building at 1 Ramland Road
-// while disagreeing by a factor of two. Both are asserted here because each is a faithful reading
-// of its own operator's surface; a test that reconciled them would be inventing a fact neither
-// page states.
-test fn w_ny_read_densities_establish_the_published_watts() -> Bool {
-  established_watts(d: databank_lga3_density) == 35000
-    && established_watts(d: hivelocity_ogb1_density) == 20000
-    && established_watts(d: csr_orny1_density) == 10000
-    && established_watts(d: long_island_interconnect_density) == 3000
-    && established_watts(d: nyi_long_island_density) == 3000
+// IF ANY OF THESE STARTS YIELDING A VALUE WITHOUT ITS PAGE HAVING CHANGED, someone has re-typed a
+// floor as a maximum and the census is asserting an inverted bound again.
+test fn w_ny_read_figures_establish_nothing_until_the_carrier_carries_DIRECTION() -> Bool {
+  established_watts(d: databank_lga3_density) == 0 - 1
+    && established_watts(d: hivelocity_ogb1_density) == 0 - 1
+    && established_watts(d: csr_orny1_density) == 0 - 1
+    && established_watts(d: long_island_interconnect_density) == 0 - 1
+    && established_watts(d: nyi_long_island_density) == 0 - 1
 }
 
 // THE UNREAD ONES ESTABLISH NOTHING, AND THAT IS THE HALF THAT MATTERS MOST. An unread density is

@@ -1,12 +1,10 @@
 module extdeps.colo.databank
 
 import std.types { NonEmptyStr }
-import std.measure { watt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityUnread,
-  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
+  DensityUnread, RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -108,11 +106,8 @@ data databank_lga3_orangeburg: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Rockland County, the first building of the Orangeburg campus: 20 MW critical IT load across 110,000 IT square feet, against LGA4's 10 MW. Same campus, same address, same density claim, twice the load - so a quote that fails on capacity at one building has not failed at the campus.",
 }
 
-data databank_lga3_density: CabinetDensityClaim = DensityMarketedMax {
-  air_cooled: PublishedRealPower { power: watt(count: 35000) },
-  liquid_cooled: PublishedRealPower { power: watt(count: 100000) },
-  claim_wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liquid",
-  citation: "databank.com Orangeburg campus LGA3 page, confirmed against raw HTML 2026-09-09. THE TWO FIGURES ARE SEPARATE SPEC CELLS, NOT ONE SENTENCE: the page emits '35kW+ Cab Density Air' and '100kW+ Cab Density Liquid' as adjacent cells, and the slash here is this row's separator rather than the operator's punctuation. Recorded that way because a wording field whose job is to let a later reader re-derive the number is worthless if it holds a sentence the operator never wrote. Identical figures to LGA4, and this is a SECOND facility carrying the claim rather than a second reading of the same one - the two buildings are separately marketed with separate critical loads. SCOPE CHECKED IN BYTE ORDER: the nearest heading above the two cells is the page's own LGA3 Orangeburg, New York City title, and the page carries no promotional block; the figures are this facility's and not a banner's. ELEMENT BOUNDARY, which is what settles the fusion rather than the sentence: the markup is <li><strong>35kW+</strong> Cab Density Air</li> and <li><strong>100kW+</strong> Cab Density Liquid</li> - TWO list items, each with its numeral in its own <strong>. Joining them is invention. Note the numeral emphasis also means a contiguous raw-byte grep for the full string FAILS on a true row, so the wording above was matched against tag-stripped text while ownership was decided on the markup.",
+data databank_lga3_density: CabinetDensityClaim = DensityUnread {
+  obligation: "THIS PAGE WAS READ AND IT PUBLISHES TWO FIGURES, neither of which this carrier can hold pointing the right way - the same standing as its LGA4 sibling and for the same reason. The operator publishes, verbatim: '35kW+ Cab Density Air' and '100kW+ Cab Density Liquid'. Both plus signs are the operator's own, so both are capability FLOORS - at least thirty-five kilowatts on air, at least one hundred on liquid - and the figure-bearing arms here are marketed MAXIMA. Typed as a maximum, thirty-five thousand became an at-most, and the census would assert that a cabinet advertised at thirty-five kilowatts OR MORE refuses 35,001 W. RESOLVE by re-typing both as floor-carrying figures once the carrier expresses a quantity's direction; the numerals and wording above are the reading and NO RE-FETCH IS REQUIRED. RETRIEVAL EVIDENCE, unchanged and still verified: databank.com Orangeburg campus LGA3 page, confirmed against raw HTML 2026-09-09. ELEMENT BOUNDARY, which settles the fusion: the markup is <li><strong>35kW+</strong> Cab Density Air</li> and <li><strong>100kW+</strong> Cab Density Liquid</li> - TWO list items, each with its numeral in its own <strong>, so the slash in the wording above is this row's separator and not the operator's punctuation. SCOPE CHECKED IN BYTE ORDER: the nearest heading above the two cells is the page's own LGA3 Orangeburg, New York City title and the page carries no promotional block. Identical figures to LGA4, and this is a SECOND facility carrying the claim rather than a second reading of the same one - the two buildings are separately marketed with separate critical loads.",
 }
 
 data databank_lga3_retail_grain: RetailGrainStanding = SingleCabinetOffered {
