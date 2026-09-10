@@ -166,12 +166,12 @@ data front_end_causes: List<FrontEndCause> = [
   },
   FrontEndCause {
     key: ^E
-    id: ^sole_constructor_modifier
+    id: ^token_between_a_type_name_and_its_body
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "type S sole_constructor {\\n  x: Int\\n}"
     positive_control: "type S {\\n  x: Int\\n}"
-    discriminating_control: "type S {\\n  x: Int\\n}"
-    discriminating_control_verdict: ControlAccepts
+    discriminating_control: "type S foo {\\n  x: Int\\n}"
+    discriminating_control_verdict: ControlRefusesIdentically
     join_evidence: JoinedByExecutedNeutralizer
   },
   FrontEndCause {
@@ -290,7 +290,7 @@ data front_end_causes: List<FrontEndCause> = [
     terminal_reason: ^parse_g0_tokens_remain
     rejecting_reproducer: "fn f(a: Bool) -> Int {\\n  if a {\\n    return 1\\n  }\\n  2\\n}"
     positive_control: "fn f(a: Bool) -> Int {\\n  if a {\\n    1\\n  } else {\\n    2\\n  }\\n}"
-    discriminating_control: "fn f(a: Bool) -> Int {\\n  if a {\\n    1\\n  } else {\\n    2\\n  }\\n}"
+    discriminating_control: "fn f(a: Bool) -> Int {\\n  let x = 1\\n  x\\n}"
     discriminating_control_verdict: ControlAccepts
     join_evidence: JoinedByExecutedNeutralizer
   },
@@ -654,6 +654,14 @@ data closure_refusal_rows: List<ClosureFileRow> = [
 // exists to avoid.
 fn rows_for_cause(cause: Symbol) -> List<ClosureFileRow> {
   filter(xs: closure_refusal_rows, predicate: fn(row) { any(xs: row.causes, predicate: fn(c) { c == cause }) })
+}
+
+// The rows recorded for one path. A table is keyed by path, so this answering anything other than a
+// one-element list is a defect of the table itself, and the witness over it asks exactly that - by
+// COUNTING the rows for each path rather than by looking for a pair that disagrees, because two
+// identical duplicate rows disagree about nothing and would slip past a disagreement test.
+fn rows_for_path(path: String) -> List<ClosureFileRow> {
+  filter(xs: closure_refusal_rows, predicate: fn(row) { row.path == path })
 }
 
 fn cause_population(cause: Symbol) -> Int {

@@ -18,7 +18,8 @@ import gunbc.tools.self_host_closure_terminal_causes {
   every_row_cause_is_rostered,
   every_row_names_a_cause,
   front_end_causes,
-  rows_for_cause
+  rows_for_cause,
+  rows_for_path
 }
 
 // THESE ASSERT PROPERTIES OF THE TABLE, NEVER A REMEASUREMENT OF THE TREE. The table is a
@@ -71,11 +72,22 @@ test fn no_two_causes_share_a_citation_key() -> Bool {
   })
 }
 
-// Two rows for one path would mean the driver's output was decoded twice or a path was recorded
-// under two spellings; either is a defect of this table and not a finding about the compiler.
-test fn no_closure_path_appears_twice() -> Bool {
-  !any(xs: closure_refusal_rows, predicate: fn(a) {
-    any(xs: closure_refusal_rows, predicate: fn(b) { b.path == a.path && b.terminal_reason != a.terminal_reason })
+// Two rows for one path would mean the driver's output was decoded twice or a path was recorded under
+// two spellings; either is a defect of this table and not a finding about the compiler. This COUNTS
+// the rows recorded for each path. An earlier revision instead looked for a pair of rows that
+// disagreed about the terminal reason, which is green for the commonest duplication there is - the
+// same row decoded twice - so it named a defect it could not fail on.
+test fn every_closure_path_has_exactly_one_row() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) { length(xs: rows_for_path(path: row.path)) != 1 })
+}
+
+// A cause whose nearest-alternative control is a COPY of its positive control varies nothing, so its
+// typed verdict reads as separating evidence while separating nothing. Two records were authored that
+// way and a reviewer caught them; this makes the shape unwritable in the carrier instead, which is the
+// rung the finding should have moved the class to rather than a second pair of eyes next time.
+test fn no_cause_reuses_its_positive_control_as_its_discriminating_control() -> Bool {
+  !any(xs: front_end_causes, predicate: fn(c) {
+    c.discriminating_control == c.positive_control || c.discriminating_control == c.rejecting_reproducer
   })
 }
 
