@@ -20,9 +20,6 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Grammar-prepare fill sits above required_floor_claim_cpu_safety_limit_ms, so these stay
-// plain fn (claim_batch) rather than test fn floor witnesses.
-
 data where_refinement_positive_bare_source: String = "module probe.where_bare\n\ntype Tight = String where non_empty\n\nfn f() -> Int {\n  1\n}\n"
 
 data where_refinement_positive_brand_source: String = "module probe.where_brand\n\ntype UnitId = String where brand(\"UnitId\")\n\nfn f() -> Int {\n  1\n}\n"
@@ -188,11 +185,11 @@ fn where_refinement_empty_clause_parse_refuses_holds() -> Bool {
   )
 }
 
-fn where_refinement_clause_parses_and_is_carried_holds() -> Bool {
+test fn where_refinement_clause_parses_and_is_carried_holds() -> Bool {
   where_refinement_positive_parse_carries_clause_holds()
 }
 
-fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
+test fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
   match where_refinement_tokenize_parse(
     text: where_refinement_positive_bare_source,
         file: ^where_refinement_normalize_bare
@@ -207,6 +204,6 @@ fn where_refinement_clause_survives_normalize_graft_holds() -> Bool {
   }
 }
 
-fn where_refinement_empty_clause_is_refused_holds() -> Bool {
+test fn where_refinement_empty_clause_is_refused_holds() -> Bool {
   where_refinement_empty_clause_parse_refuses_holds()
 }

@@ -20,9 +20,6 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Grammar-prepare fill sits above required_floor_claim_cpu_safety_limit_ms, so these stay
-// plain fn (claim_batch) rather than test fn floor witnesses.
-
 fn d1_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
@@ -136,13 +133,13 @@ data d1_where_control: String = "module m\ntype A = NonEmptyStr\nfn f() -> Int {
 data d1_where_bare: String = "module m\ntype A = NonEmptyStr where non_empty\nfn f() -> Int { 1 }\n"
 data d1_where_empty: String = "module m\ntype A = NonEmptyStr where\nfn f() -> Int { 1 }\n"
 
-fn cause_a_where_refinement_clause_parses_holds() -> Bool {
+test fn cause_a_where_refinement_clause_parses_holds() -> Bool {
   d1_parse_accepted(text: d1_where_reproducer, file: ^d1_where_reproducer)
     && d1_parse_accepted(text: d1_where_bare, file: ^d1_where_bare)
     && d1_parse_accepted(text: d1_where_control, file: ^d1_where_control)
 }
 
-fn cause_a_where_clause_parse_tree_carries_holds() -> Bool {
+test fn cause_a_where_clause_parse_tree_carries_holds() -> Bool {
   match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_parse) {
     Rejected { diagnostics: _ } => false
     Accepted { value: brand_tree, diagnostics: _ } =>
@@ -155,11 +152,11 @@ fn cause_a_where_clause_parse_tree_carries_holds() -> Bool {
   }
 }
 
-fn cause_a_where_control_normalizes_holds() -> Bool {
+test fn cause_a_where_control_normalizes_holds() -> Bool {
   d1_normalize_accepted(text: d1_where_control, file: ^d1_where_control_norm)
 }
 
-fn cause_a_where_reproducer_normalizes_holds() -> Bool {
+test fn cause_a_where_reproducer_normalizes_holds() -> Bool {
   d1_normalize_accepted(text: d1_where_reproducer, file: ^d1_where_norm)
 }
 
@@ -215,7 +212,7 @@ fn cause_a_where_clause_survives_normalize_locus() -> ProcessExit {
   }
 }
 
-fn cause_a_where_clause_survives_normalize_holds() -> Bool {
+test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
   match d1_tokenize_parse(text: d1_where_reproducer, file: ^d1_where_carry_norm) {
     Rejected { diagnostics: _ } => false
     Accepted { value: brand_tree, diagnostics: _ } =>
@@ -236,6 +233,6 @@ fn cause_a_where_clause_survives_normalize_holds() -> Bool {
   }
 }
 
-fn cause_a_empty_where_clause_refuses_holds() -> Bool {
+test fn cause_a_empty_where_clause_refuses_holds() -> Bool {
   !d1_parse_accepted(text: d1_where_empty, file: ^d1_where_empty)
 }
