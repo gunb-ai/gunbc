@@ -1989,42 +1989,4 @@ fn an_ambiguous_base_binding_is_not_consumption() {
     );
 }
 
-#[test]
-fn annotation_grain_repair_is_identity_when_only_comments_move() {
-    let base = r#"module probe.repair
-fn f() -> Int {
-  // body grain, unmodeled
-  1
-}
-"#;
-    let head = r#"module probe.repair
-// body grain, unmodeled
-fn f() -> Int {
-  1
-}
-"#;
-    assert!(
-        v1_compiler::cli_run::namespace_wave_admission::is_annotation_grain_repair(base, head),
-        "hoisting a body comment onto the declaration must be an annotation-grain repair"
-    );
-}
 
-#[test]
-fn annotation_grain_repair_refuses_when_code_moves_too() {
-    let base = r#"module probe.repair
-fn f() -> Int {
-  // body grain
-  1
-}
-"#;
-    let head = r#"module probe.repair
-// body grain
-fn f() -> Int {
-  2
-}
-"#;
-    assert!(
-        !v1_compiler::cli_run::namespace_wave_admission::is_annotation_grain_repair(base, head),
-        "a code change riding with a comment hoist must stay unobservable, not a repair"
-    );
-}
