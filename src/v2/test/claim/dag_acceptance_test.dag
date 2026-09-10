@@ -1,6 +1,7 @@
 module v2.test.claim.dag_acceptance
 
 import v2.std.collection { List }
+import std.algebra { FreeSemigroup }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import std.measure { millisecond }
@@ -42,7 +43,6 @@ import v2.workflow.dag_acceptance {
   FullLedger,
   InferStage,
   InteractiveFailFast,
-  NonEmptyObligations,
   NotRequiredByContract,
   ResolveStage,
   SkippedAfterDecisiveRejection,
@@ -100,7 +100,7 @@ fn contract(
 ) -> DagAcceptanceContract {
   DagAcceptanceContract {
     name: name,
-    obligations: NonEmptyObligations { head: head, tail: tail },
+    obligations: FreeSemigroup { head: head, tail: tail },
     policy: InteractiveFailFast,
     stage_costs: costs
   }
@@ -336,7 +336,7 @@ test fn acceptance_fail_fast_skip_is_not_a_block() -> Bool {
   let fail_fast = contract(name: ^ff, head: InferStage, tail: [], costs: [])
   let full_ledger = DagAcceptanceContract {
     name: ^fl,
-    obligations: NonEmptyObligations { head: InferStage, tail: [] },
+    obligations: FreeSemigroup { head: InferStage, tail: [] },
     policy: FullLedger,
     stage_costs: []
   }

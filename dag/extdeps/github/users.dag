@@ -1,0 +1,88 @@
+module extdeps.github.users
+
+import std.types { String, Int, Secret }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.github { default_api_base, GitHubUser, User, UserType }
+import extdeps.transports.rest { RestOutcome, RestOk }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/users/users#get-the-authenticated-user"
+  }
+}
+
+// §3 shape/transport split: GitHubEffect (extdeps.github.effect) is the operation SHAPE for the
+// mutations this fleet already names. This module is ONE bound HTTP realization handler of
+// GitHub's REST surface, not a second algebra and not a policy about which credential to use.
+// Credentials are an input (auth_token: Secret), never an argv word and never an EnvVar baked
+// into this interface. transport rest is the handler; a second operation forked for gh/curl
+// would be transport fused into the interface.
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.users",
+      decl_name: "github.Users",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.users.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// GET /user IS THE FIRST CONSUMER ON PURPOSE. It is a read: no commit-ambiguity blast radius, and
+// it still exercises the whole path (Bearer input, REST transport, RestOutcome, typed refusal on
+// not-success). GitHub documents 200 with the authenticated user and 401 for bad credentials;
+// those are observations, not an enumeration this operation treats as its failure set. The
+// response block names only the success decode. Every other status is RestStatusRefused via
+// RestOutcome — including statuses GitHub has not documented. The decoded subject is GitHubUser
+// (extdeps.github.github), the same account shape sibling REST modules already consume.
+
+// THE HERMETIC FIXTURE LOGIN IS NOT A GITHUB ACCOUNT. mock_response can only publish one result,
+// so the hermetic arm is the decoded-200 shape of GET /user. The spelling is the fixture's
+// identity: a live GitHub user.login cannot be this string, and a live 401 cannot be this 200.
+// mock_response evaluates with an empty env, so RestOk cannot be named inline; the outcome is the
+// module data row, same grain as the fixture login.
+data hermetic_get_authenticated_user_login: String = "hermetic-mock-authenticated-user"
+data hermetic_get_authenticated_user_id: Int = 1
+data hermetic_get_authenticated_user_type: UserType = User
+data hermetic_get_authenticated_user_outcome: RestOutcome = RestOk
+
+service github.Users {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation GetAuthenticatedUser {
+    input {
+      auth_token: Secret
+    }
+    output {
+      user: GitHubUser
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/user"
+    }
+    response {
+      200 => GitHubUser
+    }
+    mock_response {
+      200 => {
+        user: {
+          login: hermetic_get_authenticated_user_login,
+          id: hermetic_get_authenticated_user_id,
+          type: hermetic_get_authenticated_user_type
+        },
+        outcome: hermetic_get_authenticated_user_outcome
+      } "hermetic GET /user decoded-200 shape; the login is the fixture identity, not a live GitHub account"
+    }
+  }
+}

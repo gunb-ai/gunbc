@@ -1,11 +1,12 @@
 module test.claim.change_realization_witness
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.algebra { FreeSemigroup }
 import gunbc.change_realization {
   ChangeSubject, ScmRefSubject, SourceDeclarationSubject, HostResourceSubject,
   AddressContinuity, AddressPreserved, AddressChanged, address_continuity,
   StagedIntermediate, RetirePriorEndpoint, UnlinkStalePath, StopPriorUnit, DrainPriorConsumers,
-  StagedIntermediates, staged_intermediates_all, staged_intermediates_count,
+  staged_intermediates_all, staged_intermediates_count,
   ChangeRealization, AtomicCompareAndSwap, AtomicTreeTransformation, InPlaceUpdate, StagedReplacement,
   ChangeRealizationClassification, ChangeRealized, ChangeRefused,
   ChangeRefusalCause, StagedReplacementIntermediatesUndeclared,
@@ -24,8 +25,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn str_eq(a: String, b: String) -> Bool { a == b }
 
-fn one_intermediate(step: StagedIntermediate) -> StagedIntermediates {
-  StagedIntermediates { first: step, rest: [] }
+fn one_intermediate(step: StagedIntermediate) -> FreeSemigroup<StagedIntermediate> {
+  FreeSemigroup { head: step, tail: [] }
 }
 
 fn is_realized_staged(c: ChangeRealizationClassification) -> Bool {
@@ -156,17 +157,18 @@ test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool {
   }
 }
 
-// StagedIntermediates is head + tail, not a List that could be []. So the srv4 state — a staged
-// replacement that believed it had nothing to retire — is UNREPRESENTABLE rather than validated
-// against (DESIGN §5 construction-over-validation, §4b: the invalid state has no constructor). This
-// row asserts the floor that construction guarantees: every StagedIntermediates yields at least one
-// step, so a count of zero cannot be built to be tested for.
+// FreeSemigroup<StagedIntermediate> is head + tail, not a List that could be []. So the srv4
+// state — a staged replacement that believed it had nothing to retire — is UNREPRESENTABLE
+// rather than validated against (DESIGN §5 construction-over-validation, §4b: the invalid state
+// has no constructor). This row asserts the floor that construction guarantees: every
+// FreeSemigroup<StagedIntermediate> yields at least one step, so a count of zero cannot be
+// built to be tested for.
 
 test fn w_staged_intermediates_are_never_empty() -> Bool {
   let single = one_intermediate(step: StopPriorUnit { unit: "sccache.service" as NonEmptyStr })
-  let many = StagedIntermediates {
-    first: StopPriorUnit { unit: "sccache.service" as NonEmptyStr },
-    rest: [
+  let many = FreeSemigroup {
+    head: StopPriorUnit { unit: "sccache.service" as NonEmptyStr },
+    tail: [
       UnlinkStalePath { path: "/run/sccache.sock" as NonEmptyStr },
       DrainPriorConsumers { description: "in-flight compiles" as NonEmptyStr },
     ],

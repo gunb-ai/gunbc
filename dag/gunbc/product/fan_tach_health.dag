@@ -13,6 +13,16 @@ import gunbc.fleet_fan_tach_expectation {
   TachNotExpected,
 }
 import product.fan_tach { FanTachEndpointIdentity, FanTachWindow }
+import v2.std.cardinality { Never }
+import std.goal_assessment {
+  GoalAssessment,
+  GoalAssessmentRefused,
+  GoalInspection,
+  ObservationAttempt,
+  ObservationEstablished,
+  assess_by_deviations_and_unknowns,
+  inspect_goal,
+}
 
 // THE JOIN, AND IT IS DRIVEN BY THE EXPECTATION RATHER THAN BY THE OBSERVATIONS.
 //
@@ -55,10 +65,22 @@ type FanRotationAbsence
 // one verdict named for the first. Header grain can conclude that expected rotation was not
 // observed; concluding that a FAN FAILED needs a like-for-like comparison and a physical
 // inspection, and belongs to whoever does those.
-type FanTachVerdict
+// WHY THE SEVEN ARMS ARE THREE TYPES AND NOT ONE. `std.goal_assessment` separates evidence, proved
+// deviations and facts that could not be established, and it separates them IN THE TYPE: a
+// `GoalDiverged` carries `FreeSemigroup<Deviation>`. Handing that parameter a single seven-arm
+// verdict would let a divergence list hold `RotationObserved` -- a healthy reading filed as a
+// mismatch -- which is the exact edit that algebra's own annotation says nothing in the type would
+// stop. Splitting the carriers makes that state unwritable rather than merely unwritten (DESIGN
+// section 4b: construction over validation).
+type FanTachHealthy
   = RotationObserved { header: NonEmptyStr, speed: RevolutionsPerMinute }
   | RotationCorrectlyAbsent { header: NonEmptyStr }
-  | ExpectedRotationNotObserved {
+
+// A DEVIATION IS A FACT THAT WAS READ AND DISAGREES. Each of these four had a reading in hand: a
+// rotor that turned too seldom, one that never turned, a header spinning that should not, a header
+// reporting that the authority does not declare.
+type FanTachDeviation
+  = ExpectedRotationNotObserved {
       header: NonEmptyStr,
       role: FanHeaderRole,
       absence: FanRotationAbsence,
@@ -70,17 +92,94 @@ type FanTachVerdict
       sample_count: Int,
     }
   | UnexpectedRotation { header: NonEmptyStr, speed: RevolutionsPerMinute }
-  | ExpectedHeaderObservationMissing { header: NonEmptyStr, role: FanHeaderRole }
   | ObservationForUndeclaredHeader { header: NonEmptyStr }
+
+// AN UNKNOWN IS A HEADER THE COLLECTOR NEVER ANSWERED FOR, and it is the one arm whose migration
+// CHANGES the reported answer rather than relabelling it. Under the old coproduct an expected
+// header with no observation row was a verdict beside the others, so a host carrying one read as
+// assessed. It is not: nothing about that fan was established, and `assess_by_deviations_and_unknowns`
+// ranks it above any proved deviation for the reason that algebra states -- remediating a subject
+// whose state is partly unread is licensed by an answer nobody has.
+type FanTachUnknown
+  = ExpectedHeaderObservationMissing { header: NonEmptyStr, role: FanHeaderRole }
+
+// The per-header judgement, minted once so the classification logic stays one authority (DESIGN
+// section 2). The three extractors below are projections of this sum, never a second fold that
+// re-derives the same decision.
+type FanTachJudgement
+  = JudgedHealthy { healthy: FanTachHealthy }
+  | JudgedDeviant { deviation: FanTachDeviation }
+  | JudgedUnknown { unknown: FanTachUnknown }
 
 type FanTachRefusalCause
   = DuplicateExpectedHeader { header: NonEmptyStr }
   | DuplicateObservedHeader { header: NonEmptyStr }
   | HostIdentityMismatch
 
-type FanTachAssessment
-  = FanTachAssessed { verdicts: List<FanTachVerdict> }
-  | FanTachRefused { cause: FanTachRefusalCause }
+// THE GOAL CARRIES THE FLOOR, because the floor is part of what is WANTED rather than part of what
+// is seen: "every expected header rotates in at least N of its samples" is one sentence, and
+// splitting it across a goal and a loose parameter would let a caller assess one host's
+// expectation against another host's definition of healthy. It stays a parameter of the goal
+// rather than a constant for the reason the fleet witness gives: a number measured on the current
+// fleet must not quietly become the definition.
+type FanTachGoal sole_constructor {
+  expectation: HostFanTachExpectation,
+  minimum_rotating: Int,
+}
+
+type FanTachObserved sole_constructor { windows: List<FanTachWindow> }
+
+// The receipt a satisfied assessment carries. `headers_judged` is the DENOMINATOR the verdict was
+// reached over -- the count this module exists to keep honest -- and the healthy rows ride with it
+// so a green is inspectable rather than a bare token.
+type FanTachReceipt sole_constructor {
+  headers_judged: Int,
+  healthy: List<FanTachHealthy>,
+}
+
+// The corpus row that declares the three facts together, destructured by `inspect_fan_tach` so no
+// stage receives more than its own question needs.
+//
+// THERE IS NO `host` FIELD, AND ITS ABSENCE IS THE POINT. An earlier cut carried one beside
+// `expectation.host` with nothing constraining them to agree, while the note here claimed invalid
+// assembly was unwritable. It was not: a mismatched pair was constructible, `inspect_fan_tach`
+// labelled the receipt from the subject's copy and `assess_fan_tach` joined windows against the
+// expectation's, so an inspection could be filed under a host that was never assessed. The host is
+// one fact, so it lives in one place (DESIGN section 3) and the inspection subject is DERIVED from
+// it -- which is construction rather than an equality check bolted on afterwards.
+type FanTachSubject sole_constructor {
+  expectation: HostFanTachExpectation,
+  minimum_rotating: Int,
+  windows: List<FanTachWindow>,
+}
+
+type FanTachAssessment = GoalAssessment<FanTachReceipt, FanTachDeviation, FanTachUnknown, FanTachRefusalCause>
+
+// THE CONSTRUCTORS LIVE HERE BECAUSE THE TYPES ARE `sole_constructor`: one authority mints them, so
+// no caller can assemble a subject that skips a field or pairs a goal with a floor the row did not
+// declare (DESIGN section 4b -- the invalid state has no constructor rather than a validator).
+fn fan_tach_subject(
+  expectation: HostFanTachExpectation,
+  minimum_rotating: Int,
+  windows: List<FanTachWindow>,
+) -> FanTachSubject {
+  FanTachSubject {
+    expectation: expectation,
+    minimum_rotating: minimum_rotating,
+    windows: windows,
+  }
+}
+
+fn fan_tach_goal(
+  expectation: HostFanTachExpectation,
+  minimum_rotating: Int,
+) -> FanTachGoal {
+  FanTachGoal { expectation: expectation, minimum_rotating: minimum_rotating }
+}
+
+fn fan_tach_observed(windows: List<FanTachWindow>) -> FanTachObserved {
+  FanTachObserved { windows: windows }
+}
 
 fn count_header_in(headers: List<NonEmptyStr>, header: NonEmptyStr) -> Int {
   fold(headers, init: 0, f: (acc, h) => if h == header { acc + 1 } else { acc })
@@ -138,111 +237,209 @@ fn expectation_for(
   )
 }
 
-fn verdict_for_expected(
+fn judge_expected(
   header: NonEmptyStr,
   role: FanHeaderRole,
   windows: List<FanTachWindow>,
   minimum_rotating: Int,
-) -> FanTachVerdict {
+) -> FanTachJudgement {
   match window_for(windows: windows, header: header) {
-    none => ExpectedHeaderObservationMissing { header: header, role: role }
+    none => JudgedUnknown {
+      unknown: ExpectedHeaderObservationMissing { header: header, role: role },
+    }
     Present { value: w } =>
       if w.rotating_count == 0 {
         if w.unavailable_count == w.sample_count {
-          ExpectedRotationNotObserved {
-            header: header,
-            role: role,
-            absence: TachValueNotPublished,
+          JudgedDeviant {
+            deviation: ExpectedRotationNotObserved {
+              header: header,
+              role: role,
+              absence: TachValueNotPublished,
+            },
           }
         } else {
-          ExpectedRotationNotObserved {
-            header: header,
-            role: role,
-            absence: RotorNeverRotatedInWindow,
+          JudgedDeviant {
+            deviation: ExpectedRotationNotObserved {
+              header: header,
+              role: role,
+              absence: RotorNeverRotatedInWindow,
+            },
           }
         }
       } else {
         if w.rotating_count >= minimum_rotating {
-          RotationObserved { header: header, speed: w.median }
+          JudgedHealthy { healthy: RotationObserved { header: header, speed: w.median } }
         } else {
-          RotationDegraded {
-            header: header,
-            role: role,
-            rotating_count: w.rotating_count,
-            sample_count: w.sample_count,
+          JudgedDeviant {
+            deviation: RotationDegraded {
+              header: header,
+              role: role,
+              rotating_count: w.rotating_count,
+              sample_count: w.sample_count,
+            },
           }
         }
       }
   }
 }
 
-fn verdict_for_unexpected(
+fn judge_unexpected(
   header: NonEmptyStr,
   windows: List<FanTachWindow>,
-) -> FanTachVerdict {
+) -> FanTachJudgement {
   match window_for(windows: windows, header: header) {
-    none => RotationCorrectlyAbsent { header: header }
+    none => JudgedHealthy { healthy: RotationCorrectlyAbsent { header: header } }
     Present { value: w } =>
       if w.rotating_count > 0 {
-        UnexpectedRotation { header: header, speed: w.median }
+        JudgedDeviant { deviation: UnexpectedRotation { header: header, speed: w.median } }
       } else {
-        RotationCorrectlyAbsent { header: header }
+        JudgedHealthy { healthy: RotationCorrectlyAbsent { header: header } }
       }
   }
 }
 
+fn fan_tach_judgements(
+  goal: FanTachGoal,
+  observed: FanTachObserved,
+) -> List<FanTachJudgement> {
+  flat_map(
+    [
+      map(
+        goal.expectation.headers,
+        row =>
+          match row.expectation {
+            TachExpected { role } =>
+              judge_expected(
+                header: row.header,
+                role: role,
+                windows: observed.windows,
+                minimum_rotating: goal.minimum_rotating,
+              )
+            TachNotExpected =>
+              judge_unexpected(header: row.header, windows: observed.windows)
+          },
+      ),
+      map(
+        filter(
+          observed.windows,
+          w =>
+            match expectation_for(expectation: goal.expectation, header: w.endpoint.name) {
+              Present { value } => false
+              none => true
+            },
+        ),
+        w => JudgedDeviant {
+          deviation: ObservationForUndeclaredHeader { header: w.endpoint.name },
+        },
+      ),
+    ],
+    group => group,
+  )
+}
+
+fn judged_healthy(judgements: List<FanTachJudgement>) -> List<FanTachHealthy> {
+  flat_map(
+    judgements,
+    j =>
+      match j {
+        JudgedHealthy { healthy } => [healthy]
+        JudgedDeviant { deviation } => []
+        JudgedUnknown { unknown } => []
+      },
+  )
+}
+
+fn judged_deviations(judgements: List<FanTachJudgement>) -> List<FanTachDeviation> {
+  flat_map(
+    judgements,
+    j =>
+      match j {
+        JudgedHealthy { healthy } => []
+        JudgedDeviant { deviation } => [deviation]
+        JudgedUnknown { unknown } => []
+      },
+  )
+}
+
+fn judged_unknowns(judgements: List<FanTachJudgement>) -> List<FanTachUnknown> {
+  flat_map(
+    judgements,
+    j =>
+      match j {
+        JudgedHealthy { healthy } => []
+        JudgedDeviant { deviation } => []
+        JudgedUnknown { unknown } => [unknown]
+      },
+  )
+}
+
+// THE THREE REFUSAL CAUSES ARE ILL-FORMED QUESTIONS, NOT UNHEALTHY FANS, and that distinction is
+// why this binding is the one `std.goal_assessment` named as the trigger for its
+// `GoalAssessmentRefused` frontier. A host paired to another host's windows, a roster naming one
+// header twice, a collector answering twice for one endpoint: none of them is a state of the
+// cooling system, and none can be honestly reported as agreement or divergence.
+//
+// THE HOST CHECK RUNS BEFORE THE DUPLICATE CHECKS, deliberately and in this order. Windows
+// belonging to another host make every downstream join meaningless, so a duplicate found among
+// them would name a header on a machine nobody asked about.
 fn assess_fan_tach(
-  expectation: HostFanTachExpectation,
-  windows: List<FanTachWindow>,
-  minimum_rotating: Int,
+  goal: FanTachGoal,
+  observed: FanTachObserved,
 ) -> FanTachAssessment {
-  if fold(windows, init: false, f: (acc, w) => if acc { true } else { w.endpoint.host != expectation.host }) {
-    FanTachRefused { cause: HostIdentityMismatch }
+  if fold(
+    observed.windows,
+    init: false,
+    f: (acc, w) => if acc { true } else { w.endpoint.host != goal.expectation.host },
+  ) {
+    GoalAssessmentRefused { cause: HostIdentityMismatch }
   } else {
-    match first_duplicate(headers: map(expectation.headers, row => row.header)) {
+    match first_duplicate(headers: map(goal.expectation.headers, row => row.header)) {
       Present { value: header } =>
-        FanTachRefused { cause: DuplicateExpectedHeader { header: header } }
+        GoalAssessmentRefused { cause: DuplicateExpectedHeader { header: header } }
       none =>
-        match first_duplicate(headers: map(windows, w => w.endpoint.name)) {
+        match first_duplicate(headers: map(observed.windows, w => w.endpoint.name)) {
           Present { value: header } =>
-            FanTachRefused { cause: DuplicateObservedHeader { header: header } }
-          none =>
-            FanTachAssessed {
-              verdicts: flat_map(
-                [
-                  map(
-                    expectation.headers,
-                    row =>
-                      match row.expectation {
-                        TachExpected { role } =>
-                          verdict_for_expected(
-                            header: row.header,
-                            role: role,
-                            windows: windows,
-                            minimum_rotating: minimum_rotating,
-                          )
-                        TachNotExpected =>
-                          verdict_for_unexpected(header: row.header, windows: windows)
-                      },
-                  ),
-                  map(
-                    filter(
-                      windows,
-                      w =>
-                        match expectation_for(expectation: expectation, header: w.endpoint.name) {
-                          Present { value } => false
-                          none => true
-                        },
-                    ),
-                    w => ObservationForUndeclaredHeader { header: w.endpoint.name },
-                  ),
-                ],
-                group => group,
-              ),
-            }
+            GoalAssessmentRefused { cause: DuplicateObservedHeader { header: header } }
+          none => {
+            let judgements = fan_tach_judgements(goal: goal, observed: observed)
+            assess_by_deviations_and_unknowns(
+              evidence: FanTachReceipt {
+                headers_judged: judgements.length(),
+                healthy: judged_healthy(judgements: judgements),
+              },
+              deviations: judged_deviations(judgements: judgements),
+              unknowns: judged_unknowns(judgements: judgements),
+            )
+          }
         }
     }
   }
+}
+
+// THE OBSERVER CANNOT SEE THE GOAL, and that is enforced by `inspect_goal`'s shape rather than by
+// this module's restraint: `observe` receives the subject and the request only. Here the windows
+// arrive already read, so the observation is total and its refusal parameter is `Never` -- an
+// arm with no constructor, not an arm nobody happens to build.
+fn observe_fan_tach_attempt(
+  host: HostIdentity,
+  request: List<FanTachWindow>,
+) -> ObservationAttempt<FanTachObserved, Never> {
+  ObservationEstablished { observed: FanTachObserved { windows: request } }
+}
+
+type FanTachInspection = GoalInspection<HostIdentity, FanTachGoal, List<FanTachWindow>, FanTachObserved, FanTachReceipt, FanTachDeviation, FanTachUnknown, Never, FanTachRefusalCause>
+
+fn inspect_fan_tach(subject: FanTachSubject) -> FanTachInspection {
+  inspect_goal(
+    subject: subject.expectation.host,
+    goal: FanTachGoal {
+      expectation: subject.expectation,
+      minimum_rotating: subject.minimum_rotating,
+    },
+    request: subject.windows,
+    observe: observe_fan_tach_attempt,
+    assess: assess_fan_tach,
+  )
 }
 
 // COUNTS ARE SPLIT BY OWNER, NOT COLLAPSED INTO ONE NUMBER. An earlier revision summed rotation
@@ -251,62 +448,91 @@ fn assess_fan_tach(
 // inventory, and an incomplete authority. A combined number is a display summary at best; as the
 // module's semantic output it re-does the conflation one level up.
 
-fn rotation_anomaly_count(verdicts: List<FanTachVerdict>) -> Int {
+// THE HEALTHY ARMS GET COUNTERS TOO, so that all seven judgement arms are counted by one typed
+// authority rather than six here and one re-minted at each call site. A consumer asking "how many
+// endpoints are spinning" is asking about the same classification as one asking how many drifted.
+fn rotation_observed_count(healthy: List<FanTachHealthy>) -> Int {
   fold(
-    verdicts,
+    healthy,
     init: 0,
-    f: (acc, v) =>
-      match v {
+    f: (acc, h) =>
+      match h {
+        RotationObserved { header, speed } => acc + 1
+        other => acc
+      },
+  )
+}
+
+fn rotation_correctly_absent_count(healthy: List<FanTachHealthy>) -> Int {
+  fold(
+    healthy,
+    init: 0,
+    f: (acc, h) =>
+      match h {
+        RotationCorrectlyAbsent { header } => acc + 1
+        other => acc
+      },
+  )
+}
+
+fn rotation_anomaly_count(deviations: List<FanTachDeviation>) -> Int {
+  fold(
+    deviations,
+    init: 0,
+    f: (acc, d) =>
+      match d {
         ExpectedRotationNotObserved { header, role, absence } => acc + 1
         other => acc
       },
   )
 }
 
-fn rotation_degraded_count(verdicts: List<FanTachVerdict>) -> Int {
+fn rotation_degraded_count(deviations: List<FanTachDeviation>) -> Int {
   fold(
-    verdicts,
+    deviations,
     init: 0,
-    f: (acc, v) =>
-      match v {
+    f: (acc, d) =>
+      match d {
         RotationDegraded { header, role, rotating_count, sample_count } => acc + 1
         other => acc
       },
   )
 }
 
-fn expectation_drift_count(verdicts: List<FanTachVerdict>) -> Int {
+fn expectation_drift_count(deviations: List<FanTachDeviation>) -> Int {
   fold(
-    verdicts,
+    deviations,
     init: 0,
-    f: (acc, v) =>
-      match v {
+    f: (acc, d) =>
+      match d {
         UnexpectedRotation { header, speed } => acc + 1
         other => acc
       },
   )
 }
 
-fn authority_gap_count(verdicts: List<FanTachVerdict>) -> Int {
+fn authority_gap_count(deviations: List<FanTachDeviation>) -> Int {
   fold(
-    verdicts,
+    deviations,
     init: 0,
-    f: (acc, v) =>
-      match v {
+    f: (acc, d) =>
+      match d {
         ObservationForUndeclaredHeader { header } => acc + 1
         other => acc
       },
   )
 }
 
-fn observation_gap_count(verdicts: List<FanTachVerdict>) -> Int {
+// THE OBSERVATION GAP IS COUNTED OVER UNKNOWNS, NOT DEVIATIONS, and the type now says so. Before
+// the split this count folded the same list as the four above, which read as though a header
+// nobody answered for were one more anomaly beside a degraded rotor.
+fn observation_gap_count(unknowns: List<FanTachUnknown>) -> Int {
   fold(
-    verdicts,
+    unknowns,
     init: 0,
-    f: (acc, v) =>
-      match v {
+    f: (acc, u) =>
+      match u {
         ExpectedHeaderObservationMissing { header, role } => acc + 1
-        other => acc
       },
   )
 }
