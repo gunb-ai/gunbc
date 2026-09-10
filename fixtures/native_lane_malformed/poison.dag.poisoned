@@ -1,0 +1,18 @@
+module v2.native_lane_malformed.poison
+
+// THE required-v2-native LANE'S MALFORMED-SOURCE CONTROL (authority:
+// gunbc.witness_v2_native_route). This file is deliberately NOT well-formed: the string below
+// never terminates, so any honest front-end refuses it at tokenize. The lane's host harness
+// materializes these bytes as `poison.dag` under the lane's scratch root, runs the emitted
+// native binary with that scratch directory as the only source root, and REQUIRES a per-file
+// refusal — a native route that "accepts" a poisoned context has a dead front-end refusal arm,
+// and every refusal verdict in its census is then worthless.
+//
+// THE COMMITTED CARRIER DOES NOT CARRY THE PLAIN `.dag` EXTENSION, because the bytes are not a
+// dag program and the extension would claim otherwise to every repo-wide reader: the floor
+// lane's changed-witness observation parses every changed `.dag` path in a diff, and this
+// file's deliberate tokenize failure refused the whole observation (run 34471447387). It also
+// lives outside dag/ and src/v2/ so the broken bytes never enter an honest ingest: the required
+// parse sweep walks only the declared source roots, and the materialized copy joins a source
+// root set only in the lane's own control invocation.
+data broken: String = "this string never terminates

@@ -313,8 +313,7 @@ pub fn occurrence_containment_parent_scope(
             std::option::Option::None
         } else {
             let parent_terminal = (*__fm)[0].clone();
-            let parent_ancestors_reversed: Rc<Vec<_>> =
-                Rc::new((*__fm).iter().skip(1).cloned().collect());
+            let parent_ancestors_reversed: Rc<Vec<_>> = Rc::new(__fm.skip(1));
             Some(Rc::new(OccurrenceContainmentPath {
                 ancestors: v1_rt::reverse(parent_ancestors_reversed.clone()),
                 terminal: parent_terminal.clone(),
