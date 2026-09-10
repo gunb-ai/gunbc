@@ -68,14 +68,20 @@ the same head, so a per-file digest would restate what the pin's `head_sha` alre
 Two different things are described below and they have different standings, so the distinction is
 stated before either.
 
-**The route that produced the table is a required CI lane — and it resolves at the PINNED HEAD, not on
-main.** The `v2-native` lane, its authority `gunbc.witness_v2_native_route`, and the
-`NativeTestFileRefusal` row type are #10882's and are unmerged at this writing; on any base without that
-PR the three names resolve to nothing. The population and the terminal causes in
-`gunbc.tools.self_host_closure_terminal_causes` come from there and nowhere else, so the pin's
-`head_sha` is the tree a reader must check out to re-derive them. Saying "in this repository" without
-that qualification, as an earlier revision of this note did, is the unreachable citation the carrier
-refuses to make about its own probe digest.
+**The route that produced the table is a required CI lane, and it resolves in this repository.** The
+`v2-native` lane, its authority `gunbc.witness_v2_native_route`, and the `NativeTestFileRefusal` row
+type landed on main with #10882. The population and the terminal causes in
+`gunbc.tools.self_host_closure_terminal_causes` come from there and nowhere else.
+
+Two earlier revisions of this paragraph were wrong in opposite directions, and both are worth recording
+because the second is the easier mistake to repeat. The first said "in this repository and is
+executable" while those three names resolved at no commit on main — the unreachable citation the
+carrier refuses to make about its own probe digest. The second corrected it to "resolves at the pinned
+head, not on main", which was true when written and became false the moment #10882 merged. **A
+statement about the state of a moving branch has to name the head it describes, or it rots in whichever
+direction the branch moves next.** The pin stays at the observation head because that is the tree the
+rows were measured over — that is what a pin is for — but it is no longer the only tree in which the
+citation resolves.
 
 **The per-declaration reduction probes below are RECIPES, not artifacts.** They are hand-written Rust
 that lives in the emitted probe crate for the length of a reduction session and is not committed:

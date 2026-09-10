@@ -58,6 +58,13 @@ import v2.workflow.compile_door_ledger { FatalGrain, cause_ownership_lookup }
 // path that fold takes, so every stage the fold can refuse at is reachable from it. That symbol does
 // resolve here.
 //
+// EVERY STATEMENT HERE ABOUT THE STATE OF A BRANCH NAMES THE HEAD IT DESCRIBES. Two revisions of this
+// module's producer note were wrong in opposite directions - one claiming the lane resolved here when
+// it did not, then one claiming it resolved only at the pin, which stopped being true the moment
+// #10882 merged. A sentence about a moving branch rots in whichever direction the branch moves next,
+// so the pin names the tree the rows were OBSERVED over and nothing here asserts a present tense about
+// main that a later merge can falsify.
+//
 // WHAT A READER MAY NOT DO WITH IT. There is no aggregate verdict, because the population IS the
 // finding; a Boolean over it would be a verdict on subjects that have not each been separately
 // established. Each cause carries how its per-file join was backed, and the two backings are not
@@ -67,9 +74,8 @@ import v2.workflow.compile_door_ledger { FatalGrain, cause_ownership_lookup }
 // table is not one kind of thing, and only half of it is a projection.
 //
 // The PROJECTED half is the population and the terminal causes. The v2-native lane's context fold
-// already emits exactly one {path, head_reason, fatal_reason} row per source - at the pinned head, not
-// on this base - and closure_module_manifest is likewise derivable from the emitted crate's per-module
-// headers. Those rows are hand-applied here, which is the manual-application-committed-as-source tell,
+// already emits exactly one {path, head_reason, fatal_reason} row per source, on this base, and
+// closure_module_manifest is likewise derivable from the emitted crate's per-module headers. Those rows are hand-applied here, which is the manual-application-committed-as-source tell,
 // and they are the part that should stop being authored.
 // dissolve-on: an emission target for this table plus a drift gate over it, in the shape
 // gunbc.generated_artifact_gate already carries - at which point the projected rows are generated and
