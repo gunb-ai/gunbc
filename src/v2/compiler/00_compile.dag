@@ -773,8 +773,13 @@ fn native_test_context_fold_step(
   }
 }
 
+// One language model for the whole fold: dag_language_model() rebuilds the grammar, lex rules
+// and canonical-symbol set on every call, and calling it inside the cons closure paid that
+// once PER FILE — measured at ~0.3s/file of the context fold's wall time (2026-09-09,
+// required-v2-native lane work), a pure recompute with no per-file dependency.
 fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
-  match prepare_grammar(grammar: dag_language_model().grammar) {
+  let lm = dag_language_model()
+  match prepare_grammar(grammar: lm.grammar) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } => {
       let folded = fold_list(
@@ -788,7 +793,7 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
           native_test_context_fold_step(
             state: state,
             read: read,
-            lm: dag_language_model(),
+            lm: lm,
             prepared: prepared,
             residue: residue
           )
