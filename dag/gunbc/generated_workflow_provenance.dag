@@ -6,7 +6,6 @@ import gunbc.generated_artifact {
   WitnessFloorYamlArtifact,
   FleetConvergeYamlArtifact,
   FleetDesiredAdmissionYamlArtifact,
-  BootstrapPrLauncherYamlArtifact,
 }
 
 // A generated workflow is reviewed at the bytes boundary, where its producing .dag graph is not
@@ -35,10 +34,6 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     FleetDesiredAdmissionYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet_desired_admission_workflow expected_fleet_desired_yml",
       authority: "gunbc.fleet_desired_admission_workflow fleet_desired_admission_workflow",
-    } }
-    BootstrapPrLauncherYamlArtifact => Present { value: GeneratedWorkflowProvenance {
-      generator: "gunbc.ci_bootstrap_pr_launcher_workflow expected_bootstrap_pr_launcher_yml",
-      authority: "gunbc.ci_bootstrap_pr_launcher_workflow bootstrap_pr_launcher_workflow",
     } }
     _ => none
   }

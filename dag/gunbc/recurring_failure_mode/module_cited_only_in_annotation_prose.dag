@@ -1,7 +1,6 @@
 module gunbc.recurring_failure_mode.module_cited_only_in_annotation_prose
 
 import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data module_cited_only_in_annotation_prose: RecurringFailureMode = RecurringFailureMode {
@@ -14,19 +13,12 @@ data module_cited_only_in_annotation_prose: RecurringFailureMode = RecurringFail
 
     "WHY IT IS NOT [[unbacked_execution_claim]] origin 2. That origin is a citation of a SYMBOL that died when a prose-row became an annotation. Here the named thing is a MODULE that may or may not exist; the defect is that the spelling never entered the import graph either way. ",
 
-    "THE REPAIR IS TYPED CONSUMPTION, not a better comment. Import the declaration and fold it. After this filing the three stranded receipts are consumed by `gunbc.runner.runner_host_filtered_egress` and `gunbc.runner.runner_cpu_bandwidth_receipt` that way. A second `DeclarationRef` row that only restates those imports is another prose-grade citation of the same class. A witness that only folds the receipt constants cannot go red on a real divergence and is not coverage. ",
+    "THE REPAIR IS TYPED CONSUMPTION, not a better comment. Import the declaration and fold it. After gunbc#10921 `cpu_bound_write_refused` is a field of `gunbc.runner.runner_cpu_bandwidth_receipt` `cpu_bound_standing`. The unread topology wrappers and the two `fn`s they called are deleted together: a fold nobody calls is the same class as a data row nobody reads. That deletion does not close `guest_reachability` or `egress_outcome`; it stops asserting they were closed. Those receipts were unconsumed under #10818's unread folds as well. A second `DeclarationRef` row that only restates those imports is another prose-grade citation of the same class. A witness that only folds the receipt constants cannot go red on a real divergence and is not coverage. ",
 
     "RUNG FOUND AT: mitigatable. The required cited-symbol check is live for typed `DeclarationRef` literals and does not apply to annotations; review reading is containment after the fact. CEILING: structurally guaranteed for every typed citation, in one step, because the existing check covers a `DeclarationRef` the moment it is authored -- the same ceiling [[unlanded_citation_indistinguishable_at_the_citing_end]] names for typed row-to-row citation. It is not structurally impossible: source can still write a module path in a comment. NEXT-RUNG TRIGGER, a capability and not an artifact: consumption of a newly authored module is decided from the import graph at admission, sufficient that a module whose only occurrences are annotation text is refused as unconsumed rather than merged as cited. A scanner over comments is a heuristic and is not this trigger. ",
 
     "RECOGNITION RULE: when a review or a PR body says a module is cited, ask whether any import or `DeclarationRef` names it. If the only hits are inside `//`, it is not cited.)",
   ],
 
-  evidence: [
-    DeclarationRef { module_path: "gunbc.runner.runner_host_filtered_egress", decl_name: "bridged_topology_rejected_because_it_failed", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.runner.runner_host_filtered_egress", decl_name: "kernel_rebuild_owes_cfs_bandwidth", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.runner.runner_host_filtered_egress", decl_name: "routed_attachment_already_carries_the_guest", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.runner.runner_cpu_bandwidth_receipt", decl_name: "placement_established_from_both_ends", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.runner.runner_cpu_bandwidth_receipt", decl_name: "memory_current_at_placement", field: WholeDeclaration },
-
-  ],
+  evidence: [],
 }
