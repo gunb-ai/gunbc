@@ -161,6 +161,20 @@ The promise is **not** that every property becomes impossible; it is that every 
 
 Two consequences bind authors: an annotation may preserve irreducible human rationale about *why* a construction has its shape, and it must not restate what the declaration structurally says; and an annotation is never evidence that a machine claim holds, because no `Accepted` program can read one.
 
+## 4d. Epistemic humility (what the corpus may assert about the world)
+
+This section is a consequence of A2 and A3 — a fact is grounded only by pointing at a shared, time-stable framework — applied to authored claims about the world. It is an independent peer of §4b, not a restatement: §4b's *outside the modeled guarantee* column governs what the compiler can guarantee about a program; this section governs what the corpus may assert about the world.
+
+The obligation is symmetric (operator ruling, 2026-09-10). Three arms, not one:
+
+- **Do not assert as deduced what is only inferred.** An inference is a bet. It is not deleted and it is not promoted: it is typed as a bet, and a later reader who consumes it as a fact is the defect.
+- **Do not over-generalize a prohibition.** A mechanism that forbids more than the evidence supports costs real opportunities. The cost is the thing you never did, so the failure looks like rigor and is the one nobody catches. This is adjacent to §5's *"never" is the trap* (a ratchet masquerading as a wall) and is not that trap: §5 is about claiming construction for an undecidable class; this arm is about forbidding more of the world than the cited variables support.
+- **Do assert what you are confident in.** Under-asserting is not humility. A fact you decline to state is a wall that does not exist, and the next process pays for the missing protection. A section that only warns against over-claiming would push the corpus into this arm.
+
+The principle is unnamed practice the corpus already obeys. The homes, not new vocabulary: `extdeps.external_authority` `CitedFigureStanding` = `CitedToAuthority { authority }` | `TranscribedUncited { read_obligation }` — a figure carries its evidentiary standing in the type, and an uncited one must name what would ground it (the same warrant kind as `gunbc.product.node_power_envelope` `TwoDpcRateCeiling.evidence` and `std.decision` `ObjectiveTerm.ground`). The second home is `strategy.node_rental` `SupplierHypothesis` (gunbc-private #54): `SharedCommodityPartOnly` rules nothing in and names the discriminator that would close it; `CandidateRuledOut` is the one real negative; `SupplyRelationshipObserved` is the only arm that answers true and requires a cited discriminator.
+
+Two receipts, one per direction. Over-assertion: gunbc-private #54, where `strategy.node_rental` promoted a shared processor SKU to a supply relationship — two firms deploying the same SKU is evidence the SKU is commodity; a supply relationship needs a discriminator only a supply relationship would produce. The tell worth keeping: the standard is usually present and locally unapplied. Over-prohibition: gunbc#10954, `gunbc.product.node_power_envelope` `altra_two_dpc_ceilings` — rank-dependent 2DPC derates self-declared `TranscribedUncited`, then consumed as a wall, forbidding bandwidth the cited Ampere Altra and OCP Mt. Jade sources do not derate. The type did its job (standing was typed uncited, so the defect was findable); the failure was consuming a typed bet as a deduced fact.
+
 ## 5. Fail-closed (§1's safety axis)
 
 Minimizing cost and complexity is worthless if a wrong thing passes silently. This code is digital: a wrong answer is a **loud error, never a warning** — a bridge collapses, it does not warn. Every path succeeds fully or fails with a typed, located diagnostic; no fabricated plausible output. Relax toward application-layer leniency only under protest, and lean to infra so others can build on your work.

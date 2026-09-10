@@ -182,6 +182,21 @@ fn section_4c_blocks() -> List<MarkdownBlock> {
   ]
 }
 
+fn section_4d_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "4d. Epistemic humility (what the corpus may assert about the world)"),
+    p(text: "This section is a consequence of A2 and A3 — a fact is grounded only by pointing at a shared, time-stable framework — applied to authored claims about the world. It is an independent peer of §4b, not a restatement: §4b's *outside the modeled guarantee* column governs what the compiler can guarantee about a program; this section governs what the corpus may assert about the world."),
+    p(text: "The obligation is symmetric (operator ruling, 2026-09-10). Three arms, not one:"),
+    ul(items: [
+      li(text: "**Do not assert as deduced what is only inferred.** An inference is a bet. It is not deleted and it is not promoted: it is typed as a bet, and a later reader who consumes it as a fact is the defect."),
+      li(text: "**Do not over-generalize a prohibition.** A mechanism that forbids more than the evidence supports costs real opportunities. The cost is the thing you never did, so the failure looks like rigor and is the one nobody catches. This is adjacent to §5's *\"never\" is the trap* (a ratchet masquerading as a wall) and is not that trap: §5 is about claiming construction for an undecidable class; this arm is about forbidding more of the world than the cited variables support."),
+      li(text: "**Do assert what you are confident in.** Under-asserting is not humility. A fact you decline to state is a wall that does not exist, and the next process pays for the missing protection. A section that only warns against over-claiming would push the corpus into this arm."),
+    ]),
+    p(text: "The principle is unnamed practice the corpus already obeys. The homes, not new vocabulary: `extdeps.external_authority` `CitedFigureStanding` = `CitedToAuthority { authority }` | `TranscribedUncited { read_obligation }` — a figure carries its evidentiary standing in the type, and an uncited one must name what would ground it (the same warrant kind as `gunbc.product.node_power_envelope` `TwoDpcRateCeiling.evidence` and `std.decision` `ObjectiveTerm.ground`). The second home is `strategy.node_rental` `SupplierHypothesis` (gunbc-private #54): `SharedCommodityPartOnly` rules nothing in and names the discriminator that would close it; `CandidateRuledOut` is the one real negative; `SupplyRelationshipObserved` is the only arm that answers true and requires a cited discriminator."),
+    p(text: "Two receipts, one per direction. Over-assertion: gunbc-private #54, where `strategy.node_rental` promoted a shared processor SKU to a supply relationship — two firms deploying the same SKU is evidence the SKU is commodity; a supply relationship needs a discriminator only a supply relationship would produce. The tell worth keeping: the standard is usually present and locally unapplied. Over-prohibition: gunbc#10954, `gunbc.product.node_power_envelope` `altra_two_dpc_ceilings` — rank-dependent 2DPC derates self-declared `TranscribedUncited`, then consumed as a wall, forbidding bandwidth the cited Ampere Altra and OCP Mt. Jade sources do not derate. The type did its job (standing was typed uncited, so the defect was findable); the failure was consuming a typed bet as a deduced fact."),
+  ]
+}
+
 fn section_5_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "5. Fail-closed (§1's safety axis)"),
@@ -255,6 +270,7 @@ fn design_blocks() -> List<MarkdownBlock> {
     section_4_blocks(),
     section_4b_blocks(),
     section_4c_blocks(),
+    section_4d_blocks(),
     section_5_blocks(),
     section_6_blocks(),
     section_7_blocks(),
