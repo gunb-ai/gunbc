@@ -1,7 +1,7 @@
 module test.claim.github_effect_perform
 
 import std.logic { Bool }
-import std.types { String, POST, PATCH, CommitSha }
+import std.types { String, POST, PATCH, CommitSha, Secret }
 import extdeps.github.effect {
   GitHubEffect,
   AdvanceRepositoryBranch,
@@ -20,10 +20,16 @@ import gunbc.repository { gunbc_repository }
 import extdeps.transports.rest {
   RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
+import extdeps.github.http {
+  hermetic_get_authenticated_user_login,
+  hermetic_get_authenticated_user_id,
+}
 import gunbc.github_effect_perform {
   GitHubHttpSucceeded, GitHubHttpRefused, GitHubHttpCommitAmbiguous,
   GitHubHttpUnreached, GitHubHttpUndecodable,
+  GitHubAuthenticatedUserObserved, GitHubAuthenticatedUserRefused,
   classify_github_http_outcome,
+  perform_github_authenticated_user_read,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -180,5 +186,17 @@ test fn an_undecodable_body_on_a_mutation_is_commit_ambiguous() -> Bool {
     GitHubHttpCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "unread rather than known")
     GitHubHttpUndecodable { status: _, cause: _ } => false
     _ => false
+  }
+}
+
+// THE MOCK GREEN IS THE FIXTURE LOGIN, NOT A LIVE USER. GetAuthenticatedUser publishes one
+// hermetic result (decoded 200). Asserting that exact spelling is what keeps this from being
+// the wet 401 / live-login witness in disguise.
+test fn perform_authenticated_user_read_binds_the_hermetic_fixture_login() -> Bool {
+  match perform_github_authenticated_user_read(auth_token: "hermetic-fixture-token" as Secret) {
+    GitHubAuthenticatedUserObserved { user } =>
+      user.login == hermetic_get_authenticated_user_login
+        && user.id == hermetic_get_authenticated_user_id
+    GitHubAuthenticatedUserRefused { performance: _ } => false
   }
 }

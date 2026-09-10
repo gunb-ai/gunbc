@@ -10,14 +10,14 @@ import extdeps.github.http { AuthenticatedUser }
 import gunbc.secret_provision_actuator { mutation_status_is_commit_ambiguous }
 
 // RUNG, HONEST. Classification of a RestOutcome is mechanically preventable on the required
-// hermetic path (test.claim.github_effect_perform). perform_github_authenticated_user_read
-// reaches github.Http.GetAuthenticatedUser, which has no mock_response: the hermetic floor
-// cannot execute it, and BinWitnessWet is not a required-floor lane. The reported rung for
-// "GitHub HTTP actually ran" is therefore mitigatable until a required lane can run REST.
-// The classify fold's rung is independently mechanically preventable. This is not structural:
-// an invalid RestOutcome is still writable.
+// hermetic path. perform_github_authenticated_user_read is also reachable hermetically: the
+// GetAuthenticatedUser mock publishes the decoded-200 shape whose login is the fixture identity,
+// not a live GitHub account. That green is not the live 401. Live GET /user is not on a required
+// lane (BinWitnessWet does not execute on the floor; local-repo wet forbids network). The
+// classify fold's rung is independently mechanically preventable. This is not structural: an
+// invalid RestOutcome is still writable.
 
-data github_effect_perform_rung_note: String = "classify_github_http_outcome is the production handling for not-success, including undocumented statuses and commit-ambiguous mutations. GET /user is the first bound HTTP consumer of the performer. JIT mint and R2 mint are not callers in this change."
+data github_effect_perform_rung_note: String = "classify_github_http_outcome is the production handling for not-success, including undocumented statuses and commit-ambiguous mutations. GET /user is the first bound HTTP consumer of the performer. The hermetic mock proves the bind, not GitHub. JIT mint and R2 mint are not callers in this change."
 
 type GitHubHttpPerformance
   = GitHubHttpSucceeded

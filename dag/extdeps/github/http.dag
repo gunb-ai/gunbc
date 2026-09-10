@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
-import extdeps.transports.rest { RestOutcome }
+import extdeps.transports.rest { RestOutcome, RestOk }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -39,6 +39,12 @@ type AuthenticatedUser {
   id: Int
 }
 
+// THE HERMETIC FIXTURE LOGIN IS NOT A GITHUB ACCOUNT. mock_response can only publish one result,
+// so the hermetic arm is the decoded-200 shape of GET /user. The spelling is the fixture's
+// identity: a live GitHub user.login cannot be this string, and a live 401 cannot be this 200.
+data hermetic_get_authenticated_user_login: String = "hermetic-mock-authenticated-user"
+data hermetic_get_authenticated_user_id: Int = 1
+
 service github.Http {
   config {
     endpoint: default_api_base
@@ -61,6 +67,15 @@ service github.Http {
     }
     response {
       200 => AuthenticatedUser
+    }
+    mock_response {
+      200 => {
+        user: {
+          login: hermetic_get_authenticated_user_login,
+          id: hermetic_get_authenticated_user_id
+        },
+        outcome: RestOk
+      } "hermetic GET /user decoded-200 shape; the login is the fixture identity, not a live GitHub account"
     }
   }
 }
