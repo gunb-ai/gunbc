@@ -1,0 +1,79 @@
+module v2.test.long.v1_consumer_discovery
+
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.v1_consumer_census { V1ConsumerRow, v1_row_key, v1_literal_signatures }
+import tools.v1_consumer_discovery {
+  v1_discovery_rows_at, v1_discovery_keys_at, v1_discovery_undisposed_at
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FOLD ITSELF, GREEN BY EXECUTION. Review 63173 was right that nothing executed it: the paired
+// per-PR witness exercises only the light half homed in the census -- the signature table and the
+// module-path projection -- while v1cd_rows_in_fact, the fold that IS the joined producer, had no
+// executed arm anywhere in the tree. A gate that only a human runs by hand is DESIGN section 6's
+// inert-lens tier, and the hand run I did is a receipt about one afternoon rather than a consumer.
+//
+// WHY IT IS HERE AND NOT IN THE PER-PR FLOOR, which is the same reason v2.test.long.decl_index_enumeration
+// is here: the fold walks every declaration v2.std.decl_index decl_facts answers for both source
+// roots, which is minutes rather than milliseconds and is exactly the cost class the long home
+// exists for. Enrolment is by module prefix, so this file routes itself; nothing is added to a
+// roster. What runs per PR stays the light half. This is a declared split of one subject across two
+// cadences, not a witness hidden where it will not be looked at.
+
+data discovery_probe_revision: String = "long-lane probe: the revision is the tree the lane runs on, and no row here records one"
+
+fn discovery_rows() -> List<V1ConsumerRow> {
+  v1_discovery_rows_at(source_revision: discovery_probe_revision, source_tree_hex: discovery_probe_revision)
+}
+
+fn discovery_keys() -> List<String> {
+  v1_discovery_keys_at(source_revision: discovery_probe_revision, source_tree_hex: discovery_probe_revision)
+}
+
+fn discovery_key_present(key: String) -> Bool {
+  discovery_keys() |> any(k => k == key)
+}
+
+// THE DISCRIMINATING PAIR. The green half names a relation the roster carries and the corpus really
+// spells -- gunbc.devboot.program offered_programs lists "claim_batch" as a literal, so if the fold
+// stopped descending into declaration bodies, or the signature match broke, or the consumer-half
+// projection lost the module path, this key would vanish. The red half names a relation of exactly
+// the same SHAPE against a declaration that names no v1 binary at all: it must be absent. A fold
+// that returned everything, or returned the same rows for every fact, passes the first and fails
+// the second.
+data known_argv_relation: String = "gunbc.devboot.program.offered_programs -> v1_compiler.bin.claim_batch.main"
+
+data absent_argv_relation: String = "v2.test.long.v1_consumer_discovery.discovery_rows -> v1_compiler.bin.claim_batch.main"
+
+test fn discovery_fold_finds_a_real_argv_relation_and_not_a_fabricated_one() -> Bool {
+  discovery_key_present(key: known_argv_relation)
+    && !discovery_key_present(key: absent_argv_relation)
+    && count(discovery_keys()) > 0
+}
+
+// THE SELF-OBSERVATION CONTROL, EXECUTED. The instrument's first real run reported the census's own
+// signature table as a five-fold consumer of the subjects it exists to describe, and the exclusion
+// that fixed it is one predicate on one qualified name -- precisely the kind of arm that is deleted
+// by a later reader who cannot see what it was for. This asserts the absence while asserting the
+// table is non-empty, so the check cannot pass by the table having quietly become empty.
+data self_observation_key_prefix: String = "gunbc.v1_consumer_census.v1_literal_signatures -> "
+
+test fn discovery_does_not_count_its_own_signature_table() -> Bool {
+  count(v1_literal_signatures()) > 0
+    && !(discovery_keys() |> any(k => starts_with(s: k, prefix: self_observation_key_prefix)))
+}
+
+// THE GATE CONDITION, EXECUTED RATHER THAN DESCRIBED. This is the join the headline rests on: every
+// .dag declaration reaching a v1 authority is dispositioned in the roster. It goes red the moment a
+// declaration naming a v1 binary is authored without a row beside it, which is the whole point of
+// the producer, and it is the assertion that makes gunbc.v1_consumer_census's missing_basis claim
+// about the .dag medium a fact the tree checks rather than a sentence an author wrote.
+test fn every_discovered_dag_relation_is_dispositioned() -> Bool {
+  count(v1_discovery_undisposed_at(
+    source_revision: discovery_probe_revision,
+    source_tree_hex: discovery_probe_revision,
+  )) == 0
+}
