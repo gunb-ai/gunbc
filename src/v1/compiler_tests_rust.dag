@@ -717,6 +717,22 @@ fn ct_pub_use_crate_lines_two_emission_byte_identity_test() -> String {
     "    }\n\n")
 }
 
+fn ct_overlapping_use_line_dedupe_permutation_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn overlapping_use_lines_dedupe_identically_under_permutation() {\n",
+    "        let wider = \"pub use crate::m::{Bar, Foo};\".to_string();\n",
+    "        let narrower = \"pub use crate::m::{Foo};\".to_string();\n",
+    "        let forward = std::rc::Rc::new(im::vector![wider.clone(), narrower.clone()]);\n",
+    "        let reversed = std::rc::Rc::new(im::vector![narrower, wider]);\n",
+    "        assert_eq!(\n",
+    "            crate::v1_compiler_emit_rust::dedupe_rust_import_lines(forward),\n",
+    "            crate::v1_compiler_emit_rust::dedupe_rust_import_lines(reversed),\n",
+    "            \"first-binder-wins and prior-cover must see CanonicalOrder of the line set, not input permutation\"\n",
+    "        );\n",
+    "    }\n\n")
+}
+
 fn ct_pipeline_test() -> String {
   concat(
     "    #[test]\n",
@@ -4404,6 +4420,7 @@ fn compiler_tests_source() -> String {
     ct_entry_point_absent_refusal_test(),
     ct_import_lines_follow_resolved_binding_identity_test(),
     ct_pub_use_crate_lines_two_emission_byte_identity_test(),
+    ct_overlapping_use_line_dedupe_permutation_test(),
     ct_fixture_closure_rustc_discrimination_test(),
     ct_evaluation_budget_consequence_falsifier_test(),
     ct_function_value_adapter_fixture_closure_discrimination_test(),

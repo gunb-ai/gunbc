@@ -14570,7 +14570,7 @@ pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
 
 pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
-        let exact = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let exact = canonical_string_set(Rc::new({
             let mut __result = Vec::new();
             for line in lines.iter().cloned() {
                 if (line.clone() != "".to_string()) {

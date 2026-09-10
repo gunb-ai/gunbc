@@ -3294,8 +3294,12 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
 // provider/name set into a map and reads it with `sorted_map_keys` -- the constructor
 // `std.primitive_identity` `primitive_sorted_map_keys_traversal` classifies as CanonicalOrder -- so
 // the walk is not HostUnspecifiedOrder (`primitive_map_keys_traversal`) and not a `sort_by` bolted
-// onto an already-built list. The two-emission control is
+// onto an already-built list. `dedupe_rust_import_lines` feeds that same ordered set into
+// first-binder-wins and prior-cover, so a permutation of overlapping `pub use` lines cannot
+// change which survivor remains. Emission control:
 // `v1.compiler.compiler_tests_rust` `ct_pub_use_crate_lines_two_emission_byte_identity_test`.
+// Overlapping-permutation control:
+// `v1.compiler.compiler_tests_rust` `ct_overlapping_use_line_dedupe_permutation_test`.
 // THE V2 DETERMINISM GATE DOES NOT REACH THIS SEED SITE: `determinism_lens` sits in
 // `always_required_root_lenses` of `v2.compiler.compile` and classifies declared primitives; the
 // seed emitter is compiled by stage0. The terminal wall is that gate covering the emitter once it is
@@ -5198,7 +5202,8 @@ type ReferenceDerivedProviderBinding {
 
 // Presence-map then `sorted_map_keys`: one constructor, CanonicalOrder, the obligation
 // `primitive_sorted_map_keys_traversal` already names. Used at the reference-derived render
-// iteration so the candidate set is not walked in first-seen/`unique_strings` order.
+// iteration and as the input to `dedupe_rust_import_lines`, so first-binder-wins and the
+// "prior" cover predicates see a determined line order rather than first-seen of an unordered walk.
 fn canonical_string_set(items: List<String>) -> List<String> {
   sorted_map_keys(items |> fold(init: empty_map(), f: (acc, item) =>
     if item == "" { acc } else { map_insert(acc, item, true) }
@@ -7039,7 +7044,7 @@ fn strip_repeated_use_symbols(lines: List<String>) -> List<String> {
 }
 
 fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
-  let exact = unique_strings(items: lines |> filter(line => line != ""))
+  let exact = canonical_string_set(items: lines)
   let covered = exact |> filter(line =>
     rust_pub_use_singleton_covered(line: line, lines: exact) == false
       && rust_pub_use_braced_subset_covered(line: line, lines: exact) == false

@@ -599,6 +599,19 @@ mod compiler_tests {
             .expect("pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical panicked");
     }
 
+    #[test]
+    fn overlapping_use_lines_dedupe_identically_under_permutation() {
+        let wider = "pub use crate::m::{Bar, Foo};".to_string();
+        let narrower = "pub use crate::m::{Foo};".to_string();
+        let forward = std::rc::Rc::new(im::vector![wider.clone(), narrower.clone()]);
+        let reversed = std::rc::Rc::new(im::vector![narrower, wider]);
+        assert_eq!(
+            crate::v1_compiler_emit_rust::dedupe_rust_import_lines(forward),
+            crate::v1_compiler_emit_rust::dedupe_rust_import_lines(reversed),
+            "first-binder-wins and prior-cover must see CanonicalOrder of the line set, not input permutation"
+        );
+    }
+
     /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.
     ///
     /// Every other emitted-bytes assertion in this file is a SPELLING oracle: it reads the
