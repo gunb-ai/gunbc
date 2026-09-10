@@ -1,36 +1,40 @@
 module gunbc.ci_bootstrap_pr_open
 
 import std.types { String, NonEmptyStr, Bool, Int, HttpStatus }
-
 import std.credentials { CredentialSource, EnvVar }
 import extdeps.github.pulls
 import extdeps.github.pulls { PullRequestState, Open, Closed }
-import extdeps.github.commits
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.repository { gunbc_repository }
 import v2.std.optional { Present }
 
-// THE BOOTSTRAP PULL REQUEST, DECIDED IN .dag RATHER THAN IN A SHELL STRING.
+// THE BOOTSTRAP PULL REQUEST: ONE OPERATION, ONE JUDGEMENT, ONE RETRACTION.
 //
-// The first cut of this (gunbc#10894, hardened in gunbc#10904) spelled the whole operation as a
-// concatenated shell blob inside the workflow emitter: curl to resolve a ref, curl to count open
-// pull requests, curl to POST, python one-liners to read fields back out, and string compares for
-// the postconditions. Every operation in it was ALREADY MODELLED -- github.Commits.Get,
-// github.CliPulls.ListOpenJson, github.Pulls.Create -- so the blob was not filling a gap in the
-// dependency model. It was a second representation of operations that already had one, which is
-// the DESIGN section 6 unmodelled-realization tell: raw shell implementing semantics already
-// expressible in .dag.
+// The first cut (gunbc#10894, hardened in gunbc#10904) spelled this as a concatenated shell blob
+// in the workflow emitter -- curl to resolve a ref, curl to count open pull requests, curl to
+// POST, python one-liners to read fields back, string compares for the postconditions. Every
+// operation in it was ALREADY MODELLED, so the blob was a second representation of operations
+// that already had one: the DESIGN section 6 unmodelled-realization tell.
 //
-// WHAT THE STRING FORM ACTUALLY COST, measured rather than asserted: two defects that reached a
-// compile. `${GITHUB_REPOSITORY%%/*}` parsed as .dag interpolation, and `%\{http_code}` was
-// double-escaped into the same trap. Both are unwritable here because there is no medium to
-// escape into -- the values are typed and the operations are declared.
+// WHAT THE STRING FORM COST, measured: two defects that each reached a compile.
+// `${GITHUB_REPOSITORY%%/*}` parsed as .dag interpolation, and `%\{http_code}` was double-escaped
+// into the same trap. Neither is writable here -- there is no medium to escape into.
 //
-// THE POSTCONDITIONS ARE THE REAL REASON. In the shell form they were four string compares over
-// python-extracted fields, unreachable by any test that did not call GitHub. Here they are a
-// total function over the typed response, so the mis-attribution path is exercisable from a
-// fixture and the refusal is a coproduct arm rather than an echo.
+// THEN TWO PRECHECKS WERE DELETED, and this is the shape the operation should always have had.
+// It read the branch head with Commits.Get to compare against the pin, and listed pull requests
+// to refuse a duplicate. BOTH ARE REDUNDANT READS. The pin is enforced by the POSTCONDITION,
+// which checks the sha of what was ACTUALLY CREATED rather than what a prior read predicted; and
+// Pulls.Create already answers 422 when a pull request exists on the branch, carrying upstream's
+// own message. Two reads that could disagree with the act they preceded are gone, and with them
+// the only two calls in this module that had ever failed in CI -- Commits.Get returned a Null
+// `detail` on run 34437042493 and crashed the entry before any refusal arm could return.
+//
+// WHAT THE SIMPLIFICATION GIVES UP, stated because it is a real behavioural difference: on a
+// moved head the launcher now CREATES THEN CLOSES rather than never creating. The guarantee is
+// unchanged -- no pull request survives that does not match the pin -- but a spurious one exists
+// briefly. That is the cost of judging the act instead of predicting it, and it buys a judgement
+// that cannot be stale.
 
 data bootstrap_pr_head_branch: NonEmptyStr = "heal-canonical-author-v2"
 
@@ -40,40 +44,10 @@ data bootstrap_pr_expected_author: String = "github-actions[bot]"
 
 data bootstrap_pr_title: NonEmptyStr = "Heal commit metadata names the account that actually pushes it"
 
-// The job credential. The launcher runs on workflow_dispatch from the default branch and holds
-// pull-requests:write and nothing else, so this is the Actions job token and is what makes the
-// created pull request authored by github-actions[bot] -- which is the entire point of the
-// operation, not an incidental detail of how it authenticates.
+// The Actions job credential. This is what makes the created pull request authored by
+// github-actions[bot], which is the entire point of the operation rather than an incidental
+// detail of how it authenticates.
 data bootstrap_pr_credential: CredentialSource = EnvVar { name: "GITHUB_TOKEN" }
-
-// ── The decision layer, total and free of effects ──────────────────────────────────────────
-
-type BootstrapPrecondition
-  = PreconditionsMet
-  | HeadUnreadable { detail: String }
-  | HeadMoved { observed: String, expected: String }
-  | PullRequestAlreadyOpen { observed_count: Int }
-
-// A head that has moved REFUSES rather than retargeting. The pin's whole value is that what the
-// bot authors is what was reviewed; opening whatever the branch happens to hold would make the
-// launcher author arbitrary content under an identity nobody can revoke per-commit.
-fn admit_preconditions(
-  head_readable: Bool,
-  head_detail: String,
-  observed_sha: String,
-  expected_sha: String,
-  open_count: Int
-) -> BootstrapPrecondition {
-  if !head_readable {
-    HeadUnreadable { detail: head_detail }
-  } else if observed_sha != expected_sha {
-    HeadMoved { observed: observed_sha, expected: expected_sha }
-  } else if open_count != 0 {
-    PullRequestAlreadyOpen { observed_count: open_count }
-  } else {
-    PreconditionsMet
-  }
-}
 
 type BootstrapPostcondition
   = PostconditionsMet
@@ -84,9 +58,9 @@ type BootstrapPostcondition
       base_ref_ok: Bool
     }
 
-// CHECKED ON ALL FOUR AXES BECAUSE THE CREATE IS BY MUTABLE BRANCH NAME. The precondition read a
-// SHA; the create names a ref, and those are two operations against something that can move
-// between them. Only the response says what was actually created.
+// CHECKED ON ALL FOUR AXES BECAUSE THE CREATE NAMES A MUTABLE REF. The pin is a sha; the create
+// names a branch, and only the response says what was actually created. This is now the ONLY
+// enforcement of the pin, which is why it checks the sha rather than trusting an earlier read.
 fn check_postconditions(
   observed_author: String,
   observed_head_sha: String,
@@ -126,24 +100,6 @@ fn postcondition_failed_axes(p: BootstrapPostcondition) -> String {
   }
 }
 
-fn precondition_refusal_text(p: BootstrapPrecondition) -> String {
-  match p {
-    PreconditionsMet => ""
-    HeadUnreadable { detail } =>
-      concat("BootstrapHeadUnreadable: could not resolve the payload branch; opening NO pull request. ", detail)
-    HeadMoved { observed, expected } =>
-      join([
-        "BootstrapHeadMoved: the payload branch is at ", observed, ", expected ", expected,
-        ". The launcher opens the reviewed commit or nothing; opening NO pull request"
-      ], "")
-    PullRequestAlreadyOpen { observed_count } =>
-      join([
-        "BootstrapPullRequestAlreadyOpen: ", to_string(observed_count),
-        " open pull request(s) already carry the payload branch; opening NO pull request"
-      ], "")
-  }
-}
-
 fn rest_ok(outcome: RestOutcome) -> Bool {
   match outcome {
     RestOk => true
@@ -153,118 +109,72 @@ fn rest_ok(outcome: RestOutcome) -> Bool {
   }
 }
 
-fn rest_outcome_text(outcome: RestOutcome) -> String {
-  match outcome {
-    RestOk => "ok"
-    RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
-    RestTransportRefused { cause } => concat("transport refused: ", cause as String)
-    RestBodyUndecodable { status, cause } => join(["undecodable body at status ", to_string(status as Int), ": ", cause as String], "")
-  }
-}
-
-// A 403 here is the organisation setting, not a defect in the launcher, and the refusal says so
-// by name -- zero pull requests in this repository have ever been authored by github-actions[bot],
-// so "Allow GitHub Actions to create and approve pull requests" being disabled is a live arm.
+// A 403 is the organisation setting, not a defect here, and a 422 is upstream saying a pull
+// request already exists on this branch -- which is why no precheck lists them. Both are named so
+// the reader learns which without reading this module.
 fn create_refusal_text(status: HttpStatus, body: String) -> String {
   join([
     "BootstrapPullRequestRefused: GitHub answered status ", to_string(status as Int),
-    ". A 403 means the organisation setting 'Allow GitHub Actions to create and approve pull requests' is disabled -- that is a control-plane setting, not a defect in this operation. Body: ",
+    ". 403 means the organisation setting 'Allow GitHub Actions to create and approve pull requests' is disabled -- a control-plane setting, not a defect in this operation. 422 usually means a pull request already exists for this branch. Body: ",
     body
   ], "")
 }
 
-data bootstrap_pr_body: String = "Opened by the Actions job credential, so this pull request is authored by github-actions[bot].\n\nWHAT MERGING THIS ESTABLISHES, exactly one input: that github-actions[bot] has authored a merged pull request in this repository. It does NOT establish that later GITHUB_TOKEN pull_request synchronize runs will stop requiring approval. GitHub documents an approval rule for GITHUB_TOKEN-caused pull_request runs that does not mention contributor standing at all, and in every population measured here the actor and the triggering credential are perfectly correlated, so the measurement cannot separate them. A separate experiment adjudicates that.\n\nEXPECT ONE APPROVAL on this pull request's own runs: a pull request created with GITHUB_TOKEN gets its runs in an approval-required state. That approval is predicted by the documented rule and says nothing by itself about standing.\n\nHead pinned by gunbc.ci_bootstrap_pr_open; the launcher refuses and closes this pull request if its author, head sha, head ref or base ref do not match."
+data bootstrap_pr_body: String = "Opened by the Actions job credential, so this pull request is authored by github-actions[bot].\n\nWHAT MERGING THIS ESTABLISHES, exactly one input: that github-actions[bot] has authored a merged pull request in this repository. It does NOT establish that later GITHUB_TOKEN pull_request synchronize runs will stop requiring approval. GitHub documents an approval rule for GITHUB_TOKEN-caused pull_request runs that does not mention contributor standing at all, and in every population measured here the actor and the triggering credential are perfectly correlated, so the measurement cannot separate them. A separate experiment adjudicates that.\n\nEXPECT ONE APPROVAL on this pull request's own runs: a pull request created with GITHUB_TOKEN gets its runs in an approval-required state. That approval is predicted by the documented rule and says nothing by itself about standing.\n\nHead pinned by gunbc.ci_bootstrap_pr_open, which closes this pull request if its author, head sha, head ref or base ref do not match."
 
-// ── The wet entry. Effects only; every judgement above is reachable without it. ─────────────
-// Ordered so that nothing is created before the preconditions hold, and nothing is vouched for
-// before the postconditions do. The close on mismatch is not tidiness: the create has already
-// happened by the time any axis can be tested, so a launcher that merely exits non-zero leaves
-// standing exactly the misattributed pull request it declined to vouch for.
-// A DECLARED DEFAULT EXPANDS AT THE CALL SITE, so it resolves in THIS module's scope rather than
-// in the one that declared it. github.Pulls.List declares `state: PullRequestState = Open`, and
-// the first dispatch of this entry refused at evaluation with NoSuchVariable { name: "Open" }
-// AFTER A CLEAN COMPILE -- a bare module import does not bring the variants in, and nothing in the
-// call named them. So the variants are imported explicitly and state is PASSED rather than
-// defaulted, which makes the dependency visible instead of latent.
+// THE WET ENTRY. Create, judge what was created, retract if it does not match.
 //
-// THE WITNESSES COULD NOT HAVE CAUGHT THIS. All eight cover the pure decision functions, which
-// call no operation; the failure lived entirely in the wet entry's argument evaluation. Compiling
-// is not executing, and a green witness set over one layer says nothing about the other.
+// The close on mismatch is not tidiness. The create has already happened by the time any axis can
+// be tested, so an entry that merely refused would leave standing exactly the misattributed pull
+// request it declined to vouch for -- and the next reader would find an open bot-authored pull
+// request with a passing-looking provenance story.
 func bootstrap_pr_open_wet() -> ProcessExit {
   let owner = gunbc_repository.owner as String
   let repo = gunbc_repository.name as String
   let base = gunbc_repository.default_branch as String
 
-  let head_commit = github.Commits.Get(
+  let created = github.Pulls.Create(
     auth_token: bootstrap_pr_credential,
     owner: owner,
     repo: repo,
-    ref: bootstrap_pr_head_branch as String,
-  )
-  let listed = github.Pulls.List(
-    auth_token: bootstrap_pr_credential,
-    owner: owner,
-    repo: repo,
-    state: Open,
-  )
-  let open_on_branch = count(filter(listed.pulls, p => p.head.ref as String == bootstrap_pr_head_branch as String))
-
-  let pre = admit_preconditions(
-    head_readable: rest_ok(outcome: head_commit.outcome),
-    head_detail: rest_outcome_text(outcome: head_commit.outcome),
-    observed_sha: head_commit.detail.sha as String,
-    expected_sha: bootstrap_pr_expected_head_sha,
-    open_count: open_on_branch,
+    title: bootstrap_pr_title,
+    head: bootstrap_pr_head_branch,
+    base: base as NonEmptyStr,
+    body: bootstrap_pr_body,
+    draft: false,
   )
 
-  match pre {
-    HeadUnreadable { detail: _ } => exit_failure(reason: precondition_refusal_text(p: pre))
-    HeadMoved { observed: _, expected: _ } => exit_failure(reason: precondition_refusal_text(p: pre))
-    PullRequestAlreadyOpen { observed_count: _ } => exit_failure(reason: precondition_refusal_text(p: pre))
-    PreconditionsMet => {
-      let created = github.Pulls.Create(
-        auth_token: bootstrap_pr_credential,
-        owner: owner,
-        repo: repo,
-        title: bootstrap_pr_title,
-        head: bootstrap_pr_head_branch,
-        base: base as NonEmptyStr,
-        body: bootstrap_pr_body,
-        draft: false,
+  match created.outcome {
+    RestStatusRefused { status, body } => exit_failure(reason: create_refusal_text(status: status, body: body))
+    RestTransportRefused { cause } => exit_failure(reason: concat("BootstrapPullRequestRefused (transport): ", cause as String))
+    RestBodyUndecodable { status: _, cause } => exit_failure(reason: concat("BootstrapPullRequestRefused (undecodable): ", cause as String))
+    RestOk => {
+      let post = check_postconditions(
+        observed_author: created.user.login,
+        observed_head_sha: created.head.sha as String,
+        observed_head_ref: created.head.ref as String,
+        observed_base_ref: created.base.ref as String,
+        expected_author: bootstrap_pr_expected_author,
+        expected_head_sha: bootstrap_pr_expected_head_sha,
+        expected_head_ref: bootstrap_pr_head_branch as String,
+        expected_base_ref: base as String,
       )
-      match created.outcome {
-        RestStatusRefused { status, body: b } => exit_failure(reason: create_refusal_text(status: status, body: b))
-        RestTransportRefused { cause } => exit_failure(reason: concat("BootstrapPullRequestRefused (transport): ", cause as String))
-        RestBodyUndecodable { status: _, cause } => exit_failure(reason: concat("BootstrapPullRequestRefused (undecodable): ", cause as String))
-        RestOk => {
-          let post = check_postconditions(
-            observed_author: created.user.login,
-            observed_head_sha: created.head.sha as String,
-            observed_head_ref: created.head.ref as String,
-            observed_base_ref: created.base.ref as String,
-            expected_author: bootstrap_pr_expected_author,
-            expected_head_sha: bootstrap_pr_expected_head_sha,
-            expected_head_ref: bootstrap_pr_head_branch as String,
-            expected_base_ref: base as String,
+      match post {
+        PostconditionsMet => ExitSuccess
+        PostconditionMismatch { author_ok: _, head_sha_ok: _, head_ref_ok: _, base_ref_ok: _ } => {
+          let closed = github.Pulls.SetState(
+            auth_token: bootstrap_pr_credential,
+            owner: owner,
+            repo: repo,
+            pull_number: created.number,
+            state: Closed,
           )
-          match post {
-            PostconditionsMet => ExitSuccess
-            PostconditionMismatch { author_ok: _, head_sha_ok: _, head_ref_ok: _, base_ref_ok: _ } => {
-              let closed = github.Pulls.SetState(
-                auth_token: bootstrap_pr_credential,
-                owner: owner,
-                repo: repo,
-                pull_number: created.number,
-                state: Closed,
-              )
-              exit_failure(reason: join([
-                "BootstrapPullRequestMisattributed: pull request ", to_string(created.number),
-                " did not match its postconditions (", postcondition_failed_axes(p: post),
-                " ). Close attempted: ", if rest_ok(outcome: closed.outcome) { "closed" } else { "CLOSE FAILED, it is still open" },
-                ". A refused launcher must not leave behind the pull request it refuses to vouch for"
-              ], ""))
-            }
-          }
+          exit_failure(reason: join([
+            "BootstrapPullRequestMisattributed: pull request ", to_string(created.number),
+            " did not match its postconditions (", postcondition_failed_axes(p: post),
+            " ). Close attempted: ", if rest_ok(outcome: closed.outcome) { "closed" } else { "CLOSE FAILED, it is still open" },
+            ". A refused launcher must not leave behind the pull request it refuses to vouch for"
+          ], ""))
         }
       }
     }

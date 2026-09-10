@@ -105,6 +105,66 @@ type RestOutcome
   | RestTransportRefused { cause: NonEmptyStr }
   | RestBodyUndecodable { status: HttpStatus, cause: NonEmptyStr }
 
+// A STATUS IS ONLY EVIDENCE OF NON-COMMIT WHEN THE REMOTE MEANT IT AS A DECISION. A 4xx is an
+// authority or argument decision before committing; a 5xx spans states the remote may not be able
+// to describe, including a write that landed under a handler that then failed.
+fn mutation_status_is_commit_ambiguous(status: HttpStatus) -> Bool {
+  status >= 500
+}
+
+type RestExchangePerformance
+  = RestExchangeSucceeded
+  | RestExchangeStatusRefused { status: HttpStatus, body: String }
+  | RestExchangeCommitAmbiguous { detail: NonEmptyStr }
+  | RestExchangeUnreached { cause: NonEmptyStr }
+  | RestExchangeUndecodable { status: HttpStatus, cause: NonEmptyStr }
+
+// WHETHER THE EXCHANGE MUTATED IS NOT A CALLER BOOL. RestReadExchange vs RestMutationExchange
+// are different constructors; flipping mutation: true to false on an otherwise identical call
+// is unwritable. Deriving the standing from the operation's `readonly` modifier is the next
+// rung (rest_exchange_standing_from_operation_readonly_frontier).
+type RestExchangeStanding
+  = RestReadExchange { rest: RestOutcome }
+  | RestMutationExchange { rest: RestOutcome }
+
+data rest_exchange_standing_from_operation_readonly_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CAPABILITY: a rest operation result carries RestReadExchange vs RestMutationExchange derived from that operation's readonly modifier (dispatch_rest and rest emit), so classify_rest_outcome does not take a caller-built standing. TRIGGER: the result record includes that standing from the op declaration. SUFFICIENT FOR deleting RestReadExchange and RestMutationExchange constructors at classify call sites. NOT satisfied by a mutation: Bool argument on classify_rest_outcome." as NonEmptyStr)
+
+fn rest_exchange_ambiguous_detail(prefix: String, rest: String) -> NonEmptyStr {
+  concat(prefix, rest) as NonEmptyStr
+}
+
+fn classify_rest_outcome(standing: RestExchangeStanding) -> RestExchangePerformance {
+  match standing {
+    RestReadExchange { rest } =>
+      match rest {
+        RestOk => RestExchangeSucceeded
+        RestStatusRefused { status, body } => RestExchangeStatusRefused { status: status, body: body }
+        RestTransportRefused { cause } => RestExchangeUnreached { cause: cause }
+        RestBodyUndecodable { status, cause } => RestExchangeUndecodable { status: status, cause: cause }
+      }
+    RestMutationExchange { rest } =>
+      match rest {
+        RestOk => RestExchangeSucceeded
+        RestStatusRefused { status, body } =>
+          if mutation_status_is_commit_ambiguous(status: status) {
+            RestExchangeCommitAmbiguous {
+              detail: rest_exchange_ambiguous_detail(prefix: "mutation answered with a server-error status, which does not establish that the write did not commit: ", rest: body)
+            }
+          } else {
+            RestExchangeStatusRefused { status: status, body: body }
+          }
+        RestTransportRefused { cause } =>
+          RestExchangeCommitAmbiguous {
+            detail: rest_exchange_ambiguous_detail(prefix: "no response arrived for a mutation, so the write may or may not have landed: ", rest: cause as String)
+          }
+        RestBodyUndecodable { status, cause } =>
+          RestExchangeCommitAmbiguous {
+            detail: rest_exchange_ambiguous_detail(prefix: "mutation answered with a body this client could not decode, so the outcome is unread rather than known: ", rest: cause as String)
+          }
+      }
+  }
+}
+
 // THE HTTP CLIENT BOUNDARY REPORTS FACTS AND DECIDES NO OPERATION POLICY. RestResponseObserved says
 // a status arrived and then says separately whether its body was readable; RestExchangeRefused says
 // no response arrived, so no status can be fabricated. The operation-facing RestOutcome above is

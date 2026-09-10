@@ -5,7 +5,10 @@ import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.human_intervention { HumanIntervention, ProvisioningHumanBurden }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest {
+  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  mutation_status_is_commit_ambiguous,
+}
 import extdeps.cloudflare.account_api_tokens
 import extdeps.cloudflare.account_api_tokens {
   CreateAccountTokenRequest,
@@ -66,7 +69,6 @@ import gunbc.secret_provision_actuator {
   add_initial_version, VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown,
   VersionAddedButUnverified,
   verified_exact_ref,
-  mutation_status_is_commit_ambiguous,
 }
 
 // THE EXECUTING CONSUMER OF THE R2 MINT, AND THE ORDER OF ITS CHECKS IS THE WHOLE DESIGN.
