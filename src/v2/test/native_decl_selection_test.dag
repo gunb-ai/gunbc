@@ -1,0 +1,120 @@
+module v2.test.native_decl_selection
+
+import v2.compiler.compile {
+  native_test_context_from_ingest,
+  native_test_eval_one,
+  native_test_prepare_module,
+  NativeTestObservation,
+  NativeTestPassed,
+  NativeTestPreparedModule,
+  NativeTestRefused,
+  NativeTestStageEntry
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import extdeps.communication.medium { Lossless, Medium }
+
+// Selection controls for the native driver's exact scope walk: a test identity names a top-level
+// declaration of the prepared module, so a same-named NESTED edge — the graft spine segment
+// v2.test.collision itself — must never be selected and evaluated under the requested identity.
+// The synthetic module declares no top-level collision; its only collision-named edge is the
+// spine segment (plus a record field, which infer erases).
+
+data collision_module_source: String = "module v2.test.collision\n\nimport v2.std.logic { Bool }\n\nimport v2.std.integer { Int }\n\ntest fn real_test() -> Bool { true }\n\ntype Probe { collision: Int }\n"
+
+data collision_sibling_source: String = "module v2.test.collision_sibling\n\nimport v2.std.logic { Bool }\n\ntest fn shared_name() -> Bool { true }\n"
+
+fn collision_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: collision_module_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^native_decl_selection_collision_read,
+      file_path: "src/v2/test/fixture/native_decl_selection/collision_test.dag"
+    },
+    compilation_unit: ^native_decl_selection_collision_cu,
+    source_root: DagTree
+  }
+}
+
+fn collision_sibling_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: collision_sibling_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^native_decl_selection_sibling_read,
+      file_path: "src/v2/test/fixture/native_decl_selection/collision_sibling_test.dag"
+    },
+    compilation_unit: ^native_decl_selection_sibling_cu,
+    source_root: DagTree
+  }
+}
+
+fn collision_prepared() -> Optional<NativeTestPreparedModule> {
+  match native_test_context_from_ingest(ingest: [collision_read(), collision_sibling_read()]) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_prepare_module(context: context, module: [^v2, ^test, ^collision]) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: prepared, diagnostics: _ } => optional_present(value: prepared)
+      }
+  }
+}
+
+fn observation_is_entry_not_found(observation: NativeTestObservation) -> Bool {
+  match observation.verdict {
+    NativeTestRefused { stage: stage, reason: reason } =>
+      match stage {
+        NativeTestStageEntry => reason == ^native_test_entry_declaration_not_found
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn the_requested_declaration_is_selected_and_evaluated() -> Bool {
+  match collision_prepared() {
+    Absent => false
+    Present { value: prepared } =>
+      let observation = native_test_eval_one(prepared: prepared, declaration: ^real_test)
+      match observation.verdict {
+        NativeTestPassed => true
+        _ => false
+      }
+  }
+}
+
+test fn a_nested_same_named_graft_edge_is_not_selected() -> Bool {
+  match collision_prepared() {
+    Absent => false
+    Present { value: prepared } =>
+      observation_is_entry_not_found(
+        observation: native_test_eval_one(prepared: prepared, declaration: ^collision)
+      )
+  }
+}
+
+test fn an_absent_declaration_is_not_found() -> Bool {
+  match collision_prepared() {
+    Absent => false
+    Present { value: prepared } =>
+      observation_is_entry_not_found(
+        observation: native_test_eval_one(prepared: prepared, declaration: ^missing)
+      )
+  }
+}
+
+test fn a_sibling_modules_declaration_is_not_selected() -> Bool {
+  match collision_prepared() {
+    Absent => false
+    Present { value: prepared } =>
+      observation_is_entry_not_found(
+        observation: native_test_eval_one(prepared: prepared, declaration: ^shared_name)
+      )
+  }
+}

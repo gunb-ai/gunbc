@@ -41,6 +41,7 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.extdeps.languages.dag {
   dag_language_model,
   dag_target_model,
+  namespace_graft_unwrap_module_working_root,
   qualified_name_from_module_node
 }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
@@ -74,7 +75,7 @@ import v2.std.diagnostic {
   outcome_with_diagnostics
 }
 import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
-import v2.std.node_query { find_arrow_body_child }
+import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.cross_tree.import_model { SourceRootRef }
@@ -838,11 +839,32 @@ fn native_test_prepare_module(
   )
 }
 
-// THE DECLARATION SEARCH IS SCOPED TO ONE PREPARED MODULE TREE, so a name match anywhere in it
-// names this module's declaration — module scope is the only place named declaration edges live,
-// and a duplicate declaration name is a resolve refusal upstream of here. Direct children are
-// preferred at every level so the module-scope edge wins over any same-named edge nested inside
-// a declaration body.
+// THE DECLARATION SEARCH IS EXACT: a test identity names a top-level declaration of one prepared
+// module, so the search first resolves that module's scope node — unwrapping the module
+// production wrapper through the namespace-graft authority, then walking one Named spine edge per
+// qualified-name segment — and then matches DIRECT CHILDREN of the scope only. Descending into
+// nested Named edges could select a same-named graft segment or an edge nested inside a
+// declaration body and evaluate it under the requested identity. A scope walk that fails is a
+// graft-shape surprise and surfaces as its own entry reason, deliberately absent from
+// native_route_entry_limit_reasons so the surprise reds the lane instead of excluding tests.
+
+fn native_test_module_scope_go(at: Node, segments: QualifiedName) -> Outcome<Node> {
+  match segments {
+    Empty => outcome_accepted(value: at)
+    Cons { head: segment, tail: rest } =>
+      bind_outcome(
+        o: find_named_child(root: at, name: segment),
+        f: fn(child) { native_test_module_scope_go(at: child, segments: rest) }
+      )
+  }
+}
+
+fn native_test_module_scope_node(root: Node, module: QualifiedName) -> Outcome<Node> {
+  native_test_module_scope_go(
+    at: namespace_graft_unwrap_module_working_root(root: root),
+    segments: module
+  )
+}
 
 fn native_test_decl_in_children(children: List<Edge>, name: Symbol) -> Optional<Node> {
   fold(children, init: optional_absent(), f: fn(acc, e) {
@@ -860,22 +882,6 @@ fn native_test_decl_in_children(children: List<Edge>, name: Symbol) -> Optional<
         }
     }
   })
-}
-
-fn native_test_decl_deeper(children: List<Edge>, name: Symbol) -> Optional<Node> {
-  fold(children, init: optional_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: v } => optional_present(value: v)
-      Absent => native_test_find_decl_node(node: e.target, name: name)
-    }
-  })
-}
-
-fn native_test_find_decl_node(node: Node, name: Symbol) -> Optional<Node> {
-  match native_test_decl_in_children(children: node.children, name: name) {
-    Present { value: v } => optional_present(value: v)
-    Absent => native_test_decl_deeper(children: node.children, name: name)
-  }
 }
 
 fn native_test_observation_refused(
@@ -935,39 +941,49 @@ fn native_test_eval_one(
   prepared: NativeTestPreparedModule,
   declaration: Symbol
 ) -> NativeTestObservation {
-  match native_test_find_decl_node(node: prepared.inferred.root, name: declaration) {
-    Absent =>
+  match native_test_module_scope_node(root: prepared.inferred.root, module: prepared.module) {
+    Rejected { diagnostics: _ } =>
       native_test_observation_refused(
         module: prepared.module,
         declaration: declaration,
         stage: NativeTestStageEntry,
-        reason: ^native_test_entry_declaration_not_found
+        reason: ^native_test_entry_module_scope_unresolved
       )
-    Present { value: target } =>
-      match target.kind {
-        TypeNode { connective: Arrow } =>
-          match find_arrow_body_child(root: target) {
-            Rejected { diagnostics: d } =>
-              native_test_observation_refused(
-                module: prepared.module,
-                declaration: declaration,
-                stage: NativeTestStageEntry,
-                reason: native_test_fatal_reason(d: d)
-              )
-            Accepted { value: body, diagnostics: _ } =>
-              native_test_eval_body(
-                prepared: prepared,
-                declaration: declaration,
-                body: body
-              )
-          }
-        _ =>
+    Accepted { value: scope, diagnostics: _ } =>
+      match native_test_decl_in_children(children: scope.children, name: declaration) {
+        Absent =>
           native_test_observation_refused(
             module: prepared.module,
             declaration: declaration,
             stage: NativeTestStageEntry,
-            reason: ^native_test_entry_declaration_not_arrow
+            reason: ^native_test_entry_declaration_not_found
           )
+        Present { value: target } =>
+          match target.kind {
+            TypeNode { connective: Arrow } =>
+              match find_arrow_body_child(root: target) {
+                Rejected { diagnostics: d } =>
+                  native_test_observation_refused(
+                    module: prepared.module,
+                    declaration: declaration,
+                    stage: NativeTestStageEntry,
+                    reason: native_test_fatal_reason(d: d)
+                  )
+                Accepted { value: body, diagnostics: _ } =>
+                  native_test_eval_body(
+                    prepared: prepared,
+                    declaration: declaration,
+                    body: body
+                  )
+              }
+            _ =>
+              native_test_observation_refused(
+                module: prepared.module,
+                declaration: declaration,
+                stage: NativeTestStageEntry,
+                reason: ^native_test_entry_declaration_not_arrow
+              )
+          }
       }
   }
 }
