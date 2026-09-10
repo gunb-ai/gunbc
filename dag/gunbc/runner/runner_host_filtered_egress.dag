@@ -1,6 +1,7 @@
 module gunbc.runner.runner_host_filtered_egress
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import gunbc.runner_microvm_network {
   RunnerSlotNetwork, runner_slot_host_cidr, runner_slot_guest_ip_boot_arg,
@@ -53,8 +54,8 @@ data bridged_attachment_rejected: GuestAttachment = BridgedToPhysicalSegment {
 // egress_outcome and guest_reachability. CONFIG_NETFILTER and CONFIG_NF_NAT are required
 // either way, so the standing is NOT folded into KernelFeatureRequirement.required_for
 // and is not a field of KernelConfigHolds (that verdict answers whether a .config satisfies
-// the option roster). The standing lives here; test.claim.runner.runner_filtered_egress_topology_witness_test
-// reads it so the data row is not dangling. That reader is not live-run coverage.
+// the option roster). The standing lives here. Its production consumer is a declared
+// frontier: a decision that matches this coproduct, not a constant-folding witness.
 fn bridged_attempt_left_guest_without_egress() -> Bool {
   match egress_outcome {
     GuestEgressEstablished { via: _ } => false
@@ -87,6 +88,10 @@ fn filtered_egress_topology_standing() -> FilteredEgressTopologyStanding {
 }
 
 data filtered_egress_topology: FilteredEgressTopologyStanding = filtered_egress_topology_standing()
+
+data filtered_egress_topology_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "a production decision matches FilteredEgressTopologyStanding; until that declaration exists this cannot bind, and a constant-folding witness is not that consumer" as NonEmptyStr,
+)
 
 // ── the host uplink is static, on purpose ───────────────────────────────────────────────────────
 
