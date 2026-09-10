@@ -224,20 +224,18 @@ fn v1_discovery_report() -> List<String> {
   )
 }
 
-fn v1_discovery_all_keys() -> List<String> {
-  v1_discovery_keys_at(
-    source_revision: v1cd_unobserved_revision,
-    source_tree_hex: v1cd_unobserved_revision,
-  )
-}
 
+// ITS RED IS AUTHORABLE AND HAS BEEN AUTHORED, which is the question DESIGN section 4b says to ask
+// of a check before writing it: the forbidden state here is an ordinary .dag declaration naming a v1
+// binary with no row beside it, so it is expressible in the accepted corpus and the refusal fires on
+// the real path. Re-derive both arms rather than trusting a sentence: run the command v1cd_producer
+// carries, then delete one row from gunbc.v1_consumer_census v1_dag_argv_consumers and run it again.
+//
 // THE RUNNABLE ENTRY, and it REFUSES rather than reporting. A run that found undisposed relations
 // has found exactly the thing that blocks the cutover, so answering ExitSuccess with a list printed
 // beside it would be a green run over a red fact -- the shape DESIGN section 5 forbids in the arm
 // it forbids it in. The refusal carries the count and the first keys, so a reader gets the finding
 // from the exit itself rather than from a log they have to know to read.
-
-data v1_discovery_gate_executed_receipt: String = "EXECUTED, BOTH ARMS, 2026-09-10 against the branch head that lands this module (session deep-bee-532, arm64 seed built from this tree). RED FIRST, and it is the arm that matters: with the fifteen .dag argv rows authored and the two cargo-control relations still unfiled, v1_discovery_gate exited non-zero naming exactly those two -- ctl.pos_emit2 emits_a_two_segment_call and v2.test.claim.bash_program_fold_support bash_program_fixture_build_bin_if_absent, both reaching v1_compiler.lib.lib. GREEN AFTER, with those two dispositioned and NOTHING ELSE CHANGED: ExitSuccess. The pair is the discrimination receipt DESIGN section 4b(1) asks for -- the refusal fired on the real acceptance path over the real corpus, and the positive control is the same run over the same tree with one edit. RE-DERIVE rather than trust this row: the command is on v1cd_producer, and it is the same command in both arms. THE GATE IS NOT ENROLLED IN CI and this row does not claim it is: the fold reads every declaration in both source roots and costs minutes, which is a long-lane or on-demand cost rather than a per-PR one. What runs per PR is the paired witness over the light half."
 
 fn v1_discovery_gate() -> ProcessExit {
   let undisposed = v1_discovery_report()
