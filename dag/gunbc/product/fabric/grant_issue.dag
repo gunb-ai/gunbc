@@ -518,15 +518,11 @@ fn issue_grant<P, Q, S>(
   }
 }
 
-// DECLARED FRONTIER (DESIGN 3c). grant_authorizes_reservation has NO production consumer in this
-// change: its only caller is test.claim.fabric_grant_authorization_witness, which exercises it
-// rather than asserting it exists. NAMED CONSUMER: the FCI-3 executor, whose exit predicate in
-// gunbc.fabric_ci_program is that a persistent executor re-reads the committed Grant before
-// starting and that an absent, corrupt or expired Grant yields zero target processes -- this rule
-// is the agreement half of that re-read. TRIGGER, stated because a frontier without one is a
-// dangling declaration: the rule stays uncalled until FCI-3 lands an executor that re-reads a
-// committed grant. It is homed here, beside issue_grant, so that consumer imports one fabric
-// module rather than reaching into a runner-layer module for fabric vocabulary.
+// DECLARED FRONTIER (DESIGN 3c). grant_authorizes_reservation is consumed by
+// gunbc.runner_attempt_launch plan_attempt_launch, which is the agreement half of FCI-3's
+// re-read: an absent, corrupt, or disagreeing Grant yields zero jailer argv. The durable
+// re-read from fabric_allocation_store remains a frontier of that same launch until the store
+// carries grant facts; this rule stays the agreement counterpart of issue_grant.
 
 // THE AGREEMENT COUNTERPART OF issue_grant, HOMED BESIDE THE ISSUER RATHER THAN AT A CONSUMER.
 // A grant that fences money proves the money; it proves nothing about WHICH execution was

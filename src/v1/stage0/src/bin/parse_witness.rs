@@ -35,12 +35,19 @@ fn read_v2_file(relative_path: &str) -> String {
 }
 
 fn tokenize(source: &str) -> Rc<im::Vector<Rc<Token>>> {
-    v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
+    v1_compiler::v1_compiler_tokenize::tokenize(
+        source.to_string(),
+        "test.dag".to_string(),
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    )
 }
 
 fn parse_source(source: &str) -> Rc<ParseResult> {
-    let tokens =
-        v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string());
+    let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
+        source.to_string(),
+        "test.dag".to_string(),
+        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let source_index =
         v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
     let mut source_indices = HashMap::new();

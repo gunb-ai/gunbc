@@ -1,10 +1,10 @@
 module test.claim.bootstrap_pr_open_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool }
+import std.types { String, Bool, HttpStatus }
 import gunbc.ci_bootstrap_pr_open {
   BootstrapPostcondition, PostconditionsMet, PostconditionMismatch,
-  check_postconditions, postcondition_failed_axes,
+  check_postconditions, postcondition_failed_axes, create_refusal_text,
   bootstrap_pr_expected_head_sha, bootstrap_pr_expected_author, bootstrap_pr_head_branch
 }
 
@@ -61,4 +61,23 @@ test fn witness_failed_axes_are_named_in_the_refusal() -> Bool {
   postcondition_failed_axes(p: post(author: "briansrls", sha: other_sha, head_ref: bootstrap_pr_head_branch as String, base_ref: "main"))
     == " author head_sha"
     && postcondition_failed_axes(p: post(author: "github-actions[bot]", sha: good_sha, head_ref: bootstrap_pr_head_branch as String, base_ref: "main")) == ""
+}
+
+// THE REFUSAL FORMATTER IS EXERCISED, because it is the one function whose entire job is to
+// report what went wrong and it had never been called by anything. Run 34506290069 issued the
+// POST, received a non-201, and then died inside this function on `status as Int` -- HttpStatus
+// is a refined Int, so the cast is a no-op the interpreter refuses. The status it existed to
+// report was never printed: a reporting path that crashes on the error it reports converts a
+// diagnosable refusal into an opaque one.
+//
+// Both codes the operation actually expects are driven, so a future edit that breaks the
+// formatting goes red HERE rather than in a fifteen-minute dispatch.
+test fn witness_create_refusal_names_the_status_and_both_causes() -> Bool {
+  let forbidden = create_refusal_text(status: 403, body: "{\"message\":\"Resource not accessible by integration\"}")
+  let unprocessable = create_refusal_text(status: 422, body: "{\"message\":\"A pull request already exists\"}")
+  forbidden.contains("403")
+    && forbidden.contains("Allow GitHub Actions to create and approve pull requests")
+    && forbidden.contains("Resource not accessible by integration")
+    && unprocessable.contains("422")
+    && unprocessable.contains("already exists")
 }

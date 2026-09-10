@@ -10,6 +10,10 @@ data body_producer_forward_row_fn_decl: BodyProducerForwardRow = BodyProducerFor
   surface_identity: ^dag_surface_fn_decl
 }
 
+data body_producer_forward_row_test_fn_decl: BodyProducerForwardRow = BodyProducerForwardRow {
+  surface_identity: ^dag_surface_test_fn_decl
+}
+
 data body_producer_forward_row_fn_body: BodyProducerForwardRow = BodyProducerForwardRow {
   surface_identity: ^dag_surface_fn_body
 }
@@ -31,25 +35,15 @@ data body_producer_forward_row_loop_expr: BodyProducerForwardRow = BodyProducerF
 }
 
 fn body_producer_forward_rows() -> List<BodyProducerForwardRow> {
-  Cons {
-    head: body_producer_forward_row_fn_decl,
-    tail: Cons {
-      head: body_producer_forward_row_fn_body,
-      tail: Cons {
-        head: body_producer_forward_row_match_expr,
-        tail: Cons {
-          head: body_producer_forward_row_if_expr,
-          tail: Cons {
-            head: body_producer_forward_row_let_expr,
-            tail: Cons {
-              head: body_producer_forward_row_loop_expr,
-              tail: std.algebra.Empty
-            }
-          }
-        }
-      }
-    }
-  }
+  [
+    body_producer_forward_row_fn_decl,
+    body_producer_forward_row_test_fn_decl,
+    body_producer_forward_row_fn_body,
+    body_producer_forward_row_match_expr,
+    body_producer_forward_row_if_expr,
+    body_producer_forward_row_let_expr,
+    body_producer_forward_row_loop_expr
+  ]
 }
 
 fn body_producer_forward_row_count() -> Int {

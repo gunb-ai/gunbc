@@ -1,0 +1,29 @@
+module v2.native_lane_fixture.control
+
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// THE required-v2-native LANE'S LIVE-VERDICT CONTROL PAIR (authority:
+// gunbc.witness_v2_native_route). These two declarations exist so the lane can prove its
+// verdict path is LIVE rather than green-by-construction: a route that cannot distinguish
+// `false` from `true` must never report a pass. The lane's host harness names both identities
+// explicitly — they are controls, never universe members: the module sits outside the
+// `v2.test.` prefix the universe derivation filters on, and the declarations are plain `fn`
+// so floor discovery enrolls no rows for them (the floor's required gate would — correctly —
+// redden on a discovered test that returns false).
+//
+// THE FALSE CONTROL IS THE LOAD-BEARING ONE. The lane's admission refuses unless the emitted
+// native binary observes `native_lane_false_control` returning FALSE (NativeTestReturnedFalse):
+// a native route that reports it Passed has a dead or diverted verdict arm, and every pass
+// verdict in the population is then worthless. The true control is the positive half of the
+// same probe: the route must also observe TRUE where true is declared, so a route that
+// refuses or falsifies everything cannot green the control either.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn native_lane_false_control() -> Bool {
+  false
+}
+
+fn native_lane_true_control() -> Bool {
+  true
+}
