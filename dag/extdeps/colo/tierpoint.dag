@@ -163,3 +163,45 @@ data tierpoint_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "tierpoint.com sales",
   obligation: "Spec sheets are published; cabinet pricing is not, and neither is per-cabinet density, on any of the five Pennsylvania facility pages re-read 2026-09-08.",
 }
+
+// WESTCHESTER COUNTY: THE OPERATOR ALREADY IN THIS CENSUS WAS ALREADY IN NEW YORK. The module
+// carried four Pennsylvania rows and named its Pennsylvania page as its authority; the operator's
+// New York page (read 2026-09-08) lists a two-building Hawthorne campus 35 miles north of
+// Manhattan, on the site the market still calls Xand. Two buildings, sold as cabinets and cages,
+// which makes this the retail-grain anchor of Westchester County.
+data tierpoint_hawthorne_hwt: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "TierPoint",
+  facility_label: "TierPoint Hawthorne HWT (11 Skyline)",
+  address: AddressListed {
+    street: "11 Skyline Drive, Hawthorne, NY 10532",
+    citation: "tierpoint.com New York Hawthorne page, read 2026-09-08",
+  },
+  municipality: "Hawthorne",
+  region_code: "NY",
+  facility_note: "Westchester County. Operator page (read 2026-09-08): 46,000+ total square feet with 28,000+ square feet of raised floor. Private DWDM fiber rings to the operator's Connecticut, Massachusetts and Pennsylvania sites, with direct points of presence at 60 Hudson Street and 111 8th Avenue in Manhattan - so a Hawthorne cabinet is one operator-owned hop from the two carrier hotels this census already models around. Campus shared with Westchester Medical Center and New York Medical College.",
+}
+
+data tierpoint_hawthorne_hw2: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "TierPoint",
+  facility_label: "TierPoint Hawthorne HW2 (17 Skyline)",
+  address: AddressListed {
+    street: "17 Skyline Drive, Hawthorne, NY 10532",
+    citation: "tierpoint.com New York Hawthorne page, read 2026-09-08",
+  },
+  municipality: "Hawthorne",
+  region_code: "NY",
+  facility_note: "Westchester County, the second building of the same campus. Operator page (read 2026-09-08): 172,000+ total square feet with 28,000+ square feet of raised floor - the same raised-floor figure as HWT inside four times the building, the balance being office and disaster-recovery space rather than data hall.",
+}
+
+// A SPEC SHEET EXISTS AND STILL DID NOT YIELD A DENSITY. The operator publishes a per-facility
+// PDF spec sheet for Hawthorne; the fetch on 2026-09-08 returned a 312 KB PDF whose extractable
+// content was branding metadata rather than the specification table, so no figure was read from
+// it and none is carried. That is a fetch failure recorded as one, not a fact about the facility.
+data tierpoint_hawthorne_density: CabinetDensityClaim = DensityUnread {
+  obligation: "NO POWER FIGURE IS PUBLISHED, AND THE ZERO CARRIES ITS POSITIVE CONTROL. Counted in RAW BYTES (452,221 bytes, HTTP 200, full browser user-agent, 2026-09-09), because a tag-stripper was found in this census to eat 21 of 22 occurrences of a token that was plainly present: controls Hawthorne 63, Skyline 10 and the grain wording Cabinets and cages 2, all SUBJECT tokens naming this facility rather than the site - TierPoint 722 is a site token and proves only that the fetch reached tierpoint.com, which is not the same claim. This IS the per-facility surface: it carries the 11 Skyline and 17 Skyline specification blocks, so an absence here is evidence about the facility rather than about an index that was never going to carry a figure. Against those, case-sensitive kW is 0, per cabinet is 0, kilowatt is 0. A case-INSENSITIVE kw returns 3, and all three are inside CSS node identifiers (fl-node-izjpc548gkwv and siblings) rather than prose, which is recorded because a case-insensitive count is the search a later reader would run first and it does not mean what it looks like. TWO STANDING CAUTIONS FOR WHOEVER RE-RUNS THIS: kw is a common substring of minified identifiers, so count kW case-sensitively; and a kW hit is not a density until its sentence is read - the same operator publishes Two 600 kW redundant generators on its Pennsylvania facility pages, which is facility generator capacity and would be off by orders of magnitude if counted as a cabinet figure. The page markets High-Density Colocation as a product name and attaches no figure to it. The linked Hawthorne HWT spec-sheet PDF at web.tierpoint.com did not yield readable specification text on 2026-09-08 and is the remaining place a figure could hide. Retry the PDF by another route or ask sales for the per-cabinet allocation at both buildings - they may differ, and one campus row would then be two densities.",
+}
+
+data tierpoint_hawthorne_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets and cages available",
+  citation: "tierpoint.com New York Hawthorne page, CONFIRMED VERBATIM IN RAW BYTES 2026-09-09 (HTTP 200, 452,221 bytes, full browser user-agent): the exact string occurs TWICE, once against each of the 11 Skyline and 17 Skyline specification blocks. Counted in the raw bytes rather than in tag-stripped text, after a stripper in this census was found to discard 21 of 22 occurrences of a present token. THE EARLIER 403 WAS THIS CLIENT, NOT THE OPERATOR. A first raw attempt on the same day returned HTTP 403 with a 4.5 KB block page and this row briefly recorded TierPoint as blocking; silent-heron-303 found the general class - a refusal attributed to an operator that is really the fetching client - and a re-fetch with a full browser user-agent string returned the page. Measured here: a bare Mozilla/5.0 user-agent gets 403, the same request with a complete Chrome user-agent gets 200, and adding Accept-Language to the bare one does NOT help - so it is the user-agent STRING that is discriminated on, not the header set. The square footages in the two facility rows above are from the same 200 read.",
+}

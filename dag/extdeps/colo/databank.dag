@@ -173,6 +173,48 @@ data databank_lga2_retail_grain: RetailGrainStanding = RetailGrainUnread {
 // suite inside the 165 Halsey carrier hotel, which the census already carries as a building under
 // extdeps.colo.halsey_165 and as a Hivelocity suite under extdeps.colo.hivelocity: one building,
 // three upstream authorities, three rows, exactly as the building-versus-operator rule requires.
+data databank_lga3_orangeburg: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank LGA3 Orangeburg",
+  address: AddressListed {
+    street: "2000 Corporate Dr., Orangeburg, NY 10962",
+    citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08",
+  },
+  municipality: "Orangeburg",
+  region_code: "NY",
+  facility_note: "Rockland County, the first building of the Orangeburg campus: 20 MW critical IT load across 110,000 IT square feet, against LGA4's 10 MW. Same campus, same address, same density claim, twice the load - so a quote that fails on capacity at one building has not failed at the campus.",
+}
+
+data databank_lga3_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 35000) } },
+      wording: "35kW+ Cab Density Air",
+      citation: "databank.com Orangeburg campus LGA3 page, spec table, read 2026-09-08",
+      verification: WordingVerbatim {
+        retrieval: "The LGA3 page carries the same two labelled spec-table cells as its LGA4 sibling, read the same way and on the same campus. The plus sign is the operator's own, which is what makes this a marketed floor rather than an exact ceiling - typed as a maximum the census would have asserted that a cabinet advertised at thirty-five kilowatts OR MORE refuses 35,001 W.",
+      },
+    },
+    tail: [
+      PublishedDensityFigure {
+        medium: CoolingMediumPublished { medium: LiquidCooling },
+        quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 100000) } },
+        wording: "100kW+ Cab Density Liquid",
+        citation: "databank.com Orangeburg campus LGA3 page, spec table, read 2026-09-08",
+        verification: WordingVerbatim {
+          retrieval: "A SEPARATE spec-table cell from the air figure and not a fused sentence, which is the distinction the LGA4 row was corrected on. Note the wording differs from LGA4's by one word - LGA3 renders it 'Liquid' where LGA4 renders 'Liq' - so the two rows are not copies of one reading and the wording is the page's own in each case.",
+        },
+      },
+    ],
+  },
+}
+
+data databank_lga3_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Cabinets & Cages Colocation",
+  citation: "databank.com Orangeburg campus LGA3 page, read 2026-09-08",
+}
+
 data databank_ewr1_newark: ColoFacilityRow = ColoFacilityRow {
   operator_label: "DataBank",
   facility_label: "DataBank EWR1 Downtown Newark",
@@ -286,6 +328,7 @@ data databank_facilities: List<ColoFacilityRow> = [
   databank_lga4_orangeburg,
   databank_lga1_hudson,
   databank_lga2_eighth,
+  databank_lga3_orangeburg,
   databank_ewr1_newark,
   databank_phl1_philadelphia,
 ]
