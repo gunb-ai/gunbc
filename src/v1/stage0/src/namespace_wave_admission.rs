@@ -2581,19 +2581,6 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
 /// unreadable base sealed the transition that only moves `//` onto the declaration the grain
 /// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
-fn base_fill_is_annotation_erased_readable(
-    fill: &crate::v1_compiler_compile::CensusFillParse,
-) -> bool {
-    !fill.modules.is_empty()
-        && !fill.diagnostics.is_empty()
-        && fill.diagnostics.iter().all(|d| {
-            matches!(
-                *d.diagnostic,
-                crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused { .. }
-            )
-        })
-}
-
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -2602,7 +2589,15 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         })]
         .into(),
     ));
-    if !fill.diagnostics.is_empty() && !base_fill_is_annotation_erased_readable(&fill) {
+    let annotation_erased_readable = !fill.modules.is_empty()
+        && !fill.diagnostics.is_empty()
+        && fill.diagnostics.iter().all(|d| {
+            matches!(
+                *d.diagnostic,
+                crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused { .. }
+            )
+        });
+    if !fill.diagnostics.is_empty() && !annotation_erased_readable {
         return Err(format!(
             "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
              declarations cannot be read",
