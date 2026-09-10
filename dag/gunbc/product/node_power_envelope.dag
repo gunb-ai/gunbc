@@ -38,11 +38,6 @@ import extdeps.memory.types {
 import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
 import extdeps.cpu.ampere_altra_memory_controller { altra_memory_max_data_rate }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
-import extdeps.ocp.mt_jade.platform {
-  SameChannelUnlikeRanksNotSupported,
-  TwoSlotRanksUniform,
-  mt_jade_two_slot_rank_standing,
-}
 import gunbc.memory_provisioning {
   FullChannel,
   MemoryChannelGeometry,
@@ -82,7 +77,7 @@ type MemoryElectricalContext {
   two_dpc_ceilings: TwoDpcRateCeilingTable
 }
 
-// THE 2DPC DERATING TABLE, AND ITS EVIDENCE STANDING BESIDE IT. These ceilings arrived with the
+// THE 2DPC DERATING TABLE, AND THE CITATION ON THE TABLE. These ceilings arrived with the
 // physics relocated from the deleted product.hardware_selection, where they were uncited literals
 // 2933 MT/s (min two ranks) and 2400 MT/s (min four ranks). Moving them onto an Ampere citation
 // needs an authority actually read.
@@ -100,19 +95,18 @@ type MemoryElectricalContext {
 type TwoDpcRateCeiling {
   min_rank_count: Nat
   ceiling: MegatransfersPerSecond
-  evidence: CitedFigureStanding
 }
 
 type TwoDpcRateCeilingTable {
   rows: List<TwoDpcRateCeiling>
+  evidence: CitedFigureStanding
 }
 
 data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
   rows: [],
-}
-
-data altra_two_dpc_ceilings_evidence: CitedFigureStanding = CitedToAuthority {
-  authority: ampere_altra_classic_rev_a1_datasheet_authority,
+  evidence: CitedToAuthority {
+    authority: ampere_altra_classic_rev_a1_datasheet_authority,
+  },
 }
 
 // A full-channel population is as deep as its topology says; a partial one has
@@ -168,40 +162,6 @@ fn cited_channel_clock(
       rated: altra_cited_rated_rate(context: context),
       rank_count: rank_count,
     )
-  }
-}
-
-type ChannelDataRate
-  = DataRateAdmitted { rate: MegatransfersPerSecond }
-  | TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: Nat, slot1_ranks: Nat }
-
-fn channel_effective_data_rate(
-  context: MemoryElectricalContext,
-  dimms_per_channel: Nat,
-  slot0_ranks: Nat,
-  slot1_ranks: Nat,
-) -> ChannelDataRate {
-  if dimms_per_channel <= 1 {
-    DataRateAdmitted {
-      rate: cited_channel_clock(
-        context: context,
-        dimms_per_channel: dimms_per_channel,
-        rank_count: slot0_ranks,
-      ),
-    }
-  } else {
-    match mt_jade_two_slot_rank_standing(slot0_ranks: slot0_ranks, slot1_ranks: slot1_ranks) {
-      TwoSlotRanksUniform { rank_count: r } =>
-        DataRateAdmitted {
-          rate: cited_channel_clock(
-            context: context,
-            dimms_per_channel: dimms_per_channel,
-            rank_count: r,
-          ),
-        }
-      SameChannelUnlikeRanksNotSupported { slot0_ranks: a, slot1_ranks: b } =>
-        TwoDpcUnlikeRanksOnOneChannelRefused { slot0_ranks: a, slot1_ranks: b }
-    }
   }
 }
 
