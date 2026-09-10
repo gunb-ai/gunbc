@@ -3,7 +3,7 @@ module gunbc.ledger_row_coherence
 import std.types { String, List, Bool }
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, BootstrapPrLauncherYamlArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact,
   GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
   DesignFailureModesArtifact, DesignRungDropsArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
@@ -114,7 +114,6 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     WitnessFloorYamlArtifact => []
     FleetConvergeYamlArtifact => []
     FleetDesiredAdmissionYamlArtifact => []
-    BootstrapPrLauncherYamlArtifact => []
     GitignoreArtifact => []
     GitattributesArtifact => []
     RoadmapArtifact => []
