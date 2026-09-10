@@ -155,16 +155,25 @@ data glm_5_3_flash_vllm_reasoning_parser: NonEmptyStr = "glm45" as NonEmptyStr
 // not, so the citation was real and the coverage was partial -- which reads exactly like completeness
 // until the missing field is the one that decides.
 //
-// SUPPORT IS NOT IN MAINLINE. `nightly_required` is upstream's own field and it is true: the
-// integration arrives with vllm-project/vllm#53906, and until it lands in the standard image the
-// recipe directs deployments to a dedicated pre-release tag. A repository that pins "the latest
-// stable vLLM" therefore gets an engine that CANNOT serve this checkpoint, which is the case where a
-// version floor is worth more than a version pin.
-data glm_5_3_flash_vllm_min_version: NonEmptyStr = "0.29.0" as NonEmptyStr
-data glm_5_3_flash_vllm_nightly_required: Bool = true
+// THE REQUIREMENT IS THAT A NAMED IMAGE CARRIES THE INTEGRATION, NOT THAT A RELEASE NUMBER SORTS
+// ABOVE A FLOOR, and this model is the case that proves the difference. An earlier revision of these
+// rows said support "is not in mainline" and carried `nightly_required = true` as a standing fact.
+// Both were temporal claims dressed as durable ones: vllm-project/vllm#53906 IS MERGED, so a sentence
+// about a pending PR ages into a falsehood, and a timeless nightly flag will keep asserting a
+// pre-release is needed long after it is not.
+//
+// AND THE FLOOR ITSELF WOULD REFUSE THE PRESCRIBED ARTIFACT. The recipe states min_vllm_version
+// 0.29.0 while directing NVIDIA deployments to vllm/vllm-openai:glm53-flash for this checkpoint --
+// and that image self-reports 0.28.1rc1.dev580+g385dce36b, measured on this fleet 2026-09-10. A
+// consumer comparing versions would reject the exact image upstream prescribes. So the floor is
+// retained as UPSTREAM'S PUBLISHED FIGURE, cited and not consumed as a gate, and the gate is an
+// observation about a digest: gunbc.spark.serving_arm NativeRuntimeStanding.
+data glm_5_3_flash_vllm_published_min_version: NonEmptyStr = "0.29.0" as NonEmptyStr
+data glm_5_3_flash_vllm_integration_is_merged_upstream: Bool = true
 data glm_5_3_flash_vllm_prerelease_image_nvidia: NonEmptyStr = "vllm/vllm-openai:glm53-flash" as NonEmptyStr
 data glm_5_3_flash_vllm_prerelease_image_amd: NonEmptyStr = "vllm/vllm-openai-rocm:glm53-flash" as NonEmptyStr
 data glm_5_3_flash_vllm_integration_pull_request: NonEmptyStr = "https://github.com/vllm-project/vllm/pull/53906" as NonEmptyStr
+data glm_5_3_flash_vllm_integration_commit: NonEmptyStr = "385dce36bcee42309924a5ece951a96db3dce7f2" as NonEmptyStr
 
 // THE ENGINE READY TIMEOUT IS UPSTREAM'S BASE ENVIRONMENT FOR THIS MODEL, not a tuning knob, and it
 // is carried because its absence is independently fatal on a cold multi-node start. torch's
@@ -173,14 +182,33 @@ data glm_5_3_flash_vllm_integration_pull_request: NonEmptyStr = "https://github.
 // failure from anything about the model and reports nothing about it.
 data glm_5_3_flash_vllm_engine_ready_timeout_seconds: Nat = 3600
 
-// FLASHINFER'S FLOOR IS A SEPARATE DEPENDENCY WITH ITS OWN VERSION, required by the NoPE sparse MLA
-// path this model's full-attention layers use.
-data glm_5_3_flash_flashinfer_min_version: NonEmptyStr = "0.6.17" as NonEmptyStr
+// FLASHINFER CARRIES TWO FIGURES AND THE HIGHER ONE IS THE OPERATIONAL REQUIREMENT. The recipe's
+// prerequisites say 0.6.17 or newer for NoPE sparse MLA; its own troubleshooting section says 0.6.18 or
+// newer for sparse-MLA INITIALISATION. A deployment that satisfies only the prerequisite can therefore
+// still fail at start-up on the exact path this model uses, so the preflight figure is 0.6.18 and the
+// prerequisite is kept beside it rather than replaced -- the two are different claims by the same
+// source and collapsing them would lose which one a given engine actually clears.
+data glm_5_3_flash_flashinfer_prerequisite_version: NonEmptyStr = "0.6.17" as NonEmptyStr
+data glm_5_3_flash_flashinfer_operational_min_version: NonEmptyStr = "0.6.18" as NonEmptyStr
 
-// THE ENVIRONMENT THE REFERENCE LAUNCHES CARRY. Recorded as upstream's prescription; whether a given
-// deployment sets them is a fact about that deployment.
-data glm_5_3_flash_vllm_ssm_conv_state_layout: NonEmptyStr = "DS" as NonEmptyStr
-data glm_5_3_flash_vllm_kv_cache_layout: NonEmptyStr = "HND" as NonEmptyStr
+// THESE TWO BELONG TO ONE SPECIFIC REFERENCE TOPOLOGY AND NOT TO NATIVE SERVING GENERALLY, which an
+// earlier revision of these rows got wrong by naming them "the environment the reference launches
+// carry". They appear in the recipe's PREFILL/DECODE DISAGGREGATION example, where the two pools must
+// agree on cache layout, and they are absent from its basic unified TP4 command. Carrying them as
+// general prescriptions would have put two layout overrides into a unified launch on the strength of an
+// example about a different architecture -- a generalisation from one instance, which is the same error
+// shape as reading a flag as an architecture claim further up this file.
+data glm_5_3_flash_disaggregated_ssm_conv_state_layout: NonEmptyStr = "DS" as NonEmptyStr
+data glm_5_3_flash_disaggregated_kv_cache_layout: NonEmptyStr = "HND" as NonEmptyStr
+
+// A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
+// vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
+// sparse-indexer logits allocation, with two independent mitigations offered. That report used a
+// different GLM quantisation and tensor-parallel shape, so it is a RELEVANT RISK for this arm and not a
+// measurement of it -- which is why the figure is carried here as an upstream observation and the
+// decision to apply it is a deployment's own.
+data glm_5_3_flash_gb10_sparse_indexer_max_logits_mb: Nat = 64
+data glm_5_3_flash_gb10_context_exhaustion_report: NonEmptyStr = "https://github.com/vllm-project/vllm/issues/55569" as NonEmptyStr
 
 // THE REFERENCE TOPOLOGY, which is the shape upstream measured rather than one this repository chose:
 // tensor parallelism of four with MTP speculation on a single GB200 tray. `multi_node_tp` is listed

@@ -5,6 +5,11 @@ import std.nat { Nat }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq, render_ipv4_address }
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
+import extdeps.zhipu.glm_5_3_flash {
+  glm_5_3_flash_vllm_tool_call_parser, glm_5_3_flash_vllm_reasoning_parser,
+  glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_engine_ready_timeout_seconds,
+  glm_5_3_flash_gb10_sparse_indexer_max_logits_mb,
+}
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
@@ -14,7 +19,8 @@ import gunbc.spark.serving_arm {
   ServingRuntimeRow, serving_runtime_row,
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused, serving_arm_admits,
-  Glm53NativeFp8, Gitcommit90Sm121Exl3, FourSparkTp4,
+  Glm53NativeFp8, Gitcommit90Sm121Exl3, VllmOpenaiGlm53Flash, FourSparkTp4,
+  ArmIntent, ArmBoundedExperiment, ArmNormalServing, serving_arm_admits_for,
 }
 import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
 
@@ -128,6 +134,14 @@ data glm_native_serve_port: Nat = 30000
 data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 data glm_native_master_port: Nat = 29501
 data glm_native_weights_host_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
+
+// THE RAIL INTERFACE, BECAUSE A RENDEZVOUS ADDRESS DOES NOT DECIDE THE PAYLOAD PATH. `--master-addr` on
+// the rail proves where the ranks MEET; NCCL then selects its own transport, and with --network host it
+// sees every interface including the wireless management link. If it chooses wrong the group still
+// serves and is merely slow, with nothing in any log calling it a fault -- so the interface is pinned
+// for both NCCL and Gloo rather than left to auto-selection. It is the leg_netdev the fabric lane
+// observations already record, which is why this is one name and not one per host.
+data fabric_rail_interface_name: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
 data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
 
 // A LOCAL CHECKOUT IS MOUNTED AS ITSELF, at the path the canary already uses, so a line rendered for
@@ -142,7 +156,25 @@ data glm_local_checkout_container_dir: NonEmptyStr = "/model" as NonEmptyStr
 //
 // THE WINDOW IS THE OPERATOR'S 262,144 and the sequence ceiling is a first-boot bound, not a measurement.
 data glm_native_max_model_len: Nat = 262144
-data glm_native_max_num_seqs: Nat = 4
+
+// ONE ADMITTED SEQUENCE, AND IT IS A TENANCY POLICY RATHER THAN A CAPACITY CLAIM. It does not say the
+// engine can serve only one; it says the runtime sequence capacity is unmeasured, the KV-resident
+// capacity is unmeasured, and until both exist the interactive overlap policy admits one. That
+// structurally prevents an unmodelled co-tenant externality while still getting the arm online, and it
+// is the value a previous revision of this row had at 4 with nothing behind it.
+data glm_native_max_num_seqs: Nat = 1
+
+// THE BATCHED-TOKEN BUDGET IS A CONSERVATIVE FIRST-LAUNCH DECISION, spelled rather than inherited. On
+// this hardware an omitted value is not upstream's default: NVML answers [N/A] for memory, so the
+// engine derives its budget from a zero reading, which is the defect that produced 2048 by accident on
+// the canary. Choosing 2048 deliberately and choosing it by accident produce the same number and are
+// not the same act.
+data glm_native_max_num_batched_tokens: Nat = 2048
+
+// MTP IS OFF FOR THE FIRST LAUNCH, and that is a deliberate narrowing rather than a limitation. The
+// recipe's reference command enables it; establishing the base native model path before introducing a
+// second execution mechanism keeps one variable moving, so a failure has one candidate cause.
+data glm_native_speculation_enabled: Bool = false
 
 // ── THE MEMORY ENVELOPE IS A DECIDED FRACTION OVER A MEASURED POOL ────────────────────────────
 //
@@ -231,17 +263,21 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // the group would simply be slow. The rail address is derived from the lane observation via
 // gunbc.spark.fabric_rail_desired rather than authored here.
 fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat) -> List<String> {
-  [
+  concat([
     "docker", "run", "-d",
     "--name", glm_native_container_name as String,
     "--gpus", "all",
     "--network", "host",
     "--ipc", "host",
+    "-e", join(["GLOO_SOCKET_IFNAME=", fabric_rail_interface_name as String], ""),
+    "-e", join(["NCCL_SOCKET_IFNAME=", fabric_rail_interface_name as String], ""),
+    "-e", join(["VLLM_HOST_IP=", render_ipv4_address(addr: node.rail) as String], ""),
+    "-e", join(["VLLM_ENGINE_READY_TIMEOUT_S=", to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds)], ""),
+    "-e", join(["VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=", to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb)], ""),
     "-v", join([arm_mount_plan(row: crow).host_dir as String, ":", arm_mount_plan(row: crow).container_dir as String, ":ro"], ""),
     rrow.image_reference as String,
     arm_mount_plan(row: crow).model_path as String,
     "--served-model-name", glm_native_served_model_alias as String,
-    "--quantization", crow.quantization_wire as String,
     "--tensor-parallel-size", to_string(ranks),
     "--distributed-executor-backend", "mp",
     "--nnodes", to_string(ranks),
@@ -249,12 +285,29 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "--master-addr", render_ipv4_address(addr: master) as String,
     "--master-port", to_string(glm_native_master_port),
     "--max-model-len", to_string(glm_native_max_model_len),
+    "--max-num-batched-tokens", to_string(glm_native_max_num_batched_tokens),
     "--max-num-seqs", to_string(glm_native_max_num_seqs),
-    "--kv-cache-dtype", "fp8",
+    "--kv-cache-dtype", glm_5_3_flash_vllm_kv_cache_dtype_wire as String,
     "--gpu-memory-utilization", render_utilization_fraction(basis_points: glm_native_gpu_memory_utilization_basis_points),
+    "--tool-call-parser", glm_5_3_flash_vllm_tool_call_parser as String,
+    "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
+    "--enable-auto-tool-choice",
     "--host", "0.0.0.0",
     "--port", to_string(glm_native_serve_port),
-  ]
+  ], arm_quantization_argv(row: crow))
+}
+
+// THE QUANTISATION FLAG IS PASSED ONLY WHERE IT IS THE REQUEST, AND FOR THE NATIVE CHECKPOINT IT IS NOT.
+// A previous revision passed `--quantization fp8` for every arm so the running line would describe its
+// own artifact to the convergence assessor, and defended it at length. That was wrong twice over: the
+// engine reads quant_method from the checkpoint's own config either way, so the flag adds nothing for
+// this arm, and overriding it is how a launch discards the checkpoint's weight_block_size and its
+// 1509-entry modules_to_not_convert list. The identity the assessor needs comes from the REVISION PATH,
+// which every line carries and which determines the weights uniquely.
+fn arm_quantization_argv(row: ServingCheckpointRow) -> List<String> {
+  if row.requires_upstream_glm53_integration { [] } else {
+    ["--quantization", row.quantization_wire as String]
+  }
 }
 
 type ArmLaunchPlan
@@ -270,7 +323,11 @@ type ArmNodeLaunch sole_constructor {
 // any roster. `serving_arm_admits` is the check whose absence let a previous revision admit a
 // known-impossible tuple, so it is consulted before anything renders.
 fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup) -> ArmLaunchPlan {
-  match serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology) {
+  plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: ArmNormalServing)
+}
+
+fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent) -> ArmLaunchPlan {
+  match serving_arm_admits_for(checkpoint: checkpoint, runtime: runtime, topology: topology, intent: intent) {
     ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
     ServingArmAdmitted =>
       match serving_checkpoint_row(c: checkpoint) {
@@ -295,14 +352,20 @@ fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topol
 }
 
 // THE FLEET'S OWN NATIVE ARM. Group B is the four hosts on fabric cage 2, withdrawn from the pair-serving
-// roster under an operator authorisation recorded in gunbc.spark.pair_serving_desired, so its members are
-// claimed by nothing else.
+// roster under an operator authorisation recorded in gunbc.spark.pair_serving_desired.
+//
+// IT IS NOT UNOCCUPIED, AND AN EARLIER REVISION OF THIS NOTE SAID IT WAS. Its head runs the EXL3 canary,
+// which is the endpoint anything asking for GLM reaches today; "claimed by nothing else" was true of the
+// pair-serving roster and false of the hardware, and the difference is a live service. The correct state
+// is that group B is RESERVED for the native four-rank arm with one observed incumbent that a cutover
+// must explicitly displace and be able to restore.
 fn glm_native_tp4_launch_plan() -> ArmLaunchPlan {
-  plan_arm_launch(
+  plan_arm_launch_for(
     checkpoint: Glm53NativeFp8,
-    runtime: Gitcommit90Sm121Exl3,
+    runtime: VllmOpenaiGlm53Flash,
     topology: FourSparkTp4,
     group: FabricGroupB,
+    intent: ArmBoundedExperiment,
   )
 }
 
