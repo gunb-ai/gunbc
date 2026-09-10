@@ -95,10 +95,18 @@ type ScmAcceptanceOutcome
 // So the reportable success is a `sole_constructor` receipt, and the RECURSIVE part of the rule is
 // the one that actually bites: the seal is only as strong as every same-module route that reaches
 // the constructor, so the ARGUMENT LIST of each such route is part of the same boundary. There is
-// exactly one producer, `scm_scenario_verdict`, and it takes a `ScmScenario` -- a closed variant --
-// never a `List<ScmStep>`. A caller cannot describe a shorter run, because the only vocabulary for
-// naming a run is the three-member roster, and each member derives its own complete sequence.
-// Lower-level execution state (`ScmStepAcc`) stays freely constructible; it just is not acceptance.
+// exactly one producer, `finalize_scm_scenario`, and it takes a `ScmScenarioExecution` -- itself
+// sealed, and obtainable only from `execute_prepared_scenario`. A caller cannot describe a shorter
+// run, because the only vocabulary for naming a run is the closed roster and each member derives
+// its own complete sequence. Lower-level execution state (`ScmStep`, `ScmStepAcc`) stays freely
+// constructible; it just is not acceptance.
+//
+// (AN EARLIER WRITING OF THIS PARAGRAPH NAMED `scm_scenario_verdict` AND SAID IT TOOK A
+// `ScmScenario`. That described the FIRST attempt at this seal, which stopped a level short: the
+// verdict producer took a caller-constructed `ScmStepAcc`, so `failure: none` minted a passing
+// receipt with no child process having run. External review found the gap; the function named here
+// no longer exists, and leaving its name in place would have cited an authority that establishes
+// nothing -- the same stale-citation defect this branch has repaired in three other modules.)
 type ScmAcceptanceReceipt sole_constructor { scenario: String, steps: Int }
 
 fn scm_acceptance_receipt_scenario(receipt: ScmAcceptanceReceipt) -> String {
@@ -341,9 +349,9 @@ fn finalize_scm_scenario(execution: ScmScenarioExecution) -> ScmAcceptanceOutcom
 
 
 // SCENARIO ONE -- PUBLICATION, STAGING AND THE RACE. The sequence is constructed HERE rather than
-// accepted from a caller. A caller-supplied list would make omission and reordering authorable, so
-// the canonical obligation could be satisfied by a shorter sequence that still reported the same
-// scenario name -- the check would then be a parameter rather than a claim.
+// accepted from a caller, and since the seal landed that is structural rather than a convention:
+// no route to a reportable success takes a step list at all, so a shorter sequence reported under
+// this scenario's name is not something a caller can express.
 //
 // EVERY STEP HERE REQUIRES EXIT ZERO, AND THAT IS THE POINT RATHER THAN A SIMPLIFICATION. There is
 // no `expect_success` flag any more: the negative facts are carried by the LEAF's expectation, so
@@ -528,8 +536,24 @@ fn scm_publication_scenario_steps(workspace: String) -> List<ScmStep> {
 // case would be green against an implementation that merged unconditionally, which is the failure
 // mode a conflict claim exists to exclude.
 //
-// The final step of each half asserts the OPPOSITE expectation and requires a refusal, so the
-// instrument distinguishes "the merge succeeded" from "the instrument reports success".
+// THE CONTROL RUNS BEFORE THE ACTUATOR, and that ordering is the evidence rather than a style
+// choice. `--expect merge` is not a question: it PUBLISHES the merge commit, and that commit records
+// `SquashIntegrated { source }`, which is exactly what makes a second merge of the same source
+// refuse as `MergeBaseSourceAlreadyConsumed`. Run after it, the inverse control reloads a repository
+// in which its own subject has already been consumed, so it observes the wreckage of the previous
+// step rather than the clean independent merge it exists to discriminate.
+//
+// That defect was INVISIBLE while the control accepted an arbitrary nonzero: it "passed" on
+// `base-refused|source-already-consumed`, which is the wrong reason entirely. Making the control
+// exact is what surfaced it -- the case for exact controls, demonstrated on this module rather than
+// argued. The repair is to move the control before the actuator, NOT to weaken `--expect merge` into
+// a non-publishing arm: publication is part of the positive path, and deleting it to preserve an
+// order would trade a real obligation for a convenient one. Both children now see the same durable
+// pre-state; the first computes the clean merge and leaves disk untouched, the second establishes
+// the positive result and publishes it. Found by external review.
+//
+// The conflict scenario needs no such swap: neither of its arms publishes, so either order observes
+// the same durable state.
 //
 // THE INVERSE CONTROLS NAME THEIR MISMATCH EXACTLY. An earlier revision invoked `--expect conflict`
 // on the independent pair and accepted any nonzero, which an unreadable slot or an unresolvable
@@ -633,6 +657,18 @@ fn scm_merge_scenario_steps(workspace: String) -> List<ScmStep> {
       ],
     },
     InvokeStep {
+      label: "THE CONTROL RUNS FIRST: asserting a conflict here observes a clean merge instead",
+      function: "spine_squash",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "target", value: "1"),
+        scm_named(name: "source", value: "2"),
+        scm_named(name: "message", value: "merge S1"),
+        scm_named(name: "expect", value: "merged-though-conflict-expected"),
+      ],
+    },
+    InvokeStep {
       label: "INDEPENDENT EDITS: squashing S1 into T1 merges",
       function: "spine_squash",
       arguments: [
@@ -642,18 +678,6 @@ fn scm_merge_scenario_steps(workspace: String) -> List<ScmStep> {
         scm_named(name: "source", value: "2"),
         scm_named(name: "message", value: "merge S1"),
         scm_named(name: "expect", value: "merge"),
-      ],
-    },
-    InvokeStep {
-      label: "and asserting that independent merge CONFLICTS must refuse",
-      function: "spine_squash",
-      arguments: [
-        scm_named(name: "root", value: store),
-        scm_named(name: "key", value: "r"),
-        scm_named(name: "target", value: "1"),
-        scm_named(name: "source", value: "2"),
-        scm_named(name: "message", value: "merge S1"),
-        scm_named(name: "expect", value: "merged-though-conflict-expected"),
       ],
     },
   ]
