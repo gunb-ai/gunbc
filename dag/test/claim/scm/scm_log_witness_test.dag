@@ -28,6 +28,9 @@ import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashInt
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
+  encode_repository_checked,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintRootIsAuthoredSource,
@@ -162,12 +165,25 @@ fn log_witness_repository_with_unheld_root() -> RepositoryEnvelope {
 // claim below could never have discriminated them. Here the commits carry ordinals 0 and 1 but are
 // presented 1-then-0, so a fold that synthesised a reference from its own position would answer
 // [ref 0, ref 1] and disagree with the commits it was handed.
+//
+// BOTH COMMITS ARE DELIBERATELY PARENTLESS, and that is the whole reason this fixture is shaped the
+// way it is rather than reusing the two-commit repository above. `admit_commit_order_step` refuses
+// `CommitParentNotPreviouslyAdmitted` when a commit precedes its own parent, so REVERSING a list
+// whose second commit descends from its first produces an envelope the encoder REFUSES -- a value no
+// repository could ever persist or decode. Proving an identity property on such a value would be
+// proving it outside the admitted domain, where the production question does not arise. Two ROOT
+// commits carry no parent edge, so the reversed presentation stays admissible while still
+// disagreeing with the ordinals. The companion claim encodes this envelope to keep that admissibility
+// EXECUTED rather than merely argued here. Found by external review.
 fn log_witness_rows_presented_out_of_ordinal_order() -> RepositoryEnvelope {
-  let minted = log_witness_two_commit_repository()
+  let a = log_witness_store_snapshot(store: empty_store(), path: "a.dag" as NonEmptyStr, text: "module a")
+  let b = log_witness_store_snapshot(store: a.store, path: "b.dag" as NonEmptyStr, text: "module b")
+  let first = log_witness_mint(repo: log_witness_empty(store: b.store), root: a.identity, message: "first", parent: none)
+  let both = log_witness_mint(repo: first, root: b.identity, message: "second", parent: none)
   RepositoryEnvelope {
-    store: minted.store,
-    commits: reverse(minted.commits),
-    commit_allocator: minted.commit_allocator,
+    store: both.store,
+    commits: reverse(both.commits),
+    commit_allocator: both.commit_allocator,
     checked_out: none,
     staged: none,
   }
@@ -248,6 +264,18 @@ test fn row_references_come_from_the_commit_not_from_the_row_position() -> Bool 
     == [log_witness_ref(ordinal: 1), log_witness_ref(ordinal: 0)]
     && log_witness_row_messages(log: repository_log(envelope: log_witness_rows_presented_out_of_ordinal_order()))
       == ["second", "first"]
+}
+
+// THE SPECIMEN ABOVE IS INSIDE THE ADMITTED PERSISTED DOMAIN, asserted by executing the encoder's own
+// admission rather than by reasoning about it here. Without this, the identity claim could be proved
+// on an envelope no repository could persist -- true of a value production can never hold, which is
+// evidence about nothing. This is also the discriminator for the fixture's SHAPE: rebuilding it from
+// a parent-carrying pair reds this claim with the encoder's own refusal.
+test fn the_out_of_order_specimen_is_one_a_repository_could_actually_persist() -> Bool {
+  match encode_repository_checked(repo: log_witness_rows_presented_out_of_ordinal_order()) {
+    RepositoryEncoded { value: _ } => true
+    RepositoryEncodeRefused { cause: _ } => false
+  }
 }
 
 // A COMMIT NAMING A ROOT THE STORE DOES NOT HOLD IS MARKED, not listed as ordinary. Listing it

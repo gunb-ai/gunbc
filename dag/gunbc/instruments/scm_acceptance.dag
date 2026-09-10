@@ -1,0 +1,856 @@
+module tools.scm_acceptance
+
+// THE ACCEPTANCE DRIVER FOR THE NATIVE WRITE SPINE, AND WHY IT IS A .dag INSTRUMENT RATHER THAN THE
+// SHELL SCRIPT IT REPLACES.
+//
+// The brief this lane works to says the slice is done only when a WET MULTI-INVOCATION RUN can
+// initialize a repository, add a file while preserving untouched paths, commit the exact staged
+// bytes without rereading the worktree, reopen and verify the commit, prove two writers against one
+// generation produce one winner and one stale refusal, and then run checkout and squash_merge
+// through both an independent-edit success and a genuine conflict. The load-bearing word is
+// MULTI-INVOCATION: every operation must reload repository state from disk in a FRESH PROCESS, so a
+// single in-process composition would not be the same claim -- it could pass while carrying state
+// that a real second invocation would have had to recover.
+//
+// That property was previously demonstrated by a shell script living in a session scratchpad. The
+// demonstration was real, but it was not part of the repository, so the result was not re-derivable
+// from the tree and would not survive the session that produced it -- a measurement with no
+// instrument, which DESIGN section 6 rejects for exactly this reason. Committing that script would
+// have traded one defect for another: a hand-authored workflow implementing semantics already
+// expressible in `.dag` is section 6's out-of-band-actuation tell, and the repository's existing
+// shell evidence drivers already describe themselves as scaffolds awaiting modeled orchestration --
+// precedent for migrating AWAY from shell, not for adding a new shell authority.
+//
+// The resolution is that the process boundary does not require shell. `gunbc.WitnessBin.Run` already
+// launches the binary as a separate child through typed argv, so one `.dag` orchestration can own the
+// ordered sequence while every step still crosses a real process boundary. `tools.dag_compile_clean_
+// transport` is the standing precedent: it composes temporary-directory operations, filesystem
+// operations, several `WitnessBin.Run` calls and cleanup in one instrument and serializes no bash.
+//
+// THE INVARIANT THIS MODULE MUST NOT BREAK: no native SCM state crosses a step boundary. This driver
+// carries paths, fixture bytes and expected values only. It never holds a `RepositoryEnvelope`, a
+// `LoadedRepositoryGeneration` or any other repository value between invocations -- if it did, the
+// multi-invocation property would be silently downgraded to an in-process one while still reporting
+// the stronger result.
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import gunbc.cli_invoke {
+  NamedArgument,
+  NamedArgumentAdmitted,
+  NamedArgumentNameEmpty,
+  NamedArgumentNameHoldsSeparator,
+  admit_named_argument,
+  gunbc_run_transport_argv_with_arguments,
+}
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_artifact_readiness,
+  witness_bin_release_path,
+  WitnessBinReady,
+  WitnessBinRefused,
+}
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+data scm_acceptance_entry: String = "dag/gunbc/instruments/scm_write_spine_canary.dag"
+
+fn scm_acceptance_source_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+// A STEP IS EITHER A CHILD INVOCATION OR A FIXTURE MUTATION, and both are in ONE ordered list because
+// the interleaving is the evidence. "Commit the staged bytes without rereading the worktree" is only
+// a claim if the worktree is edited BETWEEN the add and the commit, so a driver that could only
+// express invocations would be unable to state the property it exists to check.
+type ScmStep
+  = InvokeStep {
+      label: String,
+      function: String,
+      arguments: List<ScmArgument>,
+      expect_success: Bool
+    }
+  | WriteFixtureStep { label: String, path: String, content: String }
+  | MakeDirectoryStep { label: String, path: String }
+
+// THE OUTCOME IS LOCATED, NOT A BOOLEAN. A conjunction over twenty steps answers false and tells the
+// reader nothing about which obligation failed, which is the state-space conflation on the diagnostic
+// that DESIGN section 5 refuses: the line must stop, and the stop must say where. Each arm below names
+// the thing that went wrong and the step it went wrong at.
+type ScmAcceptanceOutcome
+  = ScmAcceptancePassed { scenario: String, steps: Int }
+  | ScmAcceptanceStepFailed {
+      scenario: String,
+      step: String,
+      detail: String,
+      exit_code: Int
+    }
+  | ScmAcceptanceWorkspaceRefused { scenario: String, detail: String }
+  | ScmAcceptanceBinaryRefused { scenario: String, bin_name: String, path: String }
+
+type ScmStepFailure { step: String, detail: String, exit_code: Int }
+
+type ScmStepAcc { steps: Int, failure: ScmStepFailure? }
+
+// THE FIRST FAILURE IS KEPT AND THE REST OF THE SEQUENCE IS SKIPPED. A later step in a wet sequence
+// runs against state the failed step was supposed to establish, so letting it proceed manufactures
+// consequential failures that bury the real one; and OVERWRITING the recorded failure with the last
+// one would report a symptom in place of its cause.
+fn scm_step_fold(root: String, bin_path: String, acc: ScmStepAcc, step: ScmStep) -> ScmStepAcc {
+  match acc.failure {
+    Present { value: _ } => acc
+    Absent =>
+      match step {
+        MakeDirectoryStep { label: label, path: path } =>
+          let made = shell.Mkdir.Parents(path: path)
+          if made.success {
+            ScmStepAcc { steps: acc.steps + 1, failure: none }
+          } else {
+            ScmStepAcc {
+              steps: acc.steps,
+              failure: Present {
+                value: ScmStepFailure {
+                  step: label,
+                  detail: "the workspace directory could not be created",
+                  exit_code: 0,
+                },
+              },
+            }
+          }
+        WriteFixtureStep { label: label, path: path, content: content } =>
+          let written = Filesystem.Write(path: path, content: content)
+          if written.success {
+            ScmStepAcc { steps: acc.steps + 1, failure: none }
+          } else {
+            ScmStepAcc {
+              steps: acc.steps,
+              failure: Present {
+                value: ScmStepFailure { step: label, detail: written.error, exit_code: 0 }
+              },
+            }
+          }
+        InvokeStep {
+          label: label,
+          function: function,
+          arguments: arguments,
+          expect_success: expect_success
+        } =>
+          let projected = scm_project_arguments(arguments: arguments)
+          match projected.refusal {
+            Present { value: why } =>
+              ScmStepAcc {
+                steps: acc.steps,
+                failure: Present {
+                  value: ScmStepFailure { step: label, detail: why, exit_code: 0 },
+                },
+              }
+            Absent =>
+              let ran = gunbc.WitnessBin.Run(
+                workdir: root,
+                bin_path: bin_path,
+                args: gunbc_run_transport_argv_with_arguments(
+                  source_roots: scm_acceptance_source_roots(),
+                  entry: scm_acceptance_entry,
+                  function: function,
+                  claim_run: false,
+                  arguments: projected.admitted,
+                ),
+              )
+              if ran.success == expect_success {
+                ScmStepAcc { steps: acc.steps + 1, failure: none }
+              } else {
+                ScmStepAcc {
+                  steps: acc.steps,
+                  failure: Present {
+                    value: ScmStepFailure {
+                      step: label,
+                      detail: ran.stderr,
+                      exit_code: ran.exit_code,
+                    },
+                  },
+                }
+              }
+          }
+      }
+  }
+}
+
+// CLEANUP RUNS AFTER A FAILURE AND DOES NOT ERASE IT. The workspace is removed either way so a failed
+// run does not leak a temporary tree, but the recorded failure is what this returns -- a cleanup that
+// reported its own success would overwrite the verdict with an unrelated one.
+fn scm_scenario_verdict(
+  scenario: String,
+  workspace: String,
+  acc: ScmStepAcc
+) -> ScmAcceptanceOutcome {
+  let cleaned = shell.Remove.RecursiveForce(path: workspace)
+  match acc.failure {
+    Present { value: f } =>
+      ScmAcceptanceStepFailed {
+        scenario: scenario,
+        step: f.step,
+        detail: f.detail,
+        exit_code: f.exit_code,
+      }
+    Absent =>
+      if cleaned.success {
+        ScmAcceptancePassed { scenario: scenario, steps: acc.steps }
+      } else {
+        ScmAcceptanceWorkspaceRefused {
+          scenario: scenario,
+          detail: "the scenario passed but its workspace could not be removed",
+        }
+      }
+  }
+}
+
+// THE DRIVER AUTHORS PAIRS AND THE CARRIER ADMITS THEM. `NamedArgument` is sole-constructed behind
+// `admit_named_argument`, so this module cannot mint one and does not try: it carries its own plain
+// pair and converts at projection time, where a name that cannot round-trip becomes a LOCATED step
+// failure naming the offending argument rather than a value that was never admissible. Sealing the
+// carrier and then handing this module a private constructor would have made the seal decorative.
+type ScmArgument { name: String, value: String }
+
+fn scm_named(name: String, value: String) -> ScmArgument {
+  ScmArgument { name: name, value: value }
+}
+
+type ScmArgumentProjection { admitted: List<NamedArgument>, refusal: String? }
+
+fn scm_argument_projection_step(acc: ScmArgumentProjection, argument: ScmArgument) -> ScmArgumentProjection {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match admit_named_argument(name: argument.name, value: argument.value) {
+        NamedArgumentAdmitted { argument: admitted } =>
+          ScmArgumentProjection {
+            admitted: concat(acc.admitted, [admitted]),
+            refusal: none,
+          }
+        NamedArgumentNameEmpty =>
+          ScmArgumentProjection {
+            admitted: acc.admitted,
+            refusal: Present { value: "a named argument has an empty name" },
+          }
+        NamedArgumentNameHoldsSeparator { name: n } =>
+          ScmArgumentProjection {
+            admitted: acc.admitted,
+            refusal: Present {
+              value: concat(concat("a named argument name holds \"=\" and would rebind: ", n), ""),
+            },
+          }
+      }
+  }
+}
+
+fn scm_project_arguments(arguments: List<ScmArgument>) -> ScmArgumentProjection {
+  fold(
+    arguments,
+    init: ScmArgumentProjection { admitted: [], refusal: none },
+    f: (acc, a) => scm_argument_projection_step(acc: acc, argument: a),
+  )
+}
+
+// THE BINARY IS BOUND EXPLICITLY THROUGH THE TYPED READINESS ROUTE rather than by assuming a path,
+// so ABSENT, NOT-EXECUTABLE and EMPTY are three located refusals instead of one confusing failure
+// part-way through a scenario.
+//
+// WHAT THIS DOES NOT ESTABLISH, stated because the honest ceiling belongs beside the check and an
+// earlier writing of this paragraph got it wrong: `witness_bin_artifact_readiness` probes IsFile,
+// IsExecutable and IsNonEmpty. It says the artifact EXISTS and is runnable. It says NOTHING about
+// whether the artifact was built from the tree this instrument is reading. A STALE
+// `target/release/gunbc` -- the ctrl-build remote-routing incident `witness_bin_readiness_note`
+// records, where a local edit never reaches the runner -- passes all three probes, so this driver
+// can report green about `.dag` source it did in fact interpret while the CHILD process it launched
+// carries seed behaviour from an older build. The previous paragraph cited that incident as though
+// this check closed it; it does not, and citing a check for a property it cannot decide is the
+// coverage claim DESIGN section 4b calls rung inflation.
+//
+// The residual risk is real but bounded: the semantics under test live in `.dag` and are re-read from
+// the source roots by every child, so a stale seed changes behaviour only where the Rust bootstrap
+// still decides it. Closing it properly needs a freshness relation between the artifact and the
+// source it was built from, which is this instrument's next-rung trigger and is not authored here.
+fn scm_acceptance_run(scenario: String, steps: List<ScmStep>, workspace: String) -> ScmAcceptanceOutcome {
+  let root = git.Inspect.Toplevel()
+  let path = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+  match witness_bin_artifact_readiness(bin_name: "gunbc", path: path) {
+    WitnessBinRefused { bin_name: b, path: p, reason: _ } =>
+      ScmAcceptanceBinaryRefused { scenario: scenario, bin_name: b, path: p }
+    WitnessBinReady { path: ready } =>
+      scm_scenario_verdict(
+        scenario: scenario,
+        workspace: workspace,
+        acc: fold(
+          steps,
+          init: ScmStepAcc { steps: 0, failure: none },
+          f: (acc, s) => scm_step_fold(root: root.path, bin_path: ready, acc: acc, step: s),
+        ),
+      )
+  }
+}
+
+// SCENARIO ONE -- PUBLICATION, STAGING AND THE RACE. The sequence is constructed HERE rather than
+// accepted from a caller. A caller-supplied list would make omission and reordering authorable, so
+// the canonical obligation could be satisfied by a shorter sequence that still reported the same
+// scenario name -- the check would then be a parameter rather than a claim.
+//
+// Three of these steps are RED BY CONSTRUCTION and are the reason the scenario is evidence rather
+// than a demonstration. Verifying the wrong bytes must FAIL; verifying the post-staging edit must
+// FAIL because the commit is required to freeze what was staged rather than what the worktree now
+// says. A sequence of only-succeeding steps would be equally green against an implementation that
+// answered success unconditionally.
+fn scm_publication_scenario_steps(workspace: String) -> List<ScmStep> {
+  let store = concat(workspace, "/store")
+  let tree = concat(workspace, "/wt")
+  [
+    MakeDirectoryStep { label: "establish the object store directory", path: store },
+    MakeDirectoryStep { label: "establish the worktree directory", path: tree },
+    WriteFixtureStep {
+      label: "author alpha.txt",
+      path: concat(tree, "/alpha.txt"),
+      content: "alpha original\n",
+    },
+    WriteFixtureStep {
+      label: "author beta.txt",
+      path: concat(tree, "/beta.txt"),
+      content: "beta original\n",
+    },
+    InvokeStep {
+      label: "init claims an absent slot",
+      function: "spine_init",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "expect", value: "published"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "init again observes a HELD slot, named exactly",
+      function: "spine_init",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "expect", value: "slot-held"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "add alpha.txt",
+      function: "spine_add",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "directory", value: tree),
+        scm_named(name: "name", value: "alpha.txt"),
+        scm_named(name: "manifest_path", value: "alpha.txt"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "commit the staged manifest",
+      function: "spine_commit",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "message", value: "add alpha"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "reopen and verify alpha's exact bytes",
+      function: "spine_verify",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "manifest_path", value: "alpha.txt"),
+        scm_named(name: "expected_text", value: "alpha original\n"),
+        scm_named(name: "expect", value: "matches"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "verifying the WRONG bytes must refuse",
+      function: "spine_verify",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "manifest_path", value: "alpha.txt"),
+        scm_named(name: "expected_text", value: "not what was committed"),
+        scm_named(name: "expect", value: "differs"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "add beta.txt",
+      function: "spine_add",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "directory", value: tree),
+        scm_named(name: "name", value: "beta.txt"),
+        scm_named(name: "manifest_path", value: "beta.txt"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "commit beta",
+      function: "spine_commit",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "message", value: "add beta"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "alpha survived a commit that did not name it",
+      function: "spine_verify",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "manifest_path", value: "alpha.txt"),
+        scm_named(name: "expected_text", value: "alpha original\n"),
+        scm_named(name: "expect", value: "matches"),
+      ],
+      expect_success: true,
+    },
+    WriteFixtureStep {
+      label: "edit alpha AFTER the last commit and BEFORE staging",
+      path: concat(tree, "/alpha.txt"),
+      content: "alpha EDITED AFTER STAGING\n",
+    },
+    InvokeStep {
+      label: "stage alpha's new bytes",
+      function: "spine_add",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "directory", value: tree),
+        scm_named(name: "name", value: "alpha.txt"),
+        scm_named(name: "manifest_path", value: "alpha.txt"),
+      ],
+      expect_success: true,
+    },
+    WriteFixtureStep {
+      label: "edit alpha AGAIN, after staging and before the commit",
+      path: concat(tree, "/alpha.txt"),
+      content: "alpha EDITED AGAIN BEFORE COMMIT\n",
+    },
+    InvokeStep {
+      label: "commit",
+      function: "spine_commit",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "message", value: "staged, not current"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "the commit froze the STAGED bytes",
+      function: "spine_verify",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "manifest_path", value: "alpha.txt"),
+        scm_named(name: "expected_text", value: "alpha EDITED AFTER STAGING\n"),
+        scm_named(name: "expect", value: "matches"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "and did NOT reread the worktree's later edit",
+      function: "spine_verify",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "manifest_path", value: "alpha.txt"),
+        scm_named(name: "expected_text", value: "alpha EDITED AGAIN BEFORE COMMIT\n"),
+        scm_named(name: "expect", value: "differs"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "two writers against one generation: one winner, one stale refusal",
+      function: "spine_race",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "repo"),
+        scm_named(name: "manifest_path", value: "alpha.txt"),
+      ],
+      expect_success: true,
+    },
+  ]
+}
+
+// SCENARIO TWO -- CHECKOUT AND SQUASH MERGE, both outcomes. The merge half of the brief is only met
+// if BOTH results are produced natively: two lineages that touched different paths must merge, and
+// two lineages that rewrote the SAME path must conflict. A driver that only exercised the merging
+// case would be green against an implementation that merged unconditionally, which is the failure
+// mode a conflict claim exists to exclude.
+//
+// The final step of each half asserts the OPPOSITE expectation and requires a refusal, so the
+// instrument distinguishes "the merge succeeded" from "the instrument reports success".
+//
+// THESE TWO INVERSE CONTROLS ARE THE WEAKEST EVIDENCE IN THIS MODULE, and that is recorded rather
+// than glossed. Every OTHER negative step here now names the exact refusal it expects and exits
+// SUCCESS on it -- `spine_init --expect slot-held`, `spine_verify --expect differs` -- so an earlier
+// unrelated failure cannot satisfy them. These two still accept an arbitrary nonzero from
+// `spine_squash`, which also exits nonzero for an unreadable slot or a commit selection that does
+// not resolve. Their residual strength comes from POSITION rather than from the check: every prior
+// step in the sequence succeeded, so the slot is readable and both commits resolve by the time they
+// run. That is an argument about the sequence, not a property of the step, and it would stop holding
+// if these were ever reordered or lifted out. Closing it properly means a third `spine_squash`
+// expectation that exits success only on the exact wrong-outcome arm; that is this driver's next
+// evidence obligation and is deliberately not claimed as done.
+fn scm_merge_scenario_steps(workspace: String) -> List<ScmStep> {
+  let store = concat(workspace, "/store")
+  let tree = concat(workspace, "/wt")
+  [
+    MakeDirectoryStep { label: "establish the object store directory", path: store },
+    MakeDirectoryStep { label: "establish the worktree directory", path: tree },
+    WriteFixtureStep { label: "author a.txt", path: concat(tree, "/a.txt"), content: "base\n" },
+    InvokeStep {
+      label: "init",
+      function: "spine_init",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "expect", value: "published"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "add a.txt",
+      function: "spine_add",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "directory", value: tree),
+        scm_named(name: "name", value: "a.txt"),
+        scm_named(name: "manifest_path", value: "a.txt"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "commit C0",
+      function: "spine_commit",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "message", value: "C0"),
+      ],
+      expect_success: true,
+    },
+    WriteFixtureStep {
+      label: "author t.txt on the target lineage",
+      path: concat(tree, "/t.txt"),
+      content: "target side\n",
+    },
+    InvokeStep {
+      label: "add t.txt",
+      function: "spine_add",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "directory", value: tree),
+        scm_named(name: "name", value: "t.txt"),
+        scm_named(name: "manifest_path", value: "t.txt"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "commit T1",
+      function: "spine_commit",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "message", value: "T1"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "checkout C0 to branch the source lineage",
+      function: "spine_checkout",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "target", value: "0"),
+      ],
+      expect_success: true,
+    },
+    WriteFixtureStep {
+      label: "author s.txt on the source lineage",
+      path: concat(tree, "/s.txt"),
+      content: "source side\n",
+    },
+    InvokeStep {
+      label: "add s.txt",
+      function: "spine_add",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "directory", value: tree),
+        scm_named(name: "name", value: "s.txt"),
+        scm_named(name: "manifest_path", value: "s.txt"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "commit S1",
+      function: "spine_commit",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "message", value: "S1"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "INDEPENDENT EDITS: squashing S1 into T1 merges",
+      function: "spine_squash",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "target", value: "1"),
+        scm_named(name: "source", value: "2"),
+        scm_named(name: "message", value: "merge S1"),
+        scm_named(name: "expect", value: "merge"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "and asserting that independent merge CONFLICTS must refuse",
+      function: "spine_squash",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "target", value: "1"),
+        scm_named(name: "source", value: "2"),
+        scm_named(name: "message", value: "merge S1"),
+        scm_named(name: "expect", value: "conflict"),
+      ],
+      expect_success: false,
+    },
+  ]
+}
+
+// SCENARIO THREE -- THE SAME PATH REWRITTEN BOTH WAYS MUST CONFLICT. Kept as its own workspace and
+// its own scenario rather than appended to the merge sequence, because a conflict is not a later
+// stage of a merge: it is the other outcome, and it needs a history built specifically to produce it.
+fn scm_conflict_scenario_steps(workspace: String) -> List<ScmStep> {
+  let store = concat(workspace, "/store")
+  let tree = concat(workspace, "/wt")
+  [
+    MakeDirectoryStep { label: "establish the object store directory", path: store },
+    MakeDirectoryStep { label: "establish the worktree directory", path: tree },
+    WriteFixtureStep { label: "author c.txt", path: concat(tree, "/c.txt"), content: "base\n" },
+    InvokeStep {
+      label: "init",
+      function: "spine_init",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "expect", value: "published"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "add c.txt",
+      function: "spine_add",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "directory", value: tree),
+        scm_named(name: "name", value: "c.txt"),
+        scm_named(name: "manifest_path", value: "c.txt"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "commit C0",
+      function: "spine_commit",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "message", value: "C0"),
+      ],
+      expect_success: true,
+    },
+    WriteFixtureStep {
+      label: "the TARGET lineage rewrites c.txt",
+      path: concat(tree, "/c.txt"),
+      content: "TARGET rewrote it\n",
+    },
+    InvokeStep {
+      label: "target edits c.txt",
+      function: "spine_add",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "directory", value: tree),
+        scm_named(name: "name", value: "c.txt"),
+        scm_named(name: "manifest_path", value: "c.txt"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "commit T1",
+      function: "spine_commit",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "message", value: "T1"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "checkout C0",
+      function: "spine_checkout",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "target", value: "0"),
+      ],
+      expect_success: true,
+    },
+    WriteFixtureStep {
+      label: "the SOURCE lineage rewrites the same path differently",
+      path: concat(tree, "/c.txt"),
+      content: "SOURCE rewrote it differently\n",
+    },
+    InvokeStep {
+      label: "source edits c.txt",
+      function: "spine_add",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "directory", value: tree),
+        scm_named(name: "name", value: "c.txt"),
+        scm_named(name: "manifest_path", value: "c.txt"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "commit S1",
+      function: "spine_commit",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "message", value: "S1"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "GENUINE CONFLICT: squashing S1 into T1 conflicts",
+      function: "spine_squash",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "target", value: "1"),
+        scm_named(name: "source", value: "2"),
+        scm_named(name: "message", value: "merge S1"),
+        scm_named(name: "expect", value: "conflict"),
+      ],
+      expect_success: true,
+    },
+    InvokeStep {
+      label: "and asserting that this conflict MERGES must refuse",
+      function: "spine_squash",
+      arguments: [
+        scm_named(name: "root", value: store),
+        scm_named(name: "key", value: "r"),
+        scm_named(name: "target", value: "1"),
+        scm_named(name: "source", value: "2"),
+        scm_named(name: "message", value: "merge S1"),
+        scm_named(name: "expect", value: "merge"),
+      ],
+      expect_success: false,
+    },
+  ]
+}
+
+// THE SCENARIO ROSTER IS A CLOSED VARIANT, so adding a scenario without giving it a step sequence
+// fails to compile rather than silently running nothing. (This was first written with a
+// function-valued parameter; `.dag` has no function-typed parameters -- zero occurrences in the
+// corpus -- and the closed variant is the better shape regardless, because it makes the roster
+// exhaustive instead of open.)
+type ScmScenario
+  = PublicationScenario
+  | MergeScenario
+  | ConflictScenario
+
+fn scm_scenario_name(scenario: ScmScenario) -> String {
+  match scenario {
+    PublicationScenario => "publication"
+    MergeScenario => "merge"
+    ConflictScenario => "conflict"
+  }
+}
+
+fn scm_scenario_steps(scenario: ScmScenario, workspace: String) -> List<ScmStep> {
+  match scenario {
+    PublicationScenario => scm_publication_scenario_steps(workspace: workspace)
+    MergeScenario => scm_merge_scenario_steps(workspace: workspace)
+    ConflictScenario => scm_conflict_scenario_steps(workspace: workspace)
+  }
+}
+
+fn scm_scenario_in_fresh_workspace(scenario: ScmScenario) -> ScmAcceptanceOutcome {
+  let workspace = shell.Mktemp.Dir()
+  if workspace.success {
+    scm_acceptance_run(
+      scenario: scm_scenario_name(scenario: scenario),
+      steps: scm_scenario_steps(scenario: scenario, workspace: workspace.path),
+      workspace: workspace.path,
+    )
+  } else {
+    ScmAcceptanceWorkspaceRefused {
+      scenario: scm_scenario_name(scenario: scenario),
+      detail: "a temporary workspace could not be created",
+    }
+  }
+}
+
+// THE OUTCOME IS RENDERED INTO AN EXIT RATHER THAN RETURNED RAW. The host refuses to map a
+// non-`ProcessExit` verdict to an exit code, and its refusal is the rule this instrument exists to
+// check applied to the instrument itself: printing the value and exiting 0 would report success for
+// a run whose outcome the host never inspected. The failure arms keep their location in the reason,
+// so a red names the scenario and the step rather than only the fact that something failed.
+fn scm_acceptance_exit(outcome: ScmAcceptanceOutcome) -> ProcessExit {
+  match outcome {
+    ScmAcceptancePassed { scenario: _, steps: _ } => ExitSuccess
+    ScmAcceptanceStepFailed { scenario: s, step: step, detail: detail, exit_code: code } =>
+      exit_failure(
+        reason: concat(
+          concat(concat(concat("scenario ", s), " failed at step: "), step),
+          concat(concat(" (exit ", to_string(value: code)), concat(") ", detail)),
+        ),
+      )
+    ScmAcceptanceWorkspaceRefused { scenario: s, detail: detail } =>
+      exit_failure(reason: concat(concat(concat("scenario ", s), " workspace refused: "), detail))
+    ScmAcceptanceBinaryRefused { scenario: s, bin_name: b, path: p } =>
+      exit_failure(
+        reason: concat(
+          concat(concat(concat("scenario ", s), " refused: the witness binary "), b),
+          concat(" was not ready at ", p),
+        ),
+      )
+  }
+}
+
+func scm_acceptance_publication() -> ProcessExit {
+  scm_acceptance_exit(outcome: scm_scenario_in_fresh_workspace(scenario: PublicationScenario))
+}
+
+func scm_acceptance_merge() -> ProcessExit {
+  scm_acceptance_exit(outcome: scm_scenario_in_fresh_workspace(scenario: MergeScenario))
+}
+
+func scm_acceptance_conflict() -> ProcessExit {
+  scm_acceptance_exit(outcome: scm_scenario_in_fresh_workspace(scenario: ConflictScenario))
+}

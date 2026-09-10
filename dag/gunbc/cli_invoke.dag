@@ -88,26 +88,102 @@ fn source_root_invocation_words(roots: List<String>) -> List<InvocationWord> {
   )
 }
 
-fn gunbc_run_invocation_words(
+// A NAMED ARGUMENT IS A NAME AND A VALUE, NOT A PRE-JOINED WORD. `gunbc run` takes repeatable
+// `--arg name=value`, and the joining is the transport's business: a caller that handed in the
+// string "root=/tmp/x" would be spelling the separator itself, which is the same positional
+// convention this module exists to own once.
+//
+// THE ROUND TRIP IS DECIDED BY THE DECODER, so it is named rather than assumed: `decode_run_args`
+// in the stage0 driver splits on `split_once('=')` -- the FIRST separator -- and refuses a spec
+// whose name half is empty. Joining here as name + "=" + value therefore reconstructs exactly this
+// pair on the far side, and a VALUE containing "=" survives intact rather than re-splitting into a
+// different name. That is a property of the decoder's rule, not of this carrier being tidy; if that
+// rule ever became last-separator or greedy, this comment is where the disagreement would surface.
+// THE NAME IS SEALED; THE VALUE IS NOT. The value side is safe by the decoder's rule above -- the
+// first "=" has already divided name from value, so everything after it is the value whatever it
+// contains. The NAME side is not, and that asymmetry is the whole reason this carrier is sealed:
+// a name containing "=" REBINDS SILENTLY rather than refusing. `NamedArgument { name:
+// "expected=text", value: "x" }` projects to `--arg expected=text=x`, and the host binds the
+// parameter `expected` with value `text=x` -- a different parameter than the caller named, with no
+// diagnostic anywhere. An empty name is refused by the host, which is a stop rather than a silent
+// rebind, but it is refused LATE, in a child process, as a string; admitting it here makes the
+// refusal local and typed.
+//
+// So construction is the wall (DESIGN section 5: correctness by construction, not validation) --
+// `sole_constructor` means the only route to a NamedArgument is `admit_named_argument`, which
+// returns a typed refusal rather than a value for a name that cannot round-trip.
+type NamedArgument sole_constructor { name: String, value: String }
+
+type NamedArgumentAdmission
+  = NamedArgumentAdmitted { argument: NamedArgument }
+  | NamedArgumentNameEmpty
+  | NamedArgumentNameHoldsSeparator { name: String }
+
+fn admit_named_argument(name: String, value: String) -> NamedArgumentAdmission {
+  if name == "" {
+    NamedArgumentNameEmpty
+  } else if string_contains(s: name, pattern: "=") {
+    NamedArgumentNameHoldsSeparator { name: name }
+  } else {
+    NamedArgumentAdmitted { argument: NamedArgument { name: name, value: value } }
+  }
+}
+
+fn named_argument_words(argument: NamedArgument) -> List<InvocationWord> {
+  [
+    LiteralWord { spelling: "--arg" },
+    LiteralWord { spelling: concat(concat(argument.name, "="), argument.value) }
+  ]
+}
+
+fn named_argument_invocation_words(arguments: List<NamedArgument>) -> List<InvocationWord> {
+  fold(arguments, init: [], f: (acc, a) => concat(acc, named_argument_words(argument: a)))
+}
+
+// THE ONE `gunbc run` SHAPE. The no-named-arguments route below delegates here with an EMPTY
+// population rather than carrying a second spelling of the same argv, so there is one place where
+// the order of `run`, the source roots, the entry, the function, the named arguments and
+// `--claim-run` is decided (DESIGN section 3: interface, realization and policy are three facts, and
+// the argv shape is the interface).
+fn gunbc_run_invocation_words_with_arguments(
   source_roots: List<String>,
   entry: String,
   function: String,
-  claim_run: Bool
+  claim_run: Bool,
+  arguments: List<NamedArgument>
 ) -> List<InvocationWord> {
   let base = concat(
-    concat([LiteralWord { spelling: "run" }], source_root_invocation_words(roots: source_roots)),
-    [
-      LiteralWord { spelling: "--entry" },
-      LiteralWord { spelling: entry },
-      LiteralWord { spelling: "--function" },
-      LiteralWord { spelling: function }
-    ]
+    concat(
+      concat([LiteralWord { spelling: "run" }], source_root_invocation_words(roots: source_roots)),
+      [
+        LiteralWord { spelling: "--entry" },
+        LiteralWord { spelling: entry },
+        LiteralWord { spelling: "--function" },
+        LiteralWord { spelling: function }
+      ]
+    ),
+    named_argument_invocation_words(arguments: arguments)
   )
   if claim_run {
     concat(base, [LiteralWord { spelling: "--claim-run" }])
   } else {
     base
   }
+}
+
+fn gunbc_run_invocation_words(
+  source_roots: List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool
+) -> List<InvocationWord> {
+  gunbc_run_invocation_words_with_arguments(
+    source_roots: source_roots,
+    entry: entry,
+    function: function,
+    claim_run: claim_run,
+    arguments: []
+  )
 }
 
 fn gunbc_run_transport_argv(
@@ -122,6 +198,24 @@ fn gunbc_run_transport_argv(
       entry: entry,
       function: function,
       claim_run: claim_run
+    )
+  )
+}
+
+fn gunbc_run_transport_argv_with_arguments(
+  source_roots: List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool,
+  arguments: List<NamedArgument>
+) -> List<String> {
+  invocation_words_bare(
+    words: gunbc_run_invocation_words_with_arguments(
+      source_roots: source_roots,
+      entry: entry,
+      function: function,
+      claim_run: claim_run,
+      arguments: arguments
     )
   )
 }

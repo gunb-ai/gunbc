@@ -133,13 +133,57 @@ fn slot_read_failure(read: RepositorySlotRead) -> String {
 // init -- claim an unheld slot
 // ------------------------------------------------------------------------------------------------
 
-func spine_init(root: String, key: String) -> ProcessExit {
+// AN EXPECTATION MODE, BECAUSE "EXITED NONZERO" IS NOT A CONTROL. A caller checking that a SECOND
+// init is refused cannot learn that from a nonzero exit: an unwritable root, an unaddressable key,
+// an encode refusal and a genuinely held slot all exit nonzero, so an earlier unrelated failure
+// would satisfy the very control meant to prove the slot was held. `ExpectSlotHeld` exits SUCCESS
+// only for `RepositoryPublicationSuperseded` -- the one arm that means "something is already
+// published here" -- and refuses every other outcome INCLUDING success, so publishing over a held
+// slot is a red rather than a pass.
+type InitExpectation
+  = ExpectPublished
+  | ExpectSlotHeld
+  | InitExpectationUnrecognized { given: String }
+
+fn init_expectation(expect: String) -> InitExpectation {
+  if expect == "" || expect == "published" {
+    ExpectPublished
+  } else if expect == "slot-held" {
+    ExpectSlotHeld
+  } else {
+    InitExpectationUnrecognized { given: expect }
+  }
+}
+
+fn init_publication_verdict(
+  publication: RepositoryPublication,
+  expectation: InitExpectation
+) -> ProcessExit {
+  match expectation {
+    InitExpectationUnrecognized { given: g } =>
+      exit_failure(reason: join(["init refused: --arg expect must be published or slot-held, got ", g], ""))
+    ExpectPublished => publication_exit(publication: publication)
+    ExpectSlotHeld =>
+      match publication {
+        RepositoryPublicationSuperseded { expected: _, observed: _ } => ExitSuccess
+        RepositoryPublished { generation: _ } =>
+          exit_failure(reason: "init expected a HELD slot but published into it")
+        other =>
+          exit_failure(
+            reason: "init expected a HELD slot but the publication refused for a different reason"
+          )
+      }
+  }
+}
+
+func spine_init(root: String, key: String, expect: String) -> ProcessExit {
   match admit_slot(root: root, key: key) {
     SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
     SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
     SlotAdmitted(slot) =>
-      publication_exit(
-        publication: publish_new_repository(slot: slot, repo: empty_repository())
+      init_publication_verdict(
+        publication: publish_new_repository(slot: slot, repo: empty_repository()),
+        expectation: init_expectation(expect: expect),
       )
   }
 }
@@ -256,11 +300,33 @@ func spine_commit_loaded(loaded: LoadedRepositoryGeneration, message: String) ->
 // content against the file on disk would establish only that the file is still there; what has to be
 // established is that the bytes the commit FROZE round-tripped through the document. So the expected
 // text is supplied as an argument and the actual text comes out of `checkout_repository_at`.
+// THE SAME ARGUMENT AS init, AND THE DISTINCTION IS SHARPER HERE. A wrong-bytes control that only
+// requires a nonzero exit is also satisfied by "no commit is checked out", "the head could not be
+// checked out", and "the corpus has no entry at this path" -- three states in which NO BYTE
+// COMPARISON EVER HAPPENED. `ExpectDiffers` therefore exits success only where the path WAS found
+// and its bytes did not match, so the control proves a comparison occurred and came out negative
+// rather than proving something went wrong somewhere upstream.
+type VerifyExpectation
+  = ExpectMatches
+  | ExpectDiffers
+  | VerifyExpectationUnrecognized { given: String }
+
+fn verify_expectation(expect: String) -> VerifyExpectation {
+  if expect == "" || expect == "matches" {
+    ExpectMatches
+  } else if expect == "differs" {
+    ExpectDiffers
+  } else {
+    VerifyExpectationUnrecognized { given: expect }
+  }
+}
+
 func spine_verify(
   root: String,
   key: String,
   manifest_path: String,
   expected_text: String,
+  expect: String,
 ) -> ProcessExit {
   match admit_slot(root: root, key: key) {
     SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
@@ -272,6 +338,7 @@ func spine_verify(
             envelope: loaded.envelope,
             manifest_path: manifest_path,
             expected_text: expected_text,
+            expectation: verify_expectation(expect: expect),
           )
         other => exit_failure(reason: slot_read_failure(read: other))
       }
@@ -282,6 +349,7 @@ fn verify_head_corpus(
   envelope: RepositoryEnvelope,
   manifest_path: String,
   expected_text: String,
+  expectation: VerifyExpectation,
 ) -> ProcessExit {
   match envelope.checked_out {
     Absent => exit_failure(reason: "verify refused: no commit is checked out")
@@ -292,6 +360,7 @@ fn verify_head_corpus(
             corpus: corpus,
             manifest_path: manifest_path,
             expected_text: expected_text,
+            expectation: expectation,
           )
         other => exit_failure(reason: "verify refused: the head commit could not be checked out")
       }
@@ -304,19 +373,45 @@ fn compare_recovered(
   corpus: List<RecoveredSourceFile>,
   manifest_path: String,
   expected_text: String,
+  expectation: VerifyExpectation,
 ) -> ProcessExit {
-  match recovered_text_at(corpus: corpus, manifest_path: manifest_path) {
-    Absent =>
-      exit_failure(reason: join(["verify failed: the head corpus has no entry at ", manifest_path], ""))
-    Present { value: actual } =>
-      if actual == expected_text {
-        ExitSuccess
-      } else {
-        exit_failure(
-          reason: join([
-            "verify failed: ", manifest_path, " recovered bytes that are not the ones committed",
-          ], "")
-        )
+  match expectation {
+    VerifyExpectationUnrecognized { given: g } =>
+      exit_failure(reason: join(["verify refused: --arg expect must be matches or differs, got ", g], ""))
+    ExpectMatches =>
+      match recovered_text_at(corpus: corpus, manifest_path: manifest_path) {
+        Absent =>
+          exit_failure(reason: join(["verify failed: the head corpus has no entry at ", manifest_path], ""))
+        Present { value: actual } =>
+          if actual == expected_text {
+            ExitSuccess
+          } else {
+            exit_failure(
+              reason: join([
+                "verify failed: ", manifest_path, " recovered bytes that are not the ones committed",
+              ], "")
+            )
+          }
+      }
+    ExpectDiffers =>
+      match recovered_text_at(corpus: corpus, manifest_path: manifest_path) {
+        Absent =>
+          exit_failure(
+            reason: join([
+              "verify expected DIFFERING bytes but the head corpus has no entry at ", manifest_path,
+              " -- nothing was compared",
+            ], "")
+          )
+        Present { value: actual } =>
+          if actual == expected_text {
+            exit_failure(
+              reason: join([
+                "verify expected DIFFERING bytes but ", manifest_path, " matched exactly",
+              ], "")
+            )
+          } else {
+            ExitSuccess
+          }
       }
   }
 }
