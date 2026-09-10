@@ -79,11 +79,25 @@ import std.minted_identity { MintedId, minted_id_eq }
 // outside the ladder entirely.
 //
 // A COMMIT REFERENCE IS A MINTED IDENTITY IN THE COMMIT SUBJECT SPACE, never a list position and
-// never a digest of mutable commit facts. The subject parameter prevents a numeric coincidence with
-// another allocator's ordinal from being compared as the same identity. The value is opaque outside
-// the codec's membership index: log and status carry it but derive no order, recency, or content from
-// its ordinal. This discharges the positional spelling's append-only obligation by removing its
-// subject -- inserting, deleting, or reordering rows cannot retarget an existing reference.
+// never a digest of mutable commit facts. The value is opaque outside the codec's membership index:
+// log and status carry it but derive no order, recency, or content from its ordinal. This discharges
+// the positional spelling's append-only obligation by removing its subject -- inserting, deleting, or
+// reordering rows cannot retarget an existing reference.
+//
+// WHAT THE SUBJECT PARAMETER SEPARATES, AND WHAT IT DOES NOT. An earlier writing of this paragraph
+// said the subject parameter "prevents a numeric coincidence with another allocator's ordinal from
+// being compared as the same identity". That is too broad, and the over-broad half is the load-bearing
+// half. `minted_id_eq` compares ORDINALS of two ids already in the same subject family, so the
+// parameter separates commit references from identities in OTHER families -- it does not namespace
+// separate allocator INSTANCES within `RepositoryCommitSubject`. Two repositories each mint ordinal N,
+// and a reference copied from one resolves confidently against the other, to an unrelated commit.
+//
+// So within this family equality IS ordinal equality, and a bare reference therefore has
+// REPOSITORY-RELATIVE meaning: it must be resolved against the applicable repository, or travel with
+// evidence drawn from it. That is precisely why `gunbc.scm.repository_envelope`'s `ResolvedMergeAnchors`
+// carries the repository its three presences were looked up in rather than the presences alone -- the
+// carrier supplies the scope this identity does not. Found by external review, which refuted the same
+// premise where I had restated it downstream; this is its home, and it was still standing here.
 
 // TWO SUCCESSOR LANES WAITED ON THIS CUT FOR DIFFERENT GROUNDS, even though the dependency event was
 // the same. A commit producer waited on the HAZARD: authoring against positional references before
