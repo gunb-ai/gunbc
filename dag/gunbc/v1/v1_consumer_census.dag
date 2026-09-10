@@ -142,12 +142,6 @@ type DiscoveryProducer {
   pin: DiscoverySourcePin
 }
 
-fn discovery_pin_is_observed(pin: DiscoverySourcePin) -> Bool {
-  match pin {
-    PinObserved { source_revision: _, source_tree: _ } => true
-    PinUnobserved { basis: _ } => false
-  }
-}
 
 // THE REVISION AND THE TREE ARE TYPED, AND THE TREE IS THE ONE THAT DECIDES. A String revision is a
 // spelling that any later tree can wear; std.types CommitSha is the Git-head vocabulary every
