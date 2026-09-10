@@ -85,7 +85,7 @@ type DeploymentDeviation
   | RankOnWrongHost { node_rank: Nat, expected_host: NonEmptyStr, observed_host: NonEmptyStr }
   | RankImageDigestDiffers { node_rank: Nat, desired: NonEmptyStr, observed: NonEmptyStr }
   | RankModelPathDiffers { node_rank: Nat, desired: NonEmptyStr, observed: NonEmptyStr }
-  | RankArgvDiffers { node_rank: Nat, desired_word_count: Nat, observed_word_count: Nat }
+  | RankArgvDiffers { node_rank: Nat, first_difference_position: Nat, desired_word_count: Nat, observed_word_count: Nat }
   | RankFabricInterfaceDiffers { node_rank: Nat, desired: NonEmptyStr, observed: NonEmptyStr }
   | DeploymentNotServing { detail: NonEmptyStr }
   | EndpointAliasDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
@@ -124,15 +124,50 @@ fn argv_model_path(l: ArmNodeLaunch) -> NonEmptyStr {
   join(filter(l.argv, w => string_contains(s: w, pattern: "/snapshots/") || w == "/model"), "") as NonEmptyStr
 }
 
-// ── ONE RANK'S DEVIATIONS ──────────────────────────────────────────────────────────────────────
+// ── ORDERED ARGV COMPARISON, WALKED IN STEP ────────────────────────────────────────────────────
 //
-// THE ARGV COMPARISON IS BY WORD COUNT AND NOT BY CONTENT, AND THAT IS A DECLARED WEAKNESS RATHER THAN
-// an oversight. A faithful ordered comparison needs to walk two lists in step, which this substrate
-// expresses as a fold over one of them with an index into the other -- and the honest version of that
-// belongs beside a list-zip primitive that std does not carry. A length difference proves divergence; an
-// equal length with different words does NOT prove agreement, so the fields that decide behaviour are
-// compared individually above rather than being left to this row. NEXT-RUNG TRIGGER: a pairwise list
-// comparison in std, at which point this deviation carries the first differing position.
+// THIS WAS A WORD COUNT AND THAT WAS NOT GOOD ENOUGH. The previous revision compared list LENGTHS and
+// declared the gap honestly, which is better than hiding it and still admits the case that matters: a
+// running command with the same number of words and one changed value passed the check. Argument ORDER
+// was one of the things this program has already paid to preserve -- the whole reason the launch line is
+// carried as a list rather than a string -- so a comparison that cannot see a reordering is not a
+// comparison of it.
+//
+// THE RECURSION IS THE COMPARISON, and it descends on both tails at once, which is the shape a list-zip
+// primitive would have provided. Heads equal, compare tails; one list empty and the other not, different;
+// heads differ, different AT THIS POSITION -- and the position is what the deviation carries, because
+// "the argv differs" sends a reader to diff two 58-word lines by eye.
+fn argv_equal(a: List<String>, b: List<String>) -> Bool {
+  match a.first() {
+    Absent =>
+      match b.first() {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: ah } =>
+      match b.first() {
+        Absent => false
+        Present { value: bh } =>
+          if ah == bh { argv_equal(a: a.skip(n: 1), b: b.skip(n: 1)) } else { false }
+      }
+  }
+}
+
+// THE FIRST DIFFERING POSITION, counted from zero. A trailing extra word reports at the length of the
+// shorter list, which is where a reader should look.
+fn argv_first_difference(a: List<String>, b: List<String>, position: Nat) -> Nat {
+  match a.first() {
+    Absent => position
+    Present { value: ah } =>
+      match b.first() {
+        Absent => position
+        Present { value: bh } =>
+          if ah == bh { argv_first_difference(a: a.skip(n: 1), b: b.skip(n: 1), position: position + 1) } else { position }
+      }
+  }
+}
+
+// ── ONE RANK'S DEVIATIONS ──────────────────────────────────────────────────────────────────────
 fn rank_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<DeploymentDeviation> {
   concat(concat(concat(
     if host_identity_eq(a: desired.node.host, b: observed.host) { [] } else {
@@ -156,9 +191,10 @@ fn rank_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<De
         observed: observed.model_path,
       }]
     }),
-    if count(desired.argv) == count(observed.argv) { [] } else {
+    if argv_equal(a: desired.argv, b: observed.argv) { [] } else {
       [RankArgvDiffers {
         node_rank: desired.node.node_rank,
+        first_difference_position: argv_first_difference(a: desired.argv, b: observed.argv, position: 0),
         desired_word_count: count(desired.argv),
         observed_word_count: count(observed.argv),
       }]

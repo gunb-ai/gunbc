@@ -1,0 +1,367 @@
+module gunbc.spark.native_cutover_wet
+
+import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.nat { Nat }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import product.placement_supply { HostIdentity }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.spark.fabric_reach {
+  SparkReachPath, ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach,
+}
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
+  fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
+}
+import gunbc.auth.materialized_secret { with_materialized_ssh_key_file }
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, SparkRemoteRun, spark_exec,
+  remote_run_succeeded, remote_run_stdout, remote_run_text,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNode, ArmNodeLaunch,
+  glm_native_tp4_launch_plan, glm_native_serve_port, glm_native_served_model_alias,
+}
+import gunbc.spark.native_launch_fold {
+  LaunchPopulationOutcome, EveryRankStarted, LaunchPopulationIncomplete, LaunchPopulationHadNoPlan,
+  RankLaunchOutcome, rank_outcome_text, RankRollbackOutcome, rank_rollback_text,
+  launch_native_population, rollback_started_ranks, every_rank_cleaned,
+}
+import gunbc.spark.native_rank_observer { observe_native_population }
+import gunbc.spark.native_deployment_readback {
+  DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
+  inspect_native_deployment, accept_deployment,
+}
+import gunbc.spark.native_incumbent {
+  IncumbentObservation, IncumbentRunning, IncumbentStoppedPresent, IncumbentAbsent, IncumbentUnreadable,
+  observe_incumbent, incumbent_is_retainable,
+  IncumbentStopOutcome, IncumbentStopped, IncumbentStopFailed, stop_incumbent_retaining_it,
+  IncumbentRestoration, IncumbentRestored, IncumbentRestorationFailed, IncumbentRestoredReceipt,
+  restore_incumbent,
+}
+
+// ── ONE OPERATOR-REACHABLE ROOT THAT OWNS THE WHOLE TRANSACTION ────────────────────────────────
+//
+// Every value this performs comes from the model: the host population and rank assignment from the launch
+// plan, the argv from the checkpoint and runtime rows, the endpoint from the fleet roster, the acceptance
+// criterion from the readback assessor, the rollback target from the launch fold's retained started
+// population. Nothing is parsed from a rendered table and nothing is chosen by whoever invokes it.
+//
+// THE FIRST THING IT DOES IS ASK WHETHER THE WORK IS ALREADY DONE. A cutover invoked twice must not stop an
+// incumbent that is no longer serving or relaunch four containers that are already right, so the readback
+// runs BEFORE any authorisation or any destructive step. Idempotence here is not a convenience: the second
+// invocation is exactly the one a person makes after being interrupted, when they least know the state.
+//
+// AND THE CLAIM IS A DURABLE COMPARE-AND-SET, NOT A FLAG. `set -C` makes the shell refuse to truncate an
+// existing file, so creating the claim file either succeeds because no other attempt holds it or fails
+// because one does -- an atomic test-and-set against a durable object on the head host. A second actor
+// running this root while the first is mid-transaction is refused before it stops anything.
+
+data native_claim_path: NonEmptyStr = "/home/briansrls/acq/glm-native-cutover.claim" as NonEmptyStr
+data native_attempt_raw: String = "glm-native-tp4-cutover"
+
+// THE READINESS BUDGET IS UPSTREAM'S FIGURE FOR THIS MODEL, and the poll interval is chosen so the budget
+// is spent in observations rather than in one long blind wait.
+data native_ready_poll_budget: Nat = 240
+data native_ready_poll_interval_seconds: Nat = 15
+
+type NativeCutoverTerminal
+  = NativeAlreadyConverged { receipt: NonEmptyStr }
+  | NativeCutoverWithheld { reasons: List<NonEmptyStr> }
+  | NativeServing { receipt: NonEmptyStr, probe: NonEmptyStr }
+  | NativeFailedAndIncumbentRestored {
+      failure: NonEmptyStr,
+      cleanup: List<RankRollbackOutcome>,
+      incumbent: IncumbentRestoredReceipt,
+    }
+  | NativeFailedAndIncumbentLost {
+      failure: NonEmptyStr,
+      cleanup: List<RankRollbackOutcome>,
+      restoration_failure: NonEmptyStr,
+    }
+
+fn terminal_text(t: NativeCutoverTerminal) -> String {
+  match t {
+    NativeAlreadyConverged { receipt: r } =>
+      join(["ALREADY CONVERGED, nothing was touched: ", r as String], "")
+    NativeCutoverWithheld { reasons: rs } =>
+      join(["WITHHELD before acting: ", join(map(rs, x => x as String), "; ")], "")
+    NativeServing { receipt: r, probe: p } =>
+      join(["SERVING and accepted: ", r as String, " -- probe: ", p as String], "")
+    NativeFailedAndIncumbentRestored { failure: f, cleanup: cs, incumbent: inc } =>
+      join([
+        "FAILED and the incumbent is back: ", f as String,
+        " -- cleanup: ", join(map(cs, c => rank_rollback_text(o: c)), "; "),
+        " -- incumbent ", inc.container_id as String, " answers ", inc.endpoint_status as String,
+      ], "")
+    NativeFailedAndIncumbentLost { failure: f, cleanup: cs, restoration_failure: rf } =>
+      join([
+        "FAILED AND THE INCUMBENT IS DOWN -- this is an outage needing a person: ", f as String,
+        " -- cleanup: ", join(map(cs, c => rank_rollback_text(o: c)), "; "),
+        " -- restoration: ", rf as String,
+      ], "")
+  }
+}
+
+fn terminal_is_success(t: NativeCutoverTerminal) -> Bool {
+  match t {
+    NativeServing { receipt: _, probe: _ } => true
+    NativeAlreadyConverged { receipt: _ } => true
+    NativeCutoverWithheld { reasons: _ } => false
+    NativeFailedAndIncumbentRestored { failure: _, cleanup: _, incumbent: _ } => false
+    NativeFailedAndIncumbentLost { failure: _, cleanup: _, restoration_failure: _ } => false
+  }
+}
+
+fn plan_head(plan: ArmLaunchPlan) -> ArmNode? {
+  match plan {
+    ArmLaunchRefused { cause: _ } => none
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match ls.first() {
+        Absent => none
+        Present { value: l } => Present { value: l.node }
+      }
+  }
+}
+
+// ── THE DURABLE CLAIM ─────────────────────────────────────────────────────────────────────────
+fn claim_argv(attempt: String) -> List<String> {
+  ["sh", "-c", join([
+    "set -C; { echo ", attempt, " > ", native_claim_path as String, "; } 2>/dev/null && echo CLAIMED || echo HELD",
+  ], "")]
+}
+
+fn settle_argv(status: String) -> List<String> {
+  ["sh", "-c", join([
+    "printf '%s\\n' ", status, " >> ", native_claim_path as String, "; rm -f ", native_claim_path as String, "; echo SETTLED",
+  ], "")]
+}
+
+func win_claim(ctx: SparkRemoteExecutionContext, host: HostIdentity, attempt: String) -> Bool
+  uses net: Network
+{
+  remote_run_stdout(r: spark_exec(ctx: ctx, host: host, argv: claim_argv(attempt: attempt))) == "CLAIMED"
+}
+
+func settle_claim(ctx: SparkRemoteExecutionContext, host: HostIdentity, status: String) -> Bool
+  uses net: Network
+{
+  remote_run_stdout(r: spark_exec(ctx: ctx, host: host, argv: settle_argv(status: status))) == "SETTLED"
+}
+
+// ── READINESS AND THE SEMANTIC PROBE ──────────────────────────────────────────────────────────
+fn native_probe_argv() -> List<String> {
+  ["sh", "-c", join([
+    "curl -sf -o /dev/null -m 10 http://127.0.0.1:", to_string(glm_native_serve_port), "/v1/models && echo SERVING || echo DOWN",
+  ], "")]
+}
+
+fn native_sleep_argv() -> List<String> {
+  ["sleep", to_string(native_ready_poll_interval_seconds)]
+}
+
+func await_native_endpoint(ctx: SparkRemoteExecutionContext, host: HostIdentity, remaining: Nat) -> Bool
+  uses net: Network
+{
+  if remaining == 0 { false } else {
+    if remote_run_stdout(r: spark_exec(ctx: ctx, host: host, argv: native_probe_argv())) == "SERVING" { true }
+    else {
+      let waited = spark_exec(ctx: ctx, host: host, argv: native_sleep_argv())
+      await_native_endpoint(ctx: ctx, host: host, remaining: remaining - 1)
+    }
+  }
+}
+
+// THE PROBE IS SHORT AND DISCRIMINATING, and it is bound to the alias the plan declared. A completion from
+// some other process on the same port cannot satisfy this transaction, so the served name is what the
+// assertion is about rather than the status code alone.
+fn semantic_probe_argv() -> List<String> {
+  ["sh", "-c", join([
+    "curl -s -m 180 http://127.0.0.1:", to_string(glm_native_serve_port), "/v1/chat/completions",
+    " -H 'Content-Type: application/json'",
+    " -d '{\"model\":\"", glm_native_served_model_alias as String,
+    "\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: ONLINE\"}],\"max_tokens\":24,\"temperature\":0}'",
+    " | head -c 400",
+  ], "")]
+}
+
+func run_semantic_probe(ctx: SparkRemoteExecutionContext, host: HostIdentity) -> NonEmptyStr?
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: semantic_probe_argv())
+  let body = remote_run_stdout(r: r)
+  if string_contains(s: body, pattern: glm_native_served_model_alias as String) && string_contains(s: body, pattern: "choices") {
+    Present { value: body as NonEmptyStr }
+  } else { none }
+}
+
+// ── THE ROLLBACK PATH, SHARED BY EVERY POST-STOP FAILURE ──────────────────────────────────────
+//
+// ONE PATH, SO NO FAILURE ARM CAN FORGET A STEP. Every post-stop failure cleans up the started ranks,
+// restarts the retained incumbent, observes its endpoint, and settles the claim as aborted -- in that order,
+// because cleaning up after restoring would leave four engines contending for memory on the same hosts.
+func roll_back(
+  ctx: SparkRemoteExecutionContext,
+  head: HostIdentity,
+  started: List<ArmNode>,
+  failure: NonEmptyStr,
+) -> NativeCutoverTerminal
+  uses net: Network
+{
+  let cleanup = rollback_started_ranks(ctx: ctx, started: started)
+  match restore_incumbent(ctx: ctx, host: head) {
+    IncumbentRestored { receipt: rec } => {
+      let settled = settle_claim(ctx: ctx, host: head, status: "aborted")
+      NativeFailedAndIncumbentRestored { failure: failure, cleanup: cleanup, incumbent: rec }
+    }
+    IncumbentRestorationFailed { cause: c, start_attempted: _ } => {
+      let settled = settle_claim(ctx: ctx, host: head, status: "aborted-incumbent-lost")
+      NativeFailedAndIncumbentLost { failure: failure, cleanup: cleanup, restoration_failure: c }
+    }
+  }
+}
+
+// ── THE TRANSACTION ───────────────────────────────────────────────────────────────────────────
+func perform_native_cutover(ctx: SparkRemoteExecutionContext, attempt: String) -> NativeCutoverTerminal
+  uses net: Network
+{
+  let plan = glm_native_tp4_launch_plan()
+  match plan {
+    ArmLaunchRefused { cause: c } => NativeCutoverWithheld { reasons: [c] }
+    ArmLaunchPlanned { lines: _, master: _ } =>
+      match plan_head(plan: plan) {
+        Absent => NativeCutoverWithheld { reasons: ["the plan names no head rank" as NonEmptyStr] }
+        Present { value: head } => {
+          let already = accept_deployment(inspection: inspect_native_deployment(
+            subject: "the native four-rank deployment" as NonEmptyStr,
+            plan: plan,
+            reading: observe_native_population(ctx: ctx, plan: plan),
+          ))
+          match already {
+            DeploymentAccepted { receipt: r } =>
+              NativeAlreadyConverged {
+                receipt: join(["four ranks already agree with the plan at ", r.image_digest as String], "") as NonEmptyStr,
+              }
+            DeploymentRejected { deviations: _ } => attempt_cutover(ctx: ctx, plan: plan, head: head.host, attempt: attempt)
+            DeploymentUnverified { unknowns: _ } => attempt_cutover(ctx: ctx, plan: plan, head: head.host, attempt: attempt)
+            DeploymentUnverifiable { cause: _ } => attempt_cutover(ctx: ctx, plan: plan, head: head.host, attempt: attempt)
+          }
+        }
+      }
+  }
+}
+
+func attempt_cutover(ctx: SparkRemoteExecutionContext, plan: ArmLaunchPlan, head: HostIdentity, attempt: String) -> NativeCutoverTerminal
+  uses net: Network
+{
+  let incumbent = observe_incumbent(ctx: ctx, host: head)
+  if !incumbent_is_retainable(o: incumbent) {
+    NativeCutoverWithheld {
+      reasons: ["the incumbent is not observed running and answering, so there is nothing this transaction could restore if the native arm fails" as NonEmptyStr],
+    }
+  } else {
+    if !win_claim(ctx: ctx, host: head, attempt: attempt) {
+      NativeCutoverWithheld { reasons: ["another attempt holds the durable cutover claim" as NonEmptyStr] }
+    } else {
+      match stop_incumbent_retaining_it(ctx: ctx, host: head, observed: incumbent) {
+        IncumbentStopFailed { cause: c } => {
+          let settled = settle_claim(ctx: ctx, host: head, status: "aborted-before-stop")
+          NativeCutoverWithheld { reasons: [c as NonEmptyStr] }
+        }
+        IncumbentStopped { container_id: _ } =>
+          match launch_native_population(ctx: ctx, plan: plan) {
+            LaunchPopulationHadNoPlan { cause: c } =>
+              roll_back(ctx: ctx, head: head, started: [], failure: c)
+            LaunchPopulationIncomplete { outcomes: os, started: st, first_failure_rank: fr } =>
+              roll_back(ctx: ctx, head: head, started: st, failure: join([
+                "rank ", to_string(fr), " did not start: ",
+                join(map(os, o => rank_outcome_text(o: o)), " | "),
+              ], "") as NonEmptyStr)
+            EveryRankStarted { outcomes: _, started: st } =>
+              if !await_native_endpoint(ctx: ctx, host: head, remaining: native_ready_poll_budget) {
+                roll_back(ctx: ctx, head: head, started: st, failure: "every rank started and the endpoint never answered within the readiness budget" as NonEmptyStr)
+              } else {
+                match accept_deployment(inspection: inspect_native_deployment(
+                  subject: "the native four-rank deployment" as NonEmptyStr,
+                  plan: plan,
+                  reading: observe_native_population(ctx: ctx, plan: plan),
+                )) {
+                  DeploymentRejected { deviations: _ } =>
+                    roll_back(ctx: ctx, head: head, started: st, failure: "the deployment readback DIVERGED from the plan" as NonEmptyStr)
+                  DeploymentUnverified { unknowns: _ } =>
+                    roll_back(ctx: ctx, head: head, started: st, failure: "the deployment readback could not establish every fact it must assert" as NonEmptyStr)
+                  DeploymentUnverifiable { cause: c } =>
+                    roll_back(ctx: ctx, head: head, started: st, failure: c)
+                  DeploymentAccepted { receipt: rec } =>
+                    match run_semantic_probe(ctx: ctx, host: head) {
+                      Absent =>
+                        roll_back(ctx: ctx, head: head, started: st, failure: "the endpoint answered and the semantic probe did not return a completion for the declared alias" as NonEmptyStr)
+                      Present { value: body } => {
+                        let settled = settle_claim(ctx: ctx, host: head, status: "completed")
+                        NativeServing {
+                          receipt: join([
+                            "four ranks agreed at ", rec.image_digest as String,
+                            " serving ", rec.model_path as String,
+                          ], "") as NonEmptyStr,
+                          probe: body,
+                        }
+                      }
+                    }
+                }
+              }
+          }
+      }
+    }
+  }
+}
+
+// ── THE OPERATOR-REACHABLE ROOT ───────────────────────────────────────────────────────────────
+func glm_native_tp4_cutover_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["native cutover: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: path } =>
+      match read_bootstrap_credential() {
+        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+        BootstrapCredentialReady { secret: administrator } =>
+          match fleet_ssh_attempt_identity(raw: native_attempt_raw) {
+            Absent => exit_failure(reason: "the attempt identity is not a safe path segment")
+            Present { value: attempt } => {
+              let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: join([
+                  "trust could not be established, so no leg ran: ",
+                  known_hosts_materialization_receipt(outcome: materialization),
+                ], ""))
+                Present { value: trust } =>
+                  match with_materialized_ssh_key_file(
+                    identity_file_name: "gunbc-glm-native-cutover-admin-password" as NonEmptyStr,
+                    secret_bytes: administrator as Secret,
+                    use: fn(file) {
+                      perform_native_cutover(
+                        ctx: SparkRemoteExecutionContext {
+                          trust: trust,
+                          reach_path: path,
+                          administrator: administrator as Secret,
+                          administrator_file: file,
+                        },
+                        attempt: native_attempt_raw,
+                      )
+                    },
+                  ) {
+                    MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                    MaterializedSshKeyFileBracketCompleted { value: terminal } =>
+                      if terminal_is_success(t: terminal) { ExitSuccess }
+                      else { exit_failure(reason: terminal_text(t: terminal)) }
+                  }
+              }
+            }
+          }
+      }
+  }
+}

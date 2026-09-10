@@ -12,6 +12,7 @@ import extdeps.zhipu.glm_5_3_flash {
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
+import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
@@ -411,9 +412,25 @@ fn glm_native_tp4_launch_render() -> String {
 // THIS DOES NOT MAKE THE EXECUTION A FOLD, and that remains the declared frontier: something still has to
 // carry these rows to four hosts and run them. What it removes is the narrower and more dangerous gap --
 // that the values being executed were a copy rather than the model's own output.
+// THE REACH ADDRESS IS DERIVED TOO, WHICH CLOSED THE LAST TRANSCRIPTION IN THIS PATH. A first version of
+// this table carried host, rail and argv, and an executor still needed to know HOW TO REACH each host --
+// which I supplied as a hand-written host-to-address file, reintroducing on a smaller scale exactly the
+// copy this table exists to remove. gunbc.fleet_intent_network already models those endpoints and offers
+// `host_lan_address`, so the map was never a fact anyone needed to hold.
+//
+// A HOST WITH NO MODELLED ENDPOINT RENDERS AS UNREACHABLE RATHER THAN AS BLANK, because a blank field in
+// a tab-separated row is the kind of absence a shell reads as an empty string and dispatches anyway.
+fn arm_dispatch_reach(host: HostIdentity) -> String {
+  match host_lan_address(host: host) {
+    Absent => "NO-MODELLED-ENDPOINT"
+    Present { value: a } => a as String
+  }
+}
+
 fn arm_dispatch_row(l: ArmNodeLaunch) -> String {
   join([
     l.node.host as String, "\t",
+    arm_dispatch_reach(host: l.node.host), "\t",
     render_ipv4_address(addr: l.node.rail) as String, "\t",
     join(l.argv, " "),
   ], "")

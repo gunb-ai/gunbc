@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Secret }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, byte_size_count, basis_point_count }
 import extdeps.vllm.engine_args {
-  VllmMemoryRequest, VllmPrefixCachingRequest, PrefixCachingOmitted,
+  VllmMemoryRequest, VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
   vllm_memory_request_argv, vllm_prefix_caching_argv,
 }
 import extdeps.vllm.runtime_defaults {
@@ -419,6 +419,24 @@ fn glm_canary_candidate(arm: GlmCanaryArm) -> DeploymentCandidate {
 // carries no --distributed-executor-backend, so it takes the single-node default rather than the Ray
 // backend the four-rank pair route requires. Recording Ray here would describe a cluster this arm
 // does not form.
+// THE PARAMETER IS THE REQUEST AND NOT THE RESOLUTION, WHICH IS WHY AN OMITTED FLAG IS FALSE HERE.
+// `enable_prefix_caching` in gunbc.spark.serving_deployment_selection is a Bool describing what the launch
+// PASSES, and this arm passes nothing -- its request is PrefixCachingOmitted. The engine then resolves
+// prefix caching to ENABLED for this model, which is a different fact recorded where the runtime is; reading
+// that resolution back into this field would make the parameter claim the launch requested something it did
+// not.
+//
+// A BOOL CANNOT SAY "OMITTED", and that limitation is real rather than hidden here: the two request states
+// that render no flag and render `--enable-prefix-caching false` both arrive as false. The distinction lives
+// in VllmPrefixCachingRequest, which the arm carries; this projection is lossy on purpose because the
+// parameter set it feeds is about identity, and two launches that both omit the flag are the same launch.
+fn glm_canary_prefix_caching_requested(r: VllmPrefixCachingRequest) -> Bool {
+  match r {
+    PrefixCachingOmitted => false
+    PrefixCachingExplicit { enabled: e } => e
+  }
+}
+
 fn glm_canary_parameters(arm: GlmCanaryArm) -> ServingDecisionParameters? {
   match serving_runtime_row(r: arm.runtime) {
     Absent => none
@@ -430,6 +448,7 @@ fn glm_canary_parameters(arm: GlmCanaryArm) -> ServingDecisionParameters? {
       executor: ExecutorMpProfile,
       kv_layout: KvFp8Layout,
       speculative: glm_canary_speculative_policy(p: arm.speculation),
+      enable_prefix_caching: glm_canary_prefix_caching_requested(r: arm.prefix_caching_request),
       runtime: runtime_revision(
         image: rrow.image_reference,
         vllm_revision: (defaults_source_revision(r: rrow.claimed_defaults_revision)).full_revision),

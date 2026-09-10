@@ -1,0 +1,178 @@
+module gunbc.spark.native_rank_observer
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, SparkRemoteRun, RemoteRan, RemoteUnreachable,
+  spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
+  glm_native_container_name, fabric_rail_interface_name,
+}
+import gunbc.spark.glm_canary_converge { go_template_action }
+import gunbc.spark.native_deployment_readback {
+  RankObservation, rank_observation,
+  NativeDeploymentObserved, DeploymentRanksRead, DeploymentNothingRunning,
+}
+
+// ── THE READBACK'S INPUT IS NOW PRODUCED, NOT SUPPLIED ─────────────────────────────────────────
+//
+// gunbc.spark.native_deployment_readback assesses a NativeDeploymentObserved against the plan, and until
+// now that value arrived as a function argument -- which means any caller could describe a deployment that
+// agreed with the plan and the assessor would accept it. An assessment over a caller-authored observation
+// certifies the caller, not the world. This module is the producer that closes that gap: it reads the four
+// ranks off the hosts and hands the assessor something no caller wrote.
+//
+// EACH FACT IS READ SEPARATELY AND THE READS ARE INDEPENDENT OF THE LAUNCH. The container id, the image
+// digest, the ordered argv and the interface NCCL selected are four different questions to the docker
+// daemon and the engine's own log, not four fields of one summary -- and none of them is inferred from the
+// argv this repository sent, because a check that reads back what it just wrote agrees with itself.
+
+// A ONE-FIELD FORMAT PER READ, so a value containing a space cannot be mistaken for a field boundary. The
+// argv is read as a JSON array and decoded rather than split on whitespace, because a launch line contains
+// members with spaces and splitting them is how argument boundaries were lost once already.
+fn rank_container_id_argv() -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: ".Id"), glm_native_container_name as String]
+}
+
+fn rank_image_digest_argv() -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: ".Config.Image"), glm_native_container_name as String]
+}
+
+fn rank_argv_json_argv() -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: "json .Args"), glm_native_container_name as String]
+}
+
+fn rank_running_argv() -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: ".State.Running"), glm_native_container_name as String]
+}
+
+// THE INTERFACE IS READ FROM THE ENGINE'S OWN LOG, WHICH IS THE ONLY PLACE IT IS A MEASUREMENT. The launch
+// requested an interface through NCCL_SOCKET_IFNAME; NCCL prints the interface it actually bound. Reading
+// the request back would make the check agree with itself, so this greps the log and an absent line stays
+// absent -- unread, which the assessor treats as indeterminate rather than as agreement.
+fn rank_nccl_interface_argv() -> List<String> {
+  ["sh", "-c", join([
+    "docker logs ", glm_native_container_name as String,
+    " 2>&1 | grep -oE 'NET/Socket : Using \\[[0-9]+\\][a-zA-Z0-9]+' | head -1 | grep -oE '[a-zA-Z0-9]+$'",
+  ], "")]
+}
+
+fn rank_model_path_argv() -> List<String> {
+  ["sh", "-c", join([
+    "docker inspect -f '", go_template_action(body: "json .Args"), "' ", glm_native_container_name as String,
+    " | tr ',' '\\n' | grep -oE '/weights/[^\"]*|/model' | head -1",
+  ], "")]
+}
+
+type RankObservationAttempt
+  = RankObserved { observation: RankObservation }
+  | RankNotRunning { node: ArmNode, detail: NonEmptyStr }
+  | RankReadRefused { node: ArmNode, cause: NonEmptyStr }
+
+fn optional_nonempty(raw: String) -> NonEmptyStr? {
+  if raw == "" { none } else { Present { value: raw as NonEmptyStr } }
+}
+
+// THE ARGV JSON IS DECODED INTO WORDS. The engine's Args is a JSON array of strings; the decode keeps
+// member boundaries that a whitespace split would destroy, which matters because the ordered comparison
+// downstream is exact and a lost boundary would read as a divergence at the wrong position.
+// DELETING A CHARACTER IS SPLIT-THEN-REJOIN, because std carries no replace and minting one here would be
+// a fresh authority for a string operation that belongs beside the others.
+fn delete_all(s: String, ch: String) -> String {
+  join(split(s: s, delimiter: ch), "")
+}
+
+fn decode_json_string_array(raw: String) -> List<String> {
+  filter(
+    map(split(s: delete_all(s: delete_all(s: raw, ch: "["), ch: "]"), delimiter: "\",\""),
+        w => delete_all(s: w, ch: "\"")),
+    w => w != "")
+}
+
+func observe_native_rank(ctx: SparkRemoteExecutionContext, expected: ArmNodeLaunch) -> RankObservationAttempt
+  uses net: Network
+{
+  let running = spark_exec(ctx: ctx, host: expected.node.host, argv: rank_running_argv())
+  if !remote_run_succeeded(r: running) {
+    RankNotRunning {
+      node: expected.node,
+      detail: join(["no native container on this rank: ", remote_run_text(r: running)], "") as NonEmptyStr,
+    }
+  } else {
+    if remote_run_stdout(r: running) != "true" {
+      RankNotRunning {
+        node: expected.node,
+        detail: join(["the native container exists and is not running: state=", remote_run_stdout(r: running)], "") as NonEmptyStr,
+      }
+    } else {
+      let digest = spark_exec(ctx: ctx, host: expected.node.host, argv: rank_image_digest_argv())
+      let argvjson = spark_exec(ctx: ctx, host: expected.node.host, argv: rank_argv_json_argv())
+      let modelpath = spark_exec(ctx: ctx, host: expected.node.host, argv: rank_model_path_argv())
+      let iface = spark_exec(ctx: ctx, host: expected.node.host, argv: rank_nccl_interface_argv())
+      match optional_nonempty(raw: remote_run_stdout(r: digest)) {
+        Absent => RankReadRefused { node: expected.node, cause: "the running container reported no image reference" as NonEmptyStr }
+        Present { value: d } =>
+          match optional_nonempty(raw: remote_run_stdout(r: modelpath)) {
+            Absent => RankReadRefused { node: expected.node, cause: "the running argv names no model path" as NonEmptyStr }
+            Present { value: mp } => RankObserved {
+              observation: rank_observation(
+                host: expected.node.host,
+                node_rank: expected.node.node_rank,
+                image_digest: d,
+                model_path: mp,
+                argv: decode_json_string_array(raw: remote_run_stdout(r: argvjson)),
+                selected_fabric_interface: optional_nonempty(raw: remote_run_stdout(r: iface)),
+              ),
+            }
+          }
+      }
+    }
+  }
+}
+
+type RankObservationFold sole_constructor {
+  observations: List<RankObservation>
+  absent: List<NonEmptyStr>
+}
+
+// A RANK THAT COULD NOT BE READ IS NOT DROPPED FROM THE POPULATION. If it were, a deployment missing one
+// rank would present as a smaller-but-consistent group, and the assessor -- which compares the observed
+// population against the PLAN -- would report a missing rank rather than an unread one. Both are red, and
+// they are different reds: one says the world is wrong, the other says the reader failed.
+func observe_native_population(ctx: SparkRemoteExecutionContext, plan: ArmLaunchPlan) -> NativeDeploymentObserved
+  uses net: Network
+{
+  match plan {
+    ArmLaunchRefused { cause: _ } => DeploymentNothingRunning { detail: "no plan, so nothing was read" as NonEmptyStr }
+    ArmLaunchPlanned { lines: ls, master: _ } => {
+      let folded = fold(ls, init: RankObservationFold { observations: [], absent: [] }, f: (acc, l) =>
+        match observe_native_rank(ctx: ctx, expected: l) {
+          RankObserved { observation: o } => RankObservationFold {
+            observations: concat(acc.observations, [o]),
+            absent: acc.absent,
+          }
+          RankNotRunning { node: n, detail: d } => RankObservationFold {
+            observations: acc.observations,
+            absent: concat(acc.absent, [d]),
+          }
+          RankReadRefused { node: n, cause: c } => RankObservationFold {
+            observations: acc.observations,
+            absent: concat(acc.absent, [c]),
+          }
+        })
+      match folded.observations.first() {
+        Absent => DeploymentNothingRunning {
+          detail: join(["no rank could be read: ", join(map(folded.absent, a => a as String), "; ")], "") as NonEmptyStr,
+        }
+        Present { value: _ } => DeploymentRanksRead {
+          ranks: folded.observations,
+          endpoint_alias: none,
+        }
+      }
+    }
+  }
+}

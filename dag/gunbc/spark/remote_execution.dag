@@ -1,0 +1,107 @@
+module gunbc.spark.remote_execution
+
+import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
+import std.nat { Nat }
+import std.algebra { trim }
+import product.placement_supply { HostIdentity }
+import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
+import extdeps.exec.command { shell_quote }
+import std.resources { Network }
+import gunbc.fleet_known_hosts_anchor {
+  FleetOpenSshTrustPolicy, SshTarget, portable_remote_words, shape_fleet_ssh_password_exec_trusting,
+}
+import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
+
+// ── ONE REMOTE PERFORMER, HOST-PARAMETERISED ───────────────────────────────────────────────────
+//
+// THE HOST IS AN ARGUMENT AND NOT A FIELD OF THE CONTEXT, WHICH IS THE WHOLE REASON THIS EXISTS.
+// gunbc.spark.model_snapshot_materialize carries the same transport inside a context that FIXES one host,
+// which is right for acquiring one snapshot onto one machine and wrong for any fold over a rank
+// population: a four-rank launch would need four contexts differing in one field, and the caller would be
+// the thing deciding which host each command reached. Here the credential, trust authority and reach path
+// are the context -- they are properties of the SESSION -- and the host is a property of the CALL.
+//
+// AND THE ENDPOINT IS DERIVED FROM THE HOST, which removes the last hand-held value from the actuation
+// path. An earlier executor carried a host-to-management-address text file beside the plan;
+// gunbc.spark.fabric_reach already resolves a HostIdentity to an endpoint through the modelled roster, so
+// that file was never a fact anyone needed to keep.
+type SparkRemoteExecutionContext {
+  trust: FleetOpenSshTrustPolicy
+  reach_path: SparkReachPath
+  administrator: Secret
+  administrator_file: NonEmptyStr
+}
+
+// THE HOST IS CARRIED IN BOTH ARMS, INCLUDING THE FAILURE. A fold over four ranks that received a bare
+// "unreachable" would have to remember which call produced it, and the remembering is exactly what goes
+// wrong when the fold is later reordered or made concurrent.
+type SparkRemoteRun
+  = RemoteRan { host: HostIdentity, exit_code: Int, stdout: String, stderr: String }
+  | RemoteUnreachable { host: HostIdentity, cause: String }
+
+fn remote_run_succeeded(r: SparkRemoteRun) -> Bool {
+  match r {
+    RemoteRan { host: _, exit_code: c, stdout: _, stderr: _ } => c == 0
+    RemoteUnreachable { host: _, cause: _ } => false
+  }
+}
+
+fn remote_run_text(r: SparkRemoteRun) -> String {
+  match r {
+    RemoteRan { host: h, exit_code: c, stdout: o, stderr: e } =>
+      join([h as String, " exited ", to_string(c), if c == 0 { "" } else { join([": ", e], "") }, if c == 0 { join([": ", o], "") } else { "" }], "")
+    RemoteUnreachable { host: h, cause: cz } => join([h as String, " unreachable: ", cz], "")
+  }
+}
+
+fn remote_run_stdout(r: SparkRemoteRun) -> String {
+  match r {
+    RemoteRan { host: _, exit_code: _, stdout: o, stderr: _ } => o
+    RemoteUnreachable { host: _, cause: _ } => ""
+  }
+}
+
+// ── THE ARGV SURVIVES THE WIRE AS ARGV ─────────────────────────────────────────────────────────
+//
+// ONE MEMBER CONTAINING A SPACE MUST NOT BECOME TWO WORDS ON THE FAR SIDE, and an execution has already
+// proved that it does when the list is flattened with a bare join. Every member is quoted, so the shell on
+// the target reconstructs the boundaries the model declared.
+fn shell_command_line(argv: List<String>) -> String {
+  join(map(argv, w => shell_quote(arg: w)), " ")
+}
+
+// EVERY LEG IS PRIVILEGED BECAUSE THE DAEMON IT REACHES IS: docker's socket is root-owned on these hosts,
+// and an unprivileged run answers `permission denied while trying to connect to the docker API`. The
+// privilege uses the shape the fleet already uses -- `sudo -S` with the credential on stdin ahead of the
+// command -- rather than a second mechanism. `sudo -n` is wrong here: it needs passwordless sudo, which
+// this fleet does not grant.
+func spark_exec(ctx: SparkRemoteExecutionContext, host: HostIdentity, argv: List<String>) -> SparkRemoteRun
+  uses net: Network
+{
+  match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
+    Absent => RemoteUnreachable { host: host, cause: "the remote invocation is not expressible as portable remote words" }
+    Present { value: words } =>
+      match spark_reach_endpoint(host: host, path: ctx.reach_path) {
+        Absent => RemoteUnreachable {
+          host: host,
+          cause: join(["no ", spark_reach_path_wire(p: ctx.reach_path), " endpoint for ", host as String], ""),
+        }
+        Present { value: endpoint } => {
+          let r = password_file_ssh_exec_portable_words_with_stdin(
+            password_file: ctx.administrator_file,
+            client_args: shape_fleet_ssh_password_exec_trusting(
+              trust: ctx.trust,
+              target: SshTarget {
+                endpoint: endpoint as NonEmptyStr,
+                principal: spark_operator_bootstrap_login as NonEmptyStr,
+              },
+              words: words,
+            ),
+            stdin_payload: join([ctx.administrator as String, "\n", shell_command_line(argv: argv), "\n"], ""),
+          )
+          RemoteRan { host: host, exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
+        }
+      }
+  }
+}

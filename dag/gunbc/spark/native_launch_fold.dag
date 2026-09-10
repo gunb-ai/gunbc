@@ -1,0 +1,215 @@
+module gunbc.spark.native_launch_fold
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.resources { Network }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, SparkRemoteRun, RemoteRan, RemoteUnreachable,
+  spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
+  glm_native_container_name,
+}
+
+// ── LAUNCHING A RANK POPULATION IS A FOLD THAT REMEMBERS WHAT IT STARTED ───────────────────────
+//
+// THE OBVIOUS SHAPE IS WRONG AND ITS WRONGNESS IS EXPENSIVE. A loop that returns on the first failure
+// forgets which ranks already started, and those are precisely the containers a rollback must remove --
+// so the failure path would either leave them running or guess. On 2026-09-10 two ranks were left running
+// after a failed launch and the cleanup was performed by a person reading a terminal.
+//
+// SO EVERY PLANNED RANK RECEIVES EXACTLY ONE TERMINAL RESULT, INCLUDING THE ONES NEVER ATTEMPTED. A rank
+// after the first failure is not "unknown" and not "failed": it was DELIBERATELY SKIPPED, and saying so
+// distinguishes a group that could not form from a group nobody finished starting. The accumulator keeps
+// the started population because that is the rollback's input, not a summary of it.
+type RankLaunchOutcome
+  = RankStarted { node: ArmNode, container_id: NonEmptyStr, execution: SparkRemoteRun }
+  | RankLaunchFailed { node: ArmNode, execution: SparkRemoteRun }
+  | RankUnreachable { node: ArmNode, cause: String }
+  | RankSkippedAfterPriorFailure { node: ArmNode, prior_failure_rank: Nat }
+
+fn rank_outcome_node(o: RankLaunchOutcome) -> ArmNode {
+  match o {
+    RankStarted { node: n, container_id: _, execution: _ } => n
+    RankLaunchFailed { node: n, execution: _ } => n
+    RankUnreachable { node: n, cause: _ } => n
+    RankSkippedAfterPriorFailure { node: n, prior_failure_rank: _ } => n
+  }
+}
+
+fn rank_outcome_started(o: RankLaunchOutcome) -> Bool {
+  match o {
+    RankStarted { node: _, container_id: _, execution: _ } => true
+    RankLaunchFailed { node: _, execution: _ } => false
+    RankUnreachable { node: _, cause: _ } => false
+    RankSkippedAfterPriorFailure { node: _, prior_failure_rank: _ } => false
+  }
+}
+
+fn rank_outcome_text(o: RankLaunchOutcome) -> String {
+  match o {
+    RankStarted { node: n, container_id: c, execution: _ } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " started ", c as String], "")
+    RankLaunchFailed { node: n, execution: e } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " FAILED: ", remote_run_text(r: e)], "")
+    RankUnreachable { node: n, cause: cz } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " UNREACHABLE: ", cz], "")
+    RankSkippedAfterPriorFailure { node: n, prior_failure_rank: p } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " SKIPPED after rank ", to_string(p), " failed"], "")
+  }
+}
+
+type LaunchFoldState sole_constructor {
+  outcomes: List<RankLaunchOutcome>
+  started: List<ArmNode>
+  first_failure_rank: Nat?
+}
+
+fn launch_fold_initial() -> LaunchFoldState {
+  LaunchFoldState { outcomes: [], started: [], first_failure_rank: none }
+}
+
+// A CONTAINER ID IS THE RECEIPT THAT A START HAPPENED, and an empty one is not a start. `docker run -d`
+// prints the id on success; a run that exited zero with nothing on stdout has not given us the handle a
+// rollback needs, so it is a failure rather than a start with an unknown handle.
+fn classify_launch(node: ArmNode, execution: SparkRemoteRun) -> RankLaunchOutcome {
+  match execution {
+    RemoteUnreachable { host: _, cause: cz } => RankUnreachable { node: node, cause: cz }
+    RemoteRan { host: _, exit_code: _, stdout: _, stderr: _ } =>
+      if !remote_run_succeeded(r: execution) { RankLaunchFailed { node: node, execution: execution } }
+      else {
+        match nonempty_container_id(raw: remote_run_stdout(r: execution)) {
+          Absent => RankLaunchFailed { node: node, execution: execution }
+          Present { value: id } => RankStarted { node: node, container_id: id, execution: execution }
+        }
+      }
+  }
+}
+
+fn nonempty_container_id(raw: String) -> NonEmptyStr? {
+  if raw == "" { none } else { Present { value: raw as NonEmptyStr } }
+}
+
+func launch_one_rank(ctx: SparkRemoteExecutionContext, l: ArmNodeLaunch) -> RankLaunchOutcome
+  uses net: Network
+{
+  classify_launch(node: l.node, execution: spark_exec(ctx: ctx, host: l.node.host, argv: l.argv))
+}
+
+// THE FOLD STOPS ATTEMPTING AFTER THE FIRST FAILURE AND KEEPS RECORDING. Continuing to launch into a group
+// whose rendezvous can no longer form would start containers only to remove them, and the ranks that were
+// never tried still need a terminal result -- otherwise the outcome list is shorter than the plan and
+// nothing can tell whether a rank was skipped or forgotten.
+func launch_step(ctx: SparkRemoteExecutionContext, acc: LaunchFoldState, l: ArmNodeLaunch) -> LaunchFoldState
+  uses net: Network
+{
+  match acc.first_failure_rank {
+    Present { value: p } => LaunchFoldState {
+      outcomes: concat(acc.outcomes, [RankSkippedAfterPriorFailure { node: l.node, prior_failure_rank: p }]),
+      started: acc.started,
+      first_failure_rank: Present { value: p },
+    }
+    Absent => {
+      let o = launch_one_rank(ctx: ctx, l: l)
+      if rank_outcome_started(o: o) {
+        LaunchFoldState {
+          outcomes: concat(acc.outcomes, [o]),
+          started: concat(acc.started, [l.node]),
+          first_failure_rank: none,
+        }
+      } else {
+        LaunchFoldState {
+          outcomes: concat(acc.outcomes, [o]),
+          started: acc.started,
+          first_failure_rank: Present { value: l.node.node_rank },
+        }
+      }
+    }
+  }
+}
+
+type LaunchPopulationOutcome
+  = EveryRankStarted { outcomes: List<RankLaunchOutcome>, started: List<ArmNode> }
+  | LaunchPopulationIncomplete { outcomes: List<RankLaunchOutcome>, started: List<ArmNode>, first_failure_rank: Nat }
+  | LaunchPopulationHadNoPlan { cause: NonEmptyStr }
+
+// THE PLAN'S OWN LINES ARE THE INPUT, NOT A RENDERING OF THEM. An earlier actuation read a tab-separated
+// projection of this plan, which put a serialisation boundary between the values that decide the launch and
+// the values executed -- a snapshot that goes stale the moment the model changes. ArmNodeLaunch already
+// carries the host, the rail address, the rank and the argv as typed fields; there is nothing to recover by
+// parsing text.
+func launch_native_population(ctx: SparkRemoteExecutionContext, plan: ArmLaunchPlan) -> LaunchPopulationOutcome
+  uses net: Network
+{
+  match plan {
+    ArmLaunchRefused { cause: c } => LaunchPopulationHadNoPlan { cause: c }
+    ArmLaunchPlanned { lines: ls, master: _ } => {
+      let final = fold(ls, init: launch_fold_initial(), f: (acc, l) => launch_step(ctx: ctx, acc: acc, l: l))
+      match final.first_failure_rank {
+        Absent => EveryRankStarted { outcomes: final.outcomes, started: final.started }
+        Present { value: p } => LaunchPopulationIncomplete {
+          outcomes: final.outcomes,
+          started: final.started,
+          first_failure_rank: p,
+        }
+      }
+    }
+  }
+}
+
+// ── CLEANUP IS A FOLD OVER WHAT ACTUALLY STARTED ──────────────────────────────────────────────
+//
+// AND OVER NOTHING ELSE. Removing a container on a rank that never started would be an effect performed on
+// the strength of a guess, and on a host that may be serving something a person put there. The started
+// population is exactly the set the launch fold retained for this.
+//
+// THE LOG IS COLLECTED BEFORE THE CONTAINER IS REMOVED, because a failed rank whose logs were destroyed
+// teaches nothing about why it failed -- and the next attempt then repeats the failure blind.
+type RankRollbackOutcome
+  = RankCleanedUp { node: ArmNode, log_captured: Bool }
+  | RankCleanupFailed { node: ArmNode, cause: String }
+
+fn rank_rollback_text(o: RankRollbackOutcome) -> String {
+  match o {
+    RankCleanedUp { node: n, log_captured: c } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " removed", if c { " (log captured)" } else { " (LOG NOT CAPTURED)" }], "")
+    RankCleanupFailed { node: n, cause: cz } =>
+      join(["rank ", to_string(n.node_rank), " on ", n.host as String, " CLEANUP FAILED: ", cz], "")
+  }
+}
+
+fn rank_log_argv(node: ArmNode) -> List<String> {
+  ["docker", "logs", "--tail", "200", glm_native_container_name as String]
+}
+
+fn rank_remove_argv(node: ArmNode) -> List<String> {
+  ["docker", "rm", "-f", glm_native_container_name as String]
+}
+
+func rollback_one_rank(ctx: SparkRemoteExecutionContext, node: ArmNode) -> RankRollbackOutcome
+  uses net: Network
+{
+  let log = spark_exec(ctx: ctx, host: node.host, argv: rank_log_argv(node: node))
+  let removed = spark_exec(ctx: ctx, host: node.host, argv: rank_remove_argv(node: node))
+  if remote_run_succeeded(r: removed) {
+    RankCleanedUp { node: node, log_captured: remote_run_succeeded(r: log) }
+  } else {
+    RankCleanupFailed { node: node, cause: remote_run_text(r: removed) }
+  }
+}
+
+func rollback_started_ranks(ctx: SparkRemoteExecutionContext, started: List<ArmNode>) -> List<RankRollbackOutcome>
+  uses net: Network
+{
+  map(started, n => rollback_one_rank(ctx: ctx, node: n))
+}
+
+fn every_rank_cleaned(outcomes: List<RankRollbackOutcome>) -> Bool {
+  count(filter(outcomes, o => match o {
+    RankCleanedUp { node: _, log_captured: _ } => false
+    RankCleanupFailed { node: _, cause: _ } => true
+  })) == 0
+}

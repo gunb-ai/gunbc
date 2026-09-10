@@ -1,0 +1,197 @@
+module gunbc.spark.native_incumbent
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.glm_canary_converge { go_template_action }
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, SparkRemoteRun, RemoteRan, RemoteUnreachable,
+  spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
+}
+
+// ── THE INCUMBENT IS OBSERVED BEFORE IT IS TOUCHED, AND RESTORED WITH A RECEIPT ────────────────
+//
+// A BOOLEAN CANNOT CARRY A RESTORATION. An earlier outcome type said `incumbent_restored: Bool` beside a
+// separate lost-incumbent arm, which is two spellings of one negative state and a claim of success with
+// nothing behind it -- `true` was whatever the code that set it believed. A restoration is only real if
+// something OBSERVED the endpoint answering afterwards, so the successful arm carries that observation and
+// the unsuccessful one cannot be constructed by optimism.
+//
+// AND THE INCUMBENT IS RETAINED RATHER THAN REBUILT. `docker stop` leaves the container and its exact
+// configuration on the host; `docker rm -f` would make the rollback a reconstruction from a model that has
+// just been shown wrong about this fleet. The container name and port are the canary's own, distinct from
+// the native arm's, which is what makes stop-without-delete sufficient.
+data incumbent_container_name: NonEmptyStr = "glm-canary" as NonEmptyStr
+data incumbent_serving_port: Nat = 30001
+data incumbent_host_probe_path: NonEmptyStr = "/v1/models" as NonEmptyStr
+
+type IncumbentObservation
+  = IncumbentRunning { container_id: NonEmptyStr, image: NonEmptyStr, argv_json: String, endpoint_answers: Bool }
+  | IncumbentStoppedPresent { container_id: NonEmptyStr, image: NonEmptyStr }
+  | IncumbentAbsent { detail: NonEmptyStr }
+  | IncumbentUnreadable { cause: NonEmptyStr }
+
+fn incumbent_id_argv() -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: ".Id"), incumbent_container_name as String]
+}
+
+fn incumbent_image_argv() -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: ".Config.Image"), incumbent_container_name as String]
+}
+
+fn incumbent_args_argv() -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: "json .Args"), incumbent_container_name as String]
+}
+
+fn incumbent_running_argv() -> List<String> {
+  ["docker", "inspect", "-f", go_template_action(body: ".State.Running"), incumbent_container_name as String]
+}
+
+// THE ENDPOINT PROBE IS A SEPARATE QUESTION FROM THE CONTAINER STATE, because a container can be Up while
+// nothing answers -- which this fleet has already demonstrated with five `sleep infinity` shells that a
+// container census reported as running.
+// THE PROBE USES CURL'S EXIT CODE RATHER THAN ITS WRITE-OUT FORMAT, because `%{http_code}` cannot be
+// written in a .dag string at all: single braces are interpolation syntax here, so the format specifier is
+// read as a variable reference and the compiler refuses with `undefined variable http_code`. `-f` makes curl
+// fail on a non-2xx status, which asks the same question without a brace.
+fn incumbent_probe_argv() -> List<String> {
+  ["sh", "-c", join([
+    "curl -sf -o /dev/null -m 8 http://127.0.0.1:",
+    to_string(incumbent_serving_port), incumbent_host_probe_path as String,
+    " && echo SERVING || echo DOWN",
+  ], "")]
+}
+
+fn incumbent_stop_argv() -> List<String> {
+  ["docker", "stop", incumbent_container_name as String]
+}
+
+fn incumbent_start_argv() -> List<String> {
+  ["docker", "start", incumbent_container_name as String]
+}
+
+func observe_incumbent(ctx: SparkRemoteExecutionContext, host: HostIdentity) -> IncumbentObservation
+  uses net: Network
+{
+  let id = spark_exec(ctx: ctx, host: host, argv: incumbent_id_argv())
+  if !remote_run_succeeded(r: id) {
+    IncumbentAbsent { detail: join(["no incumbent container on ", host as String, ": ", remote_run_text(r: id)], "") as NonEmptyStr }
+  } else {
+    let running = spark_exec(ctx: ctx, host: host, argv: incumbent_running_argv())
+    let image = spark_exec(ctx: ctx, host: host, argv: incumbent_image_argv())
+    let args = spark_exec(ctx: ctx, host: host, argv: incumbent_args_argv())
+    if remote_run_stdout(r: id) == "" {
+      IncumbentUnreadable { cause: "the incumbent container reported no id" as NonEmptyStr }
+    } else {
+      if remote_run_stdout(r: running) == "true" {
+        let probe = spark_exec(ctx: ctx, host: host, argv: incumbent_probe_argv())
+        IncumbentRunning {
+          container_id: remote_run_stdout(r: id) as NonEmptyStr,
+          image: remote_run_stdout(r: image) as NonEmptyStr,
+          argv_json: remote_run_stdout(r: args),
+          endpoint_answers: remote_run_stdout(r: probe) == "SERVING",
+        }
+      } else {
+        IncumbentStoppedPresent {
+          container_id: remote_run_stdout(r: id) as NonEmptyStr,
+          image: remote_run_stdout(r: image) as NonEmptyStr,
+        }
+      }
+    }
+  }
+}
+
+fn incumbent_is_retainable(o: IncumbentObservation) -> Bool {
+  match o {
+    IncumbentRunning { container_id: _, image: _, argv_json: _, endpoint_answers: a } => a
+    IncumbentStoppedPresent { container_id: _, image: _ } => false
+    IncumbentAbsent { detail: _ } => false
+    IncumbentUnreadable { cause: _ } => false
+  }
+}
+
+type IncumbentStopOutcome
+  = IncumbentStopped { container_id: NonEmptyStr }
+  | IncumbentStopFailed { cause: String }
+
+func stop_incumbent_retaining_it(ctx: SparkRemoteExecutionContext, host: HostIdentity, observed: IncumbentObservation) -> IncumbentStopOutcome
+  uses net: Network
+{
+  match observed {
+    IncumbentRunning { container_id: cid, image: _, argv_json: _, endpoint_answers: _ } => {
+      let stopped = spark_exec(ctx: ctx, host: host, argv: incumbent_stop_argv())
+      if remote_run_succeeded(r: stopped) { IncumbentStopped { container_id: cid } }
+      else { IncumbentStopFailed { cause: remote_run_text(r: stopped) } }
+    }
+    IncumbentStoppedPresent { container_id: _, image: _ } => IncumbentStopFailed { cause: "the incumbent was already stopped, so this transaction did not stop it and must not claim to have" }
+    IncumbentAbsent { detail: d } => IncumbentStopFailed { cause: d as String }
+    IncumbentUnreadable { cause: c } => IncumbentStopFailed { cause: c as String }
+  }
+}
+
+// ── RESTORATION CARRIES ITS OWN OBSERVATION ───────────────────────────────────────────────────
+//
+// THE RECEIPT REQUIRES THE ENDPOINT TO HAVE ANSWERED, not the start command to have exited zero. `docker
+// start` returning success means the container was started, which is a different fact from the engine
+// serving -- and on this arm the engine takes minutes to answer, so a rollback that reported success on the
+// exit code would routinely be wrong at the moment it was written.
+type IncumbentRestoredReceipt sole_constructor {
+  container_id: NonEmptyStr
+  endpoint_status: NonEmptyStr
+}
+
+type IncumbentRestoration
+  = IncumbentRestored { receipt: IncumbentRestoredReceipt }
+  | IncumbentRestorationFailed { cause: NonEmptyStr, start_attempted: Bool }
+
+func restore_incumbent(ctx: SparkRemoteExecutionContext, host: HostIdentity) -> IncumbentRestoration
+  uses net: Network
+{
+  let started = spark_exec(ctx: ctx, host: host, argv: incumbent_start_argv())
+  if !remote_run_succeeded(r: started) {
+    IncumbentRestorationFailed {
+      cause: join(["the incumbent could not be started: ", remote_run_text(r: started)], "") as NonEmptyStr,
+      start_attempted: true,
+    }
+  } else {
+    match await_incumbent_endpoint(ctx: ctx, host: host, remaining: incumbent_restore_poll_budget) {
+      Absent => IncumbentRestorationFailed {
+        cause: "the incumbent was started and its endpoint never answered within the restore budget" as NonEmptyStr,
+        start_attempted: true,
+      }
+      Present { value: status } => {
+        let id = spark_exec(ctx: ctx, host: host, argv: incumbent_id_argv())
+        IncumbentRestored {
+          receipt: IncumbentRestoredReceipt {
+            container_id: remote_run_stdout(r: id) as NonEmptyStr,
+            endpoint_status: status,
+          },
+        }
+      }
+    }
+  }
+}
+
+// THE RESTORE BUDGET IS ITS OWN VALUE AND SHORTER THAN THE NATIVE ARM'S. The incumbent has already loaded
+// its weights once and its container is being restarted rather than created, so a budget sized for a cold
+// four-rank start would hide a restoration that is simply not happening.
+data incumbent_restore_poll_budget: Nat = 40
+data incumbent_restore_poll_interval_seconds: Nat = 15
+
+fn incumbent_sleep_argv() -> List<String> {
+  ["sleep", to_string(incumbent_restore_poll_interval_seconds)]
+}
+
+func await_incumbent_endpoint(ctx: SparkRemoteExecutionContext, host: HostIdentity, remaining: Nat) -> NonEmptyStr?
+  uses net: Network
+{
+  if remaining == 0 { none } else {
+    let probe = spark_exec(ctx: ctx, host: host, argv: incumbent_probe_argv())
+    if remote_run_stdout(r: probe) == "SERVING" { Present { value: "SERVING" as NonEmptyStr } }
+    else {
+      let waited = spark_exec(ctx: ctx, host: host, argv: incumbent_sleep_argv())
+      await_incumbent_endpoint(ctx: ctx, host: host, remaining: remaining - 1)
+    }
+  }
+}
