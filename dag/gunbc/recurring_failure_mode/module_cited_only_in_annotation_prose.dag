@@ -1,7 +1,6 @@
 module gunbc.recurring_failure_mode.module_cited_only_in_annotation_prose
 
 import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data module_cited_only_in_annotation_prose: RecurringFailureMode = RecurringFailureMode {
@@ -21,12 +20,5 @@ data module_cited_only_in_annotation_prose: RecurringFailureMode = RecurringFail
     "RECOGNITION RULE: when a review or a PR body says a module is cited, ask whether any import or `DeclarationRef` names it. If the only hits are inside `//`, it is not cited.)",
   ],
 
-  evidence: [
-    DeclarationRef { module_path: "gunbc.runner.runner_host_filtered_egress", decl_name: "bridged_topology_rejected_because_it_failed", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.runner.runner_host_filtered_egress", decl_name: "kernel_rebuild_owes_cfs_bandwidth", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.runner.runner_host_filtered_egress", decl_name: "routed_attachment_already_carries_the_guest", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.runner.runner_cpu_bandwidth_receipt", decl_name: "placement_established_from_both_ends", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.runner.runner_cpu_bandwidth_receipt", decl_name: "memory_current_at_placement", field: WholeDeclaration },
-
-  ],
+  evidence: [],
 }

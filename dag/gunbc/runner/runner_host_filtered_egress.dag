@@ -8,7 +8,6 @@ import gunbc.runner_microvm_network {
 }
 import gunbc.runner.runner_guest_egress_attempt {
   egress_outcome, GuestEgressEstablished, GuestEgressNotEstablished,
-  cpu_bound_write_refused,
 }
 import gunbc.runner.runner_guest_network_receipt { guest_reachability }
 
@@ -62,16 +61,10 @@ fn bridged_attempt_left_guest_without_egress() -> Bool {
   }
 }
 
-data bridged_topology_rejected_because_it_failed: Bool = bridged_attempt_left_guest_without_egress()
-
-data kernel_rebuild_owes_cfs_bandwidth: Bool = cpu_bound_write_refused
-
 fn host_reached_the_guest_on_the_point_to_point_tap() -> Bool {
   guest_reachability.transmitted == guest_reachability.received
     && guest_reachability.transmitted > 0
 }
-
-data routed_attachment_already_carries_the_guest: Bool = host_reached_the_guest_on_the_point_to_point_tap()
 
 // ── the host uplink is static, on purpose ───────────────────────────────────────────────────────
 
