@@ -2960,6 +2960,26 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
 // take a repository as a peer -- reintroducing exactly the mis-pairing the presences were sealed to
 // prevent. It is set once, by the resolution that performed the lookups. DESIGN 5: the invalid pairing
 // has no constructor rather than a check.
+//
+// WHAT THIS DOES AND DOES NOT ESTABLISH, because the boundary is easy to overstate and I did.
+// I described this as "a foreign reference refuses rather than resolving". That is FALSE.
+// `RepositoryCommitRef` wraps a `MintedId`, which is an ORDINAL allocated per repository, so a
+// reference taken from another repository is not detectably foreign at all: ordinal N exists here too,
+// and it resolves -- to a different commit. Nothing refuses.
+//
+// What the carrier establishes is narrower and is the part that matters for the seal: all three
+// presences are looked up in ONE repository and are carried beside the repository they were looked up
+// in, so no downstream consumer can pair them with a different one. Cross-repository substitution INTO
+// the anchors is unconstructible. A caller naming the WRONG commits of the right repository is a
+// different failure, it is not detectable from an ordinal, and this type does not claim to catch it.
+//
+// THE ARITY IS A CENSUS RESULT, NOT THE INVARIANT -- stated because the next reader will otherwise
+// preserve the wrong property. That every function in `gunbc.scm.staging` takes one argument is an
+// observation about today's code, not the rule. A one-argument function can still accept a forgeable
+// plain product, and a multi-argument function may legitimately consume genuinely independent facts.
+// The load-bearing property is that every same-module route to a sealed constructor derives the
+// related fields FROM ONE OBSERVED AUTHORITY rather than from independently sourced peers. Ruled by
+// external review, which narrowed both of these claims after I made them too strong.
 type ResolvedMergeAnchors sole_constructor {
   repository: RepositoryEnvelope
   base: CommitPresence
