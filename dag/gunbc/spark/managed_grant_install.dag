@@ -41,7 +41,11 @@ import gunbc.spark.managed_access_bootstrap {
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized, SparkCredentialStanding }
-import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark.credential_workflow {
+  spark_administrator_password_secret_ref_for,
+  SparkAdministratorCredentialRefFound,
+  SparkAdministratorCredentialHostNotEnrolled,
+}
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import gunbc.spark.grant_privileged_operation {
   spark_bootstrap_credential_lease,
@@ -80,10 +84,10 @@ import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.host_effect_realize { HostEffectTransport, FleetSsh }
 import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
-import gunbc.spark.serving_converge_apply {
-  spark_serving_run_step_sequence,
-  spark_serving_step_sequence_failed,
-  spark_serving_step_sequence_wire,
+import gunbc.spark.remote_step_sequence {
+  run_remote_step_sequence,
+  remote_step_sequence_failed,
+  remote_step_sequence_wire,
 }
 
 // INSTALLING THE GRANT THE RECONCILE FOUND MISSING, which is the step that turns a receipt naming a
@@ -423,17 +427,17 @@ func spark_grant_install_execute(
           )
           let transport = spark_grant_install_transport(context: context, host: host, principal: principal)
           let cleanup_planned = cleanup_grant_staging_step(grant: g, cleanup: cleanup_step)
-          let staged = spark_serving_run_step_sequence(
+          let staged = run_remote_step_sequence(
             steps: [stage_grant_file_step(grant: g, stage: staged_step)],
             transport: transport,
           )
-          if spark_serving_step_sequence_failed(standings: staged) {
+          if remote_step_sequence_failed(standings: staged) {
             SparkGrantInstallExecuted {
               host: host, grant: g, standings: staged, privileged: [],
               readback: GrantReadbackNotAttempted,
               cleanup: spark_grant_cleanup_standing(
                 identity: cleanup_planned.identity,
-                standings: spark_serving_run_step_sequence(steps: [cleanup_planned], transport: transport),
+                standings: run_remote_step_sequence(steps: [cleanup_planned], transport: transport),
               ),
             }
           } else {
@@ -448,7 +452,7 @@ func spark_grant_install_execute(
                   outcomes: [validated], readback: GrantReadbackNotAttempted,
                   cleanup: spark_grant_cleanup_standing(
                     identity: cleanup_planned.identity,
-                    standings: spark_serving_run_step_sequence(steps: [cleanup_planned], transport: transport),
+                    standings: run_remote_step_sequence(steps: [cleanup_planned], transport: transport),
                   ),
                 )
               } else {
@@ -467,7 +471,7 @@ func spark_grant_install_execute(
                     outcomes: [validated, installed], readback: readback,
                     cleanup: spark_grant_cleanup_standing(
                       identity: cleanup_planned.identity,
-                      standings: spark_serving_run_step_sequence(steps: [cleanup_planned], transport: transport),
+                      standings: run_remote_step_sequence(steps: [cleanup_planned], transport: transport),
                     ),
                   )
                 }
@@ -550,7 +554,7 @@ fn spark_grant_install_succeeded(outcome: SparkGrantInstallOutcome) -> Bool {
     SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
     SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
     SparkGrantInstallExecuted { host: _, grant: _, standings: st, privileged: pr, readback: rb, cleanup: _ } =>
-      spark_serving_step_sequence_failed(standings: st) == false
+      remote_step_sequence_failed(standings: st) == false
         && pr.length() > 0
         && fold(pr, init: true, f: fn(acc, o) { acc && privileged_step_succeeded(outcome: o) })
         && match rb {
@@ -579,12 +583,16 @@ fn spark_grant_credential_requirement(host: HostIdentity, grant: SparkManagedGra
     attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
   )
   join([
-    "REQUIRED: an administrator credential for ", l.bootstrap_principal as String,
-    " on ", l.host as String,
-    ", enrolled at ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+    "REQUIRED: an administrator credential for ", l.subject.bootstrap_principal as String,
+    " on ", l.subject.host as String,
+    ", enrolled at ",
+    match spark_administrator_password_secret_ref_for(host: host) {
+      SparkAdministratorCredentialRefFound { ref: r } => secret_ref_version_resource(ref: r)
+      SparkAdministratorCredentialHostNotEnrolled { host: h } => join(["NO ENROLLED SECRET for ", h as String, " in spark_administrator_credential_roster"], "")
+    },
     " (that name is supplied, never derived; this line states WHICH secret the run needs, and never",
     " that any run holds it)",
-    ". Authorized purpose: ", l.authorized_purpose as String,
+    ". Authorized purpose: ", l.purpose as String,
     ". The credential is materialized only for this step, delivered over stdin, and never enters an",
     " argv, a plan artifact, a workflow input or this receipt. Supplying it is the whole of the",
     " external input -- the mutation itself stays inside convergence and is read back independently.",
@@ -611,7 +619,7 @@ fn spark_grant_install_outcome_wire(outcome: SparkGrantInstallOutcome) -> String
       join([
         "grant-install host=", h as String,
         " grant=", spark_managed_grant_wire(grant: g) as String,
-        " steps=", spark_serving_step_sequence_wire(standings: st),
+        " steps=", remote_step_sequence_wire(standings: st),
         match spark_grant_install_first_failure_cause(standings: st) {
           Absent => ""
           Present { value: c } => join([" cause=", c], "")
@@ -765,7 +773,7 @@ func spark_grant_install_ci_wet() -> ProcessExit
             context: context,
             host: only,
             principal: spark_grant_install_principal(),
-            administrator: spark_grant_install_administrator_standing(),
+            administrator: spark_grant_install_administrator_standing(host: only),
           )
           let body = join([
             "spark_grant_install_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n",
@@ -815,6 +823,9 @@ fn spark_grant_install_principal() -> NonEmptyStr {
 // on success. A run that bypasses that step reports "this run did not receive the enrolled
 // credential" through CredentialNotMaterialized -- which is the truth -- rather than rewriting
 // enrollment as pending.
-fn spark_grant_install_administrator_standing() -> SparkCredentialStanding {
-  CredentialMaterialized { ref: spark_administrator_password_secret_ref }
+fn spark_grant_install_administrator_standing(host: HostIdentity) -> SparkCredentialStanding {
+  match spark_administrator_password_secret_ref_for(host: host) {
+    SparkAdministratorCredentialRefFound { ref: r } => CredentialMaterialized { ref: r }
+    SparkAdministratorCredentialHostNotEnrolled { host: _ } => CredentialMaterializationPending
+  }
 }

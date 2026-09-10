@@ -18,12 +18,6 @@ import gunbc.spark.cell_role {
 import extdeps.iproute2.ss { ss_enumeration_is_empty }
 import extdeps.procps.pgrep { pgrep_exit_no_match }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
-import gunbc.spark.serving_terminal_health {
-  SparkServingProbeCapture,
-  ProbeNeverRan,
-  ProbeFailed,
-  ProbeAnswered,
-}
 
 // SPARK-PAIR-0 P0. The gate between a host that no longer serves and a host the training fabric may
 // offer. SparkTrainingReadyProof is sole_constructor and has exactly one producer, so a training
@@ -45,6 +39,15 @@ import gunbc.spark.serving_terminal_health {
 // population is empty, and a failed or unreached enumeration establishes nothing. A probe that never
 // ran is not evidence either, and a probe that answered with a population is the loud case --
 // something is still serving.
+// A PROBE THAT PRODUCED NO STDOUT HAS NOT TOLD US WHY. Three different things yield an empty
+// capture and they have three different owners: the leg never executed (transport), the command ran
+// and exited non-zero (the far side answered with a failure), or it ran and answered with nothing.
+// The capture carries what happened, and the decoder may say only what the capture supports.
+type SparkServingProbeCapture
+  = ProbeNeverRan { cause: NonEmptyStr }
+  | ProbeFailed { exit_code: Int, stderr: String }
+  | ProbeAnswered { stdout: String }
+
 type SparkServingAbsence
   = ServingAbsenceUnobserved { cause: NonEmptyStr }
   | ServingStillPresent { evidence: NonEmptyStr }

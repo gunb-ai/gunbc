@@ -1,6 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
+import v1.compiler.infer_items { ItemKind, FnItem, FuncItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
@@ -16,8 +17,9 @@ import v1.std.core {
   qualified_last_segment,
   InferredNode, Resolved, TypeVariable,
   Cardinality, Required,
+  is_interpreter_blocking_diagnostic,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
-  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
@@ -43,7 +45,8 @@ import v1.compiler.infer_types {
   emit_map_has,
   enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity,
   kernel_profile_lookup,
-  instantiate_algebra_type
+  instantiate_algebra_type,
+  instantiate_algebra_field
 }
 
 import v1.compiler.infer_env {
@@ -291,21 +294,63 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // same registry the ExprCall arm already routes such calls through -- and anything else is
 // genuinely undetermined. Ambiguity is refused upstream and carries no single target, so it is
 // Undetermined here rather than a guess at which candidate emission should prefer.
-fn resolved_plain_call_target(func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
-  match sig_lookup {
-    FuncSigResolved { sig: _, declared: declared } =>
-      resolved_declaration_call_target(declared: declared)
-    FuncSigUnresolved => builtin_call_target_or_undetermined(func_name: func_name)
-    FuncSigAmbiguous { candidates: _ } => CallableTargetUndetermined
+// THE CENSUS DECLARATION BEHIND AN UNRESOLVED SIGNATURE, AS AN IDENTITY AND NOTHING MORE.
+//
+// This answers the producer, not a downstream consumer: `call_target_for_direct_call` calls it at
+// the point that would otherwise construct CallableUnresolved, so the direct-call decision is still
+// made ONCE and every later reader takes the answer off the constructor. Resolving it below the
+// seam instead would leave other consumers of the same outcome reading "unresolved" while this one
+// reads "declared" -- the authority-substitution geometry the outcome type exists to remove.
+//
+// THE KIND GATE EXCLUDES WHAT IS NOT CALLABLE; IT DOES NOT DEMAND PROOF OF WHAT IS.
+// `item_kind` reads FnItem and FuncItem off the presence of a BODY, and a census node is a
+// borrowed declaration surface that carries a signature without one -- so a nullary fn reached
+// this way reads as OtherItem, and an admit-list of the two callable kinds refuses every member
+// of the population this arm exists to serve. The call position is what establishes that the name
+// is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
+// a DATA row, none of which a call may target.
+fn census_declaration_identity(type_env: TypeEnv, func_name: String) -> BorrowedCensusDecl? {
+  match borrowed_census_decl(type_env: type_env, name: func_name) {
+    BorrowedCensusDeclFound { declaration: bd } =>
+      match item_kind(item: bd.node) {
+        TypeItem => Absent
+        ServiceItem => Absent
+        DataItem => Absent
+        _ => Present { value: bd }
+      }
+    BorrowedCensusDeclAmbiguous { candidates: _ } => Absent
+    BorrowedCensusDeclNotFound => Absent
   }
 }
 
-fn builtin_call_target_or_undetermined(func_name: String) -> CallTargetIdentity {
-  match infer_builtin_call_type(name: func_name) {
-    Present { value: _ } => RuntimePrimitiveCall { primitive_name: func_name, projected_from: none }
-    Absent => CallableTargetUndetermined
+
+// THE SAME MAPPING resolved_plain_call_target MAKES, READ OFF THE PARTITIONED OUTCOME.
+//
+// Behaviour is identical by construction: FuncSigResolved answered the declaration target and
+// still does; FuncSigUnresolved consulted builtin_call_target_or_undetermined, and the builtin
+// half of that question is now decided one seam earlier by infer_builtin_call_type -- THE SAME
+// AUTHORITY, asked once instead of twice -- so BuiltinCallableResolved answers the primitive.
+//
+// CallableUnresolved NO LONGER ANSWERS UNDETERMINED. That arm used to inherit the signature
+// lookup's silence, and the sig is silent about a nullary borrowed declaration for a reason that
+// has nothing to do with identity: `func_sig_from_global_bare` admits a census declaration only
+// when it can also produce a RETURN TYPE, evidenced by `params > 0 || inferred != none ||
+// type_annotation != none`, and a nullary census node carries none of the three. Identity does not
+// depend on the return type -- the census already names the owning module -- so this arm asks the
+// census directly instead.
+fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTargetIdentity {
+  match outcome {
+    DeclaredCallableResolved { sig: _, declared: d } => resolved_declaration_call_target(declared: d)
+    DeclaredCallableIdentityResolved { declared: d } => resolved_declaration_call_target(declared: d)
+    BuiltinCallableResolved { primitive_name: n } => RuntimePrimitiveCall { primitive_name: n, projected_from: none }
+    LocallyBoundCallee { name: n, binding: _ } => LocallyBoundCall { name: n }
+    CallableUnresolved { name: _ } => CallableTargetUndetermined
+    CallableAmbiguous { candidates: _ } => CallableTargetUndetermined
+    LocallyBoundBindingMissing { name: _ } => CallableTargetUndetermined
   }
 }
+
+
 
 // COLLECT EVERY ADMISSIBLE CANDIDATE, THEN DECIDE.
 //
@@ -609,27 +654,14 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
   }
 }
 
-// A global-bare hit still names one exact declaration and its completed census. Resolve each
-// formal at that declaration's containment position, once while that authority is present, rather
-// than reconstructing it later through the caller TypeEnv.
-// SEED WALKER DISPOSITION (DESIGN section 6): v1's canonical traversal idiom is a purpose-specific
-// self-recursive Node collector; importing v2 fold_node/node_query here would invert the bootstrap
-// because v1 compiles v2. This collector walks only the finite declaration type tree and dissolves
-// with the sibling v1 walkers at the v2 self-host cut. A one-off shared walker for this carrier
-// would add a traversal representation rather than consolidate the seed's existing population.
-fn declaration_unbound_leaf_names(n: Node, env: TypeEnv) -> List<String> {
-  let name = authored_name_at(source_indices: env.source_indices, node: n)
-  let here = if n.connective == NoConnective
-    && (n.children |> count) == 0
-    && name != ""
-    && !contains(name, ".")
-    && !is_kernel_type(name: name)
-    && lookup_binding_by_name_local(env: env, name: name) == none {
-    [name]
-  } else { [] }
-  concat(here, n.children |> flat_map(ch => declaration_unbound_leaf_names(n: ch, env: env)))
-}
-
+// THE ROSTER IS THE UNION OF TWO FACTS AND NEITHER SUBSUMES THE OTHER. fn_type_param_names reads
+// the DECLARED <T> clause; borrowed_generic_param_names reads params whose type expression is a
+// childless NoConnective leaf spelled as the parameter or its type name. The second is wider on one
+// axis and NARROWER on two -- it drops any declared type param whose type expression is not such a
+// leaf, and any with an empty name -- so passing it alone would reclassify such a param as a
+// concrete unresolved name: the exact failure the negative control below exists to prevent,
+// arriving through the other door. Review finding, tidy-lynx-804, 2026-09-07. The union is what the
+// pre-repair code passed and it is what is passed here; only the ABSENCE disjunct is deleted.
 fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String, node: Node) -> List<ResolvedFormal> {
   let tp_names = fn_type_param_names(item: node, source_indices: type_env.source_indices)
   let declaration_env = census_declaration_type_env(
@@ -638,20 +670,8 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
     tp_names: tp_names,
     source_indices: type_env.source_indices
   )
-  let return_type = match node.inferred {
-    Present { value: Resolved { node: resolved_return } } => resolved_return
-    _ => match node.type_annotation {
-      Present { value: annotated_return } => annotated_return
-      Absent => error_type
-    }
-  }
-  let declaration_generic_names = concat(
-    tp_names,
-    concat(
-      declaration_unbound_leaf_names(n: return_type, env: declaration_env),
-      node.params |> flat_map(p => declaration_unbound_leaf_names(n: param_node_type_expr(n: p), env: declaration_env))
-    )
-  )
+  let declaration_generic_names = borrowed_generic_param_names(
+    params: node.params, source_indices: type_env.source_indices)
   node.params
     |> filter(p => !(tp_names |> any(tp => tp == param_node_name_at(n: p, source_indices: type_env.source_indices))))
     |> map(p => {
@@ -662,9 +682,37 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
         declaration_bound_conformance: preserve_outer_optional_cardinality(
           outer: declared_type,
           inner: peel_nominal_alias_identity(n: declared_type, env: declaration_env, module_name: owner_module_path)),
-        substitution_basis: declaration_substitution_basis(n: declared_type, env: declaration_env, generic_names: declaration_generic_names)
+        substitution_basis: declaration_substitution_basis(
+          n: declared_type, env: declaration_env,
+          generic_names: concat(tp_names, map_keys(declaration_generic_names)))
       }
     })
+}
+
+// A BINDING IN THIS MODULE'S ENVIRONMENT IS NOT A DECLARATION BY THIS MODULE.
+//
+// The arm below reads `lookup_binding_by_name_local`, which searches `env.str_bindings` and
+// `env.bindings` -- the module's type environment, which is exactly where an IMPORT puts a name. It
+// then stamped `type_env.module_path` as the declaration's owner, so every imported callable was
+// identified as belonging to the module that imported it. That is the owner-discarding join this
+// branch exists to remove, surviving one level up: the effect registry is keyed on the DECLARING
+// module, so an identity naming the importer addresses a key that cannot exist, and the callee's
+// summary silently contributed nothing. Measured on the corpus it produced 13 such identities --
+// v1.compiler.parse.make_file_span among them, whose declaration is in v1.std.core.
+//
+// The census already knows the declaring module, so it is asked. The importer is used only where
+// the census has no answer at all, which is the genuinely-local case: a module that declares a name
+// and calls it, where the environment binding and the declaration are the same thing.
+//
+// Only the OWNER is taken from the census. The node stays the local binding, so this changes which
+// module the callee is identified as, and changes nothing about how the call is typed.
+//
+fn declaring_module_for_local_binding(type_env: TypeEnv, name: String) -> String {
+  match borrowed_census_decl(type_env: type_env, name: name) {
+    BorrowedCensusDeclFound { declaration: bd } => bd.owner_module_path
+    BorrowedCensusDeclAmbiguous { candidates: _ } => type_env.module_path
+    BorrowedCensusDeclNotFound => type_env.module_path
+  }
 }
 
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
@@ -675,7 +723,10 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
     Present { value: _ } => FuncSigUnresolved
     Absent =>
   let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
-    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
+    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl {
+      owner_module_path: declaring_module_for_local_binding(type_env: type_env, name: name),
+      node: binding.resolved
+    } }
     Absent => borrowed_census_decl(type_env: type_env, name: name)
   }
   match borrowed {
@@ -995,28 +1046,36 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
     StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
-    let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
-    if enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
+    let receiver_name = authored_name_at(source_indices: source_indices, node: receiver_type)
+    let enriched = enrich_kernel_type(name: receiver_name, base: receiver_type, source_indices: source_indices)
+    let profile = kernel_profile_lookup(name: receiver_name)
+    let template_match = match profile {
+      Present { value: p } =>
+        let templates = algebra_templates_for_profile(profile: p)
+        templates |> filter(t => t.name == method_name) |> first
+      Absent => none
+    }
+    let method_diagnostics = match template_match {
+      Present { value: t } =>
+        let field_type = instantiate_algebra_field(template: t, base: receiver_type, source_indices: source_indices)
+        field_type.diagnostics
+      Absent => []
+    }
+    let blocking_method_diagnostics = method_diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d.diagnostic))
+    if (blocking_method_diagnostics |> count) == 0 && enriched.ty.connective == Conj && (enriched.ty.children |> count) > 0 {
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Present { value: mfr } =>
-          let profile = kernel_profile_lookup(name: authored_name_at(source_indices: source_indices, node: receiver_type))
-          let template_match = match profile {
-            Present { value: p } =>
-              let templates = algebra_templates_for_profile(profile: p)
-              templates |> filter(t => t.name == method_name) |> first
-            Absent => none
-          }
           let resolution = match template_match {
             Present { value: t } =>
               Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Present { value: t } } }
             Absent => base_result
           }
-          StructuralMethodLookup { resolution: resolution, kernel_diagnostics: enriched.diagnostics }
-        Absent => StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
+          StructuralMethodLookup { resolution: resolution, kernel_diagnostics: method_diagnostics }
+        Absent => StructuralMethodLookup { resolution: none, kernel_diagnostics: method_diagnostics }
       }
     } else {
-      StructuralMethodLookup { resolution: none, kernel_diagnostics: enriched.diagnostics }
+      StructuralMethodLookup { resolution: none, kernel_diagnostics: method_diagnostics }
     }
   }
 }

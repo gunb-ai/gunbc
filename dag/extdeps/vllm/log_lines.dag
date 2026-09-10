@@ -46,12 +46,14 @@ type VllmStartupLine
   = GpuKvCacheSize
   | MaximumConcurrency
   | ResolvedKvCacheFormat
+  | MemoryProfileSummary
 
 fn vllm_startup_line_prefix(line: VllmStartupLine) -> NonEmptyStr {
   match line {
     GpuKvCacheSize => "GPU KV cache size:" as NonEmptyStr
     MaximumConcurrency => "Maximum concurrency for" as NonEmptyStr
     ResolvedKvCacheFormat => "Using DeepSeek's fp8_ds_mla KV cache format" as NonEmptyStr
+    MemoryProfileSummary => "Free memory on device" as NonEmptyStr
   }
 }
 
@@ -59,7 +61,28 @@ data vllm_startup_lines: List<VllmStartupLine> = [
   GpuKvCacheSize,
   MaximumConcurrency,
   ResolvedKvCacheFormat,
+  MemoryProfileSummary,
 ]
+
+// THE MEMORY-PROFILE LINE IS THE ONE THAT MAKES THE KV FIGURE ACCOUNTABLE, and reading only the two
+// KV lines above leaves the most important question unanswerable. `GPU KV cache size` says how much
+// cache exists; it does not say WHY that much, so a reader who sees 22.02 GiB on a 121.69 GiB machine
+// cannot tell an ambient default from a deliberate budget from a leak. This line carries the whole
+// residual: free and total at startup, the requested envelope and the fraction that produced it,
+// consumed weights-plus-non-torch, peak activation, actual graph memory, and -- the part no other
+// line offers -- the engine's own recommended EXPLICIT kv-cache-memory values, both to fit the
+// request and to fully use the device.
+//
+// WITHOUT IT, A KV READING IS A NUMBER WITHOUT A DENOMINATOR. Measured on the GLM canary
+// 2026-09-08 at vLLM 0.1.dev20051+g487ecf187: 114.93 free of 121.69 GiB at startup, a 0.92 request
+// resolving to 111.95 GiB, 82.52 GiB consumed, 7.42 GiB peak activation, 0.10 GiB graph, 22.02 GiB
+// KV -- and a recommendation of 24.75 GiB to fully utilise the device. That last figure is what
+// establishes 22.02 as a CONSEQUENCE OF THE AMBIENT FRACTION rather than a hardware ceiling, which
+// is precisely the inference the other two lines cannot support and readers were drawing anyway.
+//
+// THE PREFIX IS THE STABLE HALF. The line's tail is a sentence whose wording upstream may reword;
+// `Free memory on device` is what this module cites, for the reason the header already states -- a
+// prefix is an upstream surface, a line number is a position in a stream.
 
 // ── THE OBSERVED READING ───────────────────────────────────────────────────────────────────────
 //
@@ -71,13 +94,23 @@ type VllmStartupReading sole_constructor {
   observed_at_revision: VllmSourceRevision
 }
 
+// THE REVISION IS OBSERVED, NOT STAMPED. This constructor used to fill observed_at_revision from
+// vllm_source_revision_read, the constant naming the revision the LAWS were read from -- so every
+// reading asserted it had been taken at the modelled revision no matter which build produced it,
+// and the field the carrier's own note calls load-bearing could not disagree with the model. Every
+// downstream revision comparison was therefore permanently green: not a weak wall, a decoration.
+//
+// A reading is evidence about the build that emitted it, so the caller that captured the text
+// supplies the revision it captured it from. Agreeing with the modelled revision is then a real
+// question a consumer can ask and get "no" to.
 fn vllm_startup_reading(
   line: VllmStartupLine,
   captured_text: NonEmptyStr,
+  observed_at_revision: VllmSourceRevision,
 ) -> VllmStartupReading {
   VllmStartupReading {
     line: line,
     captured_text: captured_text,
-    observed_at_revision: vllm_source_revision_read
+    observed_at_revision: observed_at_revision
   }
 }

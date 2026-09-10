@@ -1,0 +1,183 @@
+module gunbc.spark.fabric_switch_desired
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import v2.std.algebra { non_empty_to_list }
+import extdeps.ethernet.link_mode { LinkMode }
+import extdeps.mikrotik.crs812 {
+  Crs812LaneSpeed, crs812_lane_speed_for_link_mode,
+  LaneSpeedForMode, NoLaneSpeedForMode,
+  Crs812FecMode, FecAuto, FecOff, Fec74, Fec91,
+  crs812_board_name, crs812_management_interface, crs812_default_bridge,
+  crs812_passive_dac_requires_forced_mode,
+}
+import std.algebra { FreeSemigroup }
+import product.cable_plant_assessment {
+  CablePlant, CableLegOutcome, CableLegUnknown, CablePlantAssessRefusal,
+}
+import std.goal_assessment {
+  GoalInspected, GoalObservationRefused,
+  GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+}
+import gunbc.spark.fabric_switch_observed {
+  FabricLaneObserved, fabric_lane_observations, fabric_lane_interface,
+  fabric_cable_plant_inspection,
+}
+
+// WHAT THE FABRIC SWITCH IS SUPPOSED TO BE, DERIVED RATHER THAN DECLARED.
+//
+// `extdeps.mikrotik.crs812` cited this module by name before it existed -- the dangling-citation
+// class a reviewer caught one module over in this same subject, and the same repair applies: the
+// name is the authority, so the authority has to exist.
+//
+// THE LANE SPEED IS NOT A PREFERENCE AND IS NOT WRITTEN DOWN HERE. A switch lane can only run at a
+// mode the cable in it attests, so the desired speed is a FUNCTION of the cable plant's convergence,
+// not a constant an author picks. That matters because the fleet's legs are mis-coded today: writing
+// `Lane50GCr2` here would encode the outage as an intention, and the switch would then read as
+// correctly configured for as long as the wrong cables stayed in it.
+//
+// AND THE NOT-CONVERGED ARM REFUSES RATHER THAN DEGRADES. The tempting shape is "if the plant does
+// not converge, ask for the speed it can do" -- which is the absorbing fallback DESIGN section 5
+// names: it always produces an answer, so the cable defect stops being visible at this layer and
+// the switch quietly converges onto a configuration nobody chose. An undecidable desired state is
+// refused with the plant's own refusal carried through, so exactly one place in the tree reports
+// the cable fault and every consumer of the switch subject inherits it.
+// TWO WAYS TO BE UNDECIDED, AND THEY ARE DIFFERENT FACTS. The plant may fail to converge (the
+// cables cannot carry the mode), or the plant may converge on a mode this switch has no wire value
+// for. Collapsing them would make "we do not know" mean two different repairs -- recode the cables,
+// versus this hardware cannot do it at all -- so the cause is a closed vocabulary and each arm names
+// the fact that produced it.
+// THE PLANT CAN FAIL TO SETTLE THE SPEED TWO DIFFERENT WAYS, AND THEY ARE TWO ARMS BECAUSE THE
+// REMEDIES DIFFER. The plant may not be OBSERVABLE -- a leg nobody read, a plant with nothing in it
+// -- which a reading fixes; or it may be observed and DIVERGENT, which needs a leg replaced. The
+// shape this module used to read collapsed both into one refusal, so a caller could not tell "go
+// read the plant" from "go change the copper" without inspecting the cause. Splitting them here is
+// that distinction surfacing where it was always true.
+// THE THREE WAYS THE PLANT LEAVES THE SPEED UNDECIDED ARE THREE CAUSES, NOT ONE COUNT. The cut
+// before this one mapped divergence, indeterminacy AND assessment refusal onto a single
+// `PlantDivergedFromRequirement { legs: Nat }`: unknowns were discarded outright, a malformed
+// assessment was reported as `legs: 0` -- indistinguishable from a plant with nothing wrong -- and
+// the endpoints an operator would walk to were replaced by their cardinality. That is the one-bucket
+// collapse std.goal_assessment's four arms exist to delete, surviving one module downstream of the
+// module that deleted it.
+//
+// THE PAYLOADS ARE THE ROWS THEMSELVES, not counts. A count cannot be acted on: the endpoint and the
+// cause are what a later planner or an operator needs, and re-deriving them from a number is
+// impossible rather than merely inconvenient.
+//
+// `PlantNotObservable` NO LONGER CARRIES A CAUSE, and the reason is a LANGUAGE limit rather than a
+// modelling choice, stated so it is not read as the latter. The cable observation's refusal type is
+// `Never`, so `GoalObservationRefused` is unconstructible for this subject and the right elimination
+// is an empty match over the uninhabited cause. `.dag` refuses a match with no arms ("match
+// expression has no arms"), and there is no `absurd`-style fold over `Never` in the corpus, so the
+// arm must be written and must return something. It carries NO payload -- there is no inhabitant to
+// put in one -- and it is the fail-closed answer: undecided, never a speed.
+// NEXT-RUNG TRIGGER: empty-match support over an uninhabited type, or a `Never` elimination fold in
+// v2.std.cardinality; either lets this arm be deleted rather than documented.
+type DesiredSpeedUndecidedCause
+  = PlantObservationUnconstructible
+  | PlantDivergedFromRequirement { deviations: FreeSemigroup<CableLegOutcome> }
+  | PlantAssessmentIndeterminate {
+      known_deviations: List<CableLegOutcome>,
+      unknowns: FreeSemigroup<CableLegUnknown>,
+    }
+  | PlantAssessmentRefused { cause: CablePlantAssessRefusal }
+  | SwitchCannotRunRequiredMode { mode: LinkMode }
+
+type Crs812DesiredLaneSpeed
+  = DesiredLaneSpeed { speed: Crs812LaneSpeed }
+  | DesiredLaneSpeedUndecided { cause: DesiredSpeedUndecidedCause }
+
+// THE SPEED IS READ OFF THE CONVERGED SUBJECT, never written here. The subject carries the mode the
+// plant was required to attest, and the vendor module cites which wire value implements that mode,
+// so this function selects rather than decides. A literal here would agree with the mode by
+// coincidence and keep agreeing after the mode changed -- which is the failure the module's own
+// annotation warns about, so the annotation is only true if the code reads the subject.
+fn crs812_desired_lane_speed() -> Crs812DesiredLaneSpeed {
+  match fabric_cable_plant_inspection() {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } =>
+      DesiredLaneSpeedUndecided { cause: PlantObservationUnconstructible }
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: ds } => DesiredLaneSpeedUndecided {
+          cause: PlantDivergedFromRequirement { deviations: ds },
+        }
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => DesiredLaneSpeedUndecided {
+          cause: PlantAssessmentIndeterminate { known_deviations: kd, unknowns: u },
+        }
+        GoalAssessmentRefused { cause: c } => DesiredLaneSpeedUndecided {
+          cause: PlantAssessmentRefused { cause: c },
+        }
+        GoalSatisfied { evidence: e } =>
+          match crs812_lane_speed_for_link_mode(m: g) {
+            LaneSpeedForMode { speed: sp } => DesiredLaneSpeed { speed: sp }
+            NoLaneSpeedForMode { mode: um } => DesiredLaneSpeedUndecided {
+              cause: SwitchCannotRunRequiredMode { mode: um },
+            }
+          }
+      }
+  }
+}
+
+// FORCED MODE IS THE CABLE CLASS'S REQUIREMENT, NOT A TUNING KNOB, so it is read from the extdeps
+// row that records the RouterOS behaviour rather than restated as a local constant. RS-FEC is
+// Clause 91, which is the FEC the 100GBASE-CR2 attestation is conditional on.
+fn crs812_desired_fec() -> Crs812FecMode {
+  if crs812_passive_dac_requires_forced_mode { Fec91 } else { FecAuto }
+}
+
+// A LANE PAIR IS ONE LEG. The odd lane carries the configuration and owns the even lane that
+// follows it, so the even lane is DISABLED rather than left at a default -- an unconfigured lane on
+// a two-lane leg is the state RouterOS reports as "initializing", which is why it is desired-off
+// explicitly instead of being omitted from the roster.
+type Crs812LaneIntent
+  = LaneCarriesLeg { interface: NonEmptyStr, speed: Crs812LaneSpeed, fec: Crs812FecMode }
+  | LaneOwnedByItsPair { interface: NonEmptyStr }
+
+type Crs812SwitchIntent
+  = SwitchIntent {
+      identity: NonEmptyStr
+      board_name: NonEmptyStr
+      management_interface: NonEmptyStr
+      bridge: NonEmptyStr
+      lanes: List<Crs812LaneIntent>
+    }
+  | SwitchIntentUndecided { cause: DesiredSpeedUndecidedCause }
+
+data fabric_switch_identity: NonEmptyStr = "gunbc-fabric-switch" as NonEmptyStr
+
+fn crs812_paired_lane_interface(o: FabricLaneObserved) -> NonEmptyStr {
+  fabric_lane_interface(o: FabricLaneObserved {
+    cage: o.cage,
+    lane: o.lane + 1,
+    host: o.host,
+    spark_hostname: o.spark_hostname,
+    leg_netdev: o.leg_netdev,
+    leg_netdev_twin: o.leg_netdev_twin,
+    leg_rdma_device: o.leg_rdma_device,
+  })
+}
+
+fn crs812_lane_intents(speed: Crs812LaneSpeed, fec: Crs812FecMode) -> List<Crs812LaneIntent> {
+  flat_map(fabric_lane_observations, o => [
+    LaneCarriesLeg { interface: fabric_lane_interface(o: o), speed: speed, fec: fec },
+    LaneOwnedByItsPair { interface: crs812_paired_lane_interface(o: o) },
+  ])
+}
+
+// THE INTENT IS UNDECIDED AS A WHOLE when the lane speed is, rather than being assembled with a
+// hole in it: a switch intent carrying every field but the one that decides whether the fabric runs
+// at rate is not a weaker intent, it is a different claim, and a consumer cannot tell the two apart
+// once the hole is filled with a default.
+fn fabric_switch_intent() -> Crs812SwitchIntent {
+  match crs812_desired_lane_speed() {
+    DesiredLaneSpeedUndecided { cause: c } => SwitchIntentUndecided { cause: c }
+    DesiredLaneSpeed { speed: sp } => SwitchIntent {
+      identity: fabric_switch_identity,
+      board_name: crs812_board_name,
+      management_interface: crs812_management_interface,
+      bridge: crs812_default_bridge,
+      lanes: crs812_lane_intents(speed: sp, fec: crs812_desired_fec()),
+    }
+  }
+}

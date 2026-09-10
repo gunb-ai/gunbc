@@ -28,7 +28,7 @@ import v2.std.optional {
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node }
-import v2.std.text { String, string_is_empty }
+import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
 
@@ -166,7 +166,7 @@ fn qualified_name_from_string_segments(segments: List<String>) -> FreeMonoid<Sym
 }
 
 fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<Symbol> {
-  if string_is_empty(s: dotted) {
+  if string_length(s: dotted) == 0 {
     Empty
   } else {
     qualified_name_from_string_segments(segments: dotted.split(delimiter: "."))

@@ -13,6 +13,7 @@ import gunbc.scm.object_store {
   SourceStored, SourceLocatorCollision, store_authored_source,
   authored_source_target_of, authored_source_target_locator,
 }
+import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -22,6 +23,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintRootIsSemanticNode,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
+  RepositoryCommitMintIntegrationSourceMissing,
   mint_repository_commit,
 }
 import gunbc.scm.proposal { Proposal, Requirement, RequireBinding, RequireBindingAbsent }
@@ -97,6 +99,7 @@ fn status_witness_empty_repository() -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
 }
 
@@ -107,19 +110,22 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
     commits: [],
     commit_allocator: MintedIdAllocator { next_ordinal: 0 },
     checked_out: none,
+    staged: none,
   }
-  match mint_repository_commit(repository: base, root: held.identity, message: "first", parent: none) {
+  match mint_repository_commit(repository: base, root: held.identity, message: "first", parent: none, integration: NoSquashIntegration) {
     RepositoryCommitMinted { repository: minted, reference: reference } => RepositoryEnvelope {
       store: minted.store,
       commits: minted.commits,
       commit_allocator: minted.commit_allocator,
       checked_out: Present { value: reference },
+      staged: none,
     }
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => base
     RepositoryCommitMintRootMissing { root: _ } => base
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => base
     RepositoryCommitMintRootIsSemanticNode { root: _ } => base
     RepositoryCommitMintParentMissing { parent: _ } => base
+    RepositoryCommitMintIntegrationSourceMissing { source: _ } => base
   }
 }
 
@@ -133,6 +139,7 @@ fn status_witness_repository_dangling_at(ordinal: Int) -> RepositoryEnvelope {
     commits: valid.commits,
     commit_allocator: MintedIdAllocator { next_ordinal: ordinal + 1 },
     checked_out: Present { value: status_witness_ref(ordinal: ordinal) },
+    staged: none,
   }
 }
 
@@ -143,6 +150,7 @@ fn status_witness_repository_with_dangling_checkout() -> RepositoryEnvelope {
     commits: valid.commits,
     commit_allocator: MintedIdAllocator { next_ordinal: 2 },
     checked_out: Present { value: status_witness_ref(ordinal: 1) },
+    staged: none,
   }
 }
 
@@ -244,7 +252,8 @@ test fn nothing_staged_is_stated_rather_than_rendered_as_silence() -> Bool {
     envelope: status_witness_empty_repository(),
     pending: empty_proposal(),
   )
-  render_repository_status(status: s) == "nothing checked out\n0 commits\n  nothing staged"
+  render_repository_status(status: s)
+    == "nothing checked out\n0 commits\nno corpus staged\n  no roles staged"
 }
 
 // The store population is deliberately not reported: it is a fact about REPRESENTATION rather than
@@ -255,7 +264,8 @@ test fn status_does_not_report_store_representation() -> Bool {
     envelope: status_witness_repository_with_checkout(),
     pending: empty_proposal(),
   )
-  render_repository_status(status: s) == "on commit: first\n1 commit\n  nothing staged"
+  render_repository_status(status: s)
+    == "on commit: first\n1 commit\nno changes staged relative to the checked-out commit\n  candidate corpus: 1 path\n  no roles staged"
 }
 
 // THE REFUSAL NAMES THE COMMIT IT REFUSES ON. Before this claim the arm rendered "the checked-out
@@ -278,7 +288,7 @@ test fn a_dangling_checkout_names_the_commit_it_cannot_resolve() -> Bool {
     pending: empty_proposal(),
   )
   render_repository_status(status: one)
-      == "the checked-out selection names commit 1, which this repository does not contain\n1 commit\n  nothing staged"
+      == "the checked-out selection names commit 1, which this repository does not contain\n1 commit\nthe staged corpus cannot be read from this repository's object store\n  no roles staged"
     && render_repository_status(status: seven)
-      == "the checked-out selection names commit 7, which this repository does not contain\n1 commit\n  nothing staged"
+      == "the checked-out selection names commit 7, which this repository does not contain\n1 commit\nthe staged corpus cannot be read from this repository's object store\n  no roles staged"
 }

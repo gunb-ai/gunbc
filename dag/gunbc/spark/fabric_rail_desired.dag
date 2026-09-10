@@ -1,0 +1,99 @@
+module gunbc.spark.fabric_rail_desired
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
+import extdeps.netplan.netplan { netplan_config_dir }
+import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations, fabric_lane_for_host, fabric_leg_cable_observed }
+
+// THE SWITCHED RAIL'S ADDRESSING, DERIVED FROM THE OBSERVED LANE. One /24 for the whole fabric, since
+// every leg lands in one bridge; a host's address is a function of the cage and lane it was seen
+// on, so two hosts cannot claim one address and a host off the fabric has none. Jumbo frames match
+// the switch bridge. The twin netdev that also comes up from the leg is declared explicitly as
+// unaddressed and optional, so NetworkManager neither offers DHCP on it nor waits for it at boot.
+// The file is rendered whole, written to netplan's directory and applied; a hand edit to it is
+// drift the next observation reads back.
+
+data fabric_rail_network_prefix: NonEmptyStr = "192.168.110" as NonEmptyStr
+data fabric_rail_prefix_length: Nat = 24
+data fabric_rail_mtu: Nat = 9000
+data fabric_rail_netplan_file: NonEmptyStr = "90-gunbc-fabric.yaml" as NonEmptyStr
+data fabric_rail_connection_name: NonEmptyStr = "gunbc-fabric" as NonEmptyStr
+
+fn fabric_rail_netplan_path() -> String {
+  join([netplan_config_dir as String, "/", fabric_rail_netplan_file as String], "")
+}
+
+// .11 .. .14 on cage 1, .15 .. .18 on cage 2: (cage-1)*4 + (lane+1)/2 + 10.
+fn fabric_rail_host_octet(o: FabricLaneObserved) -> Nat {
+  10 + (o.cage - 1) * 4 + (o.lane + 1) / 2
+}
+
+fn fabric_rail_address_of(o: FabricLaneObserved) -> Ipv4Address {
+  ipv4_address(octet1: 192, octet2: 168, octet3: 110, octet4: fabric_rail_host_octet(o: o))
+}
+
+fn fabric_rail_address(host: HostIdentity) -> Ipv4Address? {
+  match fabric_lane_for_host(host: host) {
+    Absent => none
+    Present { value: o } => Present { value: fabric_rail_address_of(o: o) }
+  }
+}
+
+fn fabric_rail_cidr(o: FabricLaneObserved) -> String {
+  join([render_ipv4_address(addr: fabric_rail_address_of(o: o)) as String, "/", to_string(fabric_rail_prefix_length)], "")
+}
+
+// The netplan document for one host, NetworkManager-rendered like the rails the pairs already carry.
+fn fabric_rail_netplan_text(o: FabricLaneObserved) -> String {
+  join([
+    "network:\n",
+    "  version: 2\n",
+    "  renderer: NetworkManager\n",
+    "  ethernets:\n",
+    "    ", fabric_rail_connection_name as String, ":\n",
+    "      match:\n",
+    "        name: \"", o.leg_netdev as String, "\"\n",
+    "      addresses:\n",
+    "      - \"", fabric_rail_cidr(o: o), "\"\n",
+    "      mtu: ", to_string(fabric_rail_mtu), "\n",
+    "      dhcp4: false\n",
+    "      dhcp6: false\n",
+    "      link-local: []\n",
+    "      optional: true\n",
+    "    ", fabric_rail_connection_name as String, "-twin:\n",
+    "      match:\n",
+    "        name: \"", o.leg_netdev_twin as String, "\"\n",
+    "      dhcp4: false\n",
+    "      dhcp6: false\n",
+    "      link-local: []\n",
+    "      optional: true\n",
+  ], "")
+}
+
+type FabricRailDesired {
+  host: HostIdentity
+  netdev: NonEmptyStr
+  address: Ipv4Address
+  netplan_text: String
+}
+
+fn fabric_rail_desired_of(o: FabricLaneObserved) -> FabricRailDesired {
+  FabricRailDesired { host: o.host, netdev: o.leg_netdev, address: fabric_rail_address_of(o: o), netplan_text: fabric_rail_netplan_text(o: o) }
+}
+
+data fabric_rail_desired: List<FabricRailDesired> = map(fabric_lane_observations, o => fabric_rail_desired_of(o: o))
+
+fn fabric_rail_desired_for(host: HostIdentity) -> FabricRailDesired? {
+  match fabric_lane_for_host(host: host) {
+    Absent => none
+    Present { value: o } => Present { value: fabric_rail_desired_of(o: o) }
+  }
+}
+
+// The link speed the rail runs at is the cable's, carried here so a consumer sizing traffic reads
+// the observed ceiling and not a nameplate.
+fn fabric_rail_link_gbps() -> Nat {
+  fabric_leg_cable_observed.linked_speed_gbps
+}

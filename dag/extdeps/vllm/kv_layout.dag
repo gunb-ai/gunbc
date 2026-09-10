@@ -1,0 +1,490 @@
+module extdeps.vllm.kv_layout
+
+import std.types { Bool, String, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  ConcurrentRequestHundredths, concurrent_request_hundredths, concurrent_request_hundredths_count,
+  AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
+  AttentionLayerCount, attention_layer_count_value,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.nat { Nat, nat_min }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.kv_cache { VllmObservedKvPool }
+import extdeps.vllm.log_lines {
+  VllmStartupReading, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/main/vllm/v1/core/kv_cache_utils.py"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.kv_layout",
+      decl_name: "ResolvedKvLayout",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── THE LAYOUT IS THE STRUCTURE; EVERY CAPACITY NUMBER IS A PROJECTION OF IT ───────────────────
+//
+// WHAT THIS MODULE IS FOR. Three different quantities in this deployment have been called "the
+// pool", and each is a real number the engine reports:
+//
+//   ALLOCATOR INVENTORY      num_gpu_blocks -- how many blocks the block pool contains. This is what
+//                            the scheduler allocates from and what kv_cache_usage_perc divides by.
+//   FULL-CONTEXT EQUIVALENT  the "GPU KV cache size: N tokens" line -- max_concurrency x
+//                            max_model_len, i.e. how many max-length requests fit, re-expressed in
+//                            tokens. It is a projection, not an inventory.
+//   SCHEDULER GRANULARITY    block_size -- the MINIMUM across resolved cache groups, which is not
+//                            "the number of tokens every allocator block holds".
+//
+// Multiplying the first by the third and calling it the second is the error extdeps.vllm.kv_cache
+// already refuses at vllm_pool_reconstruction_is_authoritative. This module exists so the three
+// stop being three spellings of one field and become projections of one declared structure -- which
+// is the only form in which they can be checked against each other.
+//
+// WHY THE RATIO IS NOT A CONSTANT. Under a hybrid layout the per-request cost is not
+// length / block_size: full-attention groups grow with the sequence, sliding-window groups stop
+// growing at their window, and a mamba group is a fixed state per sequence. Two engines with the
+// same num_gpu_blocks and the same global block_size can therefore admit very different request
+// counts. That is precisely why no function here converts an inventory into tokens.
+//
+// WHAT IS NOT OBSERVABLE YET, stated so the refusal below is not read as a defect in the caller.
+// The engine's own get_kv_cache_group_metadata emits kind, block size and sliding window, and does
+// NOT emit layer count, page size, the admission cap, or its calculated blocks-per-max-request. So
+// `groups` is empty for every incarnation this repository can currently observe, and every function
+// that needs per-group structure refuses. The trigger is one JSON launch line carrying those fields.
+
+// A CACHE GROUP WITH A ZERO BLOCK SIZE IS NOT A DEGENERATE GROUP, IT IS NOT A GROUP. The seed's
+// `where range` checker only decides an int literal, not a Measure constructed by `token_count`,
+// so a refinement alias is not a wall (DESIGN section 4b(1): a type name establishes nothing). The
+// cost fold therefore refuses a zero block size or a zero layer count rather than dividing by zero
+// or charging nothing and calling the request free.
+
+// THE WINDOW LIVES IN THE VARIANT THAT HAS ONE. It was a separate optional field beside the kind,
+// which made two states writable that the engine cannot produce: a windowed group with no window,
+// and a full-attention group carrying one. The first was the dangerous one -- the cost function met
+// it and silently charged full-attention cost, so a malformed layout produced a plausible number
+// instead of a refusal, and that number would then have been reproduced against the printed lines
+// and possibly agreed. Moving the window into the arm deletes both states rather than checking for
+// them (DESIGN section 4b: construction over validation).
+type KvGroupKind
+  = FullAttention
+  | SlidingWindowAttention { window: TokenCount }
+  | MambaState
+
+fn kv_group_kind_wire(k: KvGroupKind) -> String {
+  match k {
+    FullAttention => "full-attention"
+    SlidingWindowAttention { window: _ } => "sliding-window"
+    MambaState => "mamba-state"
+  }
+}
+
+// One resolved cache group. `block_size` is THIS GROUP's, which the global scheduler block_size is
+// only the minimum of; `sliding_window` is present exactly on the windowed kind and is what caps
+// that group's per-request cost.
+//
+// page_size_bytes IS DELIBERATELY ABSENT. It was carried here and read by nothing -- the recorded
+// field that no operation consumes, which reads as coverage of a byte-level accounting that does
+// not exist. It returns when the unified-memory admission needs bytes rather than blocks, and it
+// returns with the consumer that reads it.
+type KvGroupLayout {
+  kind: KvGroupKind
+  layer_count: AttentionLayerCount
+  block_size: TokenCount
+}
+
+// THE RESOLVED LAYOUT OF ONE ENGINE. It carries no incarnation: this is the upstream SHAPE, and
+// binding a shape to the launch that exhibited it is a receipt, which is an observation this
+// repository produces and therefore lives in the observing layer, not in extdeps (DESIGN section 3,
+// external upstream decomposition). Putting the incarnation here would author it in two places,
+// because the receipt has to name it anyway.
+type ResolvedKvLayout sole_constructor {
+  allocator_blocks: AllocatorBlockCount
+  scheduler_block_size: TokenCount
+  hash_block_size: TokenCount
+  max_model_len: TokenCount
+  max_num_batched_tokens: TokenCount
+  groups: List<KvGroupLayout>
+  established_at_revision: VllmSourceRevision
+}
+
+fn resolved_kv_layout(
+  allocator_blocks: AllocatorBlockCount,
+  scheduler_block_size: TokenCount,
+  hash_block_size: TokenCount,
+  max_model_len: TokenCount,
+  max_num_batched_tokens: TokenCount,
+  groups: List<KvGroupLayout>,
+  established_at_revision: VllmSourceRevision,
+) -> ResolvedKvLayout {
+  ResolvedKvLayout {
+    allocator_blocks: allocator_blocks,
+    scheduler_block_size: scheduler_block_size,
+    hash_block_size: hash_block_size,
+    max_model_len: max_model_len,
+    max_num_batched_tokens: max_num_batched_tokens,
+    groups: groups,
+    established_at_revision: established_at_revision,
+  }
+}
+
+// ── WHAT THE ENGINE REPORTED, AS TWO NUMBERS THAT MUST AGREE WITH THE LAYOUT ───────────────────
+//
+// The pool carrier from extdeps.vllm.kv_cache is the KV-cache-size line, structurally bound to that
+// line class. The concurrency figure is its sibling on the next line, and the two are carried
+// together here because the recovery below needs both and neither is meaningful alone.
+type VllmReportedCapacity sole_constructor {
+  pool: VllmObservedKvPool
+  max_concurrency: ConcurrentRequestHundredths
+  observed_at_revision: VllmSourceRevision
+}
+
+type VllmReportedCapacityAdmission
+  = ReportedCapacityAdmitted { capacity: VllmReportedCapacity }
+  | ReportedCapacityRefused { cause: NonEmptyStr }
+
+fn observed_revisions_agree(a: VllmSourceRevision, b: VllmSourceRevision) -> Bool {
+  (a.repository as String) == (b.repository as String)
+    && (a.full_revision as String) == (b.full_revision as String)
+}
+
+fn vllm_reported_capacity(
+  pool: VllmObservedKvPool,
+  max_concurrency: ConcurrentRequestHundredths,
+  reading: VllmStartupReading,
+) -> VllmReportedCapacityAdmission {
+  match reading.line {
+    MaximumConcurrency =>
+      if !observed_revisions_agree(a: reading.observed_at_revision, b: pool.observed_at_revision) {
+        ReportedCapacityRefused {
+          cause: join([
+            "the concurrency reading was taken at ", reading.observed_at_revision.repository as String, "@", reading.observed_at_revision.full_revision as String,
+            " but the pool line was taken at ", pool.observed_at_revision.repository as String, "@", pool.observed_at_revision.full_revision as String,
+            ", so they do not describe one engine",
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        ReportedCapacityAdmitted {
+          capacity: VllmReportedCapacity {
+            pool: pool,
+            max_concurrency: max_concurrency,
+            observed_at_revision: pool.observed_at_revision,
+          },
+        }
+      }
+    GpuKvCacheSize =>
+      ReportedCapacityRefused {
+        cause: "the concurrency figure must be bound to the MaximumConcurrency startup line, not the GPU KV cache size line" as NonEmptyStr,
+      }
+    ResolvedKvCacheFormat =>
+      ReportedCapacityRefused {
+        cause: "the concurrency figure must be bound to the MaximumConcurrency startup line, not the resolved KV cache format line" as NonEmptyStr,
+      }
+    MemoryProfileSummary =>
+      ReportedCapacityRefused {
+        cause: "the concurrency figure must be bound to the MaximumConcurrency startup line, not the memory-profile summary line -- that line carries the residual the KV budget came OUT of, which is a different fact from the concurrency the budget then supports" as NonEmptyStr,
+      }
+  }
+}
+
+// ── THE ONE DERIVATION AVAILABLE FROM TODAY'S EVIDENCE ─────────────────────────────────────────
+//
+// The engine computes, in this order:
+//
+//     blocks_per_max_request = (group-aware bytes for one max-length request) / (bytes per block)
+//     maximum_concurrency    = num_gpu_blocks / blocks_per_max_request
+//     GPU KV cache size      = maximum_concurrency * max_model_len
+//
+// so the per-request block cost it used is RECOVERABLE by inverting the last two:
+//
+//     blocks_per_max_request = allocator_blocks * max_model_len / kv_cache_size_tokens
+//
+// This is the honest derivation available before per-group metadata exists, and it is the ONLY one
+// this module offers, because it reads the engine's own group-aware arithmetic back out rather than
+// re-deriving it from fields whose reductions differ.
+//
+// IT IS A RECOVERY, NOT AN IDENTITY. The reported figures are rounded for printing, so the
+// recovered cost is exact only to that precision; the recovery therefore returns a refusal when the
+// inputs cannot produce a positive integer, instead of a zero that would read as a free request.
+type BlocksPerRequest
+  = BlocksPerRequestRecovered { blocks: AllocatorBlockCount }
+  | BlocksPerRequestUnrecoverable { cause: NonEmptyStr }
+
+fn recovered_blocks_per_max_length_request(
+  layout: ResolvedKvLayout,
+  reported: VllmReportedCapacity,
+) -> BlocksPerRequest {
+  let pool_tokens = token_count_value(t: reported.pool.tokens)
+  let context = token_count_value(t: layout.max_model_len)
+  let inventory = allocator_block_count_value(c: layout.allocator_blocks)
+  if pool_tokens == 0 {
+    BlocksPerRequestUnrecoverable { cause: "the reported KV cache size is zero, so the engine's per-request block cost cannot be inverted out of it" as NonEmptyStr }
+  } else if inventory == 0 {
+    BlocksPerRequestUnrecoverable { cause: "the allocator inventory is zero, so there is no pool to divide" as NonEmptyStr }
+  } else if context == 0 {
+    BlocksPerRequestUnrecoverable { cause: "the context cap is zero, so the full-context request the reported figures describe does not exist" as NonEmptyStr }
+  } else {
+    let recovered = (inventory * context) / pool_tokens
+    if recovered == 0 {
+      BlocksPerRequestUnrecoverable { cause: "the inversion produced no whole block, so the reported pool and inventory do not describe the same engine" as NonEmptyStr }
+    } else {
+      BlocksPerRequestRecovered { blocks: allocator_block_count(count: recovered) }
+    }
+  }
+}
+
+// WHAT THE TWO PRINTED LINES CAN AND CANNOT CHECK, worked out rather than assumed.
+//
+// The tempting check is "recover the per-request cost, then replay it against the printed
+// concurrency". Expand it and the inventory cancels:
+//
+//     recovered_cost       = A * M / P
+//     replayed_concurrency = A / recovered_cost = A * P / (A * M) = P / M
+//
+// so the replay tests the two PRINTED LINES against each other and never touches the inventory A.
+// It is therefore green for any inventory whatsoever -- including one lifted from a different
+// engine -- and shipping it as an inventory check would be a permanently-green wall cited as
+// coverage (DESIGN section 4b: ask whether the RED is authorable before writing the check). It was
+// written that way first, and the witness that was supposed to prove it discriminating is what
+// caught it.
+//
+// So it is named for what it actually decides. The two lines are mutually consistent when the
+// implied concurrency from the pool (integer hundredths) is within one hundredth of the printed
+// Nx, which the engine rounds. Exact equality of truncated integer hundredths against a rounded print
+// is the wrong check. THE INVENTORY REMAINS UNCHECKED BY TODAY'S EVIDENCE, and closing that gap is
+// exactly what the per-group layout is needed for.
+type PrintedLinesAgreement
+  = PrintedLinesAgree
+  | PrintedLinesDisagree { implied: ConcurrentRequestHundredths, reported: ConcurrentRequestHundredths }
+  | PrintedLinesUncheckable { cause: NonEmptyStr }
+
+fn hundredths_within_printed_precision(predicted: ConcurrentRequestHundredths, reported: ConcurrentRequestHundredths) -> Bool {
+  let p = concurrent_request_hundredths_count(c: predicted)
+  let r = concurrent_request_hundredths_count(c: reported)
+  let delta = if p > r { p - r } else { r - p }
+  delta <= 1
+}
+
+fn printed_lines_agree(layout: ResolvedKvLayout, reported: VllmReportedCapacity) -> PrintedLinesAgreement {
+  let context = token_count_value(t: layout.max_model_len)
+  let pool_tokens = token_count_value(t: reported.pool.tokens)
+  if context == 0 {
+    PrintedLinesUncheckable { cause: "the context cap is zero, so the concurrency the pool line encodes cannot be recovered" as NonEmptyStr }
+  } else {
+    let implied = concurrent_request_hundredths(count: (pool_tokens * 100) / context)
+    if hundredths_within_printed_precision(predicted: implied, reported: reported.max_concurrency) {
+      PrintedLinesAgree
+    } else {
+      PrintedLinesDisagree { implied: implied, reported: reported.max_concurrency }
+    }
+  }
+}
+
+// ── THE COST OF ONE ADMITTED SEQUENCE, WHICH NEEDS THE GROUPS AND SO REFUSES TODAY ─────────────
+//
+// A lease must charge what the request will actually hold, and that is a function of the WHOLE
+// layout: each group contributes ceil(min(sequence, its window) / its block size) * its layer count,
+// and only a full-attention group scales with the sequence all the way up. With `groups` empty
+// there is no such function to evaluate, and the honest answer is a refusal naming what is missing.
+//
+// WHY NOT SCALE THE RECOVERED FULL-CONTEXT COST BY length / max_model_len. Because the windowed
+// groups do not scale: halving the sequence does not halve their cost, so the scaled figure
+// UNDERSTATES what a shorter request holds and would over-admit. An over-approximation that charged
+// every request the full-context cost would be safe in the other direction, but it is not offered
+// here either -- it belongs to the policy that decides how much conservatism to buy, not to the
+// module that reports what the layout says.
+type AdmissionCost
+  = AdmissionCostBlocks { blocks: AllocatorBlockCount }
+  | AdmissionCostUnestablished { cause: NonEmptyStr }
+
+fn cold_admission_blocks(layout: ResolvedKvLayout, sequence_budget: TokenCount) -> AdmissionCost {
+  if length(layout.groups) == 0 {
+    AdmissionCostUnestablished {
+      cause: "the resolved cache groups are unobserved, so the per-request block cost cannot be computed from the layout; the engine's group metadata does not currently emit layer count, page size or its calculated blocks-per-max-request" as NonEmptyStr,
+    }
+  } else if token_count_value(t: sequence_budget) == 0 {
+    AdmissionCostUnestablished { cause: "an empty sequence budget names no admission" as NonEmptyStr }
+  } else if token_count_value(t: sequence_budget) > token_count_value(t: layout.max_model_len) {
+    AdmissionCostUnestablished { cause: "the sequence budget exceeds the engine's context cap, so no admission of it is representable" as NonEmptyStr }
+  } else {
+    match fold(layout.groups, init: Present { value: 0 }, f: (acc, g) =>
+      match acc {
+        Absent => none
+        Present { value: n } =>
+          match group_blocks_for(group: g, sequence: sequence_budget) {
+            Absent => none
+            Present { value: c } => Present { value: n + c }
+          }
+      }
+    ) {
+      Absent =>
+        AdmissionCostUnestablished {
+          cause: "a cache group with a zero block size or zero layer count is not a group, so the per-request block cost cannot be computed" as NonEmptyStr,
+        }
+      Present { value: n } =>
+        AdmissionCostBlocks { blocks: allocator_block_count(count: n) }
+    }
+  }
+}
+
+// PER-GROUP COST. The windowed kind is capped at its window, which is the whole reason a hybrid
+// layout admits more than the full-attention arithmetic predicts; a mamba group is one state per
+// sequence regardless of length. Zero block size and zero layer count refuse rather than dividing
+// or reporting a free request; the seed does not make those states unwritable.
+fn group_blocks_for(group: KvGroupLayout, sequence: TokenCount) -> Nat? {
+  let layers = attention_layer_count_value(c: group.layer_count)
+  if token_count_value(t: group.block_size) == 0 || layers == 0 {
+    none
+  } else {
+    match group.kind {
+      MambaState => Present { value: layers }
+      FullAttention =>
+        match ceil_div(numerator: token_count_value(t: sequence), denominator: group.block_size) {
+          Absent => none
+          Present { value: q } => Present { value: q * layers }
+        }
+      SlidingWindowAttention { window: w } =>
+        match ceil_div(numerator: nat_min(a: token_count_value(t: sequence), b: token_count_value(t: w)), denominator: group.block_size) {
+          Absent => none
+          Present { value: q } => Present { value: q * layers }
+        }
+    }
+  }
+}
+
+// The denominator is a token count that may be zero: the KvBlockSize-where-range alias did not
+// refuse constructed Measures. This arm is the wall that actually runs.
+fn ceil_div(numerator: Nat, denominator: TokenCount) -> Nat? {
+  let d = token_count_value(t: denominator)
+  if d == 0 {
+    none
+  } else {
+    Present { value: (numerator + d - 1) / d }
+  }
+}
+
+// ── THE ONE NON-CIRCULAR CHECK: THE GROUPS MUST REPRODUCE THE PRINTED CONCURRENCY ─────────────
+//
+// printed_lines_agree cannot see the inventory, because the inventory cancels out of it. THIS check
+// can, and it is the reason the group layout is worth instrumenting at all: the per-group sum knows
+// nothing about the printed lines, and the printed concurrency knows nothing about the groups, so
+// agreement between them is evidence and disagreement is located -- either the layout was read from
+// a different launch than the lines, or the group metadata is wrong, or the engine's arithmetic is
+// not what this module models.
+//
+// IT IS UNAVAILABLE TODAY, and says so rather than passing. With `groups` empty there is nothing to
+// push forward, so the check refuses; it does not read an absent second opinion as agreement.
+type LayoutReproduction
+  = LayoutReproducesReported { blocks_per_max_request: AllocatorBlockCount }
+  | LayoutContradictsReported { predicted: ConcurrentRequestHundredths, reported: ConcurrentRequestHundredths }
+  | LayoutReproductionUnavailable { cause: NonEmptyStr }
+
+fn revision_is_modelled(r: VllmSourceRevision) -> Bool {
+  (r.repository as String) == (vllm_source_revision_read.repository as String)
+    && (r.full_revision as String) == (vllm_source_revision_read.full_revision as String)
+}
+
+// THE CHECK RUNS FORWARD, NOT AS AN EQUALITY BETWEEN TWO INVERSIONS.
+//
+// Truncating integer division compared with == against a figure vLLM prints rounded is a knife
+// edge: a layout that is exactly right can predict 1121 against a printed 1122. The published
+// figure's precision is one hundredth, so the band is ±1 hundredth, not invented.
+//
+// BOTH SIDES CARRY A REVISION. The reported capacity carries the revision of its reading; the
+// layout carries the revision its group arithmetic was established against. A foreign layout
+// joined to a modelled reading is the same class as a foreign reading: a law about code nobody
+// read.
+fn layout_reproduces_reported(layout: ResolvedKvLayout, reported: VllmReportedCapacity) -> LayoutReproduction {
+  if !revision_is_modelled(r: reported.observed_at_revision) {
+    LayoutReproductionUnavailable {
+      cause: join([
+        "the reading was taken at ", reported.observed_at_revision.repository as String, "@", reported.observed_at_revision.full_revision as String,
+        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+        "; the reproduction is not valid across revisions",
+      ], "") as NonEmptyStr,
+    }
+  } else if !revision_is_modelled(r: layout.established_at_revision) {
+    LayoutReproductionUnavailable {
+      cause: join([
+        "the layout's group arithmetic was established at ", layout.established_at_revision.repository as String, "@", layout.established_at_revision.full_revision as String,
+        " but the capacity arithmetic modelled here was established against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+        "; the reproduction is not valid across revisions",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match cold_admission_blocks(layout: layout, sequence_budget: layout.max_model_len) {
+      AdmissionCostUnestablished { cause: c } => LayoutReproductionUnavailable { cause: c }
+      AdmissionCostBlocks { blocks: derived } => {
+        let cost = allocator_block_count_value(c: derived)
+        if cost == 0 {
+          LayoutReproductionUnavailable { cause: "the groups sum to no blocks for a full-context request, so no concurrency can be predicted from them" as NonEmptyStr }
+        } else {
+          let predicted = concurrent_request_hundredths(count: (allocator_block_count_value(c: layout.allocator_blocks) * 100) / cost)
+          if hundredths_within_printed_precision(predicted: predicted, reported: reported.max_concurrency) {
+            LayoutReproducesReported { blocks_per_max_request: derived }
+          } else {
+            LayoutContradictsReported { predicted: predicted, reported: reported.max_concurrency }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── THE USAGE GAUGE IS OVER THE INVENTORY, AND IT IS NOT OCCUPANCY ─────────────────────────────
+//
+// kv_cache_usage_perc is 1 - free_blocks / allocator_blocks, and a block holding a RETAINED
+// PREFIX-CACHE entry is not free. So the gauge rises with cache retention on an engine serving
+// nothing: gunbc.spark.pair_serving_observed recorded 96.5% at zero requests running, and the group
+// B head read 53% with zero running on 2026-09-06. Any reading of this number as saturation, or any
+// attempt to divide it into a per-request cost, is measuring the cache and calling it the load.
+type AllocatorUsage sole_constructor {
+  referenced_or_retained_blocks: AllocatorBlockCount
+  allocator_blocks: AllocatorBlockCount
+}
+
+// A FREE COUNT LARGER THAN THE INVENTORY IS NOT A FULL POOL, IT IS TWO ENGINES. The previous shape
+// clamped it with a min, so an impossible reading reported "nothing free" -- the most alarming
+// possible answer, arrived at by fabrication, and indistinguishable from a genuinely saturated
+// engine. That is the absorbing fallback section 5 forbids: the widen destroys the only signal that
+// the inventory and the free count came from different launches.
+type UsageReading
+  = UsageRead { usage: AllocatorUsage }
+  | FreeCountImpossible { free_blocks: AllocatorBlockCount, allocator_blocks: AllocatorBlockCount }
+
+fn allocator_usage(layout: ResolvedKvLayout, free_blocks: AllocatorBlockCount) -> UsageReading {
+  let inventory = allocator_block_count_value(c: layout.allocator_blocks)
+  let free = allocator_block_count_value(c: free_blocks)
+  if free > inventory {
+    FreeCountImpossible { free_blocks: free_blocks, allocator_blocks: layout.allocator_blocks }
+  } else {
+    UsageRead {
+      usage: AllocatorUsage {
+        referenced_or_retained_blocks: allocator_block_count(count: inventory - free),
+        allocator_blocks: layout.allocator_blocks,
+      },
+    }
+  }
+}
+
+// There is deliberately no function from AllocatorUsage to a request count or a token count. The
+// numerator mixes live references with evictable retention, and nothing here can separate them.
+// A constant predicate claiming "this is not occupancy" would be a decoration whose RED is
+// unauthorable; the absence of the conversion is the wall.
+
+data kv_layout_receipt_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.spark.vllm_kv_layout_observe admit_kv_layout consumes ResolvedKvLayout. SUFFICIENT FOR: this module is not a dangling type museum; live capacity folds go through the receipt bound to a launch." as NonEmptyStr)

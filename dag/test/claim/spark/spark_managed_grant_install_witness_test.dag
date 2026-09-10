@@ -1,5 +1,6 @@
 module test.claim.spark_managed_grant_install_witness
 
+import product.placement_supply { HostIdentity }
 import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,
@@ -431,13 +432,23 @@ test fn a_local_read_failure_is_not_reported_as_an_unenrolled_credential() -> Bo
 
 // The production entry names the exact enrolled version, and says nothing about any run's file read.
 test fn the_production_standing_is_the_exact_enrolled_version() -> Bool {
-  match spark_grant_install_administrator_standing() {
+  (match spark_grant_install_administrator_standing(host: "srv6" as HostIdentity) {
     CredentialMaterialized { ref: r } =>
       secret_ref_version_resource(ref: r)
         == "projects/gunbai-secrets/secrets/spark-administrator-password/versions/1"
         && r.version as String != "latest"
     CredentialMaterializationPending => false
-  }
+  })
+    && (match spark_grant_install_administrator_standing(host: "srv7" as HostIdentity) {
+    CredentialMaterialized { ref: r } =>
+      secret_ref_version_resource(ref: r)
+        == "projects/gunbai-secrets/secrets/spark-administrator-password/versions/1"
+    CredentialMaterializationPending => false
+  })
+    && (match spark_grant_install_administrator_standing(host: "srv1" as HostIdentity) {
+    CredentialMaterialized { ref: _ } => false
+    CredentialMaterializationPending => true
+  })
 }
 
 test fn the_awaiting_credential_arm_asks_for_a_credential_and_not_a_hand_mutation() -> Bool {

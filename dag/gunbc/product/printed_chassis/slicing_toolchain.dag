@@ -204,8 +204,20 @@ func attempt_orca_execution(
 // A fabricated refusal costs a slice that would have worked; a fabricated readiness mints a plan
 // from a process that never ran. Only the second is a silent wrong answer, and only the second is
 // behind the effectful mint.
+// AND THE REFUSAL SURVIVED AN ATTEMPT TO FALSIFY IT, WHICH IS WHY THE RECEIPT NOW NAMES WHY THE GAP
+// IS NOT TRANSIENT. A later session resolved 33 of these 36 from conda-forge and concluded this row
+// had gone stale. It had not. The resolver publishes no aarch64 build of libwebkit2gtk-4.1 or
+// libjavascriptcoregtk-4.1 at all, so the residue is not a package nobody installed yet -- it is
+// absent from the channel, and no amount of resolving closes it on this architecture.
+//
+// WHAT MADE THE ROW LOOK FALSE WAS A FABRICATED DEPENDENCY. Empty stub objects carrying the two
+// sonames and none of their symbols let the loader start the binary, and a slice completed. That is
+// not this host clearing the residue; the binary references 99 webkit symbols that the stubs do not
+// define, and forcing eager binding aborts on the first of them. The slice survived only because
+// the CLI path never calls into webkit -- a property of the code path taken, not of the environment,
+// and precisely the hand-assembled toolchain this module's opening annotation rejects.
 data container_execution: OrcaExecutionStanding = ExecutionRefused {
-  receipt: "above the floor and refused: 36 sonames unresolved in a clean session image, libwebkit2gtk-4.1, libgtk-3, pango, cairo, gstreamer and the GL/EGL family among them",
+  receipt: "above the floor and refused: 36 sonames unresolved in a clean session image, libgtk-3, pango, cairo, gstreamer and the GL/EGL family among them; 33 resolve from conda-forge and libwebkit2gtk-4.1 with libjavascriptcoregtk-4.1 do not, having no aarch64 build in the channel",
 }
 
 data srv2_execution: OrcaExecutionStanding = ExecutionRefused {

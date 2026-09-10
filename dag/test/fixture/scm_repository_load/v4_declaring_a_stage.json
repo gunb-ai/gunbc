@@ -1,0 +1,9 @@
+{
+  "format": "gunbc-scm-repository-v4",
+  "identity_rule": "scm-object-identity-v2",
+  "objects": [],
+  "next_commit_ordinal": 0,
+  "commits": [],
+  "checked_out": null,
+  "staged": null
+}

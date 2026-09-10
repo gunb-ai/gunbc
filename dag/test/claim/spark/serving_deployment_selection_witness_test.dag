@@ -1,0 +1,423 @@
+module test.claim.spark.serving_deployment_selection_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq }
+import std.measure { token_count, basis_point }
+import extdeps.vllm.engine_args { VllmMemoryRequest }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.serving_deployment_selection {
+  ModelArtifact, DeploymentCandidate, deployment_candidate,
+  ExecutorRayProfile, ExecutorMpProfile, KvFp8DsMlaLayout, SpeculationOff, SpeculationOn,
+  RuntimeRevision, runtime_revision,
+  ServingDecisionParameters, serving_decision_parameters,
+  ServingExecutionProfile, execution_profile_of,
+  ServingQualityReport, serving_quality_report,
+  QualityRequirement, quality_requirement,
+  ServingQualityAssessment, QualityPassed, QualityFailed, QualityUnobserved, assess_quality,
+  RuntimeFeasibility, RuntimeFeasibilityUnestablished,
+  WorkloadDemandStanding, WorkloadDemandEstablished, WorkloadDemandUnestablished, ContextReservePolicy, context_reserve_policy,
+  WeightsNotRuledOutByLowerBound, WeightsImpossibleByLowerBound, WeightFitUnderivable, weight_fit_of,
+  per_rank_bytes_ceiling, fleet_fits,
+  spark_fleet_snapshot, serving_parameters_current, spark_runtime, eight_host_topologies,
+  artifact_deepseek_v4_flash_native, artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
+  TopologyShape, topology_shape,
+  ServingDeploymentChoiceDomain, serving_deployment_domain,
+  ServingDeploymentCandidateField, serving_candidate_field,
+  ServingFieldEstablished, ServingFieldUnestablished, establish_serving_candidate_field,
+  ServingDeploymentEvidenceSnapshot, serving_evidence_snapshot,
+  ServingDeploymentDecisionInput, serving_decision_input, decision_snapshot_key,
+  ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
+  select_serving_deployment,
+  ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
+  glm_decision_input, deepseek_decision_input,
+  deepseek_quality_requirement,
+}
+
+// ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
+//
+// Neither real subject returns a shape, and each is blocked on SEVERAL independent grounds rather
+// than one: no quality assessment for any exact profile, no runtime feasibility observation, an
+// unestablished workload demand, and ten unfunded performance dimensions. A single blocking axis
+// would mean the whole question turned on one measurement.
+test fn the_real_deepseek_subject_returns_obligations_rather_than_a_topology() -> Bool {
+  match select_serving_deployment(input: deepseek_decision_input) {
+    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    _ => false
+  }
+}
+
+test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
+  match select_serving_deployment(input: glm_decision_input) {
+    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    _ => false
+  }
+}
+
+// ── FIXTURES ──────────────────────────────────────────────────────────────────────────────────
+data suite_ref: DeclarationRef = decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref")
+
+data deepseek_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.spark.serving_deployment_selection",
+  decl_name: "artifact_deepseek_v4_flash_native",
+  field: WholeDeclaration,
+}
+
+fn cand(name: String, art: ModelArtifact, t: TopologyShape) -> DeploymentCandidate {
+  deployment_candidate(
+    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: name),
+    label: name as NonEmptyStr,
+    artifact: art,
+    topology: t,
+  )
+}
+
+data native_tp8_x1: DeploymentCandidate = cand(name: "native_tp8_x1", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
+data native_tp4_x2: DeploymentCandidate = cand(name: "native_tp4_x2", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
+data native_tp2_x4: DeploymentCandidate = cand(name: "native_tp2_x4", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
+data native_tp1_x8: DeploymentCandidate = cand(name: "native_tp1_x8", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
+
+// ── CONTROL 1: A PUBLIC HELPER CANNOT MINT A PASSING VERDICT ───────────────────────────────────
+//
+// The only way to a QualityPassed is a REPORT evaluated against a REQUIREMENT. A report is ordinary
+// data -- writing down what a run produced is not a claim it passed -- and the passing arm's payload
+// has no exported builder, so no importer can assert admission.
+//
+// THE PREVIOUS VERSION EXPORTED `serving_quality_receipt`, which took a subject, an arbitrary
+// authority name and a prose note and returned an admitted receipt. Anyone could mint "quality is
+// fine" and satisfy the hard quality axis with no evaluation. This row is the positive control that
+// the replacement path still works; the guarantee that the OLD path is gone is that the function no
+// longer exists, which the corpus's own citation and resolution walls enforce.
+fn report_at(tp: Nat, divergence: Nat, score_delta: Int) -> ServingQualityReport {
+  serving_quality_report(
+    subject: execution_profile_of(c: cand(name: "probe", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: tp, replica_count: 1)), p: serving_parameters_current),
+    suite: suite_ref,
+    reference_profile: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+    max_selected_token_divergence_millinats: divergence,
+    task_score_delta_hundredths: score_delta,
+    how: "fixture report" as NonEmptyStr,
+  )
+}
+
+test fn a_report_within_the_bar_assesses_as_passed() -> Bool {
+  match assess_quality(report: report_at(tp: 4, divergence: 0, score_delta: 0), requirement: deepseek_quality_requirement) {
+    QualityPassed { verdict: _ } => true
+    _ => false
+  }
+}
+
+// ── CONTROL 3: A MEASURED FAILURE IS REFUSED, NOT LEFT OPEN ───────────────────────────────────
+//
+// A same-artifact profile that was TESTED AND FAILED is a decided negative. The previous version
+// could not express it: QualityRefused fired only on artifact mismatch, so a tested-and-bad profile
+// collapsed into the same absent-receipt state as one nobody had run.
+test fn a_measured_quality_failure_is_failed_rather_than_unobserved() -> Bool {
+  match assess_quality(report: report_at(tp: 2, divergence: 2238, score_delta: 0), requirement: deepseek_quality_requirement) {
+    QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
+    _ => false
+  }
+}
+
+test fn a_task_score_regression_is_also_a_failure() -> Bool {
+  match assess_quality(report: report_at(tp: 4, divergence: 0, score_delta: -150), requirement: deepseek_quality_requirement) {
+    QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
+    _ => false
+  }
+}
+
+// ── CONTROL 2: A RECEIPT FOR ONE EXECUTION PROFILE DOES NOT ADMIT ANOTHER ──────────────────────
+//
+// The profile digest carries context, memory fraction, batch budget, sequence population, executor,
+// KV layout, speculative policy and runtime revision. A receipt acquired at one is not transportable
+// to another, which is why quality and runtime feasibility share this exact subject.
+data other_runtime_parameters: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 300000),
+  memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 8200) }, kv_cache_bytes: none },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorMpProfile,
+  kv_layout: KvFp8DsMlaLayout,
+  speculative: SpeculationOff,
+  runtime: runtime_revision(image: "a different image" as NonEmptyStr, vllm_revision: "a different revision" as NonEmptyStr),
+)
+
+data wider_context_parameters: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 400000),
+  memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 8200) }, kv_cache_bytes: none },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_layout: KvFp8DsMlaLayout,
+  speculative: SpeculationOff,
+  runtime: spark_runtime,
+)
+
+fn evidence_admitting(profiles: List<ServingQualityAssessment>, w: WorkloadDemandStanding) -> ServingDeploymentEvidenceSnapshot {
+  serving_evidence_snapshot(
+    quality: profiles,
+    runtime_feasibility: [],
+    workload: w,
+    fleet: spark_fleet_snapshot,
+    fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "spark_fleet_snapshot"),
+  )
+}
+
+test fn a_quality_receipt_is_not_transportable_across_execution_profiles() -> Bool {
+  execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
+    != execution_profile_of(c: native_tp4_x2, p: other_runtime_parameters)
+    && execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
+      != execution_profile_of(c: native_tp4_x2, p: wider_context_parameters)
+    && execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
+      != execution_profile_of(c: native_tp2_x4, p: serving_parameters_current)
+}
+
+// ── CONTROL 6: A MEMORY FRACTION ABOVE THE DEVICE REFUSES ─────────────────────────────────────
+//
+// Above 100 percent the lower-bound screen is handed more usable memory than the host has, turning an
+// impossible weight profile into a passing one -- generous in the one direction it must never be.
+data impossible_utilisation: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 300000),
+  memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 15000) }, kv_cache_bytes: none },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_layout: KvFp8DsMlaLayout,
+  speculative: SpeculationOff,
+  runtime: spark_runtime,
+)
+
+data over_utilised_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "over_utilised_field"),
+  domain: serving_deployment_domain(artifacts: [artifact_deepseek_v4_flash_native], topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)], parameters: impossible_utilisation),
+  candidates: [native_tp4_x2],
+)
+
+test fn a_memory_fraction_above_the_device_makes_the_field_unestablished() -> Bool {
+  match establish_serving_candidate_field(field: over_utilised_field) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// ── CONTROL 5: A DUPLICATE IN THE DECLARED DOMAIN REFUSES ─────────────────────────────────────
+//
+// Previously two identical expected keys both matched the same single actual row, so a duplicated
+// declaration passed unnoticed and the expected population was silently ambiguous.
+data duplicated_domain_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "duplicated_domain_field"),
+  domain: serving_deployment_domain(
+    artifacts: [artifact_deepseek_v4_flash_native],
+    topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2), topology_shape(tensor_parallel_degree: 4, replica_count: 2)],
+    parameters: serving_parameters_current),
+  candidates: [native_tp4_x2],
+)
+
+test fn a_duplicated_value_in_the_declared_domain_refuses() -> Bool {
+  match establish_serving_candidate_field(field: duplicated_domain_field) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// ── COMPLETENESS IS A JOIN, IN BOTH DIRECTIONS ────────────────────────────────────────────────
+data full_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
+  artifacts: [artifact_deepseek_v4_flash_native],
+  topologies: eight_host_topologies,
+  parameters: serving_parameters_current,
+)
+
+data complete_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "complete_field"),
+  domain: full_domain,
+  candidates: [native_tp8_x1, native_tp4_x2, native_tp2_x4, native_tp1_x8],
+)
+
+data field_missing_one: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "field_missing_one"),
+  domain: full_domain,
+  candidates: [native_tp8_x1, native_tp4_x2, native_tp1_x8],
+)
+
+test fn the_complete_field_is_established() -> Bool {
+  match establish_serving_candidate_field(field: complete_field) {
+    ServingFieldEstablished => true
+    ServingFieldUnestablished { causes: _ } => false
+  }
+}
+
+test fn a_field_missing_a_combination_its_domain_admits_is_unestablished() -> Bool {
+  match establish_serving_candidate_field(field: field_missing_one) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+data field_with_extra: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "field_with_extra"),
+  domain: full_domain,
+  candidates: [native_tp8_x1, native_tp4_x2, native_tp2_x4, native_tp1_x8, cand(name: "undeclared_tp2_x2", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 2))],
+)
+
+test fn a_candidate_outside_the_declared_domain_is_unestablished() -> Bool {
+  match establish_serving_candidate_field(field: field_with_extra) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// ── CONTROL 7: THE DECISION IDENTITY MOVES WITH EVERY LOAD-BEARING INPUT ───────────────────────
+//
+// The previous version passed identities BESIDE values and joined neither, so changing the demand
+// from 300K to 400K produced a different answer under a receipt whose named authorities were
+// byte-identical. This key is derived from the values themselves, so there is no second spelling.
+data established_demand: WorkloadDemandStanding = WorkloadDemandEstablished {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "established_demand"),
+  required_context: token_count(count: 300000),
+  population: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+  reserve: context_reserve_policy(retained_context: token_count(count: 200000), reserved_output: token_count(count: 64000), tool_growth_reserve: token_count(count: 36000)),
+}
+
+data wider_established_demand: WorkloadDemandStanding = WorkloadDemandEstablished {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "wider_established_demand"),
+  required_context: token_count(count: 400000),
+  population: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+  reserve: context_reserve_policy(retained_context: token_count(count: 300000), reserved_output: token_count(count: 64000), tool_growth_reserve: token_count(count: 36000)),
+}
+
+data unestablished_demand: WorkloadDemandStanding = WorkloadDemandUnestablished {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "unestablished_demand"),
+  scenario_value: token_count(count: 300000),
+  obligation: "fixture: no derived context population" as NonEmptyStr,
+}
+
+fn passing_quality_for(tp: Nat) -> ServingQualityAssessment {
+  assess_quality(report: report_at(tp: tp, divergence: 0, score_delta: 0), requirement: deepseek_quality_requirement)
+}
+
+fn input_with(field: ServingDeploymentCandidateField, w: WorkloadDemandStanding) -> ServingDeploymentDecisionInput {
+  serving_decision_input(
+    field: field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: w),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+  )
+}
+
+data settled_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "settled_field"),
+  domain: serving_deployment_domain(artifacts: [artifact_deepseek_v4_flash_native], topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)], parameters: serving_parameters_current),
+  candidates: [native_tp4_x2],
+)
+
+test fn changing_the_workload_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: input_with(field: settled_field, w: wider_established_demand))
+}
+
+test fn changing_the_candidate_roster_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: input_with(field: complete_field, w: established_demand))
+}
+
+test fn an_unchanged_input_keeps_its_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    == decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+}
+
+// ── CONTROL 9: AN UNESTABLISHED DEMAND KEEPS THE DECISION AT NEEDS-EVIDENCE ────────────────────
+//
+// Even beside a passing quality assessment, a scenario workload must not settle a deployment. It has
+// its own hard-bounded axis so it cannot hide behind whichever other evidence is missing first.
+test fn an_unestablished_workload_alone_keeps_the_decision_at_needs_evidence() -> Bool {
+  match select_serving_deployment(input: input_with(field: settled_field, w: unestablished_demand)) {
+    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    _ => false
+  }
+}
+
+// AND THE UNFUNDED PERFORMANCE ROSTER DOES THE SAME. Quality passing and the workload established is
+// still not enough, because ten dimensions that could change the decision have no reading. This is
+// the row that stops a future selection going green on a narrow question.
+test fn a_passing_quality_and_established_demand_still_need_the_performance_evidence() -> Bool {
+  match select_serving_deployment(input: input_with(field: settled_field, w: established_demand)) {
+    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    _ => false
+  }
+}
+
+// ── CONTROL 10: NOTHING HERE CAN MINT A LAUNCH ────────────────────────────────────────────────
+//
+// The admission's positive arm is ShapeAdmittedForPlacement over a ServingDeploymentShape. There is
+// no launch vocabulary in this module at all: binding replica shapes to exact hosts, failure domains
+// and endpoints is the fabric's relation, and the shape carries replica ORDINALS rather than host
+// identities so it cannot pretend otherwise.
+test fn an_under_evidenced_decision_cannot_reach_placement() -> Bool {
+  match admit_shape(s: select_serving_deployment(input: deepseek_decision_input)) {
+    FabricPlacementRequired { because: _ } => true
+    ShapeAdmittedForPlacement { shape: _ } => false
+  }
+}
+
+// ── THE LOWER BOUND DISPROVES; IT DOES NOT ESTABLISH ──────────────────────────────────────────
+test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool {
+  match weight_fit_of(c: native_tp1_x8, fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => true
+    _ => false
+  } && match weight_fit_of(c: native_tp4_x2, fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
+    _ => false
+  }
+}
+
+// AN EXTERNALLY REPORTED FOOTPRINT CANNOT SUPPORT A FEASIBILITY VERDICT HERE. The 2.05-bpw figure
+// came from someone else's deployment write-up; the previous version typed it identically to a byte
+// count read on a Spark, so it looked exact.
+test fn an_externally_reported_footprint_is_underivable_on_this_fleet() -> Bool {
+  match weight_fit_of(c: cand(name: "ext", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightFitUnderivable { because: _ } => true
+    _ => false
+  } && match weight_fit_of(c: cand(name: "unread", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightFitUnderivable { because: _ } => true
+    _ => false
+  }
+}
+
+// CEILING, AND THE HELPER REFUSES ZERO RANKS ITSELF rather than trusting a guard at its call site.
+test fn per_rank_bytes_round_up_and_refuse_zero_ranks() -> Bool {
+  match per_rank_bytes_ceiling(total: 101, ranks: 2) {
+    Present { value: v } => v == 51
+    Absent => false
+  } && match per_rank_bytes_ceiling(total: 100, ranks: 2) {
+    Present { value: v } => v == 50
+    Absent => false
+  } && match per_rank_bytes_ceiling(total: 1, ranks: 0) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── A DEGENERATE SHAPE IS NOT A CHEAP ONE ─────────────────────────────────────────────────────
+test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool {
+  !fleet_fits(c: cand(name: "zero_replicas", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 0)), fleet: spark_fleet_snapshot)
+    && !fleet_fits(c: cand(name: "zero_ranks", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 0, replica_count: 2)), fleet: spark_fleet_snapshot)
+    && fleet_fits(c: native_tp4_x2, fleet: spark_fleet_snapshot)
+}
+
+// ── A DIFFERENT ARTIFACT IS A DECIDED NEGATIVE ────────────────────────────────────────────────
+//
+// The requantised build is not a cheaper way to serve the native checkpoint; it is other weights.
+// No report about it can pass a requirement whose subject is the native artifact.
+test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bool {
+  match assess_quality(
+    report: serving_quality_report(
+      subject: execution_profile_of(c: cand(name: "twobit", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), p: serving_parameters_current),
+      suite: suite_ref,
+      reference_profile: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+      max_selected_token_divergence_millinats: 0,
+      task_score_delta_hundredths: 0,
+      how: "fixture: a perfect report about the wrong weights" as NonEmptyStr),
+    requirement: deepseek_quality_requirement) {
+    QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
+    _ => false
+  }
+}

@@ -173,6 +173,10 @@ pub fn milli_per_unit() -> Nat {
     1000
 }
 
+pub fn micro_per_unit() -> Nat {
+    (milli_per_unit() * milli_per_unit())
+}
+
 pub fn mega_factor() -> Nat {
     (1000 * 1000)
 }
@@ -386,9 +390,15 @@ pub type MegatransfersPerSecond = Rc<Measure<Frequency, Mega, i64>>;
 
 pub type HardwareThreadCount = Rc<Measure<Count, One, i64>>;
 
+pub type PhysicalCoreCount = Rc<Measure<Count, One, i64>>;
+
 pub type CharacterCount = Rc<Measure<Count, One, i64>>;
 
 pub type TokenCount = Rc<Measure<Count, One, i64>>;
+
+pub type AllocatorBlockCount = Rc<Measure<Count, One, i64>>;
+
+pub type AttentionLayerCount = Rc<Measure<Count, One, i64>>;
 
 pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
 
@@ -1056,6 +1066,17 @@ pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
     measure_count(t.clone())
 }
 
+pub fn physical_core_count(count: Nat) -> PhysicalCoreCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn physical_core_count_value(c: PhysicalCoreCount) -> Nat {
+    measure_count(c.clone())
+}
+
 pub fn character_count(count: Nat) -> CharacterCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1089,6 +1110,28 @@ pub fn token_count(count: Nat) -> TokenCount {
 
 pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn allocator_block_count_value(c: AllocatorBlockCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn attention_layer_count(count: Nat) -> AttentionLayerCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn attention_layer_count_value(c: AttentionLayerCount) -> Nat {
+    measure_count(c.clone())
 }
 
 pub fn cpu_core_count(count: Nat) -> CpuCoreCount {
@@ -1171,6 +1214,19 @@ pub fn packet_rate(count: Nat) -> PacketRate {
 }
 
 pub fn packet_rate_count(r: PacketRate) -> Nat {
+    measure_count(r.clone())
+}
+
+pub type SymbolRate = Rc<Measure<Frequency, One, i64>>;
+
+pub fn symbol_rate(count: Nat) -> SymbolRate {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn symbol_rate_count(r: SymbolRate) -> Nat {
     measure_count(r.clone())
 }
 
@@ -1312,6 +1368,19 @@ pub fn percent(count: Nat) -> Percent {
 
 pub fn percent_count(p: Percent) -> Nat {
     measure_count(p.clone())
+}
+
+pub type ConcurrentRequestHundredths = Rc<Measure<Dimensionless, One, i64>>;
+
+pub fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn concurrent_request_hundredths_count(c: ConcurrentRequestHundredths) -> Nat {
+    measure_count(c.clone())
 }
 
 pub fn permyriad_half_for_round_half_up() -> i64 {

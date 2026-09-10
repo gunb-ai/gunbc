@@ -10,6 +10,7 @@ module test.claim.fabric_contention_witness_test
 // that every case the policy genuinely cannot decide refuses instead of
 // returning a plausible one.
 
+import test.claim.fabric.provider_use_fixture { fixture_route }
 import std.nat { Nat }
 import std.types { Bool, List, NonEmptyStr }
 import extdeps.currency.currency { Usd }
@@ -49,6 +50,7 @@ fn c_offer(key: NonEmptyStr, quote: OfferQuote, quantum: Second) -> SupplierOffe
   SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: key },
     executor: "gunbc",
+    route: fixture_route(),
     shape: Shape {
       hard: HardRequirements { threads: hardware_thread_count(count: 8) },
       envelope: unstated_envelope(),
@@ -828,3 +830,4 @@ test fn measuring_the_grant_is_what_lets_it_rank_at_all() -> Bool {
     ),
   )
 }
+

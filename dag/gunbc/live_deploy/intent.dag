@@ -59,14 +59,17 @@ fn live_deploy_readback_for_spec(spec: DeploymentSpec) -> LiveDeployReadback {
   }
 }
 
-data live_deploy_unit_diagnosis_capture_exit_note: String = "DECLARED SCAFFOLD — live_deploy_unit_status_tail_command was an unmarked workaround (justification without a dissolution trigger). Poll-bound readiness capture now routes through gunbc.systemctl_status_read (typed Systemctl.Status, exit code as data, never masked). RESIDUE: tree_sync_restart_step_with_diagnosis in emit.dag still shells this concat into foreign-executor bash until typed host_effect_apply lands there. dissolves-on: unit-diagnosis modeled as a typed systemd.Systemctl.Status observation that reports exit code as data in UnitStatusCapture, never masked by '| tail' or trailing 'exit 0'; delete live_deploy_unit_status_tail_command concat."
-
 data live_deploy_unit_diagnosis_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolves-on: unit-diagnosis modeled as a typed systemd.Systemctl.Status observation (exit code recorded as data in UnitStatusCapture, never masked by '| tail' or trailing 'exit 0'); delete live_deploy_unit_status_tail_command concat.")
 
+// WHY THIS IS MARKED AT ALL: live_deploy_unit_status_tail_command was an unmarked WORKAROUND — a
+// justification with no dissolution trigger — and `| tail -n 40` with a trailing `exit 0` is
+// exactly the shape that turns a failed diagnosis into a successful-looking empty one. Poll-bound
+// readiness capture now routes through gunbc.systemctl_status_read instead, where the exit code is
+// data in UnitStatusCapture rather than something a pipeline swallowed.
+//
 // Emit-only residue: tree_sync_restart_step_with_diagnosis (gunbc.live_deploy.emit) still shells
-// live_deploy_unit_status_tail_command into foreign-executor bash. Readiness unit_diagnosis now
-// routes through systemd.Systemctl.Status (gunbc.systemctl_status_read); dissolve this concat when
-// tree-sync restart migrates to typed host_effect_apply.
+// this concat into foreign-executor bash, which is why the scaffold below is still standing rather
+// than deleted. Its trigger is the carrier above; this paragraph is the reason, not the condition.
 
 data live_deploy_unit_status_tail_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

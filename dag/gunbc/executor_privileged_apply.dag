@@ -1,0 +1,67 @@
+module gunbc.executor_privileged_apply
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, executor_privileged_operation_argv,
+}
+import gunbc.command_runner { run_shell_commands, LocalExec }
+
+data executor_privileged_apply_disposition: Disposition = SingleAuthority
+
+// THE OPERATIONS WERE AUTHORIZED AND NEVER APPLIED, AND THAT GAP WAS FOUND BY BEING ASKED.
+//
+// gunbc.runner.runner_host_grants runner_host_privileged_operations emits every host-wide operation
+// this fleet needs, and its ONLY consumer was runner_host_sudoers_content -- which renders
+// PERMISSION to run each argv. Nothing executed them. gunbc.runner.runner_microvm_host_ready
+// explicitly disclaims the KVM grant as "a host grant that belongs to the runner host's sudoers
+// roster, not to this reconciler". So each operation was granted by one module, disclaimed by
+// another, and executed by neither.
+//
+// The observable consequence was a hand step per host per operation. srv2's /dev/kvm became
+// writable on 2026-09-05 because an operator typed the modeled argv by hand -- verbatim the line
+// already rendered at provisioning/srv2/gunbc-ghrunner.sudoers -- which made that host's readiness
+// a property of one shell session rather than of convergence, and left srv1/srv3/srv4 refusing.
+//
+// THE ARGV IS THE SAME FUNCTION THE SUDOERS LINE IS RENDERED FROM, WHICH IS THE WHOLE POINT. If the
+// applier built its own command text, a grant and its execution could drift into two spellings of
+// one operation -- the exact §3 fork the operation type exists to prevent -- and the failure mode
+// would be a sudoers line that authorizes something nobody runs beside a command nobody authorized.
+// Sharing executor_privileged_operation_argv makes "what is permitted" and "what is executed" the
+// same fact by construction rather than by review.
+// ELEVATION IS sudo -n AND NOT sudo -E, AND THE TWO WERE NOT INTERCHANGEABLE HERE.
+//
+// -n makes sudo REFUSE rather than prompt when a command is not covered by a NOPASSWD grant. In an
+// automated converge that is the whole difference between a typed failure and a job that hangs on a
+// password prompt no one will ever answer -- a stall that reads as a slow host rather than as a
+// missing grant.
+//
+// -E was reached for first and is wrong twice over: its own row states that it carries the caller's
+// environment ACROSS the privilege boundary, a security claim this applier has no reason to make
+// when every argv it runs is already absolute; and it deliberately omits -n, so it can prompt.
+fn executor_privileged_operation_command(op: ExecutorPrivilegedOperation) -> ArgvCommand {
+  let elevated = sudo_elevate(command: map(executor_privileged_operation_argv(op: op), w => w as String))
+  argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
+}
+
+fn executor_privileged_operation_commands(ops: List<ExecutorPrivilegedOperation>) -> List<ArgvCommand> {
+  map(ops, op => executor_privileged_operation_command(op: op))
+}
+
+// APPLY REFUSES ON THE FIRST FAILING OPERATION AND DOES NOT CONTINUE, because the operations are
+// ordered and a later one routinely depends on an earlier one -- a directory install before the
+// unit that writes into it, a networkd file before the reload that reads it. Continuing past a
+// failure would leave a host in a state no row describes and report the last operation's status as
+// the run's, which is the fabricated-plausible-output arm §5 forbids.
+//
+// There is deliberately NO arm that treats a failed operation as tolerable. An operation that is
+// safe to skip is not an operation this list should carry.
+func apply_executor_privileged_operations_wet(ops: List<ExecutorPrivilegedOperation>) -> ProcessExit {
+  run_shell_commands(
+    commands: executor_privileged_operation_commands(ops: ops),
+    transport: LocalExec,
+  )
+}

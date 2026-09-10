@@ -1,0 +1,381 @@
+module gunbc.runner_microvm_network
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
+import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_microvm { RunnerMicroVmNetworking, GuestNetworkTap }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit,
+}
+import extdeps.nftables.ruleset {
+  NftTable, NftChain, NftRule, NftMatch, NftFamily, NftInet, NftHook, NftForward, NftPostrouting,
+  NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPolicy, NftPolicyAccept,
+  NftChainType, NftTypeFilter, NftTypeNat,
+  NftVerdict, NftAccept, NftDrop, NftMasquerade,
+  NftInputInterfaceWildcard, NftOutputInterfaceWildcard, NftSourceAddressPrefix,
+  NftConnectionTrackingEstablished, nft_table_wire,
+}
+
+data runner_microvm_network_disposition: Disposition = SingleAuthority
+
+// ONE SLOT, ONE /30, AND THE PREFIX IS WHAT MAKES TAP-TO-TAP UNREACHABLE BY ARITHMETIC RATHER THAN
+// BY A FIREWALL RULE. A /30 carries exactly four addresses -- network, host, guest, broadcast -- so
+// a guest's own routing table contains no route to any other slot's guest. The nftables refusal
+// that slice 2 also lands is the SECOND wall, for traffic that reaches the host and tries to be
+// forwarded between taps; it is not the first one, and it is not the one this row provides.
+//
+// Choosing the subnet from the SLOT INDEX rather than allocating one is deliberate: an allocator
+// needs state, and state that says which subnet a slot holds is a second authority for something
+// the slot identity already determines. Two slots on one host cannot collide because their indices
+// differ, and two slots on DIFFERENT hosts never share a link, so the third octet is the whole key.
+data runner_microvm_network_prefix_length: Int = 30
+
+data runner_microvm_network_octet1: Int = 172
+
+data runner_microvm_network_octet2: Int = 30
+
+// THE HOST HOLDS .1 AND THE GUEST HOLDS .2, which is the only assignment a /30 admits once the
+// network and broadcast addresses are excluded. They are named rather than computed at each call
+// site so the two never drift apart.
+data runner_microvm_network_host_octet4: Int = 1
+
+data runner_microvm_network_guest_octet4: Int = 2
+
+type RunnerSlotNetwork {
+  tap_device: NonEmptyStr
+  host_address: Ipv4Address
+  guest_address: Ipv4Address
+  guest_mac: Eui48Address
+  prefix_length: Int
+}
+
+// THE DEVICE NAME IS DERIVED AND MUST FIT, because Linux truncates nothing and refuses instead:
+// IFNAMSIZ is 16 bytes including the terminator, so 15 characters is the ceiling. "gunbc-tapNN"
+// is 11 characters at two digits, which leaves the derivation room the fleet will not reach.
+fn runner_slot_tap_device_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  join(["gunbc-tap", to_string(slot.slot_index)], "") as NonEmptyStr
+}
+
+fn runner_slot_host_address(slot: RunnerSlotIdentity) -> Ipv4Address {
+  ipv4_address(
+    octet1: runner_microvm_network_octet1,
+    octet2: runner_microvm_network_octet2,
+    octet3: slot.slot_index,
+    octet4: runner_microvm_network_host_octet4,
+  )
+}
+
+fn runner_slot_guest_address(slot: RunnerSlotIdentity) -> Ipv4Address {
+  ipv4_address(
+    octet1: runner_microvm_network_octet1,
+    octet2: runner_microvm_network_octet2,
+    octet3: slot.slot_index,
+    octet4: runner_microvm_network_guest_octet4,
+  )
+}
+
+// A LOCALLY ADMINISTERED MAC, AND THE BIT THAT SAYS SO IS SET RATHER THAN ASSUMED. 0x02 in the
+// first octet sets the locally-administered bit and clears the group bit, which is what makes this
+// address one no vendor can ever be assigned -- the guarantee that matters when the fleet mints
+// addresses for guests it created. extdeps.network.mac derives the scope from the octet, so the
+// witness asserts LocallyAdministered rather than asserting the literal 2.
+fn runner_slot_guest_mac(slot: RunnerSlotIdentity) -> Eui48Address {
+  mac_address(
+    octet1: 2,
+    octet2: 0,
+    octet3: 0,
+    octet4: 0,
+    octet5: 0,
+    octet6: slot.slot_index,
+  )
+}
+
+fn runner_slot_network(slot: RunnerSlotIdentity) -> RunnerSlotNetwork {
+  RunnerSlotNetwork {
+    tap_device: runner_slot_tap_device_name(slot: slot),
+    host_address: runner_slot_host_address(slot: slot),
+    guest_address: runner_slot_guest_address(slot: slot),
+    guest_mac: runner_slot_guest_mac(slot: slot),
+    prefix_length: runner_microvm_network_prefix_length,
+  }
+}
+
+fn runner_slot_network_as_microvm_networking(net: RunnerSlotNetwork) -> RunnerMicroVmNetworking {
+  GuestNetworkTap {
+    device: net.tap_device,
+    guest_mac: render_mac_address(addr: net.guest_mac),
+  }
+}
+
+// THE GUEST IS CONFIGURED BY THE KERNEL COMMAND LINE AND CARRIES NO DHCP CLIENT, which removes a
+// whole service from the guest and a whole failure mode from the boot. The kernel's own ip= syntax
+// (Documentation/admin-guide/nfs/nfsroot.rst) is
+//   ip=<client>:<server>:<gateway>:<netmask>:<hostname>:<device>:<autoconf>
+// and the empty fields are REQUIRED separators rather than omissions -- a form with fewer colons is
+// a different, silently-misparsed directive. autoconf is "off" because every field is supplied
+// here; leaving it unset would have the kernel try DHCP anyway and stall the boot on a link where
+// nothing answers.
+// THE NETMASK IS DERIVED FROM THE PREFIX, NOT SPELLED BESIDE IT (review 61223). "255.255.255.252"
+// and prefix_length 30 are two spellings of ONE fact, and only one of them would move if the fleet
+// ever re-prefixed: the host's .network file would carry the new CIDR while the guest's kernel ip=
+// line kept the old mask, and the guest would boot with a subnet that disagrees with its own
+// gateway's. Nothing refuses that -- the guest simply cannot reach the host.
+//
+// The kernel's ip= directive takes a DOTTED QUAD and not a prefix, so the conversion has to happen
+// somewhere; doing it here from the single prefix row is what keeps it one fact.
+//
+// mask_octet is total over the 9 reachable bit-counts rather than computed with a shift, because
+// each arm is the actual mask byte for that many leading ones and a wrong arm is visible by
+// inspection. There is no arm for a bit count outside 0..8: octet_mask_bits cannot produce one.
+fn mask_octet(bits: Int) -> Int {
+  if bits <= 0 { 0 }
+  else if bits == 1 { 128 }
+  else if bits == 2 { 192 }
+  else if bits == 3 { 224 }
+  else if bits == 4 { 240 }
+  else if bits == 5 { 248 }
+  else if bits == 6 { 252 }
+  else if bits == 7 { 254 }
+  else { 255 }
+}
+
+fn octet_mask_bits(prefix: Int, index: Int) -> Int {
+  let consumed = 8 * (index - 1)
+  let remaining = prefix - consumed
+  if remaining <= 0 { 0 } else if remaining >= 8 { 8 } else { remaining }
+}
+
+fn netmask_of_prefix(prefix: Int) -> Ipv4Address {
+  ipv4_address(
+    octet1: mask_octet(bits: octet_mask_bits(prefix: prefix, index: 1)),
+    octet2: mask_octet(bits: octet_mask_bits(prefix: prefix, index: 2)),
+    octet3: mask_octet(bits: octet_mask_bits(prefix: prefix, index: 3)),
+    octet4: mask_octet(bits: octet_mask_bits(prefix: prefix, index: 4)),
+  )
+}
+
+data runner_microvm_network_guest_interface: NonEmptyStr = "eth0" as NonEmptyStr
+
+data runner_microvm_network_autoconf_off: NonEmptyStr = "off" as NonEmptyStr
+
+fn runner_slot_guest_ip_boot_arg(net: RunnerSlotNetwork) -> String {
+  join([
+    "ip=",
+    render_ipv4_address(addr: net.guest_address) as String,
+    "::",
+    render_ipv4_address(addr: net.host_address) as String,
+    ":",
+    render_ipv4_address(addr: netmask_of_prefix(prefix: net.prefix_length)) as String,
+    "::",
+    runner_microvm_network_guest_interface as String,
+    ":",
+    runner_microvm_network_autoconf_off as String,
+  ], "")
+}
+
+// --- the host ruleset ---
+
+data runner_microvm_tap_device_prefix: NonEmptyStr = "gunbc-tap" as NonEmptyStr
+
+// THE WHOLE MICRO-VM RANGE IN ONE PREFIX, so the NAT rule is one row rather than one per slot. Every
+// slot's /30 sits inside 172.30.0.0/16 by the derivation above, so source-matching the /16 covers a
+// slot that does not exist yet and needs no edit when the roster grows.
+// THE SUPERNET IS BUILT FROM THE SAME OCTET ROWS THE SLOTS USE (review 61223). The prose above
+// already states the derivation -- every slot's /30 sits inside it -- and the previous row then
+// re-minted that as a bare literal, which is the §3 fork the prose was describing. The failure is
+// worse than a stale comment: moving runner_microvm_network_octet2 relocates every slot's network
+// while the NAT rule keeps matching the OLD /16, so guest traffic stops being masqueraded and the
+// symptom is "the guests have no internet" with every per-slot row looking correct.
+data runner_microvm_network_supernet_prefix: Int = 16
+
+fn runner_microvm_network_supernet_address() -> Ipv4Address {
+  ipv4_address(
+    octet1: runner_microvm_network_octet1,
+    octet2: runner_microvm_network_octet2,
+    octet3: 0,
+    octet4: 0,
+  )
+}
+
+fn runner_microvm_network_supernet() -> NonEmptyStr {
+  join([
+    render_ipv4_address(addr: runner_microvm_network_supernet_address()) as String,
+    "/",
+    to_string(runner_microvm_network_supernet_prefix),
+  ], "") as NonEmptyStr
+}
+
+data runner_microvm_nft_table_name: NonEmptyStr = "gunbc_microvm" as NonEmptyStr
+
+// THE FORWARD CHAIN'S POLICY IS ACCEPT, AND MAKING IT DROP WOULD HAVE TAKEN THE HOST DOWN.
+//
+// nftables is not iptables here: when several tables hook the same point, ALL of them run and ANY
+// drop wins. srv2 was measured on 2026-09-06 running an active dockerd alongside `table ip filter`,
+// `table ip nat`, `table ip mangle` and their ip6 counterparts. A new forward chain with
+// `policy drop` would therefore have dropped every packet docker forwards, because our chain's
+// default verdict applies to traffic that has nothing to do with this fleet's guests.
+//
+// So the default is ACCEPT and the isolation is stated as an EXPLICIT DROP of exactly the case that
+// must never happen -- tap to tap. That is narrower than a default-closed chain and it is the only
+// form that composes with a host we do not own the whole network policy of.
+//
+// It is also the SECOND wall, not the first: a slot's /30 gives a guest no route to any other
+// slot's guest at all (see the prefix row above), so this rule catches traffic that reached the
+// host and asked to be forwarded between taps. Both exist because they fail differently -- the
+// prefix is arithmetic and cannot be flushed, this rule survives a guest that sets its own routes.
+fn runner_microvm_forward_chain() -> NftChain {
+  NftChain {
+    name: "forward" as NonEmptyStr,
+    chain_type: NftTypeFilter,
+    hook: NftForward,
+    priority: NftPriorityFilter,
+    policy: NftPolicyAccept,
+    rules: [
+      NftRule {
+        matches: [
+          NftInputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
+          NftOutputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix },
+        ],
+        verdict: NftDrop,
+      },
+    ],
+  }
+}
+
+// THE MASQUERADE MATCHES ON SOURCE AND NOT ON OUTPUT INTERFACE, which removes an observation this
+// module would otherwise have to make and keep correct. srv2's uplink is enP3p3s0f1 and srv1's is
+// not; naming it would make the ruleset host-specific and would rot the moment an interface is
+// renamed by a firmware update or a NIC swap. Source-matching the fleet's own supernet is exact --
+// only guest traffic carries those addresses -- and it is identical on every host.
+fn runner_microvm_postrouting_chain() -> NftChain {
+  NftChain {
+    name: "postrouting" as NonEmptyStr,
+    chain_type: NftTypeNat,
+    hook: NftPostrouting,
+    priority: NftPrioritySrcnat,
+    policy: NftPolicyAccept,
+    rules: [
+      NftRule {
+        matches: [NftSourceAddressPrefix { cidr: runner_microvm_network_supernet() }],
+        verdict: NftMasquerade,
+      },
+    ],
+  }
+}
+
+fn runner_microvm_nft_table() -> NftTable {
+  NftTable {
+    family: NftInet,
+    name: runner_microvm_nft_table_name,
+    chains: [runner_microvm_forward_chain(), runner_microvm_postrouting_chain()],
+  }
+}
+
+fn runner_microvm_nft_ruleset_text() -> String {
+  nft_table_wire(t: runner_microvm_nft_table())
+}
+
+
+// --- the tap as DECLARED STATE, not as a command someone ran ---
+
+// THE TAP IS A systemd-networkd FILE AND NOT AN `ip tuntap` INVOCATION, and the first draft of this
+// module got that wrong in a way worth recording: it modeled the MANUAL PROCEDURE -- five privileged
+// operations and two new binary grants (ip, nft) -- because that is how an operator creates a tap by
+// hand. srv2 was then measured (2026-09-06) running systemd-networkd enabled and active, managing
+// the uplink through netplan-generated units. A tap is therefore a .netdev file, its address a
+// .network file, and both are FILE INSTALLS -- an operation this fleet already grants.
+//
+// The whole slice collapsed to two operations on binaries already in the sudoers roster, and the
+// authorization surface SHRANK rather than grew. The lesson generalizes: reaching for the command
+// an operator would type models the procedure, not the fact.
+//
+// It is also better than the commands were. A tap created by `ip tuntap add` exists until the next
+// reboot and then silently does not; a .netdev is what the host IS, reasserted at every boot with
+// no converge run at all.
+data runner_microvm_networkd_dir: NonEmptyStr = "/etc/systemd/network" as NonEmptyStr
+
+data runner_microvm_networkd_unit: NonEmptyStr = "systemd-networkd" as NonEmptyStr
+
+data runner_microvm_networkd_file_mode: NonEmptyStr = "0644" as NonEmptyStr
+
+data runner_microvm_networkd_file_owner: NonEmptyStr = "root" as NonEmptyStr
+
+// THE FILENAME CARRIES THE DEVICE, so one slot's units cannot land on another's path, and the
+// numeric prefix is systemd's ordering convention rather than decoration -- networkd applies files
+// in lexical order and a later file wins, so an unprefixed name would order unpredictably against
+// netplan's own 10- files.
+fn runner_slot_netdev_path(net: RunnerSlotNetwork) -> String {
+  join([runner_microvm_networkd_dir as String, "/50-", net.tap_device as String, ".netdev"], "")
+}
+
+fn runner_slot_network_file_path(net: RunnerSlotNetwork) -> String {
+  join([runner_microvm_networkd_dir as String, "/50-", net.tap_device as String, ".network"], "")
+}
+
+// THE USER= FIELD IS WHAT MAKES THE TAP OPENABLE WITHOUT PRIVILEGE, and it is the whole reason the
+// per-JOB path spends no grant at all. networkd creates the device owned by that user at boot; the
+// executor then opens it for every guest it launches, forever, with no sudo in the job path.
+fn runner_slot_netdev_text(net: RunnerSlotNetwork, owner: NonEmptyStr) -> String {
+  join([
+    "[NetDev]\n",
+    "Name=", net.tap_device as String, "\n",
+    "Kind=tap\n",
+    "\n",
+    "[Tap]\n",
+    "User=", owner as String, "\n",
+  ], "")
+}
+
+// ConfigureWithoutCarrier IS REQUIRED AND IS NOT A TUNING KNOB. A tap has no carrier until a guest
+// opens it, so without this networkd leaves the address unassigned and the host has no route to a
+// guest that has not booted yet -- which is every guest, at the moment the VM is configured.
+fn runner_slot_network_file_text(net: RunnerSlotNetwork) -> String {
+  join([
+    "[Match]\n",
+    "Name=", net.tap_device as String, "\n",
+    "\n",
+    "[Network]\n",
+    "Address=", runner_slot_host_cidr(net: net), "\n",
+    "ConfigureWithoutCarrier=yes\n",
+  ], "")
+}
+
+fn runner_slot_host_cidr(net: RunnerSlotNetwork) -> String {
+  join([
+    render_ipv4_address(addr: net.host_address) as String,
+    "/",
+    to_string(net.prefix_length),
+  ], "")
+}
+
+// THE OPERATIONS ARE INSTALLS AND ONE RELOAD, and every one of them converges: installing a file
+// that is already byte-identical changes nothing, and reload re-reads without tearing a link down.
+// There is no non-idempotent arm left to guard, which is why the observe-then-act standing the
+// previous draft needed is GONE rather than ported -- the earlier draft needed it because
+// `ip tuntap add` fails on an existing device, and no operation here has that shape.
+fn runner_slot_network_install_operations(
+  net: RunnerSlotNetwork,
+  staged_netdev: NonEmptyStr,
+  staged_network: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  [
+    InstallFile {
+      source: staged_netdev,
+      destination: runner_slot_netdev_path(net: net) as NonEmptyStr,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_networkd_file_mode,
+    },
+    InstallFile {
+      source: staged_network,
+      destination: runner_slot_network_file_path(net: net) as NonEmptyStr,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_networkd_file_mode,
+    },
+    SystemdReloadUnit { unit: runner_microvm_networkd_unit },
+  ]
+}

@@ -73,6 +73,13 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "command_over_transport"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_create_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_start_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_stop_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_exec_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_pull_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_build_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_remove_force_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
     decl_ref(module_path: "extdeps.tools.squashfs_tools", decl_name: "unsquashfs_extract_command"),
     decl_ref(module_path: "extdeps.tools.e2fsprogs", decl_name: "mke2fs_populate_command"),
@@ -101,6 +108,10 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_short_read_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_httpd_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_tftpd_over_udpsvd_command"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_ftps_upload_command"),
+    decl_ref(module_path: "extdeps.tools.mosquitto_pub", decl_name: "mosquitto_publish_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_time", decl_name: "gnu_time_max_rss_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_version_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_attach_command"),
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_disconnect_command"),
@@ -126,6 +137,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_exact_command_at"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
     decl_ref(module_path: "gunbc.repo_local_git_config", decl_name: "reconcile_install_command"),
+    decl_ref(module_path: "gunbc.executor_privileged_apply", decl_name: "executor_privileged_operation_command"),
   ]
   = ArgvCommand { program: program, arguments: arguments }
 

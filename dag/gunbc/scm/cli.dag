@@ -56,11 +56,17 @@ fn scm_log(path: String) -> CliWireResponse {
   scm_log_response(result: scm_read_log(path: path))
 }
 
-// STATUS OF A REPOSITORY WITH NOTHING STAGED. `repository_status` needs a pending `Proposal`,
-// and a CLI reading a repository document has no staging area to read one from -- the document
-// does not carry what is staged. `empty_proposal()` is therefore the honest argument for this
-// entry, and it is a REAL limitation rather than a placeholder: a verb that reports staged roles
-// needs a staging authority to exist first, and none does.
+// STATUS WITH NO ROLE PROPOSAL, WHICH IS A NARROWER STATEMENT THAN THIS NOTE USED TO MAKE. It said
+// "a repository with nothing staged ... the document does not carry what is staged", and that has
+// stopped being true of one of the two subjects: the v5 envelope carries the workspace's candidate
+// selection, `repository_status` reads it from the loaded envelope, and this entry therefore reports
+// the staged corpus without being told anything.
+//
+// WHAT `empty_proposal()` STILL HONESTLY SUPPLIES IS THE ROLE PROPOSAL, which is a different subject
+// -- `gunbc.scm.authoring`'s role-requirement authoring, not authored-source staging -- and which the
+// document genuinely has no member for. So this remains a real limitation rather than a placeholder,
+// but it is now a limitation about roles alone, and saying "nothing staged" would report the corpus
+// stage as empty when this entry can see it.
 fn scm_status_response(result: ScmReadResult<RepositoryStatus>) -> CliWireResponse {
   scm_status_cli_response(
     result: result,

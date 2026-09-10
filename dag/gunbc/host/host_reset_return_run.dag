@@ -1,0 +1,704 @@
+module gunbc.host_reset_return_run
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.nat { Nat, nat_range_inclusive }
+import std.measure { Second, second }
+import std.algebra { trim }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.clock {
+  ClockUnixMillisObserved,
+  ClockUnixMillisRead,
+  ClockUnixMillisRefused,
+  clock_unix_millis_read,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import extdeps.ssh.session
+import extdeps.tools.hostname
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import extdeps.github.actions_environment { github_run_id_variable_name }
+import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
+import product.placement_supply { HostIdentity }
+import gunbc.host_reset_return {
+  AttemptReceiptMinted,
+  AttemptReceiptPairingRefused,
+  HostDrivenBackToKnownState,
+  HostNeverObservedDown,
+  HostObservedDownAndNotBack,
+  HostObservedDownThenBack,
+  HostReturnObservation,
+  HostReturnUnobserved,
+  ObserverDistinctFromSubject,
+  ObserverIsTheSubjectMachine,
+  ObserverSelfIdentity,
+  ObserverHostnameNotConverged,
+  host_reset_return_receipt_path,
+  host_reset_observer_label_env,
+  reset_return_refusal_cause_wire,
+  reset_issuance_block,
+  ObserverSelfIdentityUnreadable,
+  ResetObserverSelection,
+  IssuedThroughConverge,
+  ResetAccepted,
+  ResetAttemptMint,
+  ResetCommandAcknowledgement,
+  ResetIssuanceRoute,
+  ResetIssuanceRouteRead,
+  ResetPreflightRefusal,
+  BmcCredentialPathUnset,
+  ObserverLabelUnset,
+  IssuingRunUnidentified,
+  ObserverNotAssigned,
+  SubjectHasNoRosterRow,
+  reset_preflight_refusal_wire,
+  ResetDispatchAdmitted,
+  ResetDispatchNotThisMode,
+  ResetDispatchObserverUnnamed,
+  admit_reset_dispatch,
+  reset_dispatch_observer_unnamed_diagnostic,
+  RouteEstablished,
+  RouteUnidentified,
+  ResetNotAttempted,
+  ResetRefusedByController,
+  ResetReturnRefused,
+  ResetReturnVerdict,
+  ResetAttemptObservation,
+  SubjectNotUpBeforeIssuance,
+  mint_reset_attempt_receipt,
+  observer_self_identity,
+  reset_dispatch_pairings,
+  reset_return_verdict_of_mint,
+  select_reset_observer,
+  subject_for_observer,
+}
+import gunbc.host_reset_subject_roster { ResetSubjectCandidate, reset_observer_peer_roster, reset_subject_candidate_for, reset_subject_roster }
+import gunbc.machine_intake_oob_boot_handoff {
+  oob_boot_handoff,
+  BootHandoffCompleted,
+  BootHandoffNotAdmitted,
+  BootSelectionFlagInvalid,
+  BootSelectionNotApplied,
+  BootSelectionRefused,
+  BootSelectionUnverifiable,
+  OobBootHandoffOutcome,
+  PowerCycleRefused,
+}
+
+// THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host_reset_return is pure
+// and is exercised by its witness against fixtures, which is what a fold is owed. This module is
+// what a fold is not owed and a RECEIPT is: the instruments that produce the observation, run from a
+// machine that is not the subject.
+//
+// WHAT IS DELIBERATELY NOT HERE. This module does not issue the reset. Issuing it is
+// gunbc.machine_intake_oob_boot_handoff's operation and it is already modeled, already admitted from
+// a capability row, and already refuses before any write; a second issuer here would be the §3 fork
+// that module's own note warns about. This is the OBSERVER, and keeping the two apart is not tidiness
+// -- the observer must be able to run on a machine that holds no controller credential at all.
+
+// ── the liveness instrument ────────────────────────────────────────────────────────────────────
+
+// ONE PROBE, NAMED, SO THE RECEIPT SAYS WHAT IT WATCHED. ssh.Session.Reachability is an ssh channel
+// request with BatchMode and a five-second connect timeout: it answers "this machine completed an
+// ssh handshake", which is a considerably stronger statement than a ping and the right one here,
+// because a host that answers ICMP from its firmware has not returned in any sense a runner cares
+// about.
+data host_reset_return_probe_label: NonEmptyStr = "ssh.Session.Reachability, BatchMode, ConnectTimeout=5"
+
+func host_is_reachable(host: NonEmptyStr) -> Bool
+  uses net: std.resources.Network
+{
+  return ssh.Session.Reachability(host: host).reachable
+}
+
+// ── the two waits ──────────────────────────────────────────────────────────────────────────────
+
+// A BOUNDED FOLD RATHER THAN A LOOP UNTIL TRUE, and the bound is the whole safety property: a wait
+// that cannot end is a job that hangs until the platform kills it, and a killed job writes nothing,
+// which is once again the empty value that reads as a positive answer.
+//
+// THE SHAPE IS THE CORPUS'S, NOT THIS MODULE'S. gunbc.instruments.fabric_seat_probe wait_until_epoch
+// already paces a bounded wait as a fold over nat_range_inclusive with one-second sleeps between
+// clock reads; this is that idiom applied to a different predicate.
+type LivenessWatch
+  = WatchSaw { at: EpochMs, samples: Int }
+  | WatchTimedOut { samples: Int, watched_until: EpochMs }
+  | WatchClockRefused { detail: String }
+
+type WatchFold {
+  outcome: LivenessWatch?
+  samples: Int
+  last_seen_at: EpochMs
+}
+
+// WAITING FOR A STATE, NOT FOR A CHANGE. `want_reachable: false` is the down watch and `true` is the
+// back watch, so one fold serves both and the two waits cannot drift apart in their pacing, their
+// bound or their clock discipline.
+func watch_step(acc: WatchFold, want_reachable: Bool, host: NonEmptyStr) -> WatchFold
+  uses net: std.resources.Network
+{
+  return match acc.outcome {
+    Present { value: _ } => acc
+    Absent =>
+      match clock_unix_millis_read() {
+        ClockUnixMillisRefused { detail: d } =>
+          WatchFold {
+            outcome: Present { value: WatchClockRefused { detail: d } },
+            samples: acc.samples,
+            last_seen_at: acc.last_seen_at,
+          }
+        ClockUnixMillisObserved { millis: now } =>
+          if host_is_reachable(host: host) == want_reachable {
+            WatchFold {
+              outcome: Present { value: WatchSaw { at: now, samples: acc.samples + 1 } },
+              samples: acc.samples + 1,
+              last_seen_at: now,
+            }
+          } else {
+            let _s = sleep_delay_seconds_second_carrier_projection(duration: host_reset_watch_sample_cadence)
+            WatchFold { outcome: none, samples: acc.samples + 1, last_seen_at: now }
+          }
+      }
+  }
+}
+
+func watch_for(host: NonEmptyStr, want_reachable: Bool, max_samples: Nat) -> LivenessWatch
+  uses net: std.resources.Network
+{
+  let done = fold(
+    nat_range_inclusive(lo: 1, hi: max_samples),
+    init: WatchFold { outcome: none, samples: 0, last_seen_at: 0 },
+    f: (acc, _i) => watch_step(acc: acc, want_reachable: want_reachable, host: host),
+  )
+  return match done.outcome {
+    Present { value: o } => o
+    Absent => WatchTimedOut { samples: done.samples, watched_until: done.last_seen_at }
+  }
+}
+
+// ── the observation, assembled from the two watches ────────────────────────────────────────────
+
+// THE DOWN WATCH RUNS FIRST AND THE BACK WATCH IS REACHABLE ONLY THROUGH ITS SUCCESS ARM. That is
+// the ordering made structural rather than sequential: there is no path on which a return is
+// observed without a departure having been observed first, so "down then up" cannot degenerate into
+// "up", which is what a host that never rebooted would answer.
+func observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples_max: Nat) -> HostReturnObservation
+  uses net: std.resources.Network
+{
+  return match watch_for(host: host, want_reachable: false, max_samples: down_samples_max) {
+    WatchClockRefused { detail: d } =>
+      HostReturnUnobserved { cause: join(["the observer could not read its own clock while watching for the host to go down: ", d], "") as NonEmptyStr }
+    WatchTimedOut { samples: n, watched_until: until } =>
+      HostNeverObservedDown {
+        probe: host_reset_return_probe_label,
+        samples: n,
+        watched_until: until,
+      }
+    WatchSaw { at: down_at, samples: down_n } =>
+      match watch_for(host: host, want_reachable: true, max_samples: back_samples_max) {
+        WatchClockRefused { detail: d } =>
+          HostReturnUnobserved { cause: join(["the observer could not read its own clock while watching for the host to return: ", d], "") as NonEmptyStr }
+        WatchTimedOut { samples: _, watched_until: until } =>
+          HostObservedDownAndNotBack {
+            probe: host_reset_return_probe_label,
+            down_first_seen_at: down_at,
+            waited_until: until,
+          }
+        WatchSaw { at: back_at, samples: back_n } =>
+          HostObservedDownThenBack {
+            probe: host_reset_return_probe_label,
+            down_first_seen_at: down_at,
+            back_first_seen_at: back_at,
+            down_samples: down_n,
+            back_samples: back_n,
+          }
+      }
+  }
+}
+
+// ── the observer's self-corroboration ──────────────────────────────────────────────────────────
+
+// THE OBSERVER READS ITS OWN HOSTNAME AND COMPARES IT TO THE SUBJECT'S ALLOCATED ONE. Two
+// instruments with nothing in common: the runner label decides where the job ran, the machine's own
+// hostname says what it is, and the allocation roster says what the subject's would be. A runner
+// mislabeled onto the subject chassis passes the first and fails this.
+//
+// AN UNALLOCATED SUBJECT MAKES THE CHECK UNPERFORMABLE, AND UNPERFORMABLE REFUSES. Nothing here
+// invents a hostname to clear that refusal: a canonical hostname is an ALLOCATION, and a guessed one
+// would be a fabricated observation standing exactly where the check that catches fabrication runs,
+// so the guess would disarm the instrument it was feeding.
+//
+// THE ALLOCATION EXISTS, AND THIS COMMENT USED TO SAY IT DID NOT. An earlier version said
+// gunbc_fleet_hostname_allocations carried no Mt. Collins row and that the first attempt would refuse
+// here; that row is now authored in gunbc.hostname_allocation, so the arm is no longer what the first
+// attempt hits. Review 61747 caught the stale claim -- the same "a comment asserts a refusal that does
+// not happen" class this branch had already been caught by once, which is the argument for reading
+// every sentence that names a state as a claim to be re-measured rather than as description.
+func observer_self_corroboration(observer: HostIdentity, subject: HostIdentity) -> ObserverSelfIdentity
+  uses net: std.resources.Network
+{
+  let observed = os.Hostname.ReadShort()
+  if observed.success == false {
+    return ObserverSelfIdentityUnreadable {
+      cause: "the observer could not read its own short hostname, so it cannot establish that it is not the subject machine",
+    }
+  }
+  return match canonical_hostname_for_fleet_slot(fleet_slot: subject) {
+    Absent =>
+      ObserverSelfIdentityUnreadable {
+        cause: join(
+          [
+            "the subject has no canonical hostname allocated in gunbc.hostname_allocation, so the observer cannot compare itself against it: ",
+            subject as String,
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    Present { value: subject_hostname } =>
+      match canonical_hostname_for_fleet_slot(fleet_slot: observer) {
+        Absent =>
+          ObserverSelfIdentityUnreadable {
+            cause: join(
+              [
+                "the observer has no canonical hostname allocated, so its own reported name is evidence about nothing: ",
+                observer as String,
+              ],
+              "",
+            ) as NonEmptyStr,
+          }
+        Present { value: observer_hostname } =>
+          observer_self_identity(
+            observer_machine_id: trim(s: observed.value) as NonEmptyStr,
+            observer_allocated_hostname: observer_hostname as NonEmptyStr,
+            subject_machine_id: subject_hostname as NonEmptyStr,
+          )
+      }
+  }
+}
+
+// ── the attempt, end to end ────────────────────────────────────────────────────────────────────
+
+// THE BASELINE, TAKEN BEFORE ANY WRITE. A host already unreachable when the reset is issued would
+// satisfy the down watch instantly, and the whole reading would be a fabrication of a reset that
+// moved nothing. So reachability is established first, and a subject that was not up refuses on its
+// own arm rather than proceeding into a watch whose answer is already decided.
+func subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
+  uses net: std.resources.Network
+{
+  if host_is_reachable(host: host) {
+    return none
+  }
+  return match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: d } =>
+      Present { value: HostReturnUnobserved { cause: join(["the observer could not read its own clock while taking the pre-issuance baseline: ", d], "") as NonEmptyStr } }
+    ClockUnixMillisObserved { millis: now } =>
+      Present {
+        value: SubjectNotUpBeforeIssuance {
+          probe: host_reset_return_probe_label,
+          checked_at: now,
+        },
+      }
+  }
+}
+
+// THE ACKNOWLEDGEMENT IS THE HANDOFF'S OUTCOME, TRANSLATED AND NOT FLATTENED. Each refusal arm of
+// gunbc.machine_intake_oob_boot_handoff leaves the controller in a materially different state, so
+// each becomes its own diagnostic rather than one "reset failed" -- the same reason that module
+// keeps them apart in the first place.
+fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs) -> ResetCommandAcknowledgement {
+  match outcome {
+    BootHandoffCompleted { selected: d } =>
+      ResetAccepted {
+        controller_response: join(["boot source override verified for '", d as String, "' and the power action was accepted"], "") as NonEmptyStr,
+        issued_at: issued_at,
+      }
+    BootSelectionRefused =>
+      ResetRefusedByController { diagnostic: "the controller refused the boot source override; nothing was cycled" }
+    BootSelectionNotApplied { requested: d, readback: r } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' did not take; boot parameter 5 read back: ", r], "") as NonEmptyStr,
+      }
+    BootSelectionFlagInvalid { requested: d, readback: r } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' was reported alongside an INVALID boot flag, so it will not be honoured; read back: ", r], "") as NonEmptyStr,
+      }
+    BootSelectionUnverifiable { requested: d, readback: r } =>
+      ResetRefusedByController {
+        diagnostic: join(["boot parameter 5 did not read back, so the override for '", d as String, "' is unverified; output: ", r], "") as NonEmptyStr,
+      }
+    PowerCycleRefused { selected: d } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+      }
+    BootHandoffNotAdmitted { admission: _ } =>
+      ResetNotAttempted { cause: "the controller was not admitted for out-of-band drive; no write was attempted" }
+  }
+}
+
+// THE SAMPLE CADENCE IS A MEASURED DURATION, NOT A STRING. This paced the watch with
+// sleep.Delay.Seconds(seconds: "1") until review 61938, which is a flat scalar naming a domain unit
+// where std.measure already carries one -- and extdeps.tools.sleep does not merely offer the carrier,
+// it declares the flat-scalar form's own dissolution binding onto
+// sleep_delay_seconds_second_carrier_projection. Minting the duration again as a bare string was
+// therefore re-inventing a concept that already has an authority (DESIGN sections 2 and 3), on the
+// exact line the upstream module had marked for retirement.
+//
+// IT IS ALSO WHAT MAKES THE WATCH BOUNDS MEAN ANYTHING. The sample counts below are derived from the
+// step budget by multiplying by this cadence; with the cadence spelled as a string at the call site,
+// that arithmetic was carried in prose and nothing tied the two together.
+data host_reset_watch_sample_cadence: Second = second(count: 1)
+
+// HOW LONG THE OBSERVER WATCHES, in samples rather than in seconds, because a sample is what the
+// fold actually counts and a seconds figure would be a second unit for the same bound. The receipt
+// carries the OBSERVED instants and never a budget, so these numbers bound the watch and describe
+// nothing about the outage.
+//
+// THE TWO BOUNDS ARE NOT THE SAME NUMBER BECAUSE A SAMPLE COSTS DIFFERENT AMOUNTS ON EACH SIDE, and
+// the first draft picked round figures without noticing. While waiting for the host to go DOWN the
+// probe SUCCEEDS, returning immediately, so a sample is about the one-second sleep. While waiting for
+// it to come BACK the probe FAILS, and ssh.Session.Reachability carries ConnectTimeout=5, so a sample
+// is about six seconds. Six hundred back-samples is therefore an hour of wall time inside a step
+// whose budget is gunbc_ci_runner_guest_image_step_timeout_minutes -- a watch that the platform would
+// kill before the fold could return, and a killed job writes nothing, which is once again the empty
+// value that reads as a positive answer. The bound is derived from the step budget rather than
+// chosen: two hundred samples is about twenty minutes, inside a thirty-minute step with margin for
+// the prelude and the issuance.
+data host_reset_down_watch_samples: Nat = 120
+
+data host_reset_back_watch_samples: Nat = 200
+
+func host_reset_return_attempt(
+  candidate: ResetSubjectCandidate,
+  observer: NonEmptyStr,
+  attempt: NonEmptyStr,
+  route: ResetIssuanceRoute,
+  password_file: NonEmptyStr,
+) -> ResetAttemptMint
+  uses net: std.resources.Network
+{
+  let subject = candidate.host as NonEmptyStr
+  let selection = select_reset_observer(
+    subject_roster: reset_subject_roster(),
+    peer_roster: reset_observer_peer_roster(),
+    subject: subject,
+    observer: observer,
+  )
+  let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.host)
+  match reset_issuance_block(selection: selection, identity: identity) {
+    Present { value: blocked } =>
+      return mint_reset_attempt_receipt(
+        selection: selection,
+        attempt: attempt,
+        route: route,
+        self_identity: identity,
+        acknowledgement: ResetNotAttempted {
+          cause: join([
+            "issuance was blocked before any controller write: ",
+            reset_return_refusal_cause_wire(cause: blocked),
+          ], "") as NonEmptyStr,
+        },
+        observation: HostReturnUnobserved { cause: "no reset was issued, so nothing was watched" },
+      )
+    Absent => none
+  }
+  return match subject_baseline(host: subject) {
+    Present { value: refused } =>
+      mint_reset_attempt_receipt(
+        selection: selection,
+        attempt: attempt,
+        route: route,
+        self_identity: identity,
+        acknowledgement: ResetNotAttempted { cause: "the pre-issuance baseline refused, so no controller write was attempted" },
+        observation: refused,
+      )
+    Absent =>
+      match clock_unix_millis_read() {
+        ClockUnixMillisRefused { detail: d } =>
+          mint_reset_attempt_receipt(
+            selection: selection,
+            attempt: attempt,
+            route: route,
+            self_identity: identity,
+            acknowledgement: ResetNotAttempted { cause: join(["the observer could not read its own clock, so no issuance instant exists and no write was attempted: ", d], "") as NonEmptyStr },
+            observation: HostReturnUnobserved { cause: "no issuance instant was established, so nothing was watched" },
+          )
+        ClockUnixMillisObserved { millis: issued_at } =>
+          host_reset_return_issue_and_watch(
+            candidate: candidate,
+            selection: selection,
+            identity: identity,
+            attempt: attempt,
+            route: route,
+            password_file: password_file,
+            issued_at: issued_at,
+          )
+      }
+  }
+}
+
+func host_reset_return_issue_and_watch(
+  candidate: ResetSubjectCandidate,
+  selection: ResetObserverSelection,
+  identity: ObserverSelfIdentity,
+  attempt: NonEmptyStr,
+  route: ResetIssuanceRoute,
+  password_file: NonEmptyStr,
+  issued_at: EpochMs,
+) -> ResetAttemptMint
+  uses net: std.resources.Network
+{
+  let outcome = oob_boot_handoff(
+    observation: candidate.observation,
+    capability_row: candidate.capability_row,
+    username: candidate.username,
+    password_file: password_file,
+    device: candidate.boot_device,
+    expected_rendering: candidate.boot_readback_rendering,
+    power_action: candidate.power_action,
+  )
+  let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)
+  let observation = observe_reset_return(
+    host: candidate.host as NonEmptyStr,
+    down_samples_max: host_reset_down_watch_samples,
+    back_samples_max: host_reset_back_watch_samples,
+  )
+  return mint_reset_attempt_receipt(
+    selection: selection,
+    attempt: attempt,
+    route: route,
+    self_identity: identity,
+    acknowledgement: ack,
+    observation: observation,
+  )
+}
+
+// ── the entry the converge workflow invokes ────────────────────────────────────────────────────
+
+// ZERO ARGUMENTS, AND THE SUBJECT IS NOT AN INPUT. The dispatch names the OBSERVER; this entry reads
+// that label, looks it up in the assignment, and takes the subject the assignment gives it. There is
+// no parameter, environment row or dispatch field through which anyone can name a subject, so no
+// operator and no later edit can point this run at a chosen machine.
+//
+// AND IT DOES NOT DERIVE THE LABEL FROM ITS OWN HOSTNAME, which an earlier version did. That made the
+// label and the machine one reading and quietly disarmed the corroboration between them: a runner
+// labelled as a peer but living on the subject chassis failed the assignment lookup as "not an
+// assigned observer" and never reached the identity check the hardware depends on.
+// THE CREDENTIAL PATH COMES FROM ONE ROW THAT THE WRITER AND THE READER BOTH CONSULT, which is the
+// shape gunbc.spark.grant_privileged_operation spark_grant_credential_path_env already establishes for
+// exactly this problem: the converge prelude materializes a 0600 file under RUNNER_TEMP and exports
+// its PATH -- never the credential -- and the entry reads the path from the same named row. An
+// argument would have been a second authority on where the file is, and the prelude is the only party
+// that actually knows.
+//
+// AND extdeps.shell IS IMPORTED FOR A MEASURED REASON. Service operations register from the IMPORT
+// CLOSURE, so an unimported service compiles clean and refuses at RUN TIME naming the operation
+// rather than the missing import; gunbc.machine_intake_mtcollins1_actuate lost a run to exactly that
+// diagnostic and wrote it down.
+data host_reset_bmc_credential_path_env: NonEmptyStr = "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE" as NonEmptyStr
+
+// THE PREFLIGHT REFUSAL WRITES ITS RECEIPT AND THEN EXITS, in that order, because the upload step
+// that carries the evidence off the runner runs `if: always()` and errors when the file is absent.
+// Before review 62016 these arms exited straight away, so the file the upload demanded never existed
+// and the run's final red named the missing artifact instead of the missing credential -- the located
+// diagnostic displaced by plumbing, on every refusal the mode can actually reach today.
+//
+// attempt=none-minted IS THE HONEST FIELD, not a placeholder. These refusals happen before a pairing
+// exists, so there is no attempt label and no subject to name; writing "unknown" into those fields
+// would be the fabricated-plausible-output shape, and a reader sorting receipts by subject would find
+// a row claiming one. The line says which vocabulary answered it so the two are never confused.
+func host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: String) -> ProcessExit
+  uses net: std.resources.Network
+{
+  let wire = reset_preflight_refusal_wire(refusal: refusal)
+  let _w = Filesystem.Write(
+    path: host_reset_return_receipt_path as String,
+    content: join(["attempt=none-minted verdict=refused-before-attempt downtime_ms=unavailable cause=", wire, "\n"], ""),
+  )
+  return exit_failure(
+    reason: join(["host reset-return refused before any attempt: ", wire, " -- ", remedy, " (receipt at ", host_reset_return_receipt_path as String, ")"], ""),
+  )
+}
+
+// THE DISPATCH ADMISSION ENTRY, RUN IN THE BUILD JOB RATHER THAN THE RESET JOB. The reset job's
+// runs-on is resolved before any of its steps exist, so a gate inside it is unreachable in exactly
+// the state it would diagnose; `build` carries generic labels, is always schedulable, and every
+// host-scoped job needs it, so refusing here stops the line before anything is scheduled.
+//
+// IT WAS A HAND-SHELL STEP FIRST, AND THAT WAS THE DEFECT. A concat-built `run:` gate carried a
+// net-new dissolution obligation with no operator verdict, which the scaffold-admission doctrine
+// calls a hard reject -- and the doctrine's own test applies: the modeled route existed, so the
+// scaffold bought nothing but authoring, review, maintenance, deletion and review of the deletion.
+// The only cost of doing it modeled is that the refusal lands after the release build rather than
+// before it, wasting one build on a dispatch that was already wrong; the safety property is
+// identical, because the reset job needs `build` either way.
+//
+// IT REFUSES WITH A CAUSE RATHER THAN SKIPPING. A gate that silently declines to run reads as a pass
+// to anyone looking at the job list, which is the absorbing fallback one layer up from the one this
+// module refuses -- so the not-this-mode arm exits SUCCESSFULLY and says so, and the unnamed-observer
+// arm exits non-zero with the located diagnostic.
+func host_reset_return_dispatch_admission_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
+  let mode_raw = match shell.Env.Get(name: host_reset_dispatch_mode_env).value {
+    Absent => ""
+    Present { value: v } => v
+  }
+  let observer_raw = match shell.Env.Get(name: host_reset_observer_label_env).value {
+    Absent => ""
+    Present { value: v } => v
+  }
+  return match admit_reset_dispatch(mode: mode_raw, reset_observer: observer_raw) {
+    ResetDispatchNotThisMode { mode: _ } => ExitSuccess
+    ResetDispatchAdmitted { mode: _ } => ExitSuccess
+    ResetDispatchObserverUnnamed { mode: _ } =>
+      exit_failure(reason: reset_dispatch_observer_unnamed_diagnostic as String)
+  }
+}
+
+data host_reset_dispatch_mode_env: NonEmptyStr = "GUNBC_HOST_RESET_DISPATCH_MODE" as NonEmptyStr
+
+func host_reset_return_wet() -> ProcessExit
+  uses net: std.resources.Network
+{
+  let credential = shell.Env.Get(name: host_reset_bmc_credential_path_env).value
+  let password_file_raw = match credential {
+    Absent => ""
+    Present { value: raw } => trim(s: raw)
+  }
+  if password_file_raw == "" {
+    return host_reset_return_preflight_exit(
+      refusal: BmcCredentialPathUnset { variable: host_reset_bmc_credential_path_env },
+      remedy: "no controller credential was materialized, so nothing was written to any controller; the workflow step that would materialize it is the declared frontier for this mode",
+    )
+  }
+  let label = shell.Env.Get(name: host_reset_observer_label_env).value
+  let observer_raw = match label {
+    Absent => ""
+    Present { value: raw } => trim(s: raw)
+  }
+  if observer_raw == "" {
+    return host_reset_return_preflight_exit(
+      refusal: ObserverLabelUnset { variable: host_reset_observer_label_env },
+      remedy: "this run does not know which observer the dispatch placed it as, and it deliberately does NOT fall back to its own hostname: that would make the label and the machine one reading, and the corroboration between them is the only thing standing between a mislabelled runner and a host resetting itself",
+    )
+  }
+  let observer = observer_raw as NonEmptyStr
+  let route = match host_reset_return_converge_route_read() {
+    RouteUnidentified { variable: v, detail: d } =>
+      return host_reset_return_preflight_exit(
+        refusal: IssuingRunUnidentified { variable: v, detail: d },
+        remedy: "a receipt minted here could not name the run that drove the machine, and this mode's whole claim is that the reset was unattended and went through converge, which a receipt no reader can trace back to its run does not establish",
+      )
+    RouteEstablished { route: r } => r
+  }
+  let assignment = reset_dispatch_pairings(
+    subject_roster: reset_subject_roster(),
+    peer_roster: reset_observer_peer_roster(),
+  )
+  return match subject_for_observer(assignment: assignment, observer: observer) {
+    Absent =>
+      host_reset_return_preflight_exit(
+        refusal: ObserverNotAssigned { observer: observer },
+        remedy: "this runner is not an assigned observer, so it has no subject to watch",
+      )
+    Present { value: subject } =>
+      match reset_subject_candidate_for(host: subject) {
+        Absent =>
+          host_reset_return_preflight_exit(
+            refusal: SubjectHasNoRosterRow { subject: subject },
+            remedy: "the assigned subject has no roster row carrying its controller evidence",
+          )
+        Present { value: candidate } =>
+          host_reset_return_exit(
+            verdict: reset_return_verdict_of_mint(
+              mint: host_reset_return_attempt(
+                candidate: candidate,
+                observer: observer,
+                attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
+                route: route,
+                password_file: password_file_raw as NonEmptyStr,
+              )
+            ),
+            subject: subject,
+            attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
+          )
+      }
+  }
+}
+
+// THE ROUTE THIS ENTRY DECLARES ABOUT ITSELF. It is reachable only from the fleet converge workflow's
+// reset job, so IssuedThroughConverge is a statement about where the code runs and not a claim the
+// caller supplies -- there is no parameter here through which a hand invocation could describe itself
+// as converge-driven, and the verdict refuses the out-of-band arm outright.
+//
+// THE RUN ID IS READ, AND A SENTENCE IN THAT FIELD WAS THE DEFECT REVIEW 61998 FOUND. It carried
+// "unbound: the run identifier is not read by this entry ...", so every real receipt this mode would
+// ever mint carried prose in a field whose type says it names the run that issued a power cycle --
+// section 4c's misplaced data, in the one field a reader needs to go find the evidence. The
+// annotation defending it argued only against an INTERPOLATION-SHAPED LITERAL, which was never the
+// choice on offer: extdeps.github.actions_environment github_run_id_variable_name already models the
+// reading, gunbc.actions_run_binding actions_variable_read already performs it with an absent-versus-
+// empty distinction, and this step already proves the env route works because it hands the observer
+// label over the same way.
+//
+// AN UNIDENTIFIED RUN REFUSES RATHER THAN ISSUING. The alternative -- an optional field -- would let
+// the reset proceed and mint a receipt that cannot say which run drove the machine, and "unattended,
+// through converge" is precisely the claim this carrier exists to establish. A receipt nobody can
+// trace back to its run does not establish it, so the honest arm is to refuse before the controller
+// write rather than to record the gap afterwards.
+func host_reset_return_converge_route_read() -> ResetIssuanceRouteRead
+  uses net: std.resources.Network
+{
+  match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      RouteUnidentified { variable: v as NonEmptyStr, detail: d as NonEmptyStr }
+    ActionsVariablePresent { value: run_id } =>
+      RouteEstablished {
+        route: IssuedThroughConverge {
+          workflow: "fleet-converge",
+          mode: "host_reset_return",
+          run_id: run_id as NonEmptyStr,
+        },
+      }
+  }
+}
+
+fn host_reset_return_attempt_label(observer: NonEmptyStr, subject: NonEmptyStr) -> NonEmptyStr {
+  join([subject as String, "-observed-by-", observer as String], "") as NonEmptyStr
+}
+
+// THE EXIT IS THE VERDICT, RENDERED. Every refusal arm gets its own sentence because they leave the
+// world in materially different states and a caller retrying needs to know which -- a controller that
+// refused wrote nothing, a host that did not return is still down, and an observer that could not
+// establish its own identity did not look at all.
+// THE ATTEMPT LABEL MOVED FROM THE FILENAME INTO THE LINE, which is where it was always doing its
+// work. It identifies which attempt this transcript belongs to; it was never the thing that kept two
+// attempts apart on disk, because two attempts are two dispatches with two workspaces.
+//
+// THE MEASURED FIGURE IS WRITTEN ONLY ON THE ARM THAT MEASURED IT. A refusal line names its cause and
+// carries no number at all, rather than a zero standing in for one -- zero sorts to the top of any
+// ranking of outage times, which makes it the fabrication nobody finds by reading a list.
+fn host_reset_return_receipt_line(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr) -> String {
+  match verdict {
+    HostDrivenBackToKnownState { downtime: ms } =>
+      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=driven-back downtime_ms=", to_string(ms), "\n"], "")
+    ResetReturnRefused { cause: c } =>
+      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=refused downtime_ms=unavailable cause=", reset_return_refusal_cause_wire(cause: c), "\n"], "")
+  }
+}
+
+func host_reset_return_exit(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr) -> ProcessExit
+  uses net: std.resources.Network
+{
+  let _w = Filesystem.Write(
+    path: host_reset_return_receipt_path as String,
+    content: host_reset_return_receipt_line(verdict: verdict, subject: subject, attempt: attempt),
+  )
+  return match verdict {
+    HostDrivenBackToKnownState { downtime: _ } => ExitSuccess
+    ResetReturnRefused { cause: c } =>
+      exit_failure(
+        reason: join(["host reset-return refused for ", subject as String, ": ", reset_return_refusal_cause_wire(cause: c), " (receipt at ", host_reset_return_receipt_path as String, ")"], "")
+      )
+  }
+}

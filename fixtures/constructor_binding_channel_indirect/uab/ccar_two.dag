@@ -1,0 +1,5 @@
+module uab.ccar_two
+
+import uab.cop_two { two_cop_marker }
+
+fn ccarry_two() -> Int { two_cop_marker() }

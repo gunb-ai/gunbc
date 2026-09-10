@@ -4,6 +4,9 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.measure {
   Mebibyte,
   ByteSize,
+  Gibibyte,
+  gibibyte,
+  gibibyte_to_byte_size,
   HardwareThreadCount,
   byte_size_count,
   mebibyte,
@@ -26,6 +29,8 @@ import gunbc.runner_slot_allocation {
   RunnerCoresPerSlotResolution,
   CoresPerSlotResolved,
   CoresPerSlotUnresolved,
+  CpuQuotaResolved,
+  CpuQuotaRefused,
 }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
@@ -33,7 +38,7 @@ import gunbc.runner_unit {
   lifecycle_intent_cannot_orphan,
   gunbc_runner_listener_is_main_process,
 }
-import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_336_0 }
+import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_337_0 }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig,
   FirecrackerBootSource,
@@ -66,11 +71,30 @@ type RunnerGuestImage {
   runner: ActionsRunnerRelease
 }
 
+// THE GUEST IMAGE PINS 2.337.0 AND THE FLEET'S HOST SLOTS PIN 2.336.0, AND THAT DIVERGENCE IS NOW
+// DECLARED RATHER THAN ACCIDENTAL. It arrived accidentally: the Mt. Collins guest image was built
+// against the then-latest runner while this row still said 2.336.0, and the canary reported
+// "Current runner version: 2.337.0" to GitHub -- one concept answering two ways, found in review and
+// not by anything in this repository.
+//
+// IT IS RESOLVED FORWARD RATHER THAN BACKWARD because 2.337.0 is what actually ran and was verified:
+// the shipped tarball's digest equals the one extdeps.github.actions_runner records from upstream's
+// release body. Pinning back to 2.336.0 would make the model agree with itself by describing an
+// artifact no run has exercised.
+//
+// THE FLEET'S HOST-SLOT PIN IS DELIBERATELY NOT MOVED HERE. gunbc.runner_slot_provision,
+// gunbc.runner_lifecycle and gunbc.fleet_converge_plan all install 2.336.0, and changing that
+// re-provisions every slot on every host -- a fleet migration with its own blast radius, which must
+// not ride along inside a canary receipt. Converging the two pins is its own change.
+//
+// SO THE STANDING OBLIGATION IS EXPLICIT: two live pins is the state this row leaves behind, and it
+// is a divergence to close rather than a design. What makes it survivable meanwhile is that each
+// names its own release row and neither is a version string typed twice.
 data gunbc_runner_guest_image: RunnerGuestImage = RunnerGuestImage {
   distribution: "ubuntu",
   release_series: "24.04",
   arch: "aarch64",
-  runner: actions_runner_release_2_336_0,
+  runner: actions_runner_release_2_337_0,
 }
 
 // THE CREDENTIAL REACHES THE GUEST AS A READ-ONLY BLOCK DEVICE, AND THAT IS THE WHOLE POINT.
@@ -240,71 +264,83 @@ fn guest_memory_fits(
   }
 }
 
-// WHY PRODUCTION REFUSES, AND WHY NO NUMBER APPEARS HERE.
+// THE RESERVE IS AN ALLOCATION THIS FLEET SETS ASIDE, NOT A MEASUREMENT IT RECOVERED.
 //
-// extdeps.virtualization.firecracker cites no VMM memory overhead. It models the config SHAPES --
-// FirecrackerMachineConfig { vcpu_count, mem_size_mib } and its neighbours -- plus the single-root
-// rule, and nothing about what the VMM process costs. And the quantity may not exist as a constant
-// at all: a VMM's resident footprint scales with guest size through page tables, with the device
-// model, and with host page size, so what upstream documents is a MEASURED overhead for one stated
-// configuration -- an observation about one boot rather than a property of the realization.
-// Inventing a subtrahend here would be a fabricated plausible output (DESIGN 5) wearing a
-// derivation's clothes.
+// The refusal this replaces was right about the quantity it could not find, and that reasoning is
+// preserved rather than overturned: extdeps.virtualization.firecracker cites no VMM memory
+// overhead, and the quantity may not exist as a constant at all -- a VMM's resident footprint
+// scales with guest size through page tables, with the device model, and with host page size, so
+// what upstream documents is a MEASURED overhead for one stated configuration. Waiting for that
+// number to become citable was waiting for a fact in a shape nothing produces.
+//
+// SO THE STANDING CHANGES AND THE NUMBER DOES NOT PRETEND TO BE DERIVED. This is the same move
+// gunbc_runner_microvm_declared_size already made for the guest's own size: a product decision
+// standing where no computation exists. It is operator allocation policy, not a measured
+// Firecracker footprint. Inventing it as a SUBTRAHEND in a derivation would still be the fabricated
+// plausible output DESIGN 5 forbids; declaring it as policy, with the containment check below still
+// deciding fit, is not.
+//
+// WHAT WOULD REVISE IT, STATED CAREFULLY, BECAUSE AN OOM IS NOT ONE EVIDENCE CLASS. Its adequacy is
+// revised from host- or cell-boundary memory-pressure evidence attributable to the admitted
+// realization. A guest that exhausts its own 4 GiB workload OOMs INSIDE the guest and says nothing
+// about this allowance; only pressure at the cell boundary implicates it. No Firecracker release
+// note revises it either, because upstream does not publish the quantity.
+//
+// IT IS A MINIMUM RESERVED HEADROOM, NOT A CAP ON THE VMM. The containment check establishes
+// guest + allowance <= cell envelope. It does NOT establish VMM usage <= allowance, and nothing
+// here enforces that -- with the declared guest inside the cell there is materially more real slack
+// than this floor claims.
+//
+// WITHOUT IT THE MEMORY-FIT LEG CANNOT BE DECIDED, WHICH IS THE WHOLE REASON THIS ROW EXISTS.
+// guest_memory_fits returns MemoryFitUnresolved on an unmodeled reserve, so
+// gunbc_runner_microvm_admission refused EVERY configuration on that leg alone: the fleet's own size
+// and reserve binding could never satisfy it, whatever else was true. The reserve was the last
+// MEMORY-FIT quantity standing between the declared size and an admissible configuration.
+//
+// IT IS NOT THE LAST PRODUCTION-LAUNCH PREREQUISITE, AND THIS ROW DOES NOT CLAIM TO BE. Nothing in
+// production calls gunbc_runner_microvm_admission and no production binding selects a
+// VmmProcessTopology, so a launch path remains separate, unbuilt work.
+//
+// THE CELL'S CPU AXIS IS NOW ABSOLUTE WHEN THE SLOT SURVEY RESOLVES. fabric_cell_slice_quota_
+// directives emits slice_cpu_quota from the same RunnerSlotCpuQuota this function reads; a guest
+// vCPU count can be derived from that ceiling. The declared product size therefore withdraws
+// (runner_microvm_size_decision's Absolute arm) rather than remaining an absorbing answer.
+data gunbc_runner_microvm_declared_realization_allowance: Gibibyte = gibibyte(count: 1)
+
 fn gunbc_runner_microvm_realization_reserve() -> RealizationReserve {
-  ReserveUnmodeled {
-    cause: "no VMM resident footprint is a cited quantity in extdeps.virtualization.firecracker, and it is not a constant -- it scales with guest size, device model and host page size, so upstream documents a measured overhead for one configuration rather than a property of the realization",
+  ReserveDeclared {
+    bytes: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance),
   }
 }
 
-// THE CPU AXIS IS NOT THE SAME KIND OF GAP, AND IT IS NOT REPAIRABLE IN THIS MODULE.
+// THE CPU AXIS IS THE CELL'S SURVEYED QUOTA, READ HERE RATHER THAN RESTATED.
 //
-// On memory the quantity may exist and merely be uncited. On CPU the cell realizes NO ABSOLUTE
-// ENTITLEMENT AT ALL: gunbc.fabric.fabric_cell_effect fabric_cell_slice_desired_directives emits
-// five directives whose CPU one is CPUWeight -- a RELATIVE share that decides who yields first
-// under contention and guarantees no amount of anything. The absolute ceiling this fleet DOES
-// declare, gunbc.host.host_converge runner_cpu_boundary_knobs writing CapacityQuota as a CPUQuota
-// drop-in, lands on the RUNNER UNIT, a different systemd object from the cell slice.
+// On memory the quantity may exist and merely be uncited. On CPU the cell now emits CPUQuota= when
+// gunbc_runner_slot_cpu_quota resolves, and fabric_cell_acquire reads CPUQuotaPerSecUSec back.
+// This function is that same quota seen as a guest-sizing entitlement: Resolved is Absolute,
+// Refused is RelativeOnly carrying the survey cause -- never a second invented ceiling, and never
+// the CPUWeight-only story that was true before the slice directive existed.
 //
-// So one bounded execution context is realized twice and the two realizations enforce different
-// axes. Deriving a guest vCPU count from the cell would equate it to a quantity the cell never
-// enforces -- the failure gunbc.ci.ci_runner_placement already records once: "the arithmetic said
-// six threads per slot and the host was never told."
-//
-// Either an absolute cell entitlement becomes real -- which is a change to fabric_cell_effect, not
-// to this module -- or guest topology stops being derived from the cell and is declared as its own
-// product decision. Both are legitimate. Deriving from an entitlement that does not exist is not.
+// THE DECLARED PRODUCT SIZE WITHDRAWS THE MOMENT THIS RETURNS ABSOLUTE. That is
+// runner_microvm_size_decision's job: a stale declaration that kept succeeding would hide that
+// topology is now derivable. Deriving it is the remaining work, not inventing an entitlement the
+// cell already grants.
 type CellCpuEntitlement
   = CpuEntitlementAbsolute { threads: HardwareThreadCount }
   | CpuEntitlementRelativeOnly { cause: String }
 
 fn gunbc_runner_microvm_cell_cpu_entitlement() -> CellCpuEntitlement {
-  CpuEntitlementRelativeOnly {
-    cause: "the fabric cell slice carries CPUWeight, a relative share that guarantees no absolute amount; the fleet's absolute CPUQuota is written by gunbc.host.host_converge onto the runner UNIT, which is not the cell slice, so the cell grants no CPU quantity a guest vCPU count could be derived from",
+  match gunbc_runner_slot_desired().cpu_quota {
+    CpuQuotaResolved { threads: t } => CpuEntitlementAbsolute { threads: t }
+    CpuQuotaRefused { cause: c } => CpuEntitlementRelativeOnly { cause: c }
   }
 }
 
-// THE GUEST'S TOPOLOGY IS A DECLARED PRODUCT DECISION, WHICH IS THE SECOND OF THE TWO REPAIRS THE
-// CPU PARAGRAPH ABOVE NAMES -- and it is taken because the first one is not this module's to make.
-//
-// The withdrawn derivation asked the cell what a guest should be. The cell cannot answer: it grants
-// a RELATIVE CPU share and no absolute quantity, so there is no entitlement a vCPU count could be
-// derived from, and inventing one would equate a guest to a quantity nothing enforces. That left
-// exactly two honest moves, and the paragraph above states both. Making an absolute cell entitlement
-// real is a change to gunbc.fabric.fabric_cell_effect and would be a fabric decision wearing a
-// runner module's clothes. So this fleet declares its guest topology instead, HERE, as its own fact.
-//
-// THE CELL DID NOT STOP MATTERING; IT STOPPED SIZING. Containment is still the law, and
-// guest_memory_fits still decides it at admission -- the cell BOUNDS the guest, it does not
-// dimension it. Those were one function and they were two facts.
-//
-// THE NUMBERS ARE THE srv4 MVP'S, AND THAT GROUNDING IS WHY THIS ROW REPLACED runner_microvm_mvp_
-// size RATHER THAN STANDING BESIDE IT. That row carried this exact configuration as "a RECORD OF
-// ONE BOOT, not a sizing anyone may provision against", retained because it was the only
-// configuration known to have started a VM. Once this fleet decides to provision at a declared
-// size, the only defensible number to declare is the one that has actually booted -- so the
-// observation and the decision became one row rather than two rows holding identical values, which
-// is the nicknaming DESIGN section 3 forbids. What changed is not the number but its STANDING: it
-// was an observation nobody could provision against, and it is now a decision, said out loud.
+// THE GUEST'S TOPOLOGY WAS A DECLARED PRODUCT DECISION WHILE THE CELL GRANTED NO ABSOLUTE
+// ENTITLEMENT. That declaration withdraws the moment gunbc_runner_microvm_cell_cpu_entitlement
+// returns Absolute -- which is now the production path when the slot survey resolves. The numbers
+// below remain the srv4 MVP observation, kept as the declared row the RelativeOnly arm still
+// serves, not as a sizing anyone may provision against once Absolute is inhabited.
 data gunbc_runner_microvm_declared_size: RunnerMicroVmSize = RunnerMicroVmSize {
   vcpu_count: hardware_thread_count(count: 4),
   memory: mebibyte(count: 4096),

@@ -1,0 +1,256 @@
+module gunbc.compute.work_request
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import extdeps.languages.json.emit {
+  JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json,
+}
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  JsonString,
+}
+
+// THE EXACT WORK CONTRACT, FIRST SLICE (roadmap row compute-exact-work-contract). A request names
+// the exact tree it applies to, the operation, and the toolchain that will serve it; the answer is
+// one of five endings and never a sixth. This module is pure: it decides identity and shape. The
+// provider that runs work lives beside it (gunbc.compute.work_provider_local) and is one of N.
+//
+// WHY THIS EXISTS NOW: a roadmap worker's only tool is `timeout N /bin/sh -c` in its worktree, so
+// every worker that wants to check its work runs its own cargo build and its own gunbc compile into
+// its own target directory, and verify runs them again. One identity per (tree, operation,
+// toolchain) is what lets two callers share one build and lets a host cap how many cold builds it
+// carries; the identity is content, so a branch name or a working directory can never be a subject.
+
+// A subject is a git TREE, never a commit message, branch or path: two commits with the same tree
+// are the same work. The provider resolves the tree from the commit a caller holds and checks the
+// commit out, but the identity is the tree's.
+type WorkSubject = ExactTree { tree: GitObjectId }
+
+type CargoProfile = CargoRelease | CargoDebug
+
+fn cargo_profile_wire(p: CargoProfile) -> String {
+  match p {
+    CargoRelease => "release"
+    CargoDebug => "debug"
+  }
+}
+
+// The three operations a worker may ask for. Each declares its outputs; a run whose declared output
+// is absent is WorkOutputMismatch, not success (compute-artifact-return-and-materialization's red).
+type WorkOperation
+  = BuildGunbcBinaries { profile: CargoProfile, bins: List<NonEmptyStr> }
+  | CompileEntry { entry: FilePath }
+  | RunClaims { entry: FilePath, functions: NonEmptyStr, hermetic: Bool }
+
+fn work_operation_kind(op: WorkOperation) -> String {
+  match op {
+    BuildGunbcBinaries { profile: _, bins: _ } => "build"
+    CompileEntry { entry: _ } => "compile"
+    RunClaims { entry: _, functions: _, hermetic: _ } => "claims"
+  }
+}
+
+// Canonical text of an operation: the identity's payload, so any argument that changes what runs
+// changes the identity, and nothing else does.
+fn work_operation_canonical(op: WorkOperation) -> String {
+  match op {
+    BuildGunbcBinaries { profile, bins } =>
+      join(["build:", cargo_profile_wire(p: profile), ":", join(map(bins, b => b as String), ",")], "")
+    CompileEntry { entry } => join(["compile:", entry as String], "")
+    RunClaims { entry, functions, hermetic } =>
+      join(["claims:", entry as String, ":", functions as String, ":", if hermetic { "hermetic" } else { "wet" }], "")
+  }
+}
+
+// The binaries the default build produces: the compiler driver and the claim runner, which the
+// compile and claims operations of the SAME subject consume.
+data work_default_bins: List<NonEmptyStr> = ["gunbc" as NonEmptyStr, "claim_batch" as NonEmptyStr]
+
+fn work_default_build() -> WorkOperation {
+  BuildGunbcBinaries { profile: CargoRelease, bins: work_default_bins }
+}
+
+// The outputs an operation declares, each relative to a named root: cargo writes binaries under the
+// TARGET root the provider shares per host (CARGO_TARGET_DIR), not under the checkout -- the first wet
+// run declared them under the checkout and reported a mismatch on a build that had succeeded, which
+// is the mismatch arm doing its job and the declaration being wrong. Checking operations declare
+// none: their result is the verdict.
+type WorkOutputRoot = CheckoutRoot | TargetRoot
+
+type DeclaredOutput {
+  root: WorkOutputRoot
+  path: String
+}
+
+fn work_declared_outputs(op: WorkOperation) -> List<DeclaredOutput> {
+  match op {
+    BuildGunbcBinaries { profile, bins } =>
+      map(bins, b => DeclaredOutput { root: TargetRoot, path: join([cargo_profile_wire(p: profile), "/", b as String], "") })
+    CompileEntry { entry: _ } => []
+    RunClaims { entry: _, functions: _, hermetic: _ } => []
+  }
+}
+
+// The toolchain half of the identity: the OBSERVED rustc version line and the sccache release the
+// host serves, because the same tree under a different compiler is different work. A provider
+// observes these before computing an identity; it never spells them.
+type WorkToolchainIdentity {
+  rustc_version: NonEmptyStr
+  cache_release: NonEmptyStr
+}
+
+fn work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> Fnv1a64Structural {
+  let tree = match subject { ExactTree { tree } => git_object_id_wire_hex(oid: tree) as String }
+  content_hash_tagged_structural(
+    tag: "gunbc-compute-work-v1" as NonEmptyStr,
+    payload: content_hash_atom(value: join([
+      tree, "|", work_operation_canonical(op: op), "|", toolchain.rustc_version as String, "|", toolchain.cache_release as String,
+    ], "") as NonEmptyStr),
+  )
+}
+
+fn work_identity_hex(id: Fnv1a64Structural) -> String {
+  id.digest as String
+}
+
+// One returned output: the declared path, the blob identity of its bytes (git's blob object id, a
+// content hash the same authority every subject already uses), and where the store holds it.
+type WorkOutput {
+  declared: String
+  blob: String
+  store_path: String
+}
+
+// THE FIVE ENDINGS, and only five (compute-exact-work-contract's red control: a machine that killed
+// the work cannot render as the work having failed). Every arm carries the identity so a caller can
+// never attach a verdict to a different request.
+type WorkOutcome
+  = WorkSucceeded { identity: String, outputs: List<WorkOutput>, log_path: String }
+  | WorkFailed { identity: String, exit_code: Int, log_path: String }
+  | WorkRefusedByInfrastructure { identity: String, cause: WorkInfrastructureRefusal }
+  | WorkCancelled { identity: String }
+  | WorkOutputMismatch { identity: String, detail: String }
+
+// Infrastructure refusals are typed and counted, never a widen: a producer already holds the lease
+// (the caller attaches later, it does not start a second build), the host is at its cold-build cap,
+// the checkout or the store could not be prepared, or a dependency of this operation (the build the
+// compile consumes) did not succeed.
+type WorkInfrastructureRefusal
+  = ProducerInFlight { lease_path: String }
+  | HostAtColdBuildCap { in_flight: Int, cap: Int }
+  | CheckoutUnavailable { detail: String }
+  | StoreUnavailable { detail: String }
+  | ToolchainUnobserved { detail: String }
+  | DependencyNotSucceeded { dependency_identity: String, ending: String }
+  | SubjectUnresolved { detail: String }
+
+fn work_outcome_identity(o: WorkOutcome) -> String {
+  match o {
+    WorkSucceeded { identity, outputs: _, log_path: _ } => identity
+    WorkFailed { identity, exit_code: _, log_path: _ } => identity
+    WorkRefusedByInfrastructure { identity, cause: _ } => identity
+    WorkCancelled { identity } => identity
+    WorkOutputMismatch { identity, detail: _ } => identity
+  }
+}
+
+fn work_outcome_ending(o: WorkOutcome) -> String {
+  match o {
+    WorkSucceeded { identity: _, outputs: _, log_path: _ } => "succeeded"
+    WorkFailed { identity: _, exit_code: _, log_path: _ } => "failed"
+    WorkRefusedByInfrastructure { identity: _, cause: _ } => "refused_by_infrastructure"
+    WorkCancelled { identity: _ } => "cancelled"
+    WorkOutputMismatch { identity: _, detail: _ } => "output_mismatch"
+  }
+}
+
+fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
+  match r {
+    ProducerInFlight { lease_path } => join(["a producer already holds the lease at ", lease_path, "; attach later, do not start a second one"], "")
+    HostAtColdBuildCap { in_flight, cap } => join([to_string(value: in_flight), " producers in flight on this host, cap ", to_string(value: cap)], "")
+    CheckoutUnavailable { detail } => join(["checkout unavailable: ", detail], "")
+    StoreUnavailable { detail } => join(["store unavailable: ", detail], "")
+    ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
+    DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
+    SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
+  }
+}
+
+fn work_output_json(o: WorkOutput) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "declared", value: json_string(s: o.declared)),
+    json_kv(key: "blob", value: json_string(s: o.blob)),
+    json_kv(key: "store_path", value: json_string(s: o.store_path)),
+  ])
+}
+
+// The durable outcome document: what the store keeps beside the outputs and what the CLI prints.
+fn work_outcome_json(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) -> JsonValue {
+  let tree = match subject { ExactTree { tree } => git_object_id_wire_hex(oid: tree) as String }
+  let base = [
+    json_kv(key: "ending", value: json_string(s: work_outcome_ending(o: o))),
+    json_kv(key: "identity", value: json_string(s: work_outcome_identity(o: o))),
+    json_kv(key: "subject_tree", value: json_string(s: tree)),
+    json_kv(key: "operation", value: json_string(s: work_operation_canonical(op: op))),
+  ]
+  json_object(members: concat(base, match o {
+    WorkSucceeded { identity: _, outputs, log_path } => [
+      json_kv(key: "outputs", value: json_array(elements: map(outputs, x => work_output_json(o: x)))),
+      json_kv(key: "log_path", value: json_string(s: log_path)),
+    ]
+    WorkFailed { identity: _, exit_code, log_path } => [
+      json_kv(key: "exit_code", value: json_int(n: exit_code)),
+      json_kv(key: "log_path", value: json_string(s: log_path)),
+    ]
+    WorkRefusedByInfrastructure { identity: _, cause } => [
+      json_kv(key: "cause", value: json_string(s: work_refusal_detail(r: cause))),
+    ]
+    WorkCancelled { identity: _ } => []
+    WorkOutputMismatch { identity: _, detail } => [
+      json_kv(key: "detail", value: json_string(s: detail)),
+    ]
+  }))
+}
+
+fn work_outcome_wire(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) -> String {
+  serialize_json(v: work_outcome_json(o: o, subject: subject, op: op))
+}
+
+// Reading a stored outcome back: what an attaching caller needs is the ending and the identity, and
+// a document that does not carry both is unreadable, never "no outcome".
+type StoredOutcomeRead
+  = StoredOutcomeFound { ending: String, identity: String, document: String }
+  | StoredOutcomeUnreadable { reason: String }
+
+fn stored_outcome_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value } => match value { JsonString { value: s } => Present { value: s }  _ => none }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn stored_outcome_decode(text: String) -> StoredOutcomeRead {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => StoredOutcomeUnreadable { reason: json_document_gap_text(gap: gap) }
+    JsonDocumentParsed { value: doc } =>
+      match stored_outcome_member(doc: doc, key: "ending") {
+        Absent => StoredOutcomeUnreadable { reason: "stored outcome carries no string `ending`" }
+        Present { value: ending } =>
+          match stored_outcome_member(doc: doc, key: "identity") {
+            Absent => StoredOutcomeUnreadable { reason: "stored outcome carries no string `identity`" }
+            Present { value: identity } => StoredOutcomeFound { ending: ending, identity: identity, document: text }
+          }
+      }
+  }
+}
+
+fn stored_outcome_is_success(r: StoredOutcomeRead) -> Bool {
+  match r {
+    StoredOutcomeFound { ending, identity: _, document: _ } => ending == "succeeded"
+    StoredOutcomeUnreadable { reason: _ } => false
+  }
+}

@@ -157,7 +157,7 @@ test fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
 test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
   let coverage_same = stage0_partition_member_coverage_consistent(
     left: stage0_single_crate_fold_outcome(),
-    right: stage0_partition_receipt_outcome()
+    right: stage0_partition_receipt_outcome
   )
   perturbation_consistent(
     reading: ForwardSameInSameOut,
@@ -174,12 +174,11 @@ test fn witness_interim_module_bearing_unit_count_holds() -> Bool {
 }
 
 test fn witness_policy_partition_refuses_holds() -> Bool {
-  let dag = stage0_module_dag()
   match resolve_partition_outcome(
     parameter: PolicyPartitionParam {
       policy: PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
     },
-    module_dag: dag
+    module_dag: stage0_module_dag
   ) {
     ResolvePartitionRefused { cause: PolicyResolverUnimplemented { policy: _ } } => true
     ResolvePartitionOk { assignment: _ } => false
@@ -206,7 +205,7 @@ test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
 }
 
 test fn witness_runtime_unit_members_holds() -> Bool {
-  match stage0_partition_receipt_outcome() {
+  match stage0_partition_receipt_outcome {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
         Present { value: unit } =>
@@ -240,7 +239,7 @@ test fn witness_runtime_unit_members_holds() -> Bool {
 // alone deliberately: this one is converted because this change broke it, and converting the
 // rest is a separate diff rather than a rider on an unbreak.
 test fn witness_v1_infer_unit_members_holds() -> Bool {
-  match stage0_partition_receipt_outcome() {
+  match stage0_partition_receipt_outcome {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
         Present { value: unit } => {
@@ -258,7 +257,7 @@ test fn witness_v1_infer_unit_members_holds() -> Bool {
 }
 
 test fn witness_v1_artifact_unit_members_holds() -> Bool {
-  match stage0_partition_receipt_outcome() {
+  match stage0_partition_receipt_outcome {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_artifact) {
         Present { value: unit } =>
@@ -279,8 +278,7 @@ test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 }
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
-  let dag = stage0_module_dag()
-  match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
+  match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: stage0_module_dag) {
     ResolvePartitionOk { assignment: resolved } => {
       let expected = stage0_interim_explicit_assignment()
       (resolved |> count) == (expected |> count)

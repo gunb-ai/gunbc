@@ -29,7 +29,7 @@ import std.primitive_projection {
   DeclarationProjectsPrimitive, DeclarationProjectsNoPrimitive, DeclarationPrimitiveUndisposed,
   primitive_projection_roster, primitive_projection_row_for_declaration,
   primitive_length, primitive_map_insert, primitive_map_get, primitive_empty_map,
-  primitive_decl_facts, primitive_export_signature_facts, primitive_data_decl_type_facts,
+  primitive_decl_facts, primitive_decl_facts_at, primitive_export_signature_facts, primitive_data_decl_type_facts,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
 }
@@ -875,13 +875,15 @@ fn primitive_definition_identity(definition: PrimitiveDefinition) -> PrimitiveId
   definition.identity
 }
 
+// The filter is let-bound, not written in the branch condition: a filter in a condition is an
+// unprojectable construct (the FilterInBranchCondition wall), so the condition reads the bound
+// name.
 fn primitive_duplicate_semantic_definition_violation(
   definitions: List<PrimitiveDefinition>,
   target: PrimitiveIdentity
 ) -> PrimitiveJoinViolation? {
-  if count(
-    definitions |> filter(fn(d) { primitive_identity_eq(left: d.identity, right: target) })
-  ) > 1 {
+  let matches = definitions |> filter(fn(d) { primitive_identity_eq(left: d.identity, right: target) })
+  if count(matches) > 1 {
     Present { value: DuplicateSemanticDefinition { identity: target } }
   } else {
     none
@@ -1072,6 +1074,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "map_get",
   "empty_map",
   "decl_facts",
+  "decl_facts_at",
   "export_signature_facts",
   "data_decl_type_facts",
   "concept_decl_facts",
@@ -1385,10 +1388,13 @@ data primitive_map_get_traversal: PrimitiveTraversalOrderFact = PrimitiveTravers
 
 data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_empty_map, order: OrderFreeResult }
 
-// The four parse-only reflection primitives are CanonicalOrder by EXECUTED READING of their
+// The parse-only reflection primitives are CanonicalOrder by EXECUTED READING of their
 // realizations, not by their names. decl_facts routes through coproduct_reflection
 // decl_facts_corpus_walk, whose final step sorts every fact by (rel_path, name, kind_ord) before
-// returning. export_signature_facts derives from decl_facts_for_roots and preserves that order.
+// returning. decl_facts_at is that same census filtered on qualified_name with the surviving rows
+// left in place, so it inherits the order rather than choosing one -- a filter cannot reorder what
+// it does not rebuild. export_signature_facts derives from decl_facts_for_roots and preserves that
+// order.
 // concept_decl_facts and data_decl_type_facts route through decls_parse_only_fail_closed, which
 // sorts its module list (decls_parse_only_from_disk) or its inventory entries by source path
 // (decls_parse_only_from_inventory) before walking items in source order. concept_decl_facts_live
@@ -1397,6 +1403,8 @@ data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTrave
 // fixed program, which is what SourcePreservingOrder means, and NOT a host hash order.
 
 data primitive_decl_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_decl_facts, order: CanonicalOrder }
+
+data primitive_decl_facts_at_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_decl_facts_at, order: CanonicalOrder }
 
 data primitive_export_signature_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_export_signature_facts, order: CanonicalOrder }
 
@@ -1427,6 +1435,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_map_get_traversal,
   primitive_empty_map_traversal,
   primitive_decl_facts_traversal,
+  primitive_decl_facts_at_traversal,
   primitive_export_signature_facts_traversal,
   primitive_data_decl_type_facts_traversal,
   primitive_concept_decl_facts_traversal,

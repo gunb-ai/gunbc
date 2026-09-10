@@ -3,13 +3,11 @@ module test.claim.spark.spark_training_ready_witness_test
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
-import gunbc.spark.serving_terminal_health {
+import gunbc.spark.training_ready {
   SparkServingProbeCapture,
   ProbeNeverRan,
   ProbeFailed,
   ProbeAnswered,
-}
-import gunbc.spark.training_ready {
   SparkServingAbsence,
   ServingAbsent,
   ServingStillPresent,

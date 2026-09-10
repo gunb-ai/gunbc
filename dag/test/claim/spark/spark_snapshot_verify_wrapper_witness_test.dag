@@ -1,0 +1,131 @@
+module test.claim.spark_snapshot_verify_wrapper
+
+import std.logic { Bool }
+import std.types { String }
+import gunbc.spark.model_snapshot_materialize {
+  sentinel_command_line, read_instrument,
+  InstrumentReading, InstrumentDidNotRun, InstrumentVerified, InstrumentRejectedTheSubject,
+  InstrumentContradictedItself,
+  verify_ok_sentinel, verify_failed_sentinel,
+}
+
+// THE WRAPPER MUST NOT NORMALISE A FAILURE INTO A SUCCESS, and these witnesses are the executing
+// evidence that it does not. They exist because it DID, on this branch, and the shape of the defect is
+// worth stating precisely: the wrapper read `cmd && echo OK || echo FAILED`, and because `echo`
+// succeeds in both branches the wrapper exited ZERO whatever the command did. The post-transfer path
+// then bound `stdout: _`, discarded the sentinel it had just been given, read that always-zero status,
+// and answered AcquisitionFetched for a verification that had refused the bytes.
+//
+// A FALSE SUCCESS IS THE ONE OUTCOME NOTHING DOWNSTREAM CAN CATCH. Every other defect corrected on this
+// branch failed toward refusal, which stops the line and gets investigated; this one is indistinguishable
+// from a real success at every consumer. Measured against the real hf CLI on the real host, same failing
+// command, the two wrapper shapes answered: OLD exit=0, NEW exit=1.
+//
+// WHAT IS ENROLLED HERE IS THE PURE HALF, and it is enrolled rather than retired because DESIGN section
+// 4b(4) says a climb deletes the lower-rung production machinery and KEEPS its discriminating evidence.
+// The wet half is asserted in test.claim.spark_snapshot_verify_wrapper_local_wet, which drives real
+// processes through an admitted production bridge. An earlier version of this sentence said that half
+// was "not expressible hermetically" and could not be written at all; that was false, and the route it
+// claimed did not exist is composed of two admitted builders.
+
+// ── THE DECODER SEPARATES THREE STATES, AND THE MIDDLE ONE IS THE POINT ────────────────────────────
+//
+// "The instrument ran and passed", "the instrument ran and refused" and "the instrument never ran" are
+// three different facts with three different remedies. Collapsing the third into either of the others is
+// how an unreachable host or a failed container start came to read as a verdict about the bytes.
+
+// THE READING TAKES BOTH TERMS, AND THESE CALLS PASSED ONLY ONE UNTIL THE SIGNATURE CHANGED. The wet
+// file's call sites were updated when the classifier began requiring the exit status; this file's were
+// not, and it went unnoticed because nothing had resolved this entry since. A signature change is a
+// census obligation over every caller, not over the callers one happens to be editing.
+test fn verify_ok_sentinel_reads_as_verified() -> Bool {
+  read_instrument(exit_code: 0, stdout: concat("Verified 24 file(s). All checksums match.\n", verify_ok_sentinel as String)) == InstrumentVerified
+}
+
+test fn verify_failed_sentinel_reads_as_rejected() -> Bool {
+  read_instrument(exit_code: 1, stdout: concat("Some files are missing.\n", verify_failed_sentinel as String)) == InstrumentRejectedTheSubject
+}
+
+// ── THE CONTRADICTIONS, ASSERTED HERMETICALLY AS WELL AS WET ───────────────────────────────────────
+//
+// The wet controls prove the SHELL produces these pairs; these prove the CLASSIFIER answers them
+// correctly given the pair, with no process involved. Both are wanted: a hermetic-only assertion could
+// be satisfied by a classifier nobody ever fed real output, and a wet-only one runs on a lane whose
+// execution this branch is still establishing.
+test fn an_ok_marker_with_a_nonzero_status_is_a_contradiction() -> Bool {
+  w_is_contradiction(r: read_instrument(exit_code: 4, stdout: verify_ok_sentinel as String))
+}
+
+test fn a_failed_marker_with_a_zero_status_is_a_contradiction() -> Bool {
+  w_is_contradiction(r: read_instrument(exit_code: 0, stdout: verify_failed_sentinel as String))
+}
+
+// BOTH SENTINELS AT ONCE IS ALSO UNESTABLISHED, and it is reachable: a verify command whose own output
+// contains the failure marker, wrapped by a run that then succeeds, prints both.
+test fn both_sentinels_together_are_a_contradiction() -> Bool {
+  w_is_contradiction(r: read_instrument(
+    exit_code: 0,
+    stdout: concat(concat(verify_failed_sentinel as String, "\n"), verify_ok_sentinel as String),
+  ))
+}
+
+fn w_is_contradiction(r: InstrumentReading) -> Bool {
+  match r {
+    InstrumentContradictedItself { detail: _ } => true
+    InstrumentVerified => false
+    InstrumentRejectedTheSubject => false
+    InstrumentDidNotRun => false
+  }
+}
+
+// SILENCE IS NOT CONSENT, WHATEVER THE STATUS SAYS. Output carrying neither sentinel means the wrapper
+// never reached its own echo, so nothing was learned; answering Verified would be the fabricated
+// plausible output DESIGN section 5 forbids, and answering Rejected would blame bytes nothing
+// examined. A
+// nonzero exit here is a failure of the WRAPPER or the container, not a verdict about the bytes, so it
+// must not read as a rejection.
+test fn absent_sentinel_reads_as_did_not_run() -> Bool {
+  read_instrument(exit_code: 126, stdout: "docker: Error response from daemon: permission denied\n") == InstrumentDidNotRun
+}
+
+test fn empty_output_reads_as_did_not_run() -> Bool {
+  read_instrument(exit_code: 0, stdout: "") == InstrumentDidNotRun
+}
+
+// ── THE WRAPPER PRESERVES THE COMMAND'S OWN EXIT STATUS ────────────────────────────────────────────
+//
+// THIS IS THE REGRESSION CONTROL FOR THE FALSE SUCCESS, and it is written against the rendered TEXT
+// because that text is what the far-side shell executes. It goes red the moment anyone restores the
+// `&&`/`||` form, which is the only way this defect can come back.
+
+test fn wrapper_exits_with_the_command_status() -> Bool {
+  sentinel_command_line(argv: ["true"]).contains("exit $rc")
+}
+
+test fn wrapper_captures_the_status_before_anything_overwrites_it() -> Bool {
+  sentinel_command_line(argv: ["true"]).contains("rc=$?")
+}
+
+// THE OLD SHAPE IS NAMED AND REFUSED. `&& echo` is the exact spelling that made every exit zero, so its
+// ABSENCE is the property under test -- not a stylistic preference but the difference between a caller
+// that can detect failure and one that cannot.
+test fn wrapper_does_not_use_the_status_destroying_form() -> Bool {
+  sentinel_command_line(argv: ["true"]).contains("&& echo") == false
+}
+
+// BOTH SENTINELS ARE STILL EMITTED, so the exit status and the sentinel agree by construction rather
+// than by a caller remembering to prefer one. A wrapper that preserved the status but stopped printing
+// would leave read_instrument permanently answering DidNotRun.
+test fn wrapper_still_emits_both_sentinels() -> Bool {
+  let line = sentinel_command_line(argv: ["true"])
+  line.contains(verify_ok_sentinel as String) && line.contains(verify_failed_sentinel as String)
+}
+
+// ── ARGV BOUNDARIES SURVIVE THE RENDER ─────────────────────────────────────────────────────────────
+//
+// An element containing a space must reach the far side as ONE word. This module has been bitten twice
+// by the opposite -- `--description=gunbc model snapshot materialize` became four shell words -- so the
+// quoting is evidence, not decoration.
+test fn wrapper_quotes_an_argument_containing_a_space() -> Bool {
+  sentinel_command_line(argv: ["hf", "--local-dir", "/home/briansrls/models/a b"]).contains("'/home/briansrls/models/a b'")
+}

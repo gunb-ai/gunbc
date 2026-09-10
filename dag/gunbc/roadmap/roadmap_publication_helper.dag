@@ -24,7 +24,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound,
 }
-import gunbc.host_layout { publication_request_dir, publication_answer_dir }
+import gunbc.host_layout { publication_request_dir, publication_answer_dir, publication_refused_dir }
 import gunbc.roadmap.roadmap_publish_actuate { publish_attempt, PublishActuated, PushRefused, PullRequestRefused }
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publish {
@@ -477,10 +477,22 @@ fn publication_helper_credential() -> PublicationCredentialSource {
 // EVERY REQUEST GETS AN ANSWER OR A NAMED REFUSAL, and no arm is silent. A request that does not
 // decode is not skipped: skipping it would leave the requester waiting forever on a document only
 // the helper can see, which is a deadlock whose observable form is an ordinary Pending lamp.
+//
+// UNREADABLE AND REFUSED ARE TWO CLASSES WITH OPPOSITE REMEDIES, and an earlier revision carried
+// only the first name for both. `HelperRequestUnreadable` is a failed READ -- a permission, a race,
+// a listing that named an entry that then went away -- and it is transient: the same document may
+// read cleanly on the next run, so the request stays pending and is retried. `HelperRequestRefused`
+// is a failed DECODE, which is a pure function of bytes that will not change, so the judgment is
+// terminal and the document leaves the pending set. Collapsing them meant the terminal class
+// inherited the transient class's remedy -- retry -- which is precisely how one bad document came
+// to stop the line on every tick forever. Both still stop the line; they differ in what happens to
+// the request, and that is the distinction the two names carry.
 type PublicationHelperOutcome
   = HelperAnswered { key: String, outcome_key: String }
   | HelperRequestNotConsumed { key: String, detail: String }
+  | HelperRequestNotQuarantined { entry: String, detail: String }
   | HelperRequestUnreadable { entry: String, detail: String }
+  | HelperRequestRefused { entry: String, detail: String }
   | HelperAnswerWriteFailed { key: String, detail: String }
   | HelperSubjectOutsideCapability { entry: String, detail: String }
   | HelperSpoolRefused { detail: String }
@@ -489,7 +501,9 @@ fn publication_helper_outcome_key(o: PublicationHelperOutcome) -> String {
   match o {
     HelperAnswered { key: _, outcome_key: _ } => "answered"
     HelperRequestNotConsumed { key: _, detail: _ } => "request-not-consumed"
+    HelperRequestNotQuarantined { entry: _, detail: _ } => "request-not-quarantined"
     HelperRequestUnreadable { entry: _, detail: _ } => "request-unreadable"
+    HelperRequestRefused { entry: _, detail: _ } => "request-refused"
     HelperAnswerWriteFailed { key: _, detail: _ } => "answer-write-failed"
     HelperSubjectOutsideCapability { entry: _, detail: _ } => "subject-outside-capability"
     HelperSpoolRefused { detail: _ } => "spool-refused"
@@ -526,6 +540,10 @@ fn publication_helper_outcome_disposition(o: PublicationHelperOutcome) -> Public
     HelperRequestNotConsumed { key, detail } =>
       OutcomeStopsTheLine { detail: join([key, ": ", detail], "") }
     HelperRequestUnreadable { entry, detail } =>
+      OutcomeStopsTheLine { detail: join([entry, ": ", detail], "") }
+    HelperRequestRefused { entry, detail } =>
+      OutcomeStopsTheLine { detail: join([entry, ": ", detail], "") }
+    HelperRequestNotQuarantined { entry, detail } =>
       OutcomeStopsTheLine { detail: join([entry, ": ", detail], "") }
     HelperAnswerWriteFailed { key, detail } =>
       OutcomeStopsTheLine { detail: join([key, ": ", detail], "") }
@@ -643,32 +661,122 @@ fn publication_helper_publish_if_unpublished(
   }
 }
 
+// STOPPING THE LINE AND CONSUMING THE REQUEST ARE TWO DECISIONS, AND THE EARLIER REVISION MADE ONE.
+//
+// Every other terminal outcome consumes its request -- the answer is written, then the request is
+// deleted -- so the next run sees a spool holding only open questions. An UNREADABLE request was the
+// exception: the line stopped and the document stayed, so the same bytes were re-read, re-refused
+// and re-charged a full run every tick, forever, with every request behind it waiting. The refusal
+// was right; the retention was the defect. Measured on srv1 (2026-09-06): two requests written under
+// a superseded request schema stopped the helper on every tick for a day at ~2 CPU-minutes each,
+// and no run in that population could have ended differently, because decoding is a pure function
+// of the bytes.
+//
+// So the document moves out of the pending set and the line still stops. The stop is what makes the
+// deficit loud and analyzable; the move is what makes it stop ONCE per bad document rather than once
+// per tick. A NEW undecodable request stops the line again, which is the intended signal -- what is
+// removed is only the repetition, never the refusal.
+//
+// A MOVE THAT FAILS IS ITS OWN OUTCOME, on the precedent the delete-failure arm above sets. Silence
+// there would put the helper back in exactly the loop this function exists to end, with nothing
+// recording that it had tried to leave it.
+// WHETHER A REQUEST IS TERMINALLY REFUSED IS A PURE JUDGMENT, AND RETIRING IT IS AN EFFECT.
+//
+// Separating them is not tidiness. Every one of these refusals is decidable from the entry name and
+// the request bytes alone, so the judgment can be witnessed hermetically -- and an earlier revision
+// of this repair fused them, which put a filesystem move on the decision path and turned two
+// existing witnesses into route gaps: the hermetic route has no arm for the move, so the claims
+// stopped before reaching the subject they were written to assert. The available repair was to mock
+// the move, which would have passed them against a fabricated success. The judgment moved instead.
+type RequestAdmission
+  = RequestAdmitted { subject: RoadmapPublicationSubject, worktree: String }
+  | RequestUndecodableDocument { reason: String }
+  | RequestOutsideCapability { detail: String }
+  | RequestMisaddressed { detail: String }
+
+// THE THREE REFUSALS STAY THREE, rather than collapsing into one `terminally refused`. They share a
+// remedy -- leave the pending set -- and share nothing else: a document that does not parse, a
+// document that names a repository this principal may not act on, and a document whose name lies
+// about its own subject are three different things for whoever reads the stopped line, and the
+// second is the anti-forgery arm. One name for all three would be the state-space conflation this
+// module already avoids in its outcome vocabulary.
+fn publication_request_admission(entry: String, request_text: String) -> RequestAdmission {
+  match publication_request_decode(request: request_text) {
+    RequestUndecodable { reason } => RequestUndecodableDocument { reason: reason }
+    RequestDecoded { subject, worktree } =>
+      match publication_helper_capability_admits(subject: subject) {
+        SubjectOutsideCapability { detail } => RequestOutsideCapability { detail: detail }
+        SubjectWithinCapability =>
+          if publication_spool_entry_name(key: publication_spool_key(subject: subject)) != entry {
+            RequestMisaddressed {
+              detail: join([
+                "the request's own subject addresses ",
+                publication_spool_entry_name(key: publication_spool_key(subject: subject)),
+                ", so the document at this entry is not about the judgment its name claims",
+              ], ""),
+            }
+          } else {
+            RequestAdmitted { subject: subject, worktree: worktree }
+          }
+      }
+  }
+}
+
+// A MOVE THAT FAILS IS ITS OWN OUTCOME, on the precedent the delete-failure arm below sets. Silence
+// there would put the helper back in exactly the loop this function exists to end, with nothing
+// recording that it had tried to leave it. The refusal the caller already decided is returned
+// unchanged on success, so retiring a request never renames why it was refused.
+fn publication_helper_retire_request(
+  instance_root: String,
+  entry: String,
+  refused: PublicationHelperOutcome,
+) -> PublicationHelperOutcome {
+  let moved = shell.Move.File(
+    source: join([publication_request_dir(instance_root: instance_root), "/", entry], "") as FilePath,
+    destination: join([publication_refused_dir(instance_root: instance_root), "/", entry], "") as FilePath,
+  )
+  if moved.success {
+    refused
+  } else {
+    HelperRequestNotQuarantined {
+      entry: entry,
+      detail: join([
+        "the request was terminally refused and could not be moved out of the pending set, so it will stop the line again on the next run with the same bytes: ",
+        publication_request_dir(instance_root: instance_root), "/", entry,
+        " -> ", publication_refused_dir(instance_root: instance_root), "/", entry,
+      ], ""),
+    }
+  }
+}
+
 fn publication_helper_answer_request(
   instance_root: String,
   credential: PublicationCredentialSource,
   entry: String,
   request_text: String,
 ) -> PublicationHelperOutcome {
-  match publication_request_decode(request: request_text) {
-    RequestUndecodable { reason } =>
-      HelperRequestUnreadable { entry: entry, detail: reason }
-    RequestDecoded { subject, worktree } =>
-      match publication_helper_capability_admits(subject: subject) {
-        SubjectOutsideCapability { detail } =>
-          HelperSubjectOutsideCapability { entry: entry, detail: detail }
-        SubjectWithinCapability => {
-          let key = publication_spool_key(subject: subject)
-          if publication_spool_entry_name(key: key) != entry {
-            HelperRequestUnreadable {
-              entry: entry,
-              detail: join([
-                "the request's own subject addresses ",
-                publication_spool_entry_name(key: key),
-                ", so the document at this entry is not about the judgment its name claims",
-              ], ""),
-            }
-          } else {
-            let receipt = publication_receipt_of(
+  match publication_request_admission(entry: entry, request_text: request_text) {
+    RequestUndecodableDocument { reason } =>
+      publication_helper_retire_request(
+        instance_root: instance_root,
+        entry: entry,
+        refused: HelperRequestRefused { entry: entry, detail: reason },
+      )
+    RequestOutsideCapability { detail } =>
+      publication_helper_retire_request(
+        instance_root: instance_root,
+        entry: entry,
+        refused: HelperSubjectOutsideCapability { entry: entry, detail: detail },
+      )
+    RequestMisaddressed { detail } =>
+      publication_helper_retire_request(
+        instance_root: instance_root,
+        entry: entry,
+        refused: HelperRequestRefused { entry: entry, detail: detail },
+      )
+    RequestAdmitted { subject, worktree } => {
+      let key = publication_spool_key(subject: subject)
+      let receipt = publication_receipt_of(
               subject: subject,
               outcome: publication_helper_publish_if_unpublished(
                 credential: credential,
@@ -712,9 +820,7 @@ fn publication_helper_answer_request(
                 }
               }
             }
-          }
-        }
-      }
+    }
   }
 }
 
@@ -884,7 +990,7 @@ fn publication_helper_run_once_cli_in(instance_root: String) -> ProcessExit {
 }
 
 // THE INSTANCE ROOT IS A REQUIRED ARGUMENT AND HAS NO DEFAULT, for the reason
-// belt_timer_is_a_deploy_member_note gives after the belt's own workdir was a literal projection of
+// gunbc.live_deploy.spec deployment_owned_steps carries, after the belt's own workdir was a literal projection of
 // production's tree: a helper that defaults would answer requests for whichever instance the
 // default names, whatever instance installed it, and two slots on one host would fuse their spools
 // silently. An empty argument REFUSES rather than falling back.

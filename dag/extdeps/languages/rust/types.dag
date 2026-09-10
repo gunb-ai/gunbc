@@ -51,6 +51,23 @@ data rust_checkpoint_scalar_arity_note: String = "A TypeCheckpoint row states on
 // authority for how a Rust primitive is spelled is `extdeps.languages.rust.primitives`
 // `rust_grounding_primitives`, through its `target_name` rows. A name list here would be
 // a second spelling authority for one fact.
+// NO PointwisePower ROW IN THIS ROSTER, BY CONSTRUCTION. PointwisePower<T> is the OPEN-support
+// power set presented as a characteristic function (std.algebra, profile OpenSupport): its only
+// construction is a record literal carrying `member: fn(T) -> Bool`, and no finite enumerable
+// BTreeSet can realize an open membership oracle. The row that stood here was a pre-split
+// fossil — std.algebra's carrier-split note records the byte-identical "BooleanAlgebra" /
+// "PointwisePower" rows that prompted the split, and the FinitePowerSet row below keeps the
+// finite-set realization the fossil actually described. Its one live effect was measured on the
+// emitted 00_compile closure's first native run (2026-09-07):
+// keyed_container_has_target_inhabitant answered true for the record literal, so twelve
+// language-model and nullable-fixpoint construction sites emitted the record-shaped-carrier
+// refusal panic where the interpreted pipeline evaluates — while the type renderer, keyed on
+// declaration provenance, already rendered PointwisePower structurally, so the row made the two
+// emission paths disagree. Removing it routes construction to the same structural path the type
+// renderer already takes (the bool_boolean_algebra pattern: Rc'd closure fields, _phantom
+// filled). Regression control:
+// test.claim.self_host_emitted_call_target_realization_witness_test
+// w_pointwise_power_record_shape_constructs_its_structural_carrier.
 data rust_algebra_inhabitants: List<InhabitantDecl> = [
 
   { algebra: "FreeMonoid",
@@ -61,13 +78,6 @@ data rust_algebra_inhabitants: List<InhabitantDecl> = [
     is_copy: false },
 
   { algebra: "FinitePowerSet",
-    template: "BTreeSet<\{0\}>",
-    arity: 1,
-    identity_expr: "BTreeSet::new()",
-    import_path: none,
-    is_copy: false },
-
-  { algebra: "PointwisePower",
     template: "BTreeSet<\{0\}>",
     arity: 1,
     identity_expr: "BTreeSet::new()",

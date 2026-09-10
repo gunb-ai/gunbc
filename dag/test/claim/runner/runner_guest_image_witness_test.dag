@@ -9,10 +9,12 @@ import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_system
 import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image }
 import gunbc.runner_guest_image {
   GuestBaseArtifact, GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned,
+  ArtifactDigestNotPinnable, runner_guest_built_image_artifact,
   GuestArtifactDigestProvenance, FirstObservedOnFetch,
   GuestArtifactVerdict, ArtifactMatchesPin, ArtifactUnpinnedFirstContact, ArtifactContradictsPin,
+  ArtifactBuildReceipt,
   ArtifactNotMeasured,
-  guest_artifact_verdict, guest_artifact_verdict_admits_build,
+  guest_artifact_verdict, guest_artifact_verdict_admits_build, guest_artifact_verdict_text,
   runner_guest_image_name, runner_guest_image_path, runner_guest_tree_dir,
   runner_guest_agent_unit, runner_guest_agent_unit_path,
   runner_guest_agent_drop_in_path, runner_guest_agent_target_drop_in,
@@ -90,6 +92,27 @@ test fn an_unpinned_artifact_reports_first_contact_and_an_unreadable_one_refuses
       _ => false
     })
     && (match unreadable { ArtifactNotMeasured { reason: _ } => true  _ => false })
+}
+
+// THE BUILT IMAGE IS A RECEIPT AND MUST NEVER BE ADVISED AS A PIN, and this control exists because
+// the receipt said the opposite on a real run. fleet-converge run 33996923229 printed "author this
+// as ArtifactDigestPinned with FirstObservedOnFetch provenance" beside the image THAT BUILD had just
+// produced -- advice that, followed, pins a digest which legitimately changes whenever the tree does
+// and demands byte-reproducible mke2fs output to stay green.
+//
+// THE RED IS AUTHORABLE AND IS THE OLD BEHAVIOUR: give the built-image artifact ArtifactDigestUnpinned
+// and this goes red on both halves, because that arm is the one carrying the pin advice. The two
+// halves are separate on purpose -- asserting only that the text differs would pass on any wording
+// change, so the first pins the arm and the second pins what the arm must NOT tell a reader to do.
+test fn the_built_image_reports_a_receipt_and_never_advises_authoring_a_pin() -> Bool {
+  let v = guest_artifact_verdict(
+    artifact: runner_guest_built_image_artifact,
+    observed: Sha256FileDigest { digest: sha256_digest(hex: b_digest) },
+  )
+  let rendered = guest_artifact_verdict_text(artifact: runner_guest_built_image_artifact, verdict: v)
+  (match v { ArtifactBuildReceipt { digest_hex: h } => h == b_digest as String  _ => false })
+    && !string_contains(s: rendered, pattern: "ArtifactDigestPinned")
+    && guest_artifact_verdict_admits_build(verdict: v)
 }
 
 // THE IMAGE PATH CARRIES THE WHOLE IDENTITY, so a runner bump cannot land on the path the previous

@@ -40,7 +40,7 @@ test fn sanctioned_source_analysis_is_established() -> Bool {
   }
 }
 
-data green_control_note: String = "The canonical sanctioned-reader source must reach NoSuspect. finding_standing_established_clean is false for both SuspectObserved and FindingNotEstablished, so neither a false positive nor a future ingest refusal can impersonate the green repair; this is the single exact observed expected-red for that analyzer defect."
+data green_control_note: String = "The canonical sanctioned-reader source must reach NoSuspect. finding_standing_established_clean is false for both SuspectObserved and FindingNotEstablished, so neither a false positive nor a future ingest refusal can impersonate a green. This is the 4b(4) positive control beside red_control_planted_identity_escape_still_alarms and red_control_planted_identity_escape_finding_count_is_one: those reds discriminate only while this control stays clean on the same analyzer."
 
 fn finding_list_length(fs: List<v2.lens.identity_captured_navigation.Finding>) -> Int {
   fold_list(xs: fs, empty: 0, cons: fn(acc, f) { acc + 1 })

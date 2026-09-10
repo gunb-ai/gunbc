@@ -9,15 +9,30 @@ import extdeps.cpu.amd {
 import extdeps.currency.currency { Eur }
 import std.measure {
   ByteSize,
+  Gigabyte,
+  AmortizationMonths,
   HardwareThreadCount,
+  Hertz,
+  PhysicalCoreCount,
   byte_size,
+  gigabyte,
+  gigabyte_count,
+  hardware_thread_count,
+  amortization_months_count,
+  hardware_thread_count_value,
+  hertz,
+  physical_core_count,
+  physical_core_count_value,
   MoneyOnce,
+  MoneyPerHour,
   MoneyPerMonth,
   money_amount_micro,
   money_once_micros,
+  money_per_hour_micros,
+  money_per_month_micros,
 }
 import std.nat { Nat }
-import std.types { NonEmptyStr, List }
+import std.types { Bool, Int, NonEmptyStr, List }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -153,4 +168,507 @@ fn hetzner_dedicated_setup_fee_micros(row: HetznerDedicatedServerPriceRow) -> Na
 
 fn hetzner_dedicated_server_threads(row: HetznerDedicatedServerPriceRow) -> HardwareThreadCount {
   cpu_facts_threads(cpu: row.cpu)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PUBLIC DEDICATED-SERVER LISTING AS OBSERVED ON 2026-09-05, kept as its own row type and its
+// own roster rather than appended to the rows above. Those are LIMITED offerings read from price
+// doc GE-D9256 on 2026-07-21; these are the standard catalogue read from the order page on a
+// different date by a different route. Merging two observation events into one roster would make
+// the join between a price and the moment it was true unrecoverable, and the two disagree on the
+// same wire label - AX41 is 57.30 in the limited table and 59.00 here - which is exactly the
+// disagreement a merged roster would silently pick a winner for.
+//
+// WHY A SEPARATE CPU CARRIER. The rows above bind extdeps.cpu CpuFacts, which carries socket,
+// cache geometry and TDP with citations. The listing observed here states only what the order page
+// prints: a model name, a codename, a core and thread count, and a clock. Binding these rows to
+// CpuFacts would require authoring socket and cache rows for ten processors from no source, so the
+// vendor's own words are carried as vendor's own words and the absence is a typed arm rather than
+// a fabricated catalog. A row is promoted by replacing VendorStatedCpu with CpuFactsCited once the
+// processor genuinely lands in extdeps/cpu.
+
+type ListedCpuStanding
+  = CpuFactsCited { facts: CpuFacts }
+  | VendorStatedCpu {
+      model: NonEmptyStr
+      codename: NonEmptyStr
+      physical_cores: PhysicalCoreCount
+      threads: HardwareThreadCount
+      stated_clock: Hertz
+      obligation: NonEmptyStr
+    }
+
+fn listed_cpu_physical_cores(c: ListedCpuStanding) -> PhysicalCoreCount {
+  match c {
+    CpuFactsCited { facts } => physical_core_count(count: facts.catalog.cores),
+    VendorStatedCpu { model, codename, physical_cores, threads, stated_clock, obligation } => physical_cores,
+  }
+}
+
+fn listed_cpu_is_grounded(c: ListedCpuStanding) -> Bool {
+  match c {
+    CpuFactsCited { facts } => true,
+    VendorStatedCpu { model, codename, physical_cores, threads, stated_clock, obligation } => false,
+  }
+}
+
+// WHAT THE PRICE ON THE LISTING ACTUALLY IS. The order page prints "starting from" beside a
+// monthly figure and a RAM RANGE, so the printed price belongs to the SMALLEST configuration in
+// that family and not to the largest. A per-gibibyte figure computed from the printed price and
+// the top of the memory range would divide the cheapest config's price by the dearest config's
+// memory and understate the rate, sometimes by a factor of four. The two fields below are
+// therefore both taken from the same end of the range - the base configuration - and the type
+// says so rather than leaving a reader to assume it.
+type ListedPriceBasis
+  = StartingFromBaseConfiguration { variants_offered: Int, note: NonEmptyStr }
+  | SingleConfiguration
+
+// A GPU IN THE BOX MAKES A PER-CORE PRICE MEANINGLESS, because most of what is being bought is not
+// the cores. GPU rows are recorded so the catalogue is complete and are excluded by construction
+// from every CPU-price derivation below, rather than being left in for a caller to remember.
+type ListedWorkloadClass
+  = CpuOnly
+  | CpuWithGpu { gpu_description: NonEmptyStr }
+
+fn listing_is_cpu_only(w: ListedWorkloadClass) -> Bool {
+  match w {
+    CpuOnly => true,
+    CpuWithGpu { gpu_description } => false,
+  }
+}
+
+type HetznerListedServerRow {
+  wire_label: NonEmptyStr
+  cpu: ListedCpuStanding
+  workload: ListedWorkloadClass
+  base_memory_gb: Gigabyte
+  ecc: Bool
+  monthly: MoneyPerMonth
+  hourly: MoneyPerHour
+  setup_fee: MoneyOnce
+  basis: ListedPriceBasis
+  observation: NonEmptyStr
+}
+
+data hetzner_listing_observation_2026_09_05: NonEmptyStr = "Operator reading of the Hetzner dedicated-server order listing, 2026-09-05, relayed into session quiet-cat-23. Prices excl. VAT, EUR, no region recorded on the listing and none assumed here. Storage configuration is printed on the listing and is deliberately not modelled: no consumer needs it, and a range carried without a consumer is another uncertainty to maintain."
+
+data hetzner_ax41_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "AX41",
+  cpu: VendorStatedCpu {
+    model: "AMD Ryzen 5 3600", codename: "Matisse (Zen2)", physical_cores: physical_core_count(6),
+    threads: hardware_thread_count(12), stated_clock: hertz(3600000000),
+    obligation: "extdeps.cpu.amd carries ryzen_5_3600_facts; this row is promotable to CpuFactsCited and is left unpromoted only so the whole listing is authored under one rule",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 64),
+  ecc: false,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 59000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 94500), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 0), currency: Eur },
+  basis: SingleConfiguration,
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_sx65_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "SX65",
+  cpu: VendorStatedCpu {
+    model: "AMD Ryzen 7 3700X", codename: "Matisse (Zen2)", physical_cores: physical_core_count(8),
+    threads: hardware_thread_count(16), stated_clock: hertz(3600000000),
+    obligation: "no extdeps.cpu row for Ryzen 7 3700X",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 64),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 84000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 134600), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 39000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 3, note: "storage-heavy family; 64-128 GB DDR4 ECC across variants" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_ax42_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "AX42",
+  cpu: VendorStatedCpu {
+    model: "AMD Ryzen 7 PRO 8700GE", codename: "Phoenix 1 (Zen4)", physical_cores: physical_core_count(8),
+    threads: hardware_thread_count(16), stated_clock: hertz(3650000000),
+    obligation: "extdeps.cpu.amd carries ryzen_7_pro_8700ge_facts; promotable",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 64),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 99000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 158600), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 49000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 2, note: "64 GB DDR5 ECC at the base configuration" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_ex63_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "EX63",
+  cpu: VendorStatedCpu {
+    model: "Intel Core Ultra 7 265", codename: "Arrow Lake", physical_cores: physical_core_count(20),
+    threads: hardware_thread_count(20), stated_clock: hertz(2400000000),
+    obligation: "no extdeps.cpu row for Core Ultra 7 265; note the listing states 20 cores and 20 threads, so this part has no SMT and its core and thread counts coincide",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 64),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 149000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 238800), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 74000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 4, note: "64-192 GB DDR5 ECC across variants; base is 64" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_gex45_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "GEX45",
+  cpu: VendorStatedCpu {
+    model: "Intel Core i5-13500", codename: "Raptor Lake-S", physical_cores: physical_core_count(14),
+    threads: hardware_thread_count(20), stated_clock: hertz(2500000000),
+    obligation: "no extdeps.cpu row for i5-13500",
+  },
+  workload: CpuWithGpu { gpu_description: "NVIDIA RTX PRO 4000 Blackwell SFF Edition" },
+  base_memory_gb: gigabyte(count: 64),
+  ecc: false,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 214000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 342900), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 209000000), currency: Eur },
+  basis: SingleConfiguration,
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_ax102_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "AX102",
+  cpu: VendorStatedCpu {
+    model: "AMD Ryzen 9 7950X3D", codename: "Raphael (Zen 4)", physical_cores: physical_core_count(16),
+    threads: hardware_thread_count(32), stated_clock: hertz(4200000000),
+    obligation: "extdeps.cpu.amd carries ryzen_9_7950x3d_facts; promotable",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 128),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 259000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 415000), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 129000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 4, note: "128-192 GB DDR5 ECC across variants; base is 128" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_sx135_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "SX135",
+  cpu: VendorStatedCpu {
+    model: "AMD Ryzen 9 3900", codename: "Matisse (Zen2)", physical_cores: physical_core_count(12),
+    threads: hardware_thread_count(24), stated_clock: hertz(3100000000),
+    obligation: "no extdeps.cpu row for Ryzen 9 3900",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 128),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 289000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 463100), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 144000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 2, note: "storage-heavy family" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_ex131_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "EX131",
+  cpu: VendorStatedCpu {
+    model: "Intel Xeon Gold 6731P", codename: "Granite Rapids", physical_cores: physical_core_count(32),
+    threads: hardware_thread_count(64), stated_clock: hertz(2500000000),
+    obligation: "no extdeps.cpu row for Xeon Gold 6731P",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 128),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 559000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 895800), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 279000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 3, note: "128-256 GB DDR5 ECC reg. across variants; base is 128" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_ax162_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "AX162",
+  cpu: VendorStatedCpu {
+    model: "AMD EPYC 9454P", codename: "Genoa (Zen4)", physical_cores: physical_core_count(48),
+    threads: hardware_thread_count(96), stated_clock: hertz(2750000000),
+    obligation: "no extdeps.cpu row for EPYC 9454P",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 128),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 614000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 984000), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 304000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 4, note: "128-512 GB DDR5 ECC reg. across variants; base is 128" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_dx154_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "DX154",
+  cpu: VendorStatedCpu {
+    model: "Intel Xeon 6741P", codename: "Granite Rapids", physical_cores: physical_core_count(48),
+    threads: hardware_thread_count(96), stated_clock: hertz(2500000000),
+    obligation: "no extdeps.cpu row for Xeon 6741P",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 128),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 704000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 1128200), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 349000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 2, note: "128-256 GB DDR5 ECC reg. across variants; base is 128" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_dx182_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "DX182",
+  cpu: VendorStatedCpu {
+    model: "AMD EPYC 9454P", codename: "Genoa (Zen4)", physical_cores: physical_core_count(48),
+    threads: hardware_thread_count(96), stated_clock: hertz(2750000000),
+    obligation: "no extdeps.cpu row for EPYC 9454P; same processor as AX162 at a different price, which is a fact about the two product families and not a transcription error",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 128),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 724000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 1160200), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 359000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 3, note: "128-512 GB DDR5 ECC reg. across variants; base is 128" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_sx295_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "SX295",
+  cpu: VendorStatedCpu {
+    model: "AMD EPYC 7502P", codename: "Rome (Zen2)", physical_cores: physical_core_count(32),
+    threads: hardware_thread_count(64), stated_clock: hertz(2000000000),
+    obligation: "no extdeps.cpu row for EPYC 7502P",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 256),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 879000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 1408600), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 439000000), currency: Eur },
+  basis: SingleConfiguration,
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_dx294_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "DX294",
+  cpu: VendorStatedCpu {
+    model: "Intel Xeon Gold 6787P", codename: "Granite Rapids", physical_cores: physical_core_count(86),
+    threads: hardware_thread_count(172), stated_clock: hertz(2000000000),
+    obligation: "no extdeps.cpu row for Xeon Gold 6787P",
+  },
+  workload: CpuOnly,
+  base_memory_gb: gigabyte(count: 256),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 919000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 1472700), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 459000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 2, note: "256-512 GB DDR5 ECC reg. across variants; base is 256" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+data hetzner_gex131_listed: HetznerListedServerRow = HetznerListedServerRow {
+  wire_label: "GEX131",
+  cpu: VendorStatedCpu {
+    model: "Intel Xeon Gold 5412U", codename: "Sapphire Rapids", physical_cores: physical_core_count(24),
+    threads: hardware_thread_count(48), stated_clock: hertz(2100000000),
+    obligation: "no extdeps.cpu row for Xeon Gold 5412U",
+  },
+  workload: CpuWithGpu { gpu_description: "NVIDIA RTX PRO 6000 Blackwell Max-Q" },
+  base_memory_gb: gigabyte(count: 256),
+  ecc: true,
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 1199000000), currency: Eur },
+  hourly: MoneyPerHour { amount: money_amount_micro(count: 1921500), currency: Eur },
+  setup_fee: MoneyOnce { amount: money_amount_micro(count: 599000000), currency: Eur },
+  basis: StartingFromBaseConfiguration { variants_offered: 3, note: "256-768 GB DDR5 ECC reg. across variants; base is 256" },
+  observation: hetzner_listing_observation_2026_09_05,
+}
+
+fn hetzner_listed_catalog() -> List<HetznerListedServerRow> {
+  [
+    hetzner_ax41_listed, hetzner_sx65_listed, hetzner_ax42_listed, hetzner_ex63_listed,
+    hetzner_gex45_listed, hetzner_ax102_listed, hetzner_sx135_listed, hetzner_ex131_listed,
+    hetzner_ax162_listed, hetzner_dx154_listed, hetzner_dx182_listed, hetzner_sx295_listed,
+    hetzner_dx294_listed, hetzner_gex131_listed,
+  ]
+}
+
+// ---------------------------------------------------------------------------------------------
+// DERIVATIONS OVER THE LISTING. Every one of these is arithmetic on the rows above and none of
+// them introduces a figure. They live here, beside the rows, because the mapping from this
+// vendor's listing shape to a comparable rate is a fact about this vendor's surface.
+// ---------------------------------------------------------------------------------------------
+
+fn hetzner_listed_monthly_micros(row: HetznerListedServerRow) -> Int {
+  money_per_month_micros(q: row.monthly)
+}
+
+fn hetzner_listed_hourly_micros(row: HetznerListedServerRow) -> Int {
+  money_per_hour_micros(q: row.hourly)
+}
+
+fn hetzner_listed_setup_micros(row: HetznerListedServerRow) -> Int {
+  money_once_micros(q: row.setup_fee)
+}
+
+// A SETUP FEE IS NOT A MONTHLY COST AND BECOMES ONE ONLY OVER A DECLARED HOLDING PERIOD. The
+// period is a parameter rather than a constant because it is a fact about the BUYER's intent and
+// not about the vendor: a machine held for three months and a machine held for three years spread
+// the same fee very differently, and burying a choice of horizon inside a rate would make two
+// incomparable numbers look like one.
+fn hetzner_listed_effective_monthly(row: HetznerListedServerRow, holding: AmortizationMonths) -> ListedRateStanding {
+  let months = amortization_months_count(m: holding)
+  if months <= 0 {
+    RateNotMeaningful {
+      reason: "a holding period of zero months spreads a setup fee over nothing. There is no monthly figure to report and the caller must be told so rather than handed a number.",
+    }
+  } else {
+    ListedRate {
+      rate: MoneyPerMonth {
+        amount: money_amount_micro(
+          count: hetzner_listed_monthly_micros(row: row) + hetzner_listed_setup_micros(row: row) / months,
+        ),
+        currency: row.monthly.currency,
+      },
+    }
+  }
+}
+
+// PER PHYSICAL CORE, and physical rather than thread deliberately. A thread is not a core, the
+// listing states both, and every arm64 product this repository compares against sells whole cores
+// - so a per-thread figure would compare a half-core against a whole one. GPU rows refuse: the
+// price is mostly not buying cores, so dividing it by cores would manufacture a comparison.
+// A RATE THAT SURVIVES DIVISION KEEPS ITS CURRENCY. A bare micro Int would erase both the unit
+// and the currency, and a euro figure that has forgotten it is a euro is exactly the input that
+// manufactured this repository's retired currency-premium claim.
+type ListedRateStanding
+  = ListedRate { rate: MoneyPerMonth }
+  | RateNotMeaningful { reason: NonEmptyStr }
+
+// DIVIDING A REFUSAL IS STILL A REFUSAL. The cause propagates unchanged rather than being
+// absorbed into a number, so a caller cannot mistake an unpriceable row for a cheap one.
+fn listed_rate_divided(s: ListedRateStanding, divisor: Int) -> ListedRateStanding {
+  match s {
+    RateNotMeaningful { reason } => RateNotMeaningful { reason: reason },
+    ListedRate { rate } => ListedRate {
+      rate: MoneyPerMonth {
+        amount: money_amount_micro(count: money_per_month_micros(q: rate) / divisor),
+        currency: rate.currency,
+      },
+    },
+  }
+}
+
+fn hetzner_listed_per_physical_core(row: HetznerListedServerRow, holding: AmortizationMonths) -> ListedRateStanding {
+  let cores = physical_core_count_value(c: listed_cpu_physical_cores(c: row.cpu))
+  if listing_is_cpu_only(w: row.workload) == false {
+    RateNotMeaningful {
+      reason: "this row's price includes a discrete GPU, so most of what it buys is not cores and a per-core rate derived from it would be an artifact of the division rather than a price",
+    }
+  } else if cores <= 0 {
+    RateNotMeaningful { reason: "no physical core count on this row" }
+  } else {
+    listed_rate_divided(s: hetzner_listed_effective_monthly(row: row, holding: holding), divisor: cores)
+  }
+}
+
+// PER DECIMAL GIGABYTE OF THE BASE CONFIGURATION. Both the numerator and the denominator are read
+// from the base end of the range, per the ListedPriceBasis note above.
+fn hetzner_listed_per_base_gb(row: HetznerListedServerRow, holding: AmortizationMonths) -> ListedRateStanding {
+  let gb = gigabyte_count(g: row.base_memory_gb)
+  if listing_is_cpu_only(w: row.workload) == false {
+    RateNotMeaningful {
+      reason: "this row's price includes a discrete GPU, so a per-gigabyte rate derived from it would be an artifact of the division rather than a price",
+    }
+  } else if gb <= 0 {
+    RateNotMeaningful { reason: "no base memory figure on this row" }
+  } else {
+    listed_rate_divided(s: hetzner_listed_effective_monthly(row: row, holding: holding), divisor: gb)
+  }
+}
+
+fn listed_rate_cheaper(a: ListedRateStanding, b: ListedRateStanding) -> ListedRateStanding {
+  match a {
+    RateNotMeaningful { reason } => b,
+    ListedRate { rate } => {
+      let a_micros = money_per_month_micros(q: rate)
+      match b {
+        RateNotMeaningful { reason } => a,
+        ListedRate { rate } => if money_per_month_micros(q: rate) < a_micros { b } else { a },
+      }
+    },
+  }
+}
+
+data listed_rate_none_meaningful: ListedRateStanding = RateNotMeaningful {
+  reason: "no row on the listing carries a meaningful rate on this axis - every row either refused or the listing is empty",
+}
+
+// THE CHEAPEST CPU-ONLY CORE ON THE LISTING, folded rather than transcribed, so that adding a row
+// moves the answer instead of leaving a stale number in prose beside a fresh roster.
+fn hetzner_listed_cheapest_per_core(holding: AmortizationMonths) -> ListedRateStanding {
+  fold(
+    hetzner_listed_catalog(),
+    init: listed_rate_none_meaningful,
+    f: (acc, row) => listed_rate_cheaper(
+      a: acc,
+      b: hetzner_listed_per_physical_core(row: row, holding: holding),
+    ),
+  )
+}
+
+fn hetzner_listed_cheapest_per_base_gb(holding: AmortizationMonths) -> ListedRateStanding {
+  fold(
+    hetzner_listed_catalog(),
+    init: listed_rate_none_meaningful,
+    f: (acc, row) => listed_rate_cheaper(
+      a: acc,
+      b: hetzner_listed_per_base_gb(row: row, holding: holding),
+    ),
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THE LISTING DID NOT CONTAIN. An absence observed on a complete listing is a fact about
+// supply, and it is the single most consequential thing in this module - so it is a typed row and
+// not a sentence in an annotation, because an annotation cannot be read by any accepted program.
+// ---------------------------------------------------------------------------------------------
+
+type ArchitectureOfferingStanding
+  = ArchitectureOffered { labels: List<NonEmptyStr> }
+  | ArchitectureAbsentFromListing {
+      architecture_sought: NonEmptyStr
+      labels_present: List<NonEmptyStr>
+      competing_explanations: NonEmptyStr
+      source: NonEmptyStr
+    }
+
+data hetzner_dedicated_arm_standing_2026_09_05: ArchitectureOfferingStanding = ArchitectureAbsentFromListing {
+  architecture_sought: "aarch64 - Ampere Altra or Altra Max class, the silicon family the gunbc fleet is built from",
+  labels_present: [
+    "AX41", "SX65", "AX42", "EX63", "GEX45", "AX102", "SX135",
+    "EX131", "AX162", "DX154", "DX182", "SX295", "DX294", "GEX131",
+  ],
+  competing_explanations: "FOURTEEN ROWS, ALL AMD OR INTEL, NO ARM PRODUCT OF ANY KIND. Read alongside the operator's 2026-09-05 Hetzner Cloud console observation that the arm/Ampere COST OPTIMIZED tier was greyed out and unselectable, this is the same architecture unavailable in both of the vendor's product lines on the same day. WHAT IT DOES NOT ESTABLISH, and these are load-bearing: this is ONE account's view of ONE listing at ONE moment; no region or location filter state was recorded, and this vendor does not offer every product in every location; the listing may be filtered by account tier, by a control the reader did not set, or by a sort or pagination that truncated it; and an absent product line may never have existed on this surface rather than having sold out of it. THE WEAKEST READING THAT STILL HOLDS is the one this repository may use: no purchasable arm64 dedicated price from this vendor is in evidence, so this vendor may not be cited as an arm64 cost floor, in either direction. It does NOT establish that arm capacity is scarce, that a competitor's costs have risen, or that a price increase elsewhere was caused by this. THE OBSERVATION THAT WOULD SETTLE IT is a listing read with the location filter recorded and any architecture filter explicitly cleared.",
+  source: "operator reading relayed into session quiet-cat-23, 2026-09-05",
+}
+
+fn architecture_is_offered(s: ArchitectureOfferingStanding) -> Bool {
+  match s {
+    ArchitectureOffered { labels } => true,
+    ArchitectureAbsentFromListing { architecture_sought, labels_present, competing_explanations, source } => false,
+  }
+}
+
+// THE CONSEQUENCE, STATED AS A PREDICATE RATHER THAN AS PROSE, so a consumer that wants to cite
+// this vendor as an arm64 floor has to confront the arm instead of reading a silent absence as
+// permission.
+fn hetzner_admissible_as_arm64_cost_floor() -> Bool {
+  architecture_is_offered(s: hetzner_dedicated_arm_standing_2026_09_05)
 }

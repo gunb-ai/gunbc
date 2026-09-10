@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.measure { ByteSize, byte_size_count, HardwareThreadCount, hardware_thread_count_value }
 import extdeps.systemd {
   SystemdUnitProperty,
-  MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight,
+  MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight, CPUQuota,
   systemd_unit_property_wire,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -130,6 +130,7 @@ type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
   | ExecStartPre { command: NonEmptyStr }
   | ExecStart { command: NonEmptyStr }
+  | ExecStop { command: NonEmptyStr }
   | ExecStopPost { command: NonEmptyStr }
   | ServiceStandardOutput { stream: SystemdOutputStream }
   | ServiceStandardError { stream: SystemdOutputStream }
@@ -186,7 +187,10 @@ type SystemdOutputStream
   | OutputConsole
   | OutputJournalAndConsole
   | OutputNull
+  | OutputAppendFile { path: NonEmptyStr }
 
+// `append:PATH` (systemd.exec(5), StandardOutput=): open PATH in append mode, so a restart continues
+// the same log rather than truncating it. The path is the one open field systemd defines here.
 fn systemd_output_stream_wire(stream: SystemdOutputStream) -> String {
   match stream {
     OutputInherit => "inherit"
@@ -194,6 +198,7 @@ fn systemd_output_stream_wire(stream: SystemdOutputStream) -> String {
     OutputConsole => "console"
     OutputJournalAndConsole => "journal+console"
     OutputNull => "null"
+    OutputAppendFile { path: p } => join(["append:", p as String], "")
   }
 }
 
@@ -432,11 +437,12 @@ type SystemdSliceDirective sole_constructor {
 // unwritable state writable again to buy reuse. The memory half of the filing stays open and keeps its
 // own trigger.
 //
-// There is deliberately no `slice_cpu_quota` mint beside slice_cpu_weight. One was written and
-// deleted unused (review 57699): the live CPU-quota producer is gunbc.host_converge
-// runner_cpu_boundary_knobs, which reaches the property-generic PerSlotMemoryCap target directly, so
-// a slice-directive mint would have been set-completion with no caller -- the residue DESIGN 6 names.
-// It costs one line to add when a slice-directive consumer exists.
+// `slice_cpu_quota` EXISTS BECAUSE ITS CONSUMER DOES. One was written and deleted unused (review
+// 57699) because the only live CPU-quota producer was gunbc.host_converge runner_cpu_boundary_knobs.
+// gunbc.fabric_cell_effect is now that caller: a microVM guest's topology has to be derived from a
+// quantity the CELL enforces, and the cell carried CPUWeight alone, which guarantees no amount of
+// anything. The quota the fleet already declares lands on the runner UNIT, a different systemd object
+// from the cell slice.
 type SystemdDirectiveValue
   = DirectiveByteCount { bytes: ByteSize }
   | DirectiveCardinal { count: Int }
@@ -508,6 +514,13 @@ fn slice_cpu_weight(weight: Int) -> SystemdSliceDirective {
   SystemdSliceDirective { property: CPUWeight, value: DirectiveWeight { weight: weight } }
 }
 
+// `CPUQuota=` IS AN ABSOLUTE CEILING AND IS NOT A SECOND SPELLING OF `slice_cpu_weight`. The weight
+// decides who yields first under contention and promises no quantity; this promises CPU time per
+// wall second, where 100% is one CPU by definition.
+fn slice_cpu_quota(threads: HardwareThreadCount) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: CPUQuota, value: DirectiveCpuTime { threads: threads } }
+}
+
 // The directive names are systemd's, spelled once here. A consumer never writes the literal
 // "ExecStart"; it constructs `ExecStart { command }` and this module decides how that renders.
 
@@ -527,6 +540,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceType { mode: v } => join(["Type=", v as String], "")
     ExecStartPre { command: v } => join(["ExecStartPre=", v as String], "")
     ExecStart { command: v } => join(["ExecStart=", v as String], "")
+    ExecStop { command: v } => join(["ExecStop=", v as String], "")
     ExecStopPost { command: v } => join(["ExecStopPost=", v as String], "")
     ServiceStandardOutput { stream: v } =>
       join(["StandardOutput=", systemd_output_stream_wire(stream: v)], "")

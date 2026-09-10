@@ -175,20 +175,49 @@ fn merge_target_refresh_refusal_label(cause: MergeTargetRefreshRefusal) -> Strin
 
 data merge_admission_refresh_refusal_wire_relpath: String = "target/merge-admission-refresh-refusal.txt"
 
-// PAIRED LITERAL (review 47596): claim_executor.rs MERGE_ADMISSION_REFRESH_REFUSAL_WIRE reads this
-// exact relpath at the stage-failure line — the seed cannot import a .dag datum, so a rename here
-// lands with the paired seed edit or the stage failure degrades to detail-without-wire, never a
-// silent success. Same pairing class as floor-population-budget-refusal.txt, under
-// walk_plan_run_stage_claim_executor_seed_deferral.
+// PAIRED LITERAL (review 47596), AND THE PAIR IS BROKEN. This said claim_executor.rs
+// MERGE_ADMISSION_REFRESH_REFUSAL_WIRE reads this exact relpath at the stage-failure line, so a
+// rename here would land with the paired seed edit. There is no such constant and no such read:
+// the relpath appears nowhere in src/, and refresh_current_target_and_gate has no caller since the
+// 2026-08-15 floor cut deleted the plan that scheduled it as a stage. The pairing is therefore not
+// a live obligation but a stale enforcement citation, kept visible rather than deleted because it
+// names what has to exist again before this wire means anything. Same standing as
+// floor-population-budget-refusal.txt, under walk_plan_run_stage_claim_executor_seed_deferral.
+//
+// THAT IS A STATEMENT ABOUT THE ENTRY, NOT ABOUT THIS MODULE, and the map is recorded here because
+// a future cut needs it and it is cheaper to write now than to re-derive. This module is
+// REFERENCED: merge_admission_fetch_stall_deadline_seconds is imported by
+// gunbc.instruments.merge_admission_current_context and asserted by the enrolled witness
+// merge_admission_attempt_witness_test, so deleting the module reds a live witness. Two of its
+// functions are also ENUMERATED SITES of a monotone debt roster --
+// extdeps.filesystem.filesystem_io filesystem_absence_establishment_adoption_standing names
+// read_tested_subject and read_floor_receipt for concluding absence from a failed read -- and that
+// roster permits a row to leave by deletion, so a cut would discharge two of its rows as a side
+// effect. Neither fact argues against cutting; both say a cut is its own change with its own
+// reviewer, not a cleanup a census lane performs in passing.
 
 // TYPED CAUSE FOR THE STAGE-2 CLAIM BOUNDARY (review 47542 finding 3, made blocking by CI run
 // 30764945450: refresh_current_target_and_gate returned bare Bool false on srv4-04 with all seven
 // failure causes conflated, and the red was undiagnosable from the log). Same pattern as
 // merge_admission_capture_refusal_wire_note: the claim channel is a Bool, so the core returns the
 // typed sum and the Bool projection durably writes the labeled cause to
-// target/merge-admission-refresh-refusal.txt before returning false; claim_executor's stage-failure
-// line reads the wire. The fetch and target-tree arms carry the operation's own stderr/cause so a
-// runner-side git failure names itself.
+// target/merge-admission-refresh-refusal.txt before returning false. The fetch and target-tree arms
+// carry the operation's own stderr/cause so a runner-side git failure names itself.
+//
+// THE DISCARDED OUTCOMES IN refresh_current_target_and_gate ARE THE REQUIRED CLASS of the
+// discarded-effect census #10574 opened over its own out-of-scope remainder -- the pre-clear sweep
+// and the refusal write here, plus the pre-clear in tools.merge_admission_capture, which are its
+// only members. No census total is transcribed (DESIGN §6); the instrument is the selector
+// `let _ = shell.<Op>` OR `let _ = Filesystem.<Op>`, and it is the wider reading precisely because
+// the narrow shell-only one drops the Filesystem.Write below. The pre-clear sweep and the refusal
+// write both bind their outcome to `_`, so "the wire names THIS attempt" is spelled identically to
+// "the clear failed and a prior attempt's cause survived", and "the cause was recorded" identically
+// to "the write refused and the cause was lost" -- the two distinctions the wire exists to create,
+// undone at the binding. The remedy and its trigger are stated once, at the sibling occurrence in
+// tools.merge_admission_capture: the wire must carry the walk attempt identity so a reader decides
+// staleness from content rather than from a sweep having succeeded, which lands with the reader
+// that parses it. Not repaired here, because with no producer and no consumer the fix would be a
+// format change to a channel with no ends.
 
 func refresh_wire_path() -> FilePath {
   let root = git.Inspect.Toplevel().path as String

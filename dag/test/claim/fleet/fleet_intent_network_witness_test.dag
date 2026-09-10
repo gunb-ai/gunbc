@@ -61,6 +61,11 @@ data declared_topology_endpoints: List<NetworkEndpoint> = [
   srv4_host_lan_endpoint,
   srv5_host_lan_endpoint,
   srv6_host_lan_endpoint,
+  srv7_host_lan_endpoint,
+  srv8_host_lan_endpoint,
+  srv9_host_lan_endpoint,
+  srv10_host_lan_endpoint,
+  srv11_host_lan_endpoint,
   srv1_bmc_endpoint,
   srv2_bmc_endpoint,
   srv3_bmc_endpoint,
@@ -124,6 +129,25 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
 // serving unit on both hosts is outstanding and is reported by
 // gunbc.spark.serving_observation_scope `spark_observation_coverage`, which answers
 // SparkObservationIncomplete with srv5 and srv6 in `missing` until a probe transaction supplies them.
+
+test fn fleet_intent_network_srv7_to_srv11_enrolled_at_their_reserved_addresses() -> Bool {
+  srv7_host_lan_endpoint.address == "192.168.1.232"
+    && srv7_host_lan_endpoint.role == HostOperatingSystem
+    && srv7_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv7 }
+    && srv8_host_lan_endpoint.address == "192.168.1.233"
+    && srv8_host_lan_endpoint.role == HostOperatingSystem
+    && srv8_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv8 }
+    && srv9_host_lan_endpoint.address == "192.168.1.236"
+    && srv9_host_lan_endpoint.role == HostOperatingSystem
+    && srv9_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv9 }
+    && srv10_host_lan_endpoint.address == "192.168.1.237"
+    && srv10_host_lan_endpoint.role == HostOperatingSystem
+    && srv10_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv10 }
+    && srv11_host_lan_endpoint.address == "192.168.1.238"
+    && srv11_host_lan_endpoint.role == HostOperatingSystem
+    && srv11_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv11 }
+    && operator_host_srv9 == "srv9" && operator_host_srv10 == "srv10" && operator_host_srv11 == "srv11"
+}
 
 test fn fleet_intent_network_srv5_srv6_enrolled_at_their_reserved_addresses() -> Bool {
   srv5_host_lan_endpoint.address == "192.168.1.226"

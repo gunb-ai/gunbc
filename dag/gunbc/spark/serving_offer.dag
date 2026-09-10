@@ -1,0 +1,188 @@
+module gunbc.spark.serving_offer
+
+import std.types { String, NonEmptyStr, Int, Timestamp }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply }
+import product.fabric.provider_route { ProviderRoute }
+import std.measure { Second, second, MoneyRate, money_amount_micro, hardware_thread_count }
+import extdeps.currency.currency { Usd }
+import gunbc.spark.fabric_switch_observed { fabric_group_wire }
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
+}
+
+// ── THE SPARKS BECOME SUPPLY, WHICH IS WHAT PUTS SERVING ON THE FABRIC ────────────────────────
+//
+// product.supplier.ubicloud is the precedent and this is the same work for a supplier we own:
+// normalize what a serving group actually offers into the fabric's carrier, so selection has
+// something real to rank. Until a Spark group is a SupplierOffer, every question about where a turn
+// runs has to be answered somewhere else -- which is how this repository ended up with two placement
+// authorities that disagreed.
+//
+// IT RESTATES NOTHING ABOUT THE GROUP. The served model, the head, the units and the engine are
+// gunbc.spark.pair_serving_desired's facts and stay there; this module consumes them.
+//
+// AN EARLIER ATTEMPT WENT THE OTHER WAY and the shape of the mistake is reusable: it minted a
+// serving-specific placement outcome, candidate and admissibility verdict, all of which already
+// existed in product.fabric.selection as SupplySelection, CandidateOffer and OfferCandidacy, and the
+// re-minted admissibility was strictly weaker -- a string reason where the fabric carries typed arms.
+// Whether a group serves the requested model needs no new type at all; it is capability fungibility,
+// and supply.dag already answers it with CapabilitiesNotOffered.
+
+// ── THE OFFER'S IDENTITY IS THE LAUNCH, NOT THE GROUP ─────────────────────────────────────────
+//
+// This is the correction that mattered most. An offer keyed on the group wire makes group A's
+// invocation 1 and group A's invocation 2 THE SAME OFFER SUBJECT, despite differing in KV state,
+// queue state, runtime provenance and effective batch policy. Every observation this module puts on
+// an offer -- readiness, its timestamp, its receipt -- then survives a restart it should not have
+// survived, and a previous launch's evidence prices or authorizes its successor. A restart must
+// create a new offer subject, and keying on the launch is what makes that structural rather than a
+// rule someone remembers.
+fn spark_serving_offer_key(launch: VllmEndpointProcessLaunch) -> NonEmptyStr {
+  vllm_endpoint_process_launch_key(launch: launch)
+}
+
+// ── WHAT WE SANCTION THE GROUP FOR ────────────────────────────────────────────────────────────
+//
+// work.dag is explicit that the capability reference on the OFFER side is our own fleet knowledge
+// and never a supplier claim. For a box we deploy ourselves that is straightforwardly true. The
+// reference is derived from the served model rather than written twice: a hand-written string beside
+// the model name is the nickname failure in its cheapest form.
+fn spark_serving_capability(model: NonEmptyStr) -> CapabilityManifestRef {
+  join(["gunbc.capabilities.spark-serving.", model as String], "") as CapabilityManifestRef
+}
+
+// A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER -- ubicloud's naming caution, applied.
+// These are named for the Spark rather than generically because two supplier bindings is not yet
+// proof of a shared concept, and a generic minted now would be a bare alias.
+type SparkOfferProjection<P> {
+  offer: SupplierOffer<P>
+  launch: VllmEndpointProcessLaunch
+}
+
+// ── AN OWNED GROUP'S QUOTE IS ZERO, AND THAT IS A FACT RATHER THAN A PLACEHOLDER ──────────────
+//
+// The Sparks are owned outright, so the cash that must be RESERVED before a grant issues is nothing:
+// no meter starts when a turn lands. selection.dag draws exactly this line -- liability is the axes
+// that actually move money, while the comparison number additionally carries opportunity cost and
+// valued delay.
+//
+// So two admitted groups tie at zero and the ordering falls to the tie policy, which is the correct
+// answer for serving under this cut: the thing that distinguishes group A from group B is whether
+// either is occupied, and that question is settled at admission before any offer is priced.
+//
+// AND THE DEMAND SIDE HAS TO AGREE OR NOTHING CLEARS: a reservation price below every offer refuses
+// them all, so a serving demand's buy terms are zero against this zero. Zero against zero is the
+// honest pair rather than two numbers chosen to meet -- recorded here, beside the quote it has to
+// match, because the demand constructor that would have carried it consumed nothing and is gone.
+fn spark_serving_quote() -> OfferQuote {
+  QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd })
+}
+
+data spark_serving_billing_quantum: Second = second(count: 1)
+
+// ── READINESS IS OBSERVED OR THE OFFER DOES NOT EXIST ─────────────────────────────────────────
+//
+// An offer is a claim that work placed on this executor will run, and a group whose engine has not
+// been observed serving is not making that claim. Binding one anyway would put a candidate in front
+// of selection that nothing established -- the fabricated placement the whole exercise exists to
+// remove, arriving one layer earlier.
+type SparkServingReadiness
+  = ServingObserved { ready_at: Timestamp, receipt: ObservationReceiptRef }
+  | ServingUnobserved { obligation: NonEmptyStr }
+
+// ── THE ROUTE IS OBSERVED OR THE OFFER DOES NOT EXIST, WHICH IS READINESS'S ARGUMENT AGAIN ────
+//
+// SupplierOffer carries a ProviderRoute because admission is decided over provider x service x
+// region and never over a company. A route's region is therefore an OBSERVATION, exactly as
+// product.supplier.ubicloud ubicloud_route treats it: unread, it refuses as
+// UbicloudRouteRegionUnobserved rather than filling the slot. This module has the same obligation
+// and, today, no observer -- so it refuses for the same reason the readiness arm above refuses.
+// Binding an offer whose route nothing established would put a candidate in front of selection
+// carrying a region no one measured, and every admission decision downstream would be taken
+// against it.
+//
+// THE NEARBY NAME THAT IS NOT THIS ONE: gunbc.spark.serving_deployment_selection
+// serving_topology_region is a DecisionRegion from the Pareto vocabulary -- a region of a decision
+// field, not a place a machine sits. Reusing it here would be one name for two concepts.
+type SparkServingRoute
+  = ServingRouteObserved { route: ProviderRoute }
+  | ServingRouteRegionUnobserved { obligation: NonEmptyStr }
+
+// THE SINGLE PLACE THE STALL IS RECORDED, so the observer replaces one declaration rather than
+// every call site. Restoration trigger: a producer that OBSERVES which site a serving host sits in
+// and returns ServingRouteObserved. Until then every spark serving offer refuses to bind, which is
+// a live capability withdrawn deliberately (operator ruling, 2026-09-09) rather than a defect.
+data spark_serving_route_region_obligation: NonEmptyStr = "gunbc.spark.serving_offer: no producer observes which region a serving host sits in, so the offer's ProviderRoute cannot be constructed and the offer does not bind"
+
+fn spark_serving_route_standing() -> SparkServingRoute {
+  ServingRouteRegionUnobserved { obligation: spark_serving_route_region_obligation }
+}
+
+type SparkOfferBinding<P>
+  = SparkOfferBound { bound: SparkOfferProjection<P> }
+  | SparkOfferBindingRefused { group_wire: NonEmptyStr, cause: NonEmptyStr }
+
+// THE SHAPE IS DELIBERATELY UNSTATED RATHER THAN INVENTED. Every axis Shape offers would be a number
+// nobody measured for this group, and envelope.dag rules that an absent axis is a requirement nobody
+// expressed, not a requirement satisfied by everything.
+//
+// WHY NO SIDECAR LISTS WHAT IS MISSING. An earlier spelling carried a SparkServingUnexpressed list on
+// the projection, naming the KV budget, the tensor-parallel unit, interactive quality and isolation
+// as axes Shape cannot hold. Nothing read it. Review 62334 is right on both counts: its rank count
+// re-minted a fact gunbc.spark.pair_serving_desired already decides as length(hosts), and an unread
+// list of nullary variants is prose in a type's costume -- DESIGN 3c's dangling declaration, which is
+// red however well modelled. The two departures that carry a machine consequence are declared drops
+// that a projection reads (gunbc.rung_drop serving_cost_axes_asserted_unmeasured and
+// serving_offer_identity_is_the_exporter_process); the rest is the irreducible rationale above, which
+// is what an annotation is for. Interactive quality in particular is not a missing Shape axis at all:
+// this cut enforces it as ADMISSION, which is the whole point of the co-tenancy wall.
+fn spark_serving_shape() -> Shape {
+  Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() }
+}
+
+fn bind_spark_serving_offer<P>(
+  principal: P,
+  executor: P,
+  launch: VllmEndpointProcessLaunch,
+  model: NonEmptyStr,
+  trust_domain: TrustDomainRef,
+  isolation: IsolationProfile,
+  seats: Int,
+  readiness: SparkServingReadiness,
+  route: SparkServingRoute,
+) -> SparkOfferBinding<P> {
+  match route {
+    ServingRouteRegionUnobserved { obligation: why } =>
+      SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
+    ServingRouteObserved { route: r0 } =>
+    match readiness {
+      ServingUnobserved { obligation: why } =>
+        SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
+      ServingObserved { ready_at: at, receipt: r } =>
+        SparkOfferBound {
+          bound: SparkOfferProjection {
+            offer: SupplierOffer {
+              id: FabricIdentity { principal: principal, key: spark_serving_offer_key(launch: launch) },
+              route: r0,
+              executor: executor,
+              shape: spark_serving_shape(),
+              capabilities: spark_serving_capability(model: model),
+              trust_domain: trust_domain,
+              isolation: isolation,
+              quantity_bound: seats,
+              ready_at: at,
+              quote: spark_serving_quote(),
+              billing_quantum: spark_serving_billing_quantum,
+              evidence: ObservedSupply { observed_at: at, receipt: r },
+            },
+            launch: launch,
+          },
+        }
+    }
+  }
+}

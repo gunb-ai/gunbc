@@ -1,0 +1,86 @@
+module extdeps.colo.telehouse
+
+import std.types { NonEmptyStr, List }
+import std.measure { watt, volt_ampere }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityMarketedAirOnly,
+  PublishedRealPower, PublishedApparentPower,
+  RetailGrainStanding, SingleCabinetOffered, CageOrSuiteMinimum,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.telehouse.com/global-data-centers/america/new-york-datacenters/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.telehouse",
+      decl_name: "telehouse_facilities",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data telehouse_chelsea: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Telehouse America",
+  facility_label: "Telehouse New York Chelsea",
+  address: AddressListed {
+    street: "85 10th Avenue, New York, NY 10011",
+    citation: "telehouse.com New York Chelsea page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "60,000 square feet of Tier 3 colocation in Chelsea with NYIIX on-net, 60-plus carriers and 160-plus connectivity members per the operator page read 2026-09-08. 365 Data Centers lists a 7th-floor suite in this building under its own module.",
+}
+
+data telehouse_chelsea_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedApparentPower { power: volt_ampere(count: 5000) },
+  claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
+  citation: "telehouse.com New York Chelsea page (sitemap loc /telehouse-new-york-chelsea/). Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 159838 bytes. Subject control in RAW bytes: Chelsea=17. Token kW=0; kVA=4. find+slice on '3.5kVA' prints one <li> under <h3>Power:</h3> (under <h2>Data Center Infrastructure</h2> after <h1>Telehouse New York Chelsea</h1>): 'Standard power to rack at 3.5kVA with scalable options to 5kVA' - one element, qualifier inside the same <li>, not a truncated 5kVA cell. The modelled figure is the 5 kVA scalable option, not the 3.5 kVA standard. Apparent power is not converted to watts: no power factor is published.",
+}
+
+data telehouse_chelsea_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "from half a cabinet up to full racks and private cages",
+  citation: "telehouse.com New York Chelsea page, read 2026-09-08",
+}
+
+data telehouse_teleport: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Telehouse America",
+  facility_label: "Telehouse New York Teleport",
+  address: AddressListed {
+    street: "7 Teleport Drive, Staten Island, NY 10311",
+    citation: "telehouse.com New York Teleport page, read 2026-09-08",
+  },
+  municipality: "Staten Island",
+  region_code: "NY",
+  facility_note: "162,000 square feet on the Port Authority Teleport campus, opened 1989, home of NYIIX, with diverse NY and NJ utility feeds and 10 MW available power per the operator page read 2026-09-08. 365 Data Centers lists an in-building POP here under its own module.",
+}
+
+data telehouse_teleport_density: CabinetDensityClaim = DensityMarketedAirOnly {
+  air_cooled: PublishedRealPower { power: watt(count: 20000) },
+  claim_wording: "Up to 20kW per cabinet maximum capacity",
+  citation: "telehouse.com New York Teleport page (sitemap loc /telehouse-new-york-teleport-data-center/). Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 164583 bytes. Subject control in RAW bytes: Teleport=21. The one RAW kW is the modelled sentence 'Up to 20kW per cabinet maximum capacity' (not generator capacity). find+slice on '20kW' prints one complete <li> under <h3>Data Center Infrastructure</h3> after <h2>About Telehouse New York Teleport Datacenter</h2>. Page <h1> reads 'Telehouse Data Center in New Jersey and New York' - dual-metro chrome, not a second facility's density block wrapping this <li>.",
+}
+
+data telehouse_teleport_retail_grain: RetailGrainStanding = CageOrSuiteMinimum {
+  wording: "Common and caged colocation space (minimum 3 cabinets)",
+  citation: "telehouse.com New York Teleport page, read 2026-09-08",
+}
+
+data telehouse_facilities: List<ColoFacilityRow> = [telehouse_chelsea, telehouse_teleport]
+
+data telehouse_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "telehouse.com sales / facility tour request",
+  obligation: "Cross-connect fees are described as low on the Chelsea page but no cabinet or power prices are published on the pages read 2026-09-08.",
+}

@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.modifier_accepted_on_a_shape_its_check_cannot_see
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data modifier_accepted_on_a_shape_its_check_cannot_see: RecurringFailureMode = RecurringFailureMode {
+  identity: "modifier_accepted_on_a_shape_its_check_cannot_see" as NonEmptyStr,
+
+  receipts: [
+    "**modifier accepted on a shape its check cannot see** (a declaration-site modifier that names a guarantee parses on a shape the enforcing pass never inspects, so the modifier is present, the source reads as walled, and nothing enforces it. ",
+
+    "**THIS ROW IS NOT THE AUTHORITY ON ITS OWN SPECIMEN, AND THE FIRST REVISION CLAIMED TO BE, which is the most useful thing in it.** The `sole_constructor`-on-a-coproduct hole is ALREADY DECLARED, at `v1.compiler.parse` above `alias_rhs_is_anonymous_record`, as a §4b(2) class that CAN CLIMB AFTER ONE GROUNDING, with a named next-rung trigger; it is measured by `test.claim.sole_constructor_completeness_audit_probe` `f13_variant_construction_refuses`, and `test.fixture.sole_constructor_variant_probe.definer` declares `type SealedChoice sole_constructor = SealedA { .. } | SealedB { .. }` FOR THE PURPOSE of measuring it. What belongs here is only the general recognition rule; the specimen's population, ceiling and trigger belong to that declaration and are cited rather than restated. ",
+
+    "**THREE CLAIMS FROM THE FIRST REVISION ARE WITHDRAWN, all in the same direction — treating a rediscovery as a discovery.** (1) `WHY IT SURVIVED: every prior use was a record` is FALSE: a coproduct use exists and is deliberate. (2) `HOW IT WAS FOUND` narrated a lane discovering the gap; the lane rediscovered a documented one, and the documentation was one grep from the code it was reading. (3) The proposed remedy — refuse the modifier at parse time on a sum — CONTRADICTS THE STANDING RULING, which rejected exactly that with a reason the first revision never engaged: refusing there breaks the fixture that exists to measure the hole, and refusing only the harmless leaf-alias arm would refuse where nothing is authored and stay silent in the arm that matters. The declared climb is to wire coproduct construction through `sole_constructor_construction_diags` FIRST, after which the whole `=` family is threaded or refused in one motion by the lane that owns the wall. ",
+
+    "**THE COST OF THE FIRST REVISION IS THE POINT.** A row was filed asserting novelty, a fix was recommended to an operator on that basis, and the operator APPROVED IT. Had the approval been executed, the change would have broken an enrolled probe in order to close a hole that probe exists to report, and the ledger would have carried a second authority contradicting a live declaration — the §3 violation this ledger exists to prevent, committed by the mechanism meant to prevent it. It was caught by reading the parse site before editing it, which is one step later than it should have been caught. ",
+
+    "**RECOGNITION RULE, AND IT IS TWO RULES.** First, the class: a declaration-site modifier is not evidence that a check ran. Write the state the modifier forbids, in the position a real violator would write it, and watch it be refused; a modifier that parses is a parser result, a refusal is an enforcement result, and §4b(1) counts only the second. This generalizes past `sole_constructor` to every modifier, attribute or annotation whose enforcement lives in a pass keyed on something the declaration does not itself carry. ",
+
+    "Second, and it is the one this row was written to earn: **BEFORE FILING A GAP, GREP THE SITE THAT WOULD IMPLEMENT THE FIX.** A hole deliberately left open is usually documented AT the code that would close it, not in the ledger where a search for the class name would find it — so the ledger is the wrong instrument for the question `is this already known`, and the right one is reading the function you are about to edit. An empirical probe proves the hole EXISTS; it says nothing about whether the hole is NEWS, and the two were conflated here. ",
+
+    "**THE NEIGHBOUR IS `prose_asserts_an_enforcement_no_operation_can_produce` and the boundary is the carrier:** there the false claim is in prose a machine cannot read, here it is in SYNTAX THE COMPILER ACCEPTED, which is strictly more convincing and therefore strictly more dangerous. Against `discriminating_arm_built_but_never_enrolled`: there a real check exists and nothing calls it; here the check is called, runs, and answers the wrong question because its key does not match the shape. ",
+
+    "**RUNG AND CEILING FOR THE CLASS AS A CLASS**, which is all this row may speak to: the general mismatch between a modifier's accepted shapes and its enforcing pass's covered shapes is decidable per modifier and undecidable as a blanket property, so it stays a per-modifier obligation discharged where the modifier is minted. The specimen's own rung, ceiling and trigger are the parse site's to state and are not restated here.)",
+  ],
+
+  evidence: [],
+}

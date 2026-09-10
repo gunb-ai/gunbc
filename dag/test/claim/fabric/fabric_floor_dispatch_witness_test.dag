@@ -13,6 +13,7 @@ module test.claim.fabric_floor_dispatch_witness
 // So every row below turns on a fact that belongs to the floor specifically: its eight threads, its
 // capability ref, its satisfaction requirement.
 
+import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for }
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -28,17 +29,19 @@ import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { SatisfactionRequirement }
 import product.fabric.supply {
-  SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply,
+  SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply, PlacementAffinityKey,
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
+  PermitNamesAnotherWork, PermitNamesAnotherDemand,
   AvailabilityObservation, AvailableIndefinitely,
   CommitmentState, PayAsYouGo,
   StartCostObservation, StartCostMeasured,
   TransitionCostObservation, NoTransitionRequired,
   OperatingCostObservation, OperatingCostMeasured,
   OpportunityCostObservation, NoFeasibleAlternativeUse,
-  SupplySelection, OfferSelected, NoAdmissibleOffer,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
 }
 import gunbc.fabric_floor_dispatch {
   floor_demand, floor_supply_selection, floor_selection_selected_offer_count,
@@ -58,6 +61,7 @@ fn d_offer(key: OfferKey, threads: HardwareThreadCount) -> SupplierOffer<NonEmpt
   SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: key },
     executor: "gunbc",
+    route: fixture_route(),
     shape: Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() },
     capabilities: d_caps(),
     trust_domain: d_trust(),
@@ -79,6 +83,9 @@ fn d_offer(key: OfferKey, threads: HardwareThreadCount) -> SupplierOffer<NonEmpt
 fn d_bound(offer: SupplierOffer<NonEmptyStr>, key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
   match bind_candidate(
     offer: offer,
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
     dispatch: DispatchInputs {
       offer: FabricIdentity { principal: "gunbc", key: key },
       availability: AvailableIndefinitely {
@@ -100,6 +107,11 @@ fn d_bound(offer: SupplierOffer<NonEmptyStr>, key: OfferKey) -> List<CandidateOf
   ) {
     CandidateBound { candidate: c } => [c]
     DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
   }
 }
 
@@ -112,13 +124,15 @@ fn d_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<No
     candidates: candidates,
     maximum_buy_order: money_amount_micro(count: 1000000),
     delay_valuation: d_no_delay_valuation(),
+    affinity: "test.floor-demand" as PlacementAffinityKey,
   )
 }
 
 fn d_considered_count(selection: SupplySelection<NonEmptyStr>) -> Int {
   match selection {
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: c } => list_length(items: c)
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: c, tie_policy: _ } => list_length(items: c)
     NoAdmissibleOffer { considered: c } => list_length(items: c)
+    EqualCostTieUnresolved { digest: _, cause: _, considered: c } => list_length(items: c)
   }
 }
 
@@ -168,3 +182,4 @@ test fn the_floor_demand_carries_the_authority_satisfaction_requirement() -> Boo
   )
   !d.satisfaction.terminal_receipt_may_satisfy && d.satisfaction.new_attempt_required
 }
+

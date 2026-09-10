@@ -136,6 +136,77 @@ fn claude_workspace_trust_seeded(config_text: String, project_path: String) -> B
   out.found
 }
 
+// MODEL IS TRANSMITTED OR IT IS NOT SELECTED. Both cited CLIs take a per-invocation model
+// identifier -- `claude --model <model>` ("Model for the current session. Provide an alias for the
+// latest model ... or a") and `codex exec -m/--model <MODEL>` ("Model the agent should use"), read
+// from the installed runtimes' own --help -- and NEITHER argv row below carried one. A model
+// resolved by gunbc.dispatch_selection was therefore dropped between the selection kernel and the
+// launched process, so every non-default selection ran on the account default while the receipt
+// recorded the requested identifier under resolved_execution: exactly the substitution
+// dispatch_execution_receipt_bar_note forbids, and DESIGN 5's silent wrongness on the field that
+// note names.
+//
+// THE AXIS IS TWO-VALUED AND CLOSED, and it is a coproduct rather than the "account-default" string
+// sentinel it replaces. A sentinel cannot separate "use whatever this account defaults to, and pass
+// NO flag" from "pin the identifier spelled account-default", and it leaves every other identifier
+// droppable by an argv row that simply does not read the field. Under the coproduct the pinned arm
+// has nowhere to go but the flag: the model reaches the process or the program does not typecheck.
+//
+// IT IS DELIBERATELY NOT A CLOSED ENUM OF IDENTIFIERS. The selectable roster is entitlement-scoped
+// -- extdeps.llm.cursor_cli records the same finding against its own --list-models surface, whose
+// subcommand is documented as listing what THIS ACCOUNT may use -- so an enumeration here would be
+// a snapshot pretending to be a specification, and would refuse a newly published model that the
+// account is entitled to.
+//
+// IT LIVES IN THIS MODULE, not in the agnostic extdeps.llm.llm hub, because both inhabitants are
+// here: claude and codex. Cursor does not inhabit the axis at all -- its `auto` is a real
+// identifier it always transmits (extdeps.llm.cursor_cli cursor_model_auto), not an absent flag --
+// so hoisting the shape to the hub today would model a generality with one home and no second
+// consumer.
+//
+// AND THIS MODULE IS THE WRONG SHAPE TO BE GROWING, which is stated here rather than left for a
+// reader to notice, because DESIGN section 3b admits a divergence with its reason beside it and
+// reds only the unstated one. extdeps.llm.cli carries three external authority anchors spanning TWO
+// independently governed upstreams -- OpenAI's codex and Anthropic's claude CLI -- and declares no
+// ExternalModelScope at all. Section 3's external decomposition forbids that twice: a module may not
+// silently hold several independently governed subjects, and a generic hub may not enumerate
+// concrete products, which `claude_cli_program` and `codex_cli_program` do. The two flag rows and
+// two arg builders above are four MORE rows on that surface.
+//
+// They are placed here anyway because the alternative is worse in the same section's terms: the
+// argv shapers that consume them are in this module, so splitting only the flag out would put one
+// fact in two modules. The root cut that actually dissolves this is a section 3 replacement
+// migration -- extdeps.llm.cli split per subject, each with its own declared scope, the shapers
+// moving with their upstream -- which is a root cut and not a leaf edit, so it is named here as
+// owed rather than half-done underneath a model-transmission change.
+
+type ProviderModelSelection
+  = ProviderAccountDefaultModel
+  | ProviderModelPinned { model: NonEmptyStr }
+
+// Each provider spells its own flag against its own cited surface, exactly as ReasoningEffort's
+// note requires for the sibling closed axis: the two spellings agreeing on `--model` today is a
+// coincidence of the two upstreams, not one shared fact, and a divergence is a one-line local edit
+// rather than a re-widening.
+
+data claude_cli_model_flag: String = "--model"
+
+data codex_cli_model_flag: String = "--model"
+
+fn claude_model_args(selection: ProviderModelSelection) -> List<String> {
+  match selection {
+    ProviderAccountDefaultModel => []
+    ProviderModelPinned { model } => [claude_cli_model_flag, model as String]
+  }
+}
+
+fn codex_model_args(selection: ProviderModelSelection) -> List<String> {
+  match selection {
+    ProviderAccountDefaultModel => []
+    ProviderModelPinned { model } => [codex_cli_model_flag, model as String]
+  }
+}
+
 fn shape_claude_invoke_argv(
   session_id: String,
   node_id: String,
@@ -144,11 +215,14 @@ fn shape_claude_invoke_argv(
   append_system_prompt: String,
   start_prompt: String,
   permission_args: List<String>,
+  model: ProviderModelSelection,
 ) -> List<String> {
   concat(
     [claude_cli_program],
     concat(
       permission_args,
+      concat(
+      claude_model_args(selection: model),
       [
         "--settings", settings_json,
         "--effort", reasoning_effort_label(effort: effort),
@@ -157,6 +231,7 @@ fn shape_claude_invoke_argv(
         "--append-system-prompt", append_system_prompt,
         start_prompt,
       ],
+      ),
     ),
   )
 }
@@ -370,6 +445,7 @@ fn shape_codex_exec_argv_for_program(
   cwd: String,
   prompt: String,
   reasoning_effort: ReasoningEffort,
+  model: ProviderModelSelection,
   spec: CodexExecSpec,
 ) -> List<String> {
   shape_codex_exec_argv_for_programs(
@@ -379,6 +455,7 @@ fn shape_codex_exec_argv_for_program(
     cwd: cwd,
     prompt: prompt,
     reasoning_effort: reasoning_effort,
+    model: model,
     spec: spec,
   )
 }
@@ -390,6 +467,7 @@ fn shape_codex_exec_argv_for_programs(
   cwd: String,
   prompt: String,
   reasoning_effort: ReasoningEffort,
+  model: ProviderModelSelection,
   spec: CodexExecSpec,
 ) -> List<String> {
   concat(
@@ -403,6 +481,8 @@ fn shape_codex_exec_argv_for_programs(
       "--color", "never",
     ],
     concat(
+      codex_model_args(selection: model),
+      concat(
       codex_json_event_args(enabled: spec.json_events),
       concat(
         codex_session_persistence_args(persist: spec.persist_session),
@@ -418,6 +498,7 @@ fn shape_codex_exec_argv_for_programs(
           prompt,
         ],
       ),
+      ),
     ),
   )
 }
@@ -427,6 +508,7 @@ fn shape_codex_exec_argv(
   cwd: String,
   prompt: String,
   reasoning_effort: ReasoningEffort,
+  model: ProviderModelSelection,
   spec: CodexExecSpec,
 ) -> List<String> {
   shape_codex_exec_argv_for_program(
@@ -435,6 +517,7 @@ fn shape_codex_exec_argv(
     cwd: cwd,
     prompt: prompt,
     reasoning_effort: reasoning_effort,
+    model: model,
     spec: spec,
   )
 }

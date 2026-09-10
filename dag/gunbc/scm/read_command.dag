@@ -133,8 +133,15 @@ fn scm_read_log(path: String) -> ScmReadResult<CommitLog> {
 }
 
 // STATUS TAKES THE PENDING PROPOSAL AS A PARAMETER rather than reading it from somewhere, because
-// `repository_status` does: what is staged is not a fact the repository document carries, and
+// `repository_status` does: a ROLE proposal is not a fact the repository document carries, and
 // inventing a source for it here would be this module deciding a question its authority left open.
+//
+// THE SENTENCE ABOVE USED TO SAY "what is staged", WHICH IS NOW HALF FALSE AND IS CORRECTED RATHER
+// THAN LEFT TO ROT. The document does carry a staging fact -- the workspace's candidate selection,
+// added with the v5 envelope -- and `repository_status` reads it from the envelope it is given. What
+// it still cannot reach is the role proposal, which is a different subject staged by a different verb
+// into a carrier the document has no member for. Keeping one sentence over two subjects was how the
+// old wording became wrong the moment one of them moved.
 fn scm_read_status(path: String, pending: Proposal) -> ScmReadResult<RepositoryStatus> {
   match load_repository(path: path) {
     RepositoryLoadRefused { cause: cause } => ScmReadRepositoryUnavailable { cause: cause }

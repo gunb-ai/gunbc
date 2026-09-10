@@ -98,7 +98,7 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     rust_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: _| {
+        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
@@ -116,9 +116,12 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, spec: _| {
-        v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
-    })
+    .fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| {
+            v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
+        },
+    )
 }
 
 pub fn rust_reserved() -> Rc<Vec<String>> {
@@ -603,12 +606,12 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 }
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
-    rt_function_registry()
-        .iter()
-        .cloned()
-        .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
+    rt_function_registry().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        })
+        },
+    )
 }
 
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
@@ -623,9 +626,12 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
-        v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-    })
+    .fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+        },
+    )
 }
 
 pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
@@ -640,9 +646,12 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
-        v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-    })
+    .fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+        },
+    )
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
@@ -659,7 +668,7 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, entry: _| {
+        |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone())
         },
     )
@@ -691,7 +700,7 @@ pub struct HigherOrderMethodSpec {
 pub fn rust_higher_order_methods() -> Rc<Vec<Rc<HigherOrderMethodSpec>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<HigherOrderMethodSpec>>> = {
-            serde_json::from_value(serde_json::json!([{"method_name": "filter", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }", "fn_ref_template": "{iter}.filter({arg}).collect::<Vec<_>>()", "wraps_in_sharing": true}, {"method_name": "any", "inline_template": "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }", "fn_ref_template": "{iter}.any({arg})", "wraps_in_sharing": false}, {"method_name": "all", "inline_template": "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }", "fn_ref_template": "{iter}.all({arg})", "wraps_in_sharing": false}, {"method_name": "flat_map", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }", "fn_ref_template": "{iter}.flat_map({arg}).collect::<Vec<_>>()", "wraps_in_sharing": true}]))
+            serde_json::from_value(serde_json::json!([{"method_name": "filter", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }", "fn_ref_template": "{iter}.filter(|__item| ({arg})((*__item).clone())).collect::<Vec<_>>()", "wraps_in_sharing": true}, {"method_name": "any", "inline_template": "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }", "fn_ref_template": "{iter}.any({arg})", "wraps_in_sharing": false}, {"method_name": "all", "inline_template": "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }", "fn_ref_template": "{iter}.all({arg})", "wraps_in_sharing": false}, {"method_name": "flat_map", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }", "fn_ref_template": "{iter}.flat_map({arg}).collect::<Vec<_>>()", "wraps_in_sharing": true}]))
                 .expect("valid data definition")
         };
     }

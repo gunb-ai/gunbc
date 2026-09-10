@@ -1,5 +1,9 @@
 module test.claim.fabric_selection_witness
 
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_for_offer, fixture_unadmitted_for_offer, fixture_route,
+  fixture_route_sibling_region, fixture_demand_for, fixture_work_for,
+}
 import std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat }
@@ -18,11 +22,14 @@ import product.fabric.work {
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply {
+  EqualCostOfferTieBreak, StableRosterOrder, AffinityKeyedRendezvous, PlacementAffinityKey,
   SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, ObservedSupply,
   GrantDuration, ExactGrantDuration, UnobservedGrantDuration,
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
+  PermitNamesAnotherWork, PermitNamesAnotherDemand,
   AvailabilityObservation, AvailableForInterval, AvailableIndefinitely, AvailabilityUnobserved,
   CommitmentState, PayAsYouGo, PaidThrough,
   StartCostObservation, StartCostMeasured,
@@ -31,7 +38,8 @@ import product.fabric.selection {
   OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
   OfferCandidacy, OfferPriced, OfferNotPriceable, OfferUnavailableForGrant,
   OfferCannotHoldAnUnboundedGrant,
-  SupplySelection, OfferSelected, NoAdmissibleOffer,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
+  AffinityCollision, DuplicateOfferIdentity, AffinityProjectionAmbiguous, DigestCollisionOnDistinctKeys,
   SelectionCost, selection_total, selection_liability,
   CostBasis, ExactCost, ProjectedCost, CommitmentFloorCost,
   CommitmentHorizon, CoveredByCommitment, BilledBeyondCommitment,
@@ -85,6 +93,7 @@ fn t_offer(key: OfferKey, quote: OfferQuote, quantum: Second) -> SupplierOffer<N
   SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: key },
     executor: "gunbc",
+    route: fixture_route(),
     shape: t_shape(threads: hardware_thread_count(count: 64)),
     capabilities: t_caps(),
     trust_domain: t_trust(),
@@ -201,9 +210,20 @@ fn t_rented_candidate(
 // roster. Returning an unconstructable value or re-binding in a loop were the alternatives,
 // and both hide the same mistake.
 fn t_bound(offer: SupplierOffer<NonEmptyStr>, inputs: DispatchInputs<NonEmptyStr>) -> List<CandidateOffer<NonEmptyStr>> {
-  match bind_candidate(offer: offer, dispatch: inputs) {
+  match bind_candidate(
+    offer: offer,
+    dispatch: inputs,
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  ) {
     CandidateBound { candidate: c } => [c]
     DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
   }
 }
 
@@ -213,6 +233,14 @@ fn t_ninety_seconds() -> GrantDuration {
 
 fn t_no_delay_valuation() -> MoneyPerSecond {
   MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }
+}
+
+// A TYPED HELPER RATHER THAN A BARE LITERAL AT THE CALL SITE, following this file's own convention
+// two lines up: MoneyPerSecond is MoneyRate at a phantom rate, and a record literal in argument
+// position has no other way to fix it. Spelled inline it did not typecheck and the whole module
+// failed to RESOLVE, so every claim in this file was unreachable rather than failing.
+fn t_five_micros_per_second() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 5), currency: Usd }
 }
 
 fn t_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
@@ -230,28 +258,33 @@ fn t_select_for(
     maximum_buy_order: money_amount_micro(count: 1000000),
     budget_currency: Usd,
     delay_valuation: t_no_delay_valuation(),
+    tie: StableRosterOrder,
+    affinity: "test.demand" as PlacementAffinityKey,
   )
 }
 
 fn selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
   match s {
-    OfferSelected { offer: o, cost: _, basis: _, horizon: _, considered: _ } => (o.id.key as NonEmptyStr)
+    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.offer.id.key as NonEmptyStr)
     NoAdmissibleOffer { considered: _ } => "none"
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie-unresolved"
   }
 }
 
 fn selected_total(s: SupplySelection<NonEmptyStr>) -> Nat {
   match s {
-    OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _ } =>
+    OfferSelected { candidate: _, cost: c, basis: _, horizon: _, considered: _, tie_policy: _ } =>
       money_amount_micro_count(m: selection_total(c: c))
     NoAdmissibleOffer { considered: _ } => 0
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => 0
   }
 }
 
 fn considered_of(s: SupplySelection<NonEmptyStr>) -> List<OfferCandidacy<NonEmptyStr>> {
   match s {
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: cs } => cs
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: cs, tie_policy: _ } => cs
     NoAdmissibleOffer { considered: cs } => cs
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => cs
   }
 }
 
@@ -446,7 +479,8 @@ test fn nothing_admissible_returns_every_typed_cause_and_selects_nothing() -> Bo
     ))
   match selection {
     NoAdmissibleOffer { considered: cs } => cs.length() == 1
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _ } => false
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
   }
 }
 
@@ -462,9 +496,138 @@ test fn dispatch_inputs_naming_another_offer_refuse_to_bind() -> Bool {
       operating: OperatingCostBorneBySupplier,
       opportunity: t_idle(),
     ),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
+    demand: fixture_demand_for(offer: t_owned_offer().id),
+    work: fixture_work_for(offer: t_owned_offer().id),
   ) {
     DispatchInputsNameAnotherOffer { offer: _, inputs_name: n } => (n.key as NonEmptyStr) == "offer-rented-hourly"
     CandidateBound { candidate: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
+  }
+}
+
+// RED - A REAL PERMIT FOR ANOTHER OFFER DOES NOT BIND. The dispatch inputs name the owned offer,
+// so the earlier guard is satisfied and this row can only be answered by the permit check: the
+// admission is genuine and current and is about the rented offer. Binding it would put a candidate
+// into the ranking whose permit authorises somewhere else entirely - and CandidateOffer is sealed,
+// so bind_candidate is the only place that pairing can be formed or refused.
+test fn w_a_permit_for_another_offer_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_rented_offer().id),
+    demand: fixture_demand_for(offer: t_rented_offer().id),
+    work: fixture_work_for(offer: t_rented_offer().id),
+  ) {
+    PermitNamesAnotherOffer { offer: _, permit_names: n } => (n.key as NonEmptyStr) == "offer-rented-hourly"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
+  }
+}
+
+// RED - A PERMIT FOR A SIBLING REGION DOES NOT BIND. Everything the two preceding guards look at
+// agrees: the same offer identity throughout, and inputs that name it. The permit was admitted for
+// the same provider and the same service in the region next door, and product.fabric.provider_route
+// rules that a sanction for a sibling region inherits nothing. This is the entrance the ranking
+// path uses, so without this row the route field would be checked only at issuance and selection
+// would rank an offer whose permit is about somewhere else.
+test fn w_a_permit_for_a_sibling_region_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: fixture_route_sibling_region(), offer: t_owned_offer().id),
+    demand: fixture_demand_for(offer: t_owned_offer().id),
+    work: fixture_work_for(offer: t_owned_offer().id),
+  ) {
+    PermitNamesAnotherRoute { offer: o } => (o.key as NonEmptyStr) == "offer-owned-srv1"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
+  }
+}
+
+// RED - A PERMIT FOR ANOTHER WORK DOES NOT BIND. Offer, dispatch inputs and route all agree, so
+// every earlier guard is satisfied and only the work check can answer. This is the arm that had no
+// entrance on the deciding path at all: the same check existed in issue_grant, which the
+// production broker never calls, so a permit admitted for work A could seal a candidate that was
+// then ranked and reserved for work B - the fabricated authority grant_issue's own annotation
+// describes, reachable because the check was on a path nothing executes.
+test fn w_a_permit_for_another_work_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
+    demand: fixture_demand_for(offer: t_owned_offer().id),
+    work: FabricIdentity { principal: "gunbc", key: "work-somewhere-else" },
+  ) {
+    PermitNamesAnotherWork { permit_work: _, subject_work: w } =>
+      (w.key as NonEmptyStr) == "work-somewhere-else"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
+  }
+}
+
+// RED - A PERMIT FOR ANOTHER DEMAND DOES NOT BIND, for the same reason one level across: the
+// demand is who is being served, and a permit that named a different one is authority for
+// somebody else.
+test fn w_a_permit_for_another_demand_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
+    demand: FabricIdentity { principal: "gunbc", key: "demand-somewhere-else" },
+    work: fixture_work_for(offer: t_owned_offer().id),
+  ) {
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: d } =>
+      (d.key as NonEmptyStr) == "demand-somewhere-else"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+  }
+}
+
+// POSITIVE CONTROL FOR BOTH ROWS ABOVE. Identical offer and identical inputs; the only thing that
+// moves is which offer and which route the admission was evaluated for. Without it, each red would
+// be equally satisfied by a bind_candidate that refused everything.
+test fn w_the_same_offer_and_inputs_bind_on_their_own_route_and_offer() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
+    demand: fixture_demand_for(offer: t_owned_offer().id),
+    work: fixture_work_for(offer: t_owned_offer().id),
+  ) {
+    CandidateBound { candidate: c } => (c.offer.id.key as NonEmptyStr) == "offer-owned-srv1"
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
   }
 }
 
@@ -490,13 +653,16 @@ test fn valued_delay_enters_the_ranking_and_not_the_reservation() -> Bool {
     duration: t_ninety_seconds(),
     maximum_buy_order: money_amount_micro(count: 1000000),
     budget_currency: Usd,
-    delay_valuation: MoneyRate { amount: money_amount_micro(count: 5), currency: Usd },
+    delay_valuation: t_five_micros_per_second(),
+    tie: StableRosterOrder,
+    affinity: "test.demand" as PlacementAffinityKey,
   )
   match selection {
-    OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _ } =>
+    OfferSelected { candidate: _, cost: c, basis: _, horizon: _, considered: _, tie_policy: _ } =>
       money_amount_micro_count(m: selection_liability(c: c)) == 9000
         && money_amount_micro_count(m: selection_total(c: c)) == 9300
     NoAdmissibleOffer { considered: _ } => false
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
   }
 }
 
@@ -531,8 +697,9 @@ fn t_rented_with_remainder(remaining: Second) -> List<CandidateOffer<NonEmptyStr
 
 fn horizon_of(s: SupplySelection<NonEmptyStr>) -> List<CommitmentHorizon> {
   match s {
-    OfferSelected { offer: _, cost: _, basis: _, horizon: h, considered: _ } => [h]
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: h, considered: _, tie_policy: _ } => [h]
     NoAdmissibleOffer { considered: _ } => []
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
   }
 }
 
@@ -565,8 +732,9 @@ fn billed_beyond_commitment(hs: List<CommitmentHorizon>) -> Bool {
 
 fn basis_of(s: SupplySelection<NonEmptyStr>) -> List<CostBasis> {
   match s {
-    OfferSelected { offer: _, cost: _, basis: b, horizon: _, considered: _ } => [b]
+    OfferSelected { candidate: _, cost: _, basis: b, horizon: _, considered: _, tie_policy: _ } => [b]
     NoAdmissibleOffer { considered: _ } => []
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
   }
 }
 
@@ -711,7 +879,8 @@ test fn a_finite_window_refuses_an_unbounded_job_rather_than_comparing() -> Bool
   )
   match selection {
     NoAdmissibleOffer { considered: cs } => unbounded_refusals(cs: cs) == 1
-    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _ } => false
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
   }
 }
 
@@ -750,4 +919,444 @@ test fn a_finite_window_still_admits_a_bounded_job_that_fits_it() -> Bool {
   )
   selected_key(s: selection) == "offer-rented-hourly"
     && selected_total(s: selection) == 0
+}
+
+
+// THE PROVIDER-USE WALL, READ FROM THE MARKET SIDE. These rows are the reason the permit was put
+// inside the sealed CandidateOffer rather than checked inside the ranking fold: what they assert is
+// not that a check fired, but that the losing state HAS NO SPELLING. An unadmitted offer never
+// becomes a CandidateOffer, so it is not in the population the fold ranks - it cannot win, cannot
+// tie, and cannot be resurrected by being cheap.
+//
+// The owned offer is the right subject for exactly that reason: it is priced at ZERO, so it is the
+// offer any cost-ordered fold must prefer, and it wins the control below. If admission could be
+// bought, this is the offer that would buy it.
+fn t_unadmitted_bound(
+  offer: SupplierOffer<NonEmptyStr>,
+  inputs: DispatchInputs<NonEmptyStr>,
+) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: inputs,
+    admission: fixture_unadmitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+  }
+}
+
+fn t_owned_inputs() -> DispatchInputs<NonEmptyStr> {
+  t_inputs(
+    key: "offer-owned-srv1",
+    availability: t_ready_now(),
+    commitment: PayAsYouGo,
+    operating: OperatingCostBorneBySupplier,
+    opportunity: t_idle(),
+  )
+}
+
+// POSITIVE CONTROL, and it is load-bearing for both reds below. Without it, "the zero-priced offer
+// did not win" would be satisfied by a fixture in which it never wins for some unrelated reason,
+// and both reds would be green while asserting nothing about admission.
+test fn w_the_zero_priced_offer_wins_when_it_is_admitted() -> Bool {
+  selected_key(s: t_select(candidates: concat(
+    t_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ),
+  ))) == "offer-owned-srv1"
+}
+
+// RED - THE CHEAPEST OFFER CANNOT WIN UNADMITTED. Identical population to the control; the only
+// thing that moves is whether the zero-priced offer's use was admitted. The dearer rented offer
+// wins, which is the whole claim: price is evaluated after admission, so being free buys nothing.
+test fn w_the_cheapest_offer_cannot_win_unadmitted() -> Bool {
+  selected_key(s: t_select(candidates: concat(
+    t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ),
+  ))) == "offer-rented-hourly"
+}
+
+// RED - A ZERO-COST DEMAND STILL REFUSES WITHOUT A PERMIT. With no admitted alternative to fall
+// back on, the answer is NoAdmissibleOffer rather than the free offer: nothing is selected, and the
+// refusal is the fabric declining to place work rather than placing it for nothing.
+test fn w_a_zero_cost_unadmitted_offer_selects_nothing() -> Bool {
+  selected_key(s: t_select(
+    candidates: t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+  )) == "none"
+}
+
+// RED - MONEY CANNOT OVERRIDE A DENIAL, stated as a comparison rather than as a single outcome.
+// The unadmitted zero-priced offer and an EMPTY market produce the SAME answer, which is what
+// "the offer is not in the population" means: adding it changed nothing at all.
+test fn w_an_unadmitted_offer_is_indistinguishable_from_no_offer() -> Bool {
+  selected_key(s: t_select(
+    candidates: t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+  )) == selected_key(s: t_select(candidates: []))
+}
+
+// ── THE EQUAL-COST TIE POLICY, WHICH WAS ROSTER ORDER AND IS NOW NAMED ────────────────────────
+//
+// These fixtures are two IDENTICAL owned offers differing only in their key, which is the shape a
+// fleet of interchangeable machines actually has and the shape under which the implicit policy did
+// its damage: equal totals, so the comparator's strict less-than never displaces the held candidate,
+// so the roster-first offer wins every time and the second machine is never used.
+
+fn t_twin_offer(key: OfferKey) -> SupplierOffer<NonEmptyStr> {
+  t_offer(
+    key: key,
+    quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    quantum: second(count: 0),
+  )
+}
+
+fn t_twin_candidate(key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_twin_offer(key: key),
+    inputs: t_inputs(
+      key: key,
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: t_idle(),
+    ),
+  )
+}
+
+fn t_twins() -> List<CandidateOffer<NonEmptyStr>> {
+  concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-b"))
+}
+
+fn t_twins_reversed() -> List<CandidateOffer<NonEmptyStr>> {
+  concat(t_twin_candidate(key: "offer-group-b"), t_twin_candidate(key: "offer-group-a"))
+}
+
+fn t_select_tie(candidates: List<CandidateOffer<NonEmptyStr>>, tie: EqualCostOfferTieBreak, affinity: PlacementAffinityKey) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_requirements(),
+    candidates: candidates,
+    duration: t_ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_no_delay_valuation(),
+    tie: tie,
+    affinity: affinity,
+  )
+}
+
+fn t_rendezvous_winner(affinity: PlacementAffinityKey) -> NonEmptyStr {
+  selected_key(s: t_select_tie(candidates: t_twins(), tie: AffinityKeyedRendezvous, affinity: affinity))
+}
+
+// TWO EQUAL OFFERS TIE EXACTLY, WHICH IS THE PRECONDITION EVERYTHING BELOW DEPENDS ON. If the
+// fixtures ever stopped tying, every tie witness would still pass while testing nothing -- so the
+// tie itself is asserted first, against the totals rather than against the outcome.
+test fn the_twin_offers_actually_tie() -> Bool {
+  let a = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-a"), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey))
+  let b = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey))
+  a == b && length(t_twins()) == 2
+}
+
+// ROSTER ORDER IS A POLICY, AND UNDER IT THE ANSWER IS THE ORDER. Held for the consumers pinned to
+// it, and stated as a control rather than as a comment: reversing the candidate list reverses the
+// winner, which is exactly what "the roster decided" means.
+test fn stable_roster_order_returns_the_first_offer_handed_to_it() -> Bool {
+  (selected_key(s: t_select_tie(candidates: t_twins(), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey)) as String) == "offer-group-a"
+    && (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey)) as String) == "offer-group-b"
+}
+
+// AND UNDER THE RENDEZVOUS THE ANSWER DOES NOT DEPEND ON THE ORDER. This is the discriminating
+// control for the whole arm: the same demand over the same offers gets the same winner whichever way
+// the roster is walked, so the outcome is a function of the demand and the offers rather than of the
+// caller's list.
+test fn the_rendezvous_is_invariant_under_roster_order() -> Bool {
+  fold(["alpha" as PlacementAffinityKey, "beta" as PlacementAffinityKey, "gamma" as PlacementAffinityKey, "delta" as PlacementAffinityKey], init: true, f: (acc, d) =>
+    acc && ((selected_key(s: t_select_tie(candidates: t_twins(), tie: AffinityKeyedRendezvous, affinity: d)) as String)
+             == (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: AffinityKeyedRendezvous, affinity: d)) as String)))
+}
+
+// A RETRY OF ONE PLACEMENT LANDS WHERE THE FIRST ATTEMPT DID. A key minted per attempt would spread
+// one demand across offers on successive tries, which is worse than concentrating it: the second
+// attempt would prefill somewhere the first attempt did not warm.
+test fn one_demand_retries_onto_the_same_offer() -> Bool {
+  let first = t_rendezvous_winner(affinity: "worker:/w/session-a" as PlacementAffinityKey)
+  let second = t_rendezvous_winner(affinity: "worker:/w/session-a" as PlacementAffinityKey)
+  let third = t_rendezvous_winner(affinity: "worker:/w/session-a" as PlacementAffinityKey)
+  ((first as String) == (second as String)) && ((second as String) == (third as String))
+}
+
+// AND SEQUENTIAL DIFFERENT DEMANDS DO NOT ALL LAND ON ONE OFFER, which is the defect the arm exists
+// to remove. The claim is deliberately weak -- SOME demand in a small population lands elsewhere --
+// because a hash is not obliged to alternate, and a control asserting a specific split would be
+// asserting the digest's arithmetic rather than the policy's behaviour.
+test fn sequential_demands_do_not_all_take_the_roster_first_offer() -> Bool {
+  let keys = ["worker:/w/one" as PlacementAffinityKey, "worker:/w/two" as PlacementAffinityKey, "worker:/w/three" as PlacementAffinityKey, "worker:/w/four" as PlacementAffinityKey, "reviewer:/v/five" as PlacementAffinityKey, "auditor:/v/six" as PlacementAffinityKey]
+  let on_a = fold(keys, init: 0, f: (n, d) => if (t_rendezvous_winner(affinity: d) as String) == "offer-group-a" { n + 1 } else { n })
+  on_a > 0 && on_a < length(keys)
+}
+
+// THE PRIMARY ORDERING STILL DOMINATES. A tie policy that could overturn a cheaper offer would be a
+// second ranking, not a tie-break, so the cheap-versus-expensive pair must come back cheapest-first
+// under both policies.
+test fn a_cheaper_offer_still_wins_under_the_rendezvous() -> Bool {
+  let mixed = concat(t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()), t_twin_candidate(key: "offer-group-b"))
+  let owned_total = selected_total(s: t_select_tie(candidates: t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey))
+  let twin_total = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey))
+  (owned_total != twin_total)
+    && (selected_key(s: t_select_tie(candidates: mixed, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey)) as String)
+        == (if owned_total < twin_total { "offer-owned-srv1" } else { "offer-group-b" })
+}
+
+// THE TIE POLICY RESCUES NOTHING. A refused candidate is refused before any comparison happens, so a
+// demand whose digest would have favoured it does not resurrect it -- a tie-break that could admit an
+// inadmissible offer would be an escape hatch around every wall selection has.
+test fn the_rendezvous_never_rescues_a_refused_offer() -> Bool {
+  let unavailable = t_rented_candidate(
+    availability: AvailabilityUnobserved { obligation: "the vendor's console did not answer" as NonEmptyStr },
+    commitment: PayAsYouGo,
+    opportunity: t_idle(),
+  )
+  let population = concat(unavailable, t_twin_candidate(key: "offer-group-a"))
+  fold(["one" as PlacementAffinityKey, "two" as PlacementAffinityKey, "three" as PlacementAffinityKey, "four" as PlacementAffinityKey], init: true, f: (acc, d) =>
+    acc && ((selected_key(s: t_select_tie(candidates: population, tie: AffinityKeyedRendezvous, affinity: d)) as String) == "offer-group-a"))
+}
+
+// THE SPREAD KEYS ON THE EXACT OFFER IDENTITY. Two offers whose keys differ are two subjects to the
+// policy, which is what makes a restart-keyed offer key meaningful downstream: the same group under a
+// new launch is a new subject and can win a demand its predecessor lost.
+test fn the_digest_keys_on_the_exact_offer_identity() -> Bool {
+  let renamed = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-b@second-launch"))
+  fold(["one" as PlacementAffinityKey, "two" as PlacementAffinityKey, "three" as PlacementAffinityKey, "four" as PlacementAffinityKey, "five" as PlacementAffinityKey, "six" as PlacementAffinityKey], init: false, f: (acc, d) =>
+    acc || ((selected_key(s: t_select_tie(candidates: renamed, tie: AffinityKeyedRendezvous, affinity: d)) as String) == "offer-group-b@second-launch"))
+}
+
+// A COLLISION REFUSES RATHER THAN FALLING BACK, and this fixture is honest about which collision it
+// produces: two candidates carrying the SAME offer identity, which is duplicate identity rather than
+// two distinct identities whose digests happen to agree. A 64-bit digest collision between distinct
+// keys is not authorable in a fixture, and the arm treats both the same way -- the policy cannot
+// choose, so it refuses. Returning the roster-first one would reinstate the policy this arm replaces,
+// in the one case nobody would notice.
+test fn an_unresolvable_tie_refuses_instead_of_taking_the_first() -> Bool {
+  let twinned = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a"))
+  match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 2
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+// AND THE COLLISION SURVIVES A LATER EQUAL-COST CANDIDATE. Dropping it there would hand back a winner
+// chosen by the order the collision happened to occur in -- the tie is still unresolved at that cost.
+test fn a_collision_survives_a_later_candidate() -> Bool {
+  let twinned = concat(concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a")), t_twin_candidate(key: "offer-group-b"))
+  match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 3
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+// THE OUTCOME SAYS WHICH POLICY DECIDED, so a reader of a placement receipt can tell a rendezvous
+// answer from a roster-order one without knowing what the caller passed.
+test fn the_outcome_carries_the_policy_that_decided_it() -> Bool {
+  (match t_select_tie(candidates: t_twins(), tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+     OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: p } =>
+       match p { AffinityKeyedRendezvous => true  StableRosterOrder => false }
+     _ => false
+   })
+    && (match t_select_tie(candidates: t_twins(), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey) {
+          OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: p } =>
+            match p { StableRosterOrder => true  AffinityKeyedRendezvous => false }
+          _ => false
+        })
+}
+
+// ── A TIE AMONG DEARER OFFERS DOES NOT SUPPRESS A CHEAPER ONE ─────────────────────────────────
+//
+// THE ORDER DEPENDENCE THIS CONTROL EXISTS FOR, which the first shape of the fold had (review
+// 62155). A collision used to stop the ranking: every later candidate was recorded and none was
+// ranked, so [dear, dear-colliding, cheap] refused while [cheap, dear, dear-colliding] selected the
+// cheap one -- the outcome depending on roster order under the policy that exists to remove roster
+// order from the outcome. A tie is only ever a tie at the current minimum.
+fn t_dear_candidate(key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_twin_offer(key: key),
+    inputs: t_inputs(
+      key: key,
+      availability: AvailableIndefinitely { delay: second(count: 60), receipt: "gunbc.observation.availability-2" },
+      commitment: PayAsYouGo,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: t_idle(),
+    ),
+  )
+}
+
+fn t_select_five_micros(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_requirements(),
+    candidates: candidates,
+    duration: t_ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_five_micros_per_second(),
+    tie: AffinityKeyedRendezvous,
+    affinity: "test.demand" as PlacementAffinityKey,
+  )
+}
+
+test fn a_cheaper_candidate_after_a_collision_still_wins_in_either_order() -> Bool {
+  let dear = concat(t_dear_candidate(key: "offer-dear"), t_dear_candidate(key: "offer-dear"))
+  let cheap = t_twin_candidate(key: "offer-cheap")
+  let dear_total = selected_total(s: t_select_five_micros(candidates: t_dear_candidate(key: "offer-dear")))
+  let cheap_total = selected_total(s: t_select_five_micros(candidates: cheap))
+  (cheap_total < dear_total)
+    && ((selected_key(s: t_select_five_micros(candidates: concat(dear, cheap))) as String) == "offer-cheap")
+    && ((selected_key(s: t_select_five_micros(candidates: concat(cheap, dear))) as String) == "offer-cheap")
+}
+
+// ── AND THE COLLISION IS SEEN WHEREVER IN THE ROSTER IT SITS ──────────────────────────────────
+//
+// THE SECOND ORDER DEPENDENCE, which the pairwise-comparator shape still had after the first was
+// fixed (review 62174). A fold that only ever compares a candidate against the RUNNING BEST cannot
+// see a collision between two candidates neither of which was ever the best: interleave the twinned
+// pair around a third equal-cost offer whose digest wins, and the pair is never compared to itself.
+// The cohort shape has no running best to hide behind -- the tie is resolved over the whole set at
+// the minimum total -- so every permutation of the same population answers the same way.
+fn t_tie_refuses(candidates: List<CandidateOffer<NonEmptyStr>>) -> Bool {
+  match t_select_tie(candidates: candidates, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 3
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+test fn a_collision_refuses_in_every_roster_order() -> Bool {
+  let a = t_twin_candidate(key: "offer-group-a")
+  let b = t_twin_candidate(key: "offer-group-b")
+  t_tie_refuses(candidates: concat(concat(a, a), b))
+    && t_tie_refuses(candidates: concat(concat(a, b), a))
+    && t_tie_refuses(candidates: concat(concat(b, a), a))
+}
+
+// ── SAME KEY, DIFFERENT PRINCIPAL, AND THE POLICY REFUSES RATHER THAN MERGING ─────────────────
+//
+// The rendezvous hashes the offer's KEY, and identity.dag is explicit that identity is the PAIR:
+// dropping the principal "silently merges two tenants who chose the same name for their work". So the
+// question this control answers is what the policy DOES in that case, and the answer must not be
+// "picks one". Two offers under different principals carrying one key produce one digest, which is a
+// duplicate in the cohort, and the duplicate rule refuses -- the cross-principal case fails closed
+// rather than handing a tenant an offer that belongs to another. Hashing sealed identities instead
+// needs a rendering of the principal type, which the fabric core does not have by construction.
+fn t_offer_under(principal: NonEmptyStr, key: OfferKey) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: principal, key: key },
+    route: fixture_route(),
+    executor: principal,
+    shape: t_shape(threads: hardware_thread_count(count: 64)),
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: t_open_isolation(),
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply { observed_at: "2026-08-27T00:00:00Z", receipt: "gunbc.observation.fleet-1" },
+  }
+}
+
+// THE DISPATCH INPUTS MUST NAME THE SAME PRINCIPAL AS THE OFFER, or this fixture measures nothing.
+// t_inputs fixes the dispatch identity's principal to "gunbc"; handing those inputs to an offer under
+// another principal makes bind_candidate refuse -- it compares the COMPLETE identity, which is the
+// property under test one level up -- so t_bound returns an empty list and the selection never sees a
+// candidate. An earlier spelling of these two controls did exactly that.
+fn t_inputs_under(principal: NonEmptyStr, key: OfferKey) -> DispatchInputs<NonEmptyStr> {
+  DispatchInputs {
+    offer: FabricIdentity { principal: principal, key: key },
+    availability: t_ready_now(),
+    commitment: PayAsYouGo,
+    start: StartCostMeasured {
+      amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      receipt: "gunbc.observation.start-cost-1",
+    },
+    transition: NoTransitionRequired,
+    operating: OperatingCostBorneBySupplier,
+    opportunity: t_idle(),
+  }
+}
+
+fn t_candidate_under(principal: NonEmptyStr, key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(offer: t_offer_under(principal: principal, key: key), inputs: t_inputs_under(principal: principal, key: key))
+}
+
+// AND THE FIXTURE PROVES IT BINDS BEFORE THE CONTROLS ABOVE CLAIM ANYTHING. A control whose
+// population is empty answers the wrong question quietly: it would read "no admissible offer", which
+// is neither the refusal nor the selection either test is about.
+test fn the_cross_principal_fixture_actually_produces_two_candidates() -> Bool {
+  length(t_candidate_under(principal: "tenant-a", key: "offer-shared")) == 1
+    && length(t_candidate_under(principal: "tenant-b", key: "offer-shared")) == 1
+}
+
+// AND THE REFUSAL SAYS WHICH OF THE THREE COLLISIONS IT MET, because they have different repairs: a
+// duplicate identity is an authoring defect, a shared key under two principals is this policy's
+// projection being lossy, and two distinct keys hashing alike is a real 64-bit collision that is
+// nobody's fault. One unexplained digest for all three tells the reader nothing.
+test fn the_refusal_names_the_projection_ambiguity_rather_than_a_bare_digest() -> Bool {
+  let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
+  match t_select_tie(candidates: shared, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: c, considered: _ } =>
+      match c {
+        AffinityProjectionAmbiguous { conflicting: xs } => length(xs) == 2
+        DuplicateOfferIdentity { offer: _ } => false
+        DigestCollisionOnDistinctKeys { conflicting: _ } => false
+      }
+    _ => false
+  }
+}
+
+// AND A GENUINE DUPLICATE IS CLASSIFIED AS ONE, which is what keeps the arm above from being satisfied
+// by any collision at all: the same offer twice is one identity, not two principals.
+test fn a_repeated_offer_is_classified_as_a_duplicate_identity() -> Bool {
+  let twinned = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a"))
+  match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: c, considered: _ } =>
+      match c {
+        DuplicateOfferIdentity { offer: o } => (o.key as String) == "offer-group-a"
+        AffinityProjectionAmbiguous { conflicting: _ } => false
+        DigestCollisionOnDistinctKeys { conflicting: _ } => false
+      }
+    _ => false
+  }
+}
+
+test fn one_key_under_two_principals_refuses_rather_than_merging() -> Bool {
+  let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
+  match t_select_tie(candidates: shared, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 2
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+// AND THE ROSTER-ORDER ARM DOES NOT INHERIT THAT REFUSAL, which is what makes the refusal a property
+// of the rendezvous rather than of the fixture: StableRosterOrder never asks the identity question,
+// so it takes the first and this control says so rather than leaving the pair looking equivalent.
+test fn the_roster_arm_still_answers_for_one_key_under_two_principals() -> Bool {
+  let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
+  match t_select_tie(candidates: shared, tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey) {
+    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.offer.id.principal as String) == "tenant-a"
+    _ => false
+  }
 }

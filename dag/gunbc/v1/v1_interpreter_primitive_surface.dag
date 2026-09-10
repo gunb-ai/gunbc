@@ -194,11 +194,7 @@ fn shadowed_spellings(rows: List<InterpreterPrimitiveDispatchArm>) -> List<Strin
 }
 
 fn row_key(row: InterpreterPrimitiveDispatchArm) -> String {
-  row.dispatch_symbol
-    |> concat(":")
-    |> concat(row.arm.identity)
-    |> concat(":")
-    |> concat(row.authored_spelling)
+  concat(concat(concat(concat(row.dispatch_symbol, ":"), row.arm.identity), ":"), row.authored_spelling)
 }
 
 fn duplicate_row_keys(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
@@ -483,6 +479,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       arm: InterpreterPrimitiveArmId { identity: "free_call.reverse" },
       form: FreeCall,
       authored_spelling: "reverse",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.hmac_sha256_verify_hex" },
+      form: FreeCall,
+      authored_spelling: "hmac_sha256_verify_hex",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,
@@ -966,9 +971,27 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.decl_facts_at" },
+      form: FreeCall,
+      authored_spelling: "decl_facts_at",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.module_declaration_facts" },
       form: FreeCall,
       authored_spelling: "module_declaration_facts",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.module_declaration_facts_at" },
+      form: FreeCall,
+      authored_spelling: "module_declaration_facts_at",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,

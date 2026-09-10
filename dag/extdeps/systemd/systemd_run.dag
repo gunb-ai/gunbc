@@ -90,6 +90,19 @@ fn systemd_run_user_transient_arguments(
   )
 }
 
+// THE SYNCHRONOUS FORM: the caller blocks until the unit exits and receives its exit status and its
+// stdio (`--wait --pipe`), so a build or a check runs under the unit's resource bounds while the
+// process that asked for it observes the result directly. `--collect` unloads the unit afterwards
+// whatever its result, so a failed compute unit does not accumulate as a failed unit to reap.
+fn systemd_run_user_wait_arguments(
+  unit: NonEmptyStr,
+  properties: List<String>,
+  setenv_bindings: List<String>,
+  command_argv: List<String>,
+) -> List<String> {
+  concat(["--wait", "--pipe", "--collect"], systemd_run_user_transient_arguments(unit: unit, properties: properties, setenv_bindings: setenv_bindings, command_argv: command_argv))
+}
+
 fn systemd_run_property(name: String, value: String) -> String {
   join([name, "=", value], "")
 }

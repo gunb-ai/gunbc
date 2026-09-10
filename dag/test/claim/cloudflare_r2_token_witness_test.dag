@@ -1,0 +1,428 @@
+module test.claim.cloudflare_r2_token
+
+import std.types { Secret, NonEmptyStr }
+import extdeps.cloudflare.client_v4 {
+  cloudflare_client_v4_base,
+  cloudflare_client_v4_edition
+}
+import extdeps.cloudflare.account_api_tokens {
+  classify_cloudflare_credential_format,
+  ScannableAccountApiToken,
+  ScannableUserApiToken,
+  ScannableGlobalApiKey,
+  Pre2026Unprefixed,
+  parse_account_token_status,
+  TokenActive,
+  token_policy_effect_wire,
+  PolicyAllow,
+  PolicyDeny,
+  CreatedAccountToken,
+  CreatedAccountTokenCreateResponse,
+  created_account_token_from_create_response,
+  HumanDashboardAcquired,
+  CreatedViaAccountTokensApi,
+  AccountTokenApiMintAdmitted,
+  AccountTokenApiMintRefusedHumanDashboardOnly,
+  AccountTokenApiMintRefusedGrantPolicyMismatch,
+  AccountTokenApiMintRefusedLifetimeMismatch,
+  CloudflareAccountTokenShape,
+  AccountOwnedApiToken,
+  OptionalTokenExpiry,
+  NoExpiryUntilRevoked,
+  AccountApiTokensSurface,
+  CreateAccountTokenRequest,
+  AccountTokenPolicy,
+  PermissionGroupRef,
+  admit_account_token_api_mint,
+  account_token_policy_create_wire,
+  AccountApiTokensWrite,
+  cloudflare_account_api_tokens_frontier_rows
+}
+import extdeps.cloudflare.r2 {
+  R2S3Endpoint,
+  R2JurisdictionDefault,
+  R2JurisdictionEu,
+  r2_s3_endpoint_url,
+  r2_bucket_resource_name,
+  r2_account_resource_name,
+  r2_object_read_token_policy,
+  r2_object_read_create_request,
+  r2_s3_access_pair_from_created_token,
+  workers_r2_storage_bucket_item_read_permission_group_id,
+  r2_object_read_grant,
+  cloudflare_r2_frontier_rows
+}
+import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed, frontier_subject_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.human_intervention {
+  FleetOnce,
+  human_intervention_count_at
+}
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.cloudflare.r2_token_mint {
+  cloudflare_bootstrap_token_shape,
+  cloudflare_r2_object_read_token_shape,
+  admit_r2_object_read_api_mint,
+  cloudflare_r2_token_mint_frontier_rows,
+  vendor_cloudflare_frontier_rows,
+  cloudflare_r2_token_human_burden
+}
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn cloudflare_client_v4_base_is_the_documented_host() -> Bool {
+  (cloudflare_client_v4_edition as String) == "v4"
+    && (cloudflare_client_v4_base as String) == "https://api.cloudflare.com/client/v4"
+}
+
+test fn account_token_formats_are_prefixed() -> Bool {
+  classify_cloudflare_credential_format(value: "cfat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaX")
+    == ScannableAccountApiToken
+    && classify_cloudflare_credential_format(value: "cfut_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaX")
+      == ScannableUserApiToken
+    && classify_cloudflare_credential_format(value: "cfk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaX")
+      == ScannableGlobalApiKey
+    && classify_cloudflare_credential_format(value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T")
+      == Pre2026Unprefixed
+}
+
+test fn token_status_and_effect_use_upstream_wire_words() -> Bool {
+  parse_account_token_status(raw: "active") == Present { value: TokenActive }
+    && parse_account_token_status(raw: "nope") == none
+    && token_policy_effect_wire(effect: PolicyAllow) == "allow"
+    && token_policy_effect_wire(effect: PolicyDeny) == "deny"
+}
+
+test fn create_policy_body_uses_the_effect_wire_word() -> Bool {
+  let policy = r2_object_read_token_policy(
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "my-bucket"
+  )
+  account_token_policy_create_wire(policy: policy).effect == "allow"
+}
+
+test fn create_response_folds_wire_status_fail_closed() -> Bool {
+  let admitted = created_account_token_from_create_response(
+    response: CreatedAccountTokenCreateResponse {
+      id: "ed17574386854bf78a67040be0a770b0",
+      name: "readonly token",
+      status: "active",
+      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret,
+      expires_on: none,
+      not_before: none
+    }
+  )
+  let refused = created_account_token_from_create_response(
+    response: CreatedAccountTokenCreateResponse {
+      id: "ed17574386854bf78a67040be0a770b0",
+      name: "readonly token",
+      status: "nope",
+      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret,
+      expires_on: none,
+      not_before: none
+    }
+  )
+  match admitted {
+    Present { value: t } => t.status == TokenActive && t.expires_on == none && t.not_before == none
+    none => false
+  }
+    && match refused {
+      none => true
+      Present { value: _ } => false
+    }
+}
+
+test fn create_response_preserves_wire_expiry() -> Bool {
+  let admitted = created_account_token_from_create_response(
+    response: CreatedAccountTokenCreateResponse {
+      id: "ed17574386854bf78a67040be0a770b0",
+      name: "readonly token",
+      status: "active",
+      value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret,
+      expires_on: Present { value: "2027-01-01T00:00:00Z" },
+      not_before: Present { value: "2026-09-01T00:00:00Z" }
+    }
+  )
+  match admitted {
+    Present { value: t } =>
+      t.expires_on == Present { value: "2027-01-01T00:00:00Z" }
+        && t.not_before == Present { value: "2026-09-01T00:00:00Z" }
+    none => false
+  }
+}
+
+test fn r2_endpoints_and_iam_resource_names_follow_the_r2_token_docs() -> Bool {
+  r2_s3_endpoint_url(
+    endpoint: R2S3Endpoint {
+      account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+      jurisdiction: R2JurisdictionDefault
+    }
+  ) == "https://4793d734c0b8e484dfc37ec392b5fa8a.r2.cloudflarestorage.com"
+    && r2_s3_endpoint_url(
+      endpoint: R2S3Endpoint {
+        account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+        jurisdiction: R2JurisdictionEu
+      }
+    ) == "https://4793d734c0b8e484dfc37ec392b5fa8a.eu.r2.cloudflarestorage.com"
+    && r2_bucket_resource_name(
+      account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+      jurisdiction: R2JurisdictionDefault,
+      bucket_name: "my-bucket"
+    ) == "com.cloudflare.edge.r2.bucket.4793d734c0b8e484dfc37ec392b5fa8a_default_my-bucket"
+    && r2_account_resource_name(account_id: "4793d734c0b8e484dfc37ec392b5fa8a")
+      == "com.cloudflare.api.account.4793d734c0b8e484dfc37ec392b5fa8a"
+}
+
+test fn r2_object_read_create_request_cites_the_documented_permission_group_id() -> Bool {
+  let policy = r2_object_read_token_policy(
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "my-bucket"
+  )
+  (policy.permission_groups |> count) == 1
+    && (policy.resources |> get(
+      r2_bucket_resource_name(
+        account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+        jurisdiction: R2JurisdictionDefault,
+        bucket_name: "my-bucket"
+      )
+    )) == "*"
+    && all(
+      policy.permission_groups,
+      g => g.id == workers_r2_storage_bucket_item_read_permission_group_id
+    )
+}
+
+test fn r2_s3_access_key_id_is_the_created_token_id() -> Bool {
+  let token = CreatedAccountToken {
+    id: "ed17574386854bf78a67040be0a770b0",
+    name: "readonly token",
+    status: TokenActive,
+    value: "8M7wS6hCpXVc-DoRnPPY_UCWPgy8aea4Wy6kCe5T" as Secret,
+    expires_on: none,
+    not_before: none
+  }
+  let pair = r2_s3_access_pair_from_created_token(token: token)
+  pair.access_key_id == token.id
+    && match pair.secret_derivation {
+      Sha256OfApiTokenValue {} => true
+    }
+}
+
+test fn first_token_is_fleet_once_human_and_later_tokens_are_api_minted() -> Bool {
+  cloudflare_bootstrap_token_shape().grants == [AccountApiTokensWrite]
+    && human_intervention_count_at(
+      burden: cloudflare_r2_token_human_burden(),
+      frequency: FleetOnce
+    ) == 1
+    && cloudflare_bootstrap_token_shape().acquisition == HumanDashboardAcquired
+    && cloudflare_r2_object_read_token_shape().acquisition == CreatedViaAccountTokensApi
+}
+
+test fn api_mint_admits_r2_object_shape_and_refuses_bootstrap_shape() -> Bool {
+  match admit_r2_object_read_api_mint(
+    name: "r2-read",
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "my-bucket"
+  ) {
+    AccountTokenApiMintAdmitted { shape: s, request: req } =>
+      s.acquisition == CreatedViaAccountTokensApi
+        && all(
+          req.policies,
+          p => all(
+            p.permission_groups,
+            g => g.id == workers_r2_storage_bucket_item_read_permission_group_id
+          )
+        )
+    AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+    AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+    AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
+  }
+    && match admit_account_token_api_mint(
+      shape: cloudflare_bootstrap_token_shape(),
+      request: r2_object_read_create_request(
+        name: "r2-read",
+        account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+        jurisdiction: R2JurisdictionDefault,
+        bucket_name: "my-bucket"
+      )
+    ) {
+      AccountTokenApiMintRefusedHumanDashboardOnly { shape: s } =>
+        s.acquisition == HumanDashboardAcquired
+      AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+      AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+      AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
+    }
+}
+
+test fn api_mint_refuses_when_create_policies_omit_the_shape_grant() -> Bool {
+  match admit_account_token_api_mint(
+    shape: cloudflare_r2_object_read_token_shape(),
+    request: CreateAccountTokenRequest {
+      name: "r2-read",
+      policies: [],
+      not_before: none,
+      expires_on: none
+    }
+  ) {
+    AccountTokenApiMintRefusedGrantPolicyMismatch { shape: s, request: req } =>
+      s.acquisition == CreatedViaAccountTokensApi && (req.policies |> count) == 0
+    AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+    AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+    AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
+  }
+}
+
+test fn api_mint_refuses_when_create_policies_cite_a_different_permission_group() -> Bool {
+  let policy = r2_object_read_token_policy(
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "my-bucket"
+  )
+  match admit_account_token_api_mint(
+    shape: cloudflare_r2_object_read_token_shape(),
+    request: CreateAccountTokenRequest {
+      name: "r2-read",
+      policies: [
+        AccountTokenPolicy {
+          effect: policy.effect,
+          permission_groups: [PermissionGroupRef { id: "00000000000000000000000000000000" as NonEmptyStr }],
+          resources: policy.resources
+        }
+      ],
+      not_before: none,
+      expires_on: none
+    }
+  ) {
+    AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: req } =>
+      any(
+        req.policies,
+        p => any(p.permission_groups, g => g.id != workers_r2_storage_bucket_item_read_permission_group_id)
+      )
+    AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+    AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+    AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
+  }
+}
+
+test fn api_mint_refuses_when_request_expiry_disagrees_with_shape_lifetime() -> Bool {
+  let policy = r2_object_read_token_policy(
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "my-bucket"
+  )
+  let timed = CloudflareAccountTokenShape {
+    kind: AccountOwnedApiToken,
+    grants: [r2_object_read_grant()],
+    acquisition: CreatedViaAccountTokensApi,
+    lifetime: OptionalTokenExpiry { expires_on: "2027-01-01T00:00:00Z" },
+    revocation: AccountApiTokensSurface
+  }
+  match admit_account_token_api_mint(
+    shape: timed,
+    request: r2_object_read_create_request(
+      name: "r2-read",
+      account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+      jurisdiction: R2JurisdictionDefault,
+      bucket_name: "my-bucket"
+    )
+  ) {
+    AccountTokenApiMintRefusedLifetimeMismatch { shape: s, request: req } =>
+      match s.lifetime {
+        OptionalTokenExpiry { expires_on: t } => t == "2027-01-01T00:00:00Z" && req.expires_on == none
+        NoExpiryUntilRevoked => false
+      }
+    AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+    AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+    AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+  }
+    && match admit_account_token_api_mint(
+      shape: timed,
+      request: CreateAccountTokenRequest {
+        name: "r2-read",
+        policies: [policy],
+        not_before: none,
+        expires_on: Present { value: "2027-01-01T00:00:00Z" }
+      }
+    ) {
+      AccountTokenApiMintAdmitted { shape: s, request: req } =>
+        req.expires_on == Present { value: "2027-01-01T00:00:00Z" }
+          && match s.lifetime {
+            OptionalTokenExpiry { expires_on: t } => t == "2027-01-01T00:00:00Z"
+            NoExpiryUntilRevoked => false
+          }
+      AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } => false
+      AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+      AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+    }
+    && match admit_account_token_api_mint(
+      shape: cloudflare_r2_object_read_token_shape(),
+      request: CreateAccountTokenRequest {
+        name: "r2-read",
+        policies: [policy],
+        not_before: none,
+        expires_on: Present { value: "2027-01-01T00:00:00Z" }
+      }
+    ) {
+      AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: req } =>
+        req.expires_on == Present { value: "2027-01-01T00:00:00Z" }
+      AccountTokenApiMintAdmitted { shape: _, request: _ } => false
+      AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } => false
+      AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } => false
+    }
+}
+
+fn census_contains_frontier_subject(row: FrontierRow) -> Bool {
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
+}
+
+fn frontier_row_names_decl(row: FrontierRow, ref: DeclarationRef) -> Bool {
+  match row.subject {
+    DeclSubject { ref: r } => declaration_ref_eq(a: r, b: ref)
+    PathSubject { path: _ } => false
+  }
+}
+
+test fn r2_token_mint_frontier_rows_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: cloudflare_r2_token_mint_frontier_rows)
+    && frontier_rows_well_formed(rows: vendor_cloudflare_frontier_rows)
+}
+
+test fn r2_token_mint_frontier_subjects_are_the_admit_decls() -> Bool {
+  any(cloudflare_r2_token_mint_frontier_rows, row =>
+    frontier_row_names_decl(
+      row: row,
+      ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_read_api_mint"),
+    ))
+    && any(cloudflare_r2_token_mint_frontier_rows, row =>
+      frontier_row_names_decl(
+        row: row,
+        ref: decl_ref(module_path: "extdeps.cloudflare.account_api_tokens", decl_name: "admit_account_token_api_mint"),
+      ))
+    && any(cloudflare_r2_token_mint_frontier_rows, row =>
+      frontier_row_names_decl(
+        row: row,
+        ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_access_pair_from_created_token"),
+      ))
+    && any(vendor_cloudflare_frontier_rows, row =>
+      frontier_row_names_decl(
+        row: row,
+        ref: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
+      ))
+    && any(cloudflare_r2_token_mint_frontier_rows, row =>
+      frontier_row_names_decl(
+        row: row,
+        ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "cloudflare_r2_token_human_burden"),
+      ))
+}
+
+test fn cloudflare_frontier_rows_are_in_the_census() -> Bool {
+  all(cloudflare_r2_token_mint_frontier_rows, row => census_contains_frontier_subject(row: row))
+    && all(vendor_cloudflare_frontier_rows, row => census_contains_frontier_subject(row: row))
+    && all(cloudflare_account_api_tokens_frontier_rows, row => census_contains_frontier_subject(row: row))
+    && all(cloudflare_r2_frontier_rows, row => census_contains_frontier_subject(row: row))
+}

@@ -20,8 +20,12 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_execution_standing_for_instance,
   belt_tick_receipt_write_for_instance,
   belt_tick_result_json_value,
+  belt_review_head_for_instance, belt_review_report_for_instance, belt_review_outcome_json,
 }
 import gunbc.roadmap_served_observation { served_observation_observe_and_write_for_instance }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { json_array }
+import gunbc.roadmap.roadmap_review_function { review_report_json }
 
 // THE SCHEDULED ENTRYPOINT, and the one place the belt's two persisted artifacts are produced
 // together: the BeltTickReceipt (what the tick did) and the served observation (what the host
@@ -107,5 +111,35 @@ fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: St
       exit_failure(reason: join(["served observation write returned deferred: ", r], ""))
     BeltPassRefused { reason: r } =>
       exit_failure(reason: join(["served observation write returned refused: ", r], ""))
+  }
+}
+
+
+// OPERATOR ENTRIES FOR THE REVIEW FUNCTION, for seeing it run on a chosen head without waiting for
+// the belt's own trigger. belt_review_head_cli realizes the plan's calls for an attempt's current head
+// through the same path the tick takes after verification (it does not verify, and it publishes
+// nothing: publication still gates on verification and on the aggregate). belt_review_report_cli
+// writes the aggregate report for that head. Both write a receipt where asked, because no stdout
+// channel is modeled for a run.
+fn belt_review_head_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_review_head_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let outcomes = belt_review_head_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, verification_detail: "operator-invoked review; verification was not consulted for this run")
+      let document = serialize_json(v: json_array(elements: map(outcomes, o => belt_review_outcome_json(o: o))))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_review_head_cli: receipt could not be written: ", w.error, "; outcomes were ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+fn belt_review_report_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_review_report_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: review_report_json(report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_review_report_cli: receipt could not be written: ", w.error, "; report was ", document], "")) } else { ExitSuccess }
+    }
   }
 }

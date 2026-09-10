@@ -1,0 +1,95 @@
+module extdeps.nvidia.management_library
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/deploy/nvml-api/group__nvmlDeviceQueries.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.management_library",
+      decl_name: "DeviceMemoryObservation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── A DEVICE-MEMORY QUERY THAT CAN REFUSE, MODELLED SO THE REFUSAL CANNOT BECOME A NUMBER ─────
+//
+// WHY THIS MODULE EXISTS, AND IT IS NOT INVENTORY. `nvmlDeviceGetMemoryInfo` is not total on the
+// GB10: the memory is UNIFIED, there is no discrete VRAM partition for it to report, and the call
+// returns NVML_ERROR_NOT_SUPPORTED. Read on the group A head 2026-09-07 inside the serving
+// container:
+//
+//     current_platform.get_device_name()          -> "NVIDIA GB10"
+//     current_platform.get_device_total_memory()  -> NVMLError_NotSupported
+//     torch.cuda.get_device_properties(0).total_memory -> 130663231488
+//
+// So the device HAS 121.7 GiB, a different authority reports it correctly, and only the NVML path
+// refuses. A consumer that treats the refusal as an observation gets a device with no memory.
+//
+// THE CONSTRUCTOR SET IS THE WHOLE POINT. There is deliberately NO way to write a zero-byte
+// observation for an unsupported query. DESIGN section 4b(4): the invalid state has no constructor,
+// so `device_memory = 0` cannot be authored here at all -- not transiently, not as a default, not
+// as a placeholder while a caller decides what to do. What the caller gets is a variant it must
+// eliminate exhaustively, and the unsupported arm carries no bytes to accidentally read.
+//
+// THIS MODULE OWNS THE QUERY, NOT THE CONSEQUENCE. What a downstream does when the query refuses --
+// fall back to another authority, refuse itself, or select a conservative default -- is that
+// consumer's policy and belongs in its own module. extdeps.vllm.batch_defaults models one such
+// consumer and the harm its choice caused.
+type DeviceMemoryObservation
+  = NvmlDeviceMemoryObserved { bytes: Nat }
+  | NvmlDeviceMemoryUnsupportedOnUnifiedMemory { device_name: NonEmptyStr, error: NonEmptyStr }
+  | TorchDeviceMemoryObserved { bytes: Nat }
+  | DeviceMemoryUnread { because: NonEmptyStr }
+
+// THE OBSERVED ROWS, both from the same device and the same instant, which is what makes the pair
+// evidence rather than two anecdotes.
+data gb10_nvml_device_memory: DeviceMemoryObservation = NvmlDeviceMemoryUnsupportedOnUnifiedMemory {
+  device_name: "NVIDIA GB10" as NonEmptyStr,
+  error: "NVMLError_NotSupported raised by nvmlDeviceGetMemoryInfo; the GB10 pool is unified and has no discrete VRAM partition to report" as NonEmptyStr,
+}
+
+data gb10_torch_device_memory: DeviceMemoryObservation = TorchDeviceMemoryObserved { bytes: 130663231488 }
+
+// A refusal is not a small number and a fallback is not an observation. This is the predicate a
+// consumer must pass before it may use bytes at all.
+// A BOOL BESIDE THE BYTES IS TWO REPRESENTATIONS OF ONE FACT, AND THE BOOL HAD NO CONSUMERS. This
+// stood as `device_memory_bytes_known`, answering whether a caller MAY read the bytes while leaving
+// the caller to read them separately -- so nothing structural stopped a consumer from skipping the
+// predicate, and the predicate could not hand back what it had just proved existed. Returning the
+// bytes as an option IS the predicate: an arm that carries no measurement cannot produce one, and a
+// caller that wants a number has to face the absence to get it.
+fn device_memory_observed_bytes(o: DeviceMemoryObservation) -> Nat? {
+  match o {
+    NvmlDeviceMemoryObserved { bytes: b } => Present { value: b }
+    TorchDeviceMemoryObserved { bytes: b } => Present { value: b }
+    NvmlDeviceMemoryUnsupportedOnUnifiedMemory { device_name: _, error: _ } => none
+    DeviceMemoryUnread { because: _ } => none
+  }
+}
+
+fn device_memory_note(o: DeviceMemoryObservation) -> NonEmptyStr {
+  match o {
+    NvmlDeviceMemoryObserved { bytes: _ } =>
+      "NVML reported a byte count for a device it can partition" as NonEmptyStr
+    TorchDeviceMemoryObserved { bytes: _ } =>
+      "the CUDA runtime reported the unified pool's size; on a GB10 this is the authority that answers, and NVML is the one that refuses" as NonEmptyStr
+    NvmlDeviceMemoryUnsupportedOnUnifiedMemory { device_name: _, error: _ } =>
+      "UNSUPPORTED IS NOT ZERO AND NOT SMALL. A consumer selecting a capacity-dependent default from this arm is selecting it from the absence of an answer, and the arm carries no bytes precisely so that cannot be written" as NonEmptyStr
+    DeviceMemoryUnread { because: _ } =>
+      "nobody asked, which is distinct from asking and being refused" as NonEmptyStr
+  }
+}

@@ -1,5 +1,12 @@
 module product.fabric.selection
 
+import product.fabric.provider_route { provider_route_eq }
+import product.fabric.provider_admission {
+  permit_standing, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
+  PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
+  ProviderUsePermit, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
+  ProviderUseRefusal,
+}
 import std.types { NonEmptyStr, List, Bool }
 import std.measure {
   MoneyAmountMicro, MoneyOnce, MoneyPerSecond, money_amount_micro, money_amount_micro_count,
@@ -8,9 +15,10 @@ import std.measure {
 }
 import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat, nat_min }
-import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { ExecutionRequirements }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, content_hash_atom, content_hash_combine_structural }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedFlatPerGrant, QuotedPerSecond, QuotedPerMinute, QuotedPerHour,
   OfferFungibility, Fungible, TrustDomainMismatch, CapabilitiesNotOffered,
@@ -23,6 +31,7 @@ import product.fabric.supply {
   QuotedTotal, QuotedTotalDerived, QuotedTotalNeedsDuration,
   GrantDuration, ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
   grant_duration_bound_seconds,
+  EqualCostOfferTieBreak, StableRosterOrder, AffinityKeyedRendezvous, PlacementAffinityKey,
 }
 
 // SELECTION IS THE FOLD product.fabric.supply DECLINED TO WRITE, AND THIS MODULE IS WHY IT
@@ -216,23 +225,97 @@ type DispatchInputs<P> {
 // unchanged -- this confines WHO may construct and establishes nothing about whether the
 // observations themselves were honestly taken, which stays a boundary obligation on whoever
 // produced them.
+// THE PERMIT IS A THIRD MEMBER OF THE SEALED TRIPLE, AND THAT IS THE WHOLE WALL.
+//
+// Ranking used to decide over offers that no authority had admitted, so "may this work run on this
+// route at all" was answered nowhere on the deciding path and the cheapest offer won regardless.
+// Adding a check inside the ranking fold would have been validation - satisfiable by editing the
+// check, and one forgotten call site from being wrong again. Putting the permit INSIDE the sealed
+// candidate makes the bad state unconstructible instead: sole_constructor confines construction to
+// bind_candidate, bind_candidate refuses without an admitted permit, and selection ranks
+// CandidateOffers. So "an unadmitted offer won the ranking" has no spelling, which is section 4b's
+// top rung rather than a wall someone has to remember to run.
+//
+// The ordering argument is unchanged and now enforced one step earlier: this module already
+// evaluates price LAST so price cannot rescue an offer that cannot run the work. Admission is
+// earlier still, so price cannot rescue an offer we are not authorised to use.
 type CandidateOffer<P> sole_constructor {
   offer: SupplierOffer<P>
   dispatch: DispatchInputs<P>
+  permit: ProviderUsePermit<P>
 }
 
+// THE THREE NEW ARMS ARE THREE DIFFERENT THINGS TO GO AND DO, which is why they are not one
+// "not admitted" arm. A denial carries the admission's own typed cause, so the remedy is whatever
+// that cause names - gather route facts, clear a sanctions case, re-posture. A permit naming
+// another offer is a WIRING fault: a real admission carried onto the wrong offer. A permit naming
+// another route is the same fault one level down, and it is the case the route on SupplierOffer
+// exists to make expressible - without it the two could never disagree, so the check could not be
+// written at all.
 type CandidateBinding<P>
   = CandidateBound { candidate: CandidateOffer<P> }
   | DispatchInputsNameAnotherOffer {
       offer: FabricIdentity<P, OfferKey>,
       inputs_name: FabricIdentity<P, OfferKey>,
     }
+  | OfferNotAdmittedForUse {
+      offer: FabricIdentity<P, OfferKey>,
+      cause: ProviderUseRefusal,
+    }
+  | PermitNamesAnotherOffer {
+      offer: FabricIdentity<P, OfferKey>,
+      permit_names: FabricIdentity<P, OfferKey>,
+    }
+  | PermitNamesAnotherRoute { offer: FabricIdentity<P, OfferKey> }
+  | PermitNamesAnotherWork {
+      permit_work: FabricIdentity<P, WorkKey>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | PermitNamesAnotherDemand {
+      permit_demand: FabricIdentity<P, DemandKey>,
+      subject_demand: FabricIdentity<P, DemandKey>,
+    }
 
-fn bind_candidate<P>(offer: SupplierOffer<P>, dispatch: DispatchInputs<P>) -> CandidateBinding<P> {
-  if !fabric_identity_eq(left: offer.id, right: dispatch.offer) {
-    DispatchInputsNameAnotherOffer { offer: offer.id, inputs_name: dispatch.offer }
-  } else {
-    CandidateBound { candidate: CandidateOffer { offer: offer, dispatch: dispatch } }
+// The admission coproduct is matched ONCE and the permit comes out of the admitted arm, so there
+// is no Bool "was it admitted" predicate and nowhere to invent a permit: the only permit this
+// function can put in a candidate is the one the decision actually produced.
+// A CANDIDATE IS SEALED FOR A USE, NOT MERELY FOR A ROUTE, AND THE USE IS A PARAMETER SO IT
+// CANNOT BE READ OFF THE PERMIT BEING CHECKED. product.fabric.grant_issue already states the
+// reason: admission is granted FOR a customer profile and a data-handling profile, and both are
+// properties of the WORK, so "a permit checked only against the offer and the route would
+// authorise work B under the scope that was admitted for work A". That check previously existed
+// ONLY in issue_grant, which the production broker never reaches - it selects and reserves
+// without ever issuing a grant - so the deciding path carried the offer and route halves of the
+// check and none of the use half. Binding here is what puts all four on one path.
+fn bind_candidate<P>(
+  offer: SupplierOffer<P>,
+  dispatch: DispatchInputs<P>,
+  admission: ProviderUseAdmission<P>,
+  demand: FabricIdentity<P, DemandKey>,
+  work: FabricIdentity<P, WorkKey>,
+) -> CandidateBinding<P> {
+  match admission {
+    ProviderUseDenied { decision, cause } =>
+      OfferNotAdmittedForUse { offer: offer.id, cause: cause }
+    ProviderUseAdmitted { permit } =>
+      if !fabric_identity_eq(left: offer.id, right: dispatch.offer) {
+        DispatchInputsNameAnotherOffer { offer: offer.id, inputs_name: dispatch.offer }
+      } else {
+        match permit_standing(
+          permit: permit, offer: offer.id, route: offer.route, demand: demand, work: work) {
+          PermitNamesAnotherOfferThan { permit_names: n } =>
+            PermitNamesAnotherOffer { offer: offer.id, permit_names: n }
+          PermitNamesAnotherRouteThan => PermitNamesAnotherRoute { offer: offer.id }
+          PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+            PermitNamesAnotherWork { permit_work: pw, subject_work: sw }
+          PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+            PermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd }
+          PermitAuthorizesUse =>
+            CandidateBound {
+              candidate: CandidateOffer { offer: offer, dispatch: dispatch, permit: permit },
+            }
+        }
+      }
   }
 }
 
@@ -962,13 +1045,15 @@ fn axis_amount(a: PricedAxis) -> MoneyAmountMicro {
 // cheaper and unsuitable. There is none here.
 type SupplySelection<P>
   = OfferSelected {
-      offer: SupplierOffer<P>,
+      candidate: CandidateOffer<P>,
       cost: SelectionCost,
       basis: CostBasis,
       horizon: CommitmentHorizon,
       considered: List<OfferCandidacy<P>>,
+      tie_policy: EqualCostOfferTieBreak,
     }
   | NoAdmissibleOffer { considered: List<OfferCandidacy<P>> }
+  | EqualCostTieUnresolved { digest: Fnv1a64StructuralDigestHex, cause: AffinityCollision<P>, considered: List<OfferCandidacy<P>> }
 
 // The incumbent travels as ONE value rather than as four parallel optionals that could
 // disagree about which offer they describe. Four fields each separately absent has states in
@@ -980,92 +1065,219 @@ type PricedCandidate<P> {
   horizon: CommitmentHorizon
 }
 
-type SelectionRanking<P> {
-  best: PricedCandidate<P>?
+// ── PRICING IS ONE PASS AND CHOOSING IS ANOTHER, BECAUSE A TIE IS A PROPERTY OF THE COHORT ────
+//
+// THE ORDER DEPENDENCE THIS SHAPE EXISTS TO REMOVE, and it survived two earlier attempts at it
+// (reviews 62155, 62174). A single fold that compares each candidate against the running best can
+// only ever see PAIRS, and a tie is not a property of a pair -- it is a property of the whole set of
+// candidates at the minimum cost. So the first shape suppressed everything after a collision, which
+// let a later cheaper candidate be ignored; the second cleared the collision on a strictly cheaper
+// best, which fixed that and still could not see a collision between two candidates NEITHER of which
+// was ever the running best. Three offers all costing ten, two of them sharing a digest, answered
+// differently depending on which one the fold met first.
+//
+// SO THE FOLD PRICES, AND A SECOND PASS CHOOSES. The cohort at the minimum total is derived from the
+// priced population, and the tie policy is applied to that cohort as a set: the winner is the maximum
+// rendezvous digest in it, and the answer is a refusal exactly when that maximum is shared. Both are
+// order-independent by construction rather than by a comparator that has to remember something.
+type PricedRanking<P> {
   considered: List<OfferCandidacy<P>>
+  priced: List<PricedCandidate<P>>
 }
 
-// THE COMPARATOR RANKS ON selection_total, AND UNDER CommitmentFloorCost THAT AMOUNT IS A
-// LOWER BOUND. THE RESULTING BIAS IS DECLARED HERE RATHER THAN HIDDEN.
-//
-// One billing quantum is the MINIMUM additional commitment that starting incurs. It is a real,
-// derivable, honest quantity and it is not a prediction of the bill: a job of wholly unbounded
-// duration can cross two boundaries, or ten, and nothing here claims otherwise. Pricing a
-// second quantum "to be safer" would be strictly worse -- it would invent the prior this fold
-// refuses to invent when it declines to separate a seven-minute remainder from a fifty-five
-// minute one, and it would always answer, which is the absorbing fallback.
-//
-// WHAT THE FLOOR COSTS US IS DIRECTIONAL, AND THE DIRECTION IS UNFLATTERING. A floor
-// understates by up to one quantum less a second per additional crossing, so an hourly
-// supplier's floor can understate by nearly 3600 seconds' worth while a continuous offer's
-// floor is EXACT. Ranking on floors therefore favours the coarse-quantum offer -- which is the
-// mode we have the least measured experience of. The basis travels out of the fold on the
-// selected arm so a consumer can see which quantity it is holding, but the comparator itself
-// has one number to sort by and this is it.
-//
-// NEXT-RUNG TRIGGER: a bounded-duration carrier on the demand side. The bias exists only under
-// CommitmentFloorCost, which is reachable only from UnobservedGrantDuration, so any duration
-// bound at all -- however loose -- retires it for that demand. When every demand carries one,
-// this note and the CommitmentFloorCost arm are deleted together rather than amended.
-
-// TIE-BREAK, STATED HONESTLY. The comparison is strictly less-than, so the EARLIEST candidate
-// at the minimum wins and a re-run over the same roster in the same order returns the same
-// offer. That is stability with respect to the roster, which is all this fold can offer:
-// making the tie-break independent of roster order needs a total order over OfferKey, and
-// OfferKey is branded over NonEmptyStr, which std carries no ordering for. NEXT-RUNG TRIGGER:
-// a string ordering in std, at which point the tie-break becomes the lexicographically
-// smallest key and this note is deleted rather than amended.
 fn rank_candidate<P>(
-  acc: SelectionRanking<P>,
+  acc: PricedRanking<P>,
   candidacy: OfferCandidacy<P>,
   candidate: CandidateOffer<P>,
-) -> SelectionRanking<P> {
+) -> PricedRanking<P> {
   let considered = concat(acc.considered, [candidacy])
   match candidacy {
     OfferPriced { offer: _, cost: c, basis: b, horizon: h } =>
-      SelectionRanking {
-        best: better_of(
-          incumbent: acc.best,
-          challenger: PricedCandidate { candidate: candidate, cost: c, basis: b, horizon: h },
-        ),
+      PricedRanking {
         considered: considered,
+        priced: concat(acc.priced, [PricedCandidate { candidate: candidate, cost: c, basis: b, horizon: h }]),
       }
-    OfferNotFungible { offer: _, fungibility: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferUnavailableForGrant { offer: _, needed: _, available: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferNotPriceable { offer: _, unpriced: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferWrongCurrency { offer: _, mismatch: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferUnaffordable { offer: _, affordability: _ } => carry_ranking(acc: acc, considered: considered)
-    OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferNotFungible { offer: _, fungibility: _ } => PricedRanking { considered: considered, priced: acc.priced }
+    OfferUnavailableForGrant { offer: _, needed: _, available: _ } => PricedRanking { considered: considered, priced: acc.priced }
+    OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => PricedRanking { considered: considered, priced: acc.priced }
+    OfferNotPriceable { offer: _, unpriced: _ } => PricedRanking { considered: considered, priced: acc.priced }
+    OfferWrongCurrency { offer: _, mismatch: _ } => PricedRanking { considered: considered, priced: acc.priced }
+    OfferUnaffordable { offer: _, affordability: _ } => PricedRanking { considered: considered, priced: acc.priced }
+    OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => PricedRanking { considered: considered, priced: acc.priced }
   }
 }
 
-fn better_of<P>(incumbent: PricedCandidate<P>?, challenger: PricedCandidate<P>) -> PricedCandidate<P>? {
-  match incumbent {
-    Absent => Present { value: challenger }
-    Present { value: held } =>
-      if money_amount_micro_count(m: selection_total(c: challenger.cost))
-        < money_amount_micro_count(m: selection_total(c: held.cost)) {
-        Present { value: challenger }
-      } else {
-        Present { value: held }
-      }
-  }
+fn priced_total<P>(c: PricedCandidate<P>) -> Nat {
+  money_amount_micro_count(m: selection_total(c: c.cost))
 }
 
-fn carry_ranking<P>(acc: SelectionRanking<P>, considered: List<OfferCandidacy<P>>) -> SelectionRanking<P> {
-  SelectionRanking { best: acc.best, considered: considered }
+// THE MINIMUM IS AN OPTIONAL BECAUSE AN EMPTY PRICED POPULATION HAS NO MINIMUM, and a zero standing
+// in for one would be a cost nobody quoted.
+fn minimum_priced_total<P>(priced: List<PricedCandidate<P>>) -> Nat? {
+  fold(priced, init: none, f: (acc, c) =>
+    match acc {
+      Absent => Present { value: priced_total(c: c) }
+      Present { value: m } => if priced_total(c: c) < m { Present { value: priced_total(c: c) } } else { Present { value: m } }
+    })
 }
 
-// THE SELECTOR. Cheapest fungible with delay valuation, which is the one instantiation
-// SupplySelectionPolicy names, over a roster of offers each sealed to the six observations
-// that describe it.
+fn cohort_at_total<P>(priced: List<PricedCandidate<P>>, total: Nat) -> List<PricedCandidate<P>> {
+  filter(priced, c => priced_total(c: c) == total)
+}
+
+// THE SPREAD KEY IS AN AFFINITY VALUE, AND SAYING SO IS THE POINT. It is hashed with the offer's KEY,
+// and a key is not a fabric identity -- identity.dag is explicit that identity is the pair of
+// principal and key. So this policy ranks by affinity, not by identity, and the arm is named for what
+// it hashes (product.fabric.supply PlacementAffinityKey).
 //
-// WHICH MODE WINS IS A CONSEQUENCE HERE AND NEVER AN ARM. Nothing in this fold knows which
-// offers are ours. Owned capacity wins while its total is the lowest total, and when it is not
-// -- because a rented hour is already paid for and this work fits inside it, because its
-// operating cost is real, because the alternative use it displaces is worth more than the rent
-// -- the same arithmetic picks somebody else's machine, with the receipt saying why.
+// WHAT THAT COSTS, EXACTLY. Two offers whose keys agree while their principals differ produce one
+// digest. That is not a silent merge: identical digests inside one cohort are a duplicate, and
+// resolve_cohort REFUSES rather than choosing, so the cross-principal case fails closed. On the demand
+// side a caller supplies the affinity value, so a caller can steer which of the EQUALS it lands on --
+// spread preference, never admission, because an inadmissible offer is refused before any tie is
+// considered and no affinity value resurrects it.
+//
+// IT MUST SURVIVE A RETRY. A value minted per attempt would spread one demand across offers on
+// successive tries, which is worse than concentrating it -- so the caller passes a stable value and
+// the ranking is derived here rather than accepted as a rank.
+fn rendezvous_digest(affinity: PlacementAffinityKey, offer_key: NonEmptyStr) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: affinity as NonEmptyStr),
+    right: content_hash_atom(value: offer_key),
+  )
+}
+
+fn candidate_digest<P>(c: PricedCandidate<P>, affinity: PlacementAffinityKey) -> Fnv1a64StructuralDigestHex {
+  rendezvous_digest(affinity: affinity, offer_key: c.candidate.offer.id.key).digest
+}
+
+// EACH CANDIDATE IS DIGESTED EXACTLY ONCE. The obvious shape -- ask, for each member, how many
+// members share its digest -- is a quadratic fold that recomputes the hash inside its own inner loop,
+// and §6's bare-minimum-cost rule fixes a proven cost shape regardless of the realized n. n is not
+// fixed by any one caller: select_supply is the shared fabric selector. So the cohort is keyed once,
+// and every later question -- the maximum, whether a digest repeats, which candidate carries it -- is
+// a linear pass over the keyed list.
+type KeyedCandidate<P> {
+  candidate: PricedCandidate<P>
+  digest: Fnv1a64StructuralDigestHex
+}
+
+fn key_cohort<P>(cohort: List<PricedCandidate<P>>, affinity: PlacementAffinityKey) -> List<KeyedCandidate<P>> {
+  map(cohort, c => KeyedCandidate { candidate: c, digest: candidate_digest(c: c, affinity: affinity) })
+}
+
+// THE COHORT IS SORTED BY DIGEST ONCE, AND EVERY REMAINING QUESTION IS ADJACENCY IN THAT ORDER. A
+// repeat is two neighbours that agree, and the winner is the element the walk ends on -- both linear,
+// and both independent of the roster order the candidates arrived in, because the sort is on the
+// digest alone.
+//
+// A DUPLICATE ANYWHERE IN THE COHORT REFUSES, not only one at the winning digest. Two candidates the
+// policy cannot tell apart are unresolvable whether or not a third would have beaten them: answering
+// with the third would make the outcome depend on which offers happened to sit beside an ambiguity
+// the policy never resolved.
+// THE THREE WAYS A DIGEST CAN REPEAT ARE THREE DIFFERENT DEFECTS, and fusing them into one
+// unexplained digest event told the reader nothing about which repair applies. They are decidable
+// from the pair that collided, so the refusal names which one it met: two rows for one offer (an
+// authoring or roster defect), one key under two principals (the projection this policy performs is
+// lossy -- identity.dag is explicit that identity is the PAIR), or two genuinely different keys whose
+// digests agree (a real 64-bit collision, the only one that is nobody's fault). The first two are
+// repaired upstream of this policy; the third is repaired by a wider digest.
+type AffinityCollision<P>
+  = DuplicateOfferIdentity { offer: FabricIdentity<P, OfferKey> }
+  | AffinityProjectionAmbiguous { conflicting: List<FabricIdentity<P, OfferKey>> }
+  | DigestCollisionOnDistinctKeys { conflicting: List<FabricIdentity<P, OfferKey>> }
+
+fn classify_collision<P>(left: FabricIdentity<P, OfferKey>, right: FabricIdentity<P, OfferKey>) -> AffinityCollision<P> {
+  if (left.key as String) != (right.key as String) {
+    DigestCollisionOnDistinctKeys { conflicting: [left, right] }
+  } else {
+    if fabric_identity_eq(left: left, right: right) {
+      DuplicateOfferIdentity { offer: left }
+    } else {
+      AffinityProjectionAmbiguous { conflicting: [left, right] }
+    }
+  }
+}
+
+fn affinity_collision_wire<P>(c: AffinityCollision<P>) -> String {
+  match c {
+    DuplicateOfferIdentity { offer: o } => join(["two candidates carry one offer identity ", o.key as String], "")
+    AffinityProjectionAmbiguous { conflicting: xs } =>
+      join(["one offer key under ", to_string(length(xs)), " principals projects onto one affinity digest"], "")
+    DigestCollisionOnDistinctKeys { conflicting: xs } =>
+      join([to_string(length(xs)), " distinct offer keys hash to one affinity digest"], "")
+  }
+}
+
+// A COLLISION IS ONE VALUE, NOT A DIGEST BESIDE A CAUSE. An earlier spelling carried the two as
+// independent optionals on the scan, and the state where they disagreed was not refused but answered
+// WRONGLY: a present cause with an absent digest fell through to none, select_supply read that as
+// NoAdmissibleOffer, and the caller reported an empty market for a fleet that had admissible offers
+// and an ambiguous tie -- the exact conflation EqualCostTieUnresolved exists to prevent. The pair is
+// set in one place and read in one place, so it travels as one value and the disagreeing state has
+// no constructor (review 62374). This is the same rule the incumbent above already follows.
+type CollisionAt<P> {
+  digest: Fnv1a64StructuralDigestHex
+  cause: AffinityCollision<P>
+}
+
+type DigestScan<P> {
+  latest: KeyedCandidate<P>?
+  duplicate: CollisionAt<P>?
+}
+
+fn adjacent_repeat<P>(previous: KeyedCandidate<P>?, k: KeyedCandidate<P>) -> CollisionAt<P>? {
+  match previous {
+    Absent => none
+    Present { value: p } =>
+      if p.digest == k.digest {
+        Present { value: CollisionAt { digest: k.digest, cause: classify_collision(left: p.candidate.candidate.offer.id, right: k.candidate.candidate.offer.id) } }
+      } else { none }
+  }
+}
+
+fn scan_sorted<P>(sorted: List<KeyedCandidate<P>>) -> DigestScan<P> {
+  fold(sorted, init: DigestScan { latest: none, duplicate: none }, f: (acc, k) => {
+    let repeat = match acc.duplicate {
+      Present { value: d } => Present { value: d }
+      Absent => adjacent_repeat(previous: acc.latest, k: k)
+    }
+    DigestScan { latest: Present { value: k }, duplicate: repeat }
+  })
+}
+
+// A COLLISION REFUSES RATHER THAN FALLING BACK. Returning the roster-first candidate when two
+// candidates in the cohort share a digest would reinstate the very policy this arm replaces, in the
+// one case nobody would notice.
+type EqualCostOutcome<P>
+  = TieResolved { winner: PricedCandidate<P> }
+  | TieUnresolvedCollision { digest: Fnv1a64StructuralDigestHex, cause: AffinityCollision<P> }
+
+fn resolve_cohort<P>(
+  cohort: List<PricedCandidate<P>>,
+  tie: EqualCostOfferTieBreak,
+  affinity: PlacementAffinityKey,
+) -> EqualCostOutcome<P>? {
+  match tie {
+    StableRosterOrder =>
+      match first(cohort) {
+        Absent => none
+        Present { value: c } => Present { value: TieResolved { winner: c } }
+      }
+    AffinityKeyedRendezvous => {
+      let scanned = scan_sorted(sorted: sort_by(key_cohort(cohort: cohort, affinity: affinity), k => k.digest as String))
+      match scanned.duplicate {
+        Present { value: c } => Present { value: TieUnresolvedCollision { digest: c.digest, cause: c.cause } }
+        Absent =>
+          match scanned.latest {
+            Absent => none
+            Present { value: k } => Present { value: TieResolved { winner: k.candidate } }
+          }
+      }
+    }
+  }
+}
+
 fn select_supply<P>(
   requirements: ExecutionRequirements,
   candidates: List<CandidateOffer<P>>,
@@ -1073,10 +1285,12 @@ fn select_supply<P>(
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
   delay_valuation: MoneyPerSecond,
+  tie: EqualCostOfferTieBreak,
+  affinity: PlacementAffinityKey,
 ) -> SupplySelection<P> {
   let ranked = fold(
     candidates,
-    init: SelectionRanking { best: none, considered: [] },
+    init: PricedRanking { considered: [], priced: [] },
     f: (acc, candidate) =>
       rank_candidate(
         acc: acc,
@@ -1091,15 +1305,25 @@ fn select_supply<P>(
         candidate: candidate,
       ),
   )
-  match ranked.best {
+  match minimum_priced_total(priced: ranked.priced) {
     Absent => NoAdmissibleOffer { considered: ranked.considered }
-    Present { value: winner } =>
-      OfferSelected {
-        offer: winner.candidate.offer,
-        cost: winner.cost,
-        basis: winner.basis,
-        horizon: winner.horizon,
-        considered: ranked.considered,
+    Present { value: lowest } =>
+      match resolve_cohort(cohort: cohort_at_total(priced: ranked.priced, total: lowest), tie: tie, affinity: affinity) {
+        Absent => NoAdmissibleOffer { considered: ranked.considered }
+        Present { value: outcome } =>
+          match outcome {
+            TieUnresolvedCollision { digest: d, cause: c } =>
+              EqualCostTieUnresolved { digest: d, cause: c, considered: ranked.considered }
+            TieResolved { winner: winner } =>
+              OfferSelected {
+                candidate: winner.candidate,
+                cost: winner.cost,
+                basis: winner.basis,
+                horizon: winner.horizon,
+                considered: ranked.considered,
+                tie_policy: tie,
+              }
+          }
       }
   }
 }

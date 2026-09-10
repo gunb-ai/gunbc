@@ -19,13 +19,13 @@ module gunbc.executor_privileged_operation
 // facts, not one carrier. This module owns exactly the second, and projects from the first.
 
 import std.types { String, NonEmptyStr, List }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
-import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb }
 import gunbc.fleet_posix_accounts {
   ci_runner_sudo_binary_path,
   SudoInstall,
@@ -52,6 +52,14 @@ type ExecutorPrivilegedOperation
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
   | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
   | EnsureSupplementaryGroupMembership { login: NonEmptyStr, group: NonEmptyStr }
+  | InstallFile {
+      source: NonEmptyStr
+      destination: NonEmptyStr
+      owner: NonEmptyStr
+      group: NonEmptyStr
+      mode: NonEmptyStr
+    }
+  | SystemdReloadUnit { unit: NonEmptyStr }
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -86,6 +94,22 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       "-aG" as NonEmptyStr,
       g,
       l
+    ]
+    InstallFile { source: src, destination: dst, owner: o, group: g, mode: m } => [
+      ci_runner_sudo_binary_path(b: SudoInstall),
+      "-m" as NonEmptyStr,
+      m,
+      "-o" as NonEmptyStr,
+      o,
+      "-g" as NonEmptyStr,
+      g,
+      src,
+      dst
+    ]
+    SystemdReloadUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_reload_verb,
+      u
     ]
     SystemdDaemonReload => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
@@ -250,6 +274,85 @@ data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
 // fact about an invocation — the binary, the non-interactive flag, the flag's position — and the
 // hand-spelling was a §3 fork: a second authorship of the same calling convention, duplicating the
 // binary path and omitting the flag that distinguishes refusal from a deadlocked tty wait.
+// IDEMPOTENCE IS A PROPERTY OF THE OPERATION, NOT A FAVOUR ITS CALLER DOES IT. `useradd` exits 9
+// when the account exists, so EnsureSystemAccount -- whose name promises the opposite -- fails on
+// every convergence after the first. That was invisible because its ONE caller
+// (live_deploy.emit deploy_publication_principal_ensure_command) wrapped it in `id -u ... ||`, so
+// the operation READ as idempotent while the guarantee lived in the neighbour. MEASURED on srv1:
+// re-running the projected argv returned rc=9 for the account and rc=0 for all six others.
+//
+// EXACTLY ONE OPERATION NEEDS A PRECONDITION, and that was established by measurement rather than
+// assumed. An earlier revision also guarded EnsureSupplementaryGroupMembership with an
+// `id -nG | tr | grep -qx` pipeline -- a hand-authored program smuggled into a string, solving a
+// problem that does not exist: `usermod -aG` appending a group the user already has exits 0
+// (measured on srv1, twice). Deleting that arm removed the pipeline rather than modeling it, which
+// is the better outcome for a check that was never needed.
+type OperationPrecondition
+  = NoPrecondition
+  | AccountExistsCheck { login: NonEmptyStr }
+
+// THE MATCH IS EXHAUSTIVE WITH NO WILDCARD ARM, so a new operation must decide whether it needs a
+// precondition rather than defaulting to "none" and inheriting the same silent non-idempotence
+// this type exists to end.
+fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -> OperationPrecondition {
+  match op {
+    EnsureSystemAccount { login: l, shell: _ } => AccountExistsCheck { login: l }
+    EnsureSupplementaryGroupMembership { login: _, group: _ } => NoPrecondition
+    EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => NoPrecondition
+    RemoveDirectoryTree { path: _ } => NoPrecondition
+    SystemdDaemonReload => NoPrecondition
+    SystemdEnableUnit { unit: _ } => NoPrecondition
+    SystemdStartUnit { unit: _ } => NoPrecondition
+    SystemdSetUnitProperty { unit: _, assignment: _ } => NoPrecondition
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => NoPrecondition
+    SystemdReloadUnit { unit: _ } => NoPrecondition
+  }
+}
+
+// THE CHECK IS AN ARGV, quoted by the SAME authority that quotes the operation itself rather than
+// interpolated raw. The prior revision spelled `"id -u " + login` with the login unquoted, which
+// is a second authorship of this module's own calling convention -- the §3 fork its annotation
+// below already records having made once.
+fn operation_precondition_argv(p: OperationPrecondition) -> List<NonEmptyStr> {
+  match p {
+    NoPrecondition => []
+    AccountExistsCheck { login: l } => ["id" as NonEmptyStr, "-u" as NonEmptyStr, l]
+  }
+}
+
+// RESIDUE, NAMED: the redirection and the `||` join below are shell CONTROL FLOW authored as text,
+// which is the no-smuggled-programs boundary -- a join belongs in extdeps/languages rows, not in a
+// string literal here. It is one shape rather than a family, and it is the same shape live_deploy
+// already carries as modeled orchestration intent: If-Not-ExitZero(check) then Do(operation), per
+// gunbc.live_deploy.emit's dependency-ensure note.
+//
+// dissolve-on: this renderer is DELETED, not edited, when the precondition is carried as that
+// If-Not-ExitZero orchestration intent through v2.compiler.emit_orchestration orch_emit_pipeline --
+// the path live_deploy's apply already uses -- so the join is emitted from grammar rows and no
+// operator-facing string is assembled by concatenation here. Until then this is the one place the
+// shape is written, so consolidating it later is one deletion rather than a census.
+data executor_privileged_operation_converge_command_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.emit_orchestration",
+    decl_name: "orch_emit_pipeline",
+    field: WholeDeclaration,
+  }
+}
+
+fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperation) -> String {
+  let check = operation_precondition_argv(p: executor_privileged_operation_precondition(op: op))
+  if list_length(items: check) == 0 {
+    executor_privileged_operation_shell_command(op: op)
+  } else {
+    join([
+      join(map(check, w => posix_single_quote(spelling: w as String)), " "),
+      " >/dev/null 2>&1 || ",
+      executor_privileged_operation_shell_command(op: op),
+    ], "")
+  }
+}
+
 fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {
   join(
     map(

@@ -11,7 +11,6 @@ import gunbc.systemctl_status_read {
 import gunbc.host_effect { LocalShell }
 import gunbc.live_deploy.intent {
   live_deploy_unit_diagnosis_dissolution_trigger,
-  live_deploy_unit_diagnosis_capture_exit_note,
   live_deploy_unit_status_tail_scaffold,
 }
 import std.disposition { Scaffold, SingleAuthority }
@@ -39,13 +38,6 @@ test fn witness_dead_unit_status_capture_preserves_failed_text() -> Bool {
     UnitStatusCaptured { text: t } => string_contains(s: t, pattern: "failed")
     UnitStatusCaptureRefused { reason: _ } => false
   }
-}
-
-test fn witness_dissolution_trigger_declared_on_capture_note() -> Bool {
-  string_contains(
-    s: live_deploy_unit_diagnosis_capture_exit_note,
-    pattern: "dissolves-on: unit-diagnosis modeled as a typed systemd.Systemctl.Status observation",
-  )
 }
 
 test fn witness_status_tail_scaffold_binds_dissolution_trigger() -> Bool {

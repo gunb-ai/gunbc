@@ -1,0 +1,150 @@
+module v2.extdeps.languages.rust_emit_small_test
+
+import v2.extdeps.languages.rust {
+  rust_fixture_emitted_add_fn,
+  rust_lex_rule,
+  rust_type_expression_projection_bundle_node
+}
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules, VoidLexRules }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetModel,
+  target_model_emit_transforms_empty,
+  target_model_named_edge,
+  target_model_type_conj_node
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.workflow.dag_acceptance { TranslationClaim }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Acceptance prerequisite equality compares target/emitter identities, and
+// target_compile_row maps observations. Neither operation reads the target.
+fn rust_emit_small_identity_target() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: target_model_type_conj_node(children: []),
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+// Keep the identity-only carrier separate from the acceptance module's
+// production translation helper: the end-to-end translate claim is unchanged.
+fn rust_emit_small_translation_claim() -> TranslationClaim {
+  TranslationClaim {
+    target: rust_emit_small_identity_target(),
+    target_identity: ^target_rust,
+    emitter_identity: ^emitter_v2_emit
+  }
+}
+
+// serialize_concrete_syntax_tokens_to_source_string reads only lex and
+// binding_spellings. No bundle lookup, host execution or produced declaration
+// occurs on this path.
+fn rust_emit_small_serialization_target(
+  lex: LexRules,
+  bindings: Map<Symbol, String>
+) -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: target_model_type_conj_node(children: []),
+    lex: lex,
+    binding_spellings: bindings,
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+// BoundToken bypasses lex lookup; only the four conditional FixedToken classes
+// need rules. Both delimiting disciplines still share exactly the same lex.
+fn rust_emit_small_conditional_target() -> TargetModel {
+  rust_emit_small_serialization_target(
+    lex: ModeledLexRules {
+      root: LexRuleSet {
+        rules: [
+          rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
+          rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
+          rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { "),
+          rust_lex_rule(token_class: ^rust_token_rbrace, text: " }")
+        ]
+      }
+    },
+    bindings: map_insert(
+      map_insert(empty_map(), ^rust_binding_param_x, "x"),
+      ^rust_binding_param_y,
+      "y"
+    )
+  )
+}
+
+// blp_bool_literal_expr is true in every arm. The two projections differ in
+// their true token; neither false token nor a bound token reaches serialization.
+fn rust_emit_small_bool_projection_target() -> TargetModel {
+  rust_emit_small_serialization_target(
+    lex: ModeledLexRules {
+      root: LexRuleSet {
+        rules: [
+          rust_lex_rule(token_class: ^blp_token_true_lower, text: "true"),
+          rust_lex_rule(token_class: ^blp_token_true_upper, text: "TRUE")
+        ]
+      }
+    },
+    bindings: empty_map()
+  )
+}
+
+// The inferred add root is an Arrow. emitted_shape_supported_for_lhs_exact
+// excludes Arrow, so backward row selection compares its emitted fixture and
+// never matches a formal production. An empty production catalog avoids
+// decoding the production grammar just to pass it to that fixture comparison.
+fn rust_emit_small_add_translation_rules() -> Node {
+  target_model_type_conj_node(children: [
+    target_model_named_edge(
+      name: ^grammar_relation_rules_formal_productions,
+      target: target_model_type_conj_node(children: [])
+    ),
+    target_model_named_edge(
+      name: ^rust_relation_rule_fn_add,
+      target: target_model_type_conj_node(children: [
+        target_model_named_edge(
+          name: ^grammar_relation_field_emitted,
+          target: rust_fixture_emitted_add_fn
+        )
+      ])
+    )
+  ])
+}
+
+// translate_node decodes the type projection before translate_type_expression_tree
+// finds the matching grammar row and returns the rebuilt Arrow. No coercion,
+// type-expression projection, token serialization or collection lookup follows
+// that successful match. Preserve the production projection at the decode seam.
+fn rust_emit_small_add_translate_target() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: target_model_type_conj_node(children: [
+      target_model_named_edge(
+        name: ^target_model_edge_type_expression_projection,
+        target: rust_type_expression_projection_bundle_node()
+      ),
+      target_model_named_edge(
+        name: ^target_model_edge_translation_rules,
+        target: rust_emit_small_add_translation_rules()
+      )
+    ]),
+    lex: VoidLexRules,
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}

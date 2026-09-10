@@ -1,6 +1,6 @@
 module extdeps.currency.currency
 
-import std.types { Int }
+import std.types { Bool, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -22,4 +22,21 @@ fn currency_minor_unit_exponent(c: CurrencyCode) -> Int {
     Eur => 2
     Usd => 2
   }
+}
+
+// THE ISO 4217 NUMERIC CODE, which exists here because currency IDENTITY was needed and the minor
+// unit exponent was reached for instead. Both EUR and USD have exponent 2, so an equality written
+// over that field answers TRUE for two different currencies - a silent conflation that let a euro
+// figure pass through a conversion untouched and be compared against dollars. The exponent
+// describes how a currency SUBDIVIDES; the numeric code is what NAMES it. Identity questions take
+// the identifier.
+fn currency_numeric_code(c: CurrencyCode) -> Int {
+  match c {
+    Eur => 978
+    Usd => 840
+  }
+}
+
+fn currency_code_eq(a: CurrencyCode, b: CurrencyCode) -> Bool {
+  currency_numeric_code(c: a) == currency_numeric_code(c: b)
 }

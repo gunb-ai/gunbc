@@ -1,0 +1,289 @@
+module std.goal_assessment
+
+import std.types { List }
+import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
+
+// THE ONE SUBJECT-AGNOSTIC SHAPE FOR "IS THE WORLD AS IT WAS DECLARED TO BE".
+//
+// This replaces gunbc.world_converge, which fused four separable facts into one handler and could
+// therefore only answer honestly for a subject that never actuates. The replacement keeps the part
+// that was right -- one shape, bound per subject, so a third subject adds a binding rather than
+// widening this authority -- and separates the three distinctions the fused shape destroyed.
+//
+// ONE: OBSERVATION AND ASSESSMENT ARE TWO LAYERS, NOT ONE COPRODUCT. "No usable snapshot was
+// obtained" and "the snapshot is assessable and this subject within it is unknown" are different
+// facts with different remedies, and the second is not representable at all if the first is the
+// only unknown arm. Collapsing them loses partial evidence, and -- the reason it is a safety
+// matter rather than a modelling one -- it licenses treating an UNOBSERVABLE member as an ABSENT
+// one, which is what makes an unreadable subject look like a subject that needs creating.
+//
+// TWO: A DIVERGENCE IS NONEMPTY BY CONSTRUCTION. `WorldDiverged { differences: [] }` was writable
+// in the shape this replaces: a known divergence naming nothing, which is agreement wearing the
+// other variant, and every consumer that folded over the list would have found nothing to do while
+// the value said the world had drifted. `FreeSemigroup` (std.algebra) has no empty inhabitant, so
+// the state has no constructor rather than a validator -- DESIGN section 4b rung four. It is
+// deliberately NOT a fresh `NonEmptyList`: std.algebra already owns the free semigroup over T as
+// the monoid's other identity, and its own grounding note withholds that alias precisely so one
+// name never resolves to two declarations (DESIGN section 3).
+//
+// THREE: THE OBSERVER CANNOT SEE THE GOAL, AND THIS IS A SHAPE RATHER THAN A CONVENTION. An
+// observer handed the desired state can omit what the caller did not ask about, and an observation
+// shaped by what someone hoped to find cannot falsify the hope -- it is the fabricated-plausible-
+// output failure moved one stage earlier, where nothing downstream can detect it.
+//
+// THE FIRST CUT STATED THIS SENTENCE WHILE THE TYPE ADMITTED ITS OPPOSITE. `observe` took
+// `(Subject, Scope)`, and a subject is exactly where a goal travels: gunbc.spark.fabric_switch
+// bound an observer that matched on `subject.intent`, so the desired mode selected which lanes were
+// read -- with the module's own note claiming the separation held. A guarantee carried only by
+// prose is one binding away from being false, and it was false in two of the three bindings that
+// existed. So the observer now receives the SUBJECT and an `ObservationRequest`, and no goal: it
+// has no goal-typed parameter to read, so the desired side is unconstructible in its argument list.
+// (An earlier wording here said it receives a request "and NOTHING ELSE". That was written before
+// the subject was restored to the observer -- goal-blind is not subject-blind -- and it went false
+// in the edit that restored it. It is corrected rather than quietly dropped: this module's whole
+// subject is prose outliving the code it described.)
+//
+// WHAT THIS DOES NOT CLOSE, stated so the rung is not read as higher than it is. THERE ARE THREE
+// ROUTES BY WHICH A GOAL CAN REACH A READ, and this type closes exactly one of them.
+//
+//   PARAMETER -- structurally impossible. There is no goal-typed argument for an observer to read.
+//
+//   CAPTURE -- mitigated by review. A binding may pass a lambda that closes over the goal lexically
+//     and shape the read by it, and no type here can see that.
+//
+//   GOAL-DERIVED REQUEST -- mitigated by review. The `request` is constructed by the CALLER, so a
+//     caller may compute it from the goal and hand the observer a scope the desire chose. The
+//     observer stays honest and the read is still shaped by the goal, one level up. This is not
+//     hypothetical: gunbc.spark.fabric_switch_assessment did exactly this in the change that
+//     introduced the split -- its request was the intent's own interface list, so an undecided
+//     intent produced an empty snapshot BECAUSE OF THE GOAL. Closing the parameter route while the
+//     request was still goal-derived renamed the mechanism rather than removing it. That binding
+//     now derives its request from the absence of a capture instead, but the TYPE does not force
+//     that and cannot: a request is by nature caller-chosen.
+//
+// So the honest rung for goal-blindness is STRUCTURAL against the parameter and MITIGATED BY REVIEW
+// against both capture and goal-derived requests. test.claim.goal_assessment_witness holds the
+// capture residual as an executing fact.
+//
+// NEXT-RUNG TRIGGER, and it is one lens covering both residuals: a reader over the `Node` tree that
+// refuses an `observe` argument, or a `request` argument, whose free variables include the goal
+// bound at the same `inspect_goal` call site. Both residuals are the same shape -- a goal reaching
+// the read through a value rather than a parameter -- so neither climbs until that lens exists.
+//
+// WHAT THIS MODULE DELIBERATELY DOES NOT CARRY, stated so its absence reads as a boundary and not
+// an oversight. There is no `reconcile_once`: no planner, no admission, no actuator, and no
+// post-actuation re-observation. Those are the effectful half of the same protocol, and the reason
+// they are not here is DESIGN section 3c rather than schedule -- their only honest first consumer
+// is the fleet admission spine (gunbc.fleet_converge_plan: generation, held lease, observed
+// baseline, compare-and-set), and a protocol shipped with a single hand-fitted adapter is exactly
+// how the shape this module replaces came to have an apply stage that no corpus path ever ran.
+// TRIGGER: the effectful half lands when that spine binds it, and not before.
+//
+// There is likewise no goal REVISION carried in the result. The law it would serve is real -- a
+// receipt should say which revision of the goal was assessed, or a stale controller reports
+// agreement it never checked -- but this module's consumers today declare their goal as corpus
+// data, so a revision parameter would be filled with a placeholder at every call site: modelling
+// with no consumer, which section 3c reds. TRIGGER: the plan basis, where a revision is what the
+// compare-and-set is fenced against and therefore has a real inhabitant.
+
+// THE THREE NEAREST NEIGHBOURS, AND WHY THIS IS NOT A FOURTH SPELLING OF ANY OF THEM. Each already
+// owns a question this module deliberately does not ask, so a reader arriving with one of them in
+// mind can tell immediately whether they are in the right module (DESIGN section 3).
+//
+//   std.claim_evidence ClaimAssessment -- the admitted evidence links for a named CLAIM and their
+//     support/challenge standing. Its subject is an argument, not a world. A domain may well
+//     produce this module's Evidence out of claim assessments; it is not obliged to route an
+//     ordinary observation through the claim machinery to be assessed against a goal.
+//   std.claim_evidence ClaimRequirementReadiness -- whether ONE required claim is ready after
+//     evidence admission. A readiness, not a comparison.
+//   std.upsert_decision ObservationVerdict / UpsertClassification -- a POINT classification of one
+//     observation, paired with a remedy (Noop | Apply | Refuse). That pairing is exactly what this
+//     module refuses to make: a GoalAssessment is remedy-free, and choosing what to do about a
+//     deviation belongs to a planner that does not exist here yet.
+//
+// So the fact this carrier owns, stated once: the REMEDY-FREE AGGREGATE RELATION between one
+// declared goal and one established observation of the world it describes.
+
+// The first layer. `ObservationRefused` means NO usable snapshot was produced for the requested
+// scope -- not that the subject is absent within one. An ESTABLISHED ABSENCE is a fact INSIDE the
+// snapshot and belongs in `Observed`: "the ruleset does not exist" is something the reader saw,
+// and routing it to a refusal would make an observed absence indistinguishable from a failed read
+// -- the same collapse, one layer down, that this module's two layers exist to prevent.
+type ObservationAttempt<Observed, ObserveRefusal>
+  = ObservationEstablished { observed: Observed }
+  | ObservationRefused { cause: ObserveRefusal }
+
+// The second layer, and the module's carrier.
+//
+// GoalDiverged versus GoalIndeterminate is the distinction the whole module exists for. Diverged
+// means enough is KNOWN to prove a mismatch. Indeterminate means a fact the assessment required
+// was not established -- and it still carries whatever mismatches WERE proved, because discarding
+// them would make an unknown fact suppress a known one. The two are not orderable into one
+// "unhealthy" bucket: their owners differ, and generic remediation is admissible over the first
+// and refused over the second.
+//
+// GoalAssessmentRefused is neither. It means the inputs cannot be honestly compared at all --
+// duplicate identities in the expected roster, a subject paired to the wrong host, a desired state
+// this projection cannot express. An assessment that returns a verdict over an ill-formed question
+// set certifies exactness over a denominator nobody checked (std.observation_completeness carries
+// that argument in full for the join case).
+//
+// AND IT HAS NO CONSTRUCTOR TODAY, WHICH IS STATED HERE RATHER THAN LEFT TO BE DISCOVERED. Both
+// current bindings reach it never: gunbc.repo_ruleset instantiates AssessRefusal at
+// v2.std.cardinality Never because no state of that subject leaves its inputs incomparable, and
+// the realization-selection witness never mints it either. Under DESIGN section 3c that makes this
+// arm a DECLARED FRONTIER, admissible only with its trigger stated beside it, and the trigger is a
+// NAMED CONSUMER rather than a date: product.fan_tach_health already computes exactly this fact --
+// FanTachRefused over DuplicateExpectedHeader, DuplicateObservedHeader and HostIdentityMismatch,
+// each of them an ill-formed question set rather than an unhealthy fan -- and the arm is discharged
+// when that module is bound to this algebra.
+//
+// IT IS NOT DELETED IN THE MEANTIME, and the reason is section 5 rather than convenience: the
+// distinction between "the world differs" and "the question was malformed" is one this module
+// exists to keep, and a coproduct that cannot express the second forces the first binding with an
+// ill-formed input to file it as a divergence. The frontier is the honest state; an absent arm
+// would be a wrong one.
+// AND THERE IS DELIBERATELY NO `is_satisfied` PREDICATE OVER THIS CARRIER, which is the design
+// rather than an omission. A `Bool` here is a one-bit summary of four arms whose whole point is
+// that they are not orderable into two: the summary's false side silently merges "proved to
+// differ", "not fully established" and "could not be compared", which have three different owners
+// and three different remedies. That is the conflation the arms above exist to prevent, so
+// offering it as a convenience would hand every consumer the defect back.
+//
+// Every real consumer matches instead, and it must -- the non-satisfied arms carry the payloads it
+// has to report. A consumer that genuinely wants only the fixed-point question is one `match` arm
+// away from it, and writing that arm is where it decides what the other three mean to it.
+type GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>
+  = GoalSatisfied { evidence: Evidence }
+  | GoalDiverged { deviations: FreeSemigroup<Deviation> }
+  | GoalIndeterminate {
+      known_deviations: List<Deviation>,
+      unknowns: FreeSemigroup<UnknownFact>,
+    }
+  | GoalAssessmentRefused { cause: AssessRefusal }
+
+// The two layers joined. Observation refusal stays OUTSIDE GoalAssessment rather than becoming a
+// fifth arm of it: an assessment is a statement about a snapshot, and there is no snapshot here to
+// make one about.
+//
+// THE SUBJECT IS CARRIED IN BOTH ARMS, including the refused one. The shape this replaces did the
+// same, and a replacement that dropped it would have erased a distinction rather than completed a
+// migration: a refusal that does not say WHAT it is about is a diagnostic missing its located half
+// (DESIGN section 5), and the refused arm is exactly where a reader has least context to supply it.
+//
+// THE GOAL AND THE REQUEST ARE CARRIED BESIDE THE SUBJECT, for the reason the subject is carried: a
+// result that does not say WHAT WAS WANTED, and WHAT WAS ACTUALLY READ TO FIND OUT, is only
+// partly located. Carrying the goal also lets a consumer report the comparison without reaching
+// back to whatever declared the desire, which is where a stale goal gets substituted for the
+// assessed one. Carrying the request is what makes a refusal say which read was attempted rather
+// than only which subject it concerned.
+type GoalInspection<Subject, Goal, ObservationRequest, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal>
+  = GoalInspected {
+      subject: Subject,
+      goal: Goal,
+      request: ObservationRequest,
+      observed: Observed,
+      assessment: GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
+    }
+  | GoalObservationRefused {
+      subject: Subject,
+      goal: Goal,
+      request: ObservationRequest,
+      cause: ObserveRefusal,
+    }
+
+// THE ROOT. Unobservable is guarded first and the assessor is never reached, for the same reason
+// the shape this replaces guarded it first: an unreadable subject has no deviations to invent, and
+// an assessor called on a subject nobody could read can only answer about a fabricated snapshot.
+//
+// It takes the two operations directly rather than through a handler record. The record bought
+// nothing here -- there is no dispatch over it and no second implementation selected at runtime --
+// while it cost every binding a named type alias and every witness a data row to reach the very
+// functions it already had.
+//
+// THE THREE INPUTS ARE THREE FACTS. `subject` is WHO is being asked about; `goal` is WHAT WAS
+// WANTED; `request` is WHAT TO READ. The first cut fused the second and third into the subject,
+// which is how a goal reached an observer while the note above said it could not.
+//
+// THE OBSERVER IS GOAL-BLIND, NOT SUBJECT-BLIND, and the difference is the whole reason it receives
+// two arguments rather than one. Handing it only the request would make `subject` a LABEL ON THE
+// RESULT rather than the thing observed: the receipt could name subject A while the request read
+// subject B, and nothing in the shape would object. The observer needs the subject precisely
+// because it is what it must go and read. What it must not receive is the DESIRE, because an
+// observation shaped by the hope cannot falsify it.
+//
+// THE ASSESSOR DOES NOT RECEIVE THE SUBJECT, and the asymmetry is deliberate rather than an
+// oversight. The observer needs it because it must go and read that subject -- gunbc.repo_ruleset's
+// observer builds its request path from `subject.owner` and `subject.name`, which is the consumer
+// that earns the parameter. An assessor has no such use: it compares a goal against a snapshot, and
+// the identity it would want for a located refusal is already carried by `GoalInspection` in BOTH
+// arms, so taking it again would be a second copy of a fact the result already holds.
+//
+// AN EARLIER CUT DID PASS IT, with a sentence here claiming a refusal cause should not have to
+// reach the identity through a closure. No assessor in the corpus read it -- five bindings, five
+// signatures, zero uses -- so the parameter was section 3c dangling and the sentence asserted a use
+// that did not exist. Recorded rather than silently reverted: this module's subject is prose
+// outliving the code, and this is where it recurred.
+fn inspect_goal<Subject, Goal, ObservationRequest, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal>(
+  subject: Subject,
+  goal: Goal,
+  request: ObservationRequest,
+  observe: fn(Subject, ObservationRequest) -> ObservationAttempt<Observed, ObserveRefusal>,
+  assess: fn(Goal, Observed) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>,
+) -> GoalInspection<Subject, Goal, ObservationRequest, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal> {
+  match observe(subject, request) {
+    ObservationRefused { cause: cause } => GoalObservationRefused {
+      subject: subject,
+      goal: goal,
+      request: request,
+      cause: cause,
+    }
+    ObservationEstablished { observed: observed } => GoalInspected {
+      subject: subject,
+      goal: goal,
+      request: request,
+      observed: observed,
+      assessment: assess(goal, observed),
+    }
+  }
+}
+
+// THE MINT THAT MAKES THE EMPTY DIVERGENCE UNCONSTRUCTIBLE AT THE CALL SITE.
+//
+// Every assessor arrives at the same fork: it has folded its subject into a list of proved
+// mismatches, and an empty list means agreement. Written out at each binding that is
+// `if length(ds) == 0 { satisfied } else { diverged { ds } }` -- and the else arm is where the
+// empty divergence gets written, because nothing in the type stops a later edit from reaching it
+// with the empty list. Here the list is DESTRUCTURED, so the divergent arm holds a head it was
+// handed: agreement and divergence are decided by the same match that supplies the payload, and
+// they cannot disagree.
+fn assess_by_deviations<Evidence, Deviation, UnknownFact, AssessRefusal>(
+  evidence: Evidence,
+  deviations: FreeMonoid<Deviation>,
+) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal> {
+  match deviations {
+    Empty => GoalSatisfied { evidence: evidence }
+    Cons { head: first, tail: rest } => GoalDiverged {
+      deviations: FreeSemigroup { head: first, tail: rest },
+    }
+  }
+}
+
+// The same mint for the indeterminate fork, and it is a SEPARATE function rather than a flag on
+// the one above because the precedence is the whole point: unknowns win over deviations. An
+// assessment that proved two mismatches and failed to establish a third fact is indeterminate, not
+// divergent -- reporting it as divergent would licence remediation over a subject whose state is
+// partly unread, and reporting it as satisfied-with-notes would licence nothing at all.
+fn assess_by_deviations_and_unknowns<Evidence, Deviation, UnknownFact, AssessRefusal>(
+  evidence: Evidence,
+  deviations: FreeMonoid<Deviation>,
+  unknowns: FreeMonoid<UnknownFact>,
+) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal> {
+  match unknowns {
+    Empty => assess_by_deviations(evidence: evidence, deviations: deviations)
+    Cons { head: first, tail: rest } => GoalIndeterminate {
+      known_deviations: deviations,
+      unknowns: FreeSemigroup { head: first, tail: rest },
+    }
+  }
+}

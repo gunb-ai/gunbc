@@ -1,0 +1,24 @@
+module gunbc.guarantee_stall.algebra_application_owner_resolution_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// The algebra application wall is useful evidence, but cannot yet carry the owner identity
+// through the dominant declared container-alias spelling to variant_reference_inferred_node.
+// It therefore stays off the required floor while this bounded population awaits its grounding.
+data algebra_application_owner_resolution_stall: GuaranteeStall = GuaranteeStall {
+  subject: "declared container-alias spellings whose owner identity is absent at the variant-reference check boundary",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "the variant-reference boundary carries the declared container alias's resolved owner identity through to variant_reference_inferred_node"
+  },
+  population: BoundedPopulation {
+    members: Cons {
+      head: "declared container alias spellings (List<T> and equivalent parameterized aliases)",
+      tail: Empty {}
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "the variant-reference boundary carries the declared container alias's resolved owner identity through to variant_reference_inferred_node, so List<T> resolves to its target owner without a second resolution path")
+}

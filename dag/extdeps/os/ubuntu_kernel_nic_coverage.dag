@@ -1,0 +1,61 @@
+module extdeps.os.ubuntu_kernel_nic_coverage
+
+import std.types { NonEmptyStr, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "elixir.bootlin.com/linux/v6.8/source/drivers/net/ethernet/realtek/r8169_main.c"
+  }
+}
+
+data extdeps_further_authority_hwe: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "elixir.bootlin.com/linux/v6.17/source/drivers/net/ethernet/realtek/r8169_main.c"
+  }
+}
+
+// PCI VENDOR AND DEVICE IDENTITIES for Realtek Ethernet controllers.
+// These are PCI-SIG assigned identifiers, authored upstream and stable
+// across kernel versions. They are not facts about any particular unit.
+
+type PciVendorId = NonEmptyStr where brand("PciVendorId")
+type PciDeviceId = NonEmptyStr where brand("PciDeviceId")
+
+data realtek_pci_vendor: PciVendorId = "10ec" as PciVendorId
+
+// Realtek r8169 driver PCI device IDs found in Ubuntu's shipped kernels.
+// R8168 and R8125 share the same driver family; only the subset relevant
+// to the DGX Spark (8127, 8125, 8126) is declared here. Verified by
+// searching modules.alias in both initrds:
+//   6.8.0-1000-generic: 8125/8126 count >=1, 8127 count 0
+//   6.17.0-14-generic:  8125/8126 count >=1, 8127 count 1
+
+data rtl8125_pci_device_id: PciDeviceId = "8125" as PciDeviceId
+data rtl8126_pci_device_id: PciDeviceId = "8126" as PciDeviceId
+data rtl8127_pci_device_id: PciDeviceId = "8127" as PciDeviceId
+
+type UbuntuKernelFlavour
+  = Noble2404GaLinux68
+  | Noble2404HweLinux617
+
+// r8169_claims_pci_device answers whether the given Ubuntu kernel flavour
+// includes an r8169 alias for the given PCI device ID. The kernel module
+// declares coverage via modalias entries in modules.alias; this function
+// projects that coverage into the model so an admission policy can
+// distinguish "kernel supports NIC" from "kernel silently leaves NIC
+// unclaimed" before a PXE-booted image hands control to userspace.
+
+fn r8169_claims_pci_device(flavour: UbuntuKernelFlavour, device: PciDeviceId) -> Bool {
+  match flavour {
+    Noble2404GaLinux68 =>
+      device == rtl8125_pci_device_id || device == rtl8126_pci_device_id
+    Noble2404HweLinux617 =>
+      device == rtl8125_pci_device_id
+        || device == rtl8126_pci_device_id
+        || device == rtl8127_pci_device_id
+  }
+}

@@ -1,0 +1,284 @@
+module v2.test.self_host.stage0_production_target
+
+import v2.compiler.emit_module { emit_module_decl_separator }
+import v2.compiler.infer { infer, InferredTree }
+import v2.compiler.self_host.candidate_generation {
+  generate_rust_module_emission_candidate
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_specimen_resolved
+}
+import v2.compiler.self_host.stage0_production_target {
+  stage0_production_target_model
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRef }
+import v2.compiler.source_authority_read {
+  source_ref_for_observed_storage_path,
+  source_root_ingest_from_source_refs
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import std.algebra { Cons, Empty }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THE STAGE0 CRATE REQUIRES OF A MODULE EMITTED INTO IT.
+//
+// The committed mirror of a stage0 module is `pub` and carries i64, because the crate's other
+// modules call across module boundaries and the crate's ABI is i64. The Rust language model
+// alone produces neither: the .dag source spells no visibility, and the base Rust target spells
+// the language's Int as i32 on this route.
+//
+// WHAT THE SECOND CLASS CLAIMS IS THE SPELLING, NOT THE REPRESENTATION. The produced-declaration
+// type-reference route renders ^dag_binding_type_int through binding_spellings and never consults
+// rust_target_atom_realization_catalog, so what these claims establish is that the stage0 profile
+// overrides the spelling that route emits. They do NOT establish that Rust's realization of the
+// language's Int is selected as i64 -- the catalog owns that proposition and did not produce this
+// result. Stating it the stronger way would credit an authority that never ran.
+//
+// v2.compiler.self_host.stage0_production_target is the profile that selects both AT THIS
+// BOUNDARY, and these claims are what make the selections load-bearing rather than decorative.
+//
+// The negative arms are discriminating controls, ONE PER CAPABILITY CLASS, not one generic
+// malformed-output check: the visibility control observes the base target emitting an item with
+// no `pub` (which the crate's real consumer of gunbc_rust_decl_type_overlay could not resolve
+// across the module boundary), and the spelling control observes the base target emitting i32 at
+// the exact position the stage0 ABI requires i64, asking about the spellings alone. Each fails
+// for its own reason and neither can be reddened by the other class's regression, which is why
+// the whole-text equality pin is not either class's only witness: that assertion is satisfied by
+// both facts together, so on its own it could not tell a visibility regression from a spelling
+// one. They also pin that the profile did not globally relabel
+// the base target: the direct-door fixtures stay organized around an i32, visibility-free Rust
+// realization.
+//
+// THE SPECIMEN IS THE DOOR'S, DELIBERATELY, AND THE PER-CLAIM BUDGET IS WHY. Emission needs a
+// resolved module, and assembling one per claim costs multiples of the floor's per-claim ceiling
+// spent recomputing a pure function of one file's content -- the split measured by claim_batch's
+// [witness] receipt over this entry with an ingest-only / assemble-only probe pair, and argued
+// with its figures at the enrolment row rather than copied here.
+// direct_rust_door_specimen_resolved is the already-warm-enrolled nullary producer of exactly
+// that value (v2.workflow.floor_pure_producer_share), forced during strict preparation outside
+// every per-claim budget, so these claims pay infer and emit only. Adding a second producer for
+// a specimen of the same shape would have been the duplication that roster exists to end
+// (DESIGN section 2). What the door's specimen cannot carry is the READ, which is a different
+// fact and is claimed separately below over a committed file.
+// REFUSAL IS AN ARM, NOT A STRING. An earlier revision returned a sentinel for every stage that
+// stopped and let each claim compare against it, which made one claim green on total pipeline
+// failure: the visibility control asked only that the base emission DIFFER from the profile's
+// expectation, and a sentinel differs from everything. A control that passes when nothing was
+// emitted is permanently green on the failure it names, which DESIGN section 4b calls worse than
+// absent because it is cited as coverage. Every claim below now requires a PRODUCED emission
+// before it asks anything about the text, so a route that stopped reds every one of them.
+type Stage0BoundaryEmission
+  = Stage0EmissionRefused
+  | Stage0EmissionProduced { source: String }
+
+fn stage0_boundary_emitted_source_for(target: TargetModel) -> Stage0BoundaryEmission {
+  match direct_rust_door_specimen_resolved() {
+    Rejected { diagnostics: _ } => Stage0EmissionRefused
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => Stage0EmissionRefused
+        Accepted { value: inferred, diagnostics: _ } =>
+          match generate_rust_module_emission_candidate(inferred: inferred, target: target) {
+            Rejected { diagnostics: _ } => Stage0EmissionRefused
+            Accepted { value: candidate, diagnostics: _ } =>
+              Stage0EmissionProduced { source: candidate.source.carried }
+          }
+      }
+  }
+}
+
+// THE DECLARATION SEPARATOR IS PART OF THE EXPECTED TEXT because the door emits a MODULE, not a
+// bare declaration: v2.compiler.emit_produced emit_produced_module terminates every declaration
+// including the last, exactly as v2.compiler.emit_module does, and gunbc#10907 routed the door's
+// every nonempty population through that one authority. Composed from the separator authority
+// rather than transcribed, so a change to the module convention reds here rather than drifting
+// silently apart from the emitter that produces it. The declaration text stays a literal: it is
+// the fixture golden this claim exists to pin, and reading it from the profile under test would
+// stop it discriminating.
+data stage0_boundary_expected_source: String = concat("pub fn add(x: i64, y: i64) -> i64 { x + y }", emit_module_decl_separator)
+
+data stage0_boundary_visibility_keyword: String = "pub "
+
+// The type spellings at the boundary, authored here as fixture literals rather than imported from
+// the profile under test: a control that read its expected spelling from the authority it is
+// discriminating would move with that authority and stop discriminating. The base marker is the
+// whole signature rather than the bare token so that it pins all three type positions the stage0
+// ABI fixes, and it deliberately carries no visibility, which is what keeps this class's control
+// unreddenable by a visibility change.
+data stage0_boundary_base_int_signature: String = "(x: i32, y: i32) -> i32"
+
+data stage0_boundary_profile_int_spelling: String = "i64"
+
+// THE TWO EMISSIONS ARE NULLARY PRODUCERS, one per target, and both are warm-enrolled in
+// v2.workflow.floor_pure_producer_share. Three claims read two emissions -- the base target's is
+// read twice, by the two per-class controls -- and an emission is infer plus
+// emit over the shared specimen, which unshared costs each claim more than the floor's per-claim
+// ceiling. The measurement and the ceiling arithmetic are argued once, at the enrolment row in
+// v2.workflow.floor_pure_producer_share, and are deliberately not restated here: a figure copied
+// beside its argument is unreachable from the run that owns it and rots without either end being
+// touched (DESIGN section 6). Sharing moves each emission to one preparation-time evaluation and
+// leaves every claim a comparison over a value it did not compute, which is what the roster
+// exists to do (its produced_add_module row shares exactly this shape of value: a small,
+// closure-free emitted source).
+fn stage0_boundary_profile_emitted_source() -> Stage0BoundaryEmission {
+  stage0_boundary_emitted_source_for(target: stage0_production_target_model())
+}
+
+fn stage0_boundary_base_emitted_source() -> Stage0BoundaryEmission {
+  stage0_boundary_emitted_source_for(target: rust_target_model())
+}
+
+fn stage0_emission_source_equals(emission: Stage0BoundaryEmission, expected: String) -> Bool {
+  match emission {
+    Stage0EmissionRefused => false
+    Stage0EmissionProduced { source: text } => text == expected
+  }
+}
+
+fn stage0_emission_source_contains(emission: Stage0BoundaryEmission, marker: String) -> Bool {
+  match emission {
+    Stage0EmissionRefused => false
+    Stage0EmissionProduced { source: text } => (split(s: text, delimiter: marker) |> count) > 1
+  }
+}
+
+fn stage0_emission_produced(emission: Stage0BoundaryEmission) -> Bool {
+  match emission {
+    Stage0EmissionRefused => false
+    Stage0EmissionProduced { source: _ } => true
+  }
+}
+
+test fn stage0_production_target_emits_boundary_compatible_source_holds() -> Bool {
+  stage0_emission_source_equals(
+    emission: stage0_boundary_profile_emitted_source(),
+    expected: stage0_boundary_expected_source
+  )
+}
+
+// THE VISIBILITY CONTROL, ASKING ABOUT VISIBILITY. Its predecessor asked only that the base
+// emission differ from the profile's expected text, which a refusal satisfies for free. It now
+// requires a produced emission and asks the one thing this capability class is about: the base
+// target, which selects no visibility, emits no visibility keyword. The profile's side of the
+// same fact is the positive claim above, whose expected text leads with that keyword.
+test fn stage0_visibility_selection_is_load_bearing_holds() -> Bool {
+  stage0_emission_produced(emission: stage0_boundary_base_emitted_source())
+    && stage0_emission_source_contains(
+      emission: stage0_boundary_base_emitted_source(),
+      marker: stage0_boundary_visibility_keyword
+    ) == false
+}
+
+// THE SPELLING CONTROL, ASKING ABOUT THE SPELLING AND NOTHING ELSE. Its predecessor compared the
+// base emission's WHOLE TEXT against "fn add(x: i32, y: i32) -> i32 { x + y }", which is
+// satisfied by the visibility fact and the spelling fact TOGETHER: adding `pub ` to the base
+// output reddened it and reddened the visibility control at the same time, so the two controls
+// did not in fact fail for their own reasons and the spelling class had no arm that isolated it.
+// This one asks only what the base target spells at the three type positions the stage0 ABI
+// fixes, and that the stage0 spelling is absent. Both conjuncts are blind to visibility, so a
+// visibility-only mutation cannot redden it -- verified by executing exactly that mutation, and
+// its converse, one axis at a time. The whole-text pin that remains is the PROFILE's, in the
+// positive claim above, where an exact expected output is a fixture golden rather than one
+// class's only witness.
+test fn stage0_integer_spelling_selection_is_load_bearing_holds() -> Bool {
+  stage0_emission_produced(emission: stage0_boundary_base_emitted_source())
+    && stage0_emission_source_contains(
+      emission: stage0_boundary_base_emitted_source(),
+      marker: stage0_boundary_base_int_signature
+    )
+    && stage0_emission_source_contains(
+      emission: stage0_boundary_base_emitted_source(),
+      marker: stage0_boundary_profile_int_spelling
+    ) == false
+}
+
+// THE READ, CLAIMED SEPARATELY BECAUSE IT IS A SEPARATE FACT. A module reaching the production
+// composition from the repository arrives through source_ref_for_observed_storage_path and
+// source_root_ingest_from_source_refs, which verify content identity against the ref's hash
+// before minting a witness; the door's own specimen carries its module source inline
+// (direct_rust_door_dag_module_source), so no enrolled claim exercised that route over a
+// committed file. Its cost is what claim_batch's [witness] receipt over this entry reports for
+// the two read claims, and it is the cheapest pair in the file by a wide margin -- which is why
+// the read stays claimed here rather than being folded into the shared producers.
+//
+// The assertion is a CONTAINMENT rather than a whole-text golden on purpose: pinning every byte
+// of a committed file would make an edit to its explanatory prose a test failure, which is a
+// change detector rather than a check (DESIGN section 5). What must hold is that the bytes the
+// ingest carries are the bytes on disk, and the declaration line is the discriminating part of
+// them.
+data stage0_boundary_probe_path: String = "src/v2/compiler/self_host/stage0_boundary_add_probe.dag"
+
+data stage0_boundary_probe_declaration: String = "fn probe_add(x: Int, y: Int) -> Int { x + y }"
+
+// A path no file occupies. The read of it is the discriminating control below, and the string is
+// deliberately not near any real path: nothing in the tree can start answering for it.
+data stage0_boundary_absent_path: String = "src/v2/compiler/self_host/stage0_boundary_no_such_file.dag"
+
+// WHAT THE READ ANSWERED, WITH REFUSAL AS ITS OWN ARM. An earlier revision folded every failure
+// into one text sentinel and asked whether the sentinel contained a marker, which made the
+// refusal indistinguishable from a successful read of a file that merely lacked the marker -- a
+// broken read passed. Refusal and content are different answers and are carried as different
+// arms, so a claim about one cannot be satisfied by the other.
+type Stage0BoundaryRead
+  = Stage0BoundaryReadRefused
+  | Stage0BoundaryReadEmpty
+  | Stage0BoundaryReadCarried { source: String }
+
+fn stage0_boundary_read_of(path: String) -> Stage0BoundaryRead {
+  match source_root_ingest_from_source_refs(
+    refs: Cons { head: source_ref_for_observed_storage_path(path: path), tail: Empty }
+  ) {
+    Rejected { diagnostics: _ } => Stage0BoundaryReadRefused
+    Accepted { value: ingest, diagnostics: _ } =>
+      match ingest {
+        Empty => Stage0BoundaryReadEmpty
+        Cons { head: read, tail: _ } => Stage0BoundaryReadCarried { source: read.source.carried }
+      }
+  }
+}
+
+// Substring scan via the ambient split: a marker is contained when splitting on it yields more
+// than one piece (the idiom test.claim.emit_copy_qualification_witness already uses). A refused
+// or empty read contains nothing, which is the honest answer for both and is never mistaken for
+// a successful read here, because the claims below ask about the ARM as well as the content.
+fn stage0_boundary_read_contains(read: Stage0BoundaryRead, marker: String) -> Bool {
+  match read {
+    Stage0BoundaryReadRefused => false
+    Stage0BoundaryReadEmpty => false
+    Stage0BoundaryReadCarried { source: text } =>
+      (split(s: text, delimiter: marker) |> count) > 1
+  }
+}
+
+fn stage0_boundary_read_is_refused(read: Stage0BoundaryRead) -> Bool {
+  match read {
+    Stage0BoundaryReadRefused => true
+    Stage0BoundaryReadEmpty => false
+    Stage0BoundaryReadCarried { source: _ } => false
+  }
+}
+
+test fn stage0_boundary_committed_module_reads_through_the_storage_route_holds() -> Bool {
+  stage0_boundary_read_contains(
+    read: stage0_boundary_read_of(path: stage0_boundary_probe_path),
+    marker: stage0_boundary_probe_declaration
+  )
+}
+
+// THE DISCRIMINATING CONTROL, AND ITS RED IS AUTHORABLE HERE. The state it forbids -- the read
+// answering with content for a path no file occupies -- is expressible in this claim's own
+// fixture surface: the path is an ordinary String this module supplies, so pointing it at a file
+// that does exist turns the arm red immediately, and a read that ever fabricated or substituted
+// content for a missing path would fail it in production. Its predecessor asserted that the
+// carried source did not contain an arity-1 declaration nobody could author, over a fixed
+// committed file, and was additionally green on refusal -- a check permanently green by
+// construction, which DESIGN section 4b calls worse than absent because it is cited as coverage.
+test fn stage0_boundary_absent_path_refuses_rather_than_answering_holds() -> Bool {
+  stage0_boundary_read_is_refused(read: stage0_boundary_read_of(path: stage0_boundary_absent_path))
+}

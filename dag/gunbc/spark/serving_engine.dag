@@ -199,6 +199,18 @@ type MemoryEnforcerKind
 // difference belongs in the CAUSE, not in the verdict.
 type DeviceReservationAccounting = CountsReservation | ExcludesReservation | AccountingUnestablished
 
+// The kind's wire projection lives beside the kind, so a consumer that has to spell one never
+// enumerates this module's variants to do it.
+fn memory_enforcer_kind_wire(kind: MemoryEnforcerKind) -> NonEmptyStr {
+  match kind {
+    RayHostThresholdMonitor => "ray-host-threshold-monitor" as NonEmptyStr
+    RayUserSliceThresholdMonitor => "ray-user-slice-threshold-monitor" as NonEmptyStr
+    RayEventMonitor => "ray-event-monitor" as NonEmptyStr
+    HostMemGuard => "host-mem-guard" as NonEmptyStr
+    KernelOomKiller => "kernel-oom-killer" as NonEmptyStr
+  }
+}
+
 fn memory_enforcer_device_reservation_accounting(kind: MemoryEnforcerKind) -> DeviceReservationAccounting {
   match kind {
     RayHostThresholdMonitor => CountsReservation

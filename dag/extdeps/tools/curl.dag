@@ -1,6 +1,6 @@
 module extdeps.tools.curl
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
@@ -59,4 +59,45 @@ data curl_program: NonEmptyStr = "curl"
 
 fn curl_download_command(url: String, destination: String) -> ArgvCommand {
   argv_command(program: curl_program, arguments: ["-fsL", "-o", destination, url])
+}
+
+// THE FTPS UPLOAD, WHOSE FLAGS ARE DERIVED FROM THE MODELED ENDPOINT RATHER THAN CHOSEN HERE.
+//
+// THE CREDENTIAL REACHES THIS BUILDER AS A BINDING, NEVER AS A SECRET. An earlier draft of this
+// function took the login as `user_and_secret: String` and rendered it into `--user`, which would
+// have added a new instance to the class gunbc.credential_argv_exposure exists to enumerate and
+// retire: on this fleet /proc carries no hidepid and /proc/PID/cmdline is mode 0444, so an argv word
+// is readable by any job payload on a runner slot. The same defect was already found and repaired on
+// the Redfish side -- the `-u {username}:{password}` arms were DELETED from extdeps.bmc.http in
+// favour of a 0600 netrc -- so re-spelling it here would have re-opened a closed class rather than
+// discovered a new one. This builder therefore cannot express the exposed form: it has no parameter
+// that could carry a secret, and the account name lives in the netrc file beside the password rather
+// than on the command line. Who writes that file, at what mode, and who destroys it afterwards are
+// facts of the CALLER's materialization bracket, not of curl.
+//
+// -T is upload, and the trailing slash on the URL is load-bearing: curl treats a URL ending in "/"
+// as a directory and appends the local basename, which would put the file under whatever the local
+// path happened to be called. The remote name is a modeled decision, so it is spelled explicitly.
+//
+// --ssl-reqd REFUSES rather than downgrades. curl's --ssl merely PREFERS TLS and silently proceeds
+// in cleartext when the server declines, which would ship an access code over the wire in the clear
+// and still exit 0 -- the fail-open shape this repository forbids. --ftp-ssl-control is the same
+// trap one step in: it encrypts the login and leaves the DATA connection clear, so it is likewise
+// never emitted. There is no arm of this builder that produces an unencrypted transfer.
+//
+// -k is emitted ONLY for a modeled unverifiable peer, never as a default, so a device that genuinely
+// presents a verifiable certificate is still verified.
+fn curl_ftps_upload_command(
+  url: String,
+  local_path: String,
+  netrc_path: FilePath,
+  skip_verification: Bool,
+) -> ArgvCommand {
+  argv_command(
+    program: curl_program,
+    arguments: concat(
+      ["-fsS", "--ssl-reqd", "--netrc-file", netrc_path as String, "-T", local_path],
+      concat(if skip_verification { ["-k"] } else { [] }, [url]),
+    ),
+  )
 }

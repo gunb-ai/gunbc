@@ -1,0 +1,302 @@
+module gunbc.compute.test_run
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.gunbc
+import extdeps.bazel.label { render_label }
+import extdeps.bazel.target_pattern {
+  TargetPattern, TargetPatternParse, TargetPatternParsed, TargetPatternRefused, parse_target_pattern, render_target_pattern, target_pattern_refusal_text,
+}
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_bool, json_array, serialize_json }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
+}
+import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
+import gunbc.roadmap_execution_contract { GitWorkspaceCapability }
+import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry }
+import gunbc.compute.work_provider_local {
+  ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_succeeded, provide_result_ending, provide_result_identity, provide_result_document,
+}
+import gunbc.compute.test_selection {
+  SelectedFile, select_witness_files, classify_witness_module, planned_functions_joined,
+  WitnessModuleSelection, WitnessModuleSelected, WitnessModuleNotAWitness, WitnessStanding, WitnessPlanned, WitnessDeclined,
+}
+
+// THE CANONICAL TEST PROCESS, EFFECTFUL HALF: `gunbc test <pattern>` for a worker, until the CLI verb
+// admits patterns. The subject is a SNAPSHOT of the worker's worktree -- the tree it has on disk,
+// staged and written as a dangling commit that moves no ref -- so a worker that may not commit can
+// still test exactly the bytes it will hand back, and the verifier that later tests the committed
+// head lands on the same identity when the trees agree. Every selected module runs as one RunClaims
+// request through the exact work contract, so the build is shared and the run is deduplicated.
+
+type SnapshotResolution
+  = SnapshotResolved { commit: String }
+  | SnapshotRefused { step: String, detail: String }
+
+fn test_exec(instance: HostDashboardInstance, workdir: String, args: List<String>) -> gunbc.compute.work_provider_local.ComputeExec {
+  gunbc.compute.work_provider_local.compute_exec(
+    program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+    workdir: workdir,
+    args: args,
+  )
+}
+
+// Stage everything, write the tree, wrap it in a dangling commit parented on HEAD. `git add -A` is
+// the same staging the belt performs when it commits the attempt, so the snapshot IS the tree the
+// belt would commit; the commit object is reachable only by its id and is garbage the moment nothing
+// names it, which is what "moves no ref" means.
+fn snapshot_worktree(instance: HostDashboardInstance, worktree: String) -> SnapshotResolution {
+  match test_exec(instance: instance, workdir: worktree, args: ["add", "-A"]) {
+    gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git add -A", detail: join([to_string(value: exit_code), ": ", stderr], "") }
+    gunbc.compute.work_provider_local.ComputeExecOk { stdout: _, stderr: _ } =>
+      match test_exec(instance: instance, workdir: worktree, args: ["write-tree"]) {
+        gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git write-tree", detail: join([to_string(value: exit_code), ": ", stderr], "") }
+        gunbc.compute.work_provider_local.ComputeExecOk { stdout: tree, stderr: _ } =>
+          match test_exec(instance: instance, workdir: worktree, args: ["commit-tree", trim(s: tree), "-p", "HEAD", "-m", "gunbc compute snapshot of the attempt worktree"]) {
+            gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git commit-tree", detail: join([to_string(value: exit_code), ": ", stderr], "") }
+            gunbc.compute.work_provider_local.ComputeExecOk { stdout: commit, stderr: _ } =>
+              if trim(s: commit) == "" { SnapshotRefused { step: "git commit-tree", detail: "printed no commit id" } } else { SnapshotResolved { commit: trim(s: commit) } }
+          }
+      }
+  }
+}
+
+// The subject tree's file list, from git rather than a directory walk, so the selection is over the
+// exact snapshot and not over whatever the filesystem holds a moment later.
+type TreeListing
+  = TreeListed { paths: List<String> }
+  | TreeListingRefused { detail: String }
+
+fn list_tree(instance: HostDashboardInstance, worktree: String, commit: String) -> TreeListing {
+  match test_exec(instance: instance, workdir: worktree, args: ["ls-tree", "-r", "--name-only", commit]) {
+    gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => TreeListingRefused { detail: join(["git ls-tree exited ", to_string(value: exit_code), ": ", stderr], "") }
+    gunbc.compute.work_provider_local.ComputeExecOk { stdout, stderr: _ } => TreeListed { paths: filter(stdout.split(sep: "\n"), p => trim(s: p) != "") }
+  }
+}
+
+fn show_file(instance: HostDashboardInstance, worktree: String, commit: String, path: String) -> String? {
+  match test_exec(instance: instance, workdir: worktree, args: ["show", join([commit, ":", path], "")]) {
+    gunbc.compute.work_provider_local.ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => none
+    gunbc.compute.work_provider_local.ComputeExecOk { stdout, stderr: _ } => Present { value: stdout }
+  }
+}
+
+// One selected module's result in the report.
+type ModuleRun
+  = ModuleRan { label: String, module_path: String, planned: List<String>, declined: List<WitnessStanding>, ending: String, identity: String, document: String }
+  | ModuleAllDeclined { label: String, module_path: String, declined: List<WitnessStanding> }
+  | ModuleUnreadable { label: String, path: String, reason: String }
+  | ModuleNotAWitness { label: String, path: String, reason: String }
+
+fn run_selected_module(instance: HostDashboardInstance, worktree: String, commit: String, file: SelectedFile) -> ModuleRun {
+  match show_file(instance: instance, worktree: worktree, commit: commit, path: file.path) {
+    Absent => ModuleUnreadable { label: render_label(l: file.label), path: file.path, reason: "git show could not read the file from the snapshot" }
+    Present { value: content } =>
+      match classify_witness_module(file: file, content: content) {
+        WitnessModuleNotAWitness { path, label, reason } => ModuleNotAWitness { label: render_label(l: label), path: path, reason: reason }
+        WitnessModuleSelected { path: _, label, module_path, planned, declined } =>
+          if count(planned) == 0 {
+            ModuleAllDeclined { label: render_label(l: label), module_path: module_path, declined: declined }
+          } else {
+            let result = compute_provide(instance: instance, commit: commit, op: RunClaims { entry: file.path as FilePath, functions: join(planned, ",") as NonEmptyStr, hermetic: true })
+            ModuleRan {
+              label: render_label(l: label), module_path: module_path, planned: planned, declined: declined,
+              ending: provide_result_ending(r: result), identity: provide_result_identity(r: result), document: provide_result_document(r: result),
+            }
+          }
+      }
+  }
+}
+
+fn module_run_succeeded(r: ModuleRun) -> Bool {
+  match r {
+    ModuleRan { label: _, module_path: _, planned: _, declined: _, ending, identity: _, document: _ } => ending == "succeeded"
+    ModuleAllDeclined { label: _, module_path: _, declined: _ } => true
+    ModuleUnreadable { label: _, path: _, reason: _ } => false
+    ModuleNotAWitness { label: _, path: _, reason: _ } => true
+  }
+}
+
+fn standing_json(s: WitnessStanding) -> JsonValue {
+  match s {
+    WitnessPlanned { function } => json_object(members: [json_kv(key: "function", value: json_string(s: function)), json_kv(key: "planned", value: json_bool(b: true))])
+    WitnessDeclined { function, reason } => json_object(members: [json_kv(key: "function", value: json_string(s: function)), json_kv(key: "declined", value: json_string(s: reason))])
+  }
+}
+
+fn module_run_json(r: ModuleRun) -> JsonValue {
+  match r {
+    ModuleRan { label, module_path, planned, declined, ending, identity, document: _ } =>
+      json_object(members: [
+        json_kv(key: "label", value: json_string(s: label)),
+        json_kv(key: "module", value: json_string(s: module_path)),
+        json_kv(key: "planned", value: json_array(elements: map(planned, f => json_string(s: f)))),
+        json_kv(key: "declined", value: json_array(elements: map(declined, standing_json))),
+        json_kv(key: "ending", value: json_string(s: ending)),
+        json_kv(key: "identity", value: json_string(s: identity)),
+      ])
+    ModuleAllDeclined { label, module_path, declined } =>
+      json_object(members: [
+        json_kv(key: "label", value: json_string(s: label)),
+        json_kv(key: "module", value: json_string(s: module_path)),
+        json_kv(key: "planned", value: json_array(elements: [])),
+        json_kv(key: "declined", value: json_array(elements: map(declined, standing_json))),
+        json_kv(key: "ending", value: json_string(s: "all_declined")),
+      ])
+    ModuleUnreadable { label, path, reason } =>
+      json_object(members: [json_kv(key: "label", value: json_string(s: label)), json_kv(key: "path", value: json_string(s: path)), json_kv(key: "ending", value: json_string(s: "unreadable")), json_kv(key: "reason", value: json_string(s: reason))])
+    ModuleNotAWitness { label, path, reason } =>
+      json_object(members: [json_kv(key: "label", value: json_string(s: label)), json_kv(key: "path", value: json_string(s: path)), json_kv(key: "ending", value: json_string(s: "not_a_witness")), json_kv(key: "reason", value: json_string(s: reason))])
+  }
+}
+
+type TestRunReport
+  = TestRunCompleted { pattern: String, commit: String, modules: List<ModuleRun> }
+  | TestRunRefused { pattern: String, step: String, detail: String }
+
+fn test_run_report_json(r: TestRunReport) -> JsonValue {
+  match r {
+    TestRunCompleted { pattern, commit, modules } =>
+      json_object(members: [
+        json_kv(key: "pattern", value: json_string(s: pattern)),
+        json_kv(key: "snapshot_commit", value: json_string(s: commit)),
+        json_kv(key: "selected", value: json_int(n: count(modules))),
+        json_kv(key: "succeeded", value: json_int(n: count(filter(modules, m => match m { ModuleRan { label: _, module_path: _, planned: _, declined: _, ending, identity: _, document: _ } => ending == "succeeded"  _ => false })))),
+        json_kv(key: "not_succeeded", value: json_int(n: count(filter(modules, m => !module_run_succeeded(r: m))))),
+        json_kv(key: "modules", value: json_array(elements: map(modules, module_run_json))),
+      ])
+    TestRunRefused { pattern, step, detail } =>
+      json_object(members: [json_kv(key: "pattern", value: json_string(s: pattern)), json_kv(key: "refused_at", value: json_string(s: step)), json_kv(key: "detail", value: json_string(s: detail))])
+  }
+}
+
+fn test_run(instance: HostDashboardInstance, worktree: String, pattern_text: String) -> TestRunReport {
+  match parse_target_pattern(text: pattern_text) {
+    TargetPatternRefused { cause } => TestRunRefused { pattern: pattern_text, step: "pattern", detail: target_pattern_refusal_text(r: cause) }
+    TargetPatternParsed { pattern } =>
+      match snapshot_worktree(instance: instance, worktree: worktree) {
+        SnapshotRefused { step, detail } => TestRunRefused { pattern: pattern_text, step: step, detail: detail }
+        SnapshotResolved { commit } =>
+          match list_tree(instance: instance, worktree: worktree, commit: commit) {
+            TreeListingRefused { detail } => TestRunRefused { pattern: pattern_text, step: "git ls-tree", detail: detail }
+            TreeListed { paths } => {
+              let selected = select_witness_files(pattern: pattern, paths: paths)
+              TestRunCompleted {
+                pattern: render_target_pattern(pattern: pattern),
+                commit: commit,
+                modules: map(selected, f => run_selected_module(instance: instance, worktree: worktree, commit: commit, file: f)),
+              }
+            }
+          }
+      }
+  }
+}
+
+fn test_run_succeeded(r: TestRunReport) -> Bool {
+  match r {
+    TestRunCompleted { pattern: _, commit: _, modules } => count(modules) > 0 && all(modules, m => module_run_succeeded(r: m))
+    TestRunRefused { pattern: _, step: _, detail: _ } => false
+  }
+}
+
+// THE COMMAND A WORKER RUNS, spelled once here so the guidance that tells the worker and the CLI that
+// answers it cannot disagree. The pattern is the worker's to choose: the package under dag/test/claim
+// that mirrors what it changed, as a subtree pattern.
+data test_process_entry: String = "dag/gunbc/compute/test_run.dag"
+data test_process_function: String = "test_pattern_cli"
+data test_process_receipt_name: String = ".gunbc-test-receipt.json"
+data test_process_pattern_placeholder: String = "//dag/test/claim/<package>/..."
+
+fn test_process_receipt_path(worktree: String) -> String {
+  join([worktree, "/", test_process_receipt_name], "")
+}
+
+fn test_process_command(gunbc_program: String, repo_root: String, worktree: String, pattern: String) -> String {
+  join([
+    gunbc_program, " run",
+    " --source-root ", repo_root, "/dag",
+    " --source-root ", repo_root, "/src/v2",
+    " --entry ", repo_root, "/", test_process_entry,
+    " --function ", test_process_function,
+    " --arg repo_root=", repo_root,
+    " --arg worktree=", worktree,
+    " --arg pattern=", pattern,
+    " --arg receipt_path=", test_process_receipt_path(worktree: worktree),
+  ], "")
+}
+
+// COMPILING A CLOSURE IS THE SAME SHAPE: snapshot the worktree, ask the provider for CompileEntry of
+// the snapshot, hand back the outcome. The bar a worker reads from the receipt is the compiler's own:
+// zero blocking diagnostics (advisories are not the bar, and the count of them is not a score).
+data compile_process_function: String = "compile_entry_cli"
+data compile_process_receipt_name: String = ".gunbc-compile-receipt.json"
+data compile_process_entry_placeholder: String = "<entry .dag whose closure includes your change, e.g. dag/gunbc/roadmap/roadmap_serve.dag>"
+
+fn compile_process_receipt_path(worktree: String) -> String {
+  join([worktree, "/", compile_process_receipt_name], "")
+}
+
+fn compile_process_command(gunbc_program: String, repo_root: String, worktree: String, entry: String) -> String {
+  join([
+    gunbc_program, " run",
+    " --source-root ", repo_root, "/dag",
+    " --source-root ", repo_root, "/src/v2",
+    " --entry ", repo_root, "/", test_process_entry,
+    " --function ", compile_process_function,
+    " --arg repo_root=", repo_root,
+    " --arg worktree=", worktree,
+    " --arg entry=", entry,
+    " --arg receipt_path=", compile_process_receipt_path(worktree: worktree),
+  ], "")
+}
+
+fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["gunbc compile: no dashboard instance is rooted at ", r], "") }
+    DashboardInstanceResolved { instance } =>
+      if entry == "" {
+        ExitFailure { code: 2, reason: "gunbc compile: entry must name a .dag file relative to the worktree" }
+      } else {
+        match snapshot_worktree(instance: instance, worktree: worktree) {
+          SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc compile: snapshot refused at ", step, ": ", detail], "") }
+          SnapshotResolved { commit } => {
+            let result = compute_provide(instance: instance, commit: commit, op: CompileEntry { entry: entry as FilePath })
+            let receipt = Filesystem.Write(path: receipt_path, content: provide_result_document(r: result))
+            if !receipt.success {
+              ExitFailure { code: 2, reason: join(["gunbc compile: receipt could not be written to ", receipt_path, ": ", receipt.error, "; outcome was ", provide_result_document(r: result)], "") }
+            } else if provide_result_succeeded(r: result) {
+              ExitSuccess
+            } else {
+              ExitFailure { code: 1, reason: join(["gunbc compile ", provide_result_ending(r: result), ": ", provide_result_document(r: result)], "") }
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE CLI. `pattern` is a bazel target pattern over witness modules (`//dag/test/claim/roadmap/...`,
+// `//dag/test/claim/roadmap:all`, `//dag/test/claim/roadmap:roadmap_launch_admission_witness_test`).
+// The report is written to receipt_path; the exit is zero only when at least one module was selected
+// and every selected module ran green or was wholly declined by the floor's home policy. A pattern
+// that selects nothing is a failure, not a pass: the worker named a package that does not exist.
+fn test_pattern_cli(repo_root: String, worktree: String, pattern: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["gunbc test: no dashboard instance is rooted at ", r], "") }
+    DashboardInstanceResolved { instance } => {
+      let report = test_run(instance: instance, worktree: worktree, pattern_text: pattern)
+      let document = serialize_json(v: test_run_report_json(r: report))
+      let receipt = Filesystem.Write(path: receipt_path, content: document)
+      if !receipt.success {
+        ExitFailure { code: 2, reason: join(["gunbc test: receipt could not be written to ", receipt_path, ": ", receipt.error, "; report was ", document], "") }
+      } else if test_run_succeeded(r: report) {
+        ExitSuccess
+      } else {
+        ExitFailure { code: 1, reason: join(["gunbc test: ", document], "") }
+      }
+    }
+  }
+}

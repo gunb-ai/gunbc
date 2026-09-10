@@ -1490,88 +1490,304 @@ pub struct TransitionAdmission {
 /// this roster's next touch. Adjudicate that deletion by joining each row against main's tree on its
 /// own (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
 /// a trigger sentence is not evidence that the trigger fired.
-const SECRET_ACCESS_ENSURE_MOVE_LABEL: &str =
-    "gunbc#10514 access-grant widening: the Secret Manager access ensure moves to the auth layer, \
-     from gunbc.spark.secret_access_ensure to gunbc.auth.gcp_secret_access";
+/// THE gunbc#10514 SECRET-ACCESS ROWS DISSOLVED HERE (2026-09-05), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and this is
+/// it: adding the row below made the required run report `0 unadjudicated delta(s), 0 stale
+/// admission(s), 8 consumed admission(s) due for deletion on this roster-touching change` (run
+/// 33998369913, `required-witnesses-floor`), which BLOCKS -- a consumed row left standing is the
+/// same debt a stale one is, and this is the seventh time this ledger has recorded that shape.
+///
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE, which is exactly what
+/// that entry asked of whoever deleted them. On main, `gunbc.auth.gcp_secret_access` declares all
+/// four spellings -- `secret_access_ensure_for`, `read_supplied_access_token`, `SuppliedTokenReady`
+/// and `SuppliedTokenUnavailable` -- and both consumers name that module in their import:
+/// `gunbc.fleet.org_actions_converge` on one line, `gunbc.spark.secret_access_ensure` in a braced
+/// list. `gunbc.spark.secret_access_ensure` no longer declares any of them. So base and head bind
+/// each spelling identically, no run can produce those deltas, and CONSUMED is the correct reading.
+/// That join is the positive, decidable fact the entry named as separating a consumed row from an
+/// author-error row; the trigger sentence alone was not taken as evidence that the trigger fired.
+///
+/// gunbc#10602, ONE ROW, ONE SUBJECT: `repository_status_lines` un-forked. `gunbc.scm.render`
+/// declared its own `repository_status_lines` that independently re-assembled the status line
+/// order already decided by `gunbc.scm.status` -- two authorities for one document's composition
+/// (DESIGN.md §3), which the repository's own
+/// `status_document_does_not_fork_the_verb_modules_text` witness exists to catch. The render copy
+/// is DELETED and `scm_status_document` now imports the status module's declaration. The spelling
+/// is unchanged on both sides and the declarer moved, so it arrives as `TargetChanged` -- the wall
+/// working on a deliberate deletion-and-repoint, not a requalification. Blast radius 0: the row
+/// names the exact (module, declaration, spelling) triple and admits nothing else.
+///
+/// TRIGGER, WHICH IS THIS ROW'S OWN DEATH: gunbc#10602 merging. Main then carries the un-fork,
+/// base and head both bind the spelling to `gunbc.scm.status`, no run can produce this delta, and
+/// the row reports CONSUMED rather than unadjudicated -- due for deletion on this roster's next
+/// touch. Adjudicate that deletion by joining the row against main's tree on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+/// THE gunbc#10602 ROW DISSOLVED HERE (2026-09-06), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
+/// NAMED. gunbc#10602 merged as 136d1c0f716, which is an ancestor of this change's base. Adjudicated
+/// by the join the entry above asked for rather than by its sentence: on main, `gunbc.scm.render`
+/// declares no `repository_status_lines` and imports that spelling from `gunbc.scm.status` inside
+/// `scm_status_document`, so base and head bind it identically, no run can produce the delta, and
+/// the row is CONSUMED -- due on this touch, which is this change. The gunbc#10514 dissolution the
+/// entry above records happened once and is not re-recorded here: this branch had deleted the same
+/// eight rows independently, the two deletions agree, and main's entry is the one authority.
+///
+/// THE gunbc#10639 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10639 merged as 8769167dd05, which is an ancestor of this change's base.
+/// Adjudicated by the join those rows asked for rather than by their sentence: on main,
+/// `gunbc.spark.training_ready` declares `SparkServingProbeCapture` itself, so base and head bind
+/// every one of the thirty spellings to the same declaration, no run can produce the delta, and
+/// all thirty report CONSUMED -- due on this touch, which is this change.
+///
+/// THE OBSERVATION CARRIER MOVES OUT OF THE SPEC MODULE (2026-09-06, gunbc#10671). No ordinal is
+/// claimed, for the reason the entries above give. `extdeps.transceiver.sff_8636` models what
+/// SFF-8636 bytes MEAN. It had also come to declare what THIS REPOSITORY READ off a delivered
+/// cable, which DESIGN section 3 refuses in terms: "Observations produced by this repository are
+/// receipts in the observing product or workflow layer, not facts owned by the observed upstream."
+/// The observation carrier and its unread/observed distinction are rehomed to
+/// `product.cable_leg_observation`, whose subject is a leg this repository holds.
+///
+/// FOUR BINDINGS ACROSS TWO TEST MODULES resolve to the new declarer, which is `TargetChanged` and
+/// is not auto-admitted: the four fixture constructors that spell `SecondaryNotObserved`. The
+/// spelling is identical on both sides; only the declaring module differs, which is the membership
+/// motion this roster exists to adjudicate. The three membership additions the same run reported
+/// are `ExplicitlyEvaluatedZeroDelta` and the one removal is `SameDeclarationIdentityRebind`, so
+/// they are auto-admitted and are deliberately not rostered here.
+///
+/// ONE CHANGE CLASS. Nothing is requalified; every spelling is imported under the leaf it always
+/// had, and the declaration behind it moved.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10671 merges. Main then declares
+/// the carrier in `product.cable_leg_observation`, base and head bind each spelling identically,
+/// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
+/// by joining each row against main's tree on its own tuple, not by trusting this sentence.
 
+/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
+/// next roster-touching change, which is this one.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
+/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
+/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
+/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
+/// and both consumers, `test.claim.cable_leg_coding_witness` and
+/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
+/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
+/// reading rather than an author error.
+///
+/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
+/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
+/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
+///
+///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
+///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
+///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
+///   as an import from the fixture (and as uses inside `mb_scene` and
+///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
+///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
+///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
+///   the correct reading for all nine.
+///
+/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
+/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
+/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
+/// permissions standing over nothing.
+///
+/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
+/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
+/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
+/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
+///
+/// THE gunbc#10688 ROWS DISSOLVE HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. The two `call_semantics_target` re-home rows reported CONSUMED on required run
+/// 34262728404 (PR #10856), which is the roster-touching change their trigger named.
+///
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, on each row's
+/// own (module, in_declaration, spelling, target) tuple against main. On main,
+/// `src/v1/00_core.dag` opens `module v1.std.core` and declares
+/// `fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity`;
+/// `src/v1/05_emit_rust.dag` DECLARES no such function and imports the spelling, and both named
+/// declarations still spell it -- `emit_rust_expr_call` and `emit_rust_tco_non_self_call` each
+/// call `call_semantics_target(cs: cs)`. So base and head bind the spelling to the same declarer,
+/// no run can produce either `TargetChanged` delta, and CONSUMED is the correct reading rather
+/// than an author error.
+///
+/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
+/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
+/// touch. Adjudicate that deletion by joining each row against main on its own
+/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
+///
+/// SIXTH DISSOLUTION (2026-09-08). #10688 merged; both rows report consumed. This change touches
+/// the roster (base-side reconstruction of the gitignored failure-mode fold), so the deletion is
+/// owed here.
+///
+/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
+/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch.
+/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE: a required run reported
+/// both as already satisfied at the base -- consumed by its own merge.
+///
+/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
+/// `cumulative_metric_read_as_per_event`, is added as its own file under
+/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
+/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
+/// the head side that name newly resolves into the class's own module, which is
+/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
+/// the membership rule the directory IS, not by anyone rebinding an existing name.
+///
+/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
+/// one file per class precisely so that two lanes appending different classes never rewrite one
+/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
+/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
+/// is the same motion whether it was intended or accidental, and only the author can say which.
+///
+/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
+/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
+/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
+/// trusting this sentence.
+/// THE gunbc#10813 ROW DISSOLVES HERE (2026-09-08), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
+/// NAMED, AND THE DEFECT IT WAS ADMITTING IS REPAIRED IN THE SAME CHANGE. Two separate facts, and
+/// the row would go on either one alone.
+///
+/// FIRST, THE TRIGGER FIRED. gunbc#10813 is on main, so the class file
+/// `dag/gunbc/recurring_failure_mode/cumulative_metric_read_as_per_event.dag` and the roster naming
+/// it are present on BOTH sides. Adjudicated by the join the row demanded rather than by its
+/// sentence: on main that file opens
+/// `module gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event` and the roster names
+/// the spelling, so base and head resolve it into the same module, no run can produce the delta,
+/// and CONSUMED is the correct reading. Its label goes with it, leaving the roster an EMPTY
+/// enumeration.
+///
+/// SECOND, AND THIS IS WHY NO SUCCESSOR ROW REPLACES IT: the delta that row admitted was not the
+/// ledger's growth shape. It was an artifact of the BASELINE, repaired by this same change.
+/// `run_required_wave_admission` rebuilt the base index by carrying forward every head record the
+/// diff did not touch; `dag/gunbc/recurring_failure_mode/roster.dag` is gitignored and written on
+/// the read path, so it can never appear in `git diff --name-status`, and the HEAD's generated
+/// roster was therefore carried in as the BASE's. Both symptoms follow: the binding key existed on
+/// both sides so it read `base {} -> head {row}`, and the authorship discriminator compared the
+/// roster's base and head source, which were THE SAME BYTES, so an ordinary append read as not
+/// locally authored and classified `NewPoolCoincidenceResolution`. With the roster's base side
+/// DERIVED from the base tree's row membership, the roster module's source genuinely differs across
+/// the sides and an append classifies `AuthoredReferenceResolution`, which is auto-admitted.
+///
+/// THE EVIDENCE IS EXECUTED, NOT ARGUED: the required run on this change's own previous head
+/// (34271585163) added a failure-mode class with NO admission row for it and reported
+/// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
+/// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
+/// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
+/// ASSESSMENT-RENAME TRANSITION (2026-09-09, gunbc#10883). No ordinal is claimed, for the reason
+/// the entries above give. `product.cable_plant_converge` is renamed to
+/// `product.cable_plant_assessment`, and `gunbc.spark.fabric_switch_converge` to
+/// `gunbc.spark.fabric_switch_assessment`. The modules never had an actuation stage; the
+/// `converge` name advertised one, which is how the shape they replaced came to be bound to a
+/// handler that DEMANDED an apply. Renaming an inspect-only home is the last step of that cut.
+///
+/// ONLY NINE ROWS, AND THE ARITHMETIC IS THE POINT. The wave measured eighteen deltas. Nine
+/// auto-admit: the membership half of the same motion reports `SameDeclarationIdentityRebind`
+/// (the old edge, whose every supplied name still denotes the same declaration) or
+/// `ExplicitlyEvaluatedZeroDelta` (the new edge, reached by a name the module authors). The nine
+/// below are the binding half — a spelling authored on BOTH sides that now resolves to a
+/// different module. Consumers whose OWN module was renamed produce no binding delta at all,
+/// because a delta needs the module on both sides; that is why the two witness files this cut
+/// renamed are absent here and `fabric_switch_observed` is not.
+///
+/// NONE OF THESE CHANGES WHICH DECLARATION THE SPELLING DENOTES. `CablePlant`, `cable_plant`,
+/// `CableLegReading`, `LegReadingTaken` and `LegNeverRead` are the same declarations at a new
+/// module path. A binding whose MEANING had moved would refuse on its own row rather than be
+/// covered by these, which is why they are enumerated by exact identity rather than by a pattern
+/// over the renamed module pair -- a pattern would admit a genuine rebind that happened to land
+/// in the same pair.
+///
+/// TRIGGER: these rows are removed when this PR merges. At that point the base itself binds each
+/// spelling to `product.cable_plant_assessment`, every row reports consumed-at-base, and leaving
+/// them would refuse every unrelated PR -- the exact cost the first 53 rows recorded above.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenReady",
-            target: "gunbc.auth.gcp_secret_access",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_cable_plant",
+            spelling: "CablePlant",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenUnavailable",
-            target: "gunbc.auth.gcp_secret_access",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_cable_plant",
+            spelling: "cable_plant",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "read_supplied_access_token",
-            target: "gunbc.auth.gcp_secret_access",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_leg_reading",
+            spelling: "CableLegReading",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "secret_access_ensure_for",
-            target: "gunbc.auth.gcp_secret_access",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_leg_reading",
+            spelling: "LegNeverRead",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenReady",
-            target: "gunbc.auth.gcp_secret_access",
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_leg_reading",
+            spelling: "LegReadingTaken",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenUnavailable",
-            target: "gunbc.auth.gcp_secret_access",
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_never",
+            spelling: "LegNeverRead",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_converge_with_supplied_token",
-            spelling: "read_supplied_access_token",
-            target: "gunbc.auth.gcp_secret_access",
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_never",
+            spelling: "LegReadingTaken",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: SECRET_ACCESS_ENSURE_MOVE_LABEL,
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_ensure",
-            spelling: "secret_access_ensure_for",
-            target: "gunbc.auth.gcp_secret_access",
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_taken",
+            spelling: "LegNeverRead",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_taken",
+            spelling: "LegReadingTaken",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2111,9 +2327,9 @@ fn admission_consumed_at_base(
 /// symbol: DESIGN's state-space conflation.
 ///
 /// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
-/// consults authorship (`membership_supported`), which admitted the membership edge of the very
-/// change this arm refused. So `authored_here` is passed in, not re-derived: see
-/// `locally_authored_claim_added`.
+/// consults authorship (`membership_declared`, over `membership_bound_through`), which admitted
+/// the membership edge of the very change this arm refused. So `authored_here` is passed in, not
+/// re-derived: see `locally_authored_claim_added`.
 fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
@@ -2547,8 +2763,17 @@ pub fn run_required_wave_admission(
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
+    // A DERIVED ARTIFACT IS NEVER IN THE DIFF, SO IT MUST NOT BE INHERITED FROM THE HEAD.
+    // The baseline is reconstructed by carrying every head record the diff did not touch and
+    // re-reading the rest from the base tree. `roster.dag` is gitignored and written on the read
+    // path, so the diff can never name it — and carrying it made the HEAD's roster stand as the
+    // BASE's. Its base side is not read from git either (the tree does not carry it); it is
+    // DERIVED from the base tree's row membership, below, by the same renderer the writer uses.
     let mut base_index = DeclarationIndex::default();
     for record in index_records(head_index) {
+        if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
+            continue;
+        }
         if !head_parsed.iter().any(|c| *c == &record.rel_path) {
             crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
         }
@@ -2582,6 +2807,32 @@ pub fn run_required_wave_admission(
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         };
         match base_records(rel, &content) {
+            Ok(records) => {
+                for record in records {
+                    crate::cli_run::declaration_index::index_insert(&mut base_index, record);
+                }
+            }
+            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+        }
+    }
+
+    // THE DERIVED ROSTER'S BASE SIDE, from the base tree's row membership. `base_paths` is the
+    // authoritative listing already in hand, so this asks the same question the writer asks of a
+    // directory. A base tree carrying no row files under that root has no roster module at all,
+    // and `roster_from_path_listing` answers `None` rather than fabricating a present empty list.
+    let base_path_refs: Vec<&str> = base_paths.iter().map(|p| p.as_str()).collect();
+    for record in index_records(head_index) {
+        let Some(root) = crate::cli_run::derived_row_roster::roster_root_prefix(&record.rel_path)
+        else {
+            continue;
+        };
+        let Some(content) = crate::cli_run::derived_row_roster::roster_from_path_listing(
+            base_path_refs.iter().copied(),
+            root,
+        ) else {
+            continue;
+        };
+        match base_records(&record.rel_path, &content) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);

@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.repair_job_red_is_attributed_to_the_content_it_repaired
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data repair_job_red_is_attributed_to_the_content_it_repaired: RecurringFailureMode = RecurringFailureMode {
+  identity: "repair_job_red_is_attributed_to_the_content_it_repaired" as NonEmptyStr,
+
+  receipts: [
+    "**a repair job reports failure for reasons that are not about the thing it repaired, and every reader attributes it to the change** (INVALID STATE: a CI job whose purpose is to REPAIR a branch -- regenerate a projection, apply a fix, push the result -- exits non-zero for a reason belonging to the repair PROTOCOL rather than to the content under review, and the only channel most readers have is the job's red square beside the pull request. The red is true about the job and false about the change, and nothing in the rendering distinguishes the two. ",
+
+    "HARM: misattribution, priced in diagnosis cycles. A red that names the wrong cause sends its author to look at their own diff, and it is indistinguishable at the grain people read -- a job name and a conclusion -- from a genuine drift that the author really did cause. Worse for a bot-authored repair: the author sees a failure on a branch they just pushed to and reasonably concludes they broke it. The cost is paid per reader per occurrence and is invisible in the log, because the log is fine. ",
+
+    "TWO ARMS OBSERVED, AND THEY ARE NOT THE SAME MECHANISM. The distinction is recorded because the second was mistaken for the first once, by the author of this row, and the second is the more interesting half. ",
+
+    "ARM ONE, THE LOST RACE (2026-09-06, run 34026632467): heal-generated-artifacts regenerated correctly and its push was rejected non-fast-forward because the human author had pushed to the same branch while the job was building. The repair was right; the branch had moved. This arm is a genuine race and it produces a red that is about scheduling. ",
+
+    "ARM TWO, THE DESIGNED SUPERSEDE (2026-09-06, run 34027083483): the same job SUCCEEDED -- HealProduced, prior_head fc576da5a0f, healed_head f2d00e6db4c, artifact pushed -- and then exited 1 with `SupersededByHealedHead ... revalidation-required`. That is not a race and not a defect: the protocol deliberately refuses to report green for a head that no longer exists, and requires the revalidation run it just dispatched. Every step worked exactly as designed and the pull request shows a failing job. This arm cannot be fixed by retrying, because there is nothing wrong. ",
+
+    "WHAT THE POPULATION IS, STATED BECAUSE THE FIRST DRAFT OF THIS ROW OVERSTATED IT. One race and one designed supersede, both on one branch on one afternoon. The author reported them to a reviewer as 'lost the race twice' before reading the second log, which is the same co-occurrence-implies-common-cause inference this ledger records elsewhere. Recurrence for arm one is NOT established by these receipts; arm two recurs by construction, once per heal that lands. ",
+
+    "WHY IT IS NOT `a_written_row_is_not_a_firing_mechanism` OR ITS NEIGHBOURS, checked at identity grain. The mechanism here fires correctly and reports correctly about ITSELF; what fails is the JOIN between a job-level conclusion and the question a reader is asking, which is about the change. It is also not the absorbing fallback: nothing widens and nothing is silently accepted -- the failure is loud and typed (`SupersededByHealedHead` names its cause, its prior head and its healed head). The defect is that a true statement about the repair is consumed as a statement about the subject. ",
+
+    "RUNG FOUND AT: mitigatable. The harm is contained by the fact that both arms leave a legible log line naming the real cause, so a reader who opens the job learns the truth; what is missing is that the summary grain carries the distinction at all. ",
+
+    "CEILING: mechanically preventable, and deliberately not higher. Whether a given exit belongs to the repair protocol or to the subject IS decidable -- the job knows which branch it took -- so a job can report the two as different outcomes. It cannot reach structural guarantee, because the reader's inference is not a modeled artifact: no compiler refuses a person who misreads a red square. The wall available is at the reporting boundary, not in the reader. ",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a repair job's protocol outcomes are reported in a channel DISTINCT from its subject verdict -- so 'I could not land my repair' and 'the content I checked is wrong' are different states at the grain the pull request renders, not two spellings of one red. Sufficient for BOTH arms: a retry-with-rebase would end arm one and leave arm two reporting red on every successful heal, so a fix that only handles the race does not retire this row. The cheaper half is available now and already ends the misattribution: refuse with a typed cause that says which it is. ",
+
+    "RECOGNITION RULE: when a job that MODIFIES a branch reports red, ask whether its own log says the modification succeeded. If it does, the red is about the protocol and the change is unjudged -- and if the job's name does not say so, every reader will spend a cycle learning it.)",
+  ],
+
+  evidence: [],
+}

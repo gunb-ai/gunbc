@@ -68,8 +68,8 @@ import gunbc.roadmap_model { RoadmapNodeId }
 // WHAT IT DOES NOT REMOVE, stated so this row is not read as more than it is. Readiness grounds in
 // five ordered stages (probe, parse, identity, revision, surface) and this makes only the FIRST
 // structural. The other four remain ordering-by-discipline inside
-// gunbc.live_deploy.readiness ground_service_ready_from_healthz_with_bundle; see that module's
-// readiness_check_order_note, which now names the four that remain rather than all five.
+// gunbc.live_deploy.readiness ground_service_ready_from_healthz_with_bundle; the annotation on
+// that module's ground_service_ready_from_healthz names the four that remain rather than all five.
 type HealthzEffectiveRead
   = HealthzBodyRead { body: String }
   | HealthzProbeRefused { probe_error: String }

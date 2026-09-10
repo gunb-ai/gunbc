@@ -78,7 +78,7 @@ import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 // IN THE ADMITTED SET THAT RUNS AN ARBITRARY COMMAND AS ANOTHER USER. What is granted is `install`
 // and `systemctl`, and a systemd oneshot unit carrying `User=` is what those two compose into. That
 // is not an analogy: gunbc-tree-sync.service is the same construction, installed for the same reason
-// (emit_deploy_principal_note: "the owner writes its own tree"), and it is the existing proof that
+// (gunbc.live_deploy.emit install_d_owned_command's annotation: "the owner writes its own tree"), and it is the existing proof that
 // the route works and that the service user can READ the runner's checkout.
 //
 // SO THE CHOICE WAS MADE BY THE ROSTER. Any other placement -- a helper binary, a sudo widening, an

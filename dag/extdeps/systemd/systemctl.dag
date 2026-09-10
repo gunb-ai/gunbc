@@ -1,6 +1,7 @@
 module extdeps.systemd.systemctl
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.algebra { trim }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -45,6 +46,53 @@ fn systemctl_reboot_command() -> NonEmptyStr {
 // because a privilege grant needs the absolute and bare renderings to be derived from one authority;
 // converging the remaining sites is a separate, byte-neutral cleanup and is not claimed here.
 
+// THE VERSION IS READ, NOT ASSUMED, because systemd's own property vocabulary is version-gated:
+// MemoryPeak arrives in v254, so whether a host can report a scope's peak memory is a fact about
+// the systemd it runs rather than about systemd. A consumer that needs that property must observe
+// the version instead of inferring it from the distribution.
+fn systemctl_version_command() -> ArgvCommand {
+  argv_command(program: systemctl_binary_path(), arguments: ["--version"])
+}
+
+// THE VERSION THRESHOLD IS THE CITED UPSTREAM FACT, MODELED RATHER THAN LEFT IN PROSE. It sat in the
+// comment above while the consumer that needed it reported `present` for any non-empty version line,
+// which is the shape a fact-in-prose invites: nothing can read it, so nothing applies it.
+data systemd_memory_peak_minimum_version: Int = 254
+
+// systemctl --version opens "systemd <MAJOR>" -- e.g. "systemd 255 (255.4-1ubuntu8)". The major is
+// the second whitespace-separated token of the FIRST line, and it is PARSED rather than pattern-
+// matched, so a line this does not understand answers Absent instead of a fabricated number.
+fn systemd_major_version(version_line: String) -> Int? {
+  match split(trim(s: version_line), " ") {
+    Cons { head: _, tail: rest } =>
+      match rest {
+        Cons { head: major, tail: _ } => parse_int(s: trim(s: major))
+        Empty {} => none
+      }
+    Empty {} => none
+  }
+}
+
+// THREE-VALUED ON PURPOSE, and the middle value is the whole point: "the host runs a systemd that
+// cannot report MemoryPeak" and "we could not determine which systemd it runs" are different facts,
+// and only the first is a statement about the host.
+type SystemdMemoryPeakSupport
+  = SystemdReportsMemoryPeak { version: Int }
+  | SystemdTooOldForMemoryPeak { version: Int }
+  | SystemdVersionUnreadable
+
+fn systemd_memory_peak_support(version_line: String) -> SystemdMemoryPeakSupport {
+  match systemd_major_version(version_line: version_line) {
+    Present { value: v } =>
+      if v >= systemd_memory_peak_minimum_version {
+        SystemdReportsMemoryPeak { version: v }
+      } else {
+        SystemdTooOldForMemoryPeak { version: v }
+      }
+    Absent => SystemdVersionUnreadable
+  }
+}
+
 fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }
@@ -65,6 +113,15 @@ fn systemctl_daemon_reload_argv() -> List<String> {
 data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
 
 data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
+
+// RELOAD IS A THIRD TRANSITION, NOT A GENTLER RESTART, and the distinction is the reason it is
+// here rather than spelled as `restart` at a call site. reload runs the unit's own ExecReload and
+// the process NEVER dies, so a daemon holding state across the call keeps it -- systemd-networkd
+// re-reads .network and .netdev files without tearing down a single configured link. `restart`
+// would drop every link the daemon manages, including the host's own uplink, which on a remote
+// machine is indistinguishable from the host going away. A unit with no ExecReload REFUSES the
+// verb rather than silently restarting, so this cannot degrade into that.
+data systemctl_reload_verb: NonEmptyStr = "reload" as NonEmptyStr
 
 fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_enable_verb as String, unit as String]

@@ -60,8 +60,9 @@ fn witness_stale_roadmap_artifact(bundle: RoadmapSiteSurfaceBundle) -> RoadmapSi
 // revision all pass; the surface identity the process reports is the bundle's own, so the
 // ProcessSurfaceMismatch arm passes too; and the projected artifact map is the only thing that differs.
 // That makes this the discriminating control for the LAST arm specifically — a process reporting the
-// expected identity while serving a stale artifact map — which is the case readiness.dag's
-// readiness_compares_the_candidate_note names as needing its own control.
+// expected identity while serving a stale artifact map — which is the case the annotation on
+// gunbc.live_deploy.readiness ground_service_ready_from_healthz_with_bundle names as needing its
+// own control.
 fn witness_stale_healthz_body_for_bundle(
   bundle: RoadmapSiteSurfaceBundle,
   release_revision: CommitSha,

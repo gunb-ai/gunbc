@@ -22,15 +22,37 @@ import product.network_topology {
   EndpointAsset,
   EndpointSubjectUnregistered,
   Lan,
+  Loopback,
+  Internet,
+  WslNat,
+  WslBridged,
   DockerBridge,
   TailscaleOverlay,
 }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 
 data operator_host_srv1: HostIdentity = "srv1"
 data operator_host_srv2: HostIdentity = "srv2"
 data operator_host_srv3: HostIdentity = "srv3"
 data operator_host_srv4: HostIdentity = "srv4"
+
+// MTCOLLINS-RESET-0 (2026-09-07). The operator's Foxconn Ampere Mt. Collins unit, named here for the
+// reason every other identity is named here: this module is the single authority for a host's fleet
+// identity, and a second home for one would be the §3 fork the srv5/srv6 note above records being
+// cleaned up once already.
+//
+// NAMING IS NOT ENROLLMENT, on this module's own standing rule, and the distinction does real work
+// in this case. This unit is NOT an executor fleet host: it commits no runner slots, and
+// gunbc.fleet_runner_connectivity fleet_hosts() — whose consumers fold it as the eligible host set
+// (gunbc.compile_permit_scope) and to gather committed slot identities (gunbc.fabric.fabric_cell_observe)
+// — deliberately does not gain a member here. Adding it there would not extend a roster; it would
+// change the denominator of those folds and give one name two contracts.
+//
+// WHAT IT IS INSTEAD is a reset subject, and that membership is DERIVED rather than declared:
+// gunbc.host_reset_subject_roster admits a host iff a landed BMC access observation and a capability
+// row admit power control through the same fold the actuation arm already performs before it writes.
+// So this row names the unit and licenses nothing.
+data operator_host_mtcollins1: HostIdentity = "mtcollins1"
 
 // SPARK-LANE-A (2026-08-06). srv5/srv6 are the operator's HostIdentity slots for the two ordered NVIDIA DGX Spark units (gunbc.spark.dgx_procurement). They live here because HostIdentity naming is this module's single authority — SPARK-0 minted `srv5_reserved`/`srv6_reserved` privately inside the procurement module only because this file was mid-refactor and out of scope, which was a §3 fork of one concept (a host's fleet identity) across two homes; those private rows are deleted and the procurement module imports these. NAMING AN IDENTITY IS NOT ENROLLMENT, and that distinction is carried structurally rather than by this prose: enrollment is membership in `fleet_intent_network.endpoints` (and in gunbc.fleet_intent's ComputeHost list), and srv5/srv6 appear in neither — HALF-SUPERSEDED 2026-09-02, see the DCH-0 clause at the end of this note: the `endpoints` half is now performed and the ComputeHost half is not. Updated 2026-08-07 for the arrived state: both units are now live on the LAN and the operator has authored two static reservations for them (spark-a3ee 192.168.1.222 and spark-3bd5 192.168.1.223, both MACs ARP-confirmed — SUPERSEDED, see the SPARK-WIFI-0 clause at the end of this note), so the missing fact is no longer the addresses. CORRECTED 2026-08-23: THE SLOT ASSIGNMENT IS ALSO NO LONGER MISSING, AND THIS NOTE WENT ON ASSERTING THAT IT WAS. It read that the operator "supplied the router table but never stated the assignment", so authoring an address here would be a 50/50 guess and thus the fabricated-plausible-output failure DESIGN §5 forbids. The decision exists and is one import away: gunbc.spark.dgx_procurement `dgx_spark_router_binding_operator_allocation` records srv5 taking spark-a3ee and srv6 taking spark-3bd5, decided 2026-08-07 under an explicit operator delegation, on an ascending-address-order basis kept precisely so the tie-break is attributable rather than looking like a measurement; `srv5_router_binding` and `srv6_router_binding` are both SlotAssigned carrying it. The two notes are the same date — the stated blocker was resolved the day it was written. THE DOCTRINE WAS INVOKED AGAINST THE WRONG TARGET, which is why this is a correction and not a refresh: §5 forbids fabricating an OBSERVATION, and an attributable ALLOCATION with a decider, a date and a basis is not one. This is the stale-citation class in its expensive form — a rotted REASON rather than a rotted line number — and it propagated: a lane read it, believed Spark work was blocked on an operator fact, and reported that upward before anyone opened the procurement carrier. WHAT WAS STILL TRUE UNTIL DCH-0, and was why no endpoint row was added here (SUPERSEDED — the clause is preserved as written because the DCH-0 clause below is a rebuttal of it rather than a refresh): srv5/srv6 remain absent from `endpoints` and from gunbc.fleet_intent's ComputeHost list, because in this module that membership IS enrollment — authoring the rows would enroll them, not merely describe them — and there is nothing to enroll into while the units are unplugged and the converge timer is retired. A PROJECTED ENDPOINT ALSO CANNOT LIVE HERE, and that is structural rather than a preference: gunbc.spark.dgx_procurement imports THIS module for operator_host_srv5/srv6, so the reverse import is refused by the import graph's one law — measured, not inferred, by adding it and compiling: `circular dependency detected: gunbc.fleet_intent_network -> gunbc.spark.dgx_procurement`. Anyone who later wants the endpoints projected from the binding starts from that constraint. Until enrollment genuinely happens, the address authority stays single because there is only ever one — the reservation rows in the procurement module. SPARK-WIFI-0 (2026-08-27): TWO THINGS IN THIS NOTE WENT STALE AT ONCE, and both are corrected in the procurement module rather than here, because that is where the address authority lives. First, the addresses: the operator moved both units onto the LAN's wireless SSID, unplugged both ethernet cables, and authored fresh CR1000A reservations keyed to the RADIO MACs — spark-a3ee is now 192.168.1.226 (F0:68:E3:B3:1A:40) and spark-3bd5 is now 192.168.1.225 (F0:68:E3:31:AB:E6). A DHCP reservation binds a MAC, and a radio has its own, so the ethernet-keyed rows could not follow the units across the medium change. Second, and more consequentially for anyone reading this note for a reason: THE UNITS ARE NO LONGER UNPLUGGED. The clause above gives "the units are unplugged and the converge timer is retired" as the standing reason there is nothing to enroll into, and the first half of that is now false — both boxes are live, reachable, and answering SSH on their enrolled host keys, which were re-scanned at the new addresses and matched exactly. Enrollment is still NOT performed here, and that is deliberate rather than leftover: membership in `endpoints` IS enrollment in this module, so authoring the rows is the act itself and belongs to the roadmap node that owns it, not to an address correction. What changed is the REASON — from "there is nothing to enroll" to "enrolling is a decision nobody has taken yet" — and that distinction is exactly the rotted-reason class this note already documents itself falling into once. DCH-0 (2026-09-02): THE ENDPOINTS HALF OF ENROLLMENT IS NOW PERFORMED — `srv5_host_lan_endpoint` and `srv6_host_lan_endpoint` are authored below and are members of `endpoints`, which retires the "enrolling is a decision nobody has taken yet" reason for this half and only this half. The decision was taken by the DCH-0 roadmap node (docs/plans/dedicated-coding-harness-plan.md), whose reasoning is that list membership was measured to have ZERO production consumers — 57 non-test modules import this one and none reads `endpoints` or `fleet_intent_network_topology()`; production reads individual rows BY NAME — so the load-bearing act is authoring rows the named-import consumers can reach, and the list is this authority's completeness statement. THE ComputeHost HALF IS DELIBERATELY NOT PERFORMED and is a decision rather than a row (DCH-0c): gunbc.fleet_intent's `fleet_intent_known_hosts` has three production consumers, it mints two RunnerHostSudoersArtifact generated artifacts, and gunbc.runner.runner_host_deploy `admit_runner_host` is a fail-closed enrollment wall returning RunnerHostUnenrolled that today protects these two machines — so enrolling there REMOVES a refusal and needs the host facts the conservation wall consumes. Every sentence in this note about the ComputeHost list therefore still stands unchanged.
 // SPARK-PAIR-1 (2026-09-02). srv7/srv8 are the operator's HostIdentity slots for the SECOND DGX
@@ -56,6 +78,22 @@ data operator_host_srv8: HostIdentity = "srv8"
 
 data operator_host_srv5: HostIdentity = "srv5"
 data operator_host_srv6: HostIdentity = "srv6"
+
+// SPARK-BATCH-3 (2026-09-05). srv9/srv10/srv11 are the identity slots for the three DGX Spark units
+// the router table showed beside the two named pairs -- spark-0c75 at 192.168.1.236, spark-3336 at
+// .237, spark-b66c at .238 -- assigned in ascending address order, the same tie-break the first pair
+// recorded. Which two of them are cross-cabled and which stands alone is NOT asserted here: the
+// operator believes 0c75 and 3336 are a pair, and that belief becomes a fabric observation, not a
+// row. All five newer units are enrolled below at once (endpoints, router bindings, cell roles),
+// closing the naming-is-not-enrollment gap the srv7/srv8 note above left open.
+data operator_host_srv9: HostIdentity = "srv9"
+data operator_host_srv10: HostIdentity = "srv10"
+data operator_host_srv11: HostIdentity = "srv11"
+
+// SPARK-BATCH-4 (2026-09-05). An eighth unit, spark-2196 at 192.168.1.239, appeared in the router
+// lease table the day the fabric switch was cabled and landed on switch lane qsfp56-dd-2-3. srv12
+// is its identity slot, assigned by the same ascending-address rule.
+data operator_host_srv12: HostIdentity = "srv12"
 
 // 🟡 dissolve-on: the NetworkEndpoint.address / NetworkSegment.cidr / gateway literals in this file
 // are still bare `"192.168.1.x"` / CIDR strings even though this same lane grounded the address
@@ -231,6 +269,54 @@ data srv6_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+data srv7_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv7-host-lan",
+  subject: EndpointHost { host: operator_host_srv7 },
+  address: "192.168.1.232",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv8_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv8-host-lan",
+  subject: EndpointHost { host: operator_host_srv8 },
+  address: "192.168.1.233",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv9_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv9-host-lan",
+  subject: EndpointHost { host: operator_host_srv9 },
+  address: "192.168.1.236",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv10_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv10-host-lan",
+  subject: EndpointHost { host: operator_host_srv10 },
+  address: "192.168.1.237",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv11_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv11-host-lan",
+  subject: EndpointHost { host: operator_host_srv11 },
+  address: "192.168.1.238",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv12_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv12-host-lan",
+  subject: EndpointHost { host: operator_host_srv12 },
+  address: "192.168.1.239",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
 data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv1-tailscale",
   subject: EndpointHost { host: operator_host_srv1 },
@@ -313,6 +399,12 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv4_host_lan_endpoint,
     srv5_host_lan_endpoint,
     srv6_host_lan_endpoint,
+    srv7_host_lan_endpoint,
+    srv8_host_lan_endpoint,
+    srv9_host_lan_endpoint,
+    srv10_host_lan_endpoint,
+    srv11_host_lan_endpoint,
+    srv12_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
     srv3_bmc_endpoint,
@@ -326,4 +418,44 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
 
 fn fleet_intent_network_topology() -> NetworkTopology {
   fleet_intent_network
+}
+
+// A HOST'S LAN ADDRESS, READ FROM THE TOPOLOGY RATHER THAN NAMED BY A CONSUMER. The first consumer is
+// the harness replica roster (gunbc.harness.harness_wire), which used to carry a Spark address as a
+// bare literal and went stale when the pair heads moved; now it names hosts and asks here. Absent
+// when the host has no HostOperatingSystem endpoint on the LAN -- a typed hole the consumer refuses
+// on, never a fabricated address. This is a LAN answer, not a fabric one: which path a caller should
+// take to reach a host is the fabric's question (see the harness roster's annotation).
+fn host_lan_address(host: HostIdentity) -> NonEmptyStr? {
+  fold(fleet_intent_network.endpoints, init: none, f: (acc, e) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match e.subject {
+          EndpointHost { host: h } =>
+            if host_identity_eq(a: h, b: host) && endpoint_is_host_lan(e: e) { Present { value: e.address } } else { none }
+          EndpointAsset { asset: _ } => none
+          EndpointSubjectUnregistered => none
+        }
+    })
+}
+
+fn endpoint_is_host_lan(e: NetworkEndpoint) -> Bool {
+  (match e.role {
+    HostOperatingSystem => true
+    BmcOutOfBand => false
+    ContainerBridgeDefault => false
+    ContainerBridgeSecondary => false
+    TailscaleEndpoint => false
+    LanGateway => false
+    FabricationAppliance => false
+  }) && (match e.locality {
+    Lan => true
+    Loopback => false
+    Internet => false
+    WslNat => false
+    WslBridged => false
+    DockerBridge => false
+    TailscaleOverlay => false
+  })
 }

@@ -80,7 +80,7 @@ use crate::v1_std_core::{
     make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
     module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
     CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    LeafOwner, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -88,6 +88,7 @@ mod active_workset;
 mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
+pub mod derived_row_roster;
 mod required_floor_runner;
 pub mod rostered_row_join;
 mod serve_budget_refusal;
@@ -332,6 +333,12 @@ fn collect_dag_files_result(
     dir: &std::path::Path,
     files: &mut Vec<std::path::PathBuf>,
 ) -> Result<(), String> {
+    derived_row_roster::ensure_if_row_dir(dir).map_err(|e| {
+        format!(
+            "failed to derive recurring_failure_mode roster in {:?}: {}",
+            dir, e
+        )
+    })?;
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
         .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
@@ -3056,6 +3063,29 @@ pub struct MultiModuleFixtureSource {
     pub content: String,
 }
 
+/// Per-function **resolved-registry** projection for the Rust emit target: source identity plus
+/// the ordered parameter name list taken from `ItemInfo` with `emit_ident` /
+/// `service_var_name` transforms. See `tools.multi_module_compile_fixture`
+/// `ResolvedRustFnSignature`. Not a read of emitted file bytes — the type name admits the Rust
+/// target, not emit-path observation.
+///
+/// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types.
+///
+/// **Registry mirror, not emit join (below ceiling — order and membership):** DESIGN §3b middle
+/// value — deliberate divergence with stated reason (see `tools.multi_module_compile_fixture`
+/// `ResolvedRustFnSignature`). Nothing refuses if `emit_func_params` / `emit_func_def` and this
+/// projection disagree (resource arm already reads `ItemInfo.resource_names` while emit folds
+/// `uses` via `resource_use_name_at`). **Next-rung trigger:** derive from the same source
+/// `emit_func_params` reads (or from its emit result). **Why unbuilt:** emit_rust seed
+/// regeneration would couple this instrument PR to #10688's live surface. DESIGN §5: an in-diff
+/// approval claim does not authorize the debt; the technical reason does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedRustFnSignature {
+    pub owner_module: String,
+    pub declaration_name: String,
+    pub ordered_parameter_names: Vec<String>,
+}
+
 /// Outcome of [`compile_dag_multi_module_fixture`]. THE THREE ARMS HAVE THREE DIFFERENT OWNERS:
 /// `InstrumentRefused` is the harness's own fault (malformed manifest, entry naming no supplied
 /// module, panic), `CompileRefused` is the SUBJECT's fault and carries the compiler's judgment,
@@ -3081,6 +3111,7 @@ pub enum MultiModuleCompileFixtureOutcome {
     CompileCompleted {
         module_count: i64,
         emitted_files: Vec<String>,
+        resolved_rust_functions: Vec<ResolvedRustFnSignature>,
         diagnostics: Vec<CompileDiagnosticCensusRow>,
         source_digest: String,
         compiler_digest: String,
@@ -4856,6 +4887,10 @@ pub enum UnlistedImportBindingSource {
     ListedImport,
     PoolCoincidence,
     DefinerResolvable,
+    /// Two or more modules declare this bare leaf, so no single definer can be named.
+    /// It is NOT a binding source that was determined; it is the state of not being determinable,
+    /// and it is a variant rather than a `None` definer so a consumer cannot read it as "unresolved".
+    AmbiguousLeaf,
 }
 
 impl UnlistedImportBindingSource {
@@ -4864,6 +4899,7 @@ impl UnlistedImportBindingSource {
             Self::ListedImport => "listed-import",
             Self::PoolCoincidence => "pool-coincidence",
             Self::DefinerResolvable => "definer-resolvable",
+            Self::AmbiguousLeaf => "ambiguous-leaf",
         }
     }
 }
@@ -4886,17 +4922,70 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
         .collect()
 }
 
-fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+/// WHICH MODULE DEFINES A NAME, OR THE FACT THAT THE QUESTION HAS NO SINGLE ANSWER.
+///
+/// This used to answer a bare leaf with `.values().find(...)` -- the first matching row, silently,
+/// for exactly the question the `.dag` side refuses (`lookup_item_by_leaf` -> `ItemLeafAmbiguous`).
+/// An annotation saying "it is a guess either way" made the guess visible to a READER and not to a
+/// CONSUMER, which is the distinction DESIGN section 5 turns on.
+///
+/// IT DOES NOT SCAN. The first repair collected the distinct owning modules by walking
+/// `item_registry.values()`, which answered correctly and re-derived, per call, an index this
+/// compiler already builds: `leaf_owner_modules_from_registry` (v1.compiler.infer_items), carried
+/// on `ResolvedGraph.emit_graph_info.item_leaf_owner_modules`. That is DESIGN section 2
+/// re-invention -- net concepts must not grow by re-invention -- and a section 6 cost-shape defect
+/// besides, since `classify_unlisted_import_binding_source` and its callers put roughly four full
+/// registry passes behind every census row and the census is thousands of rows. Both are fixed by
+/// asking the modelled index, which is one map lookup and, being the same authority the emitted
+/// path reads, cannot disagree with it.
+///
+/// The index's value is the `LeafOwner` coproduct, so ambiguity arrives as an ARM this match has to
+/// write rather than as a sentinel this reader had to remember to test for -- the shape review 61778
+/// found here, and the same one `__DUPLICATE_ITEM_IDENTITY__` was retired for.
+enum DefinerLookup {
+    Definer(String),
+    /// Several modules declare the leaf. The symbol RESOLVES; its definer is not nameable.
+    AmbiguousLeaf,
+    Unresolved,
+}
+
+fn definer_lookup_for_name(graph: &ResolvedGraph, name: &str) -> DefinerLookup {
     if let Some(info) = graph.item_registry.get(name) {
-        return Some(info.module_name.clone());
+        return DefinerLookup::Definer(info.module_name.clone());
     }
-    if name.contains('.') {
-        let base = name.rsplit('.').next().unwrap_or(name);
-        if let Some(info) = graph.item_registry.get(base) {
-            return Some(info.module_name.clone());
-        }
+    // THE LEAF INDEX IS KEYED ON THE BARE LEAF, so a qualified spelling must be stripped before it
+    // is asked. The registry read above answers a qualified name only when the qualifier is exactly
+    // the owner module path, because its key is `owner.decl` -- so a reference qualified any other
+    // way (an alias, a re-export path, a partial containment prefix) reaches the index, and asking
+    // the index under the full spelling misses every time. Querying only the full spelling widened
+    // the unresolved bucket instead of refusing, and a census that reports a resolvable symbol as
+    // unresolved is the conflation this function's own name exists to keep apart.
+    let leaf = name.rsplit('.').next().unwrap_or(name);
+    match graph.emit_graph_info.item_leaf_owner_modules.get(leaf) {
+        None => DefinerLookup::Unresolved,
+        Some(owner) => match &**owner {
+            LeafOwner::LeafAmbiguous => DefinerLookup::AmbiguousLeaf,
+            LeafOwner::SingleOwner { module, .. } => DefinerLookup::Definer(module.clone()),
+        },
     }
-    None
+}
+
+fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
+    match definer_lookup_for_name(graph, name) {
+        DefinerLookup::Definer(m) => Some(m),
+        DefinerLookup::AmbiguousLeaf => None,
+        DefinerLookup::Unresolved => None,
+    }
+}
+
+/// Whether the symbol resolves at all, which is a DIFFERENT question from whether its definer can
+/// be named. An ambiguous leaf answers yes here and `None` above, and conflating the two is how a
+/// census reports a resolvable symbol as unresolved.
+fn symbol_resolves_for_name(graph: &ResolvedGraph, name: &str) -> bool {
+    !matches!(
+        definer_lookup_for_name(graph, name),
+        DefinerLookup::Unresolved
+    )
 }
 
 /// Classify how a single `UnlistedImportUse` site obtained its binding.
@@ -4905,6 +4994,10 @@ pub fn classify_unlisted_import_binding_source(
     referencing_module: &str,
     referenced_name: &str,
 ) -> (UnlistedImportBindingSource, Option<String>) {
+    let lookup = definer_lookup_for_name(graph, referenced_name);
+    if matches!(lookup, DefinerLookup::AmbiguousLeaf) {
+        return (UnlistedImportBindingSource::AmbiguousLeaf, None);
+    }
     let definer = definer_module_for_name(graph, referenced_name);
     let tm = graph
         .modules
@@ -6075,20 +6168,22 @@ fn repo_paths_match_touched(closure_path: &str, touched_path: &str) -> bool {
 /// Production `entry_file_touched` decision for the discovery corpus: is any touched
 /// entry file inside this entry's transitive import closure?
 ///
-/// GRAIN (declared interim, operator fork (c) 2026-07-10): the module-graph import-closure
-/// relation — the same host-realized facts (`import_resolution_facts`/`module_declaration_facts`
-/// → `facts.adjacency`) the `.dag` authority `v2.lens.module_graph.entry_affected_by_touched_paths`
-/// reads through its `_live` builtins. The `.dag` lens stays the modeled authority; THIS
-/// realization is certified against it by execution on real merged diffs by the module-grain
-/// receipt harness (`affected_decision_module_grain` section below). This unwinds one piece of
-/// #6335 ("reground selection on DependencyView") for this channel only: the fn-arrow
-/// output-grain chain both silently widened (substrate-not-whole-tree → touched=true for every
-/// row; probe receipt 2026-07-10) and conflates decl identity with output type (a touched file's
-/// test fns put the shared `Bool` node in the edit locus set). The fn-arrow machinery remains in
-/// tree as the decl-level candidate. Dissolve-on: the namespace-only resolution terminal step
-/// replaces import edges with `container.member` reference edges — the closure query above the
-/// edge source is grain-stable and survives; the grain re-decides then (see
-/// `entry_file_touched_grain_interim` in `v2.lens.affected_set.entry_selection`).
+/// AUTHORITY: `v2.lens.module_graph.entry_affected_by_touched_paths` — the consolidated §3
+/// survivor per the 2026-09-05 replacement migration (see
+/// `v2.lens.affected_set.entry_selection`). This host rendering is certified against the
+/// `.dag` authority by execution on real merged diffs via the module-grain receipt harness
+/// (`affected_decision_module_grain` section below).
+///
+/// The fn-arrow DependencyView composition (fork (c) 2026-07-10, #6335 unwind) is DELETED
+/// — `v2.lens.affected_set.corpus_dependency_view` removed outright (the fn-arrow
+/// selection mechanism #2). The surviving authority is this host rendering of
+/// `v2.lens.module_graph.entry_affected_by_touched_paths` (import-closure, mechanism #3).
+/// The §3 fork where three mechanisms answered "which tests are affected?" is resolved:
+/// two parallel mechanisms deleted or consolidated onto the survivor.
+///
+/// Dissolve-on: the namespace-only resolution terminal step replaces import edges with
+/// `container.member` reference edges — the closure query above the edge source is
+/// grain-stable and survives.
 ///
 /// Refusal, never widen: an entry absent from the facts' declared-module set is a provenance
 /// gap the relation cannot answer for, and returns a typed error that fails the batch (the §5
@@ -6271,17 +6366,14 @@ mod live_read_carrier_home_roster_drift_gate_tests {
     }
 }
 
-// SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
-// ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
-// affected-set-precompute-pruning (plan doc deleted 2026-08-28) Step 4 migrate floor) — host-side
-// per-entry cold-resolve elision under SelectionApplied before `floor_kernel_would_skip`.
-// Unblock: modeled `floor_kernel_precompute_would_skip` / skip-before-resolve arm on
-// `v2.workflow.affected_set_floor_runner` realizes the same decision in `.dag` (N→1 with
-// the Rust `NodeFrontierSeeds` parallel deleted per the de-fork plan).
-// DELETE WHEN dissolved: `entry_eligible_for_discovery_skip_before_resolve`,
-// `collect_import_closure_module_names_from_facts`, `resolve_discovery_entry_for_corpus_row`
-// lazy-resolve arm, and the `SKIP-RESOLVE` / `ctx.is_none()` loop in `run_discovery_rows`
-// (~120 LOC).
+// HAND-RUST HOST PER-ENTRY COLD-RESOLVE ELISION — `cli_run_discovery_skip_before_resolve`.
+// The entry_file_touched axis uses `entry_file_touched_via_import_closure` (host rendering
+// of `v2.lens.module_graph.entry_affected_by_touched_paths`), which is the consolidated §3
+// authority per the 2026-09-05 replacement migration. The skip-before-resolve logic itself
+// is a PERFORMANCE optimization (eliding cold resolve for entries the diff cannot affect),
+// not a selection mechanism. Its dissolve-on is the modeled `floor_kernel_precompute_would_skip`
+// in `.dag` (ROADMAP `2-provenance-ingest`), which is separate from the §3 consolidation and
+// is not discharged by this change.
 // Receipt: `rg cli_run_discovery_skip_before_resolve src/v1/stage0/src/cli_run.rs` == 1 until
 // deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
 pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
@@ -6309,9 +6401,12 @@ fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &s
 /// host-scaffold entry file — elide the cold entry resolve and treat every kernel witness
 /// row as assumed-green.
 ///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER` / §7):
-/// dissolves under ROADMAP `2-provenance-ingest` when `floor_kernel_precompute_would_skip` in
-/// `v2.workflow.affected_set_floor_runner` is the general per-entry authority.
+/// The entry_file_touched axis delegates to `entry_file_touched_via_import_closure`
+/// (host rendering of `v2.lens.module_graph.entry_affected_by_touched_paths`), which is
+/// the consolidated §3 authority for the "which tests are affected?" question per the
+/// 2026-09-05 replacement migration. The skip-before-resolve logic is a PERFORMANCE
+/// optimization (not a selection mechanism) and dissolves when `floor_kernel_precompute_would_skip`
+/// in `.dag` (ROADMAP `2-provenance-ingest`) is the general per-entry authority.
 fn entry_eligible_for_discovery_skip_before_resolve(
     skip_enabled: bool,
     reads_live_tree: bool,
@@ -6624,7 +6719,6 @@ pub struct CompileRun {
     /// (`compile_to_resolved_with_options` runs once); only emission is per target, the reason
     /// `--target rust,dag` exists.
     pub emissions: Vec<TargetEmission>,
-    pub silent_pick: crate::v1_rt::SilentPickTelemetry,
 }
 
 impl CompileRun {
@@ -6843,108 +6937,6 @@ mod entry_admission_tests {
         assert!(
             cause.contains("source root does not exist"),
             "the refusal must name the condition, not merely fail: {cause}"
-        );
-    }
-
-    /// THE GUARD'S OWN DISCRIMINATING RED, a different claim from the three above: those
-    /// establish the refusal is TYPED AND LOCATED; this establishes it does not leave
-    /// thread-local telemetry ARMED behind it -- the leak review 56292 found on two new arms and
-    /// that already existed on `subject-read`.
-    ///
-    /// IT GOES RED WITHOUT THE GUARD. Delete the `Drop` impl, or return before `take()`, and
-    /// `resolution_silent_pick_is_enabled` is still true here: the enable at the top of the
-    /// transaction ran, the early return skipped every hand-written `disable`, and the flag
-    /// outlives the transaction that armed it -- the state this forbids, reachable on
-    /// `origin/main`.
-    #[test]
-    fn a_refused_transaction_leaves_no_telemetry_armed() {
-        assert!(
-            !crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "precondition: the flag must be clear before the transaction arms it, or this test \
-             cannot tell an armed leak from an inherited one"
-        );
-        let run = compile_emission(&CompileRequest {
-            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
-            source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
-            primary_precedence: true,
-            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
-        });
-        assert!(
-            matches!(run.disposition, CompileDisposition::NotExecuted { .. }),
-            "the arm under test is the REFUSAL path; a completed compile would exercise \
-             `take()` instead and prove nothing about early return"
-        );
-        assert!(
-            !crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "the refused transaction left resolution-silent-pick telemetry ARMED; the session \
-             guard's Drop did not run or was bypassed"
-        );
-    }
-
-    /// NESTING IS REFUSED BEFORE THE DESTRUCTIVE RESET, AND THIS TEST IS ABOUT THE *BEFORE*.
-    ///
-    /// The first version asserted only that a second arm panics; that passes even with the
-    /// assertion AFTER `resolution_silent_pick_enable`'s reset -- refusing re-entry loudly while
-    /// having already destroyed the enclosing transaction's counters. Panicking and preserving
-    /// are different claims; only the second is worth having.
-    ///
-    /// So this asserts the enclosing session SURVIVES the rejected attempt: observations taken
-    /// before and after the refusal must BOTH still be in the telemetry `take` returns. It goes
-    /// red if the wall is moved after the reset, which the panic-only form does not.
-    ///
-    /// WHAT THIS DOES NOT COVER: `v1_rt::resolution_silent_pick_enable` is `pub`, so a direct
-    /// caller of the raw primitive still bypasses this and destroys an outer population. Closing
-    /// that means putting the assertion in the primitive ahead of its reset -- and the primitive
-    /// is generated, so its authority is `src/v1/runtime_rust.dag` and the change carries the
-    /// regen chain. That is this class's next-rung trigger, not something this test hides.
-    #[test]
-    fn a_rejected_nested_session_leaves_the_enclosing_transaction_intact() {
-        fn observe(name: &str) {
-            crate::v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
-                "fixture.env".to_string(),
-                name.to_string(),
-                2,
-                "fixture.chosen".to_string(),
-            );
-        }
-
-        let outer = SilentPickSession::enable();
-        observe("before_the_rejected_attempt");
-
-        let nested = std::panic::catch_unwind(SilentPickSession::enable);
-        assert!(
-            nested.is_err(),
-            "arming a second session inside an armed one must refuse; it silently reset the \
-             enclosing transaction's telemetry instead"
-        );
-
-        assert!(
-            crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "the rejected attempt disarmed the enclosing session"
-        );
-        observe("after_the_rejected_attempt");
-
-        let telemetry = outer.take();
-        let seen: std::vec::Vec<&str> = telemetry
-            .global_bare_lcp_picks
-            .iter()
-            .map(|site| site.name.as_str())
-            .collect();
-        assert_eq!(
-            seen,
-            vec!["before_the_rejected_attempt", "after_the_rejected_attempt"],
-            "the enclosing transaction's observations did not survive the rejected nested \
-             attempt; the refusal happened AFTER the destructive reset, not before it"
-        );
-
-        assert!(
-            !crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "`take` must return the session to inactive"
-        );
-        let fresh = SilentPickSession::enable().take();
-        assert!(
-            fresh.global_bare_lcp_picks.is_empty(),
-            "a fresh session inherited the previous transaction's observations"
         );
     }
 
@@ -7193,67 +7185,6 @@ mod entry_admission_tests {
     }
 }
 
-// ARMING A THREAD-LOCAL ACROSS A FALLIBLE TRANSACTION IS A LEAK WAITING FOR THE NEXT AUTHOR.
-// `resolution_silent_pick_enable` sets a thread-local that stays set until `disable`, and the
-// compile transaction it wraps has SIX early returns between the two. Hand-pairing had ALREADY
-// FAILED: the `subject-read` arm returns without disabling on `origin/main`, and review 56292
-// caught two more this PR added. Three leaks, two authors, one pattern.
-//
-// So the pairing is structural (DESIGN §5, construction over validation): arming returns a
-// guard, every exit path drops it, and `take` is the one way to consume the telemetry on the
-// success path. An arm that forgets to disable is unwritable -- there is nothing to forget.
-struct SilentPickSession {
-    armed: bool,
-}
-
-impl SilentPickSession {
-    // NESTING IS REFUSED HERE RATHER THAN ACCOMMODATED, for a property of the primitive.
-    //
-    // The ordinary law for a thread-local guard is that `Drop` restores the value found on entry,
-    // never a blind `false` -- the idiom `v1_rt::with_type_ref_hit_ne_bind_measure` uses
-    // (prev/set/restore), correct there because that flag is NON-DESTRUCTIVE.
-    //
-    // `resolution_silent_pick_enable` is destructive: its FIRST statement resets the telemetry to
-    // default, so by the time an inner session could restore an outer flag, the outer counters
-    // are gone. A save-and-restore guard would leave the flag `true` over silently zeroed
-    // telemetry -- an outer transaction reporting "no silent picks observed" when its
-    // observations were discarded: a fabricated plausible output, worse than the state it
-    // replaces.
-    //
-    // So the double-arm is LOUD. This is a programming-error invariant, not input-derived: only
-    // a code edit arming the flag around a call to `compile_emission` reaches it. Nesting is not
-    // reachable in production today -- `main.rs`'s other `resolution_silent_pick_enable` is the
-    // legacy `--source-dir` arm, DOWNSTREAM of the `--source-root` transaction's
-    // `std::process::exit(0)` rather than around it -- but it is authorable in a fixture, the
-    // reachability test that decides whether a wall is a wall or a decoration.
-    fn enable() -> Self {
-        assert!(
-            !crate::v1_rt::resolution_silent_pick_is_enabled(),
-            "resolution-silent-pick telemetry was already armed when this compile transaction \
-             tried to arm it; `resolution_silent_pick_enable` RESETS the counters, so proceeding \
-             would silently discard the enclosing transaction's observations and report the \
-             emptied result as its own"
-        );
-        crate::v1_rt::resolution_silent_pick_enable();
-        Self { armed: true }
-    }
-
-    // Consumes the session AND the telemetry together, so the success path cannot both read
-    // the counters and leave the flag set.
-    fn take(mut self) -> crate::v1_rt::SilentPickTelemetry {
-        self.armed = false;
-        crate::v1_rt::resolution_silent_pick_disable()
-    }
-}
-
-impl Drop for SilentPickSession {
-    fn drop(&mut self) {
-        if self.armed {
-            let _ = crate::v1_rt::resolution_silent_pick_disable();
-        }
-    }
-}
-
 fn compile_not_executed(
     subject: &CompileSubject,
     started: std::time::Instant,
@@ -7272,7 +7203,6 @@ fn compile_not_executed(
             cause,
         },
         emissions: Vec::new(),
-        silent_pick: crate::v1_rt::SilentPickTelemetry::default(),
     }
 }
 
@@ -7554,7 +7484,9 @@ pub fn compile_entry_emission(
 ///
 /// It owns source-root indexing and precedence, subject source-set construction, census-only
 /// fill, memory admission, resolution and compilation, blocking/advisory classification,
-/// silent-pick capture, and the completion/refusal disposition. A caller decodes argv, realizes
+/// and the completion/refusal disposition. It formerly also owned silent-pick capture; that
+/// capture and the gate it fed were deleted as permanently green, and the sentence is
+/// corrected here because this is a public contract every modern compile goes through. A caller decodes argv, realizes
 /// the returned files, renders diagnostics and picks an exit code -- those are boundary
 /// concerns, not a second pipeline.
 pub fn compile_emission(request: &CompileRequest) -> CompileRun {
@@ -7694,7 +7626,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         }
     }
 
-    let silent_pick_session = SilentPickSession::enable();
     // ONE INDEX BUILD, NOT TWO. The closure loader and the census fill both need the
     // module index, and calling `load_sources_for_entry_with_pool_index` and then building
     // a second index for the census parsed ~3,800 modules twice per invocation (review
@@ -7910,7 +7841,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             result: v1_compiler_compile::emit_resolved_for_target(resolved.clone(), target.clone()),
         })
         .collect();
-    let silent_pick = silent_pick_session.take();
 
     // THE REFUSAL IS OVER EVERY TARGET, NOT THE FIRST. Emission is per target, so a target
     // that emits nothing or emits a blocking diagnostic must stop the line even when an
@@ -7944,19 +7874,34 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         .iter()
         .map(|emission| emission.result.diagnostics.len())
         .sum();
-    // The silent-pick gate is part of the CLI's refusal, so it is part of the transaction's:
-    // a gate that skipped it would green on a tree `gunbc compile` exits nonzero on.
+    // THE SILENT-PICK GATE THAT STOOD HERE IS DELETED, AND ITS REMOVAL IS A CORRECTION RATHER
+    // THAN A RUNG DROP. It refused when `fn_parent_first_hits` was non-empty, and that vector
+    // cannot be non-empty on this path: its only producer is `v1.compiler.infer_sigs`
+    // `lookup_resolved_sig_with_telemetry`, called solely from the `else` of
+    // `name_resolution_policy_is_namespace_only()` in `lookup_resolved_sig` -- the legacy
+    // ImportScoped arm. That policy is a thread-local defaulting to TRUE whose only setters are
+    // two Rust tests, so no production compile takes the arm and the gate was structurally
+    // unable to fire. The same holds for `global_bare_lcp_picks`/`_ties`, whose producer
+    // `v1.compiler.infer_env` `record_global_bare_ambiguous_silent_pick` sits in the matching
+    // `else` of `global_bare_lookup` -- which is why REPAIRING the gate to read those vectors
+    // instead would have been a decoration rather than a wider wall.
+    //
+    // SO NOTHING IS LOST AND NO `gunbc.rung_drop` ROW IS OWED: a permanently-green gate held no
+    // rung to drop. What ends is a FALSE CLAIM OF COVERAGE -- a fail-closed `Refused` arm a
+    // reader finds and concludes the class is walled, which DESIGN 4b rates worse than an absent
+    // check. The class it appeared to cover is
+    // `gunbc.recurring_failure_mode` `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule`,
+    // and THAT CLASS HAS NO EXECUTING INSTRUMENT IN THIS TREE, which is what its row says and
+    // is why the sentence is written this way rather than pointing somewhere reassuring. Its
+    // evidence today is a manual reproduction over `fixtures/if_join_pool_binding`, which is
+    // committed but which nothing runs. A required-floor witness over those same four modules is
+    // enrolled in gunbc#10740 and had not landed when this was written; citing it here as though
+    // it resolved would have replaced one false claim of coverage with another, in the paragraph
+    // that deletes the first.
     let disposition = match refusal {
         Some(cause) => CompileDisposition::Refused {
             phase: "emit".to_string(),
             cause,
-        },
-        None if !silent_pick.fn_parent_first_hits.is_empty() => CompileDisposition::Refused {
-            phase: "silent-pick-gate".to_string(),
-            cause: format!(
-                "{} fn_parent_first_hit silent pick(s) in this compile",
-                silent_pick.fn_parent_first_hits.len()
-            ),
         },
         None => CompileDisposition::Completed {
             emitted_count: emissions
@@ -7977,7 +7922,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         wall_ms: started.elapsed().as_millis(),
         disposition,
         emissions,
-        silent_pick,
     }
 }
 
@@ -8179,7 +8123,7 @@ pub fn cross_module_binding_receipts_for_symbols(
         .iter()
         .map(|sym| {
             let definer = definer_module_for_name(graph, sym);
-            let binding_source = if definer.is_some() {
+            let binding_source = if symbol_resolves_for_name(graph, sym) {
                 Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
             } else {
                 None
@@ -13916,7 +13860,8 @@ pub struct ResolveStageNanos {
     pub assembly_diagnostics: u128,
     /// `item_registry` merge fold across the closure's typed modules.
     pub assembly_registry: u128,
-    /// `expand_transitive_services` (bounded 5-pass fixpoint over every bodied item).
+    /// `expand_transitive_services` (monotone fixpoint over every bodied item, under a bound
+    /// derived from the registry rather than a chosen pass count).
     pub assembly_services: u128,
     /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
     pub assembly_rewire: u128,
@@ -15275,8 +15220,37 @@ fn finish_resolved_graph_assembly(
     });
     resolve_stage_slot_add(|s| s.assembly_registry += registry_started.elapsed().as_nanos());
     let services_started = std::time::Instant::now();
-    let expanded_registry =
-        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
+    let effect_analysis =
+        v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry);
+    // ONE AUTHORITY FOR THE CAUSE-TO-DIAGNOSTIC MAPPING, called rather than mirrored by hand. This
+    // block used to hand-copy `typecheck_with_census_extra`'s five-arm `EffectIncompleteness` match,
+    // three of its message strings verbatim included -- two sources for one fact, which DESIGN §2
+    // calls the forked-logic trap and §3 an authority fork, and whose failure is silent: a message
+    // edited on one side, or a sixth arm added on one side and defaulted on the other, disagrees
+    // with nothing that would refuse. It now calls the generated mirror of the `.dag` declaration
+    // `v1.compiler.infer` `effect_incompleteness_diagnostics`, so the two paths cannot disagree and
+    // a new arm is a compile error on both. What stays mirrored here is only the SHAPE of the
+    // unwrap: the registry is reachable through the complete arm alone, and an incomplete summary
+    // carries its causes onto the graph's diagnostics rather than being unwrapped into something
+    // indistinguishable from a fixed point.
+    let (expanded_registry, incompleteness_diagnostics): (
+        Rc<im::HashMap<String, Rc<ItemInfo>>>,
+        Vec<Rc<ErrorNode>>,
+    ) = match effect_analysis.as_ref() {
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsComplete { registry } => {
+            (registry.clone(), Vec::new())
+        }
+        crate::v1_compiler_infer_service::ServiceEffectAnalysis::EffectsIncomplete {
+            partial,
+            causes,
+        } => (
+            partial.clone(),
+            v1_compiler_infer::effect_incompleteness_diagnostics(causes.clone())
+                .iter()
+                .cloned()
+                .collect(),
+        ),
+    };
     resolve_stage_slot_add(|s| s.assembly_services += services_started.elapsed().as_nanos());
     let diagnostics_started = std::time::Instant::now();
     let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
@@ -15284,6 +15258,7 @@ fn finish_resolved_graph_assembly(
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
+        acc.extend(incompleteness_diagnostics.iter().cloned());
         acc
     });
     let total_fork_count = same_tree_fork_count + cross_tree_fork_count;
@@ -15311,7 +15286,8 @@ fn finish_resolved_graph_assembly(
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     let emit_info_started = std::time::Instant::now();
-    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
+    let emit_graph_info =
+        v1_compiler_infer::build_emit_graph_info(modules.clone(), expanded_registry.clone());
     resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
@@ -16639,6 +16615,14 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
         let before = dag_paths.len();
         let mut stack: Vec<std::path::PathBuf> = vec![root_dir.clone()];
         while let Some(dir) = stack.pop() {
+            // Derive gitignored `gunbc.recurring_failure_mode.roster` before this directory's
+            // listing, so the required-CI index contains the module the parse join reads.
+            derived_row_roster::ensure_if_row_dir(&dir).map_err(|e| {
+                vec![format!(
+                    "failed to derive recurring_failure_mode roster in {}: {e}",
+                    dir.display()
+                )]
+            })?;
             let read_dir = match std::fs::read_dir(&dir) {
                 Ok(d) => d,
                 Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
@@ -19391,11 +19375,18 @@ pub fn handle_serve(
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
                 Ok(None) => {}
-                Ok(Some((method, path, body))) => {
+                Ok(Some((method, path, body, tailscale_identity))) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
                         (Some("method".to_string()), str_value(method)),
                         (Some("path".to_string()), str_value(path)),
                         (Some("body".to_string()), str_value(body)),
+                        // Empty when the header was absent. The `.dag` side refuses on empty
+                        // rather than treating it as an anonymous caller, so a deployment that
+                        // stopped routing through the tailscale proxy fails closed.
+                        (
+                            Some("tailscale_identity".to_string()),
+                            str_value(tailscale_identity),
+                        ),
                         // Captured once above and cloned per request: the value
                         // is fixed for the process lifetime, so no request can
                         // observe a different release than any other request.
@@ -19526,9 +19517,30 @@ pub fn handle_serve(
 /// request: Resource temporarily unavailable (os error 11)" to the operator.
 /// "The client sent something malformed" and "the client has not spoken yet" are
 /// different facts with different remedies; only the first is a 400.
+/// The one header this seam extracts beyond Content-Length, and the reason it is extracted HERE
+/// rather than handed to `.dag` as a general header bag.
+///
+/// `tailscale serve` injects the authenticated tailnet identity into proxied requests. That value
+/// is the recipient authentication for the approval loop: a signed capability establishes WHAT is
+/// being decided, and this establishes WHO is deciding, so a link that leaks to someone unrelated
+/// is useless to them. Passing one named value rather than every header is deliberate — a general
+/// bag would let any handler read any client-supplied header, and the fact this server needs is
+/// exactly one.
+///
+/// A DUPLICATE IS REFUSED, exactly as duplicate Content-Length is, and for the same class of
+/// reason: with two values present, the seam and any downstream reader can disagree about which
+/// one is authoritative, and header smuggling is precisely the technique of making them disagree.
+///
+/// THE VALUE IS ONLY MEANINGFUL IF THE PROXY IS THE ONLY PATH TO THIS SOCKET. Anything that can
+/// connect directly can send this header itself. That is a deployment property — bind to loopback,
+/// let `tailscale serve` be the only route — and it is not established by this parse. The `.dag`
+/// side treats an absent value as a refusal rather than as "unknown", so the failure mode of a
+/// misconfigured deployment is a closed door rather than an open one.
+const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
+
 fn serve_read_request(
     stream: &mut std::net::TcpStream,
-) -> Result<Option<(String, String, String)>, String> {
+) -> Result<Option<(String, String, String, String)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -19575,6 +19587,7 @@ fn serve_read_request(
         ));
     }
     let mut content_length: Option<usize> = None;
+    let mut tailscale_identity: Option<String> = None;
     loop {
         let mut line = String::new();
         let n = reader
@@ -19606,6 +19619,15 @@ fn serve_read_request(
                         .map_err(|e| format!("bad Content-Length: {}", e))?,
                 );
             }
+            if name.eq_ignore_ascii_case(SERVE_TAILSCALE_IDENTITY_HEADER) {
+                if tailscale_identity.is_some() {
+                    return Err(format!(
+                        "duplicate {} header",
+                        SERVE_TAILSCALE_IDENTITY_HEADER
+                    ));
+                }
+                tailscale_identity = Some(value.trim().to_string());
+            }
         }
     }
     let content_length = content_length.unwrap_or(0);
@@ -19620,7 +19642,12 @@ fn serve_read_request(
         .read_exact(&mut body_bytes)
         .map_err(|e| format!("read body: {}", e))?;
     let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok(Some((method, target, body)))
+    Ok(Some((
+        method,
+        target,
+        body,
+        tailscale_identity.unwrap_or_default(),
+    )))
 }
 
 fn serve_write_response(
@@ -23012,6 +23039,9 @@ pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
 }
 
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
+    // This walk swallows unreadable directories. Write failure here must not abort it;
+    // `run_dag_parse_sweep` is the loud required-CI writer.
+    let _ = derived_row_roster::ensure_if_row_dir(dir);
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -24271,19 +24301,13 @@ fn collect_sorted_decl_lines_for_file(
 // realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
 // via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
 // `entry_file_touched` axis is decided by `entry_file_touched_via_import_closure`
-// (module-graph import-closure grain over `facts.adjacency` — the `.dag` authority is
-// `v2.lens.module_graph.entry_affected_by_touched_paths` and the module-grain receipt
-// harness certifies the pair by execution; declared interim, dissolves at the
-// namespace-only terminal step where the grain re-decides — see
-// `entry_file_touched_grain_interim` in `v2.lens.affected_set.entry_selection`).
+// (host rendering of `v2.lens.module_graph.entry_affected_by_touched_paths` — the
+// consolidated §3 survivor per the 2026-09-05 replacement migration).
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
 // `rg 'floor_diff_edits_from_line_ranges|rerun_frontier_nodes_for_entry' src/v1/stage0/src/cli_run.rs`
 // must be empty).
-//
-// Host-side diff→declaration attribution only (line-range I/O). Skip verdicts live in
-// `v2.workflow.affected_set_floor_runner` — the executor reads `.dag`, never recomputes frontier.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FloorDiffEdits {
     overlapping_data_items: HashSet<(String, String)>,
@@ -25884,6 +25908,75 @@ mod floor_skip_frontier_tests {
             .to_path_buf()
     }
 
+    // TEST DETECTOR ONLY. Roster derived here; production skip does not consult it.
+    // Matching is substring on comment-stripped lines because the census must
+    // read entries that may not resolve — the same textual model as
+    // `parse_entry_live_tree_disposition`. `v2.std.fn_index` `callees_from_node`
+    // needs a Node. v1 PURPOSE: evidence for the failure-mode row
+    // (`gunbc.v1_maintenance_standing` `v1_seed_standing`).
+
+    fn builtin_name_spells_a_live_checkout_sink(name: &str) -> bool {
+        name.starts_with("compile_dag_")
+            || name.ends_with("_facts_live")
+            || name == "filesystem_read"
+            || name == "filesystem_list"
+            || name == "decl_facts"
+            || name == "module_declaration_facts"
+            || name == "layer_import_facts"
+    }
+
+    fn direct_live_tree_sink_callees() -> Vec<String> {
+        let mut names: Vec<String> = crate::v1_compiler_infer_method::builtin_function_registry()
+            .iter()
+            .filter(|(k, _)| builtin_name_spells_a_live_checkout_sink(k))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for extra in ["Filesystem.Read", "Filesystem.List"] {
+            if !names.iter().any(|n| n == extra) {
+                names.push(extra.to_string());
+            }
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    fn detector_line_has_unquoted_callee(line: &str, callee: &str) -> bool {
+        let stripped = super::strip_line_comment(line);
+        let paren = format!("{callee}(");
+        let spaced = format!("{callee} (");
+        stripped.contains(&paren) || stripped.contains(&spaced)
+    }
+
+    fn detector_unquoted_live_callees(content: &str) -> Vec<String> {
+        direct_live_tree_sink_callees()
+            .into_iter()
+            .filter(|callee| {
+                content
+                    .lines()
+                    .any(|line| detector_line_has_unquoted_callee(line, callee))
+            })
+            .collect()
+    }
+
+    fn detector_sio_unquoted_live_hits(
+        files: &[(String, String)],
+    ) -> Result<Vec<(String, Vec<String>)>, String> {
+        let mut out = Vec::new();
+        for (rel, content) in files {
+            let reads_live = super::parse_entry_live_tree_disposition(rel, content)?;
+            if reads_live {
+                continue;
+            }
+            let sinks = detector_unquoted_live_callees(content);
+            if !sinks.is_empty() {
+                out.push((rel.clone(), sinks));
+            }
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(out)
+    }
+
     fn fixture_path() -> String {
         "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag".to_string()
     }
@@ -26202,6 +26295,159 @@ new file mode 100644
     }
 
     #[test]
+    fn quoted_census_callee_is_not_a_direct_live_sink() {
+        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\ndata note: String = \"compile_dag_diagnostic_census(source)\"\n";
+        assert!(detector_unquoted_live_callees(source).is_empty());
+    }
+
+    #[test]
+    fn unquoted_census_callee_is_a_direct_live_sink() {
+        let source = "module m\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
+        assert_eq!(
+            detector_unquoted_live_callees(source),
+            vec!["compile_dag_diagnostic_census".to_string()]
+        );
+    }
+
+    #[test]
+    fn direct_live_tree_sink_callees_is_derived_from_the_registry() {
+        let names = direct_live_tree_sink_callees();
+        assert!(
+            names.iter().any(|n| n == "compile_dag_diagnostic_census"),
+            "census builtin missing from derived roster: {names:?}"
+        );
+        assert!(builtin_name_spells_a_live_checkout_sink(
+            "compile_dag_diagnostic_census"
+        ));
+        assert!(
+            crate::v1_compiler_infer_method::builtin_function_registry()
+                .contains_key("compile_dag_diagnostic_census"),
+            "oracle is the registry, not a pasted list"
+        );
+    }
+
+    #[test]
+    fn detector_hits_planted_triple_is_an_identity_join() {
+        let files = vec![
+            (
+                "lying.dag".to_string(),
+                "module lying\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f(s: String) -> Int { compile_dag_diagnostic_census(s) }\n"
+                    .to_string(),
+            ),
+            (
+                "honest_sio.dag".to_string(),
+                "module honest_sio\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\nfn f() -> Bool { true }\n"
+                    .to_string(),
+            ),
+            (
+                "honest_live.dag".to_string(),
+                "module honest_live\ndata live_tree_disposition: LiveTreeDisposition = ReadsLiveTree\nfn f(s: String) -> Int { compile_dag_diagnostic_census(s) }\n"
+                    .to_string(),
+            ),
+        ];
+        let rows = detector_sio_unquoted_live_hits(&files).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "lying.dag");
+        assert_eq!(rows[0].1, vec!["compile_dag_diagnostic_census"]);
+        assert!(
+            !rows
+                .iter()
+                .any(|(p, _)| p == "honest_sio.dag" || p == "honest_live.dag"),
+            "honest stamps must not be detector hits: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn named_census_specimens_declare_reads_live_tree_and_call_a_sink() {
+        let ws = workspace_root();
+        let specimens = [
+            "dag/test/claim/fabric/fabric_output_contract_resolution_witness_test.dag",
+            "dag/test/claim/match_exhaustiveness_coproduct_witness_test.dag",
+            "dag/test/claim/direct_call_argument_type_witness_test.dag",
+            "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
+            "dag/test/claim/declared_type_inhabitance_list_element_witness_test.dag",
+            "dag/test/claim/declared_type_expected_type_path_witness_test.dag",
+            "dag/test/claim/infer_record_lit_variant_field_witness_test.dag",
+        ];
+        let mut files = Vec::new();
+        for rel in specimens {
+            let content =
+                std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+            files.push((rel.to_string(), content));
+        }
+        let hits = detector_sio_unquoted_live_hits(&files).unwrap();
+        assert!(
+            hits.is_empty(),
+            "corrected specimens must leave the detector-hit set: {hits:?}"
+        );
+        for (rel, content) in &files {
+            assert!(
+                super::parse_entry_live_tree_disposition(rel, content).unwrap(),
+                "{rel} stamp was not corrected to ReadsLiveTree"
+            );
+            assert!(
+                !detector_unquoted_live_callees(content).is_empty(),
+                "{rel} lost its live sink"
+            );
+        }
+    }
+
+    #[test]
+    fn named_remaining_sio_direct_live_specimen_is_joined() {
+        let ws = workspace_root();
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let content =
+            std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let files = vec![(rel.to_string(), content)];
+        let rows = detector_sio_unquoted_live_hits(&files).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, rel);
+        assert!(
+            rows[0]
+                .1
+                .iter()
+                .any(|n| n == "compile_dag_diagnostic_census"),
+            "reaching call missing: {:?}",
+            rows[0].1
+        );
+    }
+
+    #[test]
+    fn compile_dag_diagnostic_census_is_invisible_to_effect_reach_host_sinks() {
+        let source = "fn f(source: String) -> Int { compile_dag_diagnostic_census(source) }\n";
+        assert!(
+            !super::source_has_host_effect_sink(source),
+            "a census call must not be reclassified by effect_reach; otherwise a lying SIO stamp would not buy a predict-skip"
+        );
+    }
+
+    #[test]
+    fn adding_the_census_marker_would_still_lose_the_conjunction_on_the_remaining_specimen() {
+        let ws = workspace_root();
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let content =
+            std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        assert!(
+            !super::parse_entry_live_tree_disposition(rel, &content).unwrap(),
+            "{rel} must still be SubstrateInputsOnly for this check"
+        );
+        assert!(
+            detector_unquoted_live_callees(&content)
+                .iter()
+                .any(|n| n == "compile_dag_diagnostic_census"),
+            "specimen lost its census call"
+        );
+        assert!(
+            !super::source_has_host_effect_sink(&content),
+            "the mechanism: census is absent from EFFECT_REACH_HOST_SINK_MARKERS"
+        );
+        assert!(
+            !super::source_has_path_like_string_data(&content),
+            "even a roster patch would still lose ConjunctionOfIndependentExistentials: this entry compiles in-memory source strings, not a dag/ or src/ path literal"
+        );
+    }
+
+    #[test]
     fn import_closure_carrier_home_matches_submodules() {
         use std::collections::HashSet;
 
@@ -26269,6 +26515,27 @@ new file mode 100644
         assert!(
             lying.is_empty(),
             "lying SubstrateInputsOnly stamps must be re-stamped ReadsLiveTree before merge"
+        );
+    }
+
+    #[test]
+    #[ignore = "receipts-lane re-derivation of the TEST detector; not a wall. Required tests identity-join named specimens. Do not cite this print as a count oracle or as the stamp-to-body join."]
+    fn detector_sio_unquoted_live_hits_corpus_walk() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let files = super::corpus_dag_files();
+        let rows = detector_sio_unquoted_live_hits(&files).expect("disposition parse");
+        eprintln!(
+            "detector hits (SIO + unquoted spelling; fail-open; not a disagreement set): {}",
+            rows.len()
+        );
+        for (rel, sinks) in &rows {
+            eprintln!("  {rel}  ->  {sinks:?}");
+        }
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        assert!(
+            rows.iter().any(|(p, _)| p == rel),
+            "{rel} dropped out of the detector-hit set"
         );
     }
 
@@ -38885,7 +39152,7 @@ impl Drop for FloorPreparedAuthorityGuard {
 /// Install prepared source bytes. Only `register_floor_prepared_authority_guard` calls this so
 /// Drop always clears the thread-locals and compile memo.
 fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
-    crate::coproduct_reflection::register_floor_decl_parse_memo();
+    crate::coproduct_reflection::register_decl_census_memo();
     let inventory_digest = floor_inventory_content_digest(&inventory);
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         *cell.borrow_mut() = Some(FloorPreparedAuthority {
@@ -38900,7 +39167,7 @@ fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
 pub fn clear_floor_prepared_authority() {
     FLOOR_PREPARED_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
-    crate::coproduct_reflection::clear_floor_decl_parse_memo();
+    crate::coproduct_reflection::clear_decl_census_memo();
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
@@ -39226,6 +39493,64 @@ pub fn assemble_prepared_subject_closure(
             source: sf.clone(),
         });
         sources.push(sf.clone());
+    }
+    // AN EXCLUSION MAY NOT ORPHAN AN IMPORTER, AND THIS IS THE WALL THAT SAYS SO.
+    //
+    // The list reads like "skip these witnesses" and is not: a matched path is dropped from the
+    // prepared graph outright, so any module that still imports it refuses with `unresolved
+    // import` and the WHOLE subject refuses before a single witness runs. The refusal that
+    // reaches the operator then names the IMPORTER -- a file nobody touched -- while the row that
+    // caused it is somewhere else entirely, so the evidence points away from the cause. Measured
+    // as exactly that, twice in one hour: required-floor run 34016411960 refused at
+    // src/v2/test/claim/long/live_read_classification_test.dag:46 for an exclusion added to
+    // `floor_prepared_subject_exclusions`, and the first two diagnoses of it both concluded the
+    // imported module had been moved or renamed. It had not.
+    //
+    // The constraint is decidable from data preparation already holds -- the retained sources and
+    // their import headers -- so it is a wall here and not a note beside the list. The import
+    // extractor is the same one `import_resolution_facts` folds, never a second reader.
+    //
+    // ITS DISCRIMINATING RED IS AUTHORABLE AND WAS EXECUTED, not merely available: add a row for a
+    // module the corpus imports and nobody changed (`v2/lens/complexity_accumulator_copy/analyze.dag`
+    // was the specimen) and run `claim_executor --required-ci --source-root dag --source-root src/v2
+    // --required-lane witnesses`. What has to hold in that receipt is not that something refused --
+    // the old shape refused too -- but that the refusal names the EXCLUSION ROW beside each importer,
+    // which is the half that was missing when the same situation was diagnosed twice as a module
+    // having been moved. The positive control is every ordinary required-floor run: with no orphaning
+    // row the preparation is admitted and the floor proceeds to its own phases.
+    if !discovery_exclusions.is_empty() {
+        let excluded_modules: HashSet<&str> =
+            discovery_exclusions.keys().map(|m| m.as_str()).collect();
+        let mut orphaned: Vec<String> = Vec::new();
+        for (module_path, sf) in index.iter() {
+            if discovery_exclusions.contains_key(module_path) {
+                continue;
+            }
+            for imported in extract_import_paths(&sf.content) {
+                if excluded_modules.contains(imported.as_str()) {
+                    let matched = &discovery_exclusions[&imported];
+                    orphaned.push(format!(
+                        "  {} imports '{}', excluded by row '{}'",
+                        workspace_relative_repo_path(&sf.path),
+                        imported,
+                        matched
+                    ));
+                }
+            }
+        }
+        if !orphaned.is_empty() {
+            orphaned.sort();
+            orphaned.dedup();
+            return Err(format!(
+                "PREPARED-SUBJECT REFUSAL cause=ExclusionOrphansImporter — {} retained module(s) \
+                 import a module this preparation excluded. An exclusion row removes the path \
+                 from the prepared graph, so the importer cannot resolve and the whole subject \
+                 would refuse naming the importer rather than the row. Only a module nothing \
+                 imports may be excluded.\n{}",
+                orphaned.len(),
+                orphaned.join("\n")
+            ));
+        }
     }
     if sources.is_empty() {
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
@@ -40018,7 +40343,14 @@ fn claim_scope_for_with_memos(
                 continue;
             };
             let authored = position < authored_region;
-            for (name, info) in module.item_registry.iter() {
+            // The registry's KEY is now the declaration's identity (owner module path plus
+            // declared name). This scope index is deliberately keyed by BARE leaf name and
+            // resolved by the precedence order above, so it takes the leaf from the VALUE rather
+            // than from the key -- the leaf is still exactly one field away, and taking it from
+            // `info` keeps this subsystem's bare-name-with-precedence semantics unchanged while
+            // the registry underneath it stops being ambiguous.
+            for (_identity, info) in module.item_registry.iter() {
+                let name = &info.name;
                 match winner_of.get(name) {
                     None => {
                         item_registry.insert(name.clone(), info.clone());
@@ -40422,6 +40754,20 @@ fn long_home_storage_agreement(
     }
 }
 
+/// ONE BLOCKING CHANGED-WITNESS ROW AS ITS CONSUMER RECEIVES IT: the identity, and the CAUSE that
+/// made it block. Host mirror of `v2.workflow.floor_changed_witness` `ChangedWitnessBlocker`.
+///
+/// The pair travels together because the identity alone is what this population used to carry,
+/// and the cause is exactly what its consumer could not recover: `claim_executor` had one
+/// constant to stamp, so a declined witness that never executed and a claim that ran and failed
+/// arrived at the merge gate as the same bit. `cause` is never empty on a blocking row —
+/// `changed_witness_projection_rows` refuses rather than emitting one that is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedWitnessBlocker {
+    pub identity: String,
+    pub cause: String,
+}
+
 /// What one required-floor attempt did. The three identity counts are separate fields rather
 /// than one `total` because the operator's acceptance census asks them to be EQUAL, and a
 /// single number cannot be compared with itself: a run that planned 9,267 claims, executed
@@ -40615,9 +40961,19 @@ pub struct RequiredFloorOutcome {
     pub changed_witness_rows: usize,
     /// The changed identities whose `ChangedWitnessExecutionStanding`
     /// (`v2.workflow.floor_changed_witness`) BLOCKS — declined, missing from the disposition
-    /// receipt, or planned without a terminal Passed verdict. Non-empty reds the required
-    /// context; see `required_floor_outcome_is_clean` in `claim_executor`.
-    pub changed_witness_blocking: Vec<String>,
+    /// receipt, or planned without a terminal Passed verdict — EACH WITH THE CAUSE THAT MADE IT
+    /// BLOCK. Non-empty reds the required context; see `required_floor_outcome_is_clean` in
+    /// `claim_executor`.
+    ///
+    /// THIS WAS A `Vec<String>` AND THE CAUSE WAS THE DEFECT. The standings above are computed
+    /// per row and were dropped on the way into this field, so `claim_executor` had one constant
+    /// to stamp on all of them and the merge gate received one bit for four materially different
+    /// states. Measured on gunbc#10757: fifteen identities that never executed (the disposition
+    /// artifact counts them `declined_changed_witness_outside_discovery=15`) reached the
+    /// measurement receipt as `cause=changed_witness_blocking`, indistinguishable from a claim
+    /// that ran and failed, in a run where zero claims failed. Authority for the cause spelling:
+    /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`.
+    pub changed_witness_blocking: Vec<ChangedWitnessBlocker>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -41984,9 +42340,10 @@ pub use partition_crate_boundary_host::{
 /// through one surface, the way the regen and partition-crate paths do.
 pub use generated_artifact_boundary_host::{
     artifact_disposition, artifact_disposition_name, boundary_divergent, boundary_is_clean,
-    generated_artifact_body_for_path, generated_artifact_ctx, run_generated_artifact_boundary,
-    AdjudicatedArtifact, ArtifactDisposition, GeneratedArtifactBoundaryOutcome,
-    GeneratedArtifactPathBody, UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
+    generated_artifact_body_for_path, generated_artifact_ctx, run_docs_projection_agreement,
+    run_generated_artifact_boundary, AdjudicatedArtifact, ArtifactDisposition,
+    DocsProjectionAgreement, GeneratedArtifactBoundaryOutcome, GeneratedArtifactPathBody,
+    UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
 };
 
 /// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and

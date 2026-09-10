@@ -1,0 +1,161 @@
+module gunbc.compute.test_selection
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.algebra { trim }
+import extdeps.bazel.label { Label, PackageName, RootPackage, PackagePath, TargetName, render_label }
+import extdeps.bazel.target_pattern { TargetPattern, target_pattern_matches, render_target_pattern }
+import v2.workflow.required_floor {
+  ModulePrefixMatch, ModulePrefixMatched, ModulePrefixUnmatched, first_module_prefix_match, long_home_prefixes, fixture_home_prefixes,
+}
+import v2.workflow.floor_cost_debt { floor_cost_debt_holds }
+
+// THE CANONICAL TEST PROCESS, PURE HALF: which witnesses a pattern selects and which of them the
+// floor's own home policy would run. A witness MODULE is a test target: its label is its package
+// (the directory) and its file stem, so `//dag/test/claim/roadmap:roadmap_launch_admission_witness_test`
+// names one file and `//dag/test/claim/roadmap/...` names every witness under that tree. Nothing here
+// touches a host: the caller hands in the subject tree's file list and each selected file's text.
+//
+// WHY THE FLOOR'S HOME POLICY IS REUSED RATHER THAN A SECOND ONE: a worker running
+// `//dag/test/claim/roadmap/...` must get the same admission the required run gives the same
+// identity. That admission is exactly what `v2.workflow.required_floor` documents its host loop
+// computing: a module under a LONG home prefix or a FIXTURE home prefix is declined, an identity on
+// the cost-debt roster is declined, and everything else is routed and executed hermetically -- the
+// interpreter, not a prediction here, decides at the effect boundary whether a route exists
+// (`DeclinedLiveTree` was deleted at the root for that reason). `required_gate_prefixes` is NOT
+// consulted: that is the strict compile gate's roster, a different question, and using it here
+// declined the whole roadmap package on the first probe.
+
+fn text_has_prefix(text: String, prefix: String) -> Bool {
+  text.length() >= prefix.length() && text.substring(start: 0, end: prefix.length()) == prefix
+}
+
+fn text_has_suffix(text: String, suffix: String) -> Bool {
+  text.length() >= suffix.length() && text.substring(start: text.length() - suffix.length(), end: text.length()) == suffix
+}
+
+data dag_source_suffix: String = ".dag"
+
+// A repository path becomes a target label: directory segments are the package, the file stem the
+// target. A path outside the .dag suffix or at the repository root is not a witness target.
+fn witness_label_of_path(path: String) -> Label? {
+  if !text_has_suffix(text: path, suffix: dag_source_suffix) {
+    none
+  } else {
+    let parts = path.split(sep: "/")
+    let n = count(parts)
+    if n < 2 {
+      none
+    } else {
+      let stem_with_suffix = fold(parts, init: "", f: (acc, p) => p)
+      let stem = stem_with_suffix.substring(start: 0, end: stem_with_suffix.length() - dag_source_suffix.length())
+      let dirs = filter(fold(parts, init: IndexedParts { at: 0, kept: [] }, f: (acc, p) =>
+        IndexedParts { at: acc.at + 1, kept: if acc.at + 1 < n { concat(acc.kept, [p]) } else { acc.kept } }).kept, d => d != "")
+      if stem == "" || any(dirs, d => d == "") {
+        none
+      } else {
+        Present { value: Label { package: PackagePath { segments: map(dirs, d => d as NonEmptyStr) }, target: TargetName { name: stem as NonEmptyStr } } }
+      }
+    }
+  }
+}
+
+type IndexedParts {
+  at: Int
+  kept: List<String>
+}
+
+// The files a pattern selects out of a subject tree's listing, with their labels.
+type SelectedFile {
+  path: String
+  label: Label
+}
+
+fn select_witness_files(pattern: TargetPattern, paths: List<String>) -> List<SelectedFile> {
+  flat_map(paths, p => match witness_label_of_path(path: p) {
+    Absent => []
+    Present { value: label } => if target_pattern_matches(pattern: pattern, target: label) { [SelectedFile { path: p, label: label }] } else { []
+    }
+  })
+}
+
+// `test fn NAME(` lines, by construction of the grammar: a test is declared at module scope with
+// that prefix and nothing else is.
+fn test_function_names(content: String) -> List<String> {
+  flat_map(content.split(sep: "\n"), line => {
+    let t = trim(s: line)
+    if text_has_prefix(text: t, prefix: "test fn ") {
+      let rest = t.substring(start: 8, end: t.length())
+      let name = fold(rest.split(sep: "("), init: "", f: (acc, part) => if acc == "" { part } else { acc })
+      if trim(s: name) == "" { [] } else { [trim(s: name)] }
+    } else {
+      []
+    }
+  })
+}
+
+// The module path is the first `module ` line; a file without one is not a witness module.
+fn module_path_of(content: String) -> String? {
+  fold(content.split(sep: "\n"), init: none, f: (acc, line) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => {
+        let t = trim(s: line)
+        if text_has_prefix(text: t, prefix: "module ") { Present { value: trim(s: t.substring(start: 7, end: t.length())) } } else { none }
+      }
+    })
+}
+
+// One witness's standing under the floor's home policy: planned (run it) or declined (report why).
+type WitnessStanding
+  = WitnessPlanned { function: String }
+  | WitnessDeclined { function: String, reason: String }
+
+fn witness_standing(module_path: String, function: String) -> WitnessStanding {
+  match first_module_prefix_match(module_path: module_path, prefixes: long_home_prefixes()) {
+    ModulePrefixMatched { prefix } => WitnessDeclined { function: function, reason: join(["long home (", prefix, ")"], "") }
+    ModulePrefixUnmatched =>
+      match first_module_prefix_match(module_path: module_path, prefixes: fixture_home_prefixes()) {
+        ModulePrefixMatched { prefix } => WitnessDeclined { function: function, reason: join(["fixture home (", prefix, ")"], "") }
+        ModulePrefixUnmatched =>
+          if floor_cost_debt_holds(name: join([module_path, ".", function], "")) {
+            WitnessDeclined { function: function, reason: "cost debt roster" }
+          } else {
+            WitnessPlanned { function: function }
+          }
+      }
+  }
+}
+
+// A selected module, classified: the planned functions the run will execute and the declined ones it
+// reports. A file with no `module` line or no test functions is its own arm so the report can say so.
+type WitnessModuleSelection
+  = WitnessModuleSelected { path: String, label: Label, module_path: String, planned: List<String>, declined: List<WitnessStanding> }
+  | WitnessModuleNotAWitness { path: String, label: Label, reason: String }
+
+fn classify_witness_module(file: SelectedFile, content: String) -> WitnessModuleSelection {
+  match module_path_of(content: content) {
+    Absent => WitnessModuleNotAWitness { path: file.path, label: file.label, reason: "no module line" }
+    Present { value: module_path } => {
+      let names = test_function_names(content: content)
+      if count(names) == 0 {
+        WitnessModuleNotAWitness { path: file.path, label: file.label, reason: "no test fn declarations" }
+      } else {
+        let standings = map(names, f => witness_standing(module_path: module_path, function: f))
+        WitnessModuleSelected {
+          path: file.path,
+          label: file.label,
+          module_path: module_path,
+          planned: flat_map(standings, s => match s { WitnessPlanned { function } => [function]  WitnessDeclined { function: _, reason: _ } => [] }),
+          declined: filter(standings, s => match s { WitnessPlanned { function: _ } => false  WitnessDeclined { function: _, reason: _ } => true }),
+        }
+      }
+    }
+  }
+}
+
+fn planned_functions_joined(sel: WitnessModuleSelection) -> String {
+  match sel {
+    WitnessModuleSelected { path: _, label: _, module_path: _, planned, declined: _ } => join(planned, ",")
+    WitnessModuleNotAWitness { path: _, label: _, reason: _ } => ""
+  }
+}

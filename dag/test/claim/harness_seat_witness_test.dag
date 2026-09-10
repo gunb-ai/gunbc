@@ -1,0 +1,126 @@
+module test.claim.harness_seat_witness
+
+import std.types { Bool, String, Int, NonEmptyStr }
+import std.measure { second_count }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.pair_serving_desired {
+  spark_pair_serving_unit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+}
+import gunbc.spark.serving_engine { VllmServing, OllamaServing }
+import product.capacity.lease { QuiescenceRequired, FencedResource }
+import gunbc.harness.harness_seat {
+  harness_seat_partition, SeatCeilingByQualityPolicy, AdmissionCeilingUnestablished,
+  harness_seat_capacity, harness_interactive_quality_seats, harness_seat_reference,
+}
+import gunbc.harness.harness_cli {
+  harness_seat_policy, harness_request_deadline, harness_seat_release_allowance_seconds,
+}
+
+fn w_ceiling(group: FabricGroup) -> Int {
+  match harness_seat_capacity(group: group) {
+    SeatCeilingByQualityPolicy { pool: p, seats: _ } => p.ledger.appropriation.ceiling.count
+    AdmissionCeilingUnestablished { group: _, cause: _ } => -1
+  }
+}
+
+// The engine's OWN scheduler count limit, read straight off the desired unit. This witness needs it
+// only to prove the seat ceiling is NOT it.
+fn w_engine_max_num_seqs(group: FabricGroup) -> Int {
+  match spark_pair_serving_unit(group: group) {
+    SparkPairServingUnitRefused { group: _, cause: _ } => -1
+    SparkPairServingUnitReady { group: _, engine: e, head: _, workers: _ } =>
+      match e {
+        VllmServing { args: a } => a.max_num_seqs
+        OllamaServing { profile: _ } => -1
+      }
+  }
+}
+
+test fn each_group_has_its_own_partition() -> Bool {
+  (harness_seat_partition(group: FabricGroupA) as String) == "group-group-a-quality-seat-v1"
+    && (harness_seat_partition(group: FabricGroupB) as String) == "group-group-b-quality-seat-v1"
+}
+
+// THE DISCRIMINATING ROW: THE SEAT CEILING IS NOT THE ENGINE'S SEQUENCE LIMIT.
+//
+// This is the control on the fail-open this module used to carry. The ceiling came from
+// `max_num_seqs`, so the fabric claimed thirty-two seats per group on the strength of a scheduler
+// count that says nothing about KV residency -- and gunbc.spark.pair_serving_desired states in the
+// same corpus that no law from pool tokens to admitted sequences is modelled.
+//
+// The two numbers are asserted DIFFERENT rather than the ceiling merely asserted equal to one: an
+// equality against the policy constant alone would stay green if someone re-derived the ceiling from
+// the engine and happened to set max_num_seqs to one. Requiring them to disagree makes any
+// re-derivation red while the engine keeps its own limit.
+test fn the_seat_ceiling_is_a_quality_policy_and_never_the_engines_sequence_limit() -> Bool {
+  w_engine_max_num_seqs(group: FabricGroupA) == 32
+    && w_engine_max_num_seqs(group: FabricGroupB) == 32
+    && harness_interactive_quality_seats == 1
+    && w_ceiling(group: FabricGroupA) == harness_interactive_quality_seats
+    && w_ceiling(group: FabricGroupB) == harness_interactive_quality_seats
+    && w_ceiling(group: FabricGroupA) != w_engine_max_num_seqs(group: FabricGroupA)
+    && w_ceiling(group: FabricGroupB) != w_engine_max_num_seqs(group: FabricGroupB)
+}
+
+// The interim arm SAYS quality policy in its own constructor, so no consumer can read a derived
+// capacity out of it, and the unestablished arm exists and is reachable by name.
+test fn the_interim_ceiling_names_itself_quality_policy_and_the_refusal_arm_exists() -> Bool {
+  (match harness_seat_capacity(group: FabricGroupA) {
+     SeatCeilingByQualityPolicy { pool: _, seats: n } => n == harness_interactive_quality_seats
+     AdmissionCeilingUnestablished { group: _, cause: _ } => false
+   })
+    && (match AdmissionCeilingUnestablished { group: FabricGroupA, cause: "probe" as NonEmptyStr } {
+          AdmissionCeilingUnestablished { group: _, cause: c } => (c as String) == "probe"
+          SeatCeilingByQualityPolicy { pool: _, seats: _ } => false
+        })
+}
+
+// THE SEAT DEADLINE IS THE DECLARED REQUEST DEADLINE PLUS THE RELEASE ALLOWANCE, and the release
+// law is quiescence-required, because the engine cannot fence a superseded holder.
+test fn the_seat_policy_is_declared_from_the_request_deadline_and_requires_quiescence() -> Bool {
+  harness_seat_policy.maximum_duration_seconds == second_count(s: harness_request_deadline) + harness_seat_release_allowance_seconds
+    && (match harness_seat_policy.release_law { QuiescenceRequired => true  FencedResource => false })
+}
+
+// ── THE QUALITY CEILING AND THE CAPACITY QUESTION STAY SEPARATE ───────────────────────────────
+//
+// This control is the one the deleted placement module carried and this branch declined to rehome,
+// because the ceiling it asserted did not exist. It exists now: the pool this harness acquires from
+// has a ceiling of one, and that one is a product decision about what a turn already in flight may
+// be subjected to -- not a claim that a serving group can hold exactly one sequence.
+//
+// SO BOTH HALVES ARE ASSERTED. The effective ceiling is one, and the engine's own admission limit is
+// still thirty-two and still says nothing about KV residency; the derivation that would establish
+// capacity is owed by gunbc.rung_drop harness_seat_ceiling_by_operator_policy and is not discharged
+// by this row. A witness asserting only the first half would go green on a build that had quietly
+// re-read the ceiling off the engine.
+test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
+  harness_interactive_quality_seats == 1
+    && w_ceiling(group: FabricGroupA) == 1
+    && w_ceiling(group: FabricGroupB) == 1
+    && w_engine_max_num_seqs(group: FabricGroupA) == 32
+    && w_ceiling(group: FabricGroupA) != w_engine_max_num_seqs(group: FabricGroupA)
+}
+
+// ── AN ACQUISITION REFERENCE IS UNIQUE FOR THE LIFE OF THE PARTITION ──────────────────────────
+//
+// The pool refuses a duplicate reference against its WHOLE history, released entries included. A
+// reference of actor-plus-epoch-seconds therefore collides with itself the moment one actor places
+// twice inside one second, and stays refused for that partition forever after.
+//
+// THE ROUND ORDINAL IS NOT ENOUGH, and this control says so with the case that proves it: TWO
+// INDEPENDENT PLACEMENTS both start at round one, so an earlier spelling minted one reference twice
+// for the same actor, offer and second and turned an ordinary lost race into a permanent refusal. The
+// head the partition is at is what separates them -- it moves on every append, so the loser
+// re-observes a head the winner wrote. The last pair below is the discriminating one: everything else
+// held equal, two different heads must give two different references.
+test fn an_acquisition_reference_separates_rounds_offers_and_processes() -> Bool {
+  let a1 = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
+  let a2 = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 2, head: "aaa111" as NonEmptyStr) as String
+  let b1 = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-b@200.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
+  let c1 = harness_seat_reference(attempt: "worker:/w/two" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
+  let moved = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "bbb222" as NonEmptyStr) as String
+  let empty = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "empty" as NonEmptyStr) as String
+  a1 != a2 && a1 != b1 && a1 != c1 && a2 != b1 && a2 != c1 && b1 != c1
+    && a1 != moved && a1 != empty && moved != empty
+}

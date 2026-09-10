@@ -11,14 +11,19 @@ import extdeps.languages.json.parse {
   JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   parse_json_document, json_object_unique_member, json_document_gap_text,
 }
-import extdeps.deepseek.deepseek_v4 { deepseek_v4_chat_reasoning_field, deepseek_v4_chat_reasoning_field_vllm_alias }
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, Glm53FlashOnVllm, DeepseekV4FlashOnVllm,
+  harness_unit_model_id, harness_unit_reasoning_field, harness_unit_reasoning_field_aliases,
+}
 import extdeps.llm.anthropic_messages_api {
   AnthropicToolDefinition,
   AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
   ModelContextWindowExceeded,
 }
 import extdeps.ollama.api { ollama_default_port }
-import gunbc.fleet_intent_network { srv5_host_lan_endpoint, srv6_host_lan_endpoint }
+import gunbc.fleet_intent_network { srv5_host_lan_endpoint, srv6_host_lan_endpoint, host_lan_address }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
+import product.placement_supply { HostIdentity }
 
 // THE WIRE CODEC FOR THE DEDICATED HARNESS, over the shape DCH-1 already hoisted off the vendor.
 //
@@ -345,47 +350,38 @@ fn harness_backend_url(address: String, shape: HarnessWireShape) -> String {
 // 2026-09-04 (/v1/models 200 on both, advertising harness_engine_model). A replica is chosen per
 // worker from a seed (the worktree path) so concurrent attempts spread across both machines
 // without a process in the middle; a transport refusal stays a typed turn failure, never a widen.
-// .225 is srv6's LAN address (gunbc.fleet_intent_network); .232 is the second serving NIC on the
-// other Spark, which the fleet model does not yet carry as a row -- it is declared here beside the
-// port for the same reason the model is, and moves to the fleet when that row exists.
+// THE ROSTER IS DERIVED, NOT AUTHORED: one replica per serving pair, at the pair's HEAD, because the
+// vLLM front door of a TP=2 pair answers on its head unit only. Which unit is a pair's head is the
+// attributable row `gunbc.spark.pair_serving_desired` `spark_pair_serving_head`, and the address is
+// the fleet topology's LAN endpoint for that host (`gunbc.fleet_intent_network` `host_lan_address`).
+// A head with no LAN endpoint row makes the roster UNRESOLVED, which the backend observer refuses on
+// naming the host -- never a shorter list. History, because it is the reason this is a derivation:
+// the row was `[srv6.address, "192.168.1.232"]`, .232 being srv7 as the first pair's front door;
+// the heads moved to srv6 and srv9, nothing observed the literal, and a dispatch on 2026-09-05
+// refused against a dead address while both heads served. NEXT MOVE, deliberately not here: the LAN
+// answer is still a locality choice made by this module. The fabric owes a locus-to-locus resolution
+// (dispatching host -> head's front door), the same relation `gunbc.fleet_ssh_locus`
+// `fleet_locus_ssh_target` computes for ssh; when it exists this fn asks it and stops naming Lan.
 data harness_engine_port: Int = 30000
 
-data harness_engine_replica_addresses: List<String> = [srv6_host_lan_endpoint.address, "192.168.1.232"]
+type HarnessReplicaRoster
+  = HarnessReplicasResolved { addresses: List<String> }
+  | HarnessReplicasUnresolved { hosts: List<HostIdentity> }
 
-fn harness_engine_replica_index(seed: String) -> Int {
-  let n = list_length(items: harness_engine_replica_addresses)
-  let sum = fold(chars(s: seed), init: 0, f: (acc, cp) => acc + cp)
-  sum % n
-}
-
-fn harness_engine_replica_address(seed: String) -> String {
-  harness_replica_pick(seed: seed, replicas: harness_engine_replica_addresses)
-}
-
-// THE PICK OVER AN ARBITRARY ROSTER, so an attempt binds to a replica chosen from the ones OBSERVED
-// SERVING (gunbc.harness.harness_backend harness_serving_backend_url) rather than from the declared
-// list. A declared replica that is down is a typed, counted decline there; here it is simply not in
-// the roster handed in, so the seed spreads attempts over the machines that can take them. Callers
-// hand in a non-empty roster (the serving arm carries at least one address by construction).
-fn harness_replica_pick(seed: String, replicas: List<String>) -> String {
-  let want = fold(chars(s: seed), init: 0, f: (acc, cp) => acc + cp) % list_length(items: replicas)
-  let picked = fold(replicas, init: ReplicaPick { at: 0, chosen: "" }, f: (acc, a) =>
-    ReplicaPick { at: acc.at + 1, chosen: if acc.at == want { a } else { acc.chosen } })
-  picked.chosen
+fn harness_engine_replica_roster() -> HarnessReplicaRoster {
+  let heads = map(spark_pair_serving_groups, g => spark_pair_serving_head(group: g))
+  let unresolved = filter(heads, h => match host_lan_address(host: h) { Present { value: _ } => false  Absent => true })
+  if count(unresolved) > 0 {
+    HarnessReplicasUnresolved { hosts: unresolved }
+  } else {
+    HarnessReplicasResolved { addresses: flat_map(heads, h => match host_lan_address(host: h) { Present { value: a } => [a as String]  Absent => [] }) }
+  }
 }
 
 fn harness_backend_url_for_address(shape: HarnessWireShape, address: String) -> String {
   harness_backend_url_on_port(address: address, port: harness_engine_port, shape: shape)
 }
 
-type ReplicaPick {
-  at: Int
-  chosen: String
-}
-
-fn harness_engine_backend_url(shape: HarnessWireShape, seed: String) -> String {
-  harness_backend_url_on_port(address: harness_engine_replica_address(seed: seed), port: harness_engine_port, shape: shape)
-}
 
 // THE SERVING STACK THE OPERATOR ACTUALLY RUNS FOR THIS WORK, which is not the one every row above
 // assumes, and the difference is worth stating because it invalidated four probes before it was
@@ -416,7 +412,26 @@ fn harness_engine_backend_url(shape: HarnessWireShape, seed: String) -> String {
 // shared-standard modelling bought: a second implementation of the same wire reused the decoder
 // with no second decoder written.
 
-data harness_engine_model: String = "deepseek-v4-flash:iq3s-split"
+// WHICH SERVING UNIT THE HARNESS TALKS TO. This row replaced a bare model STRING, and the
+// replacement is the point: the string was one of three independent spellings of one model identity
+// (this row, the pair's observed served_model_name, and the llama.cpp router's observed alias), so
+// a model change had to be remembered in three places and could be forgotten in two. The unit is now
+// the single thing chosen, and the model id is DERIVED from it through the seam, which in turn
+// derives it from the model's own upstream authority.
+//
+// THE ORDINARY HARNESS TALKS TO DEEPSEEK, BECAUSE THAT IS WHAT THE PRODUCTION ROUTE SERVES. This row
+// briefly read Glm53FlashOnVllm while the pair route this harness reaches was restored to DeepSeek --
+// so the global selector carried a canary experiment, and every ordinary harness action would have
+// encoded GLM's reasoning kwargs, effort key and tool parser into requests aimed at an endpoint
+// serving DeepSeek from an image measured not to register GLM at all.
+//
+// A CANARY IS NOT A DEFAULT. The GLM arm is reached through gunbc.spark.glm_canary_converge, which
+// names its own host, port and alias together; a caller that wants it selects that binding explicitly
+// rather than inheriting it from a row every other caller also reads. Making the one global selector
+// carry an experiment is how an experiment becomes production without anyone deciding it should.
+data harness_serving_unit: HarnessServingUnit = DeepseekV4FlashOnVllm
+
+data harness_engine_model: String = harness_unit_model_id(unit: harness_serving_unit) as String
 
 // THE ROUTER'S WINDOW IS DECLARED BESIDE THE ROUTER, for the reason the model directly above it is.
 // gunbc.spark.serving_desired owns spark_serving_desired_context_length, and that row is the OLLAMA
@@ -508,11 +523,11 @@ fn harness_chat_tool_call_block(v: JsonValue) -> HarnessWireBlock? {
   }
 }
 
-fn harness_chat_message_blocks(msg: JsonValue) -> List<HarnessWireBlock> {
-  let reasoning = match harness_member_string(doc: msg, key: deepseek_v4_chat_reasoning_field as String) {
+fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> List<HarnessWireBlock> {
+  let reasoning = match harness_member_string(doc: msg, key: harness_unit_reasoning_field(unit: unit) as String) {
     Present { value: r } => [WireThinkingBlock { thinking: r }]
     Absent =>
-      match harness_member_string(doc: msg, key: deepseek_v4_chat_reasoning_field_vllm_alias as String) {
+      match harness_first_member_string(doc: msg, keys: harness_unit_reasoning_field_aliases(unit: unit)) {
         Present { value: r } => if r == "" { [] } else { [WireThinkingBlock { thinking: r }] }
         Absent => []
       }
@@ -532,7 +547,7 @@ fn harness_chat_message_blocks(msg: JsonValue) -> List<HarnessWireBlock> {
   concat(concat(reasoning, text), calls)
 }
 
-fn harness_decode_chat_completion(body: String) -> HarnessResponseRead {
+fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> HarnessResponseRead {
   match parse_json_document(s: body) {
     JsonDocumentUnreadable { gap: g } =>
       HarnessResponseUnreadable { cause: join(["response body is not a JSON document: ", json_document_gap_text(gap: g)], "") }
@@ -551,7 +566,7 @@ fn harness_decode_chat_completion(body: String) -> HarnessResponseRead {
                     StopReasonRead { reason: r } =>
                       HarnessResponseParsed {
                         blocks: match json_object_unique_member(v: choice, key: "message") {
-                          JsonMemberFound { value: m } => harness_chat_message_blocks(msg: m)
+                          JsonMemberFound { value: m } => harness_chat_message_blocks(unit: unit, msg: m)
                           _ => []
                         },
                         stop_reason: r,
@@ -572,9 +587,24 @@ fn harness_decode_chat_completion(body: String) -> HarnessResponseRead {
   }
 }
 
-fn harness_decode_for_shape(shape: HarnessWireShape, body: String) -> HarnessResponseRead {
+fn harness_decode_for_shape(unit: HarnessServingUnit, shape: HarnessWireShape, body: String) -> HarnessResponseRead {
   match shape {
     AnthropicMessagesShape => harness_decode_response(body: body)
-    OpenAiChatCompletionsShape => harness_decode_chat_completion(body: body)
+    OpenAiChatCompletionsShape => harness_decode_chat_completion(unit: unit, body: body)
+  }
+}
+
+// THE ALIAS FOLD. A unit may expose the same reasoning text under a second spelling -- vLLM's
+// "reasoning" beside the guide's reasoning_content -- and a unit may expose none. Folding a LIST
+// rather than branching on an empty sentinel keeps "this unit has no alias" as an empty list, which
+// is the state itself rather than a string standing in for it.
+fn harness_first_member_string(doc: JsonValue, keys: List<NonEmptyStr>) -> String? {
+  match keys.first() {
+    Absent => none
+    Present { value: k } =>
+      match harness_member_string(doc: doc, key: k as String) {
+        Present { value: v } => Present { value: v }
+        Absent => harness_first_member_string(doc: doc, keys: keys.skip(n: 1))
+      }
   }
 }
