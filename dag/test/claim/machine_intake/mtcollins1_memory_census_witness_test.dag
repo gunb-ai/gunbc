@@ -1,0 +1,116 @@
+module test.claim.mtcollins1_memory_census_witness_test
+
+import std.types { Bool, Int, List, list_length }
+import std.nat { Nat }
+import gunbc.machine_intake_mtcollins1_memory_census_observation {
+  MtCollins1EdacTopologyObservation,
+  MtCollins1FirmwareChannelBinding,
+  MtCollins1SlotObservation,
+  SlotEmpty,
+  SlotPopulated,
+  mtcollins1_edac_topology,
+  mtcollins1_firmware_channel_bindings,
+  mtcollins1_nproc,
+  mtcollins1_slots,
+}
+
+// THIS TEST EXISTS BECAUSE THE CENSUS MODULE WOULD OTHERWISE DECLARE SIXTEEN CHANNEL BINDINGS AND
+// THIRTY-TWO SLOT ROWS THAT NOTHING READS — DESIGN section 3c's dangling declaration, and section 2's
+// redundant work in its purest form. It is also the only mechanism that keeps the module's two
+// independent readings from silently drifting apart under a later edit.
+//
+// THE LOAD-BEARING CHECK IS THE CROSS-JOIN, and it is discriminating rather than decorative. The
+// firmware DRAM training output and the SMBIOS Type 17 table are two DIFFERENT readings, taken by
+// two different agents (the Altra boot firmware before any OS, and dmidecode under Linux) from two
+// different structures. The census module transcribes both. If either transcription is wrong, or
+// if a later editor changes one list and not the other, the part number or rank at some connector
+// stops agreeing and this test goes red. A test that merely asserted "sixteen rows exist" would
+// stay green through exactly that corruption.
+
+fn slot_agrees_with_binding(b: MtCollins1FirmwareChannelBinding, s: MtCollins1SlotObservation) -> Bool {
+  if s.connector == b.connector {
+    match s.occupancy {
+      SlotPopulated { part_number: p, rank_count: r, serial_number: _, configured_mts: _ } =>
+        p == b.part_number && r == b.rank_count && s.processor_socket == b.processor_socket
+      SlotEmpty => false
+    }
+  } else {
+    false
+  }
+}
+
+fn agreeing_slot_count(b: MtCollins1FirmwareChannelBinding, slots: List<MtCollins1SlotObservation>) -> Int {
+  fold(slots, init: 0, f: fn(acc, s) { if slot_agrees_with_binding(b: b, s: s) { acc + 1 } else { acc } })
+}
+
+// EXACTLY ONE, never "at least one": a duplicated connector row would satisfy an existence check
+// while making the slot table ambiguous about which module sits where.
+fn every_binding_has_exactly_one_agreeing_slot(bindings: List<MtCollins1FirmwareChannelBinding>, slots: List<MtCollins1SlotObservation>) -> Bool {
+  fold(bindings, init: true, f: fn(acc, b) { acc && (agreeing_slot_count(b: b, slots: slots) == 1) })
+}
+
+test fn firmware_channel_map_agrees_with_the_smbios_slot_table() -> Bool {
+  list_length(items: mtcollins1_firmware_channel_bindings) == 16
+    && every_binding_has_exactly_one_agreeing_slot(bindings: mtcollins1_firmware_channel_bindings, slots: mtcollins1_slots)
+}
+
+fn populated_count(slots: List<MtCollins1SlotObservation>) -> Int {
+  fold(slots, init: 0, f: fn(acc, s) {
+    match s.occupancy {
+      SlotPopulated { part_number: _, rank_count: _, serial_number: _, configured_mts: _ } => acc + 1
+      SlotEmpty => acc
+    }
+  })
+}
+
+fn populated_on_even_connector_count(slots: List<MtCollins1SlotObservation>) -> Int {
+  fold(slots, init: 0, f: fn(acc, s) {
+    match s.occupancy {
+      SlotPopulated { part_number: _, rank_count: _, serial_number: _, configured_mts: _ } =>
+        if ((s.connector % 2) == 0) { acc + 1 } else { acc }
+      SlotEmpty => acc
+    }
+  })
+}
+
+// THE ODD-CONNECTOR POPULATION IS THE PROPERTY THAT TIES THIS UNIT TO THE UPSTREAM TABLE.
+// extdeps.ampere.mt_collins_product_brief.memory_population records that the Getting Started
+// Guide's 16-DIMM row populates the odd member of every connector pair. This unit is asserted to be
+// in exactly that configuration, so a census that reported a module on an even connector would
+// contradict either the reading or the identification of connectors, and must not pass quietly.
+test fn all_thirty_two_connectors_are_present_and_only_odd_ones_are_populated() -> Bool {
+  list_length(items: mtcollins1_slots) == 32
+    && populated_count(slots: mtcollins1_slots) == 16
+    && populated_on_even_connector_count(slots: mtcollins1_slots) == 0
+}
+
+fn bindings_at_channel_slot_zero(bindings: List<MtCollins1FirmwareChannelBinding>) -> Int {
+  fold(bindings, init: 0, f: fn(acc, b) { if (b.slot_in_channel == 0) { acc + 1 } else { acc } })
+}
+
+// ONE DIMM PER CHANNEL, AND THE FIRMWARE SAYS SO DIRECTLY. Every populated module sits at S0 of its
+// channel, which is what makes all sixteen empty connectors the S1 position and is the whole basis
+// of the 2DPC fill question this census was taken to inform.
+test fn the_unit_is_uniformly_one_dimm_per_channel() -> Bool {
+  bindings_at_channel_slot_zero(bindings: mtcollins1_firmware_channel_bindings) == 16
+}
+
+// THE NEGATIVE RESULT IS ENROLLED AS EVIDENCE, not left as prose. If a future kernel or a native
+// Altra EDAC driver ever does expose a csrow tree on this platform, csrow_node_count stops being 0
+// and this test goes red — which is the correct outcome, because the census module's stated reason
+// for reading the channel map out of firmware instead would no longer hold. It is a control that is
+// SUPPOSED to fail the day the platform changes.
+test fn edac_exposes_no_channel_topology_and_reports_no_errors() -> Bool {
+  mtcollins1_edac_topology.csrow_node_count == 0
+    && mtcollins1_edac_topology.memory_controller_count == 1
+    && mtcollins1_edac_topology.dimm_node_count == 16
+    && mtcollins1_edac_topology.corrected_error_count == 0
+    && mtcollins1_edac_topology.uncorrected_error_count == 0
+    && mtcollins1_edac_topology.apei_firmware_first
+}
+
+// The year-end plan's exit clause names nproc 160 explicitly, so the figure is asserted rather than
+// merely carried.
+test fn the_unit_presents_one_hundred_and_sixty_processors() -> Bool {
+  mtcollins1_nproc == 160
+}
