@@ -1,11 +1,20 @@
 module gunbc.runner_provider_survey
 
-import std.types { List }
-import extdeps.ci_runner.types { RunnerCatalogAvailability, RunnerLabelCatalog }
+import std.types { List, String }
+import extdeps.ci_runner.types {
+  CatalogSnapshot, RunnerCatalogAvailability, RunnerLabelCatalog, RunnerLabelRow,
+}
+import extdeps.github.hosted_runners {
+  GithubHostedRunnerCatalogRow, RepoVisibility, PublicRepo, PrivateRepo,
+  github_hosted_ubuntu_catalog,
+}
+import extdeps.languages.yaml.gha_workflow { runner_label_string }
 import extdeps.ci_runner.blacksmith { blacksmith_runner_catalog, blacksmith_label_catalog }
 import extdeps.ci_runner.circleci { circleci_runner_catalog, circleci_label_catalog }
 import extdeps.ci_runner.depot { depot_runner_catalog, depot_label_catalog }
-import extdeps.ci_runner.github_actions { github_actions_runner_catalog, github_actions_label_catalog }
+import extdeps.ci_runner.github_actions {
+  github_actions_runner_catalog, github_actions_label_catalog, github_actions_provider_identity,
+}
 import extdeps.ci_runner.warpbuild { warpbuild_runner_catalog, warpbuild_label_catalog }
 import extdeps.cloud.ubicloud { ubicloud_runner_catalog_shapes, ubicloud_label_catalog }
 
@@ -43,5 +52,57 @@ fn surveyed_label_catalogs() -> List<RunnerLabelCatalog> {
     depot_label_catalog,
     warpbuild_label_catalog,
     circleci_label_catalog,
+    github_hosted_standard_label_catalog,
   ]
+}
+
+// -------------------------------------------------------------------------------------
+// THE STANDARD GitHub-HOSTED LABELS, ENROLLED FROM THE AUTHORITY THAT ALREADY OWNS THEM.
+//
+// An earlier revision of this change re-authored these as free strings inside
+// extdeps.ci_runner.github_actions, and a review caught it as the fork it was. GitHub's standard
+// hosted runners already have one home: extdeps.github.hosted_runners keys them by
+// extdeps.github.actions RunnerLabel with a REPOSITORY-VISIBILITY axis, which is precisely the
+// axis whose absence from RunnerShapeRow made a sized row impossible - so the problem this join
+// exists to solve was already solved upstream, one module over. The wire spelling comes from
+// runner_label_string, the single place a hosted label becomes text.
+//
+// THE JOIN IS HERE AND NOT IN EITHER UPSTREAM MODULE. extdeps.ci_runner.github_actions answers
+// for the larger-runners reference and extdeps.github.hosted_runners for the standard one; making
+// either import the other to produce a combined roster would put a consumer's question inside an
+// upstream authority. Which catalogs this repository consults is an observation this repository
+// makes, and this module is where those observations live.
+//
+// ARCHITECTURE IS TAKEN FROM THE PUBLIC ROWS AND THE CHOICE IS CHECKED, NOT ASSUMED. Every label
+// appears twice, once per visibility, and the two rows differ in vCPU and memory while agreeing
+// on architecture. Reading one of them is therefore sound and would stop being sound silently, so
+// test.claim.runner_label_resolution_witness_test asserts the agreement over the whole catalog
+// rather than trusting this comment.
+//
+// ubuntu-latest IS DELIBERATELY ABSENT and that is upstream's ruling, not an omission here:
+// hosted_runners declines to carry it because it is "a vendor-floating alias of the current x64
+// row" and pinning by alias lets the vendor move the fact. A scan meeting ubuntu-latest therefore
+// gets an unresolved reading with a cause, which is the correct answer to a label whose meaning
+// is not fixed.
+fn github_hosted_public_rows() -> List<GithubHostedRunnerCatalogRow> {
+  filter(github_hosted_ubuntu_catalog(), r => r.visibility == PublicRepo)
+}
+
+fn github_hosted_label_row(row: GithubHostedRunnerCatalogRow) -> RunnerLabelRow {
+  RunnerLabelRow {
+    provider: github_actions_provider_identity,
+    label: runner_label_string(label: row.runs_on_label),
+    architecture: row.cpu_architecture,
+  }
+}
+
+data github_hosted_standard_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-07-11T00:00:00Z",
+  declared_scope: "The version-pinned Ubuntu standard GitHub-hosted labels carried by extdeps.github.hosted_runners: ubuntu-slim, ubuntu-24.04 and ubuntu-24.04-arm. Windows and macOS standard runners are on the same upstream tables and are NOT modelled there, and ubuntu-latest is deliberately excluded as a vendor-floating alias. A label from any of those is absent from this catalog because this repository has not modelled it, not because GitHub does not publish it.",
+}
+
+data github_hosted_standard_label_catalog: RunnerLabelCatalog = RunnerLabelCatalog {
+  provider: github_actions_provider_identity,
+  snapshot: github_hosted_standard_snapshot,
+  rows: map(github_hosted_public_rows(), r => github_hosted_label_row(row: r)),
 }

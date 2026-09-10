@@ -11,6 +11,7 @@ import extdeps.time.rfc3339 {
   Rfc3339Timestamp, Rfc3339Comparison, Rfc3339Precedes, Rfc3339Follows,
   Rfc3339Simultaneous, Rfc3339OrderUndecidable, rfc3339_compare,
 }
+import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow, github_hosted_ubuntu_catalog }
 import gunbc.runner_label_resolution {
   RunnerLabelResolution, RunnerLabelResolved, RunnerLabelSnapshotStale, RunnerLabelAbsentFromSurvey,
   resolve_runner_label,
@@ -96,7 +97,7 @@ test fn witness_each_surveyed_providers_arm_and_x64_labels_resolve() -> Bool {
     "warp-ubuntu-latest-x64-8x",
     "ubicloud-standard-16",
     "ubuntu-24.04",
-    "ubuntu-latest",
+    "ubuntu-slim",
     "ubuntu-latest-64core",
   ]
   count(filter(arm_labels, l => resolved_arm(label: l, observed_at: biome_observed_at) == false)) == 0
@@ -117,6 +118,7 @@ test fn witness_a_label_outside_every_catalog_yields_no_architecture() -> Bool {
     "namespace-profile-default-arm64",
     "depot-ubuntu-24.04-arm-small",
     "ubicloud-standard-8-ubuntu-2404",
+    "ubuntu-latest",
   ]
   count(filter(unknown_labels, l => arm_undetermined(label: l, observed_at: biome_observed_at) == false)) == 0
     && count(filter(unknown_labels, l => resolved_arm(label: l, observed_at: biome_observed_at))) == 0
@@ -156,11 +158,31 @@ test fn witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation() ->
   }
 }
 
+// ubuntu-latest IS IN THE UNRESOLVED SET ABOVE ON PURPOSE, and it is the claim most likely to be
+// read as a defect. extdeps.github.hosted_runners declines to carry it because it is a
+// vendor-floating alias of whichever x64 row is current, and pinning by alias lets the vendor move
+// the fact underneath a pinned reading. So an unresolved answer here is the CORRECT one: the label
+// does not fix an architecture, and a resolver that returned x64 would be reporting today's
+// aliasing as though it were the label's meaning.
+
+// EVERY STANDARD HOSTED LABEL AGREES ON ARCHITECTURE ACROSS REPOSITORY VISIBILITY, which is what
+// makes reading the public rows sound. The vCPU and memory figures genuinely differ between the
+// two; if an architecture ever differed too, the label roster would be silently reporting one
+// visibility's answer for both, so the agreement is asserted over the whole catalog rather than
+// trusted.
+test fn witness_hosted_label_architecture_does_not_vary_with_repository_visibility() -> Bool {
+  let rows = github_hosted_ubuntu_catalog()
+  let disagreements = filter(rows, r =>
+    count(filter(rows, other =>
+      other.runs_on_label == r.runs_on_label && other.cpu_architecture != r.cpu_architecture)) > 0)
+  count(rows) > 0 && count(disagreements) == 0
+}
+
 test fn witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding() -> Bool {
   match resolve_runner_label(label: "depot-ubuntu-24.04-arm-small", observed_at: observation_before_every_snapshot) {
     RunnerLabelResolved { row, snapshot } => false
     RunnerLabelSnapshotStale { label, observed_at, stale_snapshots, cause } => false
-    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => count(snapshots_consulted) == 6
+    RunnerLabelAbsentFromSurvey { label, observed_at, snapshots_consulted, cause } => count(snapshots_consulted) == 7
   }
 }
 
@@ -225,6 +247,7 @@ fn all_claims_hold() -> Bool {
     && witness_each_surveyed_providers_arm_and_x64_labels_resolve()
     && witness_a_label_outside_every_catalog_yields_no_architecture()
     && witness_an_unresolved_label_carries_both_readings_unresolved()
+    && witness_hosted_label_architecture_does_not_vary_with_repository_visibility()
     && witness_a_miss_against_an_older_snapshot_is_our_coverage_obligation()
     && witness_a_miss_against_snapshots_that_all_postdate_it_is_a_finding()
     && witness_rfc3339_comparison_orders_utc_values_of_equal_precision()

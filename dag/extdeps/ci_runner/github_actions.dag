@@ -8,14 +8,12 @@ import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
   CatalogSnapshot,
   EntitlementUnstated,
-  label_row_of_shape,
+  label_catalog_of_shapes,
   RunnerLabelCatalog,
-  RunnerLabelRow,
   RunnerCatalogAvailability,
   QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
-  runner_shape_rows,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -37,18 +35,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [github_actions_standard_runners_authority]
-}
-
-// THE SECOND PAGE THIS MODULE ANSWERS FOR. The larger-runners reference above publishes the
-// sized ubuntu-latest-Ncore families; the STANDARD runners are a different reference, and the
-// two together are what "a GitHub-hosted runner label" means. One module, two citations, because
-// they are two pages of one product's own documentation and not two products.
-data github_actions_standard_runners_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.github.com/en/actions/reference/runners/github-hosted-runners"
-  }
+  further_citations: []
 }
 
 data github_actions_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
@@ -103,68 +90,22 @@ data github_actions_runner_catalog: RunnerCatalogAvailability = RunnerShapesCite
   ],
 }
 
-// -------------------------------------------------------------------------------------
-// THE STANDARD RUNNERS, AS LABEL ROWS AND DELIBERATELY NOT AS SHAPES.
+// THE LABEL ROSTER FOR THIS MODULE'S OWN PAGE, AND NOTHING BEYOND IT.
 //
-// Live-fetched 2026-09-10 from the github-hosted-runners reference. The page publishes each
-// standard label TWICE with different sizes - once for public repositories and once for private
-// ones - so ubuntu-24.04-arm is 4 vCPU / 16 GB on a public repository and 2 vCPU / 8 GB on a
-// private one. RunnerShapeRow has no visibility axis, so adding these as shapes would mean
-// choosing one of the two published numbers and asserting it unconditionally: a fabricated fact,
-// and the kind that reads as cited because it sits beside cited ones.
-//
-// The ARCHITECTURE column does not vary that way. The page states one architecture per label
-// across both tables, which is exactly what a runs-on reader needs and all this roster claims.
-//
-// The two Public-preview families (ubuntu-26.04, ubuntu-26.04-arm, windows-11-vs2026-arm,
-// xcode-27) are carried: preview or not, the page publishes them as workflow labels a repository
-// can already write, and a scanner that meets one should resolve it rather than report a gap.
-fn github_actions_standard_label(label: NonEmptyStr, architecture: Architecture) -> RunnerLabelRow {
-  RunnerLabelRow {
-    provider: github_actions_provider_identity,
-    label: label,
-    architecture: architecture,
-  }
-}
-
-data github_actions_standard_runner_labels: List<RunnerLabelRow> = [
-  github_actions_standard_label(label: "ubuntu-slim", architecture: X86_64),
-  github_actions_standard_label(label: "ubuntu-latest", architecture: X86_64),
-  github_actions_standard_label(label: "ubuntu-24.04", architecture: X86_64),
-  github_actions_standard_label(label: "ubuntu-22.04", architecture: X86_64),
-  github_actions_standard_label(label: "ubuntu-26.04", architecture: X86_64),
-  github_actions_standard_label(label: "ubuntu-24.04-arm", architecture: Aarch64),
-  github_actions_standard_label(label: "ubuntu-22.04-arm", architecture: Aarch64),
-  github_actions_standard_label(label: "ubuntu-26.04-arm", architecture: Aarch64),
-  github_actions_standard_label(label: "windows-latest", architecture: X86_64),
-  github_actions_standard_label(label: "windows-2025", architecture: X86_64),
-  github_actions_standard_label(label: "windows-2025-vs2026", architecture: X86_64),
-  github_actions_standard_label(label: "windows-2022", architecture: X86_64),
-  github_actions_standard_label(label: "windows-11-arm", architecture: Aarch64),
-  github_actions_standard_label(label: "windows-11-vs2026-arm", architecture: Aarch64),
-  github_actions_standard_label(label: "macos-15-intel", architecture: X86_64),
-  github_actions_standard_label(label: "macos-26-intel", architecture: X86_64),
-  github_actions_standard_label(label: "macos-latest", architecture: Aarch64),
-  github_actions_standard_label(label: "macos-14", architecture: Aarch64),
-  github_actions_standard_label(label: "macos-15", architecture: Aarch64),
-  github_actions_standard_label(label: "macos-26", architecture: Aarch64),
-  github_actions_standard_label(label: "xcode-27", architecture: Aarch64),
-]
-
-// The only provider whose label roster is not a bare projection of its shape catalog, and the
-// concatenation is the whole difference: the sized larger-runner labels come from the shapes,
-// the standard labels are authored because no visibility-free shape exists for them. A label
-// appears in exactly one of the two.
+// This module's authority is the larger-runners reference, so its label catalog is exactly the
+// projection of the sized rows above. THE STANDARD GitHub-hosted LABELS ARE NOT RE-AUTHORED HERE:
+// extdeps.github.hosted_runners already owns them, keyed by extdeps.github.actions RunnerLabel
+// with the visibility axis this module's RunnerShapeRow lacks, and it says in its own words that
+// the label vocabulary is spelled once and "never a free string beside it". Enrolling that
+// catalog is gunbc.runner_provider_survey's job, because joining two upstream authorities is
+// consumer-layer work and not something either upstream module may do to the other.
 data github_actions_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
-  fetched_at: "2026-09-10T00:00:00Z",
-  declared_scope: "GitHub-hosted runners across BOTH published references: the sized ubuntu-latest-Ncore larger-runner families, and every standard workflow label on the github-hosted-runners page (Linux, Windows and macOS, including the Public-preview 26.04 and vs2026 families). Self-hosted labels are NOT in scope and never will be: a self-hosted label is named by the repository that registered it, so no vendor page can enumerate it and a miss on one is not a coverage gap.",
+  fetched_at: "2026-08-18T00:00:00Z",
+  declared_scope: "The sized ubuntu-latest-Ncore larger-runner families only, from the larger-runners reference cited above. The STANDARD GitHub-hosted labels are not in this catalog and are not missing from it: they are owned by extdeps.github.hosted_runners and enrolled separately. Self-hosted labels are in no vendor catalog and never will be - a self-hosted label is named by the repository that registered it, so a miss on one is not a coverage gap.",
 }
 
-data github_actions_label_catalog: RunnerLabelCatalog = RunnerLabelCatalog {
+data github_actions_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   provider: github_actions_provider_identity,
   snapshot: github_actions_catalog_snapshot,
-  rows: concat(
-    map(runner_shape_rows(availability: github_actions_runner_catalog), r => label_row_of_shape(row: r)),
-    github_actions_standard_runner_labels,
-  ),
-}
+  availability: github_actions_runner_catalog,
+)
