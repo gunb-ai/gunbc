@@ -55,6 +55,7 @@ import tools.scm_acceptance_binary {
   ScmAcceptanceBinaryDigestRefused,
   ScmAcceptanceBinaryRetentionRefused,
   ScmAcceptanceBinaryNotRunnableHere,
+  scm_acceptance_binary_still_holds,
   acquire_scm_acceptance_binary,
   scm_acceptance_binary_executable,
 }
@@ -277,17 +278,26 @@ type ScmScenarioPreparation
   = ScmScenarioPrepared { prepared: PreparedScmScenario }
   | ScmScenarioWorkspaceUnavailable
 
+// THE WORKSPACE PATH IS TRIMMED, and the bug it fixes is worse than a failed run: it PASSED.
+// `shell.Mktemp.Dir` takes `path` straight from stdout and `mktemp` prints a trailing newline, so
+// every scenario was interpolating a newline INTO its paths, `mkdir -p` obligingly created a
+// directory literally named with one, and the whole scenario then used that sibling consistently
+// and went green -- while the real mktemp directory stayed empty and was LEAKED, one per scenario,
+// because cleanup removed the sibling. Green with a leak is the worst shape a defect can take: no
+// signal at all. The corpus already records this trap at `mktemp_path_is_untrimmed_note`, written
+// after it failed a different witness "at the fixture write rather than anywhere near the subject".
 fn prepare_scm_scenario(
   scenario: ScmScenario,
   binary: ScmAcceptanceBinary
 ) -> ScmScenarioPreparation {
   let workspace = shell.Mktemp.Dir()
   if workspace.success {
+    let root = trim(s: workspace.path as String)
     ScmScenarioPrepared {
       prepared: PreparedScmScenario {
         scenario: scenario,
-        workspace: workspace.path,
-        steps: scm_scenario_steps(scenario: scenario, workspace: workspace.path),
+        workspace: root,
+        steps: scm_scenario_steps(scenario: scenario, workspace: root),
         binary: binary,
       },
     }
@@ -853,7 +863,18 @@ fn scm_scenario_in_fresh_workspace(
         detail: "a temporary workspace could not be created",
       }
     ScmScenarioPrepared { prepared: prepared } =>
-      finalize_scm_scenario(execution: execute_prepared_scenario(prepared: prepared))
+      if !scm_acceptance_binary_still_holds(binary: binary) {
+        let cleaned = shell.Remove.RecursiveForce(path: prepared.workspace)
+        ScmAcceptanceWorkspaceRefused {
+          scenario: scm_scenario_name(scenario: scenario),
+          detail: concat(
+            "the retained acceptance binary no longer digests to the artifact it was minted over -- ",
+            "something replaced it between acquisition and this scenario",
+          ),
+        }
+      } else {
+        finalize_scm_scenario(execution: execute_prepared_scenario(prepared: prepared))
+      }
   }
 }
 
@@ -909,8 +930,13 @@ fn scm_acceptance_population(binary: ScmAcceptanceBinary) -> ScmAcceptanceOutcom
 
 fn scm_acceptance_acquisition_exit(acquisition: ScmAcceptanceBinaryAcquisition) -> ProcessExit {
   match acquisition {
-    ScmAcceptanceBinaryBuildRefused { target_name: t } =>
-      exit_failure(reason: concat("acceptance refused: the acceptance binary did not build: ", t))
+    ScmAcceptanceBinaryBuildRefused { target_name: t, stderr: e } =>
+      exit_failure(
+        reason: concat(
+          concat("acceptance refused: the acceptance binary did not build (", t),
+          concat("): ", e),
+        )
+      )
     ScmAcceptanceBinarySelectionRefused { detail: d } =>
       exit_failure(reason: concat("acceptance refused: ", d))
     ScmAcceptanceBinaryDigestRefused { detail: d } =>
