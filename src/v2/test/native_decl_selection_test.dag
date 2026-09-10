@@ -77,44 +77,30 @@ fn observation_is_entry_not_found(observation: NativeTestObservation) -> Bool {
   }
 }
 
-test fn the_requested_declaration_is_selected_and_evaluated() -> Bool {
-  match collision_prepared() {
-    Absent => false
-    Present { value: prepared } =>
-      let observation = native_test_eval_one(prepared: prepared, declaration: ^real_test)
-      match observation.verdict {
-        NativeTestPassed => true
-        _ => false
-      }
+fn selected_declaration_passed(prepared: NativeTestPreparedModule) -> Bool {
+  match native_test_eval_one(prepared: prepared, declaration: ^real_test).verdict {
+    NativeTestPassed => true
+    _ => false
   }
 }
 
-test fn a_nested_same_named_graft_edge_is_not_selected() -> Bool {
+// One ingest, four observations: four separate `test fn`s each paid a full
+// native_test_context_from_ingest and crossed required_floor_claim_cpu_safety_limit_ms
+// (502–513ms / 500ms) on #10961's required-witnesses-floor. Combining keeps every
+// discriminator and pays the prepare once.
+test fn native_decl_selection_scope_holds() -> Bool {
   match collision_prepared() {
     Absent => false
     Present { value: prepared } =>
-      observation_is_entry_not_found(
-        observation: native_test_eval_one(prepared: prepared, declaration: ^collision)
-      )
-  }
-}
-
-test fn an_absent_declaration_is_not_found() -> Bool {
-  match collision_prepared() {
-    Absent => false
-    Present { value: prepared } =>
-      observation_is_entry_not_found(
-        observation: native_test_eval_one(prepared: prepared, declaration: ^missing)
-      )
-  }
-}
-
-test fn a_sibling_modules_declaration_is_not_selected() -> Bool {
-  match collision_prepared() {
-    Absent => false
-    Present { value: prepared } =>
-      observation_is_entry_not_found(
-        observation: native_test_eval_one(prepared: prepared, declaration: ^shared_name)
-      )
+      selected_declaration_passed(prepared: prepared)
+        && observation_is_entry_not_found(
+          observation: native_test_eval_one(prepared: prepared, declaration: ^collision)
+        )
+        && observation_is_entry_not_found(
+          observation: native_test_eval_one(prepared: prepared, declaration: ^missing)
+        )
+        && observation_is_entry_not_found(
+          observation: native_test_eval_one(prepared: prepared, declaration: ^shared_name)
+        )
   }
 }
