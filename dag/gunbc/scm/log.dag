@@ -125,17 +125,27 @@ fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryComm
 // Rows preserve the authored commit-list order, but references do not derive from that order.
 //
 // WHAT THIS DELIBERATELY DOES NOT CLAIM IS RECENCY, and the reason is a finding rather than a
-// preference: NOTHING IN THE MODEL ESTABLISHES THAT A LATER INDEX IS A NEWER COMMIT. There is no
-// commit-authoring verb -- every RepositoryCommit constructed anywhere in this repository today is
-// constructed by a witness -- so no producer defines what appending means, and no commit carries a
-// timestamp or a parent to recover an order from. Presenting these rows newest-first would therefore
-// manufacture chronology out of position, which is the same fabrication as inventing the timestamp
-// itself, one step less obvious.
+// preference: NOTHING IN THE MODEL ESTABLISHES THAT A LATER INDEX IS A NEWER COMMIT. No commit
+// carries a timestamp, and position is an artefact of how a list was assembled rather than of when
+// anything happened. Presenting these rows newest-first would manufacture chronology out of position,
+// which is the same fabrication as inventing the timestamp itself, one step less obvious.
 //
-// This is not a tiebreak waiting to be chosen. A tiebreak presumes an ordering basis that is merely
-// partial; here the basis for recency is ABSENT. It becomes derivable the moment a commit verb
-// exists to define it, and at that point this function gains a stated recency order rather than a
-// reinterpretation of position.
+// THE REASON GIVEN FOR THIS USED TO BE FALSE, and correcting it does NOT license the ordering it
+// refused. It said there is no commit-authoring verb and every `RepositoryCommit` is constructed by a
+// witness. That stopped being true in this cut: `gunbc.scm.write_spine` `commit_staged` and
+// `gunbc.scm.squash_merge` `squash_merge` are both producers, and each appends a commit whose parent
+// it knows. Found by external review.
+//
+// BUT TWO REAL PRODUCERS DO NOT MAKE THE LIST CHRONOLOGICAL, and this is exactly where a stale premise
+// invites an over-correction. `commits` is also populated by DECODING a document and by importing a
+// history, and neither of those routes appends in any order this function can see. So the honest
+// statement is narrower than either the old claim or its negation: SOME commits now have a producer
+// that defines what appending meant, and the list as a whole still has no ordering basis, because a
+// property that holds of some members of a population is not a property of the population.
+//
+// This is still not a tiebreak waiting to be chosen -- a tiebreak presumes a partial ordering basis,
+// and here the basis is absent. What would establish one is a per-commit fact every route must supply,
+// not a verb that some routes happen to use.
 fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
   if count(envelope.commits) == 0 {
     NoCommitsYet

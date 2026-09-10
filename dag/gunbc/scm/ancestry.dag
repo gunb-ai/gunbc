@@ -40,16 +40,27 @@ import std.minted_identity { MintedId, minted_id_eq }
 // set of authored requirements -- it is not a commit, it has no root, no message and no identity in
 // history. So that operation combines one commit with N things that were never commits, and the
 // result has exactly one commit antecedent. Git's second parent exists because git merges two
-// BRANCHES, which are two commits; that shape has no referent here, because nothing in this model
-// performs a two-commit merge at all.
+// BRANCHES, which are two commits, and the result descends from both.
 //
 // So a parent LIST would not be more general, it would be a state with no producer -- an arm nothing
 // can construct, which DESIGN section 4b rules worse than absent because it gets cited as capability
-// the model does not have. WIDENING TRIGGER, stated so the reason is checkable rather than trusted:
-// if an operation ever takes TWO Commits rather than one commit and N proposals, this coproduct gains a
-// several-parents arm, and the change is a compile error at every consumer rather than a silent
-// reinterpretation -- which is what makes single-parent a safe decision now rather than an
-// irreversible one.
+// the model does not have.
+//
+// THE WIDENING TRIGGER, RESTATED, BECAUSE THE FIRST ONE FIRED ON AN OPERATION THAT DISPROVES IT.
+// It read: if an operation ever takes TWO Commits rather than one commit and N proposals, this
+// coproduct gains a several-parents arm. `gunbc.scm.squash_merge` `squash_merge` now takes a target
+// AND a source commit -- so the trigger is satisfied, while the conclusion it was supposed to license
+// is WRONG. A squash's product has exactly one immediate parent (the target) by design; the source is
+// carried as a consumption receipt through `SquashIntegrated`, which is the whole point of the
+// operator's squash-merge model. Widening the coproduct here would have added the unconstructible arm
+// the paragraph above refuses, on the authority of a trigger that had stopped tracking the property
+// it was written to track. Found by external review.
+//
+// A trigger keyed on an operation's INPUTS was the error: inputs are not ancestry edges. The property
+// is about what a producer EMITS. So: a several-parents arm is owed when a producer emits a commit
+// whose historical descent relation cannot be represented by ONE immediate parent -- and the change is
+// then a compile error at every consumer rather than a silent reinterpretation, which is what keeps
+// single-parent a reversible decision rather than a permanent one.
 // WHICH OCCURRENCE IN THIS HISTORY -- NOT WHICH PROGRAM. This type exists because those are two
 // different questions and the model previously answered both with `ObjectId`.
 //
@@ -68,9 +79,11 @@ import std.minted_identity { MintedId, minted_id_eq }
 //
 // Content addressing CORRECTLY gives records 0 and 2 the same root. Root-keyed ancestry then needs
 // A to be simultaneously `RootCommit` and `DescendsFrom{B}`, which is a contradiction at the level
-// of the type -- one key, two irreconcilable values. The repository already admits this: `log`
-// derives references from list POSITION precisely because two commits may share a root and differ
-// only in message.
+// of the type -- one key, two irreconcilable values. Two commit occurrences may share one root while
+// retaining distinct minted commit references; COMMIT-LIST POSITION IS PRESENTATION, NOT IDENTITY.
+// (An earlier writing cited `log` as deriving references from list POSITION. It does the opposite --
+// each row carries `commit.reference` directly, and `gunbc.scm.log` states that its identity is not
+// derived from position or root. The claim was true of an older log and was left behind by it.)
 //
 // WHAT THE OLD GRAIN DID, and it is why this is a correctness recut rather than a tidy-up: a
 // first-match lookup answers with record 0's `RootCommit`, so a walk from record 2 terminates
