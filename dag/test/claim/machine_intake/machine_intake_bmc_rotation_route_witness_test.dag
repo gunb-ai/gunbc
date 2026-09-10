@@ -7,10 +7,11 @@ import gunbc.machine_intake_bmc_secure {
   CredentialRotationApplication, AccountManagementUnavailable,
   RotationApplied, RotationNotAttempted,
 }
-import gunbc.machine_intake_bmc_rotation_route {
+import gunbc.bmc_implementation_dispatch {
   BmcRotationRoute, RotationRouteRedfishAccountService, RotationRouteUnavailable,
-  rotation_route_for_family, rotation_application_for_route,
+  rotation_route_for_family,
 }
+import gunbc.machine_intake_bmc_rotation_route { rotation_application_for_route }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

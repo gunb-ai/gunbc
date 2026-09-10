@@ -3,7 +3,11 @@ module gunbc.machine_intake_bmc_rotation_route
 import std.types { NonEmptyStr, String }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac }
+import gunbc.bmc_implementation_dispatch {
+  BmcRotationRoute,
+  RotationRouteRedfishAccountService,
+  RotationRouteUnavailable,
+}
 import gunbc.machine_intake_bmc_secure {
   CredentialRotationApplication,
   AccountManagementUnavailable,
@@ -11,51 +15,34 @@ import gunbc.machine_intake_bmc_secure {
 
 data bmc_rotation_route_disposition: Disposition = SingleAuthority
 
-// WHICH TRANSPORT CAN ROTATE A BMC CREDENTIAL, SELECTED BY THE FIRMWARE THIS UNIT WAS OBSERVED TO
-// RUN. This module is REALIZATION, not interface, and it sits here rather than in either extdeps
-// module for the reason DESIGN §3 gives: the dispatch that selects a realization is itself
-// realization, so it is peripheral and never a fact about the dependency. extdeps.bmc.redfish and
-// extdeps.bmc.megarac each own their own surface and neither should learn the other exists.
+// BINDING A ROUTE TO THE APPLICATION THE ADJUDICATION REFUSES ON. The family-keyed dispatch that
+// picks the route is NOT here: it is gunbc.bmc_implementation_dispatch rotation_route_for_family,
+// alongside the three other family-keyed folds.
 //
-// THE ROUTE IS KEYED ON AN OBSERVATION, NEVER ON AN EXPECTATION. The family comes from a
+// THE FIRST VERSION OF THIS MODULE OWNED THAT DISPATCH AND THAT WAS A FORK (review 63250). The
+// block comment argued at length that a realization dispatch belongs peripheral to both extdeps
+// modules rather than inside either -- which is correct DESIGN §3 reasoning and was the wrong
+// conclusion, because the corpus had ALREADY built that peripheral home and the argument never
+// mentioned it. gunbc.bmc_implementation_dispatch says of itself that a third implementation
+// "refuses to compile here and nowhere else; that is the census", and a fourth `match family` over
+// here falsified that sentence the moment it landed -- splitting the third-implementation census
+// across two modules with no cross-reference between them. gunbc#9678 already paid for this exact
+// fork once, in the other direction.
+//
+// SO THE DISPATCH MOVED AND THE SPLIT IS AT THE LAYER BOUNDARY, not at a convenience line. What is
+// keyed on BmcFirmwareFamily and cites only extdeps.bmc facts went to the dispatch home. What
+// remains here is the part that is not family-keyed at all: mapping a route to a machine_intake
+// CredentialRotationApplication. Hoisting that would make the peripheral dispatch module import
+// machine_intake and invert the layering it exists to keep straight.
+//
+// THE ROUTE IS KEYED ON AN OBSERVATION, NEVER ON AN EXPECTATION, and that constraint binds the
+// caller of the dispatch rather than this fold. The family comes from a
 // workflow-layer receipt -- for the held unit, gunbc.machine_intake_mtcollins1_access_observation,
 // which carries family AmiMegaRac with committed raw bytes and a digest, and which established
 // Redfish absence against a discriminating control: five Redfish paths refused over TLS while the
 // same host answered 200 on its web root, so "no Redfish service" is separated from "host
 // unreachable". extdeps.ampere.mt_collins_product_brief.bmc holds only an EXPECTATION and forbids
 // its own promotion; nothing here may read it, and this module never takes a family from it.
-
-type BmcRotationRoute
-  = RotationRouteRedfishAccountService { path_note: NonEmptyStr }
-  | RotationRouteUnavailable { family_note: NonEmptyStr, detail: NonEmptyStr }
-
-// THE MEGARAC ARM IS UNAVAILABLE AND THAT IS A GROUNDED STATEMENT, NOT A GAP LEFT BLANK.
-// extdeps.bmc.megarac declares its own admission rule in its scope note: its REST operation rows
-// are "the SP-X interface shape AS EXECUTED on that build - the one place a single-build execution
-// grounds a family-grain row - and carry that provenance explicitly". Six operations are rostered
-// there and every one was executed against the controller. NO USER-MANAGEMENT OPERATION HAS BEEN
-// EXECUTED, so authoring one would put an unexecuted row beside six executed ones under a rule that
-// admits only the executed -- the module contradicting itself in its own file. AMI publishes no
-// SP-X API reference to cite instead; the module's external authority is a product page.
-//
-// AND ONE ATTEMPT IS KNOWN TO HAVE REACHED SOMETHING. gunbc#10630 records a rotation attempt whose
-// REST path answered "attempt to set previous password" against a policy-conforming secret -- a
-// DECIDED response, so an endpoint exists, parses the field and applies a history policy to it. The
-// request that produced it was never committed and cannot be recovered from any diff, which is
-// filed as gunbc.recurring_failure_mode.ad_hoc_hardware_probe_produces_no_receipt. So the honest
-// state is not "MegaRAC cannot rotate" -- it is "we have seen it answer and we cannot say how we
-// asked".
-fn rotation_route_for_family(family: BmcFirmwareFamily) -> BmcRotationRoute {
-  match family {
-    OpenBmc => RotationRouteRedfishAccountService {
-      path_note: "PATCH /redfish/v1/AccountService/Accounts/ plus the account id, with a JSON Password member; extdeps.bmc.http SetAccountPassword, executed against the srv3 and srv4 controllers by gunbc.tools.bmc_onboard" as NonEmptyStr,
-    }
-    AmiMegaRac => RotationRouteUnavailable {
-      family_note: "AMI MegaRAC serves an SP-X-style /api/ surface and no Redfish service root" as NonEmptyStr,
-      detail: "no executed user-management operation exists on extdeps.bmc.megarac, whose scope note admits an operation row only as executed; a rotation attempt has answered a password-history refusal, so an endpoint exists, but the request that reached it was never committed" as NonEmptyStr,
-    }
-  }
-}
 
 // THE REFUSAL IS PRODUCED BEFORE ANY CONTROLLER WRITE, WHICH IS THE WHOLE POINT OF PUTTING THE
 // ROUTE AHEAD OF THE ATTEMPT. An unavailable route yields AccountManagementUnavailable, which
@@ -74,17 +61,20 @@ fn rotation_route_for_family(family: BmcFirmwareFamily) -> BmcRotationRoute {
 // sentence about arrival phases cited that evidence for a claim it does not support.
 
 // WHO CONSUMES THIS TABLE, AND BY WHAT ROUTE (DESIGN §3c). Today: nobody in production. The only
-// executing consumer of rotation_route_for_family and rotation_application_for_route is
-// test.claim.machine_intake.machine_intake_bmc_rotation_route_witness, which exercises both arms
+// executing consumer of rotation_application_for_route is
+// test.claim.machine_intake_bmc_rotation_route_witness_test, which exercises both arms
 // rather than asserting they exist. That is the honest state and it is stated rather than left to
 // be discovered, because a declaration whose consumption is described in a PR body and absent from
 // the diff is exactly §3c's red.
 //
 // THIS IS THE ADMISSIBLE MIDDLE STATE -- consumed by a NAMED consumer landing in a NAMED later
-// change -- and the trigger is stated here rather than borrowed from the frontier below, which
-// answers a different question. megarac_rotation_route_frontier dissolves the UNAVAILABLE ARM; it
-// says nothing about whether any caller exists, and citing it for consumption would be one
-// dissolution condition doing two jobs.
+// change -- and the trigger is stated here rather than borrowed from
+// gunbc.bmc_implementation_dispatch megarac_rotation_route_frontier, which answers a different
+// question: that row dissolves the UNAVAILABLE ARM and says nothing about whether any caller
+// exists, so citing it for consumption would be one dissolution condition doing two jobs. (It was
+// cited here as "the frontier below" until the arm it guards moved to the dispatch home, which is
+// what DESIGN §3 means by naming the symbol rather than the position -- a positional citation is
+// invalidated by an edit that never touches either end.)
 data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolution(
   description: "dissolves when the effectful rotation actuator named in gunbc.machine_intake_bmc_secure -- the producer of BmcCredentialRotationObservation, gated on the gunbc.bmc_onboarding split -- derives the rotation field by calling rotation_application_for_route on the family read from the controller, rather than receiving it as a supplied argument; at that point a MegaRAC unit's Arrival phase genuinely fails on this table and the present-tense claim becomes authorable. NOT satisfied by this module typechecking, by the witness exercising both arms, or by any caller that passes a route it constructed itself rather than one this table returned" as NonEmptyStr,
 )
@@ -99,13 +89,3 @@ fn rotation_application_for_route(route: BmcRotationRoute) -> CredentialRotation
       }
   }
 }
-
-// WHAT RETIRES THE UNAVAILABLE ARM, NAMED AS THE CAPABILITY RATHER THAN AS THE ROW IT WOULD ADD.
-// Adding a megarac_op_user_password row is the ARTIFACT; the capability is an EXECUTED user-
-// management request against a MegaRAC controller whose request shape and response are committed as
-// evidence, which is what that module's own admission rule requires and what neither prior attempt
-// produced. Until that exists the arm stays Unavailable, and the Arrival phase stays unsatisfied
-// for every MegaRAC unit -- which today is the held Mt. Collins unit and, on arrival, the twenty.
-data megarac_rotation_route_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when an executed MegaRAC user-management request against a live controller commits its request shape and response as evidence, so extdeps.bmc.megarac may roster the operation under its as-executed admission rule and this arm can return a route; NOT satisfied by authoring an operation row from AMI documentation, from the srv3/srv4 Redfish shape, or from the uncommitted attempt recorded in gunbc#10630" as NonEmptyStr,
-)
