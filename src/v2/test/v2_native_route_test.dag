@@ -653,10 +653,10 @@ test fn an_all_refused_population_is_refused() -> Bool {
 
 // ── admission: the required-native ratchet ────────────────────────────────────────────────
 
+// The rostered smoke identity, observed as an ATTRIBUTED exclusion — the exact collapse the
+// ratchet exists to block: every clause about classification greens, and coverage still lost
+// the identity.
 test fn a_regressed_required_native_pass_is_refused() -> Bool {
-  // The rostered smoke identity, observed as an ATTRIBUTED exclusion — the exact collapse the
-  // ratchet exists to block: every clause about classification greens, and coverage still lost
-  // the identity.
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt_over(
       universe: [smoke_identity()],
@@ -673,10 +673,10 @@ test fn a_regressed_required_native_pass_is_refused() -> Bool {
   )
 }
 
+// The smoke identity is not in the universe at all — coverage shrank silently. The omission
+// clause cannot fire (the universe itself no longer names the member), so the ratchet is the
+// only wall, and it reads the roster against the OBSERVED population.
 test fn an_omitted_required_native_pass_is_refused() -> Bool {
-  // The smoke identity is not in the universe at all — coverage shrank silently. The omission
-  // clause cannot fire (the universe itself no longer names the member), so the ratchet is the
-  // only wall, and it reads the roster against the OBSERVED population.
   native_route_admission_refused_with(
     admission: native_route_admission(receipt: receipt_over(
       universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
