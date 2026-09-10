@@ -1,0 +1,181 @@
+module test.claim.spark.native_cutover_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import gunbc.spark.native_cutover {
+  CutoverPrecondition,
+  NativeSnapshotVerifiedOnEveryRank, RuntimeImageDigestPresentOnEveryRank, EveryRankHostReachable,
+  NoStaleNativeContainers, MasterPortAvailable, ServingPortAvailable, FabricAddressesResolved,
+  StaticRuntimeIntegrationObserved, IncumbentObservedAndRetainable, ExperimentAuthorizationClaimed,
+  cutover_preconditions, admit_cutover,
+  CutoverStanding, CutoverAdmitted, CutoverWithheld,
+  CutoverStep, ReadClock, ClaimAuthorization, ObserveIncumbent, StopIncumbentRetainingIt,
+  LaunchEveryRank, AwaitEndpointReadiness, ReadBackDeployment, RunSemanticRequest, CompleteClaim,
+  cutover_steps, stop_follows_observation_and_claim, steps_before, step_wire,
+  CutoverOutcome, CutoverWithheldBeforeActing, CutoverServingAndAccepted, CutoverRolledBack,
+  CutoverRolledBackAndIncumbentLost, cutover_succeeded, cutover_left_an_outage,
+  glm_native_cutover_standing, glm_native_cutover_satisfied_today,
+}
+import gunbc.spark.serving_arm_launch { glm_native_tp4_launch_plan }
+
+data every_precondition: List<CutoverPrecondition> = cutover_preconditions
+
+// EVERY MEMBER EXCEPT THE ONE THAT COST THE ENDPOINT. The image being absent from two ranks is what made
+// their 20 GB pulls outrun the rendezvous window while two ranks waited, so it is the member this fixture
+// removes.
+data all_but_image_present: List<CutoverPrecondition> = [
+  NativeSnapshotVerifiedOnEveryRank,
+  EveryRankHostReachable,
+  NoStaleNativeContainers,
+  MasterPortAvailable,
+  ServingPortAvailable,
+  FabricAddressesResolved,
+  StaticRuntimeIntegrationObserved,
+  IncumbentObservedAndRetainable,
+  ExperimentAuthorizationClaimed,
+]
+
+// ── THE ROW WRITTEN FROM THE OUTAGE ───────────────────────────────────────────────────────────
+//
+// NINE OF TEN PRECONDITIONS IS WITHHELD, AND THE MISSING ONE IS NAMED. This is the exact state of the
+// fleet at the moment the canary was stopped on 2026-09-10: everything else was true, the image was
+// absent from two ranks, and nothing asked. A roster that reported readiness on a majority would have
+// produced the same outage with a receipt saying it was fine.
+test fn a_single_unmet_precondition_withholds_the_cutover() -> Bool {
+  match admit_cutover(plan: glm_native_tp4_launch_plan(), satisfied: all_but_image_present) {
+    CutoverWithheld { unmet: us } => count(us) == 1
+    CutoverAdmitted { plan: _ } => false
+  }
+}
+
+// AN EMPTY SATISFIED SET NAMES ALL TEN rather than refusing with one summary. A caller that checked
+// nothing must be told everything it did not check, because the alternative is fixing them one launch at
+// a time.
+test fn checking_nothing_reports_every_precondition() -> Bool {
+  match admit_cutover(plan: glm_native_tp4_launch_plan(), satisfied: []) {
+    CutoverWithheld { unmet: us } => count(us) == count(cutover_preconditions)
+    CutoverAdmitted { plan: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: with every precondition satisfied and an admissible plan, the cutover is
+// admitted. Without this the rows above would pass on a gate that refuses unconditionally.
+test fn a_complete_roster_admits_the_cutover() -> Bool {
+  match admit_cutover(plan: glm_native_tp4_launch_plan(), satisfied: every_precondition) {
+    CutoverAdmitted { plan: _ } => true
+    CutoverWithheld { unmet: _ } => false
+  }
+}
+
+// AND THE FLEET'S OWN STANDING IS WITHHELD TODAY, which is the honest current state: the receipts exist
+// on the hosts but none has been joined into this fold, and a row claiming otherwise would assert a join
+// that never happened.
+test fn the_fleets_cutover_is_withheld_today() -> Bool {
+  match glm_native_cutover_standing(satisfied: glm_native_cutover_satisfied_today) {
+    CutoverWithheld { unmet: us } => count(us) == count(cutover_preconditions)
+    CutoverAdmitted { plan: _ } => false
+  }
+}
+
+// ── THE ORDERING IS THE SAFETY PROPERTY ───────────────────────────────────────────────────────
+//
+// THE INCUMBENT IS NOT STOPPED BEFORE IT HAS BEEN OBSERVED AND THE CLAIM WON. Both orderings typecheck,
+// so the invariant needs a check rather than a comment: stopping before observation means the rollback
+// line was never recorded, and stopping before the claim means a second actor could be doing the same
+// thing to the same hosts.
+test fn the_incumbent_is_stopped_only_after_observation_and_claim() -> Bool {
+  stop_follows_observation_and_claim(steps: cutover_steps)
+}
+
+// THE DISCRIMINATING NEGATIVE: an ordering that stops first is rejected by the same predicate. Without
+// this row the check above could be true of any list that merely contains the three steps.
+data stop_first_ordering: List<CutoverStep> = [
+  ReadClock,
+  StopIncumbentRetainingIt,
+  ClaimAuthorization,
+  ObserveIncumbent,
+  LaunchEveryRank,
+  AwaitEndpointReadiness,
+  ReadBackDeployment,
+  RunSemanticRequest,
+  CompleteClaim,
+]
+
+test fn an_ordering_that_stops_the_incumbent_first_is_rejected() -> Bool {
+  !stop_follows_observation_and_claim(steps: stop_first_ordering)
+}
+
+// AND THE READBACK PRECEDES THE COMPLETION, so a claim is never settled as done over a deployment nobody
+// verified.
+//
+// THE FIRST VERSION OF THIS ROW WAS A DECORATION and is recorded as such rather than quietly replaced: it
+// asserted `count(steps) == 9` and then re-ran the predicate from the row above, so it would have stayed
+// green under any reordering whatsoever -- including one that completed the claim before reading anything
+// back, which is exactly the state it is named after. A check whose name describes a property it does not
+// test is worse than no check, because it is cited as coverage.
+test fn the_readback_precedes_the_claim_completion() -> Bool {
+  let before_completion = steps_before(steps: cutover_steps, s: CompleteClaim)
+  count(filter(before_completion, x => (step_wire(s: x) as String) == (step_wire(s: ReadBackDeployment) as String))) == 1
+    && count(filter(before_completion, x => (step_wire(s: x) as String) == (step_wire(s: RunSemanticRequest) as String))) == 1
+}
+
+// THE DISCRIMINATING NEGATIVE FOR IT: an ordering that completes the claim before the readback fails.
+data complete_before_readback: List<CutoverStep> = [
+  ReadClock,
+  ClaimAuthorization,
+  ObserveIncumbent,
+  StopIncumbentRetainingIt,
+  LaunchEveryRank,
+  AwaitEndpointReadiness,
+  CompleteClaim,
+  ReadBackDeployment,
+  RunSemanticRequest,
+]
+
+test fn an_ordering_that_completes_the_claim_before_the_readback_is_rejected() -> Bool {
+  let before_completion = steps_before(steps: complete_before_readback, s: CompleteClaim)
+  count(filter(before_completion, x => (step_wire(s: x) as String) == (step_wire(s: ReadBackDeployment) as String))) == 0
+}
+
+// ── A FAILED CUTOVER THAT LEFT AN OUTAGE IS ITS OWN OUTCOME ───────────────────────────────────
+//
+// THIS IS THE DISTINCTION THE OUTCOME TYPE EXISTS FOR. A rollback that restored the incumbent and a
+// rollback that did not are both failures and only one needs a person, so they cannot be the same arm.
+// The 2026-09-10 attempt was the second kind and the model it ran under could not have said so.
+test fn a_rollback_with_a_restored_incumbent_is_a_failure_but_not_an_outage() -> Bool {
+  let o = CutoverRolledBack {
+    failed_at: "launch every rank" as NonEmptyStr,
+    incumbent_restored: true,
+    detail: "the replacement did not start" as NonEmptyStr,
+  }
+  !cutover_succeeded(o: o) && !cutover_left_an_outage(o: o)
+}
+
+test fn a_rollback_without_a_restored_incumbent_is_an_outage() -> Bool {
+  let o = CutoverRolledBack {
+    failed_at: "launch every rank" as NonEmptyStr,
+    incumbent_restored: false,
+    detail: "the replacement did not start and the incumbent did not come back" as NonEmptyStr,
+  }
+  !cutover_succeeded(o: o) && cutover_left_an_outage(o: o)
+}
+
+test fn a_lost_incumbent_is_an_outage() -> Bool {
+  let o = CutoverRolledBackAndIncumbentLost {
+    failed_at: "stop the incumbent WITHOUT deleting it" as NonEmptyStr,
+    detail: "the incumbent container is gone" as NonEmptyStr,
+  }
+  cutover_left_an_outage(o: o) && !cutover_succeeded(o: o)
+}
+
+// WITHHELD BEFORE ACTING IS NOT AN OUTAGE, which is the whole point of checking first: the failure mode
+// with no cost is the one the roster produces.
+test fn withholding_before_acting_costs_nothing() -> Bool {
+  let o = CutoverWithheldBeforeActing { unmet: ["the exact runtime image digest is present on every rank" as NonEmptyStr] }
+  !cutover_succeeded(o: o) && !cutover_left_an_outage(o: o)
+}
+
+test fn a_served_and_accepted_cutover_succeeds() -> Bool {
+  let o = CutoverServingAndAccepted { receipt: "four ranks agreed at the pinned digest and revision" as NonEmptyStr }
+  cutover_succeeded(o: o) && !cutover_left_an_outage(o: o)
+}
