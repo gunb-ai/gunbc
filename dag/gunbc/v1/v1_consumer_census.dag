@@ -120,11 +120,33 @@ fn consumer_medium_key(m: ConsumerMedium) -> String {
 // carried because a command's answer is a timestamped observation of a moving tree, not an
 // identifier.
 
+// A PRODUCER EITHER RECORDS THE TREE IT READ OR SAYS IT DID NOT, and there is no third spelling.
+// An earlier revision of this lane typed the pin as a required CommitSha plus a required
+// FloorDiscoveryTreeId and then filled both for producers that had observed neither -- a commit sha
+// standing where a TREE id is declared (a commit is never its own tree; the pre-existing rows above
+// keep the two distinct, 0bdb8dc3's tree really is 168f313c), and for the unmerged-head producer a
+// prose phrase standing where a hex digest is declared. Both type-checked and both were fabricated
+// plausible output, which DESIGN section 5 forbids outright. The repair is the modelling the pin
+// was missing rather than better strings: a producer that read a tree carries its identity, and a
+// producer that did not carries the basis for why -- an unmerged head, a live corpus walk whose
+// subject is whatever tree the lane runs on. The unobserved arm is not a weaker pin; it is the only
+// honest one for a producer whose subject is not a fixed revision, and it is visibly different from
+// an observed one at every read.
+type DiscoverySourcePin
+  = PinObserved { source_revision: CommitSha, source_tree: FloorDiscoveryTreeId }
+  | PinUnobserved { basis: NonEmptyStr }
+
 type DiscoveryProducer {
   instrument: String
   command: String
-  source_revision: CommitSha
-  source_tree: FloorDiscoveryTreeId
+  pin: DiscoverySourcePin
+}
+
+fn discovery_pin_is_observed(pin: DiscoverySourcePin) -> Bool {
+  match pin {
+    PinObserved { source_revision: _, source_tree: _ } => true
+    PinUnobserved { basis: _ } => false
+  }
 }
 
 // THE REVISION AND THE TREE ARE TYPED, AND THE TREE IS THE ONE THAT DECIDES. A String revision is a
@@ -140,8 +162,18 @@ fn discovery_producer(instrument: String, command: String, source_revision: Stri
   DiscoveryProducer {
     instrument: instrument,
     command: command,
-    source_revision: source_revision as CommitSha,
-    source_tree: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: source_tree_hex } }),
+    pin: PinObserved {
+      source_revision: source_revision as CommitSha,
+      source_tree: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: source_tree_hex } }),
+    },
+  }
+}
+
+fn discovery_producer_unobserved(instrument: String, command: String, basis: String) -> DiscoveryProducer {
+  DiscoveryProducer {
+    instrument: instrument,
+    command: command,
+    pin: PinUnobserved { basis: v1cc_nes(s: basis) },
   }
 }
 
@@ -799,7 +831,7 @@ fn v1_native_cutover_selector_consumers() -> List<V1ConsumerRow> {
 
 data v1_census_step_trace_revision: String = "8d4158e1c4e0e5dd45bbba7d3e46b3fb0f5ff0e7"
 
-data v1_census_step_trace_tree: String = "8d4158e1c4e0e5dd45bbba7d3e46b3fb0f5ff0e7"
+data v1_census_step_trace_tree: String = "ee597647395aa4f1541e0900e034d2339a67f777"
 
 data producer_required_lane_step_trace: DiscoveryProducer = discovery_producer(
   instrument: "every `run:` step of the emitted required workflow read against the declaration that emits it, classified by what the step DOES with v1 rather than by whether it spells a binary name",
@@ -884,7 +916,7 @@ fn v1_required_lane_step_consumers() -> List<V1ConsumerRow> {
 
 data producer_dag_argv_join: DiscoveryProducer = discovery_producer(
   instrument: "tools.v1_consumer_discovery -- the joined .dag producer: every declaration v2.std.decl_index decl_facts answers for the source roots, folded for whole-atom matches against v1_literal_signatures",
-  command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/v1_consumer_discovery.dag --function v1_discovery_report",
+  command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/v1_consumer_discovery.dag --function v1_discovery_gate",
   source_revision: v1_census_step_trace_revision,
   source_tree_hex: v1_census_step_trace_tree,
 )
@@ -1034,7 +1066,7 @@ fn v1_consumer_population_for(rows: List<RustSourceNamespaceRow>) -> ConsumerPop
   PopulationMeasuredLowerBound {
     rows: v1_consumers_for(rows: rows),
     uncitable: partition.uncitable,
-    missing_basis: "per-medium sweeps, the L4 operational selector trace, the required-lane step trace, and ONE joined producer over the .dag medium (tools.v1_consumer_discovery). The population is still a lower bound and the arm does not move, because the join is complete for one medium of eight rather than for all of them. WHAT CHANGED, hole by hole. HOLE ONE NARROWED, NOT CLOSED: the .dag argv rows are now classified by a producer that folds every declaration v2.std.decl_index decl_facts answers for the source roots and joins its literal atoms to the v1 authority each one names, so a .dag consumer added tomorrow enters the population without an author remembering to file it. THAT SENTENCE IS A CLAIM SOMETHING EXECUTES RATHER THAN ONE AN AUTHOR WROTE, and the distinction is the whole difference between a joined producer and an inert one: v2.test.long.v1_consumer_discovery runs the fold over both roots and asserts the join, with a discriminating red on a fabricated relation of the same shape and a control that the producer does not count its own signature table. It is in the LONG home rather than the per-PR floor because the fold walks every declaration in the corpus, which is that home\'s declared cost class; what runs per PR is the light half in dag/test/claim/self_host_v1_consumer_census_witness_test.dag. Neither one alone would be honest: the per-PR pair exercises the projection and the table, and the long pair exercises the fold. What that producer cannot see is declared at its own signature table: a binary reached through a composed path (concat over a prefix and a variable) has no whole-atom literal to match, and the bare CLI name is excluded as a homonym of the project name. Both are lower-bound causes on a medium that is otherwise joined. HOLE TWO UNCHANGED: the deletion-set blind spot still has no complete instrument. The step trace added the emitted-closure manifest relation, which is one more consumer defined inside src/v1 and consumed by the v2 self-host path, but a consumer defined inside src/v1 AND consumed inside src/v1 still cannot refuse when both go, and only a per-deleted-file question finds the rest. HOLE THREE UNCHANGED: whole-repository reachability is still not measured. The step trace establishes that the emitted required workflow reaches v1 in three of its four jobs and that the fourth reaches none of it -- the aggregating `witnesses` job consumes needs[...].result for the two lanes through shell test expressions and invokes no binary, no cargo target and no source root, read at the revision this producer names -- which is a closed answer over ONE emitted artifact and carries no claim about the corpus. Presence still over-approximates demand. THE FOUR MEDIA WITH NO DECLARATION NAMESPACE remain the structural reason a single joined instrument cannot exist yet: a hit in Rust, a Cargo manifest, a committed mirror or a serialized artifact path has no declaration identity for the consumer half of the key, so it cannot become a keyed row without an author inventing one -- which is what V1UncitableConsumer refuses. Closing the remaining media therefore needs a projection from those file grains into DeclarationRef, not more sweeping -- AND THAT IS THREE DIFFERENT OBLIGATIONS RATHER THAN ONE, which is recorded here so the next reader starts from this carrier instead of re-deriving it. (A) FOUR OF THE SEVEN ARE NOT A SEPARATE MEDIUM AT ALL. Workflow YAML, .gitattributes, the git hooks and the committed stage0 mirrors are GENERATED, and gunbc.generated_artifact generated_artifact_registry is a closed typed roster of exactly that population. A v1 reference in one of them is a projection of a literal in the .dag declaration that emits it -- which tools.v1_consumer_discovery already finds and keys at declaration grain -- so a scanner for them would discover the same relation a second time under a second key and double the blocking column. What is owed there is a REFUSAL beside that registry: a generated artifact whose producer declaration is not in the .dag population refuses, typed and located, and never widens into a scan. (B) RUST NEEDS NO NEW AUTHORITY. gunbc.rust_item_host_observation already projects a repo path to a module and an item to a DeclarationRef, and this census uses that path for the shim rows; what is missing is a producer that folds the existing scan over the whole v1_rt and v1_interpreter reference population rather than over four hand-named items, and it extends that module rather than adding one. (C) CARGO MANIFESTS ARE THE ONE MEDIUM WITH NO PROJECTION, because a path dependency line has a declaration identity on neither side. Its home is v2.workflow.rust_crate_partition -- the authority that already decides which crates exist -- and its output is keyed on that partition's own crate identities, so the emitted closure's v1-compiler path dependency appears as a row the seed-free lane retires by identity rather than by editing prose. Order A, B, C by payoff; A is the smallest and is the one that stops parallel lanes from building duplicate scanners.",
+    missing_basis: "per-medium sweeps, the L4 operational selector trace, the required-lane step trace, and ONE joined producer over the .dag medium (tools.v1_consumer_discovery). The population is still a lower bound and the arm does not move, because the join is complete for one medium of eight rather than for all of them. WHAT CHANGED, hole by hole. HOLE ONE NARROWED, NOT CLOSED: the .dag argv rows are now classified by a producer that folds every declaration v2.std.decl_index decl_facts answers for the source roots and joins its literal atoms to the v1 authority each one names, so a .dag consumer added tomorrow enters the population without an author remembering to file it. THAT SENTENCE IS A CLAIM SOMETHING EXECUTES RATHER THAN ONE AN AUTHOR WROTE, and the distinction is the whole difference between a joined producer and an inert one: v2.test.long.v1_consumer_discovery runs the fold over both roots and asserts the join, with a discriminating red on a fabricated relation of the same shape and a control that the producer does not count its own signature table. It is in the LONG home rather than the per-PR floor because the fold walks every declaration in the corpus, which is that home's declared cost class; what runs per PR is the light half in dag/test/claim/self_host_v1_consumer_census_witness_test.dag. Neither one alone would be honest: the per-PR pair exercises the projection and the table, and the long pair exercises the fold. What that producer cannot see is declared at its own signature table: a binary reached through a composed path (concat over a prefix and a variable) has no whole-atom literal to match, and the bare CLI name is excluded as a homonym of the project name. Both are lower-bound causes on a medium that is otherwise joined. HOLE TWO UNCHANGED: the deletion-set blind spot still has no complete instrument. The step trace added the emitted-closure manifest relation, which is one more consumer defined inside src/v1 and consumed by the v2 self-host path, but a consumer defined inside src/v1 AND consumed inside src/v1 still cannot refuse when both go, and only a per-deleted-file question finds the rest. HOLE THREE UNCHANGED: whole-repository reachability is still not measured. The step trace establishes that the emitted required workflow reaches v1 in three of its four jobs and that the fourth reaches none of it -- the aggregating `witnesses` job consumes needs[...].result for the two lanes through shell test expressions and invokes no binary, no cargo target and no source root, read at the revision this producer names -- which is a closed answer over ONE emitted artifact and carries no claim about the corpus. Presence still over-approximates demand. THE FOUR MEDIA WITH NO DECLARATION NAMESPACE remain the structural reason a single joined instrument cannot exist yet: a hit in Rust, a Cargo manifest, a committed mirror or a serialized artifact path has no declaration identity for the consumer half of the key, so it cannot become a keyed row without an author inventing one -- which is what V1UncitableConsumer refuses. Closing the remaining media therefore needs a projection from those file grains into DeclarationRef, not more sweeping -- AND THAT IS THREE DIFFERENT OBLIGATIONS RATHER THAN ONE, which is recorded here so the next reader starts from this carrier instead of re-deriving it. (A) FOUR OF THE SEVEN ARE NOT A SEPARATE MEDIUM AT ALL. Workflow YAML, .gitattributes, the git hooks and the committed stage0 mirrors are GENERATED, and gunbc.generated_artifact generated_artifact_registry is a closed typed roster of exactly that population. A v1 reference in one of them is a projection of a literal in the .dag declaration that emits it -- which tools.v1_consumer_discovery already finds and keys at declaration grain -- so a scanner for them would discover the same relation a second time under a second key and double the blocking column. What is owed there is a REFUSAL beside that registry: a generated artifact whose producer declaration is not in the .dag population refuses, typed and located, and never widens into a scan. (B) RUST NEEDS NO NEW AUTHORITY. gunbc.rust_item_host_observation already projects a repo path to a module and an item to a DeclarationRef, and this census uses that path for the shim rows; what is missing is a producer that folds the existing scan over the whole v1_rt and v1_interpreter reference population rather than over four hand-named items, and it extends that module rather than adding one. (C) CARGO MANIFESTS ARE THE ONE MEDIUM WITH NO PROJECTION, because a path dependency line has a declaration identity on neither side. Its home is v2.workflow.rust_crate_partition -- the authority that already decides which crates exist -- and its output is keyed on that partition's own crate identities, so the emitted closure's v1-compiler path dependency appears as a row the seed-free lane retires by identity rather than by editing prose. Order A, B, C by payoff; A is the smallest and is the one that stops parallel lanes from building duplicate scanners.",
   }
 }
 
@@ -1056,11 +1088,10 @@ fn v1_consumer_population_for(rows: List<RustSourceNamespaceRow>) -> ConsumerPop
 // removing any, and a deletion inventory that recorded it as progress toward the cut would be
 // counting in the wrong direction.
 
-data producer_pending_native_lane_head: DiscoveryProducer = discovery_producer(
+data producer_pending_native_lane_head: DiscoveryProducer = discovery_producer_unobserved(
   instrument: "the unmerged head of gunbc#10882 read as a diff against main: every v1_interpreter entry point the added lane harness calls, and the job the added workflow declares",
   command: "gh pr diff 10882 | grep -nE '^\\+.*(run_in_context_with_args|discover_floor_rows_for_source|required-v2-native)'",
-  source_revision: "unmerged-head-of-gunbc-10882",
-  source_tree_hex: "unmerged-head-of-gunbc-10882",
+  basis: "the subject is an unmerged pull-request head, which this repository's tracked history does not contain: there is no commit in main's ancestry and no tree object to name, and the head moves whenever that branch is pushed. Naming a revision here would pin an observation to an identity the reader cannot resolve",
 )
 
 // THE PENDING ROWS ARE UNCITABLE BY CONSTRUCTION, and that is the correct carrier rather than a

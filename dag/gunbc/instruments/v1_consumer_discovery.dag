@@ -11,8 +11,9 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Node, NodeFold, Symbol, fold_node }
 import gunbc.replacement_cut { Undecided }
 import gunbc.v1_consumer_census {
-  V1ConsumerRow, DiscoveryProducer, discovery_producer,
+  V1ConsumerRow, DiscoveryProducer,
   V1LiteralSignature, v1_literal_signatures, v1cd_module_path_from,
+  discovery_producer_unobserved,
   v1_row_key, v1cc_boundary, v1_consumers, v1_consumers_undisposed
 }
 
@@ -49,12 +50,18 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // discovered relation BLOCKS the cutover until someone dispositions it -- the direction a census
 // must fail in.
 
-fn v1cd_producer(source_revision: String, source_tree_hex: String) -> DiscoveryProducer {
-  discovery_producer(
+// THE PRODUCER'S PIN IS UNOBSERVED BY CONSTRUCTION, and that is a fact about this instrument
+// rather than a shortcut taken because the value was inconvenient. Its subject is not a fixed
+// revision: it walks whatever tree the caller stands in, so the honest pin is the one that says
+// which reading was not made. The rows it produces are Undecided and carry no judgement, so nothing
+// downstream depends on pinning them; the census's AUTHORED rows keep observed pins, because a
+// judgement really was made against a tree somebody read.
+
+fn v1cd_producer() -> DiscoveryProducer {
+  discovery_producer_unobserved(
     instrument: "tools.v1_consumer_discovery -- whole-atom join from v2.std.decl_index decl_facts declaration nodes to the v1 authority each matched literal names",
-    command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/v1_consumer_discovery.dag --function v1_discovery_report",
-    source_revision: source_revision,
-    source_tree_hex: source_tree_hex,
+    command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/v1_consumer_discovery.dag --function v1_discovery_gate",
+    basis: "the fold reads the live corpus under the caller's source roots, so its subject is whatever tree the invocation stands on rather than a revision this declaration could name. A pinned-looking value here would be an observation nobody made",
   )
 }
 
@@ -163,12 +170,8 @@ fn v1cd_fact_is_the_signature_table(fact: DeclFact) -> Bool {
   fact.qualified_name == v1cd_self_excluded_qualified_name
 }
 
-fn v1_discovered_rows_for(
-  pool_roots: List<String>,
-  source_revision: String,
-  source_tree_hex: String
-) -> List<V1ConsumerRow> {
-  let producer = v1cd_producer(source_revision: source_revision, source_tree_hex: source_tree_hex)
+fn v1_discovered_rows_for(pool_roots: List<String>) -> List<V1ConsumerRow> {
+  let producer = v1cd_producer()
   fold_list(xs: decl_facts(pool_roots: pool_roots), empty: v1cd_empty_rows, cons: fn(acc, fact) {
     if v1cd_fact_is_the_signature_table(fact: fact) {
       acc
@@ -180,21 +183,12 @@ fn v1_discovered_rows_for(
 
 data v1cd_pool_roots: List<String> = ["dag", "src/v2"]
 
-// THE REVISION IS A PARAMETER, NOT A CONSTANT THIS MODULE CARRIES. A producer row records WHICH
-// TREE was read, and a module that filled that field from a literal of its own would be asserting
-// the observation rather than recording one. The runner supplies the head it stood on.
-
-fn v1_discovery_rows_at(source_revision: String, source_tree_hex: String) -> List<V1ConsumerRow> {
-  v1_discovered_rows_for(
-    pool_roots: v1cd_pool_roots,
-    source_revision: source_revision,
-    source_tree_hex: source_tree_hex,
-  )
+fn v1_discovery_rows() -> List<V1ConsumerRow> {
+  v1_discovered_rows_for(pool_roots: v1cd_pool_roots)
 }
 
-fn v1_discovery_keys_at(source_revision: String, source_tree_hex: String) -> List<String> {
-  v1_discovery_rows_at(source_revision: source_revision, source_tree_hex: source_tree_hex)
-    |> map(r => v1_row_key(r: r))
+fn v1_discovery_keys() -> List<String> {
+  v1_discovery_rows() |> map(r => v1_row_key(r: r))
 }
 
 // THE JOIN, AND IT LIVES HERE RATHER THAN IN THE CENSUS ON PURPOSE. v1_consumers_undisposed takes
@@ -208,37 +202,12 @@ fn v1_discovery_keys_at(source_revision: String, source_tree_hex: String) -> Lis
 // declarations that reach a v1 authority and carry no disposition in the roster. Each is a row
 // somebody has to write, and until they do the cutover is refused by construction.
 
-fn v1_discovery_undisposed_at(source_revision: String, source_tree_hex: String) -> List<String> {
-  v1_consumers_undisposed(
-    discovered: v1_discovery_keys_at(source_revision: source_revision, source_tree_hex: source_tree_hex),
-    rows: v1_consumers(),
-  )
+fn v1_discovery_undisposed() -> List<String> {
+  v1_consumers_undisposed(discovered: v1_discovery_keys(), rows: v1_consumers())
 }
-
-data v1cd_unobserved_revision: String = "unobserved"
-
-fn v1_discovery_report() -> List<String> {
-  v1_discovery_undisposed_at(
-    source_revision: v1cd_unobserved_revision,
-    source_tree_hex: v1cd_unobserved_revision,
-  )
-}
-
-
-// ITS RED IS AUTHORABLE AND HAS BEEN AUTHORED, which is the question DESIGN section 4b says to ask
-// of a check before writing it: the forbidden state here is an ordinary .dag declaration naming a v1
-// binary with no row beside it, so it is expressible in the accepted corpus and the refusal fires on
-// the real path. Re-derive both arms rather than trusting a sentence: run the command v1cd_producer
-// carries, then delete one row from gunbc.v1_consumer_census v1_dag_argv_consumers and run it again.
-//
-// THE RUNNABLE ENTRY, and it REFUSES rather than reporting. A run that found undisposed relations
-// has found exactly the thing that blocks the cutover, so answering ExitSuccess with a list printed
-// beside it would be a green run over a red fact -- the shape DESIGN section 5 forbids in the arm
-// it forbids it in. The refusal carries the count and the first keys, so a reader gets the finding
-// from the exit itself rather than from a log they have to know to read.
 
 fn v1_discovery_gate() -> ProcessExit {
-  let undisposed = v1_discovery_report()
+  let undisposed = v1_discovery_undisposed()
   if count(undisposed) == 0 {
     ExitSuccess
   } else {

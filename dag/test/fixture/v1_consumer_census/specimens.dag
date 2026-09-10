@@ -4,7 +4,7 @@ import std.types { List, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.replacement_cut { BoundaryConsumer, ConsumerDisposition, RetainSameContract, ReplacedByY, Retire, Covered, CoverageOpen, Undecided }
 import gunbc.v1_consumer_census {
-  V1ConsumerRow, V1UncitableConsumer, ConsumerPopulation, DiscoveryProducer, discovery_producer,
+  V1ConsumerRow, V1UncitableConsumer, ConsumerPopulation, DiscoveryProducer, discovery_producer_unobserved,
   PopulationMeasuredComplete, PopulationMeasuredLowerBound, PopulationUnmeasured,
   WorkflowArgv, RustUseEdge, V1HostedCiBinary, V1RuntimeBridge, V1CompilerCrate
 }
@@ -25,11 +25,13 @@ import gunbc.v1_consumer_census {
 
 fn v1cc_fixture_nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
 
-data fixture_producer: DiscoveryProducer = discovery_producer(
+// THE SPECIMEN'S PIN SAYS WHAT THE SPECIMEN IS. Forty zeros are a well-formed sha that names no
+// object, so the row previously CLAIMED an observation in the same shape a real one uses and relied
+// on a reader noticing the zeros. PinUnobserved says it outright, which is the point of the arm.
+data fixture_producer: DiscoveryProducer = discovery_producer_unobserved(
   instrument: "hand-authored fixture; no tree was measured",
   command: "none -- this row is a controlled specimen and must never be read as a live observation",
-  source_revision: "0000000000000000000000000000000000000000",
-  source_tree_hex: "0000000000000000000000000000000000000000",
+  basis: "a controlled specimen: no tree was read, and none may be inferred from this row",
 )
 
 // EVERY CITATION HERE NAMES A DECLARATION THAT EXISTS, and it is this module's own. The required
