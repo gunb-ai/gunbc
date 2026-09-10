@@ -5,7 +5,7 @@ import std.types { String, Secret }
 import extdeps.transports.rest {
   RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
   classify_rest_outcome,
-  RestExchangeSucceeded, RestExchangeRefused, RestExchangeCommitAmbiguous,
+  RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
   RestExchangeUnreached, RestExchangeUndecodable,
   RestReadExchange, RestMutationExchange,
 }
@@ -41,7 +41,7 @@ test fn an_unauthorized_read_is_a_refusal_carrying_401() -> Bool {
       rest: RestStatusRefused { status: 401, body: "{\"message\":\"Bad credentials\"}" },
     },
   ) {
-    RestExchangeRefused { status, body } => status == 401 && body != ""
+    RestExchangeStatusRefused { status, body } => status == 401 && body != ""
     _ => false
   }
 }
@@ -52,7 +52,7 @@ test fn an_undocumented_status_on_a_read_is_still_a_refusal() -> Bool {
   match classify_rest_outcome(
     standing: RestReadExchange { rest: RestStatusRefused { status: 418, body: "teapot" } },
   ) {
-    RestExchangeRefused { status, body: _ } => status == 418
+    RestExchangeStatusRefused { status, body: _ } => status == 418
     _ => false
   }
 }
@@ -61,7 +61,7 @@ test fn a_5xx_on_a_read_is_a_refusal_not_commit_ambiguous() -> Bool {
   match classify_rest_outcome(
     standing: RestReadExchange { rest: RestStatusRefused { status: 500, body: "boom" } },
   ) {
-    RestExchangeRefused { status, body: _ } => status == 500
+    RestExchangeStatusRefused { status, body: _ } => status == 500
     RestExchangeCommitAmbiguous { detail: _ } => false
     _ => false
   }
@@ -72,7 +72,7 @@ test fn a_5xx_on_a_mutation_is_commit_ambiguous() -> Bool {
     standing: RestMutationExchange { rest: RestStatusRefused { status: 500, body: "boom" } },
   ) {
     RestExchangeCommitAmbiguous { detail } => string_contains(s: detail as String, pattern: "did not commit")
-    RestExchangeRefused { status: _, body: _ } => false
+    RestExchangeStatusRefused { status: _, body: _ } => false
     _ => false
   }
 }
@@ -81,7 +81,7 @@ test fn a_403_on_a_mutation_is_a_refusal_not_commit_ambiguous() -> Bool {
   match classify_rest_outcome(
     standing: RestMutationExchange { rest: RestStatusRefused { status: 403, body: "no" } },
   ) {
-    RestExchangeRefused { status, body: _ } => status == 403
+    RestExchangeStatusRefused { status, body: _ } => status == 403
     RestExchangeCommitAmbiguous { detail: _ } => false
     _ => false
   }

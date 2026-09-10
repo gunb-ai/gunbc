@@ -114,7 +114,7 @@ fn mutation_status_is_commit_ambiguous(status: HttpStatus) -> Bool {
 
 type RestExchangePerformance
   = RestExchangeSucceeded
-  | RestExchangeRefused { status: HttpStatus, body: String }
+  | RestExchangeStatusRefused { status: HttpStatus, body: String }
   | RestExchangeCommitAmbiguous { detail: NonEmptyStr }
   | RestExchangeUnreached { cause: NonEmptyStr }
   | RestExchangeUndecodable { status: HttpStatus, cause: NonEmptyStr }
@@ -138,7 +138,7 @@ fn classify_rest_outcome(standing: RestExchangeStanding) -> RestExchangePerforma
     RestReadExchange { rest } =>
       match rest {
         RestOk => RestExchangeSucceeded
-        RestStatusRefused { status, body } => RestExchangeRefused { status: status, body: body }
+        RestStatusRefused { status, body } => RestExchangeStatusRefused { status: status, body: body }
         RestTransportRefused { cause } => RestExchangeUnreached { cause: cause }
         RestBodyUndecodable { status, cause } => RestExchangeUndecodable { status: status, cause: cause }
       }
@@ -151,7 +151,7 @@ fn classify_rest_outcome(standing: RestExchangeStanding) -> RestExchangePerforma
               detail: rest_exchange_ambiguous_detail(prefix: "mutation answered with a server-error status, which does not establish that the write did not commit: ", rest: body)
             }
           } else {
-            RestExchangeRefused { status: status, body: body }
+            RestExchangeStatusRefused { status: status, body: body }
           }
         RestTransportRefused { cause } =>
           RestExchangeCommitAmbiguous {
