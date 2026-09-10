@@ -1,9 +1,9 @@
 module test.claim.altra_memory_controller_witness
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.types { list_length, String }
 import std.integer { Int }
-import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
+import std.measure { bit_width, bit_width_count, byte_size, byte_size_count, megatransfers_per_second_count }
 import extdeps.memory.jedec { ddr4_generation_catalog }
 import extdeps.memory.types {
   DimmBuffering,
@@ -41,6 +41,9 @@ import extdeps.cpu.ampere_altra_memory_controller {
   altra_board_down_dram_standing,
   altra_memory_channel_width,
   altra_memory_max_dimms_per_channel_topology,
+  altra_memory_max_data_rate,
+  altra_held_datasheet_2dpc_rank_derate,
+  RankDependentDerateTableAbsentFromHeldIssue,
   altra_total_memory_data_width,
   altra_udimm_withdrawal,
 }
@@ -158,6 +161,10 @@ test fn w_channel_geometry_derives_the_total_width() -> Bool {
     && bit_width_count(b: altra_memory_channel_width) == 72
     && dimms_per_channel_count(topology: altra_memory_max_dimms_per_channel_topology) == 2
     && bit_width_count(b: altra_total_memory_data_width()) == 576
+    && megatransfers_per_second_count(r: altra_memory_max_data_rate) == 3200
+    && match altra_held_datasheet_2dpc_rank_derate {
+      RankDependentDerateTableAbsentFromHeldIssue { section: s } => (s as String) == "2.10"
+    }
 }
 
 // THE DE-FORK, ASSERTED IN THE DIRECTION THAT WOULD HAVE CAUGHT IT. Both product rows and the

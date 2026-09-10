@@ -2,7 +2,17 @@ module extdeps.ocp.mt_jade.platform
 
 import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
-import std.measure { Hertz, Microsecond, Micrometer, hertz, microsecond, micrometer, micrometer_count }
+import std.measure {
+  Hertz,
+  MegatransfersPerSecond,
+  Microsecond,
+  Micrometer,
+  hertz,
+  megatransfers_per_second,
+  microsecond,
+  micrometer,
+  micrometer_count,
+}
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
 import extdeps.ocp.mt_jade.subject {
@@ -37,6 +47,20 @@ data mt_jade_motherboard_mechanical: MtJadeMotherboardMechanical = MtJadeMotherb
   processor_socket_count: 2,
   ddr4_dimms_total: 32,
 }
+
+// SECTION 7.1 FEATURE LIST, DIMM SPEED LINE, VERBATIM GRAIN: "DDR4-3200 (2DPC)". This is the
+// Ampere-contributed OCP reference platform's published 2DPC operating rate, not a rank derate
+// table. It corroborates the processor datasheet: 2DPC is stated at 3200, not at 2933 or 2400.
+data mt_jade_dimm_speed_at_two_dpc: MegatransfersPerSecond = megatransfers_per_second(count: 3200)
+
+// TABLE 3, SAME-CHANNEL 1R & 2R MIX. The held unit carries mixed 1Rx4 and 2Rx8 ranks. Section 7.4
+// Table 3 states mixing 1R and 2R on the SAME channel as No; different-channel mix is TBD in the
+// published cell. A 2DPC fill that puts unlike ranks on one channel is therefore outside this
+// platform's published mix table, independent of whether the bus keeps 3200.
+type MtJadeSameChannelRankMix
+  = SameChannelOneAndTwoRankNotSupported
+
+data mt_jade_same_channel_one_and_two_rank_mix: MtJadeSameChannelRankMix = SameChannelOneAndTwoRankNotSupported {}
 
 // THE SOCKET ROLES ARE NAMED IN THE SPEC'S POWER-ON NARRATIVE. Socket 0 is the master socket
 // whose firmware must start first; socket 1 is the slave socket whose reset release is gated

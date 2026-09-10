@@ -26,10 +26,8 @@ import std.measure {
   watt_count,
 }
 import extdeps.external_authority {
-  ExternalAuthority,
   CitedFigureStanding,
   CitedToAuthority,
-  TranscribedUncited,
 }
 import extdeps.cpu.types { CpuModelCatalogRow }
 import extdeps.memory.types {
@@ -37,6 +35,7 @@ import extdeps.memory.types {
   dram_chips_per_rank,
   dram_data_word_width,
 }
+import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
 import gunbc.memory_provisioning {
   FullChannel,
@@ -78,15 +77,20 @@ type MemoryElectricalContext {
 }
 
 // THE 2DPC DERATING TABLE, AND ITS EVIDENCE STANDING BESIDE IT. These ceilings arrived with the
-// physics relocated from the deleted product.hardware_selection, where they were uncited literals.
-// Moving them into extdeps/ under the citation duty needs an authority actually read, and the Altra
-// platform module's coverage note says it transcribes running text and NOT tables — exactly what a
-// derating table is. Minting a citation there would be the fabricated-symbol defect its notes exist
-// to prevent.
+// physics relocated from the deleted product.hardware_selection, where they were uncited literals
+// 2933 MT/s (min two ranks) and 2400 MT/s (min four ranks). Moving them onto an Ampere citation
+// needs an authority actually read.
 //
-// So the figures are carried where consumed, with their uncitedness TYPED rather than invisible: a
-// consumer can ask whether the ceiling it used is grounded, and the read obligation names what
-// would ground it. A declared boundary fact, not a silent constant.
+// READ 2026-09-10: Ampere Altra Rev A1 Processor Datasheet issue 1.50 section 2.10 states "Up to
+// DDR4-3200" and "Up to 2 DPC" and does not publish a rank-dependent 2DPC derate table. The Altra
+// Platform Hardware Design Specification v1.00 carries 2DPC topology (section 2.2) and no rate
+// table. The OCP Mt. Jade specification rev 1.0 (Ampere-contributed) states DIMM speed as
+// DDR4-3200 at 2DPC (section 7.1). THE TRANSCRIBED 2933/2400 FIGURES ARE THEREFORE NOT IN THE
+// PUBLIC AMPERE SOURCES THIS REPOSITORY MAY CARRY. That difference is the finding: a 32-slot fill
+// is not authorised to assume a downclock those documents do not state. The empty table below
+// is that reading — 2DPC keeps the platform rated rate — cited to the datasheet, corroborated by
+// Mt. Jade's 3200-at-2DPC line. Gated AVL / PCB Layout Guidelines remain unread (HTTP 403), so they
+// cannot silently restore the old numbers.
 type TwoDpcRateCeiling {
   min_rank_count: Nat
   ceiling: MegatransfersPerSecond
@@ -97,25 +101,12 @@ type TwoDpcRateCeilingTable {
   rows: List<TwoDpcRateCeiling>
 }
 
-// The ceilings held today, all uncited. One declaration so the population is countable and a later
-// citation edits one row rather than hunting literals.
 data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
-  rows: [
-    TwoDpcRateCeiling {
-      min_rank_count: 4,
-      ceiling: megatransfers_per_second(count: 2400),
-      evidence: TranscribedUncited {
-        read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for quad-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
-      },
-    },
-    TwoDpcRateCeiling {
-      min_rank_count: 2,
-      ceiling: megatransfers_per_second(count: 2933),
-      evidence: TranscribedUncited {
-        read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for dual-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
-      },
-    },
-  ],
+  rows: [],
+}
+
+data altra_two_dpc_ceilings_evidence: CitedFigureStanding = CitedToAuthority {
+  authority: ampere_altra_classic_rev_a1_datasheet_authority,
 }
 
 // A full-channel population is as deep as its topology says; a partial one has
@@ -128,9 +119,9 @@ fn populated_dimms_per_channel(population: PopulationOption) -> Nat {
   }
 }
 
-// THE 2DPC DOWNCLOCK, and it is rank-dependent. A second module on a channel loads the bus by an
-// amount depending on how many ranks it presents: a single-rank pair keeps the platform's rated
-// speed while a quad-rank pair falls to 2400 MT/s. These are the platform's published 2DPC table.
+// THE 2DPC CLOCK, AND WHETHER RANK LOWERS IT. A second module on a channel is admitted at the
+// platform's rated rate unless a cited ceiling row applies. Ampere's held public datasheet does
+// not publish such a row; the empty table above is that fact, not a missing fill.
 fn min_nat(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
