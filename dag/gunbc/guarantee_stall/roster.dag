@@ -66,6 +66,7 @@ import gunbc.guarantee_stall.algebra_application_owner_resolution_stall { algebr
 import gunbc.guarantee_stall.algebra_expansion_positional_argument_stall { algebra_expansion_positional_argument_stall }
 import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { generic_lambda_parameter_receiver_evidence_stall }
 import gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall { argument_shape_undecided_at_a_declared_position_stall }
+import gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall { information_retrieval_transport_cannot_report_status_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -227,6 +228,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   algebra_expansion_positional_argument_stall,
   generic_lambda_parameter_receiver_evidence_stall,
   argument_shape_undecided_at_a_declared_position_stall,
+  information_retrieval_transport_cannot_report_status_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

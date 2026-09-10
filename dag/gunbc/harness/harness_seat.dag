@@ -36,7 +36,7 @@ import gunbc.harness.harness_wire { HarnessWireShape, harness_backend_url_for_ad
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity }
 import product.fabric.supply { EstimatedGrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
 import product.fabric.selection {
-  CandidateOffer, CandidateBound, DispatchInputsNameAnotherOffer, bind_candidate, PayAsYouGo,
+  CandidateOffer,
   OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply, affinity_collision_wire,
 }
 import product.fabric.demand { ObservationReceiptRef }
@@ -47,12 +47,12 @@ import gunbc.spark.vllm_endpoint_process_launch {
 }
 import gunbc.spark.serving_offer {
   SparkOfferBound, SparkOfferBindingRefused, SparkServingReadiness, ServingObserved, ServingUnobserved,
-  spark_serving_capability, spark_serving_shape, bind_spark_serving_offer,
+  spark_serving_capability, spark_serving_shape, bind_spark_serving_offer, spark_serving_route_standing,
 }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, ServingSeatOccupancy, NoSeatHeld, SeatsHeldForTurns, SeatOccupancyUnread,
   AdmissibleForColdPrefill, InadmissibleActiveInteractiveTurn, AdmissibilityUnread,
-  serving_group_admission, serving_admission_detail, serving_dispatch_inputs, serving_isolation_profile,
+  serving_group_admission, serving_admission_detail, serving_isolation_profile,
   spark_serving_trust_domain, serving_delay_valuation,
 }
 import gunbc.serving.turn_demand { serving_turn_requirements }
@@ -271,6 +271,19 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
   HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable }
 }
 
+// NO CANDIDATE IS PRODUCED FROM A BOUND OFFER ANY MORE, AND THE MISSING PIECE IS ADMISSION RATHER
+// THAN BINDING. A CandidateOffer now seals a ProviderUsePermit, so bind_candidate needs a
+// ProviderUseAdmission over the offer's route -- and producing one through admit_provider_use
+// requires a ProviderUseScope carrying a customer profile, a data-handling profile, an agreement
+// and three cleared dispositions. Those are compliance claims about us; there is no producer for
+// them, and writing plausible ones so the call typechecks is the fail-open this wall exists to
+// close. So the SparkOfferBound arm reports what is missing and seats nobody.
+//
+// That arm is unreachable today for a second, independent reason -- spark_serving_route_standing
+// refuses above it -- and the two are deliberately separate: landing a region observer alone must
+// not silently resume seating through a path nothing admitted.
+//
+// Restoration trigger: a provider-use admission producer for the spark serving route.
 fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, address: String, launch: VllmEndpointProcessLaunch, now: EpochSecs) -> HarnessCandidates {
   match bind_spark_serving_offer(
     principal: "gunbc" as NonEmptyStr,
@@ -281,27 +294,19 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, address: S
     isolation: serving_isolation_profile(),
     seats: harness_interactive_quality_seats as Int,
     readiness: harness_serving_readiness(standing: harness_observe_replica(address: address), now: now),
+    route: spark_serving_route_standing(),
   ) {
     SparkOfferBindingRefused { group_wire: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why as String), retryable: false)
-    SparkOfferBound { bound: projection } =>
-      match bind_candidate(
-        offer: projection.offer,
-        dispatch: serving_dispatch_inputs(
-          offer: projection.offer.id,
-          commitment: PayAsYouGo,
-          receipt: "gunbc.harness.offer-bind" as ObservationReceiptRef,
+    SparkOfferBound { bound: _ } =>
+      harness_no_candidate(
+        acc: acc,
+        note: seat_bind_detail(
+          group: group,
+          text: "the serving offer bound but no provider-use admission producer exists for its route, so it cannot become a candidate",
         ),
-      ) {
-        DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } =>
-          harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: "the dispatch inputs named another offer"), retryable: false)
-        CandidateBound { candidate: c } =>
-          HarnessCandidates {
-            candidates: concat(acc.candidates, [HarnessCandidate { key: vllm_endpoint_process_launch_key(launch: launch), group: group, address: address, launch: launch, offer: c }]),
-            notes: acc.notes,
-            retryable: acc.retryable,
-          }
-      }
+        retryable: false,
+      )
   }
 }
 
@@ -555,11 +560,11 @@ fn harness_placement_round(acc: PlacementRound, layout: EventLogLayout, shape: H
             notes: notes,
             retryable: retryable,
           }
-        OfferSelected { offer: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
-          match harness_candidate_for_key(candidates: collected.candidates, key: o.id.key) {
+        OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+          match harness_candidate_for_key(candidates: collected.candidates, key: o.offer.id.key) {
             Absent =>
               PlacementRound {
-                done: Present { value: HarnessSeatRefused { detail: join(["selection returned an offer key naming no candidate: ", o.id.key as String], "") } },
+                done: Present { value: HarnessSeatRefused { detail: join(["selection returned an offer key naming no candidate: ", o.offer.id.key as String], "") } },
                 excluded: acc.excluded,
                 notes: notes,
                 retryable: retryable,

@@ -1674,69 +1674,69 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
+/// ASSESSMENT-RENAME TRANSITION (2026-09-09, gunbc#10883). No ordinal is claimed, for the reason
+/// the entries above give. `product.cable_plant_converge` is renamed to
+/// `product.cable_plant_assessment`, and `gunbc.spark.fabric_switch_converge` to
+/// `gunbc.spark.fabric_switch_assessment`. The modules never had an actuation stage; the
+/// `converge` name advertised one, which is how the shape they replaced came to be bound to a
+/// handler that DEMANDED an apply. Renaming an inspect-only home is the last step of that cut.
 ///
-/// STRUCTURAL-TEXT AND LOGIC AUTHORITY REQUALIFICATION (2026-09-09, gunbc#10692). No ordinal is
-/// claimed, for the reason the entries above give. Five binding sites on the v2 self-host branch
-/// stop spelling two type names into the ambient kernel set and name the authority module
-/// instead, which is `TargetChanged` and is not auto-admitted: `EmitSpellingEscape.from/to`,
-/// `apply_emit_spelling_escapes.spelling` and `integer_string_to_decimal_digits_step.s` requalify
-/// `String` to `v2.std.text`; `py_bool_grounding` and `ts_bool_grounding` requalify their
-/// `BooleanAlgebra` parameter `Bool` to `v2.std.logic`.
+/// ONLY NINE ROWS, AND THE ARITHMETIC IS THE POINT. The wave measured eighteen deltas. Nine
+/// auto-admit: the membership half of the same motion reports `SameDeclarationIdentityRebind`
+/// (the old edge, whose every supplied name still denotes the same declaration) or
+/// `ExplicitlyEvaluatedZeroDelta` (the new edge, reached by a name the module authors). The nine
+/// below are the binding half — a spelling authored on BOTH sides that now resolves to a
+/// different module. Consumers whose OWN module was renamed produce no binding delta at all,
+/// because a delta needs the module on both sides; that is why the two witness files this cut
+/// renamed are absent here and `fabric_switch_observed` is not.
 ///
-/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check. The three
-/// `String` sites carry STRUCTURAL text — `v2.std.text.String` is `FreeMonoid<Char>`, and the
-/// chars(String) <- Variant cluster repair (this branch) restored structural reads end-to-end, so
-/// the carriers' types name the structural authority rather than the kernel homonym; the
-/// qualification is also load-bearing for native emission, whose host-String arm keys on
-/// declaration provenance (this branch, `is_host_text_carrier_type`), so an unqualified spelling
-/// would render the host carrier while value-position consumers render the structure. The two
-/// `Bool` sites bind a value whose own declaration already carries the qualified parameter:
-/// `v2.std.logic` declares `type Bool = True | False` and `bool_boolean_algebra:
-/// BooleanAlgebra<Bool>` resolves that spelling to its OWN module's declaration, so a grounding
-/// row annotated `BooleanAlgebra<Bool>` with the kernel reading stated a type its value does not
-/// inhabit. This is the gunbc#9907 namespace-lane requalification reaching five sites the XL-N
-/// closure repair touched.
+/// NONE OF THESE CHANGES WHICH DECLARATION THE SPELLING DENOTES. `CablePlant`, `cable_plant`,
+/// `CableLegReading`, `LegReadingTaken` and `LegNeverRead` are the same declarations at a new
+/// module path. A binding whose MEANING had moved would refuse on its own row rather than be
+/// covered by these, which is why they are enumerated by exact identity rather than by a pattern
+/// over the renamed module pair -- a pattern would admit a genuine rebind that happened to land
+/// in the same pair.
 ///
-/// ONE CHANGE CLASS. Nothing is requalified at the leaf: every spelling is identical on both
-/// sides, and what moved is the declaration behind it — from the ambient kernel type set
-/// (`<kernel>`) to the explicitly named authority module. No membership edge is added or removed
-/// by these five sites (the requalification is by qualified path or an import the module already
-/// carried), which is why the run reports exactly five binding rows and nothing else.
+/// TRIGGER: these rows are removed when this PR merges. At that point the base itself binds each
+/// spelling to `product.cable_plant_assessment`, every row reports consumed-at-base, and leaving
+/// them would refuse every unrelated PR -- the exact cost the first 53 rows recorded above.
+/// THE THIRTY-ONE ROWS BELOW ARE ONE CO-HOME (2026-09-09, gunbc#10729), AND THEY ARE NOT A
+/// REQUALIFICATION. `gunbc.scm.merge_base` is DELETED and its declarations now live in
+/// `gunbc.scm.repository_envelope`, because the merge-base authority had to be nameable where the
+/// commit-basis seal is sole-constructed. Every row is the same motion: a spelling authored on both
+/// sides -- `merge_base`, `MergeBaseOutcome`, `MergeBaseDerived`, `MergeBaseHistoryUnwalkable`,
+/// `MergeBaseHistoriesDisjoint`, `MergeBaseSourceAlreadyConsumed` -- still denotes THE SAME
+/// DECLARATION and resolves to a different module. The module-membership half of the same motion is
+/// auto-admitted as SameDeclarationIdentityRebind on its own rows, which is the corroboration this
+/// file asks for; a binding whose MEANING had moved would refuse separately and is not covered here.
 ///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10692 merges. Main then binds
-/// each spelling to the named target, base and head agree, no run can produce these deltas, and
-/// all five report CONSUMED rather than stale — coming due on this roster's next touch.
+/// `MergeSideName` IS THE SAME MOTION BY A DIFFERENT ROAD, and its row is called out because its base
+/// target is NOT the deleted module: it was DECLARED in `gunbc.scm.squash_merge` and moved into the
+/// envelope with the manifest read that needs it. Folding it into the sentence above would silently
+/// widen what this label claims to cover.
+///
+/// ENUMERATED BY EXACT IDENTITY, NEVER BY A PATTERN over the module pair, exactly as the entries
+/// above require: a pattern would admit a genuine rebind that happened to land in the same pair. The
+/// rows were generated from the wall's OWN refusal output (run 34379709974, then a local run for the
+/// last one) rather than hand-derived from the diff, so the subject is the wall's measured delta set
+/// and not an author's reading of it. That distinction paid: I predicted the repointed spellings in
+/// `scm_squash_merge_witness` would need rows too, and the wall said they do not -- guessing wider
+/// would have planted rows matching no delta, which this file refuses as stale. The wave went
+/// 30 unadjudicated -> 1 -> 0 with 0 stale at every step.
+///
+/// A BRANCH-LOCAL DISSOLUTION CLAIM WAS DROPPED HERE ON MERGE, DELIBERATELY. This branch had deleted
+/// the 5 `gunbc#10692` structural-text/logic rows itself and said so as a THIRTY-FIRST DISSOLUTION
+/// with a 5 = 5 count. `main` deleted them first, so on this merged tree that sentence would have
+/// described a deletion this change does not perform -- a stale authority statement of exactly the
+/// kind this stack keeps finding. The obligation was real and is discharged; the claim to have
+/// discharged it belongs to whoever did.
+///
+/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10729 merges. Main then binds each
+/// spelling to `gunbc.scm.repository_envelope`, base and head agree, no run can produce these deltas,
+/// and every row reports CONSUMED rather than stale -- coming due on this roster's next touch.
 /// Adjudicate that deletion by joining each row against main's tree on its own
-/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
-/// a trigger sentence is not evidence that the trigger fired.
-/// THIRTY-FIRST DISSOLUTION (2026-09-09, gunbc#10729). All 5 `gunbc#10692` structural-text/logic
-/// rows are deleted, and V2_STRUCTURAL_TEXT_LOGIC_REQUALIFICATION_LABEL with them. #10692 is in this
-/// branch's base, so every row reported CONSUMED rather than stale on run 34379709974, and the
-/// roster-touch obligation those rows carried for themselves comes due on this change -- the first
-/// one to touch this file since. ROWS DELETED EQUALS ROWS THE WALL NAMED: 5 = 5.
-///
-/// THE THIRTY ROWS BELOW ARE ONE CO-HOME, NOT A REQUALIFICATION. `gunbc.scm.merge_base` is DELETED
-/// and its declarations now live in `gunbc.scm.repository_envelope`, because the merge-base authority
-/// had to be nameable where the commit-basis seal is sole-constructed. Every row is the same motion:
-/// a spelling authored on both sides -- `merge_base`, `MergeBaseOutcome`, `MergeBaseDerived`,
-/// `MergeBaseHistoryUnwalkable`, `MergeBaseHistoriesDisjoint`, `MergeBaseSourceAlreadyConsumed` --
-/// still denotes THE SAME DECLARATION and resolves to a different module. `MergeSideName` is the same
-/// motion arriving by a different road: it was DECLARED in `gunbc.scm.squash_merge` and moved into the
-/// envelope with the manifest read that needs it, so its row names `gunbc.scm.squash_merge` as the base
-/// target rather than `gunbc.scm.merge_base`. It is listed because the wall named it, on a run whose
-/// binary was verified to carry this label -- an earlier local run adjudicated against a STALE
-/// `claim_executor` and reported all 30 rows unadmitted, which is what checking the compiled-in label
-/// rather than the build's exit code caught. The module-membership half
-/// of the same motion is auto-admitted as SameDeclarationIdentityRebind on its own rows, which is the
-/// corroboration this file asks for; a binding whose MEANING had moved would refuse separately and is
-/// not covered here.
-///
-/// ENUMERATED BY EXACT IDENTITY, NEVER BY A PATTERN over the module pair, exactly as the entry above
-/// requires: a pattern would admit a genuine rebind that happened to land in the same pair. The rows
-/// were generated from the wall's own refusal output on run 34379709974 rather than hand-derived from
-/// the diff, so the subject is the wall's measured delta set and not an author's reading of it --
-/// 30 refused, 30 rows, and any row that does not match on the next run refuses as stale rather than
-/// passing silently.
+/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
+/// trigger sentence is not evidence that the trigger fired.
 const SCM_MERGE_BASE_COHOME_LABEL: &str =
     "gunbc#10729 scm merge-base co-home into repository_envelope 2026-09-09";
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
@@ -2051,6 +2051,96 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
                 "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
             spelling: "MergeBaseSourceAlreadyConsumed",
             target: "gunbc.scm.repository_envelope",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_cable_plant",
+            spelling: "CablePlant",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_cable_plant",
+            spelling: "cable_plant",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_leg_reading",
+            spelling: "CableLegReading",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_leg_reading",
+            spelling: "LegNeverRead",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.fabric_switch_observed",
+            in_declaration: "fabric_leg_reading",
+            spelling: "LegReadingTaken",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_never",
+            spelling: "LegNeverRead",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_never",
+            spelling: "LegReadingTaken",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_taken",
+            spelling: "LegNeverRead",
+            target: "product.cable_plant_assessment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.spark.spark_fabric_switch_witness",
+            in_declaration: "plant_readings_taken",
+            spelling: "LegReadingTaken",
+            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

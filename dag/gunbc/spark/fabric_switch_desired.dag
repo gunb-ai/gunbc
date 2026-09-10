@@ -11,8 +11,9 @@ import extdeps.mikrotik.crs812 {
   crs812_board_name, crs812_management_interface, crs812_default_bridge,
   crs812_passive_dac_requires_forced_mode,
 }
-import product.cable_plant_converge {
-  CablePlantRefusal, CablePlant,
+import std.algebra { FreeSemigroup }
+import product.cable_plant_assessment {
+  CablePlant, CableLegOutcome, CableLegUnknown, CablePlantAssessRefusal,
 }
 import std.goal_assessment {
   GoalInspected, GoalObservationRefused,
@@ -20,7 +21,7 @@ import std.goal_assessment {
 }
 import gunbc.spark.fabric_switch_observed {
   FabricLaneObserved, fabric_lane_observations, fabric_lane_interface,
-  fabric_cable_plant_convergence,
+  fabric_cable_plant_inspection,
 }
 
 // WHAT THE FABRIC SWITCH IS SUPPOSED TO BE, DERIVED RATHER THAN DECLARED.
@@ -52,9 +53,35 @@ import gunbc.spark.fabric_switch_observed {
 // shape this module used to read collapsed both into one refusal, so a caller could not tell "go
 // read the plant" from "go change the copper" without inspecting the cause. Splitting them here is
 // that distinction surfacing where it was always true.
+// THE THREE WAYS THE PLANT LEAVES THE SPEED UNDECIDED ARE THREE CAUSES, NOT ONE COUNT. The cut
+// before this one mapped divergence, indeterminacy AND assessment refusal onto a single
+// `PlantDivergedFromRequirement { legs: Nat }`: unknowns were discarded outright, a malformed
+// assessment was reported as `legs: 0` -- indistinguishable from a plant with nothing wrong -- and
+// the endpoints an operator would walk to were replaced by their cardinality. That is the one-bucket
+// collapse std.goal_assessment's four arms exist to delete, surviving one module downstream of the
+// module that deleted it.
+//
+// THE PAYLOADS ARE THE ROWS THEMSELVES, not counts. A count cannot be acted on: the endpoint and the
+// cause are what a later planner or an operator needs, and re-deriving them from a number is
+// impossible rather than merely inconvenient.
+//
+// `PlantNotObservable` NO LONGER CARRIES A CAUSE, and the reason is a LANGUAGE limit rather than a
+// modelling choice, stated so it is not read as the latter. The cable observation's refusal type is
+// `Never`, so `GoalObservationRefused` is unconstructible for this subject and the right elimination
+// is an empty match over the uninhabited cause. `.dag` refuses a match with no arms ("match
+// expression has no arms"), and there is no `absurd`-style fold over `Never` in the corpus, so the
+// arm must be written and must return something. It carries NO payload -- there is no inhabitant to
+// put in one -- and it is the fail-closed answer: undecided, never a speed.
+// NEXT-RUNG TRIGGER: empty-match support over an uninhabited type, or a `Never` elimination fold in
+// v2.std.cardinality; either lets this arm be deleted rather than documented.
 type DesiredSpeedUndecidedCause
-  = PlantNotObservable { cause: CablePlantRefusal }
-  | PlantDivergedFromRequirement { legs: Nat }
+  = PlantObservationUnconstructible
+  | PlantDivergedFromRequirement { deviations: FreeSemigroup<CableLegOutcome> }
+  | PlantAssessmentIndeterminate {
+      known_deviations: List<CableLegOutcome>,
+      unknowns: FreeSemigroup<CableLegUnknown>,
+    }
+  | PlantAssessmentRefused { cause: CablePlantAssessRefusal }
   | SwitchCannotRunRequiredMode { mode: LinkMode }
 
 type Crs812DesiredLaneSpeed
@@ -67,22 +94,22 @@ type Crs812DesiredLaneSpeed
 // coincidence and keep agreeing after the mode changed -- which is the failure the module's own
 // annotation warns about, so the annotation is only true if the code reads the subject.
 fn crs812_desired_lane_speed() -> Crs812DesiredLaneSpeed {
-  match fabric_cable_plant_convergence() {
-    GoalObservationRefused { subject: s, cause: f } =>
-      DesiredLaneSpeedUndecided { cause: PlantNotObservable { cause: f } }
-    GoalInspected { subject: s, observed: o, assessment: a } =>
+  match fabric_cable_plant_inspection() {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } =>
+      DesiredLaneSpeedUndecided { cause: PlantObservationUnconstructible }
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
         GoalDiverged { deviations: ds } => DesiredLaneSpeedUndecided {
-          cause: PlantDivergedFromRequirement { legs: list_length(items: non_empty_to_list(xs: ds)) },
+          cause: PlantDivergedFromRequirement { deviations: ds },
         }
         GoalIndeterminate { known_deviations: kd, unknowns: u } => DesiredLaneSpeedUndecided {
-          cause: PlantDivergedFromRequirement { legs: list_length(items: kd) },
+          cause: PlantAssessmentIndeterminate { known_deviations: kd, unknowns: u },
         }
         GoalAssessmentRefused { cause: c } => DesiredLaneSpeedUndecided {
-          cause: PlantDivergedFromRequirement { legs: 0 },
+          cause: PlantAssessmentRefused { cause: c },
         }
         GoalSatisfied { evidence: e } =>
-          match crs812_lane_speed_for_link_mode(m: s.required_mode) {
+          match crs812_lane_speed_for_link_mode(m: g) {
             LaneSpeedForMode { speed: sp } => DesiredLaneSpeed { speed: sp }
             NoLaneSpeedForMode { mode: um } => DesiredLaneSpeedUndecided {
               cause: SwitchCannotRunRequiredMode { mode: um },

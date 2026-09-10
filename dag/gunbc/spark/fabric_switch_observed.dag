@@ -13,7 +13,7 @@ import product.cable_leg_observation {
   CableLegObservation, SecondaryObserved, cable_leg_observation,
   ExtendedRateObserved,
 }
-import product.cable_plant_converge {
+import product.cable_plant_assessment {
   CablePlant, cable_plant, CableLegReading, LegReadingTaken, LegNeverRead, CablePlantInspection,
   inspect_cable_plant,
 }
@@ -258,6 +258,6 @@ data fabric_cable_plant: CablePlant = cable_plant(
   required_mode: ieee_100gbase_cr2,
   readings: map(fabric_lane_observations, o => fabric_leg_reading(o: o)))
 
-fn fabric_cable_plant_convergence() -> CablePlantInspection {
+fn fabric_cable_plant_inspection() -> CablePlantInspection {
   inspect_cable_plant(subject: fabric_cable_plant)
 }

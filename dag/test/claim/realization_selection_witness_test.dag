@@ -495,7 +495,7 @@ fn selection_observe(subject: ParetoEntry, _: SelectionReceipt) -> ObservationAt
   ObservationEstablished { observed: subject.identity }
 }
 
-fn selection_assess(observed: DeclarationRef) -> GoalAssessment<DeclarationRef, DeclarationRef, DeclarationRef, NonEmptyStr> {
+fn selection_assess(goal: DeclarationRef, observed: DeclarationRef) -> GoalAssessment<DeclarationRef, DeclarationRef, DeclarationRef, NonEmptyStr> {
   assess_by_deviations(evidence: observed, deviations: [])
 }
 
@@ -514,11 +514,12 @@ test fn selected_within_feeds_the_goal_assessment_root() -> Bool {
     SelectedWithin { candidate: c, receipt: r } =>
       match inspect_goal(
         subject: c,
-        scope: r,
+        goal: c.identity,
+        request: r,
         observe: selection_observe,
         assess: selection_assess,
       ) {
-        GoalInspected { subject: _, observed: _, assessment: GoalSatisfied { evidence: _ } } => true
+        GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: GoalSatisfied { evidence: _ } } => true
         _ => false
       }
     _ => false
