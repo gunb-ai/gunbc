@@ -1,10 +1,11 @@
 module v2.test.parse.where_refinement_clause_parse
 
 import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_language_model,
+  dag_lex,
   parse_subtree_find_production_captured,
   ParseSubtreeAbsent,
   ParseSubtreeFound
@@ -25,13 +26,24 @@ data where_refinement_positive_range_source: String = "module probe.where_range\
 data where_refinement_negative_empty_clause_source: String = "module probe.where_empty\n\ntype Tight = String where\n\nfn f() -> Int {\n  1\n}\n"
 
 fn where_refinement_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
-  let lm = dag_language_model()
-  bind_outcome(
-    o: tokenize(text: text, file: file, rules: lm.lex),
-    f: fn(token_stream) {
-      parse(tokens: token_stream, grammar: lm.grammar)
-    }
-  )
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
 }
 
 fn where_refinement_parse_accepted(text: String, file: Symbol) -> Bool {

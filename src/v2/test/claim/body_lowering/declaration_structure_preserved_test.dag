@@ -32,16 +32,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // whereupon all three return body_lowering_reason_wrapper_retained_emitted.
 
 fn normalize_outcome(src: String) -> String {
-  let lm = dag_language_model()
-  match tokenize(text: src, file: ^declaration_structure_preserved_subject, rules: lm.lex) {
-    Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => "PARSE_REFUSED"
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
-            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "PREPARE_REFUSED"
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: src, file: ^declaration_structure_preserved_subject, rules: dag_lex()) {
+        Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
+        Accepted { value: ts, diagnostics: _ } =>
+          match parse_module_prepared(
+            tokens: ts,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: _ } => "PARSE_REFUSED"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
+                Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+              }
           }
       }
   }
