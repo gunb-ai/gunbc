@@ -27,6 +27,7 @@ import v2.compiler.staged_front_end {
   run_front_end_to
 }
 import v2.std.algebra { list_snoc_item }
+import std.algebra { FreeSemigroup }
 import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
 import std.measure { Millisecond, millisecond, millisecond_count }
@@ -193,11 +194,6 @@ fn obligation_label(obligation: DagStageObligation) -> Symbol {
   }
 }
 
-type NonEmptyObligations {
-  head: DagStageObligation,
-  tail: List<DagStageObligation>
-}
-
 type AcceptancePolicy
   = InteractiveFailFast
   | FullLedger
@@ -238,7 +234,7 @@ type VerifierBudgetLedger
 
 type DagAcceptanceContract {
   name: Symbol,
-  obligations: NonEmptyObligations,
+  obligations: FreeSemigroup<DagStageObligation>,
   policy: AcceptancePolicy,
   stage_costs: List<StageCostRow>
 }

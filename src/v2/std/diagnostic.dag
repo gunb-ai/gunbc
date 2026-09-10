@@ -2,6 +2,7 @@ module v2.std.diagnostic
 
 import v2.std.algebra { bag_eq, list_append, list_snoc_item, fold_list, freemonoid_empty }
 import std.algebra { Monoid, Semigroup }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.node { Node, Symbol }
 
 type Extent
@@ -36,6 +37,8 @@ type NonEmptyDiagnostics {
   head: Diagnostic
   tail: List<Diagnostic>
 }
+
+data non_empty_diagnostics_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "migrate_when_host_emit_names_free_semigroup — NonEmptyDiagnostics is FreeSemigroup<Diagnostic> by shape (one required Diagnostic plus a list of Diagnostic). It is not an Option alias: that host-emit mapping is Diagnostics -> Option<NonEmptyDiagnostics> via v1.compiler.emit_rust render_rust_diagnostics_carrier_applied, which hardcodes the type name NonEmptyDiagnostics as the Option inner. Dissolve into std.algebra FreeSemigroup<Diagnostic> when that renderer names FreeSemigroup rather than this monomorph; until then a second pair carrier remains.")
 
 type Diagnostics
   = None

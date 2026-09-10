@@ -156,6 +156,9 @@ type FreeSemigroup<T> {
   tail: FreeMonoid<T>
 }
 
+// FreeSemigroup is the free SEMIGROUP over T exactly as FreeMonoid is the free MONOID over T.
+// The head field is the construction wall: an empty inhabitant has no representation.
+
 // TWO AXES, THREE INHABITED CORNERS. The family below is a 2x2 space and the corpus lives in
 // three of its corners, so three carriers are authored and the fourth is named rather than
 // silently omitted.
