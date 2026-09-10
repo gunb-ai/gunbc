@@ -4,6 +4,7 @@ import std.types { Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types {
   CabinetDensityClaim, RetailGrainStanding,
+  RetailRateStanding, RatesPublished, RatesQuoteOnly,
   CoolingMedium, AirCooling, LiquidCooling,
   density_claim_figures,
 }
@@ -11,9 +12,10 @@ import test.claim.colo_cabinet_density_witness {
   covered_by_floor, outside_maximum, bounds_above, medium_absent, has_figure_for,
   unread_density_is_silent, standing_is_verbatim, grain_admits_single_cabinet,
 }
-import extdeps.colo.njfx { njfx_wall_density, njfx_wall_retail_grain }
+import extdeps.colo.njfx { njfx_wall_density, njfx_wall_retail_grain, njfx_wall_retail_rates }
 import extdeps.colo.digital_fortress {
   digital_fortress_piscataway_density, digital_fortress_piscataway_retail_grain,
+  digital_fortress_retail_rates,
 }
 import extdeps.colo.databank { databank_ewr2_density, databank_ewr2_retail_grain }
 import extdeps.colo.digital_realty {
@@ -128,4 +130,28 @@ test fn w_density_read_does_not_imply_grain_read() -> Bool {
     && grain_admits_single_cabinet(g: digital_fortress_piscataway_retail_grain)
     && grain_admits_single_cabinet(g: databank_ewr2_retail_grain)
     && !grain_admits_single_cabinet(g: qts_piscataway_retail_grain)
+}
+
+// THE RATE AXIS IS READ AT THE ARM, NOT THROUGH A NEW ACCESSOR. `RetailRateStanding` is a two-arm
+// coproduct and a named Bool predicate beside it would be a second, weaker spelling of the variant
+// the row already carries - the same move this census deleted three times on the density axis. One
+// local helper, one consuming site, and the arm stays the authority.
+fn rate_is_quote_only(r: RetailRateStanding) -> Bool {
+  match r {
+    RatesPublished { plans_note: _ } => false
+    RatesQuoteOnly { contact_route: _, obligation: _ } => true
+  }
+}
+
+// A PUBLISHED CABINET FIGURE IS NOT A PUBLISHED PRICE, and the two facilities that answer the
+// density question are exactly the two that refuse the price question. This is the rate axis of
+// the same separation the grain control makes: three axes the operator publishes independently,
+// and reading one never licenses an answer on another. It is also what makes the two rates rows
+// consumed by execution rather than declared and unread - review 63178 found them dangling, which
+// they were.
+test fn w_a_read_density_is_not_a_priced_cabinet() -> Bool {
+  rate_is_quote_only(r: njfx_wall_retail_rates)
+    && rate_is_quote_only(r: digital_fortress_retail_rates)
+    && density_claim_figures(d: njfx_wall_density).length() == 1
+    && density_claim_figures(d: digital_fortress_piscataway_density).length() == 1
 }
