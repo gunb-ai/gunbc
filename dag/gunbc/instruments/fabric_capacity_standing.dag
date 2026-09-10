@@ -1,0 +1,508 @@
+module gunbc.instruments.fabric_capacity_standing
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
+import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import gunbc.spark.vllm_kv_layout_observe {
+  VllmKvLayoutReceipt, admit_kv_layout,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.log_lines { vllm_startup_reading, vllm_startup_line_prefix, GpuKvCacheSize, MaximumConcurrency, VllmStartupLine }
+import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
+import extdeps.vllm.kv_layout { ResolvedKvLayout, resolved_kv_layout, VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity }
+
+// ── WHETHER THIS DEPLOYMENT'S CAPACITY CAN BE ESTABLISHED ────────────────────────────────────
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_capacity_standing.dag --function fabric_capacity_standing
+//
+// WHAT IT IS FOR. Capacity is refused on every group today: this instrument does not ship a
+// remote bash inventory program (docs/plans/scaffold-admission-doctrine.md: out-of-band
+// actuation has no ordinary scaffold arm), and readings_from_fields still refuses an unobserved
+// revision and an unobserved hash_block_size rather than stamping neighbours.
+//
+// Decode still names a field roster so a captured line-list (when a modeled host-effect later
+// produces one) cannot silently rebind slots.
+
+data observed_engine_revision_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a modeled host-effect inventory observes the engine's vLLM source revision as VllmSourceRevision (repository plus full git object), not /version and not the container image digest (extdeps.vllm.server), and the live entry passes that Present value into readings_from_fields instead of none. SUFFICIENT FOR: the revision refuse arm is no longer the live path's first stop. ProbeReadingsReady still also needs observed_hash_block_size_frontier. Until then none is the honest observation, not a stamp of vllm_source_revision_read." as NonEmptyStr)
+
+data observed_hash_block_size_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a modeled host-effect inventory observes hash_block_size as its own TokenCount from the engine (not cache-config block_size, which is the scheduler minimum) and the live entry passes that Present into readings_from_fields. SUFFICIENT FOR: layout_from_fields stamps the observed hash size, and a scheduler size that happens to equal it is coincidence rather than a second name for the same reading. Until then none is the honest observation." as NonEmptyStr)
+
+data live_inventory_host_effect_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: bash-emit (#5828 / shell-to-intent) or another modeled host-effect realizes remote inventory as typed argv/orchestration, and fabric_capacity_standing group_report consumes that realization. SUFFICIENT FOR: a live line-list reaches decode_probe from the entry point. Until then the entry refuses without ssh+bash -s." as NonEmptyStr)
+
+data layout_receipt_launch_join_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: group_report (once live_inventory_host_effect_frontier fires) calls launch_from_fields then readings_from_fields with that Present launch and a capture digest of the decoded bytes, so ProbeReadingsReady is only reachable through admit_kv_layout. SUFFICIENT FOR: live layout evidence is a VllmKvLayoutReceipt bound to a VllmServingLaunch, not a free ResolvedKvLayout. Until then the entry does not call readings_from_fields." as NonEmptyStr)
+
+data drain_load_gauge_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: DrainStanding is constructed from observed in-flight request counts (or an equivalent engine load gauge) on the same launch. SUFFICIENT FOR: running/waiting metrics are decoded again as that fold's inputs. Until then those slots are not on this roster." as NonEmptyStr)
+
+// ONE ROSTER, DECODE END. Decode looks slots up by name, so inserting a field cannot silently
+// rebind unit_sha to the container id. That names the SLOT, not the captured bytes: a value that
+// contains a newline still splits into extra lines, so decode refuses unless the line count equals
+// the roster length. "-" means the producer could not answer.
+type ProbeFieldName
+  = Invocation
+  | UnitSha
+  | Container
+  | ImageSha
+  | StartedAt
+  | PoolLine
+  | ConcurrencyLine
+  | AllocatorBlocks
+  | BlockSize
+  | MaxModelLen
+
+type CapacityProbeSlot {
+  name: ProbeFieldName
+  missing: String
+}
+
+fn probe_field_key(n: ProbeFieldName) -> String {
+  match n {
+    Invocation => "invocation"
+    UnitSha => "unit_sha"
+    Container => "container"
+    ImageSha => "image_sha"
+    StartedAt => "started_at"
+    PoolLine => "pool_line"
+    ConcurrencyLine => "concurrency_line"
+    AllocatorBlocks => "allocator_blocks"
+    BlockSize => "block_size"
+    MaxModelLen => "max_model_len"
+  }
+}
+
+fn capacity_probe_slots() -> List<CapacityProbeSlot> {
+  [
+    CapacityProbeSlot { name: Invocation, missing: "the systemd invocation was not found" },
+    CapacityProbeSlot { name: UnitSha, missing: "the unit text digest was not found" },
+    CapacityProbeSlot { name: Container, missing: "the container id was not found" },
+    CapacityProbeSlot { name: ImageSha, missing: "the container image digest was not found" },
+    CapacityProbeSlot { name: StartedAt, missing: "the unit start instant did not parse as epoch seconds" },
+    CapacityProbeSlot { name: PoolLine, missing: "the engine's GPU KV cache size line was not found in the launch log" },
+    CapacityProbeSlot { name: ConcurrencyLine, missing: "the engine's maximum concurrency line was not found in the launch log" },
+    CapacityProbeSlot { name: AllocatorBlocks, missing: "num_gpu_blocks was not present in the engine's cache-config metric" },
+    CapacityProbeSlot { name: BlockSize, missing: "block_size was not present in the engine's cache-config metric" },
+    CapacityProbeSlot { name: MaxModelLen, missing: "max_model_len was not readable from /v1/models" },
+  ]
+}
+
+type SlotScan {
+  n: Nat
+  hit: Nat?
+}
+
+fn slot_index(want: ProbeFieldName) -> Nat? {
+  fold(capacity_probe_slots(), init: SlotScan { n: 0, hit: none }, f: (acc, slot) =>
+    match acc.hit {
+      Present { value: _ } => acc
+      Absent =>
+        if probe_field_key(n: slot.name) == probe_field_key(n: want) {
+          SlotScan { n: acc.n + 1, hit: Present { value: acc.n } }
+        } else {
+          SlotScan { n: acc.n + 1, hit: none }
+        }
+    }).hit
+}
+
+fn slot_missing(name: ProbeFieldName) -> String {
+  fold(capacity_probe_slots(), init: join(["the probe roster does not contain ", probe_field_key(n: name)], ""), f: (acc, slot) =>
+    if probe_field_key(n: slot.name) == probe_field_key(n: name) { slot.missing } else { acc })
+}
+
+type CapacityProbeFields {
+  invocation: String
+  unit_sha: String
+  container: String
+  image_sha: String
+  started_at: EpochSecs
+  pool_line: String
+  concurrency_line: String
+  allocator_blocks: AllocatorBlockCount
+  block_size: TokenCount
+  max_model_len: TokenCount
+}
+
+type CapacityProbeRead
+  = ProbeFields { fields: CapacityProbeFields }
+  | ProbeUnreadable { detail: String }
+
+fn field_at(lines: List<String>, n: Nat) -> String {
+  trim(s: lines.skip(n: n).first())
+}
+
+fn field_named(lines: List<String>, name: ProbeFieldName) -> String? {
+  match slot_index(want: name) {
+    Absent => none
+    Present { value: n } => Present { value: field_at(lines: lines, n: n) }
+  }
+}
+
+fn int_named(lines: List<String>, name: ProbeFieldName) -> Int? {
+  match field_named(lines: lines, name: name) {
+    Absent => none
+    Present { value: s } => parse_int(s: s)
+  }
+}
+
+fn captured_named(lines: List<String>, name: ProbeFieldName) -> String? {
+  match field_named(lines: lines, name: name) {
+    Absent => none
+    Present { value: s } =>
+      if s == "-" || s == "" {
+        none
+      } else {
+        Present { value: s }
+      }
+  }
+}
+
+fn refuse_slot(name: ProbeFieldName) -> CapacityProbeRead {
+  ProbeUnreadable { detail: slot_missing(name: name) }
+}
+
+// EpochSecs is `Int where range(min: 0)`. A parsed Int cannot be cast; after the negative check the
+// expected type of Present is what mints it (same shape as json_number_as_epoch_secs).
+fn epoch_secs_from_non_negative(n: Int) -> EpochSecs? {
+  if n < 0 {
+    none
+  } else {
+    Present { value: n }
+  }
+}
+
+// Nat constructors refuse a computed Int→Nat cast. A negative probe line is not a count.
+// checked_int_magnitude is the sanctioned crossing; the negative arm must fire first because that
+// fold reports a magnitude for a < 0.
+fn nat_from_non_negative(n: Int) -> Nat? {
+  if n < 0 {
+    none
+  } else {
+    match checked_int_magnitude(a: n) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: v } => Present { value: v }
+    }
+  }
+}
+
+fn nat_named(lines: List<String>, name: ProbeFieldName) -> Nat? {
+  match int_named(lines: lines, name: name) {
+    Absent => none
+    Present { value: n } => nat_from_non_negative(n: n)
+  }
+}
+
+fn decode_probe(stdout: String) -> CapacityProbeRead {
+  let lines = split(s: trim(s: stdout), delimiter: "\n")
+  let expected = list_length(items: capacity_probe_slots())
+  if list_length(items: lines) != expected {
+    ProbeUnreadable { detail: join(["the probe returned ", to_string(list_length(items: lines)), " lines, not the ", to_string(expected), " the roster names"], "") }
+  } else {
+    match int_named(lines: lines, name: StartedAt) {
+      Absent => refuse_slot(name: StartedAt)
+      Present { value: started_raw } =>
+        match epoch_secs_from_non_negative(n: started_raw) {
+          Absent => refuse_slot(name: StartedAt)
+          Present { value: started } => {
+        match captured_named(lines: lines, name: PoolLine) {
+          Absent => refuse_slot(name: PoolLine)
+          Present { value: pool_line } =>
+            match captured_named(lines: lines, name: ConcurrencyLine) {
+              Absent => refuse_slot(name: ConcurrencyLine)
+              Present { value: conc_line } =>
+                match nat_named(lines: lines, name: AllocatorBlocks) {
+                  Absent => refuse_slot(name: AllocatorBlocks)
+                  Present { value: blocks } =>
+                    match nat_named(lines: lines, name: BlockSize) {
+                      Absent => refuse_slot(name: BlockSize)
+                      Present { value: bs } =>
+                        match nat_named(lines: lines, name: MaxModelLen) {
+                          Absent => refuse_slot(name: MaxModelLen)
+                          Present { value: ctx } =>
+                                    match captured_named(lines: lines, name: Invocation) {
+                                      Absent => refuse_slot(name: Invocation)
+                                      Present { value: invocation } =>
+                                        match captured_named(lines: lines, name: UnitSha) {
+                                          Absent => refuse_slot(name: UnitSha)
+                                          Present { value: unit_sha } =>
+                                            match captured_named(lines: lines, name: Container) {
+                                              Absent => refuse_slot(name: Container)
+                                              Present { value: container } =>
+                                                match captured_named(lines: lines, name: ImageSha) {
+                                                  Absent => refuse_slot(name: ImageSha)
+                                                  Present { value: image_sha } =>
+                                                    ProbeFields { fields: CapacityProbeFields {
+                                                      invocation: invocation,
+                                                      unit_sha: unit_sha,
+                                                      container: container,
+                                                      image_sha: image_sha,
+                                                      started_at: started,
+                                                      pool_line: pool_line,
+                                                      concurrency_line: conc_line,
+                                                      allocator_blocks: allocator_block_count(count: blocks),
+                                                      block_size: token_count(count: bs),
+                                                      max_model_len: token_count(count: ctx),
+                                                    } }
+                                                }
+                                            }
+                                        }
+                                    }
+                        }
+                    }
+                }
+            }
+        }
+        }
+        }
+    }
+  }
+}
+
+fn after_startup_prefix(line: String, kind: VllmStartupLine) -> String? {
+  let parts = split(s: line, delimiter: vllm_startup_line_prefix(line: kind) as String)
+  if list_length(items: parts) < 2 {
+    none
+  } else {
+    Present { value: trim(s: field_at(lines: parts, n: 1)) }
+  }
+}
+
+fn tokens_from_gpu_kv_cache_size_line(line: String) -> Int? {
+  match after_startup_prefix(line: line, kind: GpuKvCacheSize) {
+    Absent => none
+    Present { value: after } =>
+      parse_int(s: replace(s: trim(s: split(s: after, delimiter: " ").first()), from: ",", to: ""))
+  }
+}
+
+fn hundredths_from_maximum_concurrency_line(line: String) -> Int? {
+  match after_startup_prefix(line: line, kind: MaximumConcurrency) {
+    Absent => none
+    Present { value: after } => {
+      let segs = split(s: after, delimiter: ":")
+      if list_length(items: segs) < 2 {
+        none
+      } else {
+        hundredths_from_two_digit_x(lexeme: field_at(lines: segs, n: list_length(items: segs) - 1))
+      }
+    }
+  }
+}
+
+// THE PRINT IS HUNDREDTHS ONLY WHEN IT CARRIES EXACTLY TWO FRACTION DIGITS. Deleting "." and "x"
+// then parse_int treats digit count as the scale, so 8.5x becomes 85 (tenths) and 12.345x
+// becomes 12345 (thousandths). Require `<int>.<two digits>x` and refuse every other precision.
+fn hundredths_from_two_digit_x(lexeme: String) -> Int? {
+  let t = trim(s: lexeme)
+  let n = string_length(s: t)
+  if n < 5 {
+    none
+  } else {
+    if substring(s: t, start: n - 1, end: n) != "x" {
+      none
+    } else {
+      let parts = split(s: substring(s: t, start: 0, end: n - 1), delimiter: ".")
+      if list_length(items: parts) != 2 {
+        none
+      } else {
+        let frac = field_at(lines: parts, n: 1)
+        if string_length(s: frac) != 2 {
+          none
+        } else {
+          match parse_int(s: field_at(lines: parts, n: 0)) {
+            Absent => none
+            Present { value: whole } =>
+              match parse_int(s: frac) {
+                Absent => none
+                Present { value: fraction } =>
+                  if whole < 0 || fraction < 0 || fraction > 99 {
+                    none
+                  } else {
+                    Present { value: whole * 100 + fraction }
+                  }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE REVISION IS OBSERVED, NOT STAMPED. The first cut filled observed_at_revision and
+// established_at_revision from vllm_source_revision_read, the constant naming the revision the
+// LAWS were read from. That is the exact defect extdeps.vllm.log_lines already closed: every
+// reading asserted it had been taken at the modelled revision, so revision_is_modelled could
+// not say no. This fold does not observe a vLLM source revision (the container image digest is
+// launch identity, not that fact; /version is a self-report and is not that fact). Until a caller
+// supplies one, the readings refuse.
+type ProbeReadings
+  = ProbeReadingsReady { pool: VllmObservedKvPool, reported: VllmReportedCapacity, receipt: VllmKvLayoutReceipt }
+  | ProbeReadingsRefused { cause: NonEmptyStr }
+
+fn pool_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision) -> VllmObservedKvPool? {
+  match tokens_from_gpu_kv_cache_size_line(line: f.pool_line) {
+    Absent => none
+    Present { value: tokens } =>
+      match nat_from_non_negative(n: tokens) {
+        Absent => none
+        Present { value: n } =>
+      match vllm_observed_kv_pool_from_reading(
+        tokens: token_count(count: n),
+        reading: vllm_startup_reading(
+          line: GpuKvCacheSize,
+          captured_text: f.pool_line as NonEmptyStr,
+          observed_at_revision: revision,
+        ),
+      ) {
+        KvPoolAdmitted { pool: p } => Present { value: p }
+        KvPoolRefused { cause: _ } => none
+      }
+      }
+  }
+}
+
+fn reported_from_fields(pool: VllmObservedKvPool, f: CapacityProbeFields, revision: VllmSourceRevision) -> VllmReportedCapacity? {
+  match hundredths_from_maximum_concurrency_line(line: f.concurrency_line) {
+    Absent => none
+    Present { value: hundredths } =>
+      match nat_from_non_negative(n: hundredths) {
+        Absent => none
+        Present { value: n } =>
+      match vllm_reported_capacity(
+        pool: pool,
+        max_concurrency: concurrent_request_hundredths(count: n),
+        reading: vllm_startup_reading(
+          line: MaximumConcurrency,
+          captured_text: f.concurrency_line as NonEmptyStr,
+          observed_at_revision: revision,
+        ),
+      ) {
+        ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+        ReportedCapacityRefused { cause: _ } => none
+      }
+      }
+  }
+}
+
+// GROUPS ARE EMPTY, AND THAT IS THE OBSERVATION. The engine's metadata does not carry layer count
+// or page size, so there is nothing to put here and the receipt will refuse for exactly that
+// reason. Filling it with a guess is the one move that would make this instrument lie.
+//
+// HASH BLOCK SIZE IS THE SAME KIND OF FACT. cache-config block_size is the scheduler minimum;
+// hash_block_size is a separately named field on ResolvedKvLayout. Stamping the neighbour is
+// fabrication. The caller supplies the observation, or this fold refuses.
+fn layout_from_fields(f: CapacityProbeFields, revision: VllmSourceRevision, hash_block_size: TokenCount, max_num_batched_tokens: TokenCount) -> ResolvedKvLayout {
+  resolved_kv_layout(
+    allocator_blocks: f.allocator_blocks,
+    scheduler_block_size: f.block_size,
+    hash_block_size: hash_block_size,
+    max_model_len: f.max_model_len,
+    max_num_batched_tokens: max_num_batched_tokens,
+    groups: [],
+    established_at_revision: revision,
+  )
+}
+
+type LaunchRead
+  = LaunchIdentified { launch: VllmServingLaunch }
+  | LaunchUnidentified { detail: String }
+
+fn launch_from_fields(group: FabricGroup, head: HostIdentity, f: CapacityProbeFields) -> LaunchRead {
+  match sha256_hex_digest(hex: f.image_sha) {
+    Absent => LaunchUnidentified { detail: join(["the container image digest did not read as a sha256: ", f.image_sha], "") }
+    Present { value: image } =>
+      match sha256_hex_digest(hex: f.unit_sha) {
+        Absent => LaunchUnidentified { detail: join(["the unit text digest did not read as a sha256: ", f.unit_sha], "") }
+        Present { value: unit } =>
+          LaunchIdentified { launch: vllm_serving_launch(
+            group: group,
+            head: head,
+            systemd_invocation: f.invocation as NonEmptyStr,
+            container_id: f.container as NonEmptyStr,
+            executable_digest: Sha256Hash(image),
+            unit_digest: Sha256Hash(unit),
+            started_at: f.started_at,
+          ) }
+      }
+  }
+}
+
+fn readings_from_fields(
+  f: CapacityProbeFields,
+  observed_revision: VllmSourceRevision?,
+  observed_hash_block_size: TokenCount?,
+  observed_max_num_batched_tokens: TokenCount?,
+  observed_launch: VllmServingLaunch?,
+  source_capture_digest: ContentHash,
+) -> ProbeReadings {
+  match observed_revision {
+    Absent => ProbeReadingsRefused { cause: "the probe did not observe the engine's vLLM source revision, so it will not stamp the modelled revision onto the reading" as NonEmptyStr }
+    Present { value: revision } =>
+      match observed_hash_block_size {
+        Absent => ProbeReadingsRefused { cause: "the probe did not observe hash_block_size, so it will not stamp the scheduler block_size onto that field" as NonEmptyStr }
+        Present { value: hash_bs } =>
+          match observed_launch {
+            Absent => ProbeReadingsRefused { cause: "a layout is evidence only when it is bound to a launch, so readings_from_fields will not mint a free ResolvedKvLayout" as NonEmptyStr }
+            Present { value: launch } =>
+          match observed_max_num_batched_tokens {
+            Absent => ProbeReadingsRefused { cause: "the probe did not observe max_num_batched_tokens, so it will not stamp max_model_len onto that field" as NonEmptyStr }
+            Present { value: batched } =>
+              match pool_from_fields(f: f, revision: revision) {
+                Absent => ProbeReadingsRefused { cause: "the captured KV-cache-size reading was refused by its own carrier" as NonEmptyStr }
+                Present { value: pool } =>
+                  match reported_from_fields(pool: pool, f: f, revision: revision) {
+                    Absent => ProbeReadingsRefused { cause: "the captured maximum-concurrency reading was refused by its own carrier" as NonEmptyStr }
+                    Present { value: reported } =>
+                      ProbeReadingsReady {
+                        pool: pool,
+                        reported: reported,
+                        receipt: admit_kv_layout(
+                          launch: launch,
+                          layout: layout_from_fields(f: f, revision: revision, hash_block_size: hash_bs, max_num_batched_tokens: batched),
+                          reported: reported,
+                          source_capture_digest: source_capture_digest,
+                        ),
+                      }
+                  }
+              }
+          }
+          }
+      }
+  }
+}
+
+// ONE VERDICT PER GROUP. Live inventory is not taken over ssh+bash: that actuator was a
+// scaffold, and ProbeReadingsReady is unreachable without observed revision and hash_block_size
+// anyway. The entry still fails closed so the refusal is produced by execution, not by typecheck.
+type GroupStanding {
+  text: String
+  admitting: Bool
+}
+
+fn refused_standing(text: String) -> GroupStanding {
+  GroupStanding { text: text, admitting: false }
+}
+
+fn group_report(group: FabricGroup) -> GroupStanding {
+  refused_standing(text: join([
+    fabric_group_wire(g: group) as String,
+    ": live inventory is not probed; a hand-assembled remote bash program is not an admitted actuator, and readings_from_fields is not reached with a stamped revision or hash_block_size",
+  ], ""))
+}
+
+fn fabric_capacity_standing() -> ProcessExit {
+  let standings = map(spark_pair_serving_groups, g => group_report(group: g))
+  if all(standings, st => st.admitting) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(concat(["fabric capacity standing"], map(standings, st => st.text)), "\n"))
+  }
+}

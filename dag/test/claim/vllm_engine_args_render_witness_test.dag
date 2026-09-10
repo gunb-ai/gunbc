@@ -1,0 +1,88 @@
+module test.claim.vllm_engine_args_render
+
+import std.logic { Bool }
+import std.types { String, List }
+import std.measure { basis_point, byte_size }
+import extdeps.vllm.engine_args {
+  VllmMemoryRequest, VllmPrefixCachingRequest,
+  PrefixCachingOmitted, PrefixCachingExplicit,
+  vllm_memory_request_argv, vllm_prefix_caching_argv, vllm_basis_point_fraction_wire,
+}
+
+// ── THE FLAGS A REQUEST RENDERS TO ─────────────────────────────────────────────────────────────
+//
+// WHY THIS FILE EXISTS. `VllmMemoryRequest` became the single field that argv, the effective-value
+// resolution and the profile identity all read. That is only worth having if the rendering is pinned:
+// an unwitnessed renderer is a second authority that happens to agree today, which is the state this
+// change was made to leave.
+
+// OMISSION RENDERS NOTHING. This is the canary's live request, and the property is what lets a launch
+// that says nothing stay silent all the way to the container -- rather than acquiring a flag carrying
+// whatever default somebody thought was harmless.
+test fn an_omitted_memory_request_renders_no_flags() -> Bool {
+  length(vllm_memory_request_argv(r: VllmMemoryRequest { utilization: none, kv_cache_bytes: none })) == 0
+}
+
+// ── THE BYTES OF THE RUNNING LINE ARE PRESERVED ────────────────────────────────────────────────
+//
+// THE DISCRIMINATING CASE, AND IT CAUGHT A REAL DEFECT. The first version of this renderer padded to
+// four places, so the pair route's long-standing 82% rendered as `0.8200` where the engine actually
+// running on the fleet was launched with `0.82` (gunbc.spark.pair_serving_observed records that exact
+// wire value). Numerically identical, different bytes -- and convergence compares rendered argv to
+// running argv, so it would have reported drift against a healthy server and asked for a twelve-minute
+// restart to erase a difference nobody introduced. A renderer is not free to choose a spelling.
+test fn eighty_two_percent_still_renders_as_the_running_engines_bytes() -> Bool {
+  vllm_basis_point_fraction_wire(bp: basis_point(count: 8200)) == "0.82"
+}
+
+// AND THE PRECISION THE PERCENT TYPE COULD NOT HOLD SURVIVES. 0.9112 is a value the engine's own
+// guidance names on this fleet; the type it replaced was integral and could only have said 0.91.
+test fn a_four_place_fraction_renders_all_four_places() -> Bool {
+  vllm_basis_point_fraction_wire(bp: basis_point(count: 9112)) == "0.9112"
+}
+
+test fn a_whole_fraction_renders_with_one_decimal() -> Bool {
+  vllm_basis_point_fraction_wire(bp: basis_point(count: 10000)) == "1.0"
+}
+
+test fn a_single_significant_place_does_not_keep_padding() -> Bool {
+  vllm_basis_point_fraction_wire(bp: basis_point(count: 9000)) == "0.9"
+}
+
+// AN EXPLICIT REQUEST RENDERS THE FLAG IT ASKED FOR, in the order upstream reads it.
+test fn an_explicit_utilization_renders_the_flag_and_its_value() -> Bool {
+  let argv = vllm_memory_request_argv(r: VllmMemoryRequest {
+    utilization: Present { value: basis_point(count: 9200) },
+    kv_cache_bytes: none,
+  })
+  length(argv) == 2 && argv.first() == "--gpu-memory-utilization" && argv.skip(n: 1).first() == "0.92"
+}
+
+// EXPLICIT KV BYTES RENDER AS AN EXACT INTEGER, never as a rounded rendering: this is the one term in
+// the whole memory model that upstream states to the byte.
+test fn explicit_kv_bytes_render_exactly() -> Bool {
+  let argv = vllm_memory_request_argv(r: VllmMemoryRequest {
+    utilization: none,
+    kv_cache_bytes: Present { value: byte_size(count: 23372437156) },
+  })
+  length(argv) == 2 && argv.first() == "--kv-cache-memory" && argv.skip(n: 1).first() == "23372437156"
+}
+
+// ── PREFIX CACHING: THREE STATES, THREE RENDERINGS ─────────────────────────────────────────────
+//
+// THE OMITTED ARM IS THE ONE THAT MATTERED. The pair route used to emit a hardcoded
+// `--enable-prefix-caching` regardless of what any request said, so "this launch said nothing" and
+// "this launch asked for it" produced identical argv and no input could tell them apart.
+test fn an_omitted_prefix_caching_request_renders_no_flag() -> Bool {
+  length(vllm_prefix_caching_argv(r: PrefixCachingOmitted)) == 0
+}
+
+test fn an_explicit_prefix_caching_request_renders_the_flag_the_pair_route_sends() -> Bool {
+  let argv = vllm_prefix_caching_argv(r: PrefixCachingExplicit { enabled: true })
+  length(argv) == 1 && argv.first() == "--enable-prefix-caching"
+}
+
+test fn an_explicit_disable_renders_the_negative_flag_rather_than_silence() -> Bool {
+  let argv = vllm_prefix_caching_argv(r: PrefixCachingExplicit { enabled: false })
+  length(argv) == 1 && argv.first() == "--no-enable-prefix-caching"
+}

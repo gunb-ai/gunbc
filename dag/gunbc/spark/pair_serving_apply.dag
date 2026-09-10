@@ -29,6 +29,9 @@ import gunbc.spark.pair_serving_realization {
 import gunbc.spark.pair_serving_observed { first_pair_container_runtime }
 import gunbc.spark.model_snapshot_acquisition { ModelSnapshotRole, SnapshotRoleUndecidable, model_snapshot_role_for, model_snapshot_fleet_seed }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
+import gunbc.spark.pair_serving_launch_receipt {
+  ServingStanding, serving_standing, serving_standing_wire,
+}
 
 // THE FIRST APPLY OF THE RENDERED PAIR, OVER THE ADMINISTRATOR'S PASSWORD SESSION. Each host gets
 // one privileged script made only of the realization's typed argv, quoted word by word: create the
@@ -176,19 +179,20 @@ fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<Strin
 }
 
 type SparkPairHostApplyOutcome
-  = SparkPairHostApplied { host: HostIdentity, detail: String }
+  = SparkPairHostApplied { host: HostIdentity, detail: String, standing: ServingStanding }
   | SparkPairHostApplyFailed { host: HostIdentity, cause: String }
 
 fn spark_pair_host_apply_outcome_line(o: SparkPairHostApplyOutcome) -> String {
   match o {
-    SparkPairHostApplied { host: h, detail: d } => join(["  ", h as String, "  applied  ", d], "")
+    SparkPairHostApplied { host: h, detail: d, standing: s } =>
+      join(["  ", h as String, "  applied  ", d, "  ", serving_standing_wire(s: s)], "")
     SparkPairHostApplyFailed { host: h, cause: c } => join(["  ", h as String, "  FAILED  ", c], "")
   }
 }
 
 fn spark_pair_host_applied(o: SparkPairHostApplyOutcome) -> Bool {
   match o {
-    SparkPairHostApplied { host: _, detail: _ } => true
+    SparkPairHostApplied { host: _, detail: _, standing: _ } => true
     SparkPairHostApplyFailed { host: _, cause: _ } => false
   }
 }
@@ -224,7 +228,11 @@ fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPat
             stdin_payload: join([admin_credential as String, "\n", plan.script, "\n"], ""),
           )
           if r.success {
-            SparkPairHostApplied { host: plan.host, detail: join([spark_reach_path_wire(p: path), " ", trim(s: r.stdout)], "") }
+            SparkPairHostApplied {
+              host: plan.host,
+              detail: join([spark_reach_path_wire(p: path), " ", trim(s: r.stdout)], ""),
+              standing: serving_standing(attempts: []),
+            }
           } else {
             SparkPairHostApplyFailed { host: plan.host, cause: join([spark_reach_path_wire(p: path), " exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
           }

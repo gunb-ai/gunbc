@@ -1,0 +1,164 @@
+module gunbc.ci_bootstrap_pr_launcher_workflow
+
+import std.types { String, NonEmptyStr }
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep, checkout_action,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool,
+  WorkflowTrigger, WorkflowDispatch,
+  WorkflowPermissions, PermRead, PermWrite,
+  RunnerSpec
+}
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci_spec { gunbc_ci_bootstrap_pr_open_invoke }
+import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.toolchain_workflow_steps { toolchain_pin_rustup_default_step, toolchain_home_isolation_step }
+import gunbc.witness_floor_workflow { witness_floor_toolchain_step }
+import v2.std.optional { Present }
+
+// A ONE-SHOT LAUNCHER WHOSE ONLY CAPABILITY IS OPENING ONE EXACT PULL REQUEST.
+//
+// WHY IT EXISTS AT ALL. This repository's approval policy admits a pull_request run on whether its
+// ACTOR has ever had a commit or pull request merged here, and github-actions[bot] has neither, so
+// every heal push it actors is withheld. Standing cannot be accrued by a COMMIT, because the
+// repository is squash-only and a squash attributes the result to the PR author -- measured, 416
+// heal commits exist and zero have reached main. The remaining arm of the policy is a merged PULL
+// REQUEST, and a pull request opened with the Actions job credential is authored by
+// github-actions[bot]. So the bot must OPEN a pull request, which is the one thing no existing
+// workflow here does.
+//
+// WHY IT IS A SEPARATE WORKFLOW RATHER THAN A JOB ON AN EXISTING ONE. A workflow_dispatch workflow
+// must already exist on the DEFAULT BRANCH before it can be dispatched, so the launcher cannot be
+// introduced and used by the same pull request. That constraint is what forces the split: this
+// lands first, then it is dispatched from main.
+//
+// THE AUTHORITY IT DOES NOT TAKE, and each omission is deliberate rather than unbuilt. It does not
+// check out the repository, so no repository content is ever materialised in the job. It federates
+// to nothing and reads no secret, so no long-lived credential is reachable from it. It takes no
+// input at all -- not a branch, not a base, not a command -- so there is no argument through which
+// a caller could redirect it. contents is READ because the only thing it reads is one ref; only
+// pull_requests is write, and creating a pull request is the entire capability.
+//
+// THE BRANCH AND ITS HEAD ARE BOTH PINNED, and the SHA is the load-bearing half. Pinning only the
+// branch name would let anyone who can push to that branch choose what the bot's pull request
+// contains, which would make the bot author arbitrary content. Pinning the exact commit means the
+// launcher either opens the pull request that was reviewed or refuses.
+// The exact commit reviewed as the bootstrap subject. A head that has moved is a REFUSAL, never a
+// silent retarget: the launcher's whole value is that what the bot authors was seen first.
+data bootstrap_pr_launcher_workflow_name: String = "bootstrap-pr-launcher"
+
+data bootstrap_pr_launcher_job_id: String = "open"
+
+data bootstrap_pr_launcher_concurrency_group: String = "gunbc-bootstrap-pr-launcher"
+
+fn bootstrap_pr_launcher_permissions() -> WorkflowPermissions {
+  WorkflowPermissions {
+    contents: Present { value: PermRead },
+    pull_requests: Present { value: PermWrite },
+    issues: none,
+    actions: none,
+    id_token: none
+  }
+}
+
+// The refusal arms are typed, located and countable, and each names the state it refuses rather
+// than a generic failure: a moved head, an already-open pull request, and a create that GitHub
+// declined. The third exists because "Allow GitHub Actions to create and approve pull requests"
+// is an organisation setting this repository has never exercised -- zero pull requests here have
+// ever been authored by github-actions[bot] -- so a 403 is a REAL expected outcome and must say
+// which permission is missing rather than reading as a bug in this workflow.
+// THE BINARY IS BUILT BECAUSE THE LOGIC IS MODELLED. The shell form needed no checkout, which
+// read as a security property and was really an absence of anything worth checking out: it could
+// not run a typed decision because it had no interpreter. This job materialises the repository
+// and builds gunbc, which is the cost of the operations being declared rather than concatenated.
+// The trade is acceptable HERE and would not be in the heal job: this runs on workflow_dispatch
+// from the default branch, holds no secret, and carries pull-requests:write and nothing else, so
+// there is no PR-controlled code path and no credential for a checkout to expose.
+fn bootstrap_pr_launcher_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present { value: [kv(key: "fetch-depth", value: yaml_string(s: "0"))] },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn bootstrap_pr_launcher_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build the launcher binary" },
+    id: none,
+    run: concat(repo_self_build_command(bins: ["gunbc"]), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn bootstrap_pr_launcher_open_step() -> Step {
+  RunStep {
+    name: Present { value: "Open the bootstrap pull request (gunbc.ci_bootstrap_pr_open)" },
+    id: none,
+    run: gunbc_ci_bootstrap_pr_open_invoke(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: 5 }
+  }
+}
+
+fn bootstrap_pr_launcher_job() -> Job {
+  Job {
+    id: bootstrap_pr_launcher_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: [
+      bootstrap_pr_launcher_checkout_step(),
+      toolchain_home_isolation_step(),
+      witness_floor_toolchain_step(),
+      toolchain_pin_rustup_default_step(),
+      bootstrap_pr_launcher_build_step(),
+      bootstrap_pr_launcher_open_step()
+    ],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: 45 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: bootstrap_pr_launcher_permissions() }
+  }
+}
+
+data bootstrap_pr_launcher_workflow: Workflow = Workflow {
+  name: bootstrap_pr_launcher_workflow_name,
+  run_name: none,
+  on: [WorkflowDispatch { inputs: [] }],
+  concurrency: Present {
+    value: ConcurrencyMappingQueueNotMax {
+      group: bootstrap_pr_launcher_concurrency_group,
+      cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+      explicit_single: none
+    }
+  },
+  env: none,
+  permissions: none,
+  jobs: [bootstrap_pr_launcher_job()],
+}
+
+fn expected_bootstrap_pr_launcher_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: bootstrap_pr_launcher_workflow))
+}

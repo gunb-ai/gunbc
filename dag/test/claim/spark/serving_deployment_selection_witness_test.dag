@@ -3,7 +3,8 @@ module test.claim.spark.serving_deployment_selection_witness_test
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_display_key }
-import std.measure { token_count }
+import std.measure { token_count, basis_point }
+import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, FootprintReportedExternally, FootprintUnread, DeploymentCandidate, deployment_candidate,
@@ -138,7 +139,7 @@ test fn a_task_score_regression_is_also_a_failure() -> Bool {
 // to another, which is why quality and runtime feasibility share this exact subject.
 data other_runtime_parameters: ServingDecisionParameters = serving_decision_parameters(
   max_model_len: token_count(count: 262144),
-  gpu_memory_utilisation_percent: 82,
+  memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 8200) }, kv_cache_bytes: none },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorMpProfile,
@@ -150,7 +151,7 @@ data other_runtime_parameters: ServingDecisionParameters = serving_decision_para
 
 data wider_context_parameters: ServingDecisionParameters = serving_decision_parameters(
   max_model_len: token_count(count: 400000),
-  gpu_memory_utilisation_percent: 82,
+  memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 8200) }, kv_cache_bytes: none },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
@@ -199,7 +200,10 @@ test fn a_quality_receipt_is_not_transportable_across_execution_profiles() -> Bo
 // the row would pass for the wrong reason and stop testing anything.
 data collide_left: ServingDecisionParameters = serving_decision_parameters(
   max_model_len: token_count(count: 262144),
-  gpu_memory_utilisation_percent: 82,
+  memory_request: VllmMemoryRequest {
+    utilization: Present { value: basis_point(count: 8200) },
+    kv_cache_bytes: none,
+  },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
@@ -211,7 +215,10 @@ data collide_left: ServingDecisionParameters = serving_decision_parameters(
 
 data collide_right: ServingDecisionParameters = serving_decision_parameters(
   max_model_len: token_count(count: 262144),
-  gpu_memory_utilisation_percent: 82,
+  memory_request: VllmMemoryRequest {
+    utilization: Present { value: basis_point(count: 8200) },
+    kv_cache_bytes: none,
+  },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
@@ -234,7 +241,7 @@ test fn two_runtimes_that_render_alike_are_not_the_same_profile() -> Bool {
 // impossible weight profile into a passing one -- generous in the one direction it must never be.
 data impossible_utilisation: ServingDecisionParameters = serving_decision_parameters(
   max_model_len: token_count(count: 262144),
-  gpu_memory_utilisation_percent: 150,
+  memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 15000) }, kv_cache_bytes: none },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
