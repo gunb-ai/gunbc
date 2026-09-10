@@ -42,13 +42,7 @@ import gunbc.fabric_m0_commit {
   ManifestReadUnavailable,
   CommitNamespace,
 }
-import gunbc.fabric_m0_publication {
-  JobSuccessAdmission,
-  JobSuccessAdmitted,
-  JobSuccessRefused,
-  publish_work,
-  admit_work_success,
-}
+import gunbc.fabric_m0_publication { publish_work }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -138,13 +132,6 @@ fn object_reads() -> List<OriginObservation> {
   ]
 }
 
-fn is_admitted(a: JobSuccessAdmission) -> Bool {
-  match a {
-    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => true
-    JobSuccessRefused { location: _, cause: _ } => false
-  }
-}
-
 test fn fixture_work_resolves_two_obligations() -> Bool {
   match resolve_output_obligations(
     contract: the_work().contract,
@@ -158,8 +145,7 @@ test fn fixture_work_resolves_two_obligations() -> Bool {
   }
 }
 
-// THE POSITIVE CONTROL. Job success depends on the publication authority: a
-// complete attempt reaches JobSuccessAdmitted only through publish_work.
+// THE POSITIVE CONTROL of the named join: a complete attempt publishes success.
 test fn a_complete_work_admits_job_success() -> Bool {
   match publish_work(
     work: the_work(),
@@ -173,19 +159,7 @@ test fn a_complete_work_admits_job_success() -> Bool {
     transport: answered(),
     observed: origin_read(),
   ) {
-    PublishSuccess { attempt: _, manifest_digest: _ } =>
-      is_admitted(a: admit_work_success(
-        work: the_work(),
-        attempt: the_attempt(),
-        computation: ComputationSucceeded,
-        committed: committed_both(),
-        observations: object_reads(),
-        namespace: the_namespace(),
-        manifest_digest: digest_a(),
-        members: members_both(),
-        transport: answered(),
-        observed: origin_read(),
-      ))
+    PublishSuccess { attempt: _, manifest_digest: _ } => true
     PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
     PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
     PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => false
@@ -195,7 +169,7 @@ test fn a_complete_work_admits_job_success() -> Bool {
 
 // Discriminating RED: a failed computation cannot be inverted by a confirmed store.
 test fn a_failed_computation_refuses_job_success() -> Bool {
-  match admit_work_success(
+  match publish_work(
     work: the_work(),
     attempt: the_attempt(),
     computation: ComputationFailed { cause: "compile failed" },
@@ -207,14 +181,17 @@ test fn a_failed_computation_refuses_job_success() -> Bool {
     transport: answered(),
     observed: origin_read(),
   ) {
-    JobSuccessRefused { location, cause } => (location == "computation") && (cause == "compile failed")
-    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => false
+    PublishComputationFailed { attempt: _, cause, unresolved: _ } => cause == "compile failed"
+    PublishSuccess { attempt: _, manifest_digest: _ } => false
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => false
+    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
   }
 }
 
 // ReadbackUnknown must not collapse into success. A cache hit is not origin confirmation.
 test fn a_cache_manifest_read_refuses_job_success() -> Bool {
-  match admit_work_success(
+  match publish_work(
     work: the_work(),
     attempt: the_attempt(),
     computation: ComputationSucceeded,
@@ -226,14 +203,17 @@ test fn a_cache_manifest_read_refuses_job_success() -> Bool {
     transport: answered(),
     observed: ManifestRead { observed_digest: digest_a(), source: DisposableCacheRead { provider: "local-store" } },
   ) {
-    JobSuccessRefused { location: _, cause: _ } => true
-    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => false
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    PublishSuccess { attempt: _, manifest_digest: _ } => false
+    PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
   }
 }
 
 // An unanswered write with nothing found is pending, not success and not a decided absence.
 test fn a_lost_ack_without_origin_read_refuses_job_success() -> Bool {
-  match admit_work_success(
+  match publish_work(
     work: the_work(),
     attempt: the_attempt(),
     computation: ComputationSucceeded,
@@ -245,13 +225,16 @@ test fn a_lost_ack_without_origin_read_refuses_job_success() -> Bool {
     transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
     observed: ManifestNotFound,
   ) {
-    JobSuccessRefused { location: _, cause: _ } => true
-    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => false
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    PublishSuccess { attempt: _, manifest_digest: _ } => false
+    PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
   }
 }
 
 test fn an_unavailable_origin_read_refuses_job_success() -> Bool {
-  match admit_work_success(
+  match publish_work(
     work: the_work(),
     attempt: the_attempt(),
     computation: ComputationSucceeded,
@@ -263,7 +246,10 @@ test fn an_unavailable_origin_read_refuses_job_success() -> Bool {
     transport: answered(),
     observed: ManifestReadUnavailable { cause: "origin unbound" },
   ) {
-    JobSuccessRefused { location: _, cause: _ } => true
-    JobSuccessAdmitted { attempt: _, manifest_digest: _ } => false
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    PublishSuccess { attempt: _, manifest_digest: _ } => false
+    PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => false
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => false
   }
 }

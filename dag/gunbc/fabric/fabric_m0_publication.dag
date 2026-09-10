@@ -1,6 +1,6 @@
 module gunbc.fabric_m0_publication
 
-import std.types { List, NonEmptyStr }
+import std.types { List }
 import std.content_hash { Sha256Digest }
 import std.scoped_authorization { AttemptIdentity }
 import product.fabric.work {
@@ -14,11 +14,6 @@ import gunbc.fabric_m0_completion {
   OriginObservation,
   ManifestMember,
   JobPublication,
-  PublishSuccess,
-  PublishComputationFailed,
-  PublishFinalizationFailed,
-  PublishPendingReconciliation,
-  PublishObligationsUnreadable,
 }
 import gunbc.fabric_m0_commit {
   CommitNamespace,
@@ -32,7 +27,9 @@ import gunbc.fabric_m0_commit {
 // What this fold buys over the pre-change state: it names the join point
 // so the capability trigger has a subject (Work + resolve at the
 // admission gate + publish_after_commit) instead of an unnamed future
-// caller of publish_after_commit.
+// caller of publish_after_commit. It returns JobPublication unchanged --
+// a second admission coproduct beside that type would nickname the
+// decision and drop unresolved obligation verdicts.
 //
 // This join holds a run's Work, resolves that Work's obligations at the
 // admission gate, and returns the publication the completion authority
@@ -78,57 +75,5 @@ fn publish_work<P>(
     members: members,
     transport: transport,
     observed: observed
-  )
-}
-
-// THE ONLY MINT that may call the job successful. An ambiguous commit REFUSES
-// with a typed, located cause -- located where the author can act. Pending
-// reconciliation is not collapsed into finalization failure: a lost
-// acknowledgement does not establish that a write failed. It also does not
-// admit success.
-type JobSuccessAdmission
-  = JobSuccessAdmitted { attempt: AttemptIdentity, manifest_digest: Sha256Digest }
-  | JobSuccessRefused { location: NonEmptyStr, cause: NonEmptyStr }
-
-fn admit_job_success(publication: JobPublication) -> JobSuccessAdmission {
-  match publication {
-    PublishSuccess { attempt: a, manifest_digest: d } =>
-      JobSuccessAdmitted { attempt: a, manifest_digest: d }
-    PublishComputationFailed { attempt: _, cause: c, unresolved: _ } =>
-      JobSuccessRefused { location: "computation", cause: c }
-    PublishFinalizationFailed { attempt: _, subject: s, cause: c, unresolved: _ } =>
-      JobSuccessRefused { location: s, cause: c }
-    PublishPendingReconciliation { attempt: _, subject: s, cause: c, unresolved: _ } =>
-      JobSuccessRefused { location: s, cause: c }
-    PublishObligationsUnreadable { attempt: _, subject: s, cause: c, unresolved: _ } =>
-      JobSuccessRefused { location: s, cause: c }
-  }
-}
-
-fn admit_work_success<P>(
-  work: Work<P>,
-  attempt: AttemptIdentity,
-  computation: ComputationOutcome,
-  committed: List<CommittedOutput>,
-  observations: List<OriginObservation>,
-  namespace: CommitNamespace,
-  manifest_digest: Sha256Digest,
-  members: List<ManifestMember>,
-  transport: CommitTransportOutcome,
-  observed: ManifestReadbackObservation
-) -> JobSuccessAdmission {
-  admit_job_success(
-    publication: publish_work(
-      work: work,
-      attempt: attempt,
-      computation: computation,
-      committed: committed,
-      observations: observations,
-      namespace: namespace,
-      manifest_digest: manifest_digest,
-      members: members,
-      transport: transport,
-      observed: observed
-    )
   )
 }
