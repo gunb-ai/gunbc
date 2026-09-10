@@ -89,14 +89,18 @@ mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
+mod native_lane_runner;
 mod required_floor_runner;
+mod required_lane_roster;
 pub mod rostered_row_join;
 mod serve_budget_refusal;
+pub use native_lane_runner::run_required_v2_native;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
     run_claim_measured, run_required_floor,
 };
+pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
@@ -42380,10 +42384,10 @@ pub use emitted_closure_compile_host::{
     cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
     emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
     emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
-    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
-    required_ci_emit_compile_probe_root, required_emit_compile_entries,
-    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
-    EmitCompileSelection, MutationVerdict,
+    emit_compile_selection_universe_digest, lane_emit_compile_probe_root,
+    local_emit_compile_probe_root, required_ci_emit_compile_probe_root,
+    required_emit_compile_entries, retain_not_selected_identities, run_required_emit_compile,
+    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict,
 };
 
 /// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE
