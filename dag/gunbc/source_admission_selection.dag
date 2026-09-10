@@ -2,6 +2,7 @@ module gunbc.source_admission_selection
 // Compile-clean's source-transition selection, independent of tools.dag_compile_clean_scope (the import-closure SemanticEntrySelection). The two join only at the final verdict. This landing does not wire the axis into production compile-clean and does not delete compile_clean_census_fill_hard_diagnostics.
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.algebra { FreeSemigroup }
 import std.content_hash {
   Fnv1a64Structural,
   Sha1Digest,
@@ -93,11 +94,6 @@ type ActiveSourceIdentity {
   content_digest: Fnv1a64Structural
 }
 
-type NonEmptyActiveSourceIdentities {
-  head: ActiveSourceIdentity
-  tail: List<ActiveSourceIdentity>
-}
-
 type SourcePoolFile {
   root_ordinal: Int
   module_path: String
@@ -105,25 +101,20 @@ type SourcePoolFile {
   content_digest: Fnv1a64Structural
 }
 
-type NonEmptySourceKeys {
-  head: String
-  tail: List<String>
-}
-
 type ManifestUnobservableCause
   = EmptyUniverse
-  | IncompleteWalk { expected_keys: NonEmptySourceKeys, observed_count: Int }
+  | IncompleteWalk { expected_keys: FreeSemigroup<String>, observed_count: Int }
   | DuplicateModulePath { module_path: String }
 
 type ActiveSourceManifest
-  = ManifestObserved { rows: NonEmptyActiveSourceIdentities }
+  = ManifestObserved { rows: FreeSemigroup<ActiveSourceIdentity> }
   | ManifestUnobservable { cause: ManifestUnobservableCause }
 
 type AnnotationCorpusAdmitted {
   tree: GitObjectId
   mechanism: ComputedMechanismIdentity
-  manifest: NonEmptyActiveSourceIdentities
-  admitted: NonEmptyActiveSourceIdentities
+  manifest: FreeSemigroup<ActiveSourceIdentity>
+  admitted: FreeSemigroup<ActiveSourceIdentity>
 }
 
 type AnnotationCorpusInductionStanding
@@ -141,7 +132,7 @@ type SourceTransitionRefusalCause
 // TWO INDEPENDENT SELECTIONS, joined only at the compile-clean verdict. SemanticEntrySelection (tools.dag_compile_clean_scope) walks the import-closure relation. SourceAdmissionSelection walks the source-transition relation: head active-source rows whose selected identity, path, or content digest differ from an exact base AnnotationCorpusAdmitted receipt, compared through the same primary-precedence view MultiEntryIndex uses (build_module_index_primary_precedence), never raw git paths. IncrementalSources is legitimate only when the base carries that receipt, both sides share a Computed mechanism identity, both manifests are ManifestObserved, and the evaluated tree is the one that would merge. EntireHeadCorpusAffected is the exact dependency result of a known mechanism-identity change, not an absorbing fallback. SourceTransitionRefused never selects files. B remains rejected: admission is not fused into index construction.
 // The live compile-clean MultiEntryIndex (witness_layer_roots: dag then src/v2) had 0 shadowed modules and 0 path collisions when this axis was specified, so the higher-precedence-delete-exposes-lower-precedence RED is a synthetic two-root fixture for an uninhabited law, not a specimen drawn from the corpus. The inverse control (deleting a shadowed loser is a no-op on the active map though git shows a delete) is the spurious-work direction.
 type SourceAdmissionSelection
-  = IncrementalSources { changed: NonEmptyActiveSourceIdentities }
+  = IncrementalSources { changed: FreeSemigroup<ActiveSourceIdentity> }
   | UnchangedNoop { base: GitObjectId, head: GitObjectId }
   | EntireHeadCorpusAffected {
       head: GitObjectId
@@ -154,18 +145,18 @@ type SourceAdmissionSelection
       head_tree: GitObjectId
     }
 
-fn nonempty_active_sources_all(rows: NonEmptyActiveSourceIdentities) -> List<ActiveSourceIdentity> {
+fn nonempty_active_sources_all(rows: FreeSemigroup<ActiveSourceIdentity>) -> List<ActiveSourceIdentity> {
   concat([rows.head], rows.tail)
 }
 
 fn nonempty_active_sources_from_list(
   rows: List<ActiveSourceIdentity>
-) -> NonEmptyActiveSourceIdentities? {
+) -> FreeSemigroup<ActiveSourceIdentity>? {
   match first(rows) {
     Absent => none
     Present { value: head } =>
       Present {
-        value: NonEmptyActiveSourceIdentities {
+        value: FreeSemigroup {
           head: head,
           tail: skip(rows, 1),
         },
@@ -173,12 +164,12 @@ fn nonempty_active_sources_from_list(
   }
 }
 
-fn nonempty_source_keys_from_list(keys: List<String>) -> NonEmptySourceKeys? {
+fn nonempty_source_keys_from_list(keys: List<String>) -> FreeSemigroup<String>? {
   match first(keys) {
     Absent => none
     Present { value: head } =>
       Present {
-        value: NonEmptySourceKeys {
+        value: FreeSemigroup {
           head: head,
           tail: skip(keys, 1),
         },
@@ -186,7 +177,7 @@ fn nonempty_source_keys_from_list(keys: List<String>) -> NonEmptySourceKeys? {
   }
 }
 
-fn nonempty_source_keys_all(keys: NonEmptySourceKeys) -> List<String> {
+fn nonempty_source_keys_all(keys: FreeSemigroup<String>) -> List<String> {
   concat([keys.head], keys.tail)
 }
 
@@ -481,8 +472,8 @@ fn hunk_admission_rows(
 fn select_from_observed_manifests(
   base_tree: GitObjectId,
   head_tree: GitObjectId,
-  base_rows: NonEmptyActiveSourceIdentities,
-  head_rows: NonEmptyActiveSourceIdentities
+  base_rows: FreeSemigroup<ActiveSourceIdentity>,
+  head_rows: FreeSemigroup<ActiveSourceIdentity>
 ) -> SourceAdmissionSelection {
   let patch = keyed_two_way_diff(
     left: map(nonempty_active_sources_all(rows: base_rows), r =>
