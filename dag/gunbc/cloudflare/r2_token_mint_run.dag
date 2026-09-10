@@ -221,7 +221,7 @@ fn bootstrap_burden_text() -> String {
 // opposite remedies and neither may be reported as the other. That distinction is why this change
 // added outcome: RestOutcome to the operation; without it a 5xx and a refusal were the same silence.
 //
-// THE 5xx SPLIT IS CONSUMED, NOT RESTATED. gunbc.secret_provision_actuator already owns
+// THE 5xx SPLIT IS CONSUMED, NOT RESTATED. extdeps.transports.rest already owns
 // mutation_status_is_commit_ambiguous and states why the boundary sits at 500: a 4xx is a decision
 // the remote made BEFORE committing anything, while a 5xx spans states the remote itself may not be
 // able to describe, including a write that landed under a handler that then failed. Spelling a
