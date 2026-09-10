@@ -169,11 +169,32 @@ pub fn cargo_verdict_compiled(verdict: &CargoVerdict) -> bool {
     matches!(verdict, CargoVerdict::Completed { status: 0, .. })
 }
 
+/// THE SUMMARY IS THE REFUSAL'S DIAGNOSTIC SURFACE. Callers that cannot compile print this string
+/// and stop (`EmittedCompilerBuildFailed`, restore-failed mutation, a red baseline). Rendering
+/// only `status` swallows the rustc header and stderr the verdict already holds — a completed
+/// non-zero cargo then looks like a bare exit code, which is how a native-lane build refusal
+/// reached the log with no error class. A zero-status run stays compact: there is nothing to
+/// attribute. A non-zero run names the attributed diagnostic and line when the scan found them,
+/// and always carries `stderr_tail` so an unattributed refusal (the native lane's dummy
+/// attribution symbol, a kill-adjacent cargo, a fault in another module) still prints WHAT rustc
+/// said.
 pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
     match verdict {
         CargoVerdict::NotAttempted { reason } => format!("NotAttempted reason={reason}"),
         CargoVerdict::DidNotComplete { detail } => format!("DidNotComplete detail={detail}"),
-        CargoVerdict::Completed { status, .. } => format!("Completed status={status}"),
+        CargoVerdict::Completed { status, .. } if *status == 0 => {
+            format!("Completed status={status}")
+        }
+        CargoVerdict::Completed {
+            status,
+            stderr_tail,
+            probe_line,
+            probe_diagnostic,
+        } => format!(
+            "Completed status={status} diagnostic={} line={} stderr_tail={stderr_tail}",
+            probe_diagnostic.as_deref().unwrap_or("unattributed"),
+            probe_line.as_deref().unwrap_or("unattributed"),
+        ),
     }
 }
 
@@ -1969,6 +1990,47 @@ pub fn run_required_emit_compile(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A NON-ZERO COMPLETED VERDICT MUST NAME WHAT RUSTC SAID. The native lane's refusal
+    /// interpolates only this summary; a status-only render is how a cargo failure reached CI
+    /// as `Completed status=101` with the diagnostic sitting unread in the same verdict.
+    #[test]
+    fn cargo_verdict_summary_renders_the_diagnostic_a_non_zero_run_already_holds() {
+        let attributed = CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: "error: could not compile `probe`".to_string(),
+            probe_line: Some("--> src/fixture.rs:1:1".to_string()),
+            probe_diagnostic: Some("error[E0308]: mismatched types".to_string()),
+        };
+        let summary = cargo_verdict_summary(&attributed);
+        assert!(
+            summary.contains("error[E0308]: mismatched types"),
+            "attributed header is the class the caller is adjudicating: {summary}"
+        );
+        assert!(
+            summary.contains("--> src/fixture.rs:1:1"),
+            "attributed location rides with the header: {summary}"
+        );
+        let unattributed = CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: "error[E0433]: failed to resolve".to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+        };
+        let summary = cargo_verdict_summary(&unattributed);
+        assert!(
+            summary.contains("error[E0433]: failed to resolve"),
+            "an unattributed refusal still prints stderr_tail, which is the native lane's case: \
+             {summary}"
+        );
+        let green = CargoVerdict::Completed {
+            status: 0,
+            stderr_tail: String::new(),
+            probe_line: None,
+            probe_diagnostic: None,
+        };
+        assert_eq!(cargo_verdict_summary(&green), "Completed status=0");
+    }
 
     /// The manifest is DERIVED, so this asserts the derivation reached the modeled rows, not a
     /// golden string: version-authority package header, the seed's runtime dependency set, and
