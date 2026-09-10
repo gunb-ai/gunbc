@@ -1153,13 +1153,7 @@ fn v1_native_lane_consumers() -> List<V1ConsumerRow> {
       consumer: native_lane_runner_ref,
       authority: v1_interpreter_run_in_context,
       medium: RustUseEdge, subject: V1Interpreter,
-      obligation: "UNIVERSE DERIVATION. The lane's population is not a roster: it is derived by calling discover_floor_rows_for_source through the seed interpreter over the whole source population, so the set of modules the native route is asked about is chosen by v1. Closes on: the universe deriving outside the seed -- and this is the same discovery fold the required floor already runs, so it closes for both lanes at once or for neither"
-    ),
-    v1_native_lane_consumer(
-      consumer: decl_ref(module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "native_route_census_receipt"),
-      authority: v1_interpreter_run_in_context,
-      medium: RustUseEdge, subject: V1Interpreter,
-      obligation: "RECEIPT ADJUDICATION. The admission predicate and the summary render are evaluated through the same interpreter over the census receipt, so the verdict on whether the native route stood is computed by the route it is judging the replacement of. The replacement doctrine's rule that Y never resolves through X is about implementation; this is the adjudication half of it. A separate relation from the row above because one call derives the SUBJECT and the other decides the VERDICT, and a cutover could move one without the other"
+      obligation: "THE LANE IS INTERPRETER-BRACKETED AT BOTH ENDS, and this is ONE relation rather than two because both ends are the same consumer reaching the same authority. Its population is derived by calling discover_floor_rows_for_source through the seed interpreter over the whole source population, so the set of modules the native route is asked about is chosen by v1; and its census receipt is adjudicated by two further run_in_context_with_args calls in the same function, so the verdict on whether the native route stood is computed by the route it is judging the replacement of. An earlier revision split these into two rows and paid for the split by inventing a symbol for the second consumer -- which is the fabrication this census exists to refuse, so the split is withdrawn rather than repaired: the census keys on consumer x authority, and one function reaching one authority is one relation however many roles it plays. Closes on: the universe deriving AND the admission fold executing outside the seed. The derivation half is the same discovery fold the required floor already runs, so that half closes for both lanes at once or for neither"
     ),
     v1_native_lane_consumer(
       consumer: decl_ref(module_path: "gunbc.witness_v2_native_route", decl_name: "required_v2_native_job_name"),
@@ -1247,31 +1241,62 @@ fn v1_blocking_uncitable(uncitable: List<V1UncitableConsumer>) -> List<V1Uncitab
   uncitable |> filter(u => consumer_disposition_blocks(d: u.disposition))
 }
 
-// ZERO ROWS CLASSIFIED UNKNOWN, as a derived number rather than an assurance. Undecided is the
-// census's unknown arm and the one admit_replacement_cut_plan refuses as UndispositionedConsumer.
-// It is separated from the blocking column because the two say different things: a RetainSameContract
-// row with CoverageOpen is a KNOWN obligation nobody has covered, and an Undecided row is a relation
-// nobody has judged at all. Collapsing them would let the second hide inside the first, and the
-// second is the worse state -- a known-but-uncovered consumer at least names the capability that
-// closes it, while an undecided one names nothing.
+// THE THREE-WAY PARTITION, TAKEN ONCE, AS AN ELIMINATION OF ConsumerDisposition RATHER THAN A
+// PREDICATE OVER IT. An earlier revision asked "is this Undecided?" as a Bool and then filtered the
+// population three times against combinations of it -- which is the predicate-dissolution shape
+// (review 63245), and it also let the three classes drift apart, since nothing forced them to
+// cover the population exactly once. This fold eliminates the coproduct in ONE place: every arm
+// lands in exactly one bucket by construction, so the partition is exhaustive and disjoint because
+// there is nowhere else for a row to go, and the worklist below is a reordering of the buckets
+// rather than three independent sweeps that happen to agree.
 //
-// THIS IS THE ARM THE JOINED PRODUCER FILLS. tools.v1_consumer_discovery emits every relation it
-// discovers as Undecided by construction, so a newly discovered .dag argv consumer arrives here as
-// an unknown row and stays one until an author dispositions it against the terminal design. The
-// count is therefore the discovery backlog, and it cannot be reduced by editing a number.
-fn v1_rows_undecided(rows: List<V1ConsumerRow>) -> List<V1ConsumerRow> {
-  rows |> filter(r => v1cc_disposition_is_undecided(d: r.boundary.disposition))
+// WHY UNKNOWN IS ITS OWN BUCKET AND NOT PART OF BLOCKING. They say different things: a retained row
+// with CoverageOpen is a KNOWN obligation nobody has covered, and an Undecided row is a relation
+// nobody has judged at all. Collapsing them lets the second hide inside the first, and the second is
+// the worse state -- a known-but-uncovered consumer at least names the capability that closes it,
+// while an undecided one names nothing. THIS IS ALSO THE ARM THE JOINED PRODUCER FILLS:
+// tools.v1_consumer_discovery emits every relation it discovers as Undecided by construction, so a
+// newly discovered .dag consumer arrives here as an unknown row and stays one until an author
+// judges it. The count is the discovery backlog and cannot be reduced by editing a number.
+type WorklistPartition {
+  unjudged: List<V1ConsumerRow>
+  retained_open: List<V1ConsumerRow>
+  discharged: List<V1ConsumerRow>
 }
 
-fn v1cc_disposition_is_undecided(d: ConsumerDisposition) -> Bool {
-  match d {
-    RetainSameContract { justification: _, coverage: _ } => false
-    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
-    ReplacedByY { new_authority: _ } => false
-    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
-    Retire { reason: _ } => false
-    Undecided => true
+data v1cc_empty_partition: WorklistPartition = WorklistPartition { unjudged: [], retained_open: [], discharged: [] }
+
+fn v1cc_place_row(acc: WorklistPartition, row: V1ConsumerRow) -> WorklistPartition {
+  match row.boundary.disposition {
+    Undecided =>
+      WorklistPartition { unjudged: list_snoc_item(xs: acc.unjudged, item: row), retained_open: acc.retained_open, discharged: acc.discharged }
+    RetainSameContract { justification: _, coverage: c } =>
+      v1cc_place_by_coverage(acc: acc, row: row, c: c)
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: c } =>
+      v1cc_place_by_coverage(acc: acc, row: row, c: c)
+    ReplacedByY { new_authority: _ } =>
+      WorklistPartition { unjudged: acc.unjudged, retained_open: acc.retained_open, discharged: list_snoc_item(xs: acc.discharged, item: row) }
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } =>
+      WorklistPartition { unjudged: acc.unjudged, retained_open: acc.retained_open, discharged: list_snoc_item(xs: acc.discharged, item: row) }
+    Retire { reason: _ } =>
+      WorklistPartition { unjudged: acc.unjudged, retained_open: acc.retained_open, discharged: list_snoc_item(xs: acc.discharged, item: row) }
   }
+}
+
+fn v1cc_place_by_coverage(acc: WorklistPartition, row: V1ConsumerRow, c: CoverageClaim) -> WorklistPartition {
+  if v1cc_coverage_is_open(c: c) {
+    WorklistPartition { unjudged: acc.unjudged, retained_open: list_snoc_item(xs: acc.retained_open, item: row), discharged: acc.discharged }
+  } else {
+    WorklistPartition { unjudged: acc.unjudged, retained_open: acc.retained_open, discharged: list_snoc_item(xs: acc.discharged, item: row) }
+  }
+}
+
+fn v1_worklist_partition(rows: List<V1ConsumerRow>) -> WorklistPartition {
+  fold_list(xs: rows, empty: v1cc_empty_partition, cons: fn(acc, row) { v1cc_place_row(acc: acc, row: row) })
+}
+
+fn v1_rows_undecided(rows: List<V1ConsumerRow>) -> List<V1ConsumerRow> {
+  v1_worklist_partition(rows: rows).unjudged
 }
 
 fn v1_undecided_row_count(rows: List<V1ConsumerRow>) -> Int {
@@ -1283,26 +1308,17 @@ fn v1_undecided_row_count(rows: List<V1ConsumerRow>) -> Int {
 // planned -- the disposition census admits a cut only when undispositioned consumers reach zero, so
 // an undecided row blocks every other row's schedule as well as its own. Then the RETAINED-OPEN
 // rows, which are the transaction's real content: each names a capability that does not exist yet.
-// Then the discharged rows -- replaced, evidence-only, retired -- which are ordered last precisely
-// because they need no work; they are carried so the worklist is the whole population and a reader
-// can see that a row was decided rather than forgotten.
+// Then the discharged rows -- replaced, evidence-only, retired -- ordered last precisely because
+// they need no work; they are carried so the worklist is the whole population and a reader can see
+// that a row was decided rather than forgotten.
 //
-// IT IS A PROJECTION OF THE ROSTER, NOT A SECOND ROSTER. Every member is a row from the population
-// it is handed, reordered; nothing is added, nothing is dropped, and the partition is exhaustive by
-// the same three-way split the blocking predicate already makes. A worklist that could contain a
-// row the census does not would be the parallel authority DESIGN section 3 forbids.
+// IT IS A PROJECTION OF THE ROSTER, NOT A SECOND ROSTER: it concatenates the three buckets of one
+// partition, so nothing is added and nothing is dropped by construction rather than by three
+// filters agreeing. A worklist that could contain a row the census does not would be the parallel
+// authority DESIGN section 3 forbids.
 fn v1_deletion_worklist(rows: List<V1ConsumerRow>) -> List<V1ConsumerRow> {
-  list_append(
-    left: v1_rows_undecided(rows: rows),
-    right: list_append(
-      left: rows |> filter(r => v1cc_row_is_retained_open(r: r)),
-      right: rows |> filter(r => !v1cc_disposition_is_undecided(d: r.boundary.disposition) && !v1cc_row_is_retained_open(r: r))
-    )
-  )
-}
-
-fn v1cc_row_is_retained_open(r: V1ConsumerRow) -> Bool {
-  consumer_disposition_blocks(d: r.boundary.disposition) && !v1cc_disposition_is_undecided(d: r.boundary.disposition)
+  let p = v1_worklist_partition(rows: rows)
+  list_append(left: p.unjudged, right: list_append(left: p.retained_open, right: p.discharged))
 }
 
 fn v1_worklist_is_a_permutation(rows: List<V1ConsumerRow>) -> Bool {
@@ -1313,19 +1329,24 @@ fn v1_worklist_is_a_permutation(rows: List<V1ConsumerRow>) -> Bool {
 // how many unjudged rows stand before the first judged one; when that equals the unjudged total,
 // every unjudged row is in the leading segment, which is the ordering claim. Reading it off the
 // output is what makes the assertion independent of the implementation -- a check that restated the
-// list_append order would be the second representation section 3 forbids, and would stay green if
+// concatenation order would be the second representation section 3 forbids, and would stay green if
 // the ordering were reversed and the check reversed with it.
 type WorklistLeadScan {
   still_leading: Bool
   leading: Int
 }
 
+fn v1cc_row_is_unjudged_in(p: WorklistPartition, row: V1ConsumerRow) -> Bool {
+  p.unjudged |> any(u => v1_row_key(r: u) == v1_row_key(r: row))
+}
+
 fn v1_worklist_lead_scan(rows: List<V1ConsumerRow>) -> WorklistLeadScan {
+  let p = v1_worklist_partition(rows: rows)
   fold_list(
     xs: v1_deletion_worklist(rows: rows),
     empty: WorklistLeadScan { still_leading: true, leading: 0 },
     cons: fn(acc, row) {
-      if acc.still_leading && v1cc_disposition_is_undecided(d: row.boundary.disposition) {
+      if acc.still_leading && v1cc_row_is_unjudged_in(p: p, row: row) {
         WorklistLeadScan { still_leading: true, leading: acc.leading + 1 }
       } else {
         WorklistLeadScan { still_leading: false, leading: acc.leading }
