@@ -1,0 +1,299 @@
+module gunbc.spark.serving_arm_launch
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq, render_ipv4_address }
+import extdeps.huggingface.hub { hub_repo_cache_directory_name }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts }
+import gunbc.spark.fabric_rail_desired { fabric_rail_address }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.serving_arm {
+  ServingCheckpoint, ServingRuntime, ServingTopology,
+  ServingCheckpointRow, serving_checkpoint_row,
+  ServingRuntimeRow, serving_runtime_row,
+  serving_topology_rank_count,
+  ServingArmVerdict, ServingArmAdmitted, ServingArmRefused, serving_arm_admits,
+  Glm53NativeFp8, Gitcommit90Sm121Exl3, FourSparkTp4,
+}
+import gunbc.spark.model_snapshot_acquisition { SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement }
+
+// ── WHY THIS IS A SECOND MULTI-HOST LAUNCHER AND NOT A FORK ────────────────────────────────────
+//
+// gunbc.spark.pair_serving_realization already brings up a four-rank engine across a fabric group, and
+// growing a second one beside it would be exactly the §3 fork this repository keeps paying for. It is
+// not a fork, because the thing that differs is the DISTRIBUTED-EXECUTION TRANSPORT, and §3 puts
+// transport in the realization layer: one operation shape with N bound handlers, never one operation
+// forked per transport. `distributed_executor_backend` is already a modelled field, so the backend is an
+// axis of the arm and this module is the handler for one of its values.
+//
+// THE PAIR ROUTE IS THE RAY HANDLER AND CANNOT SERVE THIS ARM. It runs `ray start` head and worker
+// systemd units inside the DeepSeek image, and that image is recorded at
+// gunbc.spark.serving_arm gunbc_sparkrun_ds4_row with `registers_glm5_next: false` -- it cannot load
+// this architecture at all. The GLM-capable image is the other one, and it HAS NO RAY: probed inside the
+// pinned digest on 2026-09-10, `import ray` raises ModuleNotFoundError and no `ray` executable exists;
+// the only match on the filesystem is vLLM's own `vllm/ray` integration subpackage. So neither image
+// carries both halves, and the Ray transport is unavailable for a native GLM arm without building a
+// third image.
+//
+// AND IT DOES NOT NEED TO BE BUILT, WHICH IS WHY THIS HANDLER EXISTS. The same probe read this
+// revision's own ParallelConfig: `nnodes`, `node_rank`, `master_addr` and `master_port` are real fields
+// whose docstrings say "for multi-node distributed inference when distributed_executor_backend is mp",
+// and the backend field's own documentation states that to use "mp" you must also set nnodes. So this
+// image performs multi-node tensor parallelism with no Ray, no new artifact, and no unpinned dependency
+// -- one container per host, each carrying its own rank.
+//
+// THE EARLIER DEFECT THIS AVOIDS IS RECORDED IN THE PAIR ROUTE'S OWN ANNOTATION: a revision once
+// pointed that route at GLM and thereby admitted a known-impossible tuple, because the image could not
+// load the architecture and nothing on the path refused. `serving_arm_admits` is that wall, and every
+// launch below passes through it.
+
+// ── THE NODE ROSTER ────────────────────────────────────────────────────────────────────────────
+//
+// A RANK IS A POSITION IN ONE ORDERED ROSTER, AND THE ORDER IS DERIVED RATHER THAN AUTHORED. Every node
+// must agree on which host holds rank zero, because that rank is also the rendezvous the other three
+// dial; two hosts believing they are rank zero is not a degraded group but a hung one, and two hosts
+// disagreeing about the master address is the same failure wearing a different mask. So the head comes
+// from the group's declared head and the remainder keep the roster's own order.
+type ArmNode sole_constructor {
+  host: HostIdentity
+  rail: Ipv4Address
+  node_rank: Nat
+}
+
+type ArmNodeRoster
+  = ArmNodesResolved { nodes: List<ArmNode>, master: Ipv4Address }
+  | ArmNodeRosterRefused { cause: NonEmptyStr }
+
+type ArmNodeAccum sole_constructor {
+  nodes: List<ArmNode>
+  next_rank: Nat
+  unresolved: List<HostIdentity>
+}
+
+fn arm_node_step(acc: ArmNodeAccum, host: HostIdentity) -> ArmNodeAccum {
+  match fabric_rail_address(host: host) {
+    Absent => ArmNodeAccum { nodes: acc.nodes, next_rank: acc.next_rank, unresolved: concat(acc.unresolved, [host]) }
+    Present { value: rail } => ArmNodeAccum {
+      nodes: concat(acc.nodes, [ArmNode { host: host, rail: rail, node_rank: acc.next_rank }]),
+      next_rank: acc.next_rank + 1,
+      unresolved: acc.unresolved,
+    }
+  }
+}
+
+// THE HEAD IS PLACED FIRST BY CONSTRUCTION, so rank zero is not a property anyone has to maintain. An
+// earlier shape would have assigned ranks by roster order and then asserted that the head happened to be
+// first, which is a check standing where a construction was available.
+fn arm_ordered_hosts(group: FabricGroup) -> List<HostIdentity> {
+  let head = spark_pair_serving_head(group: group)
+  concat([head], filter(fabric_group_hosts(g: group), h => !host_identity_eq(a: h, b: head)))
+}
+
+// A HOST WITH NO RAIL ADDRESS REFUSES THE WHOLE ROSTER RATHER THAN BEING DROPPED. Silently launching
+// three ranks for a four-rank arm would produce an engine that waits forever for a peer nobody started,
+// and reporting that as a partial success is the absorbing arm §5 forbids: the tensor-parallel degree is
+// a property of the ARM, so a roster that cannot supply it has failed, not shrunk.
+fn arm_node_roster(group: FabricGroup, expected_ranks: Nat) -> ArmNodeRoster {
+  let acc = fold(arm_ordered_hosts(group: group),
+    init: ArmNodeAccum { nodes: [], next_rank: 0, unresolved: [] },
+    f: (a, h) => arm_node_step(acc: a, host: h))
+  match acc.unresolved.first() {
+    Present { value: h } => ArmNodeRosterRefused {
+      cause: join(["a member of this group has no fabric rail address, so the group cannot rendezvous: ", h as String], "") as NonEmptyStr,
+    }
+    Absent =>
+      match acc.nodes.first() {
+        Absent => ArmNodeRosterRefused { cause: "this group has no observed members" as NonEmptyStr }
+        Present { value: head } =>
+          if count(acc.nodes) == expected_ranks {
+            ArmNodesResolved { nodes: acc.nodes, master: head.rail }
+          } else {
+            ArmNodeRosterRefused {
+              cause: join([
+                "this group holds ", to_string(count(acc.nodes)),
+                " members against an arm of ", to_string(expected_ranks),
+                " ranks; a tensor-parallel degree is a property of the arm and cannot be reduced to fit the hosts that answered",
+              ], "") as NonEmptyStr,
+            }
+          }
+      }
+  }
+}
+
+// ── THE LAUNCH LINE ────────────────────────────────────────────────────────────────────────────
+
+data glm_native_served_model_alias: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
+data glm_native_serve_port: Nat = 30000
+data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
+data glm_native_master_port: Nat = 29501
+data glm_native_weights_host_dir: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
+data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
+
+// THE MASTER PORT IS THE IMAGE'S OWN DEFAULT, SPELLED ANYWAY. Read from this revision's ParallelConfig
+// on 2026-09-10: `master_port: int = 29501`. Authoring it converts a value the image would have picked
+// into one this model chose and can be held to, which is the same argument the canary's batched-token
+// row makes -- and unlike that row, this one currently AGREES with the default, which is a fact about
+// today rather than a guarantee about the next image.
+//
+// THE WINDOW IS THE OPERATOR'S 262,144 and the sequence ceiling is a first-boot bound, not a measurement.
+data glm_native_max_model_len: Nat = 262144
+data glm_native_max_num_seqs: Nat = 4
+
+// ── THE MEMORY ENVELOPE IS A DECIDED FRACTION OVER A MEASURED POOL ────────────────────────────
+//
+// 0.90 IS NOT THIS IMAGE'S DEFAULT, and recording it as one would have been a false citation. Read from
+// the pinned digest on 2026-09-10: `gpu_memory_utilization: float = Field(default=0.92, gt=0, le=1)`.
+// 0.9 was an older vLLM default; this revision moved to 0.92, so 0.90 is a deliberate and slightly more
+// conservative choice by the operator (2026-09-10), not an inherited value.
+//
+// WHAT IS DERIVED IS ITS CONSEQUENCE, AND THAT IS THE HALF THAT MATTERS. The pool is READABLE on this
+// hardware even though `nvidia-smi --query-gpu=memory.total` answers [N/A]: inside the image on the GB10,
+// `torch.cuda.get_device_properties(0).total_memory` reports 121.69 GiB. So the NVML gap that breaks the
+// batch-size defaults does not stop CUDA from reporting the pool, and this fraction lands on a measured
+// number rather than a guessed one -- 0.90 of 121.69 GiB is 109.5 GiB per rank, against 76.45 GiB of
+// weights, leaving 33.1 GiB per rank for activations, graph capture and workspace, and a full-window KV
+// requirement of roughly 1.4 GiB for the whole group.
+//
+// WHAT IS NOT DERIVED IS THE MINIMUM SAFE FRACTION, because the activation peak, graph-capture and
+// workspace requirement has never been measured for this arm. DERIVATION TRIGGER: the launch's own
+// startup memory reading, captured as gunbc.spark.vllm_memory_receipt VllmMemoryProfileCapture and bound
+// to this launch; the fraction becomes an observed value derived from that profile and this decided row
+// is deleted. The first launch is what produces the evidence that retires the choice.
+data glm_native_gpu_memory_utilization_basis_points: Nat = 9000
+
+fn render_utilization_fraction(basis_points: Nat) -> String {
+  join(["0.", to_string(basis_points / 100)], "")
+}
+
+// THE MODEL PATH IS THE HUB CACHE LAYOUT, DERIVED FROM THE CHECKPOINT ROW. The directory name is the
+// Hub's own convention and is consumed from extdeps.huggingface.hub rather than reconstructed, for the
+// reason the pair route already records: a hand-spelled `models--org--name` is a nickname for a fact
+// upstream owns.
+fn arm_model_path_in_container(row: ServingCheckpointRow) -> NonEmptyStr {
+  join([
+    glm_native_weights_container_dir as String, "/",
+    hub_repo_cache_directory_name(repo: row.repo) as String,
+    "/snapshots/", row.revision as String,
+  ], "") as NonEmptyStr
+}
+
+// ── THE CONTAINER LINE, ONE PER RANK ──────────────────────────────────────────────────────────
+//
+// THE IMAGE ENTRYPOINT ALREADY SUPPLIES `vllm serve`, so the first user word is the model path and NOT
+// the subcommand. Verified against the running canary on 2026-09-10: its container reports Path=vllm and
+// Args[0]=serve, with the model path at Args[1] -- so a line that also spelled "serve" would reach the
+// engine as `vllm serve serve <path>` and refuse.
+//
+// `--quantization` IS SPELLED EXPLICITLY EVEN THOUGH THE ENGINE WOULD INFER IT. The checkpoint's own
+// config declares quant_method fp8, so vLLM resolves it unaided -- but an omitted flag makes the RUNNING
+// LINE unable to say which weights it loaded, and gunbc.spark.serving_arm_convergence reads exactly that
+// line to decide whether the desired arm is serving. Omitting it would make every convergence read
+// report an incomplete identity and withhold. A launch line that names its own artifact is what makes
+// the arm observable at all.
+//
+// `--master-addr` IS THE HEAD'S RAIL ADDRESS, WHICH IS THE WHOLE POINT OF THE FABRIC. Tensor-parallel
+// collectives cross this address on every forward pass; pointing it at a management address would route
+// them over the wireless LAN while a 200G switched fabric sat idle, and nothing would report an error --
+// the group would simply be slow. The rail address is derived from the lane observation via
+// gunbc.spark.fabric_rail_desired rather than authored here.
+fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat) -> List<String> {
+  [
+    "docker", "run", "-d",
+    "--name", glm_native_container_name as String,
+    "--gpus", "all",
+    "--network", "host",
+    "--ipc", "host",
+    "-v", join([glm_native_weights_host_dir as String, ":", glm_native_weights_container_dir as String, ":ro"], ""),
+    rrow.image_reference as String,
+    arm_model_path_in_container(row: crow) as String,
+    "--served-model-name", glm_native_served_model_alias as String,
+    "--quantization", crow.quantization_wire as String,
+    "--tensor-parallel-size", to_string(ranks),
+    "--distributed-executor-backend", "mp",
+    "--nnodes", to_string(ranks),
+    "--node-rank", to_string(node.node_rank),
+    "--master-addr", render_ipv4_address(addr: master) as String,
+    "--master-port", to_string(glm_native_master_port),
+    "--max-model-len", to_string(glm_native_max_model_len),
+    "--max-num-seqs", to_string(glm_native_max_num_seqs),
+    "--kv-cache-dtype", "fp8",
+    "--gpu-memory-utilization", render_utilization_fraction(basis_points: glm_native_gpu_memory_utilization_basis_points),
+    "--host", "0.0.0.0",
+    "--port", to_string(glm_native_serve_port),
+  ]
+}
+
+type ArmLaunchPlan
+  = ArmLaunchPlanned { lines: List<ArmNodeLaunch>, master: Ipv4Address }
+  | ArmLaunchRefused { cause: NonEmptyStr }
+
+type ArmNodeLaunch sole_constructor {
+  node: ArmNode
+  argv: List<String>
+}
+
+// THE ARM WALL COMES FIRST AND THE ROSTER SECOND, because an inadmissible arm has no launch to plan on
+// any roster. `serving_arm_admits` is the check whose absence let a previous revision admit a
+// known-impossible tuple, so it is consulted before anything renders.
+fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup) -> ArmLaunchPlan {
+  match serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology) {
+    ServingArmRefused { cause: c } => ArmLaunchRefused { cause: c }
+    ServingArmAdmitted =>
+      match serving_checkpoint_row(c: checkpoint) {
+        Absent => ArmLaunchRefused { cause: "no checkpoint row: unreachable behind serving_arm_admits, which refuses first" as NonEmptyStr }
+        Present { value: crow } =>
+          match serving_runtime_row(r: runtime) {
+            Absent => ArmLaunchRefused { cause: "no runtime row: unreachable behind serving_arm_admits, which refuses first" as NonEmptyStr }
+            Present { value: rrow } =>
+              match arm_node_roster(group: group, expected_ranks: serving_topology_rank_count(t: topology)) {
+                ArmNodeRosterRefused { cause: c } => ArmLaunchRefused { cause: c }
+                ArmNodesResolved { nodes: ns, master: m } => ArmLaunchPlanned {
+                  lines: map(ns, n => ArmNodeLaunch {
+                    node: n,
+                    argv: arm_container_argv(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology)),
+                  }),
+                  master: m,
+                },
+              }
+          }
+      }
+  }
+}
+
+// THE FLEET'S OWN NATIVE ARM. Group B is the four hosts on fabric cage 2, withdrawn from the pair-serving
+// roster under an operator authorisation recorded in gunbc.spark.pair_serving_desired, so its members are
+// claimed by nothing else.
+fn glm_native_tp4_launch_plan() -> ArmLaunchPlan {
+  plan_arm_launch(
+    checkpoint: Glm53NativeFp8,
+    runtime: Gitcommit90Sm121Exl3,
+    topology: FourSparkTp4,
+    group: FabricGroupB,
+  )
+}
+
+// ── THE PLAN AS TEXT, FOR READING BEFORE ANYTHING RUNS ────────────────────────────────────────
+//
+// A launch that stops a live engine should be legible before it is performed, and the thing worth
+// reading is the ARGV THE MODEL PRODUCES rather than a description of it. This renders exactly what
+// would be executed, so a reviewer compares the real line against the arm's declared facts instead of
+// against prose about them. It performs nothing and reaches no host.
+fn arm_launch_line_text(l: ArmNodeLaunch) -> String {
+  join([
+    "rank ", to_string(l.node.node_rank), " on ", l.node.host as String,
+    " (rail ", render_ipv4_address(addr: l.node.rail) as String, "): ",
+    join(l.argv, " "),
+  ], "")
+}
+
+fn glm_native_tp4_launch_render() -> String {
+  match glm_native_tp4_launch_plan() {
+    ArmLaunchRefused { cause: c } => join(["REFUSED: ", c as String], "")
+    ArmLaunchPlanned { lines: ls, master: m } =>
+      join([
+        "master ", render_ipv4_address(addr: m) as String, " port ", to_string(glm_native_master_port), "\n",
+        join(map(ls, l => arm_launch_line_text(l: l)), "\n"),
+      ], "")
+  }
+}

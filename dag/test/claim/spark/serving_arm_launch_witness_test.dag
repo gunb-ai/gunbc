@@ -1,0 +1,163 @@
+module test.claim.spark.serving_arm_launch_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, Glm53Exl3_205, Glm53Nvfp4CompressedTensors,
+  Gitcommit90Sm121Exl3, GunbcSparkrunVllmDs4Gb10,
+  SingleSparkTp1, FourSparkTp4,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch,
+  ArmNodeLaunch, ArmNode,
+  glm_native_tp4_launch_plan,
+  arm_node_roster, ArmNodeRoster, ArmNodesResolved, ArmNodeRosterRefused,
+}
+
+fn planned_lines(p: ArmLaunchPlan) -> List<ArmNodeLaunch> {
+  match p {
+    ArmLaunchPlanned { lines: ls, master: _ } => ls
+    ArmLaunchRefused { cause: _ } => []
+  }
+}
+
+fn argv_has(argv: List<String>, word: String) -> Bool {
+  count(filter(argv, w => w == word)) > 0
+}
+
+// ── THE WALL THAT A PREVIOUS REVISION WALKED PAST ──────────────────────────────────────────────
+//
+// The pair-serving route once pointed at GLM while running the DeepSeek image, and nothing refused,
+// because no check joined the checkpoint to the image's architecture registry. This is that check, and
+// its red is authorable from a fixture forever: the DeepSeek image is recorded with
+// registers_glm5_next = false, so a native GLM arm on it must refuse before any line renders.
+test fn a_native_arm_on_an_image_that_cannot_load_it_refuses() -> Bool {
+  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: GunbcSparkrunVllmDs4Gb10, topology: FourSparkTp4, group: FabricGroupB) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, so the row above is not passing because everything refuses. The same checkpoint
+// on the GLM-capable image plans four lines.
+test fn the_native_arm_on_the_capable_image_plans_four_lines() -> Bool {
+  count(planned_lines(p: glm_native_tp4_launch_plan())) == 4
+}
+
+// ── A ONE-SPARK TOPOLOGY CANNOT HOLD THIS CHECKPOINT ──────────────────────────────────────────
+//
+// 306 GiB of weights against a 121 GiB unified pool is refused by the arm wall on the fit bound, which is
+// the reason four ranks is a minimum rather than a preference.
+test fn the_native_arm_refuses_a_single_spark() -> Bool {
+  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1, group: FabricGroupB) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
+
+// A ROSTER THAT CANNOT SUPPLY THE ARM'S RANKS REFUSES RATHER THAN SHRINKING. Asking a four-rank arm for
+// two ranks must not yield a two-rank launch: the degree is a property of the arm, and an engine started
+// with fewer peers than it expects waits forever for one nobody launched.
+test fn a_roster_short_of_the_arms_ranks_refuses() -> Bool {
+  match arm_node_roster(group: FabricGroupB, expected_ranks: 8) {
+    ArmNodeRosterRefused { cause: _ } => true
+    ArmNodesResolved { nodes: _, master: _ } => false
+  }
+}
+
+test fn the_group_supplies_exactly_four_ranks() -> Bool {
+  match arm_node_roster(group: FabricGroupB, expected_ranks: 4) {
+    ArmNodesResolved { nodes: ns, master: _ } => count(ns) == 4
+    ArmNodeRosterRefused { cause: _ } => false
+  }
+}
+
+// ── RANKS MUST BE DISTINCT AND START AT ZERO ──────────────────────────────────────────────────
+//
+// TWO HOSTS SHARING A RANK IS A HUNG GROUP, NOT A DEGRADED ONE, and so is a group with no rank zero --
+// rank zero is the rendezvous the other three dial. These are the cheapest possible checks on the most
+// expensive possible failure: an engine that never answers and reports nothing wrong.
+test fn every_rank_is_distinct_and_covers_zero_to_three() -> Bool {
+  match arm_node_roster(group: FabricGroupB, expected_ranks: 4) {
+    ArmNodeRosterRefused { cause: _ } => false
+    ArmNodesResolved { nodes: ns, master: _ } =>
+      count(filter(ns, n => n.node_rank == 0)) == 1
+        && count(filter(ns, n => n.node_rank == 1)) == 1
+        && count(filter(ns, n => n.node_rank == 2)) == 1
+        && count(filter(ns, n => n.node_rank == 3)) == 1
+  }
+}
+
+// THE HEAD HOLDS RANK ZERO AND IS THE MASTER, so the address the other three dial is the host the group
+// declares as its head rather than whichever member the roster happened to list first.
+test fn the_head_holds_rank_zero_and_is_the_master() -> Bool {
+  match arm_node_roster(group: FabricGroupB, expected_ranks: 4) {
+    ArmNodeRosterRefused { cause: _ } => false
+    ArmNodesResolved { nodes: ns, master: m } =>
+      count(filter(ns, n => n.node_rank == 0 && (render_ipv4_address(addr: n.rail) as String) == (render_ipv4_address(addr: m) as String))) == 1
+  }
+}
+
+// ── THE COLLECTIVES CROSS THE FABRIC, NOT THE WIRELESS LAN ────────────────────────────────────
+//
+// THIS IS THE ROW WITH NO ERROR MESSAGE BEHIND IT. Every rank dials --master-addr on every forward pass;
+// if it named a management address the group would still come up and still serve, over the wifi the
+// management network runs on, while a 200G switched fabric sat idle. Nothing would report a fault -- the
+// engine would simply be slow, and the cause would be invisible in every log. So the launch line is
+// asserted to carry a rail address, which on this fleet is 192.168.110.0/24.
+test fn every_rank_dials_the_master_on_the_fabric_rail() -> Bool {
+  count(filter(planned_lines(p: glm_native_tp4_launch_plan()), l =>
+    argv_has(argv: l.argv, word: "--master-addr") && argv_has(argv: l.argv, word: "192.168.110.17"))) == 4
+}
+
+// AND NO LINE NAMES A MANAGEMENT ADDRESS, which is the negative half: the row above would still pass if a
+// line carried both, and a line carrying both is a line somebody edited halfway.
+test fn no_launch_line_names_a_management_address() -> Bool {
+  count(filter(planned_lines(p: glm_native_tp4_launch_plan()), l =>
+    argv_has(argv: l.argv, word: "192.168.1.236") || argv_has(argv: l.argv, word: "192.168.1.237")
+      || argv_has(argv: l.argv, word: "192.168.1.238") || argv_has(argv: l.argv, word: "192.168.1.239"))) == 0
+}
+
+// ── THE LINE DESCRIBES ITS OWN ARTIFACT ───────────────────────────────────────────────────────
+//
+// gunbc.spark.serving_arm_convergence reads the running argv to decide whether the desired arm is
+// serving, and it refuses to infer an omitted quantisation. So a launch that let the engine resolve fp8
+// from the checkpoint config unaided would produce an engine whose own line cannot say what it loaded,
+// and every convergence read would withhold. This row is the join between the launcher and the assessor.
+test fn every_line_names_its_quantisation_and_rank_count() -> Bool {
+  count(filter(planned_lines(p: glm_native_tp4_launch_plan()), l =>
+    argv_has(argv: l.argv, word: "--quantization") && argv_has(argv: l.argv, word: "fp8")
+      && argv_has(argv: l.argv, word: "--tensor-parallel-size") && argv_has(argv: l.argv, word: "4")
+      && argv_has(argv: l.argv, word: "--nnodes"))) == 4
+}
+
+// THE MEMORY ENVELOPE IS SPELLED, and it is spelled as a fraction rather than omitted. On this hardware an
+// omitted flag is not a harmless default: NVML answers [N/A] for memory, which is the same absence that
+// produced the 2048 batched-token budget.
+test fn every_line_spells_the_memory_envelope() -> Bool {
+  count(filter(planned_lines(p: glm_native_tp4_launch_plan()), l =>
+    argv_has(argv: l.argv, word: "--gpu-memory-utilization") && argv_has(argv: l.argv, word: "0.90"))) == 4
+}
+
+// THE MODEL PATH IS THE VERIFIED SNAPSHOT, at the revision the manifest pins and the transfers verified.
+test fn every_line_serves_the_pinned_revision() -> Bool {
+  count(filter(planned_lines(p: glm_native_tp4_launch_plan()), l =>
+    argv_has(argv: l.argv, word: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a"))) == 4
+}
+
+// AND NO LINE SPELLS THE SUBCOMMAND, because the image entrypoint already supplies `vllm serve`. A line
+// carrying "serve" would reach the engine as `vllm serve serve <path>`. Verified against the running
+// canary, whose container reports Path=vllm with Args[0]=serve.
+test fn no_line_repeats_the_serve_subcommand() -> Bool {
+  count(filter(planned_lines(p: glm_native_tp4_launch_plan()), l => argv_has(argv: l.argv, word: "serve"))) == 0
+}
+
+// AN UNMODELLED CHECKPOINT REFUSES rather than planning a line against a repo nobody declared.
+test fn an_unmodelled_checkpoint_refuses() -> Bool {
+  match plan_arm_launch(checkpoint: Glm53Nvfp4CompressedTensors, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
