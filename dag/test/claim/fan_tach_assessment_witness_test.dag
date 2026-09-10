@@ -1,0 +1,417 @@
+module test.claim.fan_tach_assessment_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import product.fan_tach { FanTachEndpointIdentity, FanTachWindow }
+import std.measure { rpm }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_fan_tach_expectation {
+  HostFanTachExpectation,
+  chassis_tach_expected,
+  expected_tach_headers,
+  srv1_fan_tach_expectation,
+  srv2_fan_tach_expectation,
+  srv3_fan_tach_expectation,
+  srv4_fan_tach_expectation,
+}
+import gunbc.fleet_fan_tach_observation {
+  srv1_windows,
+  srv2_windows,
+  srv3_windows,
+  srv4_windows,
+}
+import product.fan_tach_health {
+  DuplicateExpectedHeader,
+  DuplicateObservedHeader,
+  ExpectedHeaderObservationMissing,
+  ExpectedRotationNotObserved,
+  UnexpectedRotation,
+  FanTachDeviation,
+  FanTachHealthy,
+  FanTachJudgement,
+  FanTachSubject,
+  HostIdentityMismatch,
+  JudgedDeviant,
+  JudgedHealthy,
+  JudgedUnknown,
+  ObservationForUndeclaredHeader,
+  RotationCorrectlyAbsent,
+  RotationDegraded,
+  RotationObserved,
+  authority_gap_count,
+  expectation_drift_count,
+  rotation_anomaly_count,
+  rotation_correctly_absent_count,
+  rotation_observed_count,
+  fan_tach_goal,
+  fan_tach_judgements,
+  fan_tach_observed,
+  fan_tach_subject,
+  inspect_fan_tach,
+  observation_gap_count,
+  rotation_degraded_count,
+}
+import std.goal_assessment {
+  GoalAssessmentRefused,
+  GoalDiverged,
+  GoalIndeterminate,
+  GoalInspected,
+  GoalObservationRefused,
+  GoalSatisfied,
+}
+import v2.std.algebra { non_empty_to_list }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// 12 OF 20 IS THIS WITNESS'S OWN POLICY, AND IT IS NOT AN ORACLE COPIED FROM THE TREE. srv2's
+// healthy endpoints sit at 16-20 and srv1's two bad ones at 4 and 9, so any floor in that gap
+// separates them; 12 is chosen inside that gap and threaded as a parameter rather than frozen into
+// the judgement, so a number measured on the current fleet cannot quietly become the definition of
+// healthy (DESIGN section 5 on literals that are not grounded in an authority).
+//
+// It is declared here rather than imported because product.fan_tach_health deliberately does not
+// own it: the floor is policy about one fleet's telemetry, so the module takes it as a parameter of
+// the goal and the caller supplies it. A shared constant would make this witness's threshold the
+// authority for every future caller, which is the fork that parameter exists to prevent.
+data rotating_floor: Int = 12
+
+fn subject_of(
+  expectation: HostFanTachExpectation,
+  windows: List<FanTachWindow>,
+) -> FanTachSubject {
+  fan_tach_subject(
+    expectation: expectation,
+    minimum_rotating: rotating_floor,
+    windows: windows,
+  )
+}
+
+fn drop_window(windows: List<FanTachWindow>, header: NonEmptyStr) -> List<FanTachWindow> {
+  filter(windows, w => w.endpoint.name != header)
+}
+
+// THE CENTRAL WITNESS. srv1 carries two degraded endpoints, so the fleet's own hardware is the
+// discriminating input: a migration that lost the degraded verdict would turn this green.
+test fn srv1_diverges_on_its_two_degraded_endpoints() -> Bool {
+  match inspect_fan_tach(subject: subject_of(expectation: srv1_fan_tach_expectation, windows: srv1_windows)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: ds } =>
+          rotation_degraded_count(deviations: non_empty_to_list(xs: ds)) == 2
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL. Without it the divergence above could be produced by an assessment that
+// never agrees for any input, which would make the wall decoration rather than a check. srv2 is
+// the same fleet, the same floor, and healthy.
+test fn srv2_the_control_host_is_satisfied() -> Bool {
+  match inspect_fan_tach(subject: subject_of(expectation: srv2_fan_tach_expectation, windows: srv2_windows)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalSatisfied { evidence: e } => e.headers_judged == 5 && e.healthy.length() == 5
+        GoalDiverged { deviations: ds } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE FAIL-OPEN CONTROL, AND THE ONE ARM THIS MIGRATION MOVED. Dropping a window entirely is the
+// shape a collector produces when it OMITS an endpoint rather than reporting it absent. Under the
+// coproduct this replaced, that header was a verdict beside the others and the host still read as
+// assessed; nothing about that fan was ever established, so the honest answer is indeterminate.
+//
+// The conjunct is deliberately not just "an unknown exists": it also holds that BOTH degraded
+// endpoints are still reported, because an indeterminate result that silently dropped the proved
+// deviations would be a different defect wearing this one's clothes.
+//
+// SO THE OMITTED HEADER IS FAN1, WHICH IS HEALTHY, and that choice is the whole conjunct. An
+// earlier cut dropped FAN4 -- one of srv1's two degraded endpoints, at 9 rotations in 20 beside
+// FAN5's 4 -- and then asserted one degradation survived. That arithmetic was right and it
+// established nothing the note claimed: it could not tell "the deviations survive the unknown"
+// from "one of them was the header I removed". Dropping a healthy header leaves both degradations
+// in place, so `== 2` is the assertion the sentence above actually needs.
+test fn an_omitted_window_is_an_unknown_not_an_assessed_host() -> Bool {
+  let dropped = drop_window(windows: srv1_windows, header: "FAN1")
+  match inspect_fan_tach(subject: subject_of(expectation: srv1_fan_tach_expectation, windows: dropped)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalIndeterminate { known_deviations: kd, unknowns: u } =>
+          observation_gap_count(unknowns: non_empty_to_list(xs: u)) == 1
+            && rotation_degraded_count(deviations: kd) == 2
+        GoalSatisfied { evidence: e } => false
+        GoalDiverged { deviations: ds } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// AND A FULLY READ HOST MUST NOT BE INDETERMINATE, or the witness above would pass on a migration
+// that made every host indeterminate.
+test fn a_fully_read_host_is_not_indeterminate() -> Bool {
+  match inspect_fan_tach(subject: subject_of(expectation: srv2_fan_tach_expectation, windows: srv2_windows)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalSatisfied { evidence: e } => true
+        GoalDiverged { deviations: ds } => true
+        GoalAssessmentRefused { cause: c } => true
+      }
+  }
+}
+
+// THE THREE REFUSAL CAUSES, one witness each. These are the arms whose binding discharges
+// std.goal_assessment's declared GoalAssessmentRefused frontier, so each must be reachable on a
+// real input or the frontier was discharged in name only.
+test fn one_host_expectation_against_another_hosts_windows_refuses() -> Bool {
+  match inspect_fan_tach(subject: fan_tach_subject(
+    expectation: srv3_fan_tach_expectation,
+    minimum_rotating: rotating_floor,
+    windows: srv4_windows,
+  )) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: HostIdentityMismatch } => true
+        other => false
+      }
+  }
+}
+
+test fn a_roster_naming_one_header_twice_refuses() -> Bool {
+  match inspect_fan_tach(subject: subject_of(
+    expectation: HostFanTachExpectation {
+      host: srv3_fan_tach_expectation.host,
+      headers: flat_map(
+        [srv3_fan_tach_expectation.headers, [chassis_tach_expected(header: "FAN3")]],
+        g => g,
+      ),
+    },
+    windows: srv3_windows,
+  )) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: DuplicateExpectedHeader { header: h } } =>
+          h == ("FAN3" as NonEmptyStr)
+        other => false
+      }
+  }
+}
+
+test fn a_collector_answering_twice_for_one_endpoint_refuses() -> Bool {
+  match inspect_fan_tach(subject: subject_of(
+    expectation: srv3_fan_tach_expectation,
+    windows: flat_map([srv3_windows, [srv3_windows.first()]], g => g),
+  )) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: DuplicateObservedHeader { header: h } } =>
+          h == ("FAN1" as NonEmptyStr)
+        other => false
+      }
+  }
+}
+
+// AND A WELL-FORMED QUESTION MUST NOT REFUSE, or the three above would pass on an assessment that
+// refuses everything. This is the same srv3 roster and the same srv3 windows, unduplicated.
+test fn a_well_formed_question_does_not_refuse() -> Bool {
+  match inspect_fan_tach(subject: subject_of(expectation: srv3_fan_tach_expectation, windows: srv3_windows)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: c } => false
+        other => true
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE PER-HEADER PICTURE, counted by the module's own typed folds.
+//
+// These conjuncts were carried by gunbc.fleet_fan_tach_health_witness, a WET witness that this
+// change deletes. It was not dropped for being wet: it was referenced by nothing -- absent from
+// `local_repo_wet_schedule`, named by no lane, no roster and no CI step -- so its claims had never
+// executed on any merge path. A module that looks like coverage while being inert is worse than an
+// absent one, because it is cited as the safety net it is not (DESIGN section 5,
+// specification-without-execution; section 3c, a witness no roster reads).
+//
+// AN EARLIER CUT OF THIS FILE PROJECTED THE JUDGEMENT SUM ONTO STRING TAGS and counted them by
+// equality. That was two defects wearing one convenience. It re-minted counting the module already
+// owns as typed folds (section 2), and it made the assertions unpinnable: "no-rotation" was only
+// ever asserted at ZERO, so any drift in the literal -- or a rename of the arm it stood for -- left
+// those conjuncts permanently green, which is section 4b's decoration rather than a wall. Counting
+// through the module's folds makes a renamed arm a compile error instead of a silent pass.
+fn judgements_of(
+  expectation: HostFanTachExpectation,
+  windows: List<FanTachWindow>,
+) -> List<FanTachJudgement> {
+  fan_tach_judgements(
+    goal: fan_tach_goal(expectation: expectation, minimum_rotating: rotating_floor),
+    observed: fan_tach_observed(windows: windows),
+  )
+}
+
+fn healthy_of(judgements: List<FanTachJudgement>) -> List<FanTachHealthy> {
+  flat_map(
+    judgements,
+    j =>
+      match j {
+        JudgedHealthy { healthy: h } => [h]
+        JudgedDeviant { deviation: d } => []
+        JudgedUnknown { unknown: u } => []
+      },
+  )
+}
+
+fn deviations_of(judgements: List<FanTachJudgement>) -> List<FanTachDeviation> {
+  flat_map(
+    judgements,
+    j =>
+      match j {
+        JudgedHealthy { healthy: h } => []
+        JudgedDeviant { deviation: d } => [d]
+        JudgedUnknown { unknown: u } => []
+      },
+  )
+}
+
+// A WINDOW REPLACED RATHER THAN ADDED, so the roster stays exactly as the fleet declares it and the
+// only thing under test is the reading. Adding a row would change the denominator too, and then a
+// conjunct could pass for the wrong reason.
+fn with_window(
+  windows: List<FanTachWindow>,
+  header: NonEmptyStr,
+  replacement: FanTachWindow,
+) -> List<FanTachWindow> {
+  flat_map(
+    [filter(windows, w => w.endpoint.name != header), [replacement]],
+    group => group,
+  )
+}
+
+// A ROTOR THAT WAS READ TWENTY TIMES AND NEVER TURNED. unavailable_count is 0, so the tach was
+// answering -- this is evidence about a fan, not about the telemetry path.
+data srv3_fan3_stopped: FanTachWindow = FanTachWindow {
+  endpoint: FanTachEndpointIdentity { host: operator_host_srv3, name: "FAN3" },
+  sample_count: 20, zero_count: 20, unavailable_count: 0, rotating_count: 0,
+  minimum: rpm(0), median: rpm(0), maximum: rpm(0),
+}
+
+// THE SAME VERDICT ARM REACHED BY THE OTHER ABSENCE: an expected header whose sensor published
+// nothing at all. unavailable_count equals sample_count, so this is evidence about the telemetry
+// path rather than about a fan, and the two must not collapse.
+data srv3_fan3_unpublished: FanTachWindow = FanTachWindow {
+  endpoint: FanTachEndpointIdentity { host: operator_host_srv3, name: "FAN3" },
+  sample_count: 20, zero_count: 0, unavailable_count: 20, rotating_count: 0,
+  minimum: rpm(0), median: rpm(0), maximum: rpm(0),
+}
+
+// srv3/FAN2 IS DECLARED TachNotExpected AND NOTHING IS WIRED TO IT. A header that spins anyway is
+// expectation drift: the roster says one thing and the machine does another.
+data srv3_fan2_spinning: FanTachWindow = FanTachWindow {
+  endpoint: FanTachEndpointIdentity { host: operator_host_srv3, name: "FAN2" },
+  sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+  minimum: rpm(1100), median: rpm(1180), maximum: rpm(1240),
+}
+
+// DEGRADED IS ITS OWN VERDICT, AND THIS IS THE CONTROL THAT FORCED IT TO EXIST. srv1/FAN4 rotates
+// 9 times in 20 and srv1/FAN5 four times, against 16-20 for the same fans on the control host at
+// the same duty. A two-state vocabulary put them in the wrong bucket either way: "not rotating"
+// reads as a hardware emergency, "rotating" reads as nothing at all. The three healthy endpoints
+// are asserted BESIDE them, which is the half the verdict arm cannot carry.
+test fn srv1_carries_two_degraded_endpoints_beside_three_healthy_ones() -> Bool {
+  let js = judgements_of(expectation: srv1_fan_tach_expectation, windows: srv1_windows)
+  rotation_degraded_count(deviations: deviations_of(judgements: js)) == 2
+    && rotation_anomaly_count(deviations: deviations_of(judgements: js)) == 0
+    && rotation_observed_count(healthy: healthy_of(judgements: js)) == 3
+}
+
+// AN INTERMITTENT ZERO IS NOT A FAULT. srv2 reads zero on every chassis endpoint 2-4 times in 20
+// while healthy, so a judgement keying on "any zero" would condemn a working machine. This is the
+// conjunct that makes the RATE load-bearing rather than decorative.
+test fn an_ordinary_dropout_is_not_a_fault() -> Bool {
+  let js = judgements_of(expectation: srv2_fan_tach_expectation, windows: srv2_windows)
+  rotation_anomaly_count(deviations: deviations_of(judgements: js)) == 0
+    && rotation_degraded_count(deviations: deviations_of(judgements: js)) == 0
+}
+
+// AND THE ANOMALY COUNT MUST BE PINNABLE ABOVE ZERO, or every conjunct asserting it at zero is a
+// literal nobody can falsify. A rotor read twenty times that never turned is the discriminating
+// input the live fleet does not currently supply.
+test fn a_rotor_read_and_never_turning_is_an_anomaly() -> Bool {
+  let js = judgements_of(
+    expectation: srv3_fan_tach_expectation,
+    windows: with_window(windows: srv3_windows, header: "FAN3", replacement: srv3_fan3_stopped),
+  )
+  rotation_anomaly_count(deviations: deviations_of(judgements: js)) == 1
+    && rotation_degraded_count(deviations: deviations_of(judgements: js)) == 0
+}
+
+// THE OTHER ABSENCE REACHES THE SAME ARM AND MUST ALSO BE COUNTED, so that a migration collapsing
+// the two causes into one is visible here rather than in a postmortem.
+test fn an_expected_header_publishing_nothing_is_also_an_anomaly() -> Bool {
+  let js = judgements_of(
+    expectation: srv3_fan_tach_expectation,
+    windows: with_window(windows: srv3_windows, header: "FAN3", replacement: srv3_fan3_unpublished),
+  )
+  rotation_anomaly_count(deviations: deviations_of(judgements: js)) == 1
+}
+
+// UNAVAILABLE AND NEVER-ROTATED ARE DIFFERENT ABSENCES. srv3/FAN2 publishes nothing because
+// nothing is wired to it; that is not the same as a rotor that was read and never turned.
+test fn an_unwired_endpoint_is_nominal_not_a_missing_rotation() -> Bool {
+  let js = judgements_of(expectation: srv3_fan_tach_expectation, windows: srv3_windows)
+  rotation_correctly_absent_count(healthy: healthy_of(judgements: js)) == 1
+    && rotation_anomaly_count(deviations: deviations_of(judgements: js)) == 0
+    && rotation_observed_count(healthy: healthy_of(judgements: js)) == 4
+}
+
+// A HEADER DECLARED NOT-EXPECTED THAT SPINS ANYWAY IS EXPECTATION DRIFT, and this is the positive
+// control for a count the live fleet holds at zero everywhere.
+test fn a_not_expected_header_that_spins_is_drift() -> Bool {
+  let js = judgements_of(
+    expectation: srv3_fan_tach_expectation,
+    windows: with_window(windows: srv3_windows, header: "FAN2", replacement: srv3_fan2_spinning),
+  )
+  expectation_drift_count(deviations: deviations_of(judgements: js)) == 1
+    && rotation_correctly_absent_count(healthy: healthy_of(judgements: js)) == 0
+}
+
+// AND DRIFT MUST BE ZERO ON THE UNMODIFIED FLEET, or the control above proves only that the counter
+// can reach one.
+test fn the_unmodified_fleet_carries_no_drift() -> Bool {
+  let js = judgements_of(expectation: srv3_fan_tach_expectation, windows: srv3_windows)
+  expectation_drift_count(deviations: deviations_of(judgements: js)) == 0
+}
+
+// A HEADER THE AUTHORITY DOES NOT DECLARE IS AN AUTHORITY GAP, not a fan condition: the fleet
+// roster is what is wrong, and it belongs to whoever maintains the inventory.
+test fn a_header_outside_the_roster_is_an_authority_gap() -> Bool {
+  let js = judgements_of(
+    expectation: HostFanTachExpectation {
+      host: srv4_fan_tach_expectation.host,
+      headers: filter(srv4_fan_tach_expectation.headers, row => row.header != "FAN4"),
+    },
+    windows: srv4_windows,
+  )
+  authority_gap_count(deviations: deviations_of(judgements: js)) == 1
+}
+
+// TWO HOSTS WITH THE SAME HEADER COUNT ARE STILL DIFFERENT ROSTERS. Nothing about the SHAPE of a
+// srv3/srv4 pairing is wrong, which is exactly why the identity has to be checked rather than the
+// arity -- and why the cross-host refusal above is not made redundant by counting.
+test fn srv3_and_srv4_differ_by_identity_not_by_count() -> Bool {
+  let a = expected_tach_headers(expectation: srv3_fan_tach_expectation)
+  let b = expected_tach_headers(expectation: srv4_fan_tach_expectation)
+  a.length() == 4 && b.length() == 4 && a != b
+}
