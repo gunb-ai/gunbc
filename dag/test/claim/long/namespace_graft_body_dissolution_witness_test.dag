@@ -124,7 +124,7 @@ fn children_contain_atom(n: Node, sym: Symbol) -> Bool {
   })
 }
 
-data mixed_type_fn_source: String = "module graft_guard_probe\n\ntype G1 = A1 | B1\n\nfn g1(x: Int) -> Int {\n  let w = x\n  w\n}\n"
+data mixed_type_fn_source: String = "module graft_guard_probe\n\ntype G1 = A1 | B1\n\nfn g1(x: Int) -> Int { x }\n"
 
 data type_only_source: String = "module m\n\ntype A { x: Int }\n"
 

@@ -3494,11 +3494,9 @@ fn dag_top_level_item_alternative_emitted_ids() -> List<Symbol> {
   )
 }
 
-data dag_top_level_item_alternative_emitted: List<Symbol> = dag_top_level_item_alternative_emitted_ids()
-
 fn dag_surface_is_top_level_item_alternative_emitted(id: Symbol) -> Bool {
   fold_list(
-    xs: dag_top_level_item_alternative_emitted,
+    xs: dag_top_level_item_alternative_emitted_ids(),
     empty: false,
     cons: fn(found, emitted) {
       found || (emitted == id)
