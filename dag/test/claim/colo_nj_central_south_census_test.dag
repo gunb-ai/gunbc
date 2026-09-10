@@ -1,0 +1,157 @@
+module test.claim.colo_nj_central_south_census
+
+import std.types { Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.colo.types {
+  CabinetDensityClaim, RetailGrainStanding,
+  RetailRateStanding, RatesPublished, RatesQuoteOnly,
+  CoolingMedium, AirCooling, LiquidCooling,
+  density_claim_figures,
+}
+import test.claim.colo_cabinet_density_witness {
+  covered_by_floor, outside_maximum, bounds_above, medium_absent, has_figure_for,
+  unread_density_is_silent, standing_is_verbatim, grain_admits_single_cabinet,
+}
+import extdeps.colo.njfx { njfx_wall_density, njfx_wall_retail_grain, njfx_wall_retail_rates }
+import extdeps.colo.digital_fortress {
+  digital_fortress_piscataway_density, digital_fortress_piscataway_retail_grain,
+  digital_fortress_retail_rates,
+}
+import extdeps.colo.databank { databank_ewr2_density, databank_ewr2_retail_grain }
+import extdeps.colo.digital_realty {
+  digital_realty_ewr11_density, digital_realty_ewr12_density,
+  digital_realty_ewr12_retail_grain, digital_realty_ewr11_retail_grain,
+}
+import extdeps.colo.qts { qts_piscataway_density, qts_piscataway_retail_grain }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_bridgewater_density, three_sixty_five_bridgewater_retail_grain,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONSUMER FOR THE CENTRAL AND SOUTHERN NEW JERSEY ROWS. Every declaration this lane added is
+// read here through the carrier's own accessors rather than asserted to exist, because a witness
+// that checks a row is present is not a consumer of it. The controls are chosen so that each one
+// goes red on a different authoring mistake: a fabricated density, a swapped arm, or a grain read
+// off a sibling building.
+
+// A CEILING ANSWERS ONE QUESTION AND THIS IS IT. `bound_watts` used to sit here returning the
+// ceiling as a plain Int on the same axis as an established reading, which is the confusion the
+// carrier's own rewrite removed at the source (review 62791): a ceiling is what a cabinet certainly
+// cannot exceed, never what it can deliver, so the only sound query is whether a requirement is
+// refused by it. Asking "does the published evidence refuse this many watts" is a question that
+// cannot accidentally admit a candidate.
+
+// A CAPABILITY FLOOR SUPPORTS FROM BELOW AND NEVER BOUNDS ABOVE, AND THIS IS THE DEFECT INVERTED.
+// Until the quantifier arms landed, this position asserted established readings of 16,000 / 15,000 /
+// 10,000 W and was GREEN over two capability floors - a positive control certifying the defect it
+// existed to catch, filed as
+// gunbc.recurring_failure_mode.a_positive_control_certifies_the_defect_it_exists_to_catch. The rows
+// were demoted to DensityUnread on 2026-09-09 and are restored here with CapabilityAtLeast.
+//
+// DataBank EWR2 is the ONLY screenable density in this region, because it is the only one whose
+// operator names a cooling medium - the word AIR in "10kW+ Cab Density Air". So the floor assertion
+// is made on that row and on no other, which is the opposite of the old witness's habit of asserting
+// three rows through one accessor.
+//
+// THE THIRD CONJUNCT IS THE REGRESSION CONTROL: a floor does NOT refuse one watt above itself. The
+// deleted witness asserted exactly that refusal at 10,001 W over a page promising AT LEAST 10 kW, so
+// this reds if the backwards reading is ever reintroduced - which is the edit a hand-done rebase of
+// this very commit could make.
+test fn w_a_capability_floor_supports_from_below_and_never_bounds_above() -> Bool {
+  covered_by_floor(d: databank_ewr2_density, requested: AirCooling, required: 10000)
+    && covered_by_floor(d: databank_ewr2_density, requested: AirCooling, required: 9999)
+    && !outside_maximum(d: databank_ewr2_density, requested: AirCooling, required: 10001)
+    && !bounds_above(d: databank_ewr2_density, requested: AirCooling)
+    && standing_is_verbatim(d: databank_ewr2_density, requested: AirCooling, required: 10000)
+}
+
+// AN UNLABELLED FIGURE IS INVENTORIED AND UNSCREENABLE, WHICH ARE TWO FACTS AND NOT ONE.
+// NJFX publishes "from 2 kW to 16 kW per cabinet" and Digital Fortress publishes a 15 kW floor, and
+// NEITHER PAGE NAMES A COOLING MEDIUM. Before the medium coordinate existed both rows sat in an
+// air-only arm, asserting air inferred from the absence of a liquid claim - the census's cardinal
+// error committed by the carrier built to prevent it, filed as
+// gunbc.recurring_failure_mode.unread_arm_missing_on_a_secondary_axis. Both now carry
+// CoolingMediumUnspecified, so no medium request reaches either figure.
+//
+// THE LAST CONJUNCT IS WHAT SEPARATES THIS FROM AN UNREAD ROW, and it is the distinction a single
+// absence predicate cannot make: these rows HAVE figures, so they are inventoried, while a
+// DensityUnread row has none. Both answer "no" to every screen, for opposite reasons - one because
+// the operator published nothing, one because the operator published without saying what it cools
+// with - and a control that only asked the screen would read them as identical.
+test fn w_an_unlabelled_figure_is_inventoried_but_unscreenable() -> Bool {
+  medium_absent(d: njfx_wall_density, requested: AirCooling, required: 16001)
+    && medium_absent(d: njfx_wall_density, requested: LiquidCooling, required: 2000)
+    && !has_figure_for(d: njfx_wall_density, requested: AirCooling)
+    && !has_figure_for(d: digital_fortress_piscataway_density, requested: AirCooling)
+    && density_claim_figures(d: njfx_wall_density).length() == 1
+    && density_claim_figures(d: digital_fortress_piscataway_density).length() == 1
+}
+
+// THE REFUSALS, AND THE MOST IMPORTANT CONTROL IN THIS MODULE. QTS Piscataway markets 65 MW of
+// critical power - the largest capacity in the census - and publishes no per-cabinet figure at
+// all. If a later edit ever derives a density from that building total, this control goes red.
+// The two Digital Realty Piscataway buildings are the same shape: hundreds of thousands of square
+// feet published, not one kilowatt per cabinet.
+test fn w_facility_megawatts_never_become_cabinet_watts() -> Bool {
+  unread_density_is_silent(d: qts_piscataway_density)
+    && unread_density_is_silent(d: digital_realty_ewr11_density)
+    && unread_density_is_silent(d: digital_realty_ewr12_density)
+    && unread_density_is_silent(d: three_sixty_five_bridgewater_density)
+    && density_claim_figures(d: qts_piscataway_density).length() == 0
+}
+
+// A CABINET INVENTORY IS NOT AN OFFER, which is the grain axis's version of the same refusal. 365
+// Bridgewater's page says the building contains nearly 300 cabinets and never says one is sold; a
+// count of cabinets is a fact about the building exactly as its megawatts are. This control reds if
+// that inventory line is ever promoted to a single-cabinet offer without an operator statement.
+test fn w_a_cabinet_count_is_not_a_retail_offer() -> Bool {
+  !grain_admits_single_cabinet(g: three_sixty_five_bridgewater_retail_grain)
+    && unread_density_is_silent(d: three_sixty_five_bridgewater_density)
+}
+
+// GRAIN IS READ PER BUILDING, NOT PER CAMPUS. EWR12 publishes a single-cabinet offer and its
+// campus sibling EWR11 does not, so the two carry different grain standings at the same operator
+// in the same township. A future edit that propagates one building's grain across a campus - the
+// tempting simplification - reds here.
+test fn w_grain_does_not_propagate_across_a_campus() -> Bool {
+  grain_admits_single_cabinet(g: digital_realty_ewr12_retail_grain)
+    && !grain_admits_single_cabinet(g: digital_realty_ewr11_retail_grain)
+}
+
+// DENSITY READ AND GRAIN READ ARE INDEPENDENT IN BOTH DIRECTIONS, and this region supplies the
+// case the census had not yet seen: NJFX publishes a per-cabinet power band and states no minimum
+// commitment, so its density is established while its grain refuses. Digital Fortress and DataBank
+// EWR2 answer both. QTS answers neither. If the carrier ever let one field imply the other, the
+// first conjunct here would be the one that fails.
+test fn w_density_read_does_not_imply_grain_read() -> Bool {
+  density_claim_figures(d: njfx_wall_density).length() == 1
+    && !grain_admits_single_cabinet(g: njfx_wall_retail_grain)
+    && grain_admits_single_cabinet(g: digital_fortress_piscataway_retail_grain)
+    && grain_admits_single_cabinet(g: databank_ewr2_retail_grain)
+    && !grain_admits_single_cabinet(g: qts_piscataway_retail_grain)
+}
+
+// THE RATE AXIS IS READ AT THE ARM, NOT THROUGH A NEW ACCESSOR. `RetailRateStanding` is a two-arm
+// coproduct and a named Bool predicate beside it would be a second, weaker spelling of the variant
+// the row already carries - the same move this census deleted three times on the density axis. One
+// local helper, one consuming site, and the arm stays the authority.
+fn rate_is_quote_only(r: RetailRateStanding) -> Bool {
+  match r {
+    RatesPublished { plans_note: _ } => false
+    RatesQuoteOnly { contact_route: _, obligation: _ } => true
+  }
+}
+
+// A PUBLISHED CABINET FIGURE IS NOT A PUBLISHED PRICE, and the two facilities that answer the
+// density question are exactly the two that refuse the price question. This is the rate axis of
+// the same separation the grain control makes: three axes the operator publishes independently,
+// and reading one never licenses an answer on another. It is also what makes the two rates rows
+// consumed by execution rather than declared and unread - review 63178 found them dangling, which
+// they were.
+test fn w_a_read_density_is_not_a_priced_cabinet() -> Bool {
+  rate_is_quote_only(r: njfx_wall_retail_rates)
+    && rate_is_quote_only(r: digital_fortress_retail_rates)
+    && density_claim_figures(d: njfx_wall_density).length() == 1
+    && density_claim_figures(d: digital_fortress_piscataway_density).length() == 1
+}

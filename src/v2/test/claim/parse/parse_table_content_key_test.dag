@@ -16,7 +16,8 @@ fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
     memo_lookup_calls: base.memo_lookup_calls,
     nullable_set: base.nullable_set,
     first_rows: base.first_rows,
-    productions_by_name: base.productions_by_name
+    productions_by_name: base.productions_by_name,
+    prepared_exprs: base.prepared_exprs
   }
 }
 

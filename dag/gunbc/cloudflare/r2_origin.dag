@@ -7,7 +7,7 @@ import extdeps.vendor { Vendor }
 import extdeps.vendor.cloudflare { cloudflare }
 import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import std.human_intervention {
   HumanIntervention,
@@ -157,6 +157,8 @@ fn allocated_bucket_name(purpose: BucketPurpose) -> NonEmptyStr? {
 
 data fabric_durable_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-origin-read-token"
 
+data fabric_durable_origin_read_secret_version: NonEmptyStr = "1"
+
 // AN UNALLOCATED PURPOSE HAS NO BUCKET, AND THAT IS AN ARM RATHER THAN A DEFAULT. Reconstructing a
 // name at this seam is the derivation the roster exists to forbid, and returning an empty one would
 // address the account's root instead of a bucket.
@@ -176,7 +178,10 @@ fn fabric_durable_origin_standing() -> DurableOriginStanding {
           bucket_name: name,
           jurisdiction: R2JurisdictionDefault,
           admits: FabricCommitManifestsAndContentAddressedOutputs {},
-          read_credential: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id)
+          read_credential: secret_ref_pin_version(
+            ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
+            version: fabric_durable_origin_read_secret_version,
+          )
         }
       }
   }
