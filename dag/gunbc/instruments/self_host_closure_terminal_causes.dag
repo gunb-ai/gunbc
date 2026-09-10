@@ -3,12 +3,9 @@ module gunbc.tools.self_host_closure_terminal_causes
 import v2.std.algebra { any, filter, length }
 import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
-
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE TERMINAL-CAUSE TABLE FOR THE V2 SELF-HOST CLOSURE, from the native driver's own per-file
 // output. The subject is the INPUT CLOSURE of src/v2/compiler/00_compile.dag - the modules the
@@ -927,6 +924,26 @@ fn every_cause_names_a_row() -> Bool {
 fn every_refusing_path_is_a_closure_member() -> Bool {
   !any(xs: closure_refusal_rows, predicate: fn(row) {
     !any(xs: closure_module_manifest, predicate: fn(member) { member == row.path })
+  })
+}
+
+// A ROW'S TERMINAL REASON MUST BE ONE ITS OWN NAMED CAUSES REPORTS. This is the table's central
+// semantic claim asked of itself: terminal_reason is the diagnostic that actually refused the file,
+// every cause record carries the terminal reason ITS defect produces, so a row naming only causes that
+// refuse at some other stage is a mis-join - and a repair lane citing that key would go hunting the
+// wrong defect in the right file. A row may name several causes and only one need match, because a
+// file can carry defects that never got to speak: only the one that refused first is terminal.
+fn row_terminal_reason_is_named_by_one_of_its_causes(row: ClosureFileRow) -> Bool {
+  any(xs: row.causes, predicate: fn(c) {
+    any(xs: front_end_causes, predicate: fn(rec) {
+      rec.key == c && rec.terminal_reason == row.terminal_reason
+    })
+  })
+}
+
+fn every_row_terminal_reason_is_named_by_a_cause() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) {
+    !row_terminal_reason_is_named_by_one_of_its_causes(row: row)
   })
 }
 

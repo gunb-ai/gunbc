@@ -1,6 +1,7 @@
 module gunbc.test.claim.self_host_closure_terminal_causes_test
 
 import v2.std.algebra { any, length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import gunbc.tools.self_host_closure_terminal_causes {
@@ -12,17 +13,22 @@ import gunbc.tools.self_host_closure_terminal_causes {
   JoinedByExecutedNeutralizer,
   JoinedBySignatureOverIsolatedDeclaration,
   cause_population,
-  closure_module_count,
   closure_observation_pin,
   closure_refusal_rows,
   every_cause_names_a_row,
   every_row_cause_is_rostered,
   every_refusing_path_is_a_closure_member,
   every_row_names_a_cause,
+  every_row_terminal_reason_is_named_by_a_cause,
   front_end_causes,
   rows_for_cause,
   rows_for_path
 }
+
+// ENTRY-GRAIN DISPOSITION. The authority puts this row in the WITNESS ENTRY FILE so the fact holds
+// however far a read hides behind imports, and the fact here is that nothing in this witness's closure
+// touches the tree: every clause folds literals carried by the table under review.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THESE ASSERT PROPERTIES OF THE TABLE, NEVER A REMEASUREMENT OF THE TREE. The table is a
 // revision-scoped observation: a test that re-derived the population would go red on the repair and
@@ -123,10 +129,18 @@ test fn every_refusing_path_is_a_closure_member_row() -> Bool {
   every_refusing_path_is_a_closure_member()
 }
 
-// The closure's width is derived from the manifest, so this asserts the manifest is populated at all
-// rather than restating its size: a manifest that read empty would make the membership join above
-// vacuously false for every row, and an empty one silently green is exactly the failure it exists to
-// prevent.
-test fn the_closure_manifest_is_wider_than_the_refusing_population() -> Bool {
-  closure_module_count() > length(xs: closure_refusal_rows)
+// THE TABLE'S CENTRAL SEMANTIC CLAIM, ASKED OF ITSELF. terminal_reason is the diagnostic that actually
+// refused the file and every cause record carries the terminal reason its own defect produces, so a
+// row naming only causes that refuse at some other stage is a mis-join - and a repair lane citing that
+// key would hunt the wrong defect in the right file. Its red is authorable: put ^C, a tokenize-stage
+// cause, on a parse_g0_tokens_remain row and it goes false.
+//
+// This slot previously held a comparison of the manifest's width against the row count. That is
+// implied by the two witnesses above - every refusing path is a member, and each path has exactly one
+// row, so the rows cannot outnumber the manifest - and its STRICT form was worse than redundant: it
+// would go red on a perfectly true table in which every closure file refused. A witness that fails on
+// a correct measurement is not a wall, and its annotation's stated reason was wrong besides (an empty
+// manifest turns the membership join RED, not green).
+test fn every_row_terminal_reason_is_named_by_one_of_its_causes() -> Bool {
+  every_row_terminal_reason_is_named_by_a_cause()
 }
