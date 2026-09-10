@@ -54,7 +54,7 @@ data bridged_attachment_rejected: GuestAttachment = BridgedToPhysicalSegment {
 // either way, so the standing is NOT folded into KernelFeatureRequirement.required_for
 // and is not a field of KernelConfigHolds (that verdict answers whether a .config satisfies
 // the option roster). The standing lives here; test.claim.runner.runner_filtered_egress_topology_witness_test
-// reads it. The other three arms are the RED: they are authorable by changing those receipts.
+// reads it so the data row is not dangling. That reader is not live-run coverage.
 fn bridged_attempt_left_guest_without_egress() -> Bool {
   match egress_outcome {
     GuestEgressEstablished { via: _ } => false

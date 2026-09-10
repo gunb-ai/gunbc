@@ -7,9 +7,9 @@ import gunbc.runner.runner_host_filtered_egress {
   FilteredEgressTopologyUnsettled,
 }
 
-// THE STANDING IS THE FOLD OF THE TWO RECEIPTS, read here rather than grafted onto
-// KernelConfigHolds. A .config hold answers a different question. Changing egress_outcome
-// or guest_reachability so this is not Settled is the discriminating RED.
+// THE STANDING IS THE FOLD OF THE TWO RECEIPTS, read here so the data row is not
+// dangling, rather than grafted onto KernelConfigHolds. Both inputs are authored
+// receipt constants; this is not coverage of a live run.
 test fn filtered_egress_topology_is_settled_on_the_recorded_receipts() -> Bool {
   match filtered_egress_topology {
     FilteredEgressTopologySettled => true
