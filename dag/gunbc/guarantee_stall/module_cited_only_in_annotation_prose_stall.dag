@@ -15,5 +15,5 @@ data module_cited_only_in_annotation_prose_stall: GuaranteeStall = GuaranteeStal
     "gunbc.runner.runner_host_filtered_egress",
     "gunbc.runner.runner_cpu_bandwidth_receipt",
   ] },
-  next_rung_trigger: climbs_when(capability: "consumption of a newly authored module is decided from the import graph at admission, sufficient that a module whose only occurrences are annotation text is refused as unconsumed rather than merged as cited. A scanner over comments does not discharge this. The specimen repair is import-and-fold: cpu_bound_write_refused into runner_cpu_bandwidth_receipt.cpu_bound_standing, egress_outcome and guest_reachability into runner_host_filtered_egress bridged_attempt_left_guest_without_egress and host_reached_the_guest_on_the_point_to_point_tap. That specimen is not the admission wall"),
+  next_rung_trigger: climbs_when(capability: "consumption of a newly authored module is decided from the import graph at admission, sufficient that a module whose only occurrences are annotation text is refused as unconsumed rather than merged as cited. A scanner over comments does not discharge this. The specimen repair is cpu_bound_write_refused as a field of runner_cpu_bandwidth_receipt.cpu_bound_standing. The topology wrapper rows are deleted; the two folds they wrapped remain without a call site and are not this wall"),
 }

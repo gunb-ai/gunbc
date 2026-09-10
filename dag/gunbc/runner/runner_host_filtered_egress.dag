@@ -49,11 +49,11 @@ data bridged_attachment_rejected: GuestAttachment = BridgedToPhysicalSegment {
   rejected_because: "segment adjacency hands the guest DHCP, ARP, RAs, multicast, the BMC addresses and every other host, and filtering it needs bridge-family policy and a second processing boundary",
 }
 
-// THE REJECTED TOPOLOGY IS THE ONE THE ATTEMPT RECEIPT HOLDS. These folds consume
+// THE REJECTED TOPOLOGY IS THE ONE THE ATTEMPT RECEIPT HOLDS. These two functions match
 // egress_outcome and guest_reachability. They are retained from gunbc#10818. This change
-// deletes the unread data rows that used to wrap them; it does not add a new unread
-// wrapper, a kernel-option graft, or a constant-folding witness (reviews 63093, 63122,
-// 63143). Deleting the folds themselves would reverse the brief that kept them.
+// deletes the unread data rows that called them. They have no remaining call site: a new
+// unread wrapper, a kernel-option graft, and a constant-folding witness were each refused
+// (reviews 63093, 63122, 63143). Deleting the functions would reverse the brief that kept them.
 fn bridged_attempt_left_guest_without_egress() -> Bool {
   match egress_outcome {
     GuestEgressEstablished { via: _ } => false
