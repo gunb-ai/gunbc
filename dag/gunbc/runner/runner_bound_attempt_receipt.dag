@@ -2,7 +2,9 @@ module gunbc.runner.runner_bound_attempt_receipt
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.dissolution { dissolution_description }
-import gunbc.runner_jit_mint { plan_jit_mint_consumer_frontier }
+import gunbc.runner.runner_jit_perform {
+  jit_mint_effect_transport_frontier, host_side_jit_fetch_deletion_frontier,
+}
 import gunbc.runner.runner_jit_admission {
   ExpiryAxis, JitAdmissionAxis,
   axis_mint_observability, MintExpiresAtCoverage, MintUnobservableDeclaredBoundary,
@@ -161,7 +163,8 @@ data still_open: List<NonEmptyStr> = concat(
   concat(
     still_open_from_live_census(census: duplicate_jitconfig_name_409_coverage),
     [
-      dissolution_description(condition: plan_jit_mint_consumer_frontier) as NonEmptyStr,
+      dissolution_description(condition: jit_mint_effect_transport_frontier) as NonEmptyStr,
+      dissolution_description(condition: host_side_jit_fetch_deletion_frontier) as NonEmptyStr,
       dissolution_description(condition: host_image_placeability_wet_probe_frontier) as NonEmptyStr,
       placeability_standing_open_item(outcome: host_image_placeability_standing),
       "host init still prints these axes as unchecked; standing is gunbc.runner.runner_jit_admission, not this receipt",
