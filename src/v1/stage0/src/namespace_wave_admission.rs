@@ -1674,42 +1674,11 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-/// CpuBoundStanding rehome (2026-09-09, gunbc#10818). `CpuBoundStanding` (and the
-/// `CpuBoundInterfacePresent` constructor `cpu_bound_standing` names) moved from
-/// `gunbc.runner.runner_cpu_bandwidth_receipt` onto `gunbc.runner.runner_guest_egress_attempt`,
-/// which already held the refusal standing, so one coproduct answers for the earlier unread write,
-/// the EPERM refusal, and the later interface-present row. The bandwidth receipt still binds the
-/// two spellings; only the declaring module changed. Required floor run 34341884341 measured
-/// `FloorClean` with the consumption witness planned-and-passed, then refused adjudication on
-/// exactly these two `TargetChanged` binding deltas (and no others). Membership edges this change
-/// also adds auto-admit as `ExplicitlyEvaluatedZeroDelta` and are not listed.
 ///
-/// TRIGGER: these two rows go when #10818 merges. The base then binds both spellings to
-/// `gunbc.runner.runner_guest_egress_attempt` inside `cpu_bound_standing`, the deltas stop being
-/// producible, and CONSUMED comes due on the roster's next touch — adjudicated by the
-/// declaring-module join, not by this sentence.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#10818 CpuBoundStanding rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
-            in_declaration: "cpu_bound_standing",
-            spelling: "CpuBoundStanding",
-            target: "gunbc.runner.runner_guest_egress_attempt",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#10818 CpuBoundStanding rehome",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.runner.runner_cpu_bandwidth_receipt",
-            in_declaration: "cpu_bound_standing",
-            spelling: "CpuBoundInterfacePresent",
-            target: "gunbc.runner.runner_guest_egress_attempt",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
+/// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
+/// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
