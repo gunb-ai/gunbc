@@ -77,10 +77,16 @@ data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
 // existing quote-only note reasons about a New Jersey campus and a Westchester cabinet is a
 // different route, a different power market and a different latency to Manhattan.
 //
-// FETCH NOTE: equinix.com refuses the ordinary fetch path with HTTP 403. The reading below was
-// taken directly from the operator's own NY13 page over a plain HTTP client on 2026-09-08 - it is
-// an operator reading, not a directory's, and the 403 is recorded so the next reader does not
-// conclude the page is gone.
+// FETCH NOTE: equinix.com refuses a bare user-agent with HTTP 403 - a fact about the CLIENT STRING
+// and not about the host, which answers normally over HTTPS to a full browser user-agent. The
+// reading below was taken directly from the operator's own NY13 page on 2026-09-08, and the 403 is
+// recorded so the next reader does not conclude the page is gone.
+//
+// The earlier phrasing here said the reading was taken "over a plain HTTP client", which is
+// ambiguous between a client KIND and the http:// SCHEME - and it produced a false positive in a
+// scan for modules citing Https while having been read over HTTP (review 63016 found a real one in
+// extdeps.colo.vastnet). A word that reads as evidence for a proposition it does not discriminate is
+// the recurring defect this census keeps finding; this one was in my own note.
 data equinix_ny13: ColoFacilityRow = ColoFacilityRow {
   operator_label: "Equinix",
   facility_label: "Equinix NY13",

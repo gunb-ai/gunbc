@@ -8,11 +8,18 @@ import extdeps.colo.types {
   RetailGrainStanding, SingleCabinetOffered,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Http }
 
+// THE SCHEME IS Http AND THAT IS A READING, NOT A DOWNGRADE (review 63016). vastnet.net serves
+// plain HTTP and REFUSES 443 outright - ECONNREFUSED, not a certificate warning - so every reading
+// in this module was taken over HTTP. An anchor claiming Https would cite a surface that does not
+// answer, which DESIGN section 3 rules out for extdeps: model what the upstream actually returns.
+// The module's own fetch note already recorded the refusal, so the anchor was contradicted by prose
+// sitting a few lines below it - the same shape as the density arms this census has been correcting
+// all along, and worth naming rather than fixing quietly.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
-    scheme: Https
+    scheme: Http
     locator: "www.vastnet.net/services/colo/cabinet.shtml"
   }
 }
