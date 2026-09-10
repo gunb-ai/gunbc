@@ -16,7 +16,7 @@ import v2.compiler.source_authority {
   SourceRootManifestElided,
   SourceRootRowsMissing
 }
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, FreeSemigroup }
 import std.content_hash {
   ContentHash,
   ContentHashComparison,
@@ -33,10 +33,7 @@ import std.content_hash {
 import std.types { CommitSha, GitRef }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
-import v2.std.grammar_choice_ambiguity {
-  GrammarChoiceAmbiguityRow,
-  NonEmptyGrammarChoiceAmbiguityRows
-}
+import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.compilers.lexing { symbol_lexeme }
@@ -46,18 +43,8 @@ import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
-// NonEmptySymbolChain and NonEmptyGrammarChoiceAmbiguityRows join NonEmptyDiagnostics,
-// NonEmptyProcessNodeIds and v2.std.collection FiniteSet as hand-rolled nonempty carriers. The
-// generic carrier is NO LONGER fixture-only: std.algebra FreeSemigroup is a real construction wall
-// in the tree, so this count is now migration debt with a reachable destination rather than a
-// pattern with nowhere to go. Counted here so the pattern is visible rather than silently repeated.
-// Dissolve triggers: non_empty_symbol_chain_dissolve_trigger (this module);
-// NonEmptyGrammarChoiceAmbiguityRows trigger on v2.std.grammar_choice_ambiguity.
-// NonEmptyDiagnostics, NonEmptyProcessNodeIds and FiniteSet carry NO trigger and are untracked
-// stalls owed one - see std.algebra free_semigroup_grounding_note, which names them at the grain a
-// grep decides.
-
-data non_empty_symbol_chain_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "migrate_when_free_semigroup_available — NonEmptySymbolChain dissolves into std.algebra FreeSemigroup<Symbol>. RETARGETED: this trigger previously named the promotion of the manual Refined<List<T>> fixture to std, and the generic carrier that landed is a record with a head field rather than that refinement, with the NonEmptyList alias deliberately withheld while the fixture lives - so the event as previously spelled will not occur and this row would have stalled untracked. The construction wall is now available; see std.algebra free_semigroup_grounding_note.")
+// Assemble-rejection chains and overlap rows are std.algebra FreeSemigroup. NonEmptyDiagnostics
+// remains a host-emit special case; see std.algebra free_semigroup_grounding_note.
 
 // FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the
 // behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g.
@@ -120,19 +107,14 @@ type FrontierProbeDetail
 // string without fabricating missing-vs-unreadable. SourceRefContentHashMismatch carries expected
 // and observed ContentHash beside the ref.
 
-type NonEmptySymbolChain {
-  head: Symbol
-  tail: FreeMonoid<Symbol>
-}
-
 type AssembleRejectionCause
-  = GrammarChoiceOverlap { rows: NonEmptyGrammarChoiceAmbiguityRows }
+  = GrammarChoiceOverlap { rows: FreeSemigroup<GrammarChoiceAmbiguityRow> }
   | MaskedAssembleRefusal {
-      overlap_evidence: NonEmptyGrammarChoiceAmbiguityRows,
-      remaining_chain: NonEmptySymbolChain
+      overlap_evidence: FreeSemigroup<GrammarChoiceAmbiguityRow>,
+      remaining_chain: FreeSemigroup<Symbol>
     }
   | MaskedAssembleRefusalWithoutEvidence {
-      remaining_chain: NonEmptySymbolChain
+      remaining_chain: FreeSemigroup<Symbol>
     }
   | AssembleMissingModule { requested: QualifiedName }
   | MissingModuleIdentityUnavailable
@@ -176,7 +158,7 @@ fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLoca
 type FrontierProbeAssembleDetail
   = NoFrontierProbeDetail
   | AssembleRejectionDetail {
-      rejection_chain: NonEmptySymbolChain,
+      rejection_chain: FreeSemigroup<Symbol>,
       cause: AssembleRejectionCause,
       at: FrontierProbeCauseLocation
     }

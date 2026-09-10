@@ -14,10 +14,8 @@ import v2.std.diagnostic {
   Unavailable,
   invariant_port_locus
 }
-import v2.std.grammar_choice_ambiguity {
-  GrammarChoiceAmbiguityRow,
-  NonEmptyGrammarChoiceAmbiguityRows
-}
+import std.algebra { Empty, FreeSemigroup }
+import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
 import v2.compiler.self_host.frontier_probe_assemble_detail {
   assemble_rejection_cause_from_parse_stage,
   frontier_probe_assemble_detail_from_parse_stage,
@@ -71,7 +69,7 @@ test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
       at: _
     } =>
       match rows {
-        NonEmptyGrammarChoiceAmbiguityRows {
+        FreeSemigroup {
           head: bound,
           tail: Empty
         } => bound.production == row.production
@@ -103,7 +101,7 @@ test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> 
       remaining_chain: chain
     } =>
       match overlap_rows {
-        NonEmptyGrammarChoiceAmbiguityRows {
+        FreeSemigroup {
           head: bound,
           tail: Empty
         } => (bound.production == row.production)
@@ -170,7 +168,7 @@ test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
       at: _
     } =>
       match rows {
-        NonEmptyGrammarChoiceAmbiguityRows {
+        FreeSemigroup {
           head: bound,
           tail: Empty
         } => bound.production == row.production

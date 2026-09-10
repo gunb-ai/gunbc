@@ -108,6 +108,7 @@ import gunbc.scm.target_reference {
   TargetReferenceUncontainedDigestInvalid,
   decode_target_reference,
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
 import extdeps.languages.json.parse {
   JsonMemberLookup,
@@ -325,6 +326,9 @@ type ClosureDocLoadOutcome
 // The repository object table keeps the mixed vocabulary and versions separately; sources belong to
 // the repository image, which is the layer that always owned them.
 data closure_document_format_tag: String = "gunbc-scm-commit-closure-v4"
+
+data commit_closure_json_module_name_fossil_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "rename gunbc.scm.commit_closure_json_v2 so the module path no longer announces a codec generation the document does not carry — closure_document_format_tag is the contract (currently gunbc-scm-commit-closure-v4) and the _v2 suffix is a fossil of a deleted positional predecessor. The rename is its own change: NAMESPACE_TRANSITION_ADMISSIONS rows authored and deleted in the same wave, at a moment the open-PR population can absorb TargetChanged classifications, never folded into an unrelated subject. Until that lands the fork is this trigger, not a silent second name.")
+
 
 // THE TABLE A COMMIT CLOSURE ACTUALLY HAS, WHICH IS NODES AND NOTHING ELSE.
 //

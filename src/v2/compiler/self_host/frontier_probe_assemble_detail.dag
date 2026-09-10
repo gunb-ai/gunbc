@@ -1,6 +1,6 @@
 module v2.compiler.self_host.frontier_probe_assemble_detail
 
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, FreeSemigroup }
 import v2.std.algebra {
   Empty,
   HeadAbsent,
@@ -36,7 +36,6 @@ import v2.compiler.self_host.frontier_probe_types {
   MaskedAssembleRefusal,
   MaskedAssembleRefusalWithoutEvidence,
   MissingModuleIdentityUnavailable,
-  NonEmptySymbolChain,
   OtherAssembleRefusal,
   frontier_classify_rejection_reason,
   frontier_probe_cause_location_from_locus,
@@ -49,8 +48,8 @@ import v2.std.text { String }
 
 fn non_empty_symbol_chain_from_non_empty_parse_stage(
   d: NonEmptyParseStageDiagnostics
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
+) -> FreeSemigroup<Symbol> {
+  FreeSemigroup {
     head: d.head.diagnostic.reason,
     tail: fold_list(
       xs: d.tail,
@@ -62,8 +61,8 @@ fn non_empty_symbol_chain_from_non_empty_parse_stage(
 
 fn non_empty_symbol_chain_from_non_empty_diagnostics(
   d: NonEmptyDiagnostics
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
+) -> FreeSemigroup<Symbol> {
+  FreeSemigroup {
     head: d.head.reason,
     tail: fold_list(
       xs: d.tail,
@@ -128,8 +127,8 @@ fn assemble_rejection_cause_from_parse_stage(
 fn non_empty_symbol_chain_from_parse_stage_head(
   head: ParseStageDiagnostic,
   tail: FreeMonoid<ParseStageDiagnostic>
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
+) -> FreeSemigroup<Symbol> {
+  FreeSemigroup {
     head: head.diagnostic.reason,
     tail: fold_list(
       xs: tail,
@@ -335,8 +334,8 @@ fn assemble_rejection_cause_from_diagnostics(
 fn non_empty_symbol_chain_from_diagnostic_list(
   head_diag: Diagnostic,
   tail: FreeMonoid<Diagnostic>
-) -> NonEmptySymbolChain {
-  NonEmptySymbolChain {
+) -> FreeSemigroup<Symbol> {
+  FreeSemigroup {
     head: head_diag.reason,
     tail: fold_list(
       xs: tail,

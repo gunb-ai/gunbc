@@ -1,6 +1,6 @@
 module v2.compiler.parse_diagnostic
 
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, FreeSemigroup }
 import v2.std.algebra {
   Cons,
   Empty,
@@ -23,10 +23,7 @@ import v2.std.diagnostic {
   invariant_port_locus,
   port_refusal_locus
 }
-import v2.std.grammar_choice_ambiguity {
-  GrammarChoiceAmbiguityRow,
-  NonEmptyGrammarChoiceAmbiguityRows
-}
+import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
 import v2.std.optional { Optional, Present, optional_absent, optional_present }
 
 // ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or Diagnostic itself.
@@ -150,12 +147,12 @@ fn grammar_choice_ambiguity_rows_from_non_empty_parse_stage(
 
 fn non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
   d: NonEmptyParseStageDiagnostics
-) -> Optional<NonEmptyGrammarChoiceAmbiguityRows> {
+) -> Optional<FreeSemigroup<GrammarChoiceAmbiguityRow>> {
   let rows = grammar_choice_ambiguity_rows_from_non_empty_parse_stage(d: d)
   match list_head(xs: rows) {
     HeadFound { value: head } =>
       optional_present(
-        value: NonEmptyGrammarChoiceAmbiguityRows {
+        value: FreeSemigroup {
           head: head,
           tail: list_tail_or_empty_rows(xs: rows)
         }

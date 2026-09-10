@@ -2,6 +2,7 @@ module v2.std.diagnostic
 
 import v2.std.algebra { bag_eq, list_append, list_snoc_item, fold_list, freemonoid_empty }
 import std.algebra { Monoid, Semigroup }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.node { Node, Symbol }
 
 type Extent
@@ -36,6 +37,8 @@ type NonEmptyDiagnostics {
   head: Diagnostic
   tail: List<Diagnostic>
 }
+
+data non_empty_diagnostics_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "NonEmptyDiagnostics dissolves into std.algebra FreeSemigroup<Diagnostic> when v1_compiler_emit_rust render_rust_diagnostics_carrier_applied no longer keys the host Option alias on the type name NonEmptyDiagnostics — that emitter special case is why this carrier remains while sibling nonempty records migrated. The construction wall is std.algebra FreeSemigroup.")
 
 type Diagnostics
   = None

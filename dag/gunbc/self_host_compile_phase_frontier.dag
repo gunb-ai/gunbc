@@ -41,7 +41,7 @@ import tools.emission_entry_instrument {
 // point emits one closure, assembles it, and invokes Cargo's JSON diagnostic stream once. This
 // module only classifies and folds those exact identities.
 type PhaseCountEvidence
-  = Observed
+  = ObservedPhaseCount
   | DerivedFromRustcErrorIndex
 
 type PhaseCountStanding
@@ -308,7 +308,7 @@ fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcC
         rows: [
           RustcPhaseBoardRow {
             phase: Parse,
-            standing: PhaseCount { count: parse_errors, evidence: Observed },
+            standing: PhaseCount { count: parse_errors, evidence: ObservedPhaseCount },
             identities: parse_identities
           },
           phase_row(ds: errors, phase: Expand, reached: furthest_order >= rustc_phase_order(phase: Expand)),
@@ -317,7 +317,7 @@ fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcC
           phase_row(ds: errors, phase: Borrowck, reached: furthest_order >= rustc_phase_order(phase: Borrowck))
         ],
         furthest_phase_reached: furthest,
-      furthest_phase_evidence: Observed,
+      furthest_phase_evidence: ObservedPhaseCountPhaseCount,
       census_identity_digest: phase_census_digest(parse_refused_files: parse_observation.refused_files, raw_identities: raw_identities),
       total_error_diagnostics: count(errors),
       coded_error_diagnostics: count(coded_identities),
@@ -467,7 +467,7 @@ fn phase_board_from_census_identities(
   PersistedPhaseBoardFold {
     board: RustcPhaseBoard {
       rows: [
-        RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: parse_errors, evidence: Observed }, identities: parse_identities },
+        RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: parse_errors, evidence: ObservedPhaseCount }, identities: parse_identities },
         if furthest_order >= rustc_phase_order(phase: Expand) {
           RustcPhaseBoardRow { phase: Expand, standing: PhaseCount { count: 0, evidence: DerivedFromRustcErrorIndex }, identities: [] }
         } else { RustcPhaseBoardRow { phase: Expand, standing: PhaseNotYetReached, identities: [] } },
@@ -482,7 +482,7 @@ fn phase_board_from_census_identities(
         } else { RustcPhaseBoardRow { phase: Borrowck, standing: PhaseNotYetReached, identities: [] } }
       ],
       furthest_phase_reached: furthest,
-      furthest_phase_evidence: Observed,
+      furthest_phase_evidence: ObservedPhaseCountPhaseCount,
       census_identity_digest: phase_census_digest(parse_refused_files: parse_observation.refused_files, raw_identities: raw_identities),
       total_error_diagnostics: count(unique_errors),
       coded_error_diagnostics: count(unique_errors) - count(codeless),
