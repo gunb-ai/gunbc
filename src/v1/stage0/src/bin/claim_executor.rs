@@ -565,6 +565,33 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
 
+        // THE (PHASE, LANE) PAIR JOIN RUNS IN EVERY LANE, BEFORE ANY PHASE. The variant-set
+        // join rides the parse phase's index, but a match arm is not a declaration, so lane
+        // ownership is joined by evaluating the roster authority's
+        // `required_ci_lane_phase_rows`. Three lanes are independently selected and the native
+        // route's isolation is load-bearing: a host edit mapping a phase to the wrong lane
+        // (leaving the native job selecting zero phases), or a selected lane owning zero
+        // phases in the authority, stops the line here rather than greening over an
+        // unmeasured population.
+        let authority_lane_rows =
+            match v1_compiler::cli_run::authority_lane_phase_rows(&source_roots) {
+                Ok(rows) => Some(rows),
+                Err(e) => {
+                    eprintln!("required-ci: lane-roster FAIL {e}");
+                    phase_failures.push(format!("lane-roster: {e}"));
+                    None
+                }
+            };
+        if let Some(rows) = &authority_lane_rows {
+            let findings = lane_roster_findings(rows, required_ci_lane);
+            for finding in &findings {
+                eprintln!("required-ci: lane-roster FAIL {finding}");
+            }
+            if !findings.is_empty() {
+                phase_failures.push(format!("lane-roster ({} finding(s))", findings.len()));
+            }
+        }
+
         // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
         // Independent of everything below it. The roster is
         // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
@@ -1071,6 +1098,25 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("v2-native");
+        }
+
+        // THE OBSERVED RAN SET IS THE AUTHORITY-EXPECTED SET, EXACTLY. The census below prints
+        // phases_run; this refusal covers the state where that number is legible but wrong — a
+        // phase silently never reached, or one executed that the authority does not expect in
+        // this lane. Equality over an empty expected set cannot mask a zero-phase run: the
+        // empty-expectation case already refused at run start.
+        if let Some(rows) = &authority_lane_rows {
+            let expected = expected_lane_phases(rows, required_ci_lane);
+            let expected_refs: std::collections::BTreeSet<&str> =
+                expected.iter().map(String::as_str).collect();
+            let observed: std::collections::BTreeSet<&str> = ran.iter().copied().collect();
+            if observed != expected_refs {
+                phase_failures.push(format!(
+                    "lane-roster ran-set: the authority expects {:?} in this lane but the run \
+                     executed {:?}",
+                    expected_refs, observed
+                ));
+            }
         }
 
         // COUNTER-KEY CENSUS (dashboard node adhoc-af8a3fe8-13d): this is the
@@ -1688,10 +1734,11 @@ const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
 /// nothing else joins these two. An absent authority module refuses too — that is the state in
 /// which nothing is checking the roster, not permission to proceed.
 ///
-/// WHAT THIS JOIN DELIBERATELY DOES NOT COVER: lane ownership. The host `lane` match is not
-/// readable from the declaration index, and a lane divergence cannot un-enrol a phase — both
-/// lanes execute in every required run — so the residue is bounded to which job carries a phase,
-/// and its terminal is the atomic deletion the roster's census row names.
+/// WHAT THIS JOIN DOES NOT COVER: lane ownership. A match arm is not a declaration, so the
+/// index this join reads cannot see which lane owns a phase. That half is joined by evaluation
+/// instead — `authority_lane_phase_rows` against this host's enum-plus-lane-match, executed at
+/// run start in EVERY lane (three lanes are independently selected now, and the native route's
+/// isolation is load-bearing), with the empty-expectation and exact-ran-set refusals beside it.
 fn phase_roster_findings(
     index: &v1_compiler::cli_run::declaration_index::DeclarationIndex,
 ) -> Vec<String> {
@@ -1724,6 +1771,61 @@ fn phase_roster_findings(
         findings.push(format!(
             "this host enum realizes `{extra}` and `{PHASE_ROSTER_AUTHORITY_DECL}` does not \
              declare it — a phase running with no authority"
+        ));
+    }
+    findings
+}
+
+/// The authority-expected phase names for the selected lane — the whole roster when no lane was
+/// selected (a lane-less run owns every phase).
+fn expected_lane_phases(
+    rows: &[v1_compiler::cli_run::LanePhaseRow],
+    selected: Option<RequiredCiLane>,
+) -> std::collections::BTreeSet<String> {
+    rows.iter()
+        .filter(|r| selected.is_none_or(|l| r.lane == l.name()))
+        .map(|r| r.phase.clone())
+        .collect()
+}
+
+/// The (phase, lane) pair join, both directions, plus the empty-expectation refusal. The pair
+/// join is what makes a host lane-match edit red: moving a phase between lanes changes the host
+/// pair set while the authority's stays, and the difference names the divergence. The empty
+/// refusal is what makes a zero-phase selected lane stop: `phases_run=0` can no longer render
+/// as a successful required job.
+fn lane_roster_findings(
+    rows: &[v1_compiler::cli_run::LanePhaseRow],
+    selected: Option<RequiredCiLane>,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let host: BTreeSet<(String, String)> = REQUIRED_CI_PHASES
+        .iter()
+        .map(|p| (p.lane().name().to_string(), p.name().to_string()))
+        .collect();
+    let authority: BTreeSet<(String, String)> = rows
+        .iter()
+        .map(|r| (r.lane.clone(), r.phase.clone()))
+        .collect();
+    let mut findings = Vec::new();
+    for (lane, phase) in authority.difference(&host) {
+        findings.push(format!(
+            "the authority rosters phase `{phase}` in lane `{lane}` and this host does not \
+             realize that pair — lane ownership diverged"
+        ));
+    }
+    for (lane, phase) in host.difference(&authority) {
+        findings.push(format!(
+            "this host runs phase `{phase}` in lane `{lane}` and the authority does not roster \
+             that pair — lane ownership diverged"
+        ));
+    }
+    if expected_lane_phases(rows, selected).is_empty() {
+        findings.push(format!(
+            "the selected lane `{}` owns no phases in the authority roster — the run would \
+             report success over zero phases",
+            selected
+                .map(|l| l.name())
+                .unwrap_or("all (no --required-lane given)")
         ));
     }
     findings
@@ -2198,6 +2300,82 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn lane_phase_row(lane: &str, phase: &str) -> v1_compiler::cli_run::LanePhaseRow {
+        v1_compiler::cli_run::LanePhaseRow {
+            lane: lane.to_string(),
+            phase: phase.to_string(),
+        }
+    }
+
+    /// The pairs `required_ci_lane_phase_rows` derives from the standing roster.
+    fn standing_authority_rows() -> Vec<v1_compiler::cli_run::LanePhaseRow> {
+        vec![
+            lane_phase_row("witnesses", "parse"),
+            lane_phase_row("witnesses", "namespace-wave-admission"),
+            lane_phase_row("build", "generated-artifact"),
+            lane_phase_row("build", "regen-fixed-point"),
+            lane_phase_row("witnesses", "floor"),
+            lane_phase_row("v2-native", "v2-native"),
+        ]
+    }
+
+    #[test]
+    fn the_standing_pairs_join_cleanly_in_every_lane() {
+        for lane in [
+            RequiredCiLane::Build,
+            RequiredCiLane::Witnesses,
+            RequiredCiLane::V2Native,
+        ] {
+            assert!(
+                lane_roster_findings(&standing_authority_rows(), Some(lane)).is_empty(),
+                "lane {} must join cleanly",
+                lane.name()
+            );
+        }
+        assert!(lane_roster_findings(&standing_authority_rows(), None).is_empty());
+    }
+
+    #[test]
+    fn a_lane_ownership_divergence_is_red_and_names_the_pair() {
+        // The review's scenario — the host mapping and the authority mapping disagree about
+        // which lane owns v2-native — simulated by moving the authority row; the pair
+        // difference is symmetric, so either side's edit fires both directions.
+        let mut rows = standing_authority_rows();
+        rows.retain(|r| r.phase != "v2-native");
+        rows.push(lane_phase_row("build", "v2-native"));
+        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::V2Native));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.contains("v2-native") && f.contains("build")),
+            "the divergence must name the pair: {findings:?}"
+        );
+        assert!(
+            findings.iter().any(|f| f.contains("owns no phases")),
+            "the native lane's expectation is now empty and must refuse: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_selected_lane_with_no_expected_phases_is_refused() {
+        let rows: Vec<_> = standing_authority_rows()
+            .into_iter()
+            .filter(|r| r.phase != "v2-native")
+            .collect();
+        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::V2Native));
+        assert!(findings.iter().any(|f| f.contains("owns no phases")));
+    }
+
+    #[test]
+    fn the_expected_set_tracks_the_selected_lane() {
+        let rows = standing_authority_rows();
+        assert_eq!(
+            expected_lane_phases(&rows, Some(RequiredCiLane::V2Native)),
+            ["v2-native".to_string()].into_iter().collect()
+        );
+        assert_eq!(expected_lane_phases(&rows, None).len(), 6);
+    }
 
     #[test]
     fn a_returned_subject_refusal_is_a_completed_measurement() {
