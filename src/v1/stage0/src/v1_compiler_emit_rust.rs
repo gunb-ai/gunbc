@@ -817,11 +817,11 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
 }
 
 pub fn rust_shared_wrap_ctor(inner_expr: String) -> String {
-    if inner_expr.starts_with("panic!(")
-        || inner_expr.starts_with("compile_error!(")
-        || inner_expr.starts_with("unreachable!(")
+    if ((v1_rt::starts_with(inner_expr.clone(), "panic!(".to_string())
+        || v1_rt::starts_with(inner_expr.clone(), "compile_error!(".to_string()))
+        || v1_rt::starts_with(inner_expr.clone(), "unreachable!(".to_string()))
     {
-        inner_expr
+        inner_expr.clone()
     } else {
         crate::v1_compiler_languages::sharing_wrap_ctor_for_target(
             RenderTarget::Rust,
@@ -21737,14 +21737,18 @@ pub fn rust_as_ref_let_is_irrefutable(
                     "".to_string(),
                     emit_info.type_summaries.clone(),
                 );
-                match resolved {
-                    Some(enum_name) => match emit_info.type_summaries.get(&enum_name).cloned() {
-                        Some(summary) => {
-                            v1_rt::sorted_map_keys(summary.variant_name_set.as_ref()).len() <= 1
+                match resolved.clone() {
+                    Some(enum_name) => {
+                        match v1_rt::map_get(&emit_info.type_summaries.clone(), enum_name.clone()) {
+                            Some(summary) => {
+                                ((Rc::new(v1_rt::sorted_map_keys(&summary.variant_name_set.clone()))
+                                    .len() as i64)
+                                    <= 1)
+                            }
+                            std::option::Option::None => false,
                         }
-                        None => false,
-                    },
-                    None => false,
+                    }
+                    std::option::Option::None => false,
                 }
             }
             _ => false,
