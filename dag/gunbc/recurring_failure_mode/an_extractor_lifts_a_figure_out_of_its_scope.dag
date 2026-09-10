@@ -1,0 +1,51 @@
+module gunbc.recurring_failure_mode.an_extractor_lifts_a_figure_out_of_its_scope
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_extractor_lifts_a_figure_out_of_its_scope: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_extractor_lifts_a_figure_out_of_its_scope" as NonEmptyStr,
+
+  receipts: [
+    "**a scripted extractor manufactures a subject the source does not support** (a conversion driven by pattern-matching a NUMERAL AND A UNIT out of an authored prose field, where the field also carries the SUBJECT and SCOPE that figure was stated under, and the pattern parses neither). The lifted number is then written into a typed row as a fact about the wrong subject, and it typechecks, because the type system was never told which subject the figure belonged to. ",
+
+    "SPECIMEN (2026-09-09, keen-newt-324, PR #10865). Migrating 48 CabinetDensityClaim construction sites across 29 colo modules, a regex classifier partitioned DensityUnread rows into no-figure-published and figure-read-but-unrepresentable by scanning each row's obligation string. It read 365 Data Centers' \"4 x 180 kW\" and TierPoint Bethlehem's \"Two 600 kW redundant generators\" as CABINET DENSITIES. Those are GENERATOR CAPACITY. This is the same class #10863 landed -- facility megawatts were never cabinet kilowatts -- and it recurs because a building's power and a cabinet's are spelled identically as a number followed by kW inside one prose field. ",
+
+    "THE PART THAT MAKES THIS FILEABLE RATHER THAN A SCRIPT BUG: every row the extractor would have wrongly converted contains, IN ITS OWN OBLIGATION STRING, an explicit written refutation of exactly the inference the script drew from that same string. hivelocity_jfk1_density says in terms \"Do not carry the Orangeburg figure to Newark\". summit_secaucus_density's two figures sit inside a block headed \"Limited Time: Chicago-Area Facility\" and are not stated for Secaucus. lumen_cabinet_density is a portfolio range that names no individual site and whose obligation says so. centersquare_cabinet_density is watts per SQUARE FOOT at cage grain, not cabinet grain. So the corpus already held the refutation of every wrong conversion, in the field being read, and the extractor read past all four because a scope qualifier is prose and a numeral is a token. ",
+
+    "AN INSTRUMENT THAT READS A FIELD IS NOT READING THE FIELD'S MEANING, and fluency of extraction is inversely related to how visible that gap is. The obligation exists BECAUSE the fact is not mechanically decidable; a keyword inside it is as likely to belong to the caveat, the resolve trigger, or a neighbouring facility as to the claim. A classifier keyed on those tokens therefore converts WARNINGS INTO ASSERTIONS systematically, not occasionally, and it converts them in the confident direction. ",
+
+    "SCALE IS THE PRESSURE AND IS NOT EVIDENCE. \"48 sites across 29 files is not a hand edit\" is what makes the script feel forced, and it says nothing about whether the distinction is mechanical. The safe decomposition is available at any scale: migrate the whole population MECHANICALLY into the arm that asserts nothing new (here NoPublishedSurface, which preserves the status-quo meaning of every row), and promote into the CLAIMING arm only by hand-audited allowlist. 34 of 48 were pure re-nesting; only 14 needed judgement. ",
+
+    "SECOND TELL, CHEAP AND DETECTABLE, POINTING AT THE EXPENSIVE ONE: the same extractor's single-quote capture split an English apostrophe, corrupting csr_orny1_density's verbatim wording to \"High density 10KW + per cabinets; s own, so this i\" by matching from the apostrophe in \"the operator's own\". An extractor that splits an apostrophe is operating BELOW THE GRAIN of the thing it extracts -- and here it was also operating below the grain of the CLAIM. The visible corruption and the invisible misattribution have one root, so the apostrophe is worth treating as a positive signal that the subject-scope defect is present too. ",
+
+    "TWO INSTRUMENT SIGNALS FIRED FIRST AND WERE NEARLY MISSED: the first pass matched 7 of 51 sites and the second matched 0 of 51, both because a literal-shape assumption (a trailing comma; a citation spelled www.) was wrong. A partition that returns suspiciously CLEAN, or EMPTY, is the instrument failing rather than the population being tidy. Printing the extracted value for every row -- not the counts -- is what surfaced both the apostrophe corruption and the four false positives; neither was visible in any count. ",
+
+    "SECOND SPECIMEN, INDEPENDENT AUTHOR, SAME HOUR (2026-09-09, bright-swift-678). Told about the first specimen, that lane built an awk classifier over its own 42 DensityUnread rows to CROSS-CHECK the hand classification - and it failed in THREE different directions on three row families. (a) FALSE NEGATIVE FROM A TRUNCATED READ: it examined only the first line after each declaration and reported Equinix NY1-NY7 as no-surface, missing a real \"Minimum Cabinet Density\" \"2kVA\" figure sitting deeper in the string. (b) FALSE POSITIVE FROM A NUMERAL WITH NO SUBJECT: it read TierPoint's \"three 1.5 MW generators\" and \"fifteen 2.5 MW plus eight 2 MW generators\" as cabinet density - reproducing the first specimen's exact failure, in rows whose own text denies a per-cabinet density in the same sentence. (c) FALSE POSITIVE FROM A PHRASE WHOSE SUBJECT IS ANOTHER ENTITY: halsey_165_cabinet_density's obligation contains \"DataBank's suite page is the only surface in the building that states a per-cabinet figure at all\", a clause explicitly scoping the figure AWAY from this row and onto a different operator; the matcher saw \"per-cabinet figure\" and concluded one had been read here. ",
+
+    "THE OBVIOUS REPAIR IS REFUTED BY ITS OWN SPECIMENS, WHICH IS THE MOST USEFUL THING THIS ROW CARRIES. Only (a) is truncation. (b) and (c) are SCOPE failures and would survive any amount of \"read more of the string\" - an extractor that read the WHOLE obligation still gets TierPoint and halsey_165 wrong. So the defect is not resolution and cannot be fixed by widening the window: SUBJECT AND SCOPE ARE NOT CARRIED BY THE NUMERAL, and an instrument that sees only numerals cannot recover them at any read length. This is why the trigger below is a carrier capability rather than a better parser. ",
+
+    "AND THE HAND READ IS NOT THE ANSWER EITHER, only the cheaper wrong-avoider. A human recovers the scope because a human parses the caveat - ONCE, unrepeatably, with no receipt, and the next author reading the same field gets no help from the fact that someone already did it correctly. That asymmetry is the whole argument for the trigger: the repair must make the scope inseparable from the figure in the CARRIER, not add diligence to the reader. ",
+
+    "WHERE THE TRIGGER STANDS TODAY, recorded because this row's own first citation went stale within hours of being written and the wall caught it. The repair first attempted at the CLAIM grain - a typed cause distinguishing read-but-unholdable from no-surface - was deleted when #10888 landed the vocabulary one level down, and that PR is the closer approach to this row's trigger: PublishedDensityFigure carries medium, wording, citation and verification BESIDE the quantity, so a figure lifted out of an obligation arrives with the subject and scope it was stated under rather than as a bare numeral. QuantityUnreadable is its refusal arm for a publication that forms no holdable quantity. The trigger is not yet fully fired: nothing prevents an AUTHOR from typing a figure under the wrong subject, so the class remains mitigatable and the ceiling stands where it was. ",
+
+    "RECOGNITION RULE: A SCRIPTED CONVERSION OVER AUTHORED PROSE WHOSE SOURCE ROWS CARRY SCOPE QUALIFIERS THE SCRIPT DOES NOT PARSE. ",
+
+    "DISTINGUISHED FROM ITS SIBLING a_positive_control_certifies_the_defect_it_exists_to_catch: that class is a CHECK that agrees with a wrong subject; this class is an EXTRACTOR that manufactures a subject the source does not support. The sibling's defect is agreement, this one's is fabrication. ",
+
+    "RUNG FOUND AT: mitigatable -- caught by reading the extracted table before writing, which is authorial diligence and not a mechanism. CEILING: structurally impossible, because the defect is decidable once a figure cannot be represented apart from the subject and scope it was stated under. ",
+
+    "NEXT-RUNG TRIGGER, A CAPABILITY AND NOT AN ARTIFACT: SCOPE-BEARING EXTRACTION -- a reading carrier in which a figure cannot be lifted out of an obligation without carrying the subject (which facility) and the scope (which grain, which metro, which promotional block) it was stated under, so that writing it against a different subject has no constructor. \"Hand-audit next time\" is not the trigger, because next time is a different author.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.colo.types", decl_name: "PublishedDensityFigure", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.colo.hivelocity", decl_name: "hivelocity_jfk1_density", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.colo.summit", decl_name: "summit_secaucus_density", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.colo.lumen", decl_name: "lumen_cabinet_density", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.colo.centersquare", decl_name: "centersquare_cabinet_density", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.colo.critical_systems_realty", decl_name: "csr_orny1_density", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.colo.halsey_165", decl_name: "halsey_165_cabinet_density", field: WholeDeclaration },
+  ],
+}

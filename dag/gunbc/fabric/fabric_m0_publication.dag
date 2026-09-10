@@ -1,0 +1,79 @@
+module gunbc.fabric_m0_publication
+
+import std.types { List }
+import std.content_hash { Sha256Digest }
+import std.scoped_authorization { AttemptIdentity }
+import product.fabric.work {
+  Work,
+  resolve_output_obligations,
+  ObligationsJudgedAtAdmissionGate,
+}
+import gunbc.fabric_m0_completion {
+  ComputationOutcome,
+  CommittedOutput,
+  OriginObservation,
+  ManifestMember,
+  JobPublication,
+}
+import gunbc.fabric_m0_commit {
+  CommitNamespace,
+  CommitTransportOutcome,
+  ManifestReadbackObservation,
+  publish_after_commit,
+}
+
+// DECLARED FRONTIER, not a closed consumer (DESIGN 3c).
+//
+// What this fold buys over the pre-change state: it names the join point
+// so the capability trigger has a subject (Work + resolve at the
+// admission gate + publish_after_commit) instead of an unnamed future
+// caller of publish_after_commit. It returns JobPublication unchanged --
+// a second admission coproduct beside that type would nickname the
+// decision and drop unresolved obligation verdicts.
+//
+// This join holds a run's Work, resolves that Work's obligations at the
+// admission gate, and returns the publication the completion authority
+// produces. Nothing here selects an origin or a cache -- those are sibling
+// lanes. The commit transport and the origin observations are received, never
+// invented.
+//
+// TODAY this fold is reached by enrolled witnesses and by no job-ending.
+// The required-CI run path that reports job success is claim_executor
+// --required-ci: phase failures accumulate, then the process exit maps to a
+// GitHub check via floor_exit_to_check_conclusion. That ending never constructs
+// CommitTransportOutcome or ManifestReadbackObservation. Wiring it through
+// this join without an independent origin readback would refuse every green
+// job (ReadbackUnknown) or fabricate DurableOriginRead. The missing
+// capability is named on gunbc.fabric_m0_commit publish_after_commit.
+
+fn publish_work<P>(
+  work: Work<P>,
+  attempt: AttemptIdentity,
+  computation: ComputationOutcome,
+  committed: List<CommittedOutput>,
+  observations: List<OriginObservation>,
+  namespace: CommitNamespace,
+  manifest_digest: Sha256Digest,
+  members: List<ManifestMember>,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation
+) -> JobPublication {
+  publish_after_commit(
+    namespace: namespace,
+    attempt: attempt,
+    computation: computation,
+    resolution: resolve_output_obligations(
+      contract: work.contract,
+      requirements: work.requirements,
+      work_key: work.id.key,
+      judgment: ObligationsJudgedAtAdmissionGate,
+    ),
+    judged_work: work.id.key,
+    committed: committed,
+    observations: observations,
+    manifest_digest: manifest_digest,
+    members: members,
+    transport: transport,
+    observed: observed
+  )
+}
