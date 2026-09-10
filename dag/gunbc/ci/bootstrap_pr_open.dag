@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, HttpStatus }
 
 import std.credentials { CredentialSource, EnvVar }
 import extdeps.github.pulls
+import extdeps.github.pulls { PullRequestState, Open, Closed }
 import extdeps.github.commits
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -179,6 +180,16 @@ data bootstrap_pr_body: String = "Opened by the Actions job credential, so this 
 // before the postconditions do. The close on mismatch is not tidiness: the create has already
 // happened by the time any axis can be tested, so a launcher that merely exits non-zero leaves
 // standing exactly the misattributed pull request it declined to vouch for.
+// A DECLARED DEFAULT EXPANDS AT THE CALL SITE, so it resolves in THIS module's scope rather than
+// in the one that declared it. github.Pulls.List declares `state: PullRequestState = Open`, and
+// the first dispatch of this entry refused at evaluation with NoSuchVariable { name: "Open" }
+// AFTER A CLEAN COMPILE -- a bare module import does not bring the variants in, and nothing in the
+// call named them. So the variants are imported explicitly and state is PASSED rather than
+// defaulted, which makes the dependency visible instead of latent.
+//
+// THE WITNESSES COULD NOT HAVE CAUGHT THIS. All eight cover the pure decision functions, which
+// call no operation; the failure lived entirely in the wet entry's argument evaluation. Compiling
+// is not executing, and a green witness set over one layer says nothing about the other.
 func bootstrap_pr_open_wet() -> ProcessExit {
   let owner = gunbc_repository.owner as String
   let repo = gunbc_repository.name as String
@@ -194,6 +205,7 @@ func bootstrap_pr_open_wet() -> ProcessExit {
     auth_token: bootstrap_pr_credential,
     owner: owner,
     repo: repo,
+    state: Open,
   )
   let open_on_branch = count(filter(listed.pulls, p => p.head.ref as String == bootstrap_pr_head_branch as String))
 

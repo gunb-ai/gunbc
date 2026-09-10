@@ -1,0 +1,116 @@
+module gunbc.machine_intake_mtcollins1_boot_image_fetch
+
+import std.types { NonEmptyStr, String }
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir, mtcollins1_diskless_image_name }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import gunbc.machine_intake_boot_image_fetch {
+  BootImageAdmitted,
+  BootImageDigestMismatchRefused,
+  BootImageDigestUnreadable,
+  BootImageFetchFailed,
+  BootImageFetchOutcome,
+  BootImagePublishFailed,
+  BootImagePublishedDigestMismatch,
+  BootImagePublicationNotAdmitted,
+  fetch_verified_boot_image,
+}
+
+// THE POLICY LAYER FOR ONE HOST'S BOOT IMAGE. Which artifact this unit should carry, and where the
+// controller reads it from, are workflow decisions; the operation stays reusable.
+//
+// THE URL AND THE PIN ARE THE SAME ROW UPSTREAM. extdeps.provisioning.ubuntu_install_media
+// noble_numbat_2404_3_live_server_arm64 carries content_sha256 cited to cdimage's own SHA256SUMS,
+// and the artifact this lane already booted measured exactly that value. The digest below is that
+// same figure; when the artifact row grows a locator field this policy should read both from it
+// rather than carrying either.
+data mtcollins1_boot_image_url: NonEmptyStr = "https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso"
+
+data mtcollins1_boot_image_sha256: NonEmptyStr = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
+
+// NEITHER THE STAGING PATH NOR THE PUBLISHED PATH IS AUTHORED HERE ANY MORE, and both absences are
+// the point. The staging path used to sit beside the destination as an independent literal, which
+// made the atomicity of the publish a property of two constants agreeing about a filesystem — true
+// on this host and unenforced; gunbc.machine_intake_boot_image_fetch now derives it from the
+// destination. The published path used to be a literal spelling an image name that a DIFFERENT
+// module also spelled, with nothing joining them;
+// gunbc.machine_intake_mtcollins1_boot_artifact now owns that name and composes the path from it.
+//
+// SO THIS MODULE AUTHORS ONLY WHAT IS GENUINELY ITS OWN: where the release is fetched from and what
+// its bytes must hash to. Everything about WHERE it lands is derived.
+
+fn mtcollins1_render_fetch(outcome: BootImageFetchOutcome) -> ProcessExit {
+  match outcome {
+    BootImageAdmitted { path: _, digest: _ } => ExitSuccess
+    BootImageFetchFailed { url: u } =>
+      exit_failure(reason: concat("mtcollins1 boot image: fetch failed for ", u as String))
+    BootImageDigestUnreadable { path: p, reason: r } =>
+      exit_failure(reason: concat("mtcollins1 boot image: staged at ", p as String, " but its digest could not be read: ", r))
+    BootImageDigestMismatchRefused { expected: e, observed: o } =>
+      exit_failure(reason: concat("mtcollins1 boot image: REFUSED, staged bytes digest ", o as String, " does not match the pinned ", e as String, "; the staged file is left in place as the evidence and was NOT published"))
+    BootImagePublishFailed { staged: s, destination: d } =>
+      exit_failure(reason: concat("mtcollins1 boot image: digest agreed but publishing ", s as String, " to ", d as String, " failed"))
+    BootImagePublicationNotAdmitted { export_dir: d, reason: r } =>
+      exit_failure(reason: concat("mtcollins1 boot image: the artifact verified but publication into ", d as String, " was NOT admitted: ", r))
+    BootImagePublishedDigestMismatch { path: p, expected: e, observed: o } =>
+      exit_failure(reason: concat("mtcollins1 boot image: the move reported success but ", p as String, " now holds ", o as String, " rather than the verified ", e as String, "; the export does NOT contain what this program published and the unit must not be booted from it until that is explained"))
+  }
+}
+
+func mtcollins1_fetch_boot_image() -> ProcessExit
+  uses net: std.resources.Network
+{
+  return mtcollins1_render_fetch(
+    outcome: fetch_verified_boot_image(
+      url: mtcollins1_boot_image_url,
+      export_dir: mtcollins1_boot_export_dir,
+      image_name: mtcollins1_diskless_image_name,
+      expected_sha256: mtcollins1_boot_image_sha256,
+    )
+  )
+}
+
+// THE DISCRIMINATING RED. Same artifact, same paths, a pin that cannot match. If this returns
+// success the verification is decorative, and the wrong-pin case is the one that matters: a
+// mismatched image reaching the export is exactly the failure the staging split exists to prevent.
+// It publishes to a path the controller does NOT read, so a defect in the wall cannot put an
+// unverified artifact where the unit would boot it.
+data mtcollins1_wrong_pin: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000"
+
+data mtcollins1_wrong_pin_export_dir: NonEmptyStr = "/var/tmp"
+
+func mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
+  uses net: std.resources.Network
+{
+  return mtcollins1_render_fetch(
+    outcome: fetch_verified_boot_image(
+      url: mtcollins1_boot_image_url,
+      export_dir: mtcollins1_wrong_pin_export_dir,
+      image_name: mtcollins1_diskless_image_name,
+      expected_sha256: mtcollins1_wrong_pin,
+    )
+  )
+}
+
+// THE DISCRIMINATING RED FOR THE OWNERSHIP GATE, and it is a different one from the wrong-pin
+// control above. That control refuses at the DIGEST, so it never reaches the write boundary and
+// establishes nothing about who may write there. This one supplies the CORRECT pin -- so the
+// artifact verifies and the run arrives at the publish with everything about the bytes in order --
+// and points the export at a directory owned by root. If it succeeds, the admission is decorative.
+//
+// /var/tmp IS THE RIGHT CHOICE rather than an arbitrary one: it is root-owned on this host and
+// world-writable by mode, which is exactly the configuration that makes an ownership check look
+// unnecessary. The move would succeed there. Only the admission stops it.
+data mtcollins1_unowned_export_dir: NonEmptyStr = "/var/tmp"
+
+func mtcollins1_fetch_boot_image_unowned_export_control() -> ProcessExit
+  uses net: std.resources.Network
+{
+  return mtcollins1_render_fetch(
+    outcome: fetch_verified_boot_image(
+      url: mtcollins1_boot_image_url,
+      export_dir: mtcollins1_unowned_export_dir,
+      image_name: mtcollins1_diskless_image_name,
+      expected_sha256: mtcollins1_boot_image_sha256,
+    )
+  )
+}

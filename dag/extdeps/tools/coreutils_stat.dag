@@ -1,0 +1,134 @@
+module extdeps.tools.coreutils_stat
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.access.posix { FileOwnership }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+
+// OBSERVING WHO OWNS A PATH, as a modeled operation. extdeps.access.posix owns the CONCEPT --
+// FileOwnership is a uid and a gid, cited to the Open Group's sys/stat.h -- and this module is one
+// transport realizing an observation of it, through the coreutils stat(1) utility. The split is the
+// usual one: a future realization reading stat(2) directly, or reading a remote host's ownership
+// over a transport, binds to the same shape rather than replacing this.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/stat-invocation.html"
+  }
+}
+
+// THE FORMAT STRING IS THE CONTRACT AND IT IS DELIBERATELY NUMERIC-FIRST. %u and %g are the uid and
+// gid; %U and %G are the names the local name service resolves them to. Both are taken because they
+// answer different questions and a consumer needs both: an admission decision that keys on the
+// NUMBER is the one that stays correct when a name lookup fails or resolves differently on another
+// host, while the NAME is what a refusal has to print for anyone to act on it.
+//
+// A COLON IS SAFE AS THE FIELD SEPARATOR HERE, unlike in most path contexts, because none of the
+// four fields can contain one: uid and gid are decimal, and a POSIX login name is restricted to the
+// portable filename character set, which excludes the colon. That is a property of the fields, not
+// an assumption about the data, which is why the separator is not a configurable parameter.
+service coreutils.Stat {
+  operation PathOwnership {
+    input { path: NonEmptyStr }
+    output {
+      line: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%u:%g:%U:%G", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "stat could not read the path"
+    }
+  }
+}
+
+// AN UNREADABLE PATH IS A REFUSAL, NOT AN OWNERSHIP OF NOBODY, for the same reason an unreadable
+// digest is not the digest of nothing. A path that could not be observed must never be folded into
+// a record that reads as an observation, because the whole value of an ownership admission is that
+// something looked.
+type PathOwnershipObservation
+  = PathOwnershipObserved {
+      path: NonEmptyStr
+      ownership: FileOwnership
+      owner_name: NonEmptyStr
+      group_name: NonEmptyStr
+    }
+  | PathOwnershipUnobservable { path: NonEmptyStr, reason: String }
+
+fn stat_field(line: String, index: Int) -> String? {
+  get(xs: split(s: trim(s: line), delimiter: ":"), index: index)
+}
+
+// parse_int RETURNS AN OPTION AND THE ABSENT ARM IS TAKEN SERIOUSLY, rather than being collapsed
+// to a zero the way the one other consumer of it in this repository does. A uid defaulted to 0 is
+// not a neutral placeholder here: 0 IS ROOT, so an unparseable field would arrive at the admission
+// as the single most privileged answer available. That is the fabricated-plausible-output failure
+// aimed directly at the check this observation exists to feed.
+//
+// THE PARSE REFUSES ON ANY MISSING OR EMPTY FIELD rather than defaulting one. A missing owner name
+// defaulted to the empty string would compare unequal to every declared principal and so present as
+// a WRONG-OWNER refusal -- naming a principal, sending the reader to check an account -- when what
+// actually happened is that the observation failed. Those have different remedies, so they get
+// different arms.
+fn coreutils_stat_path_ownership(path: NonEmptyStr) -> PathOwnershipObservation
+{
+  let observed = coreutils.Stat.PathOwnership(path: path)
+  if observed.success == false {
+    PathOwnershipUnobservable { path: path, reason: "stat could not read the path" }
+  } else {
+    match stat_field(line: observed.line, index: 0) {
+      Absent => PathOwnershipUnobservable { path: path, reason: "stat printed no uid field" }
+      Present { value: uid_text } =>
+        match stat_field(line: observed.line, index: 1) {
+          Absent => PathOwnershipUnobservable { path: path, reason: "stat printed no gid field" }
+          Present { value: gid_text } =>
+            match stat_field(line: observed.line, index: 2) {
+              Absent => PathOwnershipUnobservable { path: path, reason: "stat printed no owner-name field" }
+              Present { value: owner } =>
+                match stat_field(line: observed.line, index: 3) {
+                  Absent => PathOwnershipUnobservable { path: path, reason: "stat printed no group-name field" }
+                  Present { value: group } =>
+                    coreutils_stat_ownership_record(
+                      path: path,
+                      uid_text: uid_text,
+                      gid_text: gid_text,
+                      owner: owner,
+                      group: group,
+                    )
+                }
+            }
+        }
+    }
+  }
+}
+
+fn coreutils_stat_ownership_record(
+  path: NonEmptyStr,
+  uid_text: String,
+  gid_text: String,
+  owner: String,
+  group: String,
+) -> PathOwnershipObservation {
+  if owner.length() == 0 || group.length() == 0 {
+    PathOwnershipUnobservable { path: path, reason: "stat printed an empty ownership name field" }
+  } else {
+    match parse_int(s: uid_text) {
+      Absent =>
+        PathOwnershipUnobservable { path: path, reason: "stat printed a uid field that is not an integer" }
+      Present { value: uid } =>
+        match parse_int(s: gid_text) {
+          Absent =>
+            PathOwnershipUnobservable { path: path, reason: "stat printed a gid field that is not an integer" }
+          Present { value: gid } =>
+            PathOwnershipObserved {
+              path: path,
+              ownership: FileOwnership { uid: uid, gid: gid },
+              owner_name: owner as NonEmptyStr,
+              group_name: group as NonEmptyStr,
+            }
+        }
+    }
+  }
+}
