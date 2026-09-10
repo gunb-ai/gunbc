@@ -104,6 +104,14 @@ import v2.workflow.compile_door_ledger { FatalGrain, cause_ownership_lookup }
 // grain-keyed lookup and the fatal-grain rows on this base it is an ordinary executing route whose
 // red is authorable: a row naming a cause the ledger does not own at fatal grain turns it false.
 //
+// THE JOIN RUNS IN ONE DIRECTION ONLY, AND THE OTHER IS NOT ASSERTABLE. Every terminal cause here must
+// be owned by the ledger at fatal grain - that direction is a real obligation and is checked. The
+// converse is FALSE and asserting it would be a defect: the ledger owns fatal-grain causes this table
+// does not carry, because the closure simply does not reach them - resolve and infer causes among
+// them, which refuse whole-corpus modules the compiler's own closure never hits. A witness demanding
+// the reverse would go red on a correct table and would be pressure to pad this roster with causes
+// nobody measured here.
+//
 // WHY THIS PARTICULAR CONSUMER AND NOT A CONVENIENT ONE. It joins against an INDEPENDENT authority, so
 // unlike every other witness over this table it can go red because a DIFFERENT module changed - the
 // door ledger retiring a cause, or this table naming one the ledger never owned. That is the

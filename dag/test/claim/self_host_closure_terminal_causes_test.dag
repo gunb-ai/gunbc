@@ -18,6 +18,7 @@ import gunbc.tools.self_host_closure_terminal_causes {
   every_disagreeing_join_names_its_members,
   every_shortcut_join_isolates_what_it_claims,
   every_terminal_reason_is_owned_by_the_door_ledger,
+  terminal_reason_owned_at_fatal_grain,
   front_end_causes,
   rows_for_path
 }
@@ -169,4 +170,28 @@ test fn every_shortcut_join_isolates_the_variable_it_names() -> Bool {
 // indistinguishable from not having looked.
 test fn every_recorded_disagreement_names_its_members() -> Bool {
   every_disagreeing_join_names_its_members()
+}
+
+// THE JOIN'S NEGATIVE CONTROLS, ENROLLED RATHER THAN RUN ONCE. A cross-authority join that can only
+// return true is not a join, and the guarantee ladder keeps a discriminating red enrolled beside the
+// green rather than retiring it once it has been seen. These are the two ways this fold must be able
+// to refuse.
+//
+// FIRST: a symbol the ledger owns at no grain at all. This is the stable arm - it proves the fold can
+// return false, and nothing short of someone adding that exact symbol to the ledger can disturb it.
+test fn the_ledger_join_refuses_a_cause_it_does_not_own() -> Bool {
+  !terminal_reason_owned_at_fatal_grain(reason: ^not_a_frontier_cause)
+}
+
+// SECOND, AND THE ONE THAT MATTERS: a cause the ledger DOES own, but at HEAD grain only. If this fold
+// ever degraded into a membership check that ignored grain, the first control would stay green and
+// only this one would catch it - and grain is the whole distinction this table is built on, since the
+// head reason is the same symbol on almost every row.
+//
+// It is deliberately coupled to the ledger's content. Should the ledger ever give resolve_ambiguous_
+// export a fatal-grain row, this goes red - and that red is correct rather than a nuisance: it says
+// the control has stopped being a grain control and needs re-basing on whatever is head-grain-only
+// then.
+test fn the_ledger_join_refuses_a_cause_owned_only_at_head_grain() -> Bool {
+  !terminal_reason_owned_at_fatal_grain(reason: ^resolve_ambiguous_export)
 }
