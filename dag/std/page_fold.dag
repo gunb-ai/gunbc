@@ -3,6 +3,7 @@ module std.page_fold
 import std.types { NonEmptyStr, Int, Bool, List, String }
 import std.integer { PositiveInt, NonNegativeInt }
 import extdeps.uri { Uri, uri_wire }
+import v2.std.algebra { fold_list }
 
 // THREE CLAIMS, NOT ONE, AND CONFLATING THEM IS WHY THIS MODULE DID NOT EXIST FOR SO LONG.
 //
@@ -482,10 +483,10 @@ fn page_fold_run<I>(
   pages: List<PageObservation<I>>
 ) -> PageFoldOutcome<I> {
   page_fold_finish(
-    state: fold(
-      pages,
-      init: page_fold_begin(subject: subject, bound: bound, first: first),
-      f: fn(st, p) { page_fold_observe(state: st, page: p) }
+    state: fold_list(
+      xs: pages,
+      empty: page_fold_begin(subject: subject, bound: bound, first: first),
+      cons: fn(st, p) { page_fold_observe(state: st, page: p) }
     )
   )
 }
