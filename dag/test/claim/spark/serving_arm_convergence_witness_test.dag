@@ -161,13 +161,24 @@ test fn a_goal_whose_checkpoint_has_no_row_refuses() -> Bool {
 
 // ── KNOWING WHAT TO DO IS NOT PERMISSION TO DO IT ─────────────────────────────────────────────
 //
-// The native launch is correct as a remedy and inadmissible as an action, on two independent grounds at
-// once: the checkpoint is not present on the ranks and nobody has granted the launch. Both are named, so
-// clearing one does not silently look like clearing both.
+// THESE TWO ROWS ARE ABOUT THE WEIGHTS-AND-GRANT GATE AND NOTHING ELSE, so they use an arm that is
+// otherwise ADMISSIBLE. They were written against the native arm and went red in CI when a third
+// admission wall landed in gunbc.spark.serving_arm -- the native checkpoint now contributes its own
+// obligation, because the runtime it names has not been shown to load it, so "withheld on two grounds"
+// became three and "admitted once weights and a grant exist" became never.
+//
+// THE WALL WAS RIGHT AND THESE ROWS WERE MEASURING THROUGH IT. A control whose fixture can acquire an
+// extra obligation from an unrelated gate is not testing the gate it names, which is the same defect as a
+// positive control that can fail for a reason outside its subject. The EXL3 arm isolates it: that arm
+// admits, so the only obligations reaching the count are the two this row is about.
+//
+// AND CI FOUND THIS, NOT ME. The floor executes every witness in the corpus; I had re-run only the
+// controls in the files I was editing, so two rows in a file I had not touched since the wall landed
+// stayed red until a lane that does not share my assumptions evaluated 3,641 of them.
 test fn a_correct_remedy_is_withheld_without_weights_and_a_grant() -> Bool {
   match admit_arm_actuation(
-    goal: native_tp4_goal,
-    remedy: remedy_for(goal: native_tp4_goal, reading: ArmNothingRunning { detail: "nothing serving" as NonEmptyStr }),
+    goal: canary_goal,
+    remedy: remedy_for(goal: canary_goal, reading: ArmNothingRunning { detail: "nothing serving" as NonEmptyStr }),
     weights_present_on_every_rank: false,
     launch_granted: false,
   ) {
@@ -180,13 +191,30 @@ test fn a_correct_remedy_is_withheld_without_weights_and_a_grant() -> Bool {
 // everything. With the weights present and the launch granted, the same remedy is admitted.
 test fn the_same_remedy_is_admitted_once_weights_and_a_grant_exist() -> Bool {
   match admit_arm_actuation(
-    goal: native_tp4_goal,
-    remedy: remedy_for(goal: native_tp4_goal, reading: ArmNothingRunning { detail: "nothing serving" as NonEmptyStr }),
+    goal: canary_goal,
+    remedy: remedy_for(goal: canary_goal, reading: ArmNothingRunning { detail: "nothing serving" as NonEmptyStr }),
     weights_present_on_every_rank: true,
     launch_granted: true,
   ) {
     ArmActuationAdmitted { remedy: _ } => true
     ArmActuationWithheld { obligations: _ } => false
+  }
+}
+
+// AND THE THIRD OBLIGATION IS ASSERTED DELIBERATELY RATHER THAN BEING AN ACCIDENT OF ANOTHER ROW'S
+// FIXTURE. The native arm on a runtime that has not been shown to load its checkpoint contributes an
+// obligation of its own, so even with weights present and a grant in hand it is withheld -- which is the
+// behaviour that would have prevented the 2026-09-10 outage, and is now something a reader can see
+// asserted instead of inferring it from a count that changed.
+test fn the_native_arm_adds_its_own_obligation_even_with_weights_and_a_grant() -> Bool {
+  match admit_arm_actuation(
+    goal: native_tp4_goal,
+    remedy: remedy_for(goal: native_tp4_goal, reading: ArmNothingRunning { detail: "nothing serving" as NonEmptyStr }),
+    weights_present_on_every_rank: true,
+    launch_granted: true,
+  ) {
+    ArmActuationWithheld { obligations: os } => count(os) == 1
+    ArmActuationAdmitted { remedy: _ } => false
   }
 }
 
