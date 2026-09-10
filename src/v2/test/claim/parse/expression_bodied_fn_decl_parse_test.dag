@@ -9,6 +9,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node }
+import v2.std.node_query { find_arrow_body_child }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -40,13 +41,24 @@ fn g_parse_accepted(text: String, file: Symbol) -> Bool {
   }
 }
 
-fn g_normalize_accepted(text: String, file: Symbol) -> Bool {
+fn g_tree_has_arrow_body(root: Node) -> Bool {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: false, f: fn(found, e) {
+        found || g_tree_has_arrow_body(root: e.target)
+      })
+  }
+}
+
+fn g_normalize_has_arrow_body(text: String, file: Symbol) -> Bool {
   match g_tokenize_parse(text: text, file: file) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match normalize(parse_tree: tree) {
-        Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
+        Accepted { value: normalized, diagnostics: _ } =>
+          g_tree_has_arrow_body(root: normalized.root)
       }
   }
 }
@@ -72,7 +84,7 @@ test fn braced_fn_decl_still_parses_holds() -> Bool {
 }
 
 test fn braced_fn_decl_survives_normalize_holds() -> Bool {
-  g_normalize_accepted(text: braced_fn_control_source, file: ^probe_braced_fn)
+  g_normalize_has_arrow_body(text: braced_fn_control_source, file: ^probe_braced_fn)
 }
 
 test fn empty_eq_fn_decl_refuses_holds() -> Bool {
@@ -83,9 +95,9 @@ test fn empty_eq_fn_decl_refuses_holds() -> Bool {
 }
 
 test fn expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
-  g_normalize_accepted(text: expression_bodied_fn_source, file: ^probe_expr_fn)
+  g_normalize_has_arrow_body(text: expression_bodied_fn_source, file: ^probe_expr_fn)
 }
 
 test fn expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
-  g_normalize_accepted(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+  g_normalize_has_arrow_body(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
 }

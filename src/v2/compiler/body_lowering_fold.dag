@@ -1715,8 +1715,7 @@ fn body_lower_body_subtree_lower_rest(captured: Node) -> Outcome<Optional<Node>>
 
 fn body_lower_node_is_eq_token(n: Node) -> Bool {
   match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: n)) {
-    Present { value: id } =>
-      (id == ^dag_token_eq) || (symbol_lexeme(sym: id) == "=")
+    Present { value: id } => id == ^dag_token_eq
     Absent => false
   }
 }
@@ -1775,11 +1774,7 @@ fn body_lower_body_from_fn_captured(captured: Node) -> Outcome<Optional<Node>> {
     ParseSubtreeAbsent =>
       match body_lower_body_after_eq_token(captured: captured) {
         Present { value: expr } => body_lower_eq_expr_to_body(expr: expr)
-        Absent =>
-          match body_lower_last_child_optional(n: captured) {
-            Present { value: last } => body_lower_eq_expr_to_body(expr: last)
-            Absent => outcome_accepted(value: optional_absent())
-          }
+        Absent => outcome_accepted(value: optional_absent())
       }
   }
 }
