@@ -47,13 +47,6 @@ import v2.workflow.floor_route_gap { floor_route_gap_roster }
 // all cite this declaration; no second spelling of the job name anywhere.
 data required_v2_native_job_name: String = "required-v2-native"
 
-// THE EMITTED CRATE'S RUSTFLAGS ARE THIS ROW, NOT THE RUNNER'S AMBIENT. Seed cargo for the
-// required floor exports RUSTFLAGS=-D warnings for the SEED crate; inheriting that into the
-// emitted compiler made the receipt true only on CI runners. The native lane's cargo invocation
-// sets this value explicitly (and clears CARGO_ENCODED_RUSTFLAGS so an encoded ambient cannot
-// override it). Authority cited by the host harness, not transcribed into a second string there.
-data native_lane_emitted_compiler_rustflags: String = "-D warnings"
-
 // THE UNIVERSE IS A PREFIX, NOT A ROSTER. The population is DERIVED from the tree's test
 // discovery by prefix membership — a hand-listed roster would silently drift from the tree it
 // claims to cover. The prefix is the same `v2.test.` the required floor gates on
@@ -460,23 +453,6 @@ type NativeRouteOldRouteControl
 // reclassification's join key, carried so admission can re-ask the join, not trust it); the
 // OBSERVED population; the per-file front-end refusals the collecting fold gathered; and every
 // control.
-// OPERABILITY THE JOB MUST PRINT, AND THE RECEIPT MUST CARRY. Identities already on the
-// receipt (emitted_closure_identity, executable_identity) are the order-insensitive closure
-// digest and the emitted binary digest. The rest is the cargo invocation's own facts plus the
-// HostBudget standing: the lane runs under the runner slot's cgroup (gunbc.ci_floor_measurement
-// gunbc_ci_runner_cgroup_memory_cap) and the receipt names the live reading against that budget.
-type NativeRouteOperability {
-  cargo_command: String
-  effective_rustflags: String
-  rustc_identity: String
-  cargo_exit_status: Int
-  warning_count: Int
-  route_wall_ms: Int
-  peak_rss_bytes: Optional<Int>
-  admitted_budget_bytes: Optional<Int>
-  budget_source: String
-}
-
 type NativeRouteReceipt {
   job: String
   tested_tree: String
@@ -492,7 +468,6 @@ type NativeRouteReceipt {
   true_control: Optional<NativeTestVerdict>
   malformed_control: NativeRouteMalformedControl
   old_route_control: NativeRouteOldRouteControl
-  operability: NativeRouteOperability
 }
 
 // ADMISSION IS THE CONTRACT, ONE AUTHORITY, ONE CLAUSE PER PREDICATE. The job greens only when

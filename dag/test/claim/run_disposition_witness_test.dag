@@ -186,14 +186,14 @@ test fn w_RED_a_replacement_created_after_the_cancel_is_never_superseded() -> Bo
 // AVAILABILITY DOMINATES THE OBSERVATION, WHICH IS A STRICTLY STRONGER STATEMENT THAN ABSENCE.
 //
 // The two main-branch specimens in the measured window are cancelled push runs. A push cannot be
-// superseded under the fixture policy, because that policy's running axis is
-// `SupersedeRunningForEvent { event: pull_request }` and a push is not that event. The live
-// workflow additionally keeps `NeverSupersedeRunning` (jobserver permit leak). The group is
-// `witness_floor_concurrency_group` (`github.event.pull_request.number || github.ref`), so two
-// main pushes SHARE a group; pending replacement can drop a not-yet-started successor, but an
-// in-flight main run is not cancelled. This asserts that ordering by handing a push run the MOST
-// benign-looking evidence available (a positive-lag replacement) and requiring it to still
-// classify external.
+// superseded, because the emitted `concurrency.group` is
+// `witness-floor-${{ github.event.pull_request.number || github.run_id }}` and a push carries no
+// pull_request number, so it falls back to `run_id` and every push run is ALONE IN ITS GROUP. The
+// reason is the group expression, NOT `cancel-in-progress`, which witnesses.yml sets to an
+// UNCONDITIONAL `false` for every event -- so those runs are not merely unexplained, they are
+// structurally incapable of the benign explanation. This
+// asserts that ordering by handing a push run the MOST benign-looking evidence available (a
+// positive-lag replacement) and requiring it to still classify external.
 test fn w_RED_a_push_cancel_is_external_even_with_a_prior_replacement() -> Bool {
   let push = cancelled_run(event: "push")
   let d = classify_run_under(spec: superseding_policy(), pending: ReplaceExistingPending, record: push, replacement: ReplacementObserved { lag_seconds: 27 })

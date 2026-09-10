@@ -772,84 +772,36 @@ pub(crate) fn run_cargo(
     workspace: &Path,
     attribution_symbol: &str,
 ) -> CargoVerdict {
-    run_cargo_recorded(crate_dir, workspace, attribution_symbol, None).verdict
-}
-
-pub(crate) struct CargoInvocationRecord {
-    pub verdict: CargoVerdict,
-    pub command: String,
-    pub rustflags: String,
-    pub warning_count: u32,
-}
-
-/// Same cargo as `run_cargo`, with an optional explicit RUSTFLAGS value that replaces any ambient
-/// flag-bearing variable. The native lane passes
-/// `gunbc.witness_v2_native_route` `native_lane_emitted_compiler_rustflags`.
-pub(crate) fn run_cargo_recorded(
-    crate_dir: &Path,
-    workspace: &Path,
-    attribution_symbol: &str,
-    rustflags: Option<&str>,
-) -> CargoInvocationRecord {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let manifest = crate_dir.join("Cargo.toml");
-    let command_text = format!(
-        "{cargo} build --release --manifest-path {}",
-        manifest.display()
-    );
-    let rustflags_text = rustflags.unwrap_or("").to_string();
     let mut command = std::process::Command::new(&cargo);
     command
         .arg("build")
         .arg("--release")
         .arg("--manifest-path")
-        .arg(&manifest)
+        .arg(crate_dir.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", workspace.join("target"))
         .current_dir(crate_dir);
-    if let Some(flags) = rustflags {
-        command.env_remove("CARGO_ENCODED_RUSTFLAGS");
-        command.env("RUSTFLAGS", flags);
-    }
-    let (verdict, warning_count) = match command.output() {
-        Err(e) => (
-            CargoVerdict::DidNotComplete {
-                detail: format!("spawning {cargo} failed: {e}"),
-            },
-            0,
-        ),
+    match command.output() {
+        Err(e) => CargoVerdict::DidNotComplete {
+            detail: format!("spawning {cargo} failed: {e}"),
+        },
         Ok(output) => match output.status.code() {
-            None => (
-                CargoVerdict::DidNotComplete {
-                    detail: format!("{cargo} terminated by signal without an exit status"),
-                },
-                0,
-            ),
+            None => CargoVerdict::DidNotComplete {
+                detail: format!("{cargo} terminated by signal without an exit status"),
+            },
             Some(status) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                let warning_count = stderr
-                    .lines()
-                    .filter(|line| line.trim_start().starts_with("warning:"))
-                    .count() as u32;
                 let tail: Vec<&str> = stderr.lines().rev().take(20).collect();
                 let (probe_line, probe_diagnostic) =
                     attributed_diagnostic(&stderr, attribution_symbol);
-                (
-                    CargoVerdict::Completed {
-                        status,
-                        stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
-                        probe_line,
-                        probe_diagnostic,
-                    },
-                    warning_count,
-                )
+                CargoVerdict::Completed {
+                    status,
+                    stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
+                    probe_line,
+                    probe_diagnostic,
+                }
             }
         },
-    };
-    CargoInvocationRecord {
-        verdict,
-        command: command_text,
-        rustflags: rustflags_text,
-        warning_count,
     }
 }
 

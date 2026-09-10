@@ -549,10 +549,9 @@ fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
 // ACQUISITION rather than of this composition: nothing in the required run reads the pull
 // request's current head, so no two observations can disagree. The census behind that statement:
 // no step in any emitted workflow shells to `gh api`, `gh run` or `gh pr` or curls the API; the
-// only run-metadata expressions in the emitted workflow are `github.ref` inside the witnesses
-// concurrency key (a key string, not an observation), `github.run_id` on the aggregate job's
-// env, and the usual checkout `github.sha` interpolations; and `witnesses.yml` grants
-// `contents: read` with no token in any job's env, so no such step could authenticate if it existed.
+// only run-metadata expression anywhere is `github.run_id` inside the witnesses concurrency key,
+// which is a key string and not an observation; and `witnesses.yml` grants `contents: read` with
+// no token in any job's env, so no such step could authenticate if it existed.
 //
 // THE SHAPE IS NOT NET-NEW, ONLY ITS ACQUISITION HERE IS. `extdeps.github.pulls` declares
 // `github.Pulls.Get` over a rest transport returning `PullRequest`, whose `head` carries `sha`,

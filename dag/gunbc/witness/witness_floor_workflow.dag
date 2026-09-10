@@ -216,29 +216,40 @@ data heal_generated_artifacts_job_id: String = "heal-generated-artifacts"
 // admission comparing against a name nothing produces, refusing every candidate forever.
 data witness_floor_workflow_name: String = "witnesses"
 
-// THE GROUP IS PER REF ON MAIN, PER PULL REQUEST ELSEWHERE, AND RUNNING SUPERSESSION STAYS OFF.
+// CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling 2026-08-17:
+// every push to main must finish; only pull-request runs may be superseded. The predecessor
+// collapsed both axes into one group keyed on `github.ref` with an unconditional `true`, so
+// consecutive pushes to main landed in the single group `witness-floor-refs/heads/main` and each
+// new push killed the previous commit's run -- main's floor coverage was decided by push arrival,
+// the empty-observation narrow section 5 forbids: a cancelled run reports no verdict, and no
+// verdict was being read as nothing to report.
 //
-// Pull requests still key on `github.event.pull_request.number` so synchronize events share a
-// group. Pushes, merge_group, and workflow_dispatch fall through to `github.ref` -- for main that
-// is one group `witness-floor-refs/heads/main`, not a unique `run_id` per push.
+// Setting `cancel_in_progress` false for main is NOT sufficient on its own. GitHub cancels PENDING
+// runs in a group regardless of that flag -- it only protects a run that has already started -- so
+// a main run queued behind a busy fleet could still be superseded before it executed. The group
+// must therefore be unique per main run, which `github.run_id` gives, and the flag must
+// additionally be false there so the two mechanisms agree rather than one relying on the other.
 //
-// WHY PER-REF ON MAIN, AND WHY AN IN-FLIGHT MAIN RUN IS ALLOWED TO FINISH. The 2026-08-17 unique
-// `run_id` key made every main commit start its own required run. That was the right occupancy
-// trade when the required wall was the floor lane. The required-v2-native job is a different
-// envelope: its producer is `gunbc.witness_v2_native_route` (the native-route census on the
-// required-v2-native job), and two concurrent main pushes would occupy the shared arm64 runners
-// for that whole envelope at once. Per-ref grouping serializes main. Running supersession stays
-// `NeverSupersedeRunning` because `fleet_compile_cancellation_standing` is still
-// `FleetCancellationNotSafe` -- a GitHub cancel SIGKILLs cargo and permanently leaks host jobserver
-// permits (the 2026-08-30 srv1 measurement that retired the event-expression). Pending
-// replacement (`ReplaceExistingPending`) is the other axis: GitHub drops a not-yet-started
-// same-group run when a newer one arrives, so the backlog is one in-flight plus at most one
-// queued successor, not an unbounded queue of 6h jobs and not N concurrent native jobs.
+// The cost is that N concurrent main runs may execute where one used to. That is the intended
+// trade -- coverage of every landed commit, at fleet occupancy -- and the reason the dep-info race
+// under `target/` is worth identifying before this is widened further.
 //
-// WHAT IS GIVEN UP: a main commit whose run is still PENDING when the next push arrives never
-// starts. The in-flight commit still receives a verdict. That is the occupancy decision, not
-// a silent widen of cancel-in-progress.
-data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.ref }}"
+// AND QUEUEING IS NOT THE THIRD ARM IT LOOKS LIKE. Sharing one main group with cancellation off
+// makes GitHub QUEUE same-group runs rather than drop them, which reads as coverage without
+// concurrency cost -- but the floor's merge-critical wall runs hours against a main push gap of
+// minutes (run 31672107941, the last main run to complete before the 2026-08-13 measurement), so a
+// queued policy accumulates an unbounded backlog and delivers each verdict long after the commit it
+// judges. A unique key runs them concurrently instead, which is the only arm that yields a verdict
+// per main commit at this arrival rate. This paragraph is carried here because it was the only
+// record of that measurement, and it lived in `gunbc.ci_workflow_expressions` -- a SECOND
+// concurrency authority left behind when the floor cut deleted the workflow it fed. That module's
+// note asserted main was grouped by `github.sha` and "never run_id", which is not what CI runs;
+// its rows are deleted with this one standing as the single authority.
+//
+// THE NATIVE LANE IS NOT THIS GROUP. Workflow-level uniqueness keeps build and floor verdicts
+// for every run. The required-v2-native job carries its own per-ref group
+// (v2_native_lane_concurrency_group) so a newer head cancels only that job.
+data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
 //
@@ -1749,6 +1760,25 @@ fn v2_native_lane_steps() -> List<Step> {
 
 fn v2_native_lane_needs() -> List<String> { [] }
 
+// SUPERSESSION IS THIS JOB, NOT THE WORKFLOW. Workflow-level NeverSupersedeRunning keeps
+// build and floor verdicts for every run (unique run_id group). The native job is the
+// occupancy: it holds an arm64 runner for v2_native_lane_timeout, and a newer head of the
+// SAME ref is the observation that matters. A newer main push cancels the previous main
+// native job; a newer PR synchronize cancels the previous native job for that PR number
+// only -- never another PR. cancel-in-progress is true here because leaving the old native
+// job running is the fleet saturation (every PR push claiming a runner for the envelope);
+// the jobserver-permit leak that retired workflow-level supersession still applies, and
+// this row is the occupancy exception, not a silent reopen of that leak on build/floor.
+data v2_native_lane_concurrency_group: String = "required-v2-native-${{ github.event.pull_request.number || github.ref }}"
+
+fn v2_native_lane_concurrency() -> ConcurrencySpec {
+  ConcurrencyMappingQueueNotMax {
+    group: v2_native_lane_concurrency_group,
+    cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
+    explicit_single: none
+  }
+}
+
 fn v2_native_lane_job() -> Job {
   Job {
     id: required_v2_native_job_name,
@@ -1761,7 +1791,7 @@ fn v2_native_lane_job() -> Job {
     if_condition: none,
     timeout_minutes: minute_count(v2_native_lane_timeout),
     continue_on_error: none,
-    concurrency: none,
+    concurrency: Present { value: v2_native_lane_concurrency() },
     permissions: none
   }
 }

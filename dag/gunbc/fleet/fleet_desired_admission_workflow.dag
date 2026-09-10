@@ -325,12 +325,9 @@ fn fleet_desired_admission_job() -> Job {
 // WHAT ORDERING DOES NOT COVER: THE DESIRED REF CAN MOVE BACKWARD, AND THIS IS ORDINARY RATHER
 // THAN AN EDGE CASE. An earlier revision of this annotation said reaching it "requires deliberately
 // re-running an old floor run". THAT UNDERSTATED IT AND WAS WRONG. The floor's own concurrency
-// group is `witness-floor-${{ github.event.pull_request.number || github.ref }}`, and on a
-// default-branch push there is no pull-request number, so the group is the branch ref -- main
-// runs SERIALIZE. An in-flight main run is allowed to finish (`NeverSupersedeRunning`); a
-// not-yet-started same-group run is replaced. Two merges therefore no longer start two native
-// jobs at once. The residual race is a finishing older in-flight admission versus a later
-// successor that started after it:
+// group is `witness-floor-${{ github.event.pull_request.number || github.run_id }}`, and on a
+// default-branch push there is no pull-request number, so the group is unique per run -- the floor
+// imposes NO ordering between main pushes. Two merges therefore race by construction:
 //
 //   floor(C1) starts;  floor(C2) starts
 //   floor(C2) finishes first  -> admission advances D -> C2

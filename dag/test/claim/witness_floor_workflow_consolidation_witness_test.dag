@@ -4,7 +4,7 @@ import std.types { Bool, List, String }
 import std.measure { minute_count }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, v2_native_lane_needs, witness_floor_concurrency_group, v2_native_lane_timeout }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, v2_native_lane_needs, v2_native_lane_concurrency_group, v2_native_lane_timeout }
 import gunbc.witness_v2_native_route { required_v2_native_job_name }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
@@ -471,15 +471,15 @@ test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subjec
   }
 }
 
-test fn w_main_concurrency_group_is_per_ref_not_per_run_id() -> Bool {
-  string_contains(s: witness_floor_concurrency_group, pattern: "github.ref")
-    && !string_contains(s: witness_floor_concurrency_group, pattern: "github.run_id")
+test fn w_native_job_supersedes_per_ref_without_cancelling_the_workflow() -> Bool {
+  string_contains(s: v2_native_lane_concurrency_group, pattern: "github.event.pull_request.number || github.ref")
     && minute_count(v2_native_lane_timeout) == 360
     && match expected_witness_floor_yml() {
       WitnessFloorGenerated { content: yml } =>
         string_contains(s: yml, pattern: "timeout-minutes: 360")
-          && string_contains(s: yml, pattern: "github.event.pull_request.number || github.ref")
-          && !string_contains(s: yml, pattern: "github.event.pull_request.number || github.run_id")
+          && string_contains(s: yml, pattern: "required-v2-native-${{ github.event.pull_request.number || github.ref }}")
+          && string_contains(s: yml, pattern: "group: witness-floor-${{ github.event.pull_request.number || github.run_id }}")
+          && !string_contains(s: yml, pattern: "group: witness-floor-${{ github.event.pull_request.number || github.ref }}")
       WitnessFloorGenerationRefused { reason: _ } => false
     }
 }
