@@ -2,6 +2,7 @@ module test.claim.runner_attempt_launch_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { byte_size, byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { argv_words }
 import extdeps.virtualization.firecracker {
@@ -103,8 +104,8 @@ fn plan_for(
   )
 }
 
-fn admitted(n: Int) -> EnvelopeStanding {
-  EnvelopeAdmitted { bytes: n }
+fn admitted(n: Nat) -> EnvelopeStanding {
+  EnvelopeAdmitted { bytes: byte_size(count: n) }
 }
 
 fn launches_for(
@@ -128,7 +129,7 @@ test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
             LaunchRefusedEnvelope { standing: s } =>
               match s {
                 EnvelopePayloadBelowFloor { bytes: n } =>
-                  n == 0 && launches_for(
+                  byte_size_count(b: n) == 0 && launches_for(
                     pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 0), ground: GroundClear,
                   ) == 0
                 EnvelopeAdmitted { bytes: _ } => false
@@ -314,8 +315,8 @@ test fn every_x_envelope_refusal_arm_yields_zero_jailer_launches() -> Bool {
             && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeNonceMismatch, ground: GroundClear) == 0
             && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopeBoundToDifferentAttempt, ground: GroundClear) == 0
             && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadDigestMismatch, ground: GroundClear) == 0
-            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadBelowFloor { bytes: 100 }, ground: GroundClear) == 0
-            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadAboveCeiling { bytes: 70000 }, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadBelowFloor { bytes: byte_size(count: 100) }, ground: GroundClear) == 0
+            && launches_for(pair: pair, account: pair.account, attempt: a, envelope: EnvelopePayloadAboveCeiling { bytes: byte_size(count: 70000) }, ground: GroundClear) == 0
             && launches_for(pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 70000), ground: GroundClear) == 0
         Empty {} => false
       }

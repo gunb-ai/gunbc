@@ -3,7 +3,7 @@ module gunbc.runner_attempt_launch
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { Second, second }
+import std.measure { Second, second, ByteSize, byte_size, measure_le }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command }
 import extdeps.tools.gnu_coreutils { timeout_command }
@@ -109,9 +109,9 @@ data runner_attempt_vmm_deadline: Second = second(count: 540)
 
 data runner_attempt_vmm_kill_grace: Second = second(count: 10)
 
-data jit_config_byte_floor: Int = 512
+data jit_config_byte_floor: ByteSize = byte_size(count: 512)
 
-data jit_config_byte_ceiling: Int = 65536
+data jit_config_byte_ceiling: ByteSize = byte_size(count: 65536)
 
 data jail_config_path: String = "/vm.json"
 
@@ -133,7 +133,7 @@ type AttemptGround
 // correctness distinction. Host-once refusals (no boot secret, stage2 missing files) are PID 1
 // and are outside this per-attempt planner.
 type EnvelopeStanding
-  = EnvelopeAdmitted { bytes: Int }
+  = EnvelopeAdmitted { bytes: ByteSize }
   | EnvelopeAbsent
   | EnvelopeMalformed
   | EnvelopeSignatureRejected
@@ -142,8 +142,8 @@ type EnvelopeStanding
   | EnvelopeNonceMismatch
   | EnvelopeBoundToDifferentAttempt
   | EnvelopePayloadDigestMismatch
-  | EnvelopePayloadBelowFloor { bytes: Int }
-  | EnvelopePayloadAboveCeiling { bytes: Int }
+  | EnvelopePayloadBelowFloor { bytes: ByteSize }
+  | EnvelopePayloadAboveCeiling { bytes: ByteSize }
 
 type HostPid1RefusalOutsideThisPlanner
   = NoBootSecretArrived
@@ -183,10 +183,10 @@ fn envelope_floor_is_required() -> Bool {
   }
 }
 
-fn credential_bytes_admit(bytes: Int) -> Bool {
+fn credential_bytes_admit(bytes: ByteSize) -> Bool {
   envelope_floor_is_required()
-    && bytes >= jit_config_byte_floor
-    && bytes <= jit_config_byte_ceiling
+    && measure_le(a: jit_config_byte_floor, b: bytes)
+    && measure_le(a: bytes, b: jit_config_byte_ceiling)
 }
 
 fn envelope_admits_launch(standing: EnvelopeStanding) -> Bool {
@@ -211,7 +211,7 @@ fn refuse_or_normalize_envelope(standing: EnvelopeStanding) -> EnvelopeStanding 
       if credential_bytes_admit(bytes: n) {
         standing
       } else {
-        if n < jit_config_byte_floor {
+        if !measure_le(a: jit_config_byte_floor, b: n) {
           EnvelopePayloadBelowFloor { bytes: n }
         } else {
           EnvelopePayloadAboveCeiling { bytes: n }
