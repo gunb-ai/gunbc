@@ -27,15 +27,33 @@ import extdeps.crypto.hash
 // the same value, and read_origin_staged_file is the ONLY constructor in the corpus -- there is no
 // fixture mint beside it and no admitted caller list.
 //
-// THERE WAS ONE, AND IT WAS A HOLE, which is worth recording because the shape is general. An
-// earlier revision exported witness_origin_reading(staged_path, observed_digest) under admit_callers
-// naming two witness wrappers. .dag HAS NO MODULE-PRIVATE, so each admitted wrapper was itself an
-// exported unrestricted constructor: a foreign module imported the wrapper, passed any digest, and
-// reached ManifestRead -- 0 blocking errors. admit_callers on the wrapper would only have moved the
-// proxy one hop, since every helper returning a value that CARRIES a reading is the same escape.
-// The repair was to delete the fixture route, not to fence it: the witnesses now digest a committed
-// fixture file through this function like everything else, which the hermetic mock in
-// extdeps.crypto.hash makes possible on the required floor. It does NOT
+// THERE WAS ONE, IT WAS A HOLE, AND IT MERGED -- recorded here rather than quietly removed because
+// a guarantee that was reported and not held is the one thing DESIGN 4b(1) says must not stand.
+// gunbc#10934 exported witness_origin_reading(staged_path, observed_digest) under admit_callers
+// naming two witness wrappers, and claimed this sub-class structurally impossible OUTSIDE THAT
+// ADMISSION. The claim was not established at the head that merged it: .dag HAS NO MODULE-PRIVATE,
+// so each admitted wrapper was itself an exported unrestricted constructor -- a foreign module
+// imported the wrapper, passed any digest it chose, reached ManifestRead, 0 blocking errors. For the
+// interval between that merge and gunbc#10972 an inflated guarantee stood on main. It is WITHDRAWN,
+// and this module RE-EARNS it; the rung was never held in that interval, which is worse than a rung
+// that moved. admit_callers on the wrapper would only have moved the proxy one hop, since every
+// helper returning a value that CARRIES a reading is the same escape. The repair deletes the fixture
+// route rather than fencing it: the witnesses now digest a committed fixture file through this
+// function like everything else, which the repaired hermetic mock in extdeps.crypto.hash makes
+// executable on the required floor. The class is filed at
+// gunbc.recurring_failure_mode.admitted_call_edge_with_unrestricted_value_egress and cited, not
+// restated.
+//
+// THE EGRESS QUESTION, ANSWERED FOR THIS TYPE RATHER THAN ASSUMED: every function in either witness
+// module that returns a value carrying an OriginReading REQUIRES one as a parameter, so it
+// propagates and never mints. The only zero-argument egress is a call to read_origin_staged_file
+// itself, whose result the caller cannot aim -- it is the digest of whatever file was named.
+//
+// AND WHAT THE HERMETIC WITNESSES DO NOT SHOW: they exercise this function through a MOCK that
+// replays one constant digest for every path. That establishes the modeled effect route and the
+// verdict algebra above it; it does NOT establish that any real bytes were hashed. Only the hand-run
+// instrument tools.fabric_m0_origin_readback_probe shows the live handler computing over real bytes,
+// and no required lane runs it. Three instruments, three propositions. It does NOT
 // close whether the path handed here is the origin readback's staged output rather than a cache
 // copy -- staged_path is still chosen by the caller, so the class as a whole stays MITIGATABLE and
 // only this sub-class reaches structural impossibility. A class's rung is the minimum across its
