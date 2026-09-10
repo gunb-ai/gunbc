@@ -3,7 +3,7 @@ module gunbc.machine_intake_bmc_secure
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.bmc.types { RedfishAccountRole, redfish_account_role_wire }
+import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_phase {
@@ -89,10 +89,6 @@ type ManagedCredentialReference {
   role: RedfishAccountRole
   secret: SecretRef
   credential_epoch: Int
-}
-
-fn managed_credential_role_wire(reference: ManagedCredentialReference) -> NonEmptyStr {
-  redfish_account_role_wire(role: reference.role)
 }
 
 // WHETHER THE ROTATION WAS APPLIED AT ALL, and when. applied_at is on the
