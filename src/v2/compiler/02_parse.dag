@@ -590,15 +590,14 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
   )
 }
 
-// Fold the lexeme directly: fold_list's free-monoid read accepts every string realization
-// (native compact string and Cons-chain alike) and yields the same Int codepoints either
-// way, so the digest is realization-stable. Routing through chars(s:) instead refused
-// Cons-chain lexemes outright — the lexer's repeat/delimited growth produces modeled
-// (Cons-chain) strings, and chars admits only the native realization (measured: the
-// ingest-bridge floor witnesses red with "chars expects a string argument, got Variant").
+// Route through chars(s:): the emitted realization needs the boundary conversion — emitted
+// fold_list<T, _> cannot infer T from a host-carrier lexeme (E0282) without it — and the
+// interpreted chars builtin grounds every string realization (native compact string and
+// Empty/Cons chain alike, via free_monoid_to_string) to the same Int codepoints fold_list
+// itself would read, so the digest is realization-stable on both routes.
 fn parse_lexeme_digest(lexeme: Lexeme) -> Hash {
   fold_list(
-    xs: lexeme,
+    xs: chars(s: lexeme),
     empty: symbol_identity_digest(sym: ^parse_lexeme_digest_nil),
     cons: fn(acc, ch) {
       combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
