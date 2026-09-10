@@ -137,10 +137,17 @@ type FanTachReceipt sole_constructor {
   healthy: List<FanTachHealthy>,
 }
 
-// The corpus row that declares the four facts together, destructured by `inspect_fan_tach` so no
+// The corpus row that declares the three facts together, destructured by `inspect_fan_tach` so no
 // stage receives more than its own question needs.
+//
+// THERE IS NO `host` FIELD, AND ITS ABSENCE IS THE POINT. An earlier cut carried one beside
+// `expectation.host` with nothing constraining them to agree, while the note here claimed invalid
+// assembly was unwritable. It was not: a mismatched pair was constructible, `inspect_fan_tach`
+// labelled the receipt from the subject's copy and `assess_fan_tach` joined windows against the
+// expectation's, so an inspection could be filed under a host that was never assessed. The host is
+// one fact, so it lives in one place (DESIGN section 3) and the inspection subject is DERIVED from
+// it -- which is construction rather than an equality check bolted on afterwards.
 type FanTachSubject sole_constructor {
-  host: HostIdentity,
   expectation: HostFanTachExpectation,
   minimum_rotating: Int,
   windows: List<FanTachWindow>,
@@ -152,13 +159,11 @@ type FanTachAssessment = GoalAssessment<FanTachReceipt, FanTachDeviation, FanTac
 // no caller can assemble a subject that skips a field or pairs a goal with a floor the row did not
 // declare (DESIGN section 4b -- the invalid state has no constructor rather than a validator).
 fn fan_tach_subject(
-  host: HostIdentity,
   expectation: HostFanTachExpectation,
   minimum_rotating: Int,
   windows: List<FanTachWindow>,
 ) -> FanTachSubject {
   FanTachSubject {
-    host: host,
     expectation: expectation,
     minimum_rotating: minimum_rotating,
     windows: windows,
@@ -426,7 +431,7 @@ type FanTachInspection = GoalInspection<HostIdentity, FanTachGoal, List<FanTachW
 
 fn inspect_fan_tach(subject: FanTachSubject) -> FanTachInspection {
   inspect_goal(
-    subject: subject.host,
+    subject: subject.expectation.host,
     goal: FanTachGoal {
       expectation: subject.expectation,
       minimum_rotating: subject.minimum_rotating,

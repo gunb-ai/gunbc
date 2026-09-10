@@ -80,7 +80,6 @@ fn subject_of(
   windows: List<FanTachWindow>,
 ) -> FanTachSubject {
   fan_tach_subject(
-    host: expectation.host,
     expectation: expectation,
     minimum_rotating: rotating_floor,
     windows: windows,
@@ -128,18 +127,25 @@ test fn srv2_the_control_host_is_satisfied() -> Bool {
 // coproduct this replaced, that header was a verdict beside the others and the host still read as
 // assessed; nothing about that fan was ever established, so the honest answer is indeterminate.
 //
-// The conjunct is deliberately not just "an unknown exists": it also holds that the two degraded
-// endpoints are STILL reported, because an indeterminate result that silently dropped the proved
+// The conjunct is deliberately not just "an unknown exists": it also holds that BOTH degraded
+// endpoints are still reported, because an indeterminate result that silently dropped the proved
 // deviations would be a different defect wearing this one's clothes.
+//
+// SO THE OMITTED HEADER IS FAN1, WHICH IS HEALTHY, and that choice is the whole conjunct. An
+// earlier cut dropped FAN4 -- one of srv1's two degraded endpoints, at 9 rotations in 20 beside
+// FAN5's 4 -- and then asserted one degradation survived. That arithmetic was right and it
+// established nothing the note claimed: it could not tell "the deviations survive the unknown"
+// from "one of them was the header I removed". Dropping a healthy header leaves both degradations
+// in place, so `== 2` is the assertion the sentence above actually needs.
 test fn an_omitted_window_is_an_unknown_not_an_assessed_host() -> Bool {
-  let dropped = drop_window(windows: srv1_windows, header: "FAN4")
+  let dropped = drop_window(windows: srv1_windows, header: "FAN1")
   match inspect_fan_tach(subject: subject_of(expectation: srv1_fan_tach_expectation, windows: dropped)) {
     GoalObservationRefused { subject: s, goal: g, request: rq, cause: c } => false
     GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
       match a {
         GoalIndeterminate { known_deviations: kd, unknowns: u } =>
           observation_gap_count(unknowns: non_empty_to_list(xs: u)) == 1
-            && rotation_degraded_count(deviations: kd) == 1
+            && rotation_degraded_count(deviations: kd) == 2
         GoalSatisfied { evidence: e } => false
         GoalDiverged { deviations: ds } => false
         GoalAssessmentRefused { cause: c } => false
@@ -167,7 +173,6 @@ test fn a_fully_read_host_is_not_indeterminate() -> Bool {
 // real input or the frontier was discharged in name only.
 test fn one_host_expectation_against_another_hosts_windows_refuses() -> Bool {
   match inspect_fan_tach(subject: fan_tach_subject(
-    host: srv3_fan_tach_expectation.host,
     expectation: srv3_fan_tach_expectation,
     minimum_rotating: rotating_floor,
     windows: srv4_windows,
