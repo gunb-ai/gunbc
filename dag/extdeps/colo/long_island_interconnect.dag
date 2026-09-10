@@ -1,0 +1,79 @@
+module extdeps.colo.long_island_interconnect
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { watt }
+import std.algebra { FreeSemigroup }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
+  RetailGrainStanding, SingleCabinetOffered,
+  DensityPublished, PublishedAverage, PublishedDensityFigure, PublishedRealPower, WordingVerbatim,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "longislandinterconnect.com/solutions/colocation/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.long_island_interconnect",
+      decl_name: "long_island_interconnect_westbury",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE ONLY CARRIER-NEUTRAL COLOCATION BUILDING FOUND ON LONG ISLAND PROPER in this survey, and
+// it is a building several operators sell into: the 1025connect.com domain now redirects
+// permanently to this operator's site, and NYI markets the same address as its own Long Island
+// footprint under extdeps.colo.nyi. One building, two selling surfaces, on the Weehawken pattern
+// the census already carries (Digital Realty and Centersquare at 300 JFK Blvd East).
+data long_island_interconnect_westbury: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Long Island Interconnect",
+  facility_label: "Long Island Interconnect Westbury (1025Connect)",
+  address: AddressListed {
+    street: "1025 Old Country Road, Westbury, NY 11590",
+    citation: "longislandinterconnect.com colocation page, read 2026-09-08",
+  },
+  municipality: "Westbury",
+  region_code: "NY",
+  facility_note: "Nassau County, roughly 24 miles east of Manhattan by the operator's own wording, sited near the Long Island cable landing stations. Sells cabinets, secure cages, custom data suites, roof rights and disaster-recovery seats. The distance axis has no measured route for it: every planning estimate in this census was drawn from the Hudson waterfront, and Long Island is on the far side of the city from that corridor, so a route reading is owed before ranking.",
+}
+
+// THE DENSITY IS PUBLISHED AND IT IS LOW, WHICH IS ITSELF THE FINDING. Three kilowatts a cabinet
+// is a cooling average, not a marketed maximum, and it is an order of magnitude under the 35 kW
+// air claim at DataBank LGA4. A 650 W-per-node fleet fills this cabinet at four nodes. The
+// operator states expansion space is planned for higher-kW cabinets; that is a plan, not a
+// purchasable density, and is carried in the wording rather than in the number.
+data long_island_interconnect_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: PublishedAverage { average: PublishedRealPower { power: watt(count: 3000) } },
+      wording: "Cooling level average is 3kW per cabinet; plans to support higher kW cabinets are established for adjacent future expansion space",
+      citation: "longislandinterconnect.com Westbury page, read 2026-09-08. No cooling medium is named anywhere on the page - unspecified BY EVIDENCE, not by default.",
+      verification: WordingVerbatim {
+        retrieval: "An AVERAGE, which is neither a floor nor a ceiling: it bounds what the hall sustains ACROSS cabinets, not what any one cabinet will take. Typed as a marketed maximum the census would have asserted this cabinet refuses 3,001 W, which an average cannot support. The word \"cooling\" here names the system, not the medium.",
+      },
+    },
+    tail: [],
+  },
+}
+
+data long_island_interconnect_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "cabinets, secure cages and custom data suites",
+  citation: "longislandinterconnect.com colocation page, read 2026-09-08",
+}
+
+data long_island_interconnect_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "longislandinterconnect.com contact form",
+  obligation: "No cabinet, power or transit price is published on the pages read 2026-09-08. The quote must also establish whether the higher-kW expansion space is sellable today, because the published 3 kW average is the binding number until it is.",
+}

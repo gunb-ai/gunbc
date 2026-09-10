@@ -416,8 +416,12 @@ fn presented_media_standing(body: String, image_name: NonEmptyStr) -> PresentedM
 // merely still mounting. The bounded read-back decides; the status code only distinguishes which
 // unconfirmed state is reported.
 //
-// STARTREFUSED IS RESERVED for a start that failed AND whose configurations document is itself
-// unreadable as JSON — that is, for when the read-back cannot even be asked.
+// THE READ-BACK DECIDES, INCLUDING WHEN START REPORTED FAILURE. This firmware answers HTTP 500
+// on writes that take effect; mapping start.success == false to MegaRacStartRefused refused an
+// attach that was merely still mounting, and contradicted the comment this function already
+// carried. A missing confirmation after any start response is pending (Unconfirmed). StartRefused
+// is reserved for a start that failed AND whose configurations document is itself unreadable
+// as JSON — that is, when we cannot even ask the read-back.
 func megarac_start_and_confirm(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,

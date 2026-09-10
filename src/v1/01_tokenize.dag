@@ -22,12 +22,16 @@ import v1.std.core {
   ShNewline, ShEof, ShUnknown
 }
 
-import extdeps.languages.dag.syntax { dag_keyword_set }
+import std.syntax { ParseEnvironment }
 
 import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
 
-fn is_keyword_text(text: String) -> Bool {
-  match lookup(dag_keyword_set, key: text) {
+// THE KEYWORD SET ARRIVES AS AN ARGUMENT, because word classification is the FIRST place a
+// revision's grammar is applied and the last place anyone looks for it. A tokenizer that reaches
+// for a compiled-in set decides, before any parser runs, that base source is written in the head's
+// language.
+fn is_keyword_text(text: String, env: ParseEnvironment) -> Bool {
+  match lookup(env.syntax_spec.keyword_set, key: text) {
     Present { value: _ } => true
     Absent => false
   }
@@ -127,11 +131,11 @@ fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
   else { source_scan_to_eol(source: source, start: start + 1) }
 }
 
-fn tokenize_artifact(source: String, file: String) -> V1LexArtifact {
+fn tokenize_artifact(source: String, file: String, env: ParseEnvironment) -> V1LexArtifact {
   let c = chars(source)
   let src = SourceRef { file: file, text: source, source_chars: c }
   let initial = TokPos { pos: 0, interp_depth: [] }
-  let final_state = tokenize_loop(source: src, tokens: [], annotations: [], pos: initial, fuel: source_len(source: src) + 1)
+  let final_state = tokenize_loop(source: src, tokens: [], annotations: [], pos: initial, fuel: source_len(source: src) + 1, env: env)
   let eof_span = make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)
   V1LexArtifact {
     tokens: list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof)),
@@ -139,8 +143,8 @@ fn tokenize_artifact(source: String, file: String) -> V1LexArtifact {
   }
 }
 
-fn tokenize(source: String, file: String) -> List<Token> {
-  tokenize_artifact(source: source, file: file).tokens
+fn tokenize(source: String, file: String, env: ParseEnvironment) -> List<Token> {
+  tokenize_artifact(source: source, file: file, env: env).tokens
 }
 
 data v1_line_prefix_note: String = "The seed reads the PHYSICAL LINE PREFIX directly instead of threading a `have I seen a semantic token` flag. It can, because it holds the whole source and an index: source_line_start walks back to just after the previous line feed, and the shared std.source_annotation fold then judges the slice between there and the annotation.
@@ -221,7 +225,7 @@ fn line_prefix_is_indent_only(source: SourceRef, pos: Int) -> Bool {
   )
 }
 
-fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
+fn scan_next_token(source: SourceRef, pos: TokPos, env: ParseEnvironment) -> ScanStep {
   let ch = source_code_point(source: source, pos: pos.pos)
 
   if ch == 10 {
@@ -265,26 +269,26 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
     }
   }
 
-  ScannedToken { result: scan_token(source: source, pos: pos, ch: ch) }
+  ScannedToken { result: scan_token(source: source, pos: pos, ch: ch, env: env) }
 }
 
-fn tokenize_loop(source: SourceRef, tokens: List<Token>, annotations: List<UnboundAnnotationCapture>, pos: TokPos, fuel: Int) -> TokenizerState {
+fn tokenize_loop(source: SourceRef, tokens: List<Token>, annotations: List<UnboundAnnotationCapture>, pos: TokPos, fuel: Int, env: ParseEnvironment) -> TokenizerState {
   let s = skip_spaces(source: source, pos: pos)
   if s.pos >= source_len(source: source) {
     return TokenizerState { pos: s.pos, tokens: tokens, annotations: annotations, interp_depth: s.interp_depth }
   }
-  match scan_next_token(source: source, pos: s) {
+  match scan_next_token(source: source, pos: s, env: env) {
     ScannedAnnotation { pos: next_pos, capture: capture, interp_depth: depth } =>
-      tokenize_loop(source: source, tokens: tokens, annotations: list_push(annotations, capture), pos: TokPos { pos: next_pos, interp_depth: depth }, fuel: fuel - 1)
+      tokenize_loop(source: source, tokens: tokens, annotations: list_push(annotations, capture), pos: TokPos { pos: next_pos, interp_depth: depth }, fuel: fuel - 1, env: env)
     ScannedToken { result: result } =>
-      tokenize_loop(source: source, tokens: list_push(tokens, result.token), annotations: annotations, pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1)
+      tokenize_loop(source: source, tokens: list_push(tokens, result.token), annotations: annotations, pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1, env: env)
   }
 }
 
-fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
+fn scan_token(source: SourceRef, pos: TokPos, ch: Int, env: ParseEnvironment) -> ScanResult {
   if ch == 34 { return scan_string(source: source, pos: pos) }
   if is_digit(ch: ch) { return scan_number(source: source, pos: pos) }
-  if is_ident_start(ch: ch) { return scan_ident(source: source, pos: pos) }
+  if is_ident_start(ch: ch) { return scan_ident(source: source, pos: pos, env: env) }
 
   let next_ch = if pos.pos + 1 < source_len(source: source) {
     source_code_point(source: source, pos: pos.pos + 1)
@@ -345,11 +349,11 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) ->
   }
 }
 
-fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
+fn scan_ident(source: SourceRef, pos: TokPos, env: ParseEnvironment) -> ScanResult {
   let end = source_scan_while(source: source, start: pos.pos, pred: is_ident_char)
   let text = source_substring(source: source, start: pos.pos, end: end)
   let shape = if is_reserved_emit_sentinel(text: text) { ShUnknown }
-    else if is_keyword_text(text: text) { ShKeyword }
+    else if is_keyword_text(text: text, env: env) { ShKeyword }
     else { ShIdent }
   let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }

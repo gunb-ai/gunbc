@@ -701,6 +701,60 @@ type RetailGrainStanding
   | CageOrSuiteMinimum { wording: NonEmptyStr, citation: NonEmptyStr }
   | RetailGrainUnread { obligation: NonEmptyStr }
 
+// WHETHER A STREET WAS READ, WHICH IS THE ADDRESS AXIS'S ONLY QUESTION AND HAD NO CONSUMER AT ALL.
+// AddressStanding has carried two arms since the carrier was written and no witness in the corpus
+// exercised either (review 62921 found the facility rows dangling; checking the address arm while
+// enrolling them found it unexercised everywhere, not merely here). An arm nothing reads is an arm
+// nothing defends: the census's rule that a street is READ or is an obligation, never reconstructed
+// from a PO box or a directory, was enforced by authorial discipline alone.
+//
+// ABSENT MEANS NOBODY HAS READ A STREET, NOT THAT THE FACILITY LACKS ONE. Every facility has an
+// address; AddressUnread says this row does not carry it and names what to read. A caller that
+// needs the obligation text still matches the arm - Optional carries the street, not the reason.
+//
+// THE SHAPE IS THE ONE ITS SIBLINGS ALREADY ESTABLISHED, and an earlier draft got it wrong in a way
+// worth recording. This was first written as `address_is_listed -> Bool`, which answered only the
+// was-it-read half and threw the street away, leaving a caller who wanted the street to hand-match -
+// the exact state the accessor was added to remove. cabinet_density_air_established and
+// cabinet_power_established both answer "was it read, and with what" as an Optional; an address axis
+// answering less, in a file where every sibling answers more, is DESIGN section 2 re-invention
+// rather than reuse. The payload is precisely what makes the Optional the right shape.
+fn address_street(a: AddressStanding) -> NonEmptyStr? {
+  match a {
+    AddressListed { street, citation } => Present { value: street },
+    AddressUnread { obligation } => Absent,
+  }
+}
+
+// THE GRAIN QUESTION A CONSUMER ACTUALLY ASKS, and it lives here because two witness modules had
+// independently folded these three arms into a Bool under two different names - review 62870, and
+// DESIGN section 3's nicknaming failure exactly: one concept, two names, so a later arm added to
+// RetailGrainStanding would have been handled by one fold and silently missed by the other. The
+// absence of this accessor is what produced the fork, so the repair is the accessor rather than a
+// note telling the two folds to agree.
+//
+// IT RETURNS THE WORDING BECAUSE THE WORDING IS THE GRAIN, not evidence for it (review 62968). An
+// earlier cut of this returned Bool, and the argument that justified it was mine and was wrong the
+// same way my first address accessor was: I classed `wording` as evidence, on the theory that "can
+// one cabinet be bought" is the fact and the sentence is why we believe it. But Stafford's wording
+// is "1u, 2u, 1/4, 1/2 to a full locking cabinet, to customized cages" - that IS the sellable grain,
+// finer than a cabinet and unrecoverable from a Bool. The citation field is the evidential one.
+//
+// ABSENT IS NOT A REFUSAL, IT IS TWO DIFFERENT ONES, and switching to Optional did NOT fix that -
+// this is worth stating because the shape change looks like it should have. CageOrSuiteMinimum is
+// the operator declining to sell one cabinet; RetailGrainUnread is nobody having read whether they
+// would. A two-valued return collapses them whether it is Bool or Optional, because this coproduct
+// has THREE arms while AddressStanding has two - which is why address_street above is lossless and
+// this is not. A caller that must separate declined from unread matches the arms; what this
+// accessor removes is the need to match merely to read the wording.
+fn retail_grain_single_cabinet_wording(g: RetailGrainStanding) -> NonEmptyStr? {
+  match g {
+    SingleCabinetOffered { wording, citation } => Present { value: wording },
+    CageOrSuiteMinimum { wording, citation } => Absent,
+    RetailGrainUnread { obligation } => Absent,
+  }
+}
+
 // Whether ordinary retail pricing is published at all. Most facility operators in this
 // market price by quote; that is a fact about the provider worth a typed arm, because a
 // consumer computing over prices must treat quote-only as absent-with-an-obligation and
@@ -712,6 +766,23 @@ type RetailGrainStanding
 type RetailRateStanding
   = RatesPublished { plans_note: NonEmptyStr }
   | RatesQuoteOnly { contact_route: NonEmptyStr, obligation: NonEmptyStr }
+
+// THE PUBLISHED PLANS NOTE, WHERE ONE EXISTS, AND THIS AXIS HAD NO CONSUMER AT ALL UNTIL NOW.
+// RetailRateStanding was read by nothing anywhere in the corpus - 30 modules author a rate row and
+// no fold, witness or workflow touched the type, which is DESIGN section 3c's dangling state in its
+// purest form and is the same absence found on AddressStanding earlier in this census.
+//
+// It returns the plans note rather than a Bool for the reason the grain and address accessors do:
+// the note IS the reading. A caller deciding whether a cabinet can be priced without contacting the
+// operator needs the operator's own text, not the news that text exists, and a Bool would put the
+// answer on the same axis as a price while carrying none of it. RatesQuoteOnly is Absent because a
+// contact route is not a rate - it is the obligation to go and get one.
+fn retail_rate_published_plans(r: RetailRateStanding) -> NonEmptyStr? {
+  match r {
+    RatesPublished { plans_note } => Present { value: plans_note },
+    RatesQuoteOnly { contact_route, obligation } => Absent,
+  }
+}
 
 type CrossConnectFee {
   monthly: MoneyPerMonth

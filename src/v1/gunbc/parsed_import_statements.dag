@@ -1,5 +1,7 @@
 module v1.gunbc.parsed_import_statements
 
+import extdeps.languages.dag.syntax { dag_parse_environment }
+
 import std.types { String }
 import std.import { ParsedImportStatements }
 import v1.compiler.tokenize { tokenize }
@@ -14,7 +16,7 @@ import v1.std.core { build_newline_index, empty_intern_table, NewlineIndex }
 
 fn parsed_import_statements(file: String, source: String) -> ParsedImportStatements {
   parse_import_statement_extents(
-    tokens: tokenize(source: source, file: file),
+    tokens: tokenize(source: source, file: file, env: dag_parse_environment),
     source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
     intern_table: empty_intern_table(),
   )
