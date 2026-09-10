@@ -98,13 +98,13 @@ The measurement this document asked for splits: one half is a reading of what ex
 
 Not chased, since this session has no Mt. Collins access. What would have to be run, and what each would establish:
 
-1. ~~Where is the host boot script authored, and what builds `runner-canary-N`?~~ **Answered by search, not by host access — see the section below. It is authored nowhere.** The item was wrongly filed here; only 2 and 3 need Mt. Collins.
+1. ~~Where is the host boot script authored, and what builds `runner-canary-N`?~~ **Answered by search, not by host access — see the section below. It has no authoring home *as a build input*; the source was later recovered off `/var/tmp` on srv2 and is preserved at `docs/recovered/mtcollins-host-image-source/`, so it is readable but still produces nothing.** The item was wrongly filed here; only 2 and 3 need Mt. Collins.
 2. **Can a `gunbc` binary be carried in the host image and executed on tmpfs at boot?** Establishes the modeled executor's placeability directly, and is the minimum viable displacement probe.
 3. **What is the credential's admission surface at mint time?** Needed for the axis dispositions below, which cannot be closed by reading this repository.
 
 ## Item 1, answered: the boot script is authored in no repository *(as a build input — see the 2026-09-10 recovery note below)*
 
-This was mis-filed as needing host access. It is a search, and it comes back **outcome three: the host boot script has no authoring home anywhere.**
+This was mis-filed as needing host access. It is a search, and it comes back **outcome three: the host boot script has no authoring home *in any repository's build*.** Corrected 2026-09-10 — the sentence originally ended "anywhere", which the recovery falsified: the authored source survived outside version control, on srv2, and is now committed as frozen provenance. What the search established is unchanged and is the narrower claim: no repository *produces* the running image.
 
 **The instrument, named so it re-derives rather than transcribed.** The census is four queries, and what makes the result trustworthy is which *controls* were run beside them, not the counts they happened to return. Every claim below is re-derivable by running the query named with it; the numbers are stated as what that query returned **at the time of writing**, and the query is the authority for the current answer.
 
@@ -155,7 +155,7 @@ So **this organisation has already taken an outage from exactly this class**, on
 > Its control is built in: the query does not filter by host, so a Mt. Collins runner would appear in the tally if one had served a job.
 > Mt. Collins has served micro-VM *canary* jobs and nothing more. The narrower claim is the load-bearing one and it is stronger, not weaker: this unauthored script is the **sole path any micro-VM migration must go through**, so the risk is not that production runs on unversionable code today, but that **the migration cannot proceed except through code nobody can rebuild.**
 
-**Why this belongs to the operator rather than a lane.** Unauthored production actuation on the January critical path is a decision about accepted risk, not a modelling preference — and this is the strongest form of the two-homes class filed on #10674: not *one home modeled and one hand-authored*, but **one home modeled and the other outside the corpus entirely.** That single sentence is the fact a reader should leave this document with.
+**Why this belongs to the operator rather than a lane.** Unbuilt production actuation on the January critical path — the source is now readable, but nothing in any repository builds it — is a decision about accepted risk, not a modelling preference — and this is the strongest form of the two-homes class filed on #10674: not *one home modeled and one hand-authored*, but **one home modeled and the other built by nothing.** That single sentence is the fact a reader should leave this document with — and it survived the recovery, which changed only whether the other home is *readable*. Committing its source at `docs/recovered/` gives the migration a subject to translate against; it does not give the running image a producer, and the recovered tree is frozen evidence rather than a build input. "Outside the corpus entirely", which this sentence said before 2026-09-10, is the half that is now false.
 
 **What it means for the cut.** Displacement is not a cross-repo negotiation (ctrl does not own this) and not a cheap rename (gunbc does not own it under another name). The first move is not building Y but **recovering or re-authoring X's content so that what production runs is knowable at all** — a different and smaller first step than the FCI-3 executor, and a precondition for pricing it rather than a part of it.
 
