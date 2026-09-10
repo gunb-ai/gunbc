@@ -246,10 +246,14 @@ data witness_floor_workflow_name: String = "witnesses"
 // note asserted main was grouped by `github.sha` and "never run_id", which is not what CI runs;
 // its rows are deleted with this one standing as the single authority.
 //
-// THE NATIVE LANE IS NOT THIS GROUP. Workflow-level uniqueness keeps build and floor verdicts
-// for every run. The required-v2-native job carries its own per-ref group
-// (v2_native_lane_concurrency_group) so a newer head cancels only that job.
-data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
+// THE NATIVE LANE IS NOT THIS GROUP, AND PULL REQUESTS ARE UNIQUE HERE TOO.
+// Keying this group on pull_request.number with cancel-in-progress false kept one in-flight
+// workflow per PR. A newer head could not start, so a job-level native cancel never ran -- the
+// previous native job held the runner until the envelope ended. Unique run_id lets each head
+// start build and floor (their verdicts survive). Occupancy of the native envelope is
+// v2_native_lane_concurrency_group: a newer head of the same PR, or a newer main push, cancels
+// only that required-v2-native job (ruling default: cancel the obsolete native job).
+data witness_floor_concurrency_group: String = "witness-floor-${{ github.run_id }}"
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
 //

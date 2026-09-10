@@ -478,8 +478,8 @@ test fn w_native_job_supersedes_per_ref_without_cancelling_the_workflow() -> Boo
       WitnessFloorGenerated { content: yml } =>
         string_contains(s: yml, pattern: "timeout-minutes: 360")
           && string_contains(s: yml, pattern: "required-v2-native-${{ github.event.pull_request.number || github.ref }}")
-          && string_contains(s: yml, pattern: "group: witness-floor-${{ github.event.pull_request.number || github.run_id }}")
-          && !string_contains(s: yml, pattern: "group: witness-floor-${{ github.event.pull_request.number || github.ref }}")
+          && string_contains(s: yml, pattern: "group: witness-floor-${{ github.run_id }}")
+          && !string_contains(s: yml, pattern: "group: witness-floor-${{ github.event.pull_request.number || github.run_id }}")
       WitnessFloorGenerationRefused { reason: _ } => false
     }
 }
