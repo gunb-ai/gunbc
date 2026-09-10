@@ -46,12 +46,16 @@ import gunbc.cli_invoke {
   admit_named_argument,
   gunbc_run_transport_argv_with_arguments,
 }
-import tools.host_prelude {
-  witness_bin,
-  witness_bin_artifact_readiness,
-  witness_bin_release_path,
-  WitnessBinReady,
-  WitnessBinRefused,
+import tools.scm_acceptance_binary {
+  ScmAcceptanceBinary,
+  ScmAcceptanceBinaryAcquisition,
+  ScmAcceptanceBinaryReady,
+  ScmAcceptanceBinaryBuildRefused,
+  ScmAcceptanceBinarySelectionRefused,
+  ScmAcceptanceBinaryDigestRefused,
+  ScmAcceptanceBinaryRetentionRefused,
+  acquire_scm_acceptance_binary,
+  scm_acceptance_binary_executable,
 }
 import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -264,14 +268,18 @@ fn scm_project_arguments(arguments: List<ScmArgument>) -> ScmArgumentProjection 
 type PreparedScmScenario sole_constructor {
   scenario: ScmScenario,
   workspace: String,
-  steps: List<ScmStep>
+  steps: List<ScmStep>,
+  binary: ScmAcceptanceBinary
 }
 
 type ScmScenarioPreparation
   = ScmScenarioPrepared { prepared: PreparedScmScenario }
   | ScmScenarioWorkspaceUnavailable
 
-fn prepare_scm_scenario(scenario: ScmScenario) -> ScmScenarioPreparation {
+fn prepare_scm_scenario(
+  scenario: ScmScenario,
+  binary: ScmAcceptanceBinary
+) -> ScmScenarioPreparation {
   let workspace = shell.Mktemp.Dir()
   if workspace.success {
     ScmScenarioPrepared {
@@ -279,6 +287,7 @@ fn prepare_scm_scenario(scenario: ScmScenario) -> ScmScenarioPreparation {
         scenario: scenario,
         workspace: workspace.path,
         steps: scm_scenario_steps(scenario: scenario, workspace: workspace.path),
+        binary: binary,
       },
     }
   } else {
@@ -292,30 +301,28 @@ type ScmScenarioExecution sole_constructor {
   result: ScmStepAcc
 }
 
-type ScmScenarioExecutionOutcome
-  = ScmScenarioExecuted { execution: ScmScenarioExecution }
-  | ScmScenarioBinaryRefused { workspace: String, bin_name: String, path: String }
-
 // THE ONLY PLACE A CHILD PROCESS RUNS, and it takes a PreparedScmScenario, so the sequence it folds
-// is the one that scenario authored. Handing it a step list is not a narrower API -- it is the hole.
-fn execute_prepared_scenario(prepared: PreparedScmScenario) -> ScmScenarioExecutionOutcome {
+// is the one that scenario authored AND the executable it spends is the one that scenario was
+// prepared with. Handing it a step list is not a narrower API -- it is the hole. It no longer
+// answers a binary refusal, because there is no binary decision left here to make: acquisition
+// happens once, above the whole population, and a scenario that exists at all already holds a
+// sealed artifact.
+fn execute_prepared_scenario(prepared: PreparedScmScenario) -> ScmScenarioExecution {
   let root = git.Inspect.Toplevel()
-  let path = witness_bin_release_path(root: root.path, bin_name: "gunbc")
-  match witness_bin_artifact_readiness(bin_name: "gunbc", path: path) {
-    WitnessBinRefused { bin_name: b, path: p, reason: _ } =>
-      ScmScenarioBinaryRefused { workspace: prepared.workspace, bin_name: b, path: p }
-    WitnessBinReady { path: ready } =>
-      ScmScenarioExecuted {
-        execution: ScmScenarioExecution {
-          scenario: prepared.scenario,
-          workspace: prepared.workspace,
-          result: fold(
-            prepared.steps,
-            init: ScmStepAcc { steps: 0, failure: none },
-            f: (acc, s) => scm_step_fold(root: root.path, bin_path: ready, acc: acc, step: s),
+  ScmScenarioExecution {
+      scenario: prepared.scenario,
+      workspace: prepared.workspace,
+      result: fold(
+        prepared.steps,
+        init: ScmStepAcc { steps: 0, failure: none },
+        f: (acc, s) =>
+          scm_step_fold(
+            root: root.path,
+            bin_path: scm_acceptance_binary_executable(binary: prepared.binary),
+            acc: acc,
+            step: s,
           ),
-        },
-      }
+    ),
   }
 }
 
@@ -834,25 +841,18 @@ fn scm_scenario_steps(scenario: ScmScenario, workspace: String) -> List<ScmStep>
   }
 }
 
-fn scm_scenario_in_fresh_workspace(scenario: ScmScenario) -> ScmAcceptanceOutcome {
-  match prepare_scm_scenario(scenario: scenario) {
+fn scm_scenario_in_fresh_workspace(
+  scenario: ScmScenario,
+  binary: ScmAcceptanceBinary
+) -> ScmAcceptanceOutcome {
+  match prepare_scm_scenario(scenario: scenario, binary: binary) {
     ScmScenarioWorkspaceUnavailable =>
       ScmAcceptanceWorkspaceRefused {
         scenario: scm_scenario_name(scenario: scenario),
         detail: "a temporary workspace could not be created",
       }
     ScmScenarioPrepared { prepared: prepared } =>
-      match execute_prepared_scenario(prepared: prepared) {
-        ScmScenarioBinaryRefused { workspace: w, bin_name: b, path: p } =>
-          let cleaned = shell.Remove.RecursiveForce(path: w)
-          ScmAcceptanceBinaryRefused {
-            scenario: scm_scenario_name(scenario: scenario),
-            bin_name: b,
-            path: p,
-          }
-        ScmScenarioExecuted { execution: execution } =>
-          finalize_scm_scenario(execution: execution)
-      }
+      finalize_scm_scenario(execution: execute_prepared_scenario(prepared: prepared))
   }
 }
 
@@ -883,14 +883,62 @@ fn scm_acceptance_exit(outcome: ScmAcceptanceOutcome) -> ProcessExit {
   }
 }
 
-func scm_acceptance_publication() -> ProcessExit {
-  scm_acceptance_exit(outcome: scm_scenario_in_fresh_workspace(scenario: PublicationScenario))
+// THE CANONICAL REPORTABLE ACCEPTANCE ENTRY, AND IT IS THE ZERO-ARGUMENT ONE. Acquisition happens
+// ONCE here and the same retained artifact is spent by every scenario, so the population cannot
+// drift across executables mid-run and a build is not repeated per scenario.
+//
+// THE SCENARIO ENTRIES BELOW TAKE A SEALED BINARY RATHER THAN ACQUIRING THEIR OWN, and that is a
+// deliberate refusal of convenience: a zero-argument per-scenario route would be the more pleasant
+// API and would reintroduce exactly what item 3 exists to close. It would either acquire again
+// (a build per scenario) or fall back to a readiness-only path, and the second produces a "pass"
+// INDISTINGUISHABLE from the fresh-artifact one while proving strictly less. They remain callable
+// for decomposition and diagnosis, but a caller cannot reach one without first holding a carrier
+// that only `acquire_scm_acceptance_binary` can mint.
+fn scm_acceptance_population(binary: ScmAcceptanceBinary) -> ScmAcceptanceOutcome {
+  match scm_scenario_in_fresh_workspace(scenario: PublicationScenario, binary: binary) {
+    ScmAcceptancePassed { receipt: _ } =>
+      match scm_scenario_in_fresh_workspace(scenario: MergeScenario, binary: binary) {
+        ScmAcceptancePassed { receipt: _ } =>
+          scm_scenario_in_fresh_workspace(scenario: ConflictScenario, binary: binary)
+        other => other
+      }
+    other => other
+  }
 }
 
-func scm_acceptance_merge() -> ProcessExit {
-  scm_acceptance_exit(outcome: scm_scenario_in_fresh_workspace(scenario: MergeScenario))
+fn scm_acceptance_acquisition_exit(acquisition: ScmAcceptanceBinaryAcquisition) -> ProcessExit {
+  match acquisition {
+    ScmAcceptanceBinaryBuildRefused { target_name: t } =>
+      exit_failure(reason: concat("acceptance refused: the acceptance binary did not build: ", t))
+    ScmAcceptanceBinarySelectionRefused { detail: d } =>
+      exit_failure(reason: concat("acceptance refused: ", d))
+    ScmAcceptanceBinaryDigestRefused { detail: d } =>
+      exit_failure(reason: concat("acceptance refused: ", d))
+    ScmAcceptanceBinaryRetentionRefused { detail: d } =>
+      exit_failure(reason: concat("acceptance refused: ", d))
+    ScmAcceptanceBinaryReady { binary: binary } =>
+      scm_acceptance_exit(outcome: scm_acceptance_population(binary: binary))
+  }
 }
 
-func scm_acceptance_conflict() -> ProcessExit {
-  scm_acceptance_exit(outcome: scm_scenario_in_fresh_workspace(scenario: ConflictScenario))
+func scm_acceptance() -> ProcessExit {
+  scm_acceptance_acquisition_exit(acquisition: acquire_scm_acceptance_binary())
+}
+
+func scm_acceptance_publication(binary: ScmAcceptanceBinary) -> ProcessExit {
+  scm_acceptance_exit(
+    outcome: scm_scenario_in_fresh_workspace(scenario: PublicationScenario, binary: binary)
+  )
+}
+
+func scm_acceptance_merge(binary: ScmAcceptanceBinary) -> ProcessExit {
+  scm_acceptance_exit(
+    outcome: scm_scenario_in_fresh_workspace(scenario: MergeScenario, binary: binary)
+  )
+}
+
+func scm_acceptance_conflict(binary: ScmAcceptanceBinary) -> ProcessExit {
+  scm_acceptance_exit(
+    outcome: scm_scenario_in_fresh_workspace(scenario: ConflictScenario, binary: binary)
+  )
 }

@@ -1,0 +1,168 @@
+module tools.scm_acceptance_binary
+
+// THE EXECUTABLE THE ACCEPTANCE CHILDREN SPEND, ACQUIRED RATHER THAN ASSUMED.
+//
+// The acceptance driver launches child processes, so something must decide WHICH BINARY they run.
+// The first version of that decision asked `witness_bin_artifact_readiness` whether
+// `target/release/gunbc` was a nonempty executable file. That is a real check and it is not the
+// check the instrument needs: an OLD executable is nonempty and executable too. The readiness route
+// establishes that a file is runnable; it establishes nothing about whether it was built from the
+// source this instrument is reading. A stale artifact -- the ctrl-build remote-routing incident
+// `witness_bin_readiness_note` records, where a local edit never reaches the runner -- passes every
+// probe, and every scenario could then execute faithfully through one wrong bootstrap.
+//
+// TWO SEPARATE HOLES, and closing only the first leaves the instrument lying in a subtler way.
+//
+// FRESHNESS is closed by asking Cargo. `materialize_artifact_wet` runs the build with structured
+// messages, selects the executable from Cargo's own `compiler-artifact` output rather than from a
+// conventional path, and digests exactly the path Cargo reported. A convention-derived path can
+// hold a stale binary while every presence check stays honestly green, which is why that authority
+// exists and why this module consumes it instead of comparing timestamps or re-deriving a path.
+//
+// THE IMMUTABLE SPEND closes the second, and it is the one that is easy to miss because the first
+// looks sufficient. `target/release/gunbc` is a MUTABLE path. Digesting it at mint time says what
+// the bytes were THEN; any concurrent `cargo build` -- another session on this host, a later step of
+// this same run -- replaces those bytes afterwards, and the carrier would still hold a digest that
+// was true when minted and false when spent, while different children executed different programs
+// under one receipt. So the reported executable is COPIED into an attempt-owned directory, the
+// destination is digested INDEPENDENTLY, the two digests must agree, and the carrier is minted over
+// the DESTINATION. Every child then spends a path nothing else knows the name of.
+//
+// WHY THIS IS NOT A CROSS-DISPATCH RECEIPT. It would be convenient to accept `{path, digest}` from
+// an environment variable, a CLI argument, or a file a previous CI job left behind. That is exactly
+// the forge this module exists to close: once a sealed carrier crosses a process boundary by
+// serialization it is ordinary data again, and any caller can author a self-consistent digest over
+// arbitrary bytes. `sole_constructor` is meaningless against a value that was re-parsed rather than
+// produced. There is therefore no `..._from_outcome` and no `..._from_path_and_digest` route here:
+// the acquisition function performs the build, the selection, the retention and the readback
+// itself, or it refuses. A future cross-host route is possible but needs considerably more than a
+// path and a digest -- a trusted build subject, target and ABI identity, content-addressed
+// transport, local verification -- and none of that is authored here.
+//
+// BUILD AND EXECUTION MOVE TOGETHER. This acquires on the host the children will run on, so an
+// environment that cannot build the artifact answers a located refusal rather than borrowing an
+// incompatible one built elsewhere. An amd64 artifact and an arm64 child are not a receipt problem;
+// they are two different programs.
+
+import extdeps.shell
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.tools.sha512sum { sha512sum_observe_file, Sha512FileObserved, Sha512FileObservationRefused }
+import gunbc.self_host_artifact_materialization {
+  materialize_artifact_wet,
+  ArtifactMaterializationObserved,
+  ArtifactMaterializationBuildFailed,
+  ArtifactMaterializationPathRefused,
+  ArtifactMaterializationDigestRefused,
+}
+import std.content_hash { Sha512Digest }
+import std.types { Bool, String }
+
+// SEALED, AND THE SEAL IS ONLY AS STRONG AS ITS ROUTES. There is exactly one producer below,
+// `acquire_scm_acceptance_binary`, and it takes NO arguments -- nothing a caller supplies can
+// influence which bytes end up in the carrier, so there is no argument to forge.
+type ScmAcceptanceBinary sole_constructor {
+  executable: String,
+  digest: Sha512Digest
+}
+
+fn scm_acceptance_binary_executable(binary: ScmAcceptanceBinary) -> String {
+  binary.executable
+}
+
+fn scm_acceptance_binary_digest_hex(binary: ScmAcceptanceBinary) -> String {
+  binary.digest.hex as String
+}
+
+// EACH REFUSAL NAMES ITS OWN STAGE. "The acceptance binary is unavailable" is four different
+// remedies -- fix a compile error, fix the target selection, fix a filesystem permission, or
+// investigate bytes that changed under the copy -- and collapsing them would send a reader to the
+// wrong one.
+type ScmAcceptanceBinaryAcquisition
+  = ScmAcceptanceBinaryReady { binary: ScmAcceptanceBinary }
+  | ScmAcceptanceBinaryBuildRefused { target_name: String }
+  | ScmAcceptanceBinarySelectionRefused { detail: String }
+  | ScmAcceptanceBinaryDigestRefused { detail: String }
+  | ScmAcceptanceBinaryRetentionRefused { detail: String }
+
+data scm_acceptance_target_name: String = "gunbc"
+
+fn scm_acceptance_build_args() -> List<String> {
+  ["--release", "-p", "v1-compiler", "--bin", "gunbc", "--message-format", "json"]
+}
+
+// THE DESTINATION DIGEST IS OBSERVED, NOT ASSUMED FROM THE COPY'S EXIT STATUS. `cp` answering zero
+// says the call returned, not that the destination holds the source's bytes -- a truncated write, a
+// full filesystem, or a source replaced mid-copy all survive a zero exit. The equality check below
+// is what makes the retained file the same program Cargo reported, and it is a genuine comparison
+// rather than a restatement: it can fail.
+fn retain_acceptance_binary(
+  source: String,
+  source_digest: Sha512Digest
+) -> ScmAcceptanceBinaryAcquisition {
+  let hold = shell.Mktemp.Dir()
+  if !hold.success {
+    ScmAcceptanceBinaryRetentionRefused {
+      detail: "no attempt-owned directory could be created to retain the acceptance binary",
+    }
+  } else {
+    let destination = concat(hold.path, "/gunbc")
+    let copied = shell.Copy.File(source: source, destination: destination)
+    if !copied.success {
+      ScmAcceptanceBinaryRetentionRefused {
+        detail: concat("the reported executable could not be retained at ", destination),
+      }
+    } else {
+      match sha512sum_observe_file(path: destination) {
+        Sha512FileObservationRefused { cause: c } =>
+          ScmAcceptanceBinaryDigestRefused {
+            detail: concat("the retained executable could not be digested: ", c as String),
+          }
+        Sha512FileObserved { digest: retained_digest } =>
+          if (retained_digest.hex as String) == (source_digest.hex as String) {
+            let executable = shell.Test.IsExecutable(path: destination)
+            if executable.executable {
+              ScmAcceptanceBinaryReady {
+                binary: ScmAcceptanceBinary {
+                  executable: destination,
+                  digest: retained_digest,
+                },
+              }
+            } else {
+              ScmAcceptanceBinaryRetentionRefused {
+                detail: "the retained executable is not executable at its attempt-owned path",
+              }
+            }
+          } else {
+            ScmAcceptanceBinaryRetentionRefused {
+              detail: "the retained bytes do not digest to the artifact Cargo reported",
+            }
+          }
+      }
+    }
+  }
+}
+
+fn acquire_scm_acceptance_binary() -> ScmAcceptanceBinaryAcquisition {
+  let root = git.Inspect.Toplevel()
+  match materialize_artifact_wet(
+    workdir: root.path,
+    manifest_path: concat(root.path, "/Cargo.toml"),
+    target_dir: concat(root.path, "/target"),
+    target_name: scm_acceptance_target_name,
+    extra_args: scm_acceptance_build_args(),
+  ) {
+    ArtifactMaterializationBuildFailed { target_name: t } =>
+      ScmAcceptanceBinaryBuildRefused { target_name: t }
+    ArtifactMaterializationPathRefused { selection: _ } =>
+      ScmAcceptanceBinarySelectionRefused {
+        detail: "cargo reported no single executable for the acceptance target",
+      }
+    ArtifactMaterializationDigestRefused { executable: _, cause: c } =>
+      ScmAcceptanceBinaryDigestRefused {
+        detail: concat("the reported executable could not be digested: ", c as String),
+      }
+    ArtifactMaterializationObserved { executable: exe, digest: d } =>
+      retain_acceptance_binary(source: exe as String, source_digest: d)
+  }
+}
