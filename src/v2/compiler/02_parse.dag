@@ -1538,7 +1538,7 @@ type PreparedExprFold {
 
 fn prepare_grammar_expr(
   expr: GrammarExpr,
-  nullable_set: PointwisePower<Symbol>,
+  nullable_set: List<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>
 ) -> PreparedExprFold {
   match expr {
