@@ -9,7 +9,7 @@ import extdeps.cloudflare.r2 {
   r2_bucket_resource_name,
   workers_r2_storage_bucket_item_read_permission_group_id,
 }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_version }
 import std.allocation_roster {
   AllocationAdmission,
   AllocationAdmitted,
@@ -19,6 +19,7 @@ import std.allocation_roster {
   build_allocation_roster,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import gunbc.cloudflare.r2_origin {
   CloudflareAccountId,
   CloudflareAccountAllocated,
@@ -267,19 +268,21 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
   }
 }
 
-test fn r2_object_read_mint_receipt_establishes_custody_without_commit_ambiguity() -> Bool {
-  r2_object_read_token_mint_receipt.enrolled
-    && r2_object_read_token_mint_receipt.reached_create
-    && r2_object_read_token_mint_receipt.request_transmitted
-    && r2_object_read_token_mint_receipt.response_received
-    && r2_object_read_token_mint_receipt.terminal_outcome_adjudicated
-    && r2_object_read_token_mint_receipt.credential_custody_established
-    && r2_object_read_token_mint_receipt.commit_ambiguous == false
-    && string_contains(
-      s: r2_object_read_token_mint_receipt.version_resource as String,
-      pattern: "/cloudflare-r2-origin-read-token/versions/1")
-    && (r2_object_read_token_mint_receipt.token_id as String)
-      == (r2_object_read_token_mint_receipt.s3_access_key_id as String)
+// THE RECEIPT IS JOINED TO THE ORIGIN PIN, not checked against itself. The grain booleans and
+// token_id == s3_access_key_id live on one authored row; asserting them is measure() == measure().
+// version_resource is an observation of Secret Manager; the origin's read_credential is the
+// declared pin. gcp_resource_names_this_version is the same identity join the fetch uses, so a
+// receipt that names another project, secret, or version fails while the pin stays put.
+test fn r2_object_read_mint_receipt_names_the_origin_read_pin() -> Bool {
+  match fabric_durable_origin_standing() {
+    DurableOriginUnallocated { purpose: _ } => false
+    DurableOriginAllocated { bucket: bucket } =>
+      gcp_resource_names_this_version(
+        returned: r2_object_read_token_mint_receipt.version_resource as String,
+        ref: bucket.read_credential,
+        project_number: fleet_secrets_project_number,
+      )
+  }
 }
 
 // THE BURDEN IS PRICED BY THE ENTRY, which is the dissolution this change claims for

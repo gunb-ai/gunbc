@@ -290,6 +290,7 @@ type R2ObjectReadTokenMintReceipt {
   token_id: NonEmptyStr
   s3_access_key_id: NonEmptyStr
   version_resource: NonEmptyStr
+  retrieved_at: Timestamp
   enrolled: Bool
   reached_create: Bool
   request_transmitted: Bool
@@ -303,6 +304,7 @@ data r2_object_read_token_mint_receipt: R2ObjectReadTokenMintReceipt = R2ObjectR
   token_id: "3f43e1c7f8fbcfc97139cb5d9dc4e984",
   s3_access_key_id: "3f43e1c7f8fbcfc97139cb5d9dc4e984",
   version_resource: "projects/582015116396/secrets/cloudflare-r2-origin-read-token/versions/1",
+  retrieved_at: r2_object_read_token_mint_retrieved_at,
   enrolled: true,
   reached_create: true,
   request_transmitted: true,
@@ -311,6 +313,7 @@ data r2_object_read_token_mint_receipt: R2ObjectReadTokenMintReceipt = R2ObjectR
   credential_custody_established: true,
   commit_ambiguous: false,
 }
+
 type R2CredentialStored
   = R2CredentialStoredAt { version_resource: String }
   | R2CredentialStoreRefused { cause: NonEmptyStr }
@@ -523,19 +526,24 @@ func revoke_unheld_object_read_token() -> ProcessExit uses net: Network {
                           exit_failure(reason: concat(
                             "REVOKE BODY DID NOT DECODE, AND THIS RUN WILL NOT DELETE AGAIN: ",
                             cause as String))
-                        RestOk => {
-                          let written = Filesystem.Write(
-                            path: "/tmp/r2-object-read-revoke-receipt.txt",
-                            content: join(["revoked_token_id=", token_id, "name=", request.name], "\n"),
-                          )
-                          if written.success {
-                            ExitSuccess
-                          } else {
+                        RestOk =>
+                          if deleted.success == false {
                             exit_failure(reason: concat(
-                              "REVOKE SUCCEEDED AND THE RECEIPT FILE COULD NOT BE WRITTEN: ",
-                              written.error))
+                              "REVOKE REPORTED HTTP SUCCESS WITH success=false, SO THE TOKEN MAY STILL EXIST: ",
+                              token_id))
+                          } else {
+                            let written = Filesystem.Write(
+                              path: "/tmp/r2-object-read-revoke-receipt.txt",
+                              content: join(["revoked_token_id=", token_id, "name=", request.name], "\n"),
+                            )
+                            if written.success {
+                              ExitSuccess
+                            } else {
+                              exit_failure(reason: concat(
+                                "REVOKE SUCCEEDED AND THE RECEIPT FILE COULD NOT BE WRITTEN: ",
+                                written.error))
+                            }
                           }
-                        }
                       }
                     }
                   }
