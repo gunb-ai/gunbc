@@ -153,12 +153,15 @@ data databank_lga2_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "databank.com/data-centers/new-york-city/eighth-avenue/ full-UA HTTP 200, 127126 bytes, subject LGA2=85. Same 'Cabinets Colocation' product label as LGA1, not a demonstrated single-cabinet offer.",
 }
 
-// THIS OPERATOR HAS MORE SITES IN THIS METRO THAN THE TWO MODELLED HERE. Its New Jersey index also
-// names a Newark facility at the 165 Halsey Street carrier hotel, which this census already carries
-// as a BUILDING under extdeps.colo.halsey_165 with no DataBank row in it. Reading
-// databank.com/data-centers/new-jersey/newark-165-halsey-street-suite/ and modelling that suite
-// here - one row per operator selling in a multi-operator building, per this carrier's own rule -
-// is what would make the operator's coverage complete; until then two of at least three are read.
+// THE 165 HALSEY SUITE IS NOT AN OPEN OBLIGATION; IT IS EWR1, AND AN EARLIER REVISION OF THIS
+// ANNOTATION SAID OTHERWISE. That revision claimed the operator's Newark facility at the 165 Halsey
+// Street carrier hotel had no row here and that reading the suite page was what would complete the
+// operator's coverage. Both halves were false when written: databank_ewr1_newark carries 165 Halsey
+// Street Suite #500, cited from that very suite page, read 2026-09-08. What is true is the part
+// that made the false version sound plausible - 165 Halsey is a MULTI-OPERATOR BUILDING carried as
+// a building under extdeps.colo.halsey_165, and this module holds DataBank's suite inside it. So
+// the one-row-per-operator-per-building rule is DEMONSTRATED here rather than owed, and the
+// operator's New Jersey index names exactly two sites, EWR1 and EWR2, both now modelled.
 //
 // THE SECOND SITE, NOW READ. The obligation this module carried - locate DataBank's New Jersey
 // facility pages, whose URLs derived from a secondary citation 404ed - is discharged here. The
@@ -328,6 +331,7 @@ data databank_facilities: List<ColoFacilityRow> = [
   databank_lga1_hudson,
   databank_lga2_eighth,
   databank_ewr1_newark,
+  databank_ewr2_piscataway,
   databank_phl1_philadelphia,
 ]
 
