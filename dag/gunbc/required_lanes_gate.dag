@@ -236,9 +236,8 @@ fn required_lanes_head_standing_stmts(
 // than anything in this file. A per-consumer fixture asserting the same refusal is deliberately
 // NOT added here: it would be one more monomorphised copy of a corpus-wide property, the same
 // duplication declining a sixth NonEmpty carrier avoids.
-// It is deliberately not a fresh NonEmptyRequiredLanes carrier -- `free_semigroup_grounding_note`
-// already names five monomorphised copies of that shape as convergence debt, and a sixth would be
-// the re-invention that section 2's own test forbids.
+// It is deliberately not a fresh NonEmptyRequiredLanes carrier — that would re-invent
+// std.algebra FreeSemigroup.
 type RequiredLane {
   job_id: String,
   label: String,

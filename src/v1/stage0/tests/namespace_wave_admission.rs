@@ -800,6 +800,27 @@ fn a_base_side_source_that_does_not_parse_refuses_instead_of_reading_as_empty() 
     );
 }
 
+/// The annotation-erased AST is still a baseline. Body-grain `//` refuses on HEAD parse, but
+/// the module was produced; reading it as unobservable sealed the repair that only moves those
+/// lines onto the declaration (`fail_closed_gate_refuses_its_own_repair`).
+#[test]
+fn a_base_side_source_with_only_body_annotations_still_yields_records() {
+    let body_comment = "\
+module probe.home
+
+fn widget() -> Int {
+  // still an allocated session
+  1
+}
+";
+    let read = base_records("dag/probe/home.dag", body_comment);
+    assert!(
+        read.as_ref().map(|r| !r.is_empty()).unwrap_or(false),
+        "annotation-grain refusals must not make the base unreadable when the parser already \
+         produced the module. Got: {read:?}"
+    );
+}
+
 /// A RENAME HAS TWO SIDES AND THE DIFF NAMES ONLY ONE OF THEM.
 ///
 /// `git diff --name-only` reports a detected rename as its destination alone, so reading that list
@@ -1965,5 +1986,45 @@ fn an_ambiguous_base_binding_is_not_consumption() {
             .any(|s| s.contains("authored-in-a-const")),
         "the unprovable row must still refuse: {:?}",
         report.stale_admissions
+    );
+}
+
+#[test]
+fn annotation_grain_repair_is_identity_when_only_comments_move() {
+    let base = r#"module probe.repair
+fn f() -> Int {
+  // body grain, unmodeled
+  1
+}
+"#;
+    let head = r#"module probe.repair
+// body grain, unmodeled
+fn f() -> Int {
+  1
+}
+"#;
+    assert!(
+        v1_compiler::cli_run::namespace_wave_admission::is_annotation_grain_repair(base, head),
+        "hoisting a body comment onto the declaration must be an annotation-grain repair"
+    );
+}
+
+#[test]
+fn annotation_grain_repair_refuses_when_code_moves_too() {
+    let base = r#"module probe.repair
+fn f() -> Int {
+  // body grain
+  1
+}
+"#;
+    let head = r#"module probe.repair
+// body grain
+fn f() -> Int {
+  2
+}
+"#;
+    assert!(
+        !v1_compiler::cli_run::namespace_wave_admission::is_annotation_grain_repair(base, head),
+        "a code change riding with a comment hoist must stay unobservable, not a repair"
     );
 }
