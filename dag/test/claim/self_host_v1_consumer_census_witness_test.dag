@@ -14,7 +14,7 @@ import gunbc.v1_consumer_census {
   v1_shim_partition, v1_shim_items, v1_consumer_population_for, v1_claimed_successors,
   v1_rows_undecided, v1_undecided_row_count, v1_deletion_worklist, v1_worklist_is_a_permutation,
   v1_worklist_leading_unjudged_count, v1_worklist_leads_with_the_unjudged,
-  v1_blocking_consumers, v1_pending_pr_10882_consumers, v1_pending_head_row_count,
+  v1_blocking_consumers, v1_blocking_uncitable, v1_pending_pr_10882_consumers, v1_pending_head_row_count,
   v1_row_key, v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
 }
 import test.fixture.v1_consumer_census.specimens {
@@ -220,14 +220,16 @@ test fn consumer_census_worklist_is_a_permutation_that_leads_with_the_unjudged()
 }
 
 // THE UNMERGED HEAD IS ROSTERED AND IS NOT IN THE POPULATION THE GATE READS. A frontier row folded
-// into the live roster would make the census a mixture of two trees, and the failure would be
-// silent: the count would simply be larger. So the assertion is a disjointness one -- every pending
-// row's key is absent from the live roster's keys -- and the positive half is that the pending list
-// is non-empty, since a disjointness claim over nothing holds vacuously.
+// into the live roster would make the census a mixture of two trees and the failure would be
+// silent: the count would simply be larger. The pending rows are carried in the census's UNCITABLE
+// shape -- their consumers are declarations only the unmerged head declares -- so the disjointness
+// is executed by showing the live uncitable column is empty while the pending list is not, and that
+// every pending row's disposition blocks. A pending row that had drifted into the live population
+// would break the first conjunct.
 test fn consumer_census_pending_head_rows_are_rostered_and_disjoint() -> Bool {
   v1_pending_head_row_count() > 0
-    && (v1_pending_pr_10882_consumers()
-        |> all(pending => !(v1_row_keys(rows: v1_consumers()) |> any(k => k == v1_row_key(r: pending)))))
+    && count(v1_uncitable_consumers()) == 0
+    && count(v1_blocking_uncitable(uncitable: v1_pending_pr_10882_consumers())) == v1_pending_head_row_count()
 }
 
 // THE DISCOVERY PROJECTION RESTORES THE ROOT PREFIX, and the RED half is the one that matters: a
