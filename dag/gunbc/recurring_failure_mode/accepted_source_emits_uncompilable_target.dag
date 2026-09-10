@@ -235,6 +235,10 @@ data accepted_source_emits_uncompilable_target: RecurringFailureMode = Recurring
     "THE REDUCED FIXTURE IS COMMITTED AT `fixtures/fixture_closure_rustc/bare_absent_fold_init.dag` so the defect does not vanish because production no longer authors it. It is the exact shape: a declared `Optional<Int>` return, `fold` over `List<Int>`, `init: Absent`, step `optional_present`. Do not rewrite that file to `optional_absent()` -- that would delete the subject. Input to ACT realization-fidelity (`v1_compiler.emitted_closure_compile_host` `fixture_closure_rustc_verdict` over this path); wiring that route is the executing consumer, not a green on the repaired self-host source. ",
 
     "WHY IT IS THIS ROW AND NOT A NEW CLASS: the invalid state is this row's own -- Accepted `.dag`, rustc refuses the emitted crate -- at component (vii), a complete per-target realization of a declared optional (type spelling, constructors, return convention). Repairing the self-host source satisfies less than (vii) and retires nothing. The mechanism is already a trigger component, so this append adds a specimen and no new component.",
+
+    "**THE SAME CLASS AT A SECOND SITE: TYPED OPTIONAL INIT WITH AN UNTYPED LAMBDA, 2026-09-10 (witty-boar-671, gunbc#10961 at 7a494d9e).** Replacing `init: Absent` with `optional_absent()` retired E0425 and left E0282. A .dag lambda parameter has no type slot, so the emitter renders `acc: _`; the init is a generic constructor call, and rustc cannot infer `T`. The self-host SOURCE is repaired again by a zero-arity `body_lower_eq_body_fold_init() -> Optional<Node>` and declared steps `body_lower_eq_body_fold_step` / `body_lower_last_child_fold_step` with typed params -- not by teaching the emitter to infer through `_`. ",
+
+    "THE REDUCED FIXTURE IS `fixtures/fixture_closure_rustc/typed_optional_fold_init_lambda.dag`: `fold(..., init: optional_absent(), f: fn(_acc, e) { ... })`. Do not rewrite that lambda into a declared typed step -- that would delete the subject. Same ACT consumer as the bare-Absent fixture. Same component (vii); no new component.",
   ],
 
   evidence: [],
