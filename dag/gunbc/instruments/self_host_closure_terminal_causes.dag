@@ -5,7 +5,9 @@ import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
+import v2.std.optional { Absent, Present }
 import v2.std.text { String }
+import v2.workflow.compile_door_ledger { FatalGrain, cause_ownership_lookup }
 
 // THE TERMINAL-CAUSE TABLE FOR THE V2 SELF-HOST CLOSURE, from the native driver's own per-file
 // output. The subject is the INPUT CLOSURE of src/v2/compiler/00_compile.dag - the modules the
@@ -46,9 +48,10 @@ import v2.std.text { String }
 // reached by `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane
 // v2-native`, whose context fold emits one NativeTestFileRefusal row per source carrying the head and
 // fatal reason. That lane, its authority gunbc.witness_v2_native_route, and the NativeTestFileRefusal
-// row type all resolve AT THE PINNED HEAD BELOW and at no commit on this branch's base: they are
-// #10882's, unmerged at this writing. The pin's head_sha is therefore not decoration - it is the only
-// tree in which this citation resolves, and a reader who checks it out gets the producer.
+// row type resolve on this base: they landed with #10882. An earlier revision of this note said they
+// resolved only at the pinned head, which was true when written and is not now - the pin still names
+// the tree the rows were OBSERVED over, which is what a pin is for, but it is no longer the only tree
+// in which the citation resolves.
 //
 // The per-declaration reduction behind each cause comes from a probe that calls
 // v2.compiler.program_assembly program_assembly_read_to_normalized_root_prepared - the same per-file
@@ -82,23 +85,23 @@ import v2.std.text { String }
 // exists this half has no producer to name, and saying otherwise would be naming an instrument that
 // does not exist.
 
-// WHO CONSUMES THIS TABLE, AND BY WHAT ROUTE. Stated as one of DESIGN 3c's three honest states rather
-// than left for a reader to infer: this is the SECOND state - a declared frontier with its trigger
-// beside it - and not the first.
+// WHO CONSUMES THIS TABLE, AND BY WHAT ROUTE. This was a DESIGN 3c SECOND-STATE frontier - a named
+// consumer in a named later change, with its trigger beside it - and the trigger has fired, so it is
+// now the FIRST state and the declaration is kept only because the history is the evidence that the
+// trigger named a capability rather than an aspiration.
 //
-// TODAY: nothing outside this module's own witness reads these rows by execution. The witness asserts
-// properties OF THE TABLE, which is a real check of this artifact but is not an executing consumer of
-// the measurement, and the repair lanes that cite causes by key do so as readers, which is citation
-// and not a route.
+// THE CONSUMER, EXECUTING: v2.workflow.compile_door_ledger cause_ownership_lookup, asked at FATAL
+// grain of every terminal_reason carried below, through terminal_reason_owned_at_fatal_grain. That
+// join could not be written before #10882: known_frontier_causes carried four causes, all at HEAD
+// grain, with none of this table's five terminal reasons among them, so the witness would have been
+// red then and green on the repair - the wrong direction for every subject involved. With the
+// grain-keyed lookup and the fatal-grain rows on this base it is an ordinary executing route whose
+// red is authorable: a row naming a cause the ledger does not own at fatal grain turns it false.
 //
-// THE NAMED CONSUMER AND ITS TRIGGER: v2.workflow.compile_door_ledger cause_ownership_lookup, joined
-// at FATAL grain against every terminal_reason carried below. That join is not authorable on this
-// base: known_frontier_causes here carries four causes and all four are HEAD-grain, none of the five
-// terminal reasons this table reports among them, so a witness asserting the join would be red today
-// and would green on the repair - the wrong direction for every subject involved. The grain-keyed
-// lookup and the fatal-grain ownership rows for exactly these five causes land with #10882; when that
-// is on main, the join becomes an executing route with an authorable red - a row naming a cause the
-// ledger does not own at fatal grain turns it false - and this frontier closes.
+// WHY THIS PARTICULAR CONSUMER AND NOT A CONVENIENT ONE. It joins against an INDEPENDENT authority, so
+// unlike every other witness over this table it can go red because a DIFFERENT module changed - the
+// door ledger retiring a cause, or this table naming one the ledger never owned. That is the
+// difference between a table that checks itself and a table something else depends on.
 
 // THE PIN. Every row is an observation of ONE tree through ONE binary. The emitted closure's own
 // reported identity is byte-derived and therefore unstable across emissions (the seed emitter emits
@@ -381,6 +384,39 @@ data closure_module_manifest: List<String> = [
   "src/v2/std/witness.dag"
 ]
 
+// THE SHORTCUT RECEIPT. Three observations of the pinned head, and the two pairings that isolate one
+// variable each. It carries identities and an outcome, never rows: the members themselves are the
+// table above, and a second copy of them keyed by join would be the duplication this file exists to
+// avoid.
+type ObservationRoot
+  = ClosureOnlyRoot
+  | WholeTreeRoot
+
+type ShortcutObservation {
+  label: Symbol
+  root: ObservationRoot
+  driver_binary_digest: String
+  order_insensitive_closure_digest: String
+}
+
+type IsolatedVariable
+  = DriverBinaryIsolated
+  | SourceRootIsolated
+
+// A DISAGREEMENT MUST NAME ITS MEMBERS. An outcome that could say "they differed" without saying where
+// would be the absorbing arm: unfalsifiable, unactionable, and indistinguishable from not having
+// looked. The variant makes the members unskippable when the answer is not agreement.
+type JoinOutcome
+  = EveryMemberAgreed
+  | MembersDisagreed { members: List<String> }
+
+type ShortcutJoin {
+  isolates: IsolatedVariable
+  left: Symbol
+  right: Symbol
+  outcome: JoinOutcome
+}
+
 // ONE CLOSURE FILE THAT REFUSED, keyed by the path the driver reported. causes names every cause
 // found in the file, so the lists are not disjoint and their lengths do not sum to the row count.
 type ClosureFileRow {
@@ -560,6 +596,42 @@ data front_end_causes: List<FrontEndCause> = [
     positive_control: "data d: A = A {\\n  meet: 1\\n}"
     discriminating_control: ControlThatAccepts { input: "fn f() -> A {\\n  A {\\n    meet: (a, b) => a\\n  }\\n}" }
     join_evidence: JoinedBySignatureOverIsolatedDeclaration
+  }
+]
+
+data shortcut_observations: List<ShortcutObservation> = [
+  ShortcutObservation {
+    label: ^baseline_closure_only
+    root: ClosureOnlyRoot
+    driver_binary_digest: "f939a936d39d504e320a0f6ab059b0ab7dc1432367536279c48304188a81c182"
+    order_insensitive_closure_digest: "27d8a7018ec18c43371410a7c0b0d3beabbe0f9021ef81e9e8b2b70cb632c5b3"
+  },
+  ShortcutObservation {
+    label: ^peer_host_closure_only
+    root: ClosureOnlyRoot
+    driver_binary_digest: "9ff3805437f9e08fc5135a5a450c4ad504bf7c614d83277589b393c560bf48bc"
+    order_insensitive_closure_digest: "27d8a7018ec18c43371410a7c0b0d3beabbe0f9021ef81e9e8b2b70cb632c5b3"
+  },
+  ShortcutObservation {
+    label: ^peer_host_whole_tree
+    root: WholeTreeRoot
+    driver_binary_digest: "9ff3805437f9e08fc5135a5a450c4ad504bf7c614d83277589b393c560bf48bc"
+    order_insensitive_closure_digest: "27d8a7018ec18c43371410a7c0b0d3beabbe0f9021ef81e9e8b2b70cb632c5b3"
+  }
+]
+
+data shortcut_joins: List<ShortcutJoin> = [
+  ShortcutJoin {
+    isolates: DriverBinaryIsolated
+    left: ^baseline_closure_only
+    right: ^peer_host_closure_only
+    outcome: EveryMemberAgreed
+  },
+  ShortcutJoin {
+    isolates: SourceRootIsolated
+    left: ^peer_host_closure_only
+    right: ^peer_host_whole_tree
+    outcome: EveryMemberAgreed
   }
 ]
 
@@ -1033,6 +1105,71 @@ fn causes_with_key(key: Symbol) -> List<FrontEndCause> {
 
 fn every_citation_key_names_exactly_one_cause() -> Bool {
   !any(xs: front_end_causes, predicate: fn(c) { length(xs: causes_with_key(key: c.key)) != 1 })
+}
+
+// THE CROSS-AUTHORITY JOIN. Every terminal cause this table reports must be a cause
+// v2.workflow.compile_door_ledger owns AT FATAL GRAIN - the same grain distinction that makes the head
+// reason useless here. Asking the ledger rather than a local roster is the point: this is the one
+// clause over this table that a change in another module can turn red.
+fn terminal_reason_owned_at_fatal_grain(reason: Symbol) -> Bool {
+  match cause_ownership_lookup(cause: reason, grain: FatalGrain) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn every_terminal_reason_is_owned_by_the_door_ledger() -> Bool {
+  !any(xs: closure_refusal_rows, predicate: fn(row) {
+    !terminal_reason_owned_at_fatal_grain(reason: row.terminal_reason)
+  })
+}
+
+fn observations_with_label(label: Symbol) -> List<ShortcutObservation> {
+  filter(xs: shortcut_observations, predicate: fn(o) { o.label == label })
+}
+
+fn observation_is_closure_only(o: ShortcutObservation) -> Bool {
+  match o.root {
+    ClosureOnlyRoot => true
+    WholeTreeRoot => false
+  }
+}
+
+// A JOIN MUST ISOLATE WHAT IT CLAIMS TO ISOLATE. A pairing labelled DriverBinaryIsolated whose two
+// observations used different ROOTS would have varied two things and proved neither separately - the
+// exact overclaim this receipt exists to avoid, and it is decidable from the identities alone.
+fn join_isolation_is_coherent(j: ShortcutJoin) -> Bool {
+  length(xs: observations_with_label(label: j.left)) == 1
+    && length(xs: observations_with_label(label: j.right)) == 1
+    && j.left != j.right
+    && any(xs: observations_with_label(label: j.left), predicate: fn(l) {
+         any(xs: observations_with_label(label: j.right), predicate: fn(r) {
+           match j.isolates {
+             DriverBinaryIsolated =>
+               observation_is_closure_only(o: l) == observation_is_closure_only(o: r)
+                 && l.driver_binary_digest != r.driver_binary_digest
+             SourceRootIsolated =>
+               observation_is_closure_only(o: l) != observation_is_closure_only(o: r)
+                 && l.driver_binary_digest == r.driver_binary_digest
+           }
+         })
+       })
+}
+
+fn every_shortcut_join_isolates_what_it_claims() -> Bool {
+  !any(xs: shortcut_joins, predicate: fn(j) { !join_isolation_is_coherent(j: j) })
+}
+
+// A recorded disagreement that names no member is unactionable and unfalsifiable. This does NOT assert
+// that the joins agreed - a future observation that disagrees is a finding, not a defect of this
+// carrier - it asserts only that a disagreement carries the members it disagreed about.
+fn every_disagreeing_join_names_its_members() -> Bool {
+  !any(xs: shortcut_joins, predicate: fn(j) {
+    match j.outcome {
+      EveryMemberAgreed => false
+      MembersDisagreed { members: m } => length(xs: m) == 0
+    }
+  })
 }
 
 fn every_row_cause_is_rostered() -> Bool {

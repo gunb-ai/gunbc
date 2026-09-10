@@ -15,6 +15,9 @@ import gunbc.tools.self_host_closure_terminal_causes {
   every_closure_identity_cause_covers_its_class,
   every_closure_module_appears_once,
   every_row_terminal_reason_is_named_by_a_cause,
+  every_disagreeing_join_names_its_members,
+  every_shortcut_join_isolates_what_it_claims,
+  every_terminal_reason_is_owned_by_the_door_ledger,
   front_end_causes,
   rows_for_path
 }
@@ -135,4 +138,35 @@ test fn every_closure_module_is_listed_once() -> Bool {
 // promote a cause onto the executed arm without that coverage, or drop it from one row of its class.
 test fn every_closure_identity_joined_cause_covers_its_whole_class() -> Bool {
   every_closure_identity_cause_covers_its_class()
+}
+
+// THE ONE CLAUSE HERE THAT ANOTHER MODULE CAN TURN RED. Every other witness in this file folds
+// literals carried by the table under review, which makes them real checks OF THE ARTIFACT and
+// nothing more. This one asks v2.workflow.compile_door_ledger, at FATAL grain, whether it owns each
+// terminal cause this table reports - so it goes red if this table names a cause the ledger never
+// owned, and equally if the ledger retires one while a row still reports it.
+//
+// It is also the frontier this carrier declared and could not write: before the grain-keyed lookup and
+// the fatal-grain rows landed, known_frontier_causes carried four causes at HEAD grain and none of
+// these five, so the clause would have been red then and green on the repair. Writing it now is the
+// trigger having fired, which is the difference between a frontier and an excuse.
+test fn every_terminal_reason_is_owned_at_fatal_grain_by_the_door_ledger() -> Bool {
+  every_terminal_reason_is_owned_by_the_door_ledger()
+}
+
+// THE RECEIPT MUST ISOLATE WHAT IT CLAIMS TO ISOLATE. A pairing labelled DriverBinaryIsolated whose
+// two observations used different roots would have varied two things and established neither
+// separately - which is precisely the overclaim the three-observation design exists to avoid, and it
+// is decidable from the identities alone. Red is authorable: relabel either pairing.
+test fn every_shortcut_join_isolates_the_variable_it_names() -> Bool {
+  every_shortcut_join_isolates_what_it_claims()
+}
+
+// A RECORDED DISAGREEMENT MUST NAME ITS MEMBERS. This deliberately does NOT assert that the joins
+// agreed: a future observation that disagrees is a finding about the shortcut, not a defect of this
+// carrier, and a witness that went red on a true measurement would be the wrong wall. What it refuses
+// is a disagreement recorded without the members it disagreed about - unactionable, unfalsifiable, and
+// indistinguishable from not having looked.
+test fn every_recorded_disagreement_names_its_members() -> Bool {
+  every_disagreeing_join_names_its_members()
 }
