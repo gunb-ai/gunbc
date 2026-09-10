@@ -189,8 +189,6 @@ data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
   psu_efficiency: Gold,
 }
 
-// THE 2DPC DOWNCLOCK IS RANK-DEPENDENT — the claim that survived the module
-// deletion unchanged, now stated against the relocated function.
 fn rate_at(dimms_per_channel: Nat, rank_count: Nat) -> Nat {
   match channel_effective_data_rate(
     context: mt_collins_context,
@@ -205,7 +203,7 @@ fn rate_at(dimms_per_channel: Nat, rank_count: Nat) -> Nat {
 
 // 2DPC KEEPS THE RATED RATE ON THE CITED AMPERE TABLE. Rank no longer changes the clock: the
 // held datasheet publishes no rank-dependent ceiling, so every 2DPC rank count stays at 3200.
-test fn downclock_is_rank_dependent() -> Bool {
+test fn two_dpc_keeps_the_cited_rated_rate_across_ranks() -> Bool {
   rate_at(dimms_per_channel: 2, rank_count: 1) == 3200
     && rate_at(dimms_per_channel: 2, rank_count: 2) == 3200
     && rate_at(dimms_per_channel: 2, rank_count: 4) == 3200

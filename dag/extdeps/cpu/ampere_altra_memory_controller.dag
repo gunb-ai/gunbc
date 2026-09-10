@@ -11,7 +11,7 @@ import std.measure {
   byte_size,
   megatransfers_per_second,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.memory.types {
   DramGeneration,
@@ -91,15 +91,6 @@ data altra_memory_max_dimms_per_channel_topology: DimmsPerChannelTopology = TwoD
 
 // Section 2.10, first feature bullet, verbatim grain: "Up to DDR4-3200".
 data altra_memory_max_data_rate: MegatransfersPerSecond = megatransfers_per_second(count: 3200)
-
-data altra_memory_max_data_rate_citation: FactCitation = FactCitation {
-  fact: DeclarationRef {
-    module_path: "extdeps.cpu.ampere_altra_memory_controller",
-    decl_name: "altra_memory_max_data_rate",
-    field: WholeDeclaration,
-  },
-  authority: ampere_altra_classic_rev_a1_datasheet_authority,
-}
 
 // A RANK-DEPENDENT 2DPC CEILING TABLE IS NOT IN THE HELD DATASHEET. Issue 1.50 section 2.10 was
 // read in full on 2026-09-10 (public locator, HTTP 200, 90 pages). The section lists maximum rate
