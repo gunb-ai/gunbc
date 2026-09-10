@@ -19,6 +19,10 @@ type FixtureUnknownFact { field: String }
 // discriminating: a root that reached the assessor on an unobserved subject could not return the
 // observer's refusal at all.
 type FixtureObserveRefusal = FixtureUnreadable { detail: String }
+
+// THE GOAL IS ITS OWN TYPE, which is what makes the goal-blindness claim testable: `fixture_observe`
+// has no parameter of this type, so it cannot read the desire even by accident.
+type FixtureGoal sole_constructor { want: String }
 type FixtureAssessRefusal = FixtureAssessorShouldNotRun { detail: String }
 
 fn fixture_observe(_: FixtureSubject, readable: Bool) -> ObservationAttempt<FixtureObserved, FixtureObserveRefusal> {
@@ -31,7 +35,7 @@ fn fixture_observe(_: FixtureSubject, readable: Bool) -> ObservationAttempt<Fixt
 
 // The assessor answers AGREEMENT through the mint rather than by writing the arm, so this fixture
 // exercises the same construction every real binding uses.
-fn fixture_assess(_: FixtureObserved) -> GoalAssessment<FixtureEvidence, FixtureDeviation, FixtureUnknownFact, FixtureAssessRefusal> {
+fn fixture_assess(goal: FixtureGoal, _: FixtureObserved) -> GoalAssessment<FixtureEvidence, FixtureDeviation, FixtureUnknownFact, FixtureAssessRefusal> {
   assess_by_deviations(evidence: FixtureEvidence { field: "unchanged" }, deviations: [])
 }
 
@@ -43,11 +47,12 @@ fn fixture_assess(_: FixtureObserved) -> GoalAssessment<FixtureEvidence, Fixture
 test fn unreadable_subject_refuses_before_the_assessor_runs() -> Bool {
   match inspect_goal(
     subject: FixtureSubject { key: "fixture" },
-    scope: false,
+    goal: FixtureGoal { want: "unchanged" },
+    request: false,
     observe: fixture_observe,
     assess: fixture_assess,
   ) {
-    GoalObservationRefused { subject: s, cause: FixtureUnreadable { detail: _ } } => s.key == "fixture"
+    GoalObservationRefused { subject: s, goal: _, request: _, cause: FixtureUnreadable { detail: _ } } => s.key == "fixture"
     _ => false
   }
 }
@@ -58,11 +63,12 @@ test fn unreadable_subject_refuses_before_the_assessor_runs() -> Bool {
 test fn readable_subject_in_agreement_is_satisfied() -> Bool {
   match inspect_goal(
     subject: FixtureSubject { key: "fixture" },
-    scope: true,
+    goal: FixtureGoal { want: "unchanged" },
+    request: true,
     observe: fixture_observe,
     assess: fixture_assess,
   ) {
-    GoalInspected { subject: _, observed: _, assessment: GoalSatisfied { evidence: e } } => e.field == "unchanged"
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: GoalSatisfied { evidence: e } } => e.field == "unchanged"
     _ => false
   }
 }
@@ -107,6 +113,57 @@ test fn an_unknown_outranks_deviations_and_still_carries_them() -> Bool {
   ) {
     GoalIndeterminate { known_deviations: ds, unknowns: us } =>
       length(ds) == 2 && us.head.field == "bypass_roster"
+    _ => false
+  }
+}
+
+// WHAT THE TYPE ACTUALLY CLOSES, AND WHAT IT DOES NOT.
+//
+// The check that stood here asserted that two goals over one request produce one observation, and it
+// was PERMANENTLY GREEN BY CONSTRUCTION: both calls passed the same `fixture_observe`, which has no
+// `FixtureGoal` parameter, so the equality could not go red for any authorable input. DESIGN section
+// 4b asks whether a check's RED is authorable BEFORE the check is written; this one's was not, which
+// makes it worse than absent because it would have been cited as coverage for the module's central
+// claim. It is deleted rather than repaired.
+//
+// THE RED THAT *IS* AUTHORABLE IS THIS ONE. `inspect_goal` stops a goal reaching the observer as a
+// PARAMETER. It does not stop a binding closing over one lexically: a lambda can capture a goal and
+// shape the read by it, and the resulting observation differs per captured goal. That is the
+// residual route, and this control holds it as a measured fact rather than a worry -- it goes red if
+// capture ever stops being expressible, at which point the guarantee has climbed and this witness is
+// what says so.
+//
+// SO THE HONEST RUNG IS: the parameter route is structurally impossible; the capture route is
+// mitigated by review only. NEXT-RUNG TRIGGER: a lens over the `Node` tree refusing an `observe`
+// argument whose free variables include the goal bound at the same call site.
+fn goal_shaped_observe(want: String, subject: FixtureSubject, readable: Bool) -> ObservationAttempt<FixtureObserved, FixtureObserveRefusal> {
+  if readable {
+    ObservationEstablished { observed: FixtureObserved { value: want } }
+  } else {
+    ObservationRefused { cause: FixtureUnreadable { detail: "fixture read refusal" } }
+  }
+}
+
+test fn a_captured_goal_still_shapes_the_observation_which_the_type_does_not_close() -> Bool {
+  match inspect_goal(
+    subject: FixtureSubject { key: "fixture" },
+    goal: FixtureGoal { want: "alpha" },
+    request: true,
+    observe: (s, r) => goal_shaped_observe(want: "alpha", subject: s, readable: r),
+    assess: fixture_assess,
+  ) {
+    GoalInspected { subject: _, goal: _, request: _, observed: o1, assessment: _ } =>
+      match inspect_goal(
+        subject: FixtureSubject { key: "fixture" },
+        goal: FixtureGoal { want: "beta" },
+        request: true,
+        observe: (s, r) => goal_shaped_observe(want: "beta", subject: s, readable: r),
+        assess: fixture_assess,
+      ) {
+        GoalInspected { subject: _, goal: _, request: _, observed: o2, assessment: _ } =>
+          o1.value == "alpha" && o2.value == "beta" && o1.value != o2.value
+        _ => false
+      }
     _ => false
   }
 }
