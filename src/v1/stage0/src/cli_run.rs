@@ -180,6 +180,8 @@ pub(crate) use test_migration::*;
 // registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
+#[path = "base_parse_environment.rs"]
+pub mod base_parse_environment;
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "namespace_wave_admission.rs"]
@@ -37399,8 +37401,8 @@ fn serialize_variant_to_wire_json(
     ctx: &v1_interpreter::InterpContext,
 ) -> WireSerializeResult<serde_json::Value> {
     use crate::v1_compiler_emit_rust::{
-        policy_is_string_variant, policy_is_untagged, policy_serde_tag_field, rust_serde_tag_attr,
-        rust_tagged_object_policy, wire_variant_tag_for_policy,
+        data_path_wire_variant_tag, policy_is_string_variant, policy_is_untagged,
+        policy_serde_tag_field, rust_tagged_object_policy,
     };
     let policy = resolve_coproduct_wire_policy(
         type_name,
@@ -37421,13 +37423,13 @@ fn serialize_variant_to_wire_json(
     }
 
     if policy_is_string_variant(policy.clone()) {
-        let tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
+        let tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
             .ok_or_else(|| format!("no wire tag for string variant {type_name}::{variant_name}"))?;
         return Ok(serde_json::Value::String(tag));
     }
 
     if let Some(tag_field) = policy_serde_tag_field(policy.clone()) {
-        let wire_tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
+        let wire_tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
             .ok_or_else(|| {
                 format!("no wire tag for internally-tagged variant {type_name}::{variant_name}")
             })?;
@@ -37443,12 +37445,8 @@ fn serialize_variant_to_wire_json(
     }
 
     let tag_key = policy_serde_tag_field(policy.clone()).unwrap_or_else(|| "_variant".to_string());
-    let default_tag = if policy.enum_attr == rust_serde_tag_attr() {
-        variant_name.to_string()
-    } else {
-        wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
-            .unwrap_or_else(|| variant_name.to_string())
-    };
+    let default_tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
+        .ok_or_else(|| format!("no wire tag for variant {type_name}::{variant_name}"))?;
     let mut obj = serde_json::Map::new();
     obj.insert(tag_key, serde_json::Value::String(default_tag));
     for (k, v) in fields.iter() {
