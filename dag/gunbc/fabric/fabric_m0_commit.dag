@@ -193,13 +193,26 @@ fn manifest_observation(
 
 // The consumer: one call from a real commit attempt to a published outcome.
 //
-// CONSUMED. gunbc.fabric_m0_publication publish_work is the production caller:
-// it holds a run's Work, resolves that Work's obligations, and job success
-// is admitted only from the JobPublication this function returns. The
-// required-build ending is gunbc.fabric_witness_run
-// publish_required_witnesses_build, which reaches this function through that
-// consumer. Witnesses of those folds remain the enrolled evidence; they are
-// not themselves the consumer.
+// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). gunbc.fabric_m0_publication
+// publish_work is the named join that holds a run's Work and calls this
+// function. That join is itself a DECLARED FRONTIER: today it is reached by
+// enrolled witnesses and by no job-ending on a run path. Rewriting this
+// paragraph as CONSUMED while the route terminated in a test was false.
+//
+// THE FRONTIER TRIGGER, STATED AS THE CAPABILITY THAT CONSUMES IT: a
+// required-CI (or other real job) ending that already possesses that run's
+// Work, the attempt's commit transport, and an independent origin readback
+// of the commit manifest -- the roadmap's compute-artifact-return-and-
+// materialization capability -- and that decides the process/check conclusion
+// from the JobPublication this function returns. Naming a smaller artifact --
+// one fold, one witness file, one emitted script -- would be satisfied while
+// the capability stayed dead. Sibling lanes own origin binding and cache;
+// fabricating DurableOriginRead on the required-CI path would be the silent
+// default this gate exists to refuse.
+//
+// This is a consumption frontier, NOT a guarantee drop: the gate's walls are
+// enrolled and executing over the population they are declared for, so no
+// rung is being lowered by the wait.
 fn publish_after_commit(
   namespace: CommitNamespace,
   attempt: AttemptIdentity,
