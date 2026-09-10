@@ -29,6 +29,11 @@ import gunbc.fabric_m0_commit {
 
 // DECLARED FRONTIER, not a closed consumer (DESIGN 3c).
 //
+// What this fold buys over the pre-change state: it names the join point
+// so the capability trigger has a subject (Work + resolve at the
+// admission gate + publish_after_commit) instead of an unnamed future
+// caller of publish_after_commit.
+//
 // This join holds a run's Work, resolves that Work's obligations at the
 // admission gate, and returns the publication the completion authority
 // produces. Nothing here selects an origin or a cache -- those are sibling
