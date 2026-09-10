@@ -1184,6 +1184,24 @@ fn dashboard_host_lookup_subjects_are_unique() -> Bool {
   )
 }
 
+// THE DISJOINTNESS LAW OVER THE SET, not over the pairs a witness remembered. The pairwise
+// predicate is the judgment; this is the quantification. A new roster row is in the cross
+// product the moment it is declared, so a lab that overlaps production cannot sit green until
+// someone writes a second call. Identity equality is the diagonal skip — a record is consistent
+// with itself, and the safety property is about distinct members.
+fn dashboard_declared_instances_owned_paths_are_pairwise_consistent() -> Bool {
+  let xs = declared_dashboard_instances()
+  all(
+    xs,
+    a => all(
+      xs,
+      b =>
+        a.instance_id == b.instance_id
+          || dashboard_instances_have_disjoint_owned_paths(a: a, b: b),
+    ),
+  )
+}
+
 fn dashboard_path_is_under(path: FilePath, root: FilePath) -> Bool {
   starts_with(s: path as String, prefix: concat(root as String, "/"))
 }
@@ -1329,9 +1347,9 @@ fn dashboard_instances_have_disjoint_owned_paths(
 // which is which rather than defaulting: a host-shared instance beside an instance-owned one is a
 // production slot beside a lab, and the lab exists to keep its dispatch evidence away from
 // production, so disjointness is exactly right there.\n\nThis is the pairwise law. The population
-// law it serves — every production slot on a host agrees with every other — is what the witness
-// asserts over the declared slots, because a pairwise predicate cannot quantify over a roster it
-// does not receive.
+// law it serves — every declared instance is path-consistent with every other — is
+// dashboard_declared_instances_owned_paths_are_pairwise_consistent, which folds this predicate
+// over declared_dashboard_instances rather than asking a witness to name the pairs.
 
 fn dashboard_instances_dispatch_state_is_consistent(
   a: HostDashboardInstance,

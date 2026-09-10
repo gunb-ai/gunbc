@@ -64,6 +64,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_declared_instance_ids_are_unique,
   dashboard_declared_repo_roots_are_unique,
   dashboard_host_lookup_subjects_are_unique,
+  dashboard_declared_instances_owned_paths_are_pairwise_consistent,
   dashboard_instance_for_host,
   dashboard_instance_for_repo_root,
   dashboard_instance_for_id,
@@ -964,6 +965,7 @@ test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
   dashboard_declared_instance_ids_are_unique()
     && dashboard_declared_repo_roots_are_unique()
     && dashboard_host_lookup_subjects_are_unique()
+    && dashboard_declared_instances_owned_paths_are_pairwise_consistent()
     && roster_has_id(id: srv1_live_dashboard_instance().instance_id)
     && roster_has_id(id: srv1_lab_dashboard_instance().instance_id)
     && roster_has_id(id: srv2_preview_dashboard_instance().instance_id)
