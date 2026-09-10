@@ -23,6 +23,9 @@ import gunbc.guarantee_probe_corpus {
   floor_parse_list_separator_hole_probe,
   floor_record_completeness_green_probe,
   floor_record_completeness_red_probe,
+  floor_record_completeness_zero_field_product_control_probe,
+  floor_record_completeness_zero_field_variant_hole_probe,
+  floor_record_completeness_bare_name_hole_probe,
   ExpectBlockingRefusal,
   active_probe_row,
   guarantee_probe_rows,
@@ -167,6 +170,14 @@ data exhaustiveness_type_variable_hole_source: String = "module probe_floor_exh_
 
 data record_completeness_red_source: String = "module probe_floor_record_missing\ntype Pair { a: Int, b: Int }\nfn f() -> Pair { Pair { a: 1 } }\n"
 data record_completeness_green_source: String = "module probe_floor_record_full\ntype Pair { a: Int, b: Int }\nfn f() -> Pair { Pair { a: 1, b: 2 } }\n"
+// ZERO FIELDS SUPPLIED. The red source above omits ONE of two fields; these omit ALL of them, which
+// is a different question with a different answer per declaration kind (measured, not assumed).
+// The sources are STRINGS and never appear as corpus literals: an inline expecting-red cannot flip
+// when its wall lands, it makes the file unparseable and takes the lane down with it.
+data record_completeness_zero_field_product_source: String = "module probe_floor_record_zero_product\ntype Pair { a: Int, b: Int }\nfn f() -> Pair { Pair { } }\n"
+data record_completeness_zero_field_variant_source: String = "module probe_floor_record_zero_variant\ntype Shape = Circle { radius: Int } | Square\nfn f() -> Shape { Circle { } }\n"
+data record_completeness_bare_name_variant_source: String = "module probe_floor_record_bare_variant\ntype Shape = Circle { radius: Int } | Square\nfn f() -> Shape { Circle }\n"
+data record_completeness_bare_name_product_source: String = "module probe_floor_record_bare_product\ntype Pair { a: Int, b: Int }\nfn f() -> Pair { Pair }\n"
 
 data parse_list_separator_hole_source: String = "module probe_floor_list_sep\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }  Cell { n: 3 } ] }\n"
 data parse_list_separator_double_source: String = "module probe_floor_list_sep_double\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, , Cell { n: 3 } ] }\n"
@@ -216,6 +227,30 @@ test fn floor_exhaustiveness_on_a_type_variable_scrutinee_is_still_silent() -> B
 test fn floor_record_completeness_missing_field_refuses_blocking() -> Bool {
   row_holds(probe: floor_record_completeness_red_probe, source: record_completeness_red_source)
     && blocking_count(source: record_completeness_red_source, wanted: "MissingField") == 1
+}
+
+// A PRODUCT WITH AN EMPTY BRACE PAIR REFUSES, ONE MissingField PER DECLARED FIELD. This is the
+// green control for the zero-field family: it establishes that the completeness check DOES handle
+// zero supplied fields, so the two silences below are a gap on specific paths rather than an absent
+// check. Without it, "zero fields is not checked" would read as a whole missing wall.
+test fn floor_record_completeness_zero_field_product_refuses_every_field() -> Bool {
+  row_holds(probe: floor_record_completeness_zero_field_product_control_probe, source: record_completeness_zero_field_product_source)
+    && blocking_count(source: record_completeness_zero_field_product_source, wanted: "MissingField") == 2
+}
+
+// THE SAME OMISSION ON A COPRODUCT VARIANT IS SILENT. `Circle { }` where Circle declares `radius`
+// compiles with zero diagnostics of any severity, and the declared field reads as null at runtime.
+test fn floor_record_completeness_zero_field_variant_is_still_silent() -> Bool {
+  silent_hole_holds(probe: floor_record_completeness_zero_field_variant_hole_probe, source: record_completeness_zero_field_variant_source)
+    && blocking_count(source: record_completeness_zero_field_variant_source, wanted: "MissingField") == 0
+}
+
+// A BARE NAME PRESENTS NO FIELD SET AT ALL, in either declaration kind, so nothing is checked.
+// Both spellings are asserted because a repair reaching only one of them would leave this green.
+test fn floor_record_completeness_bare_name_is_still_silent() -> Bool {
+  silent_hole_holds(probe: floor_record_completeness_bare_name_hole_probe, source: record_completeness_bare_name_variant_source)
+    && blocking_count(source: record_completeness_bare_name_variant_source, wanted: "MissingField") == 0
+    && blocking_count(source: record_completeness_bare_name_product_source, wanted: "MissingField") == 0
 }
 
 test fn floor_record_completeness_green_control_is_clean() -> Bool {
@@ -271,12 +306,18 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
   }
 }
 
-test fn every_below_floor_hole_row_is_one_of_the_four_declared_holes() -> Bool {
+// THE COUNT IS OUT OF THE NAME. It read `..._one_of_the_four_declared_holes` and the set has just
+// grown to six, so the name would have needed editing on every enrolment while asserting nothing —
+// the assertion is the SET EQUALITY below, in both directions, and that is what makes adding a hole
+// row without declaring it here impossible. A number in the name is maintenance with no consumer.
+test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
   let declared = [
     floor_exhaustiveness_type_variable_hole_probe as String,
     floor_field_through_generics_hole_probe as String,
     floor_generic_instantiation_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
+    floor_record_completeness_zero_field_variant_hole_probe as String,
+    floor_record_completeness_bare_name_hole_probe as String,
   ]
   let hole_ids = guarantee_probe_below_floor_hole_rows() |> map(row => row.probe as String)
   let every_hole_declared = fold(hole_ids, init: true, f: (acc, id) => acc && (declared |> filter(d => d == id) |> count) == 1
