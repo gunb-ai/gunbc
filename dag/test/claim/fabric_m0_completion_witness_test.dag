@@ -116,7 +116,7 @@ fn the_resolution() -> OutputObligationsResolution {
 // THE ONE ADMITTED FIXTURE ROUTE TO A CONFIRMING READING. OriginReading is sole_constructor, so
 // this file cannot write one; witness_origin_reading admits THIS function by name and no other.
 // These witnesses are about the verdict algebra, so the digest is chosen here -- the computation is
-// measured by the real-execution witness and the seal by test.claim.fabric_m0_origin_readback_seal.
+// measured by the instrument tools.fabric_m0_origin_readback_probe and the seal by test.claim.fabric_m0_origin_readback_seal.
 fn witness_reading(d: Sha256Digest) -> OriginReading {
   witness_origin_reading(staged_path: "fixture://fabric-m0/completion/subject", observed_digest: d)
 }

@@ -50,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE ONE ADMITTED FIXTURE ROUTE TO A CONFIRMING READING. OriginReading is sole_constructor, so
 // these witnesses cannot write one; witness_origin_reading admits THIS function by name and no
 // other. The digest is chosen here because these witnesses are about the verdict algebra, not about
-// the digest computation -- that one is measured by the real-execution witness, and the seal itself
+// the digest computation -- that one is measured by the instrument tools.fabric_m0_origin_readback_probe, and the seal itself
 // by test.claim.fabric_m0_origin_readback_seal.
 fn witness_reading(d: Sha256Digest) -> OriginReading {
   witness_origin_reading(staged_path: "fixture://fabric-m0/commit/manifest", observed_digest: d)
