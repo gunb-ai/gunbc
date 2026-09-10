@@ -7,8 +7,6 @@ import extdeps.transports.rest {
   RestExchangeSucceeded, RestExchangePerformance,
   RestReadExchange,
 }
-import extdeps.github.code_search
-import extdeps.github.repository_contents
 import extdeps.github.code_search {
   CodeSearchPage, CodeSearchHit, CodeSearchRepository, code_search_hits_read,
 }
@@ -43,6 +41,25 @@ type CodeSearchPageRead
 
 data code_search_truncation_cause: NonEmptyStr = "GitHub returned incomplete_results: true for this page, meaning its own search timed out and returned what it had. The number of hits NOT returned is not reported and cannot be derived, so any population counted from this page is a lower bound of unknown tightness and may not be described as a census."
 
+// THE CLASSIFICATION IS SEPARATE FROM THE EFFECT, AND THAT SPLIT IS WHAT MAKES IT TESTABLE.
+// Fetching a page is an effect; deciding what the page that came back MEANS is a total function
+// over its content, and the two were fused in an earlier revision of this module. The cost was
+// not abstract: the mock publishes exactly one result, so the truncated arm was unreachable
+// through the effectful function, and the claim that exercised it had to carry a hand-copied twin
+// of this decision - which cannot go red when this decision is wrong (DESIGN section 5) and is a
+// forked implementation of one rule (section 2). Split, the claims drive the REAL arms.
+fn classify_code_search_page(page: CodeSearchPage) -> CodeSearchPageRead {
+  if page.incomplete_results {
+    CodeSearchPageTruncated {
+      page: page,
+      hits_read: code_search_hits_read(page: page),
+      cause: code_search_truncation_cause,
+    }
+  } else {
+    CodeSearchPageComplete { page: page, hits_read: code_search_hits_read(page: page) }
+  }
+}
+
 func perform_code_search_page(
   auth_token: Secret,
   q: String,
@@ -51,16 +68,7 @@ func perform_code_search_page(
 ) -> CodeSearchPageRead uses net: Network {
   let got = github.CodeSearch.SearchCode(auth_token: auth_token, q: q, per_page: per_page, page: page)
   match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
-    RestExchangeSucceeded =>
-      if got.page.incomplete_results {
-        CodeSearchPageTruncated {
-          page: got.page,
-          hits_read: code_search_hits_read(page: got.page),
-          cause: code_search_truncation_cause,
-        }
-      } else {
-        CodeSearchPageComplete { page: got.page, hits_read: code_search_hits_read(page: got.page) }
-      }
+    RestExchangeSucceeded => classify_code_search_page(page: got.page)
     other => CodeSearchPageRefused { performance: other }
   }
 }
@@ -83,6 +91,20 @@ data workflow_source_too_large_cause: NonEmptyStr = "the contents endpoint answe
 
 data workflow_source_unknown_encoding_cause: NonEmptyStr = "the contents endpoint answered 200 with an encoding this reader does not model; the bytes were not decoded and nothing may be concluded about the file's contents."
 
+// The same split, and here it is load-bearing rather than tidy: the two arms this module exists
+// for are precisely the ones the single published mock cannot reach, so fusing them into the
+// effectful function put them permanently beyond execution. This is the classifier both the
+// production read and the claims call.
+fn classify_workflow_source(file: RepositoryFileContent) -> WorkflowSourceRead {
+  if file.encoding == contents_base64_encoding {
+    WorkflowSourceObserved { file: file }
+  } else if file.encoding == contents_absent_encoding {
+    WorkflowSourceTooLargeForContentsApi { file: file, cause: workflow_source_too_large_cause }
+  } else {
+    WorkflowSourceEncodingUnrecognized { file: file, cause: workflow_source_unknown_encoding_cause }
+  }
+}
+
 func perform_workflow_source_read(
   auth_token: Secret,
   owner: String,
@@ -93,14 +115,7 @@ func perform_workflow_source_read(
   let got = github.RepositoryContents.GetContent(
     auth_token: auth_token, owner: owner, repo: repo, path: path, ref: ref)
   match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
-    RestExchangeSucceeded =>
-      if got.file.encoding == contents_base64_encoding {
-        WorkflowSourceObserved { file: got.file }
-      } else if got.file.encoding == contents_absent_encoding {
-        WorkflowSourceTooLargeForContentsApi { file: got.file, cause: workflow_source_too_large_cause }
-      } else {
-        WorkflowSourceEncodingUnrecognized { file: got.file, cause: workflow_source_unknown_encoding_cause }
-      }
+    RestExchangeSucceeded => classify_workflow_source(file: got.file)
     other => WorkflowSourceRefused { performance: other }
   }
 }
@@ -120,10 +135,6 @@ type WorkflowSourceIdentity {
   ref: String
   workflow_path: String
   blob_sha: String
-}
-
-fn hit_repository(hit: CodeSearchHit) -> CodeSearchRepository {
-  hit.repository
 }
 
 type HitCanonicalization

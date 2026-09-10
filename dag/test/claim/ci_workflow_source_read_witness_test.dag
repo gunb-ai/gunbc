@@ -16,7 +16,7 @@ import gunbc.ci_workflow_source_read {
   perform_code_search_page,
   WorkflowSourceRead, WorkflowSourceObserved, WorkflowSourceTooLargeForContentsApi,
   WorkflowSourceEncodingUnrecognized, WorkflowSourceRefused,
-  perform_workflow_source_read,
+  perform_workflow_source_read, classify_workflow_source, classify_code_search_page,
   HitCanonicalization, HitCanonicalized, HitNotCanonicalized, canonicalize_hit,
   WorkflowSourceIdentity,
 }
@@ -100,15 +100,7 @@ data unknown_encoding_response: RepositoryFileContent = RepositoryFileContent {
   content: "??",
 }
 
-fn read_of(file: RepositoryFileContent) -> WorkflowSourceRead {
-  if file.encoding == contents_base64_encoding {
-    WorkflowSourceObserved { file: file }
-  } else if file.encoding == contents_absent_encoding {
-    WorkflowSourceTooLargeForContentsApi { file: file, cause: "constructed for this claim" }
-  } else {
-    WorkflowSourceEncodingUnrecognized { file: file, cause: "constructed for this claim" }
-  }
-}
+
 
 // -------------------------------------------------------------------------------------
 // A HIT IS NOT AN OBSERVATION. Canonicalization must be reachable only through a read at a named
@@ -135,7 +127,7 @@ data observed_file: RepositoryFileContent = RepositoryFileContent {
 }
 
 test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> Bool {
-  match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read_of(file: observed_file)) {
+  match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: classify_workflow_source(file: observed_file)) {
     HitCanonicalized { identity } =>
       identity.ref == fixture_ref
         && identity.blob_sha == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
@@ -150,13 +142,80 @@ test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> 
 // complete the hit that pointed at it was. Both non-reading arms are exercised, because a scan
 // that refused only the oversized one would still fabricate on an unrecognized encoding.
 test fn an_unread_file_never_becomes_an_identity() -> Bool {
-  let oversized_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read_of(file: oversized_response)) {
+  let oversized_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: classify_workflow_source(file: oversized_response)) {
     HitCanonicalized { identity } => false
     HitNotCanonicalized { repository_full_name, path, cause } => repository_full_name == "llvm/llvm-project"
   }
-  let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: read_of(file: unknown_encoding_response)) {
+  let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, ref: fixture_ref, read: classify_workflow_source(file: unknown_encoding_response)) {
     HitCanonicalized { identity } => false
     HitNotCanonicalized { repository_full_name, path, cause } => true
   }
   oversized_refused && unknown_encoding_refused
+}
+
+// -------------------------------------------------------------------------------------
+// THE TWO ARMS THIS MODULE EXISTS FOR, DRIVEN THROUGH THE PRODUCTION CLASSIFIER.
+//
+// An earlier revision of this witness carried a hand-copied twin of the encoding decision,
+// because the published mock is a single base64 200 and the refusing arms were unreachable
+// through the effectful function. A copy cannot go red when the original is wrong, which is
+// exactly the state DESIGN section 5 calls specification-without-execution: the arms looked
+// covered and nothing was executing them. The classifier is now a separate total function that
+// the effectful read calls, so these claims drive the same code the production path runs.
+// -------------------------------------------------------------------------------------
+
+test fn the_oversized_response_is_refused_by_the_production_classifier() -> Bool {
+  match classify_workflow_source(file: oversized_response) {
+    WorkflowSourceTooLargeForContentsApi { file, cause } =>
+      file.encoding == contents_absent_encoding && string_contains(s: cause as String, pattern: "was NOT read")
+    WorkflowSourceObserved { file } => false
+    WorkflowSourceEncodingUnrecognized { file, cause } => false
+    WorkflowSourceRefused { performance } => false
+  }
+}
+
+test fn an_unrecognized_encoding_is_refused_by_the_production_classifier() -> Bool {
+  match classify_workflow_source(file: unknown_encoding_response) {
+    WorkflowSourceEncodingUnrecognized { file, cause } => file.encoding == "utf-16"
+    WorkflowSourceObserved { file } => false
+    WorkflowSourceTooLargeForContentsApi { file, cause } => false
+    WorkflowSourceRefused { performance } => false
+  }
+}
+
+// The positive control on the same function, so the two claims above are not green because the
+// classifier refuses everything.
+test fn a_base64_response_is_observed_by_the_production_classifier() -> Bool {
+  match classify_workflow_source(file: observed_file) {
+    WorkflowSourceObserved { file } => file.sha == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
+    other => false
+  }
+}
+
+// THE SAME GAP EXISTED ON THE SEARCH SIDE AND WAS NOT FLAGGED: the mock publishes
+// incomplete_results false, so the truncated arm had no execution either. Upstream saying it gave
+// up is the one signal that separates a small population from an abandoned query, and a scan that
+// never exercises that arm cannot claim to honour it.
+data truncated_page: CodeSearchPage = CodeSearchPage {
+  total_count: 250,
+  incomplete_results: true,
+  items: [],
+}
+
+test fn an_upstream_truncated_page_is_not_a_complete_one() -> Bool {
+  let truncated = match classify_code_search_page(page: truncated_page) {
+    CodeSearchPageTruncated { page, hits_read, cause } =>
+      hits_read == 0 && string_contains(s: cause as String, pattern: "incomplete_results")
+    CodeSearchPageComplete { page, hits_read } => false
+    CodeSearchPageRefused { performance } => false
+  }
+  let complete = match classify_code_search_page(page: CodeSearchPage {
+    total_count: hermetic_code_search_total_count,
+    incomplete_results: false,
+    items: [fixture_hit],
+  }) {
+    CodeSearchPageComplete { page, hits_read } => hits_read == 1
+    other => false
+  }
+  truncated && complete
 }
