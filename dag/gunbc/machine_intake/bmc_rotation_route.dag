@@ -48,7 +48,7 @@ type BmcRotationRoute
 fn rotation_route_for_family(family: BmcFirmwareFamily) -> BmcRotationRoute {
   match family {
     OpenBmc => RotationRouteRedfishAccountService {
-      path_note: "PATCH /redfish/v1/AccountService/Accounts/{account_id} with a JSON Password member; extdeps.bmc.http SetAccountPassword, executed against the srv3 and srv4 controllers by gunbc.tools.bmc_onboard" as NonEmptyStr,
+      path_note: "PATCH /redfish/v1/AccountService/Accounts/ plus the account id, with a JSON Password member; extdeps.bmc.http SetAccountPassword, executed against the srv3 and srv4 controllers by gunbc.tools.bmc_onboard" as NonEmptyStr,
     }
     AmiMegaRac => RotationRouteUnavailable {
       family_note: "AMI MegaRAC serves an SP-X-style /api/ surface and no Redfish service root" as NonEmptyStr,
