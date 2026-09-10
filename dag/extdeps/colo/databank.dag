@@ -153,21 +153,66 @@ data databank_lga2_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "databank.com/data-centers/new-york-city/eighth-avenue/ full-UA HTTP 200, 127126 bytes, subject LGA2=85. Same 'Cabinets Colocation' product label as LGA1, not a demonstrated single-cabinet offer.",
 }
 
-// A SECOND SITE THIS OPERATOR RUNS IN NEW JERSEY, NAMED BUT NOT MODELLED. A review relayed into
-// this session cited an 85 kW-per-cabinet deployment at a Piscataway campus for a university HPC
-// tenant. Two fetches of the campus and facility pages under the paths that claim implies both
-// returned 404 on 2026-09-08, so no address, capacity or density is carried for it. A tailored
-// deployment for one named tenant would in any case be a different fact from a marketed cabinet
-// maximum, and would need its own arm rather than being read as retail density.
-// PARTIALLY DISCHARGED 2026-09-08. The operator's New Jersey index at databank.com/data-
-// centers/new-jersey/ resolves and names exactly two sites: EWR1 Downtown Newark, now modelled
-// above, and EWR2 Piscataway at 25 Corporate Place South, Piscataway, NJ 08854 with no density
-// figure on the index. The Piscataway facility page beneath it still 404s, and Piscataway is
-// Middlesex County, outside the Hudson-Bergen-Essex corridor this pass surveyed, so EWR2 remains
-// unmodelled: read its facility page and carry its address, critical IT load, cabinet density and
-// retail grain. The 85 kW-per-cabinet claim a secondary review attached to a Piscataway HPC tenant
-// is still unconfirmed by any operator page and is still not a marketed retail density.
+// THE 165 HALSEY SUITE IS NOT AN OPEN OBLIGATION; IT IS EWR1, AND AN EARLIER REVISION OF THIS
+// ANNOTATION SAID OTHERWISE. That revision claimed the operator's Newark facility at the 165 Halsey
+// Street carrier hotel had no row here and that reading the suite page was what would complete the
+// operator's coverage. Both halves were false when written: databank_ewr1_newark carries 165 Halsey
+// Street Suite #500, cited from that very suite page, read 2026-09-08. What is true is the part
+// that made the false version sound plausible - 165 Halsey is a MULTI-OPERATOR BUILDING carried as
+// a building under extdeps.colo.halsey_165, and this module holds DataBank's suite inside it. So
+// the one-row-per-operator-per-building rule is DEMONSTRATED here rather than owed, and the
+// operator's New Jersey index names exactly two sites, EWR1 and EWR2, both now modelled.
 //
+// THE SECOND SITE, NOW READ. The obligation this module carried - locate DataBank's New Jersey
+// facility pages, whose URLs derived from a secondary citation 404ed - is discharged here. The
+// live path is databank.com/data-centers/new-jersey/piscataway/, and the facility is EWR2.
+//
+// THE 85 kW CLAIM THAT PROMPTED THE SEARCH IS NOT REFUTED BY THIS ROW; IT IS A DIFFERENT QUANTITY.
+// A review relayed an 85 kW-per-cabinet figure for the university HPC environment this building
+// hosts. That is a tailored deployment built for one named tenant. The 10kW+ below is what the
+// operator MARKETS to any buyer. Both can be true of one building at once, and reading the first
+// as the second would be the same category error as reading facility megawatts as cabinet density
+// - the error this carrier exists to prevent, wearing a different costume. So the row carries the
+// marketed figure because that is what CabinetDensityClaim is for, and the tenant-specific figure
+// gets no arm here until something consumes it. What was wrong was never the source's number; it
+// was the quantity it would have been filed under.
+data databank_ewr2_piscataway: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank EWR2 Piscataway",
+  address: AddressListed {
+    street: "25 Corporate Place South, Piscataway, NJ 08854",
+    citation: "databank.com New Jersey Piscataway data center page, read 2026-09-08",
+  },
+  municipality: "Piscataway",
+  region_code: "NJ",
+  facility_note: "Operator page (read 2026-09-08): 3 MW critical IT load, 22,590 IT square feet, N+1 power and cooling, nine onsite carriers, 100 percent renewable sourcing claimed. Middlesex County - the same township as QTS PNJ1, Digital Fortress PNJ and the Digital Realty Piscataway campus. Home to the New Jersey Institute of Technology's Wulver HPC environment per the operator's own press material, which is why a dense-cabinet claim for this building circulates; see the density row for what the facility page actually states.",
+}
+
+// TEN KILOWATTS, NOT EIGHTY-FIVE. The plus sign is the operator's, so this is a marketed floor on
+// a maximum in the same wording style as LGA4's 35kW+. Against a 650 W node it is thirteen nodes
+// of air-cooled headroom - four times the densest PRICED product in this census and a third of
+// what LGA4 markets. It is the reading that makes EWR2 a real candidate and the reading that
+// stops it from being ranked as the dense one.
+data databank_ewr2_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumPublished { medium: AirCooling },
+      quantity: CapabilityAtLeast { lower: PublishedRealPower { power: watt(count: 10000) } },
+      wording: "10kW+ Cab Density Air",
+      citation: "databank.com New Jersey Piscataway data center page, read 2026-09-08 and verified against the raw bytes 2026-09-09 (HTTP 200, 126833 bytes, stable across no-user-agent, full-browser-user-agent and short-user-agent fetches; the string occurs literally in every capture as bold 10kW+ followed by Cab Density Air). Scope check: the cell is in the Power info-table directly under the page h1, Piscataway Data Center (EWR2), 25 Corporate Place South, alongside 3MW Critical IT Load - same spec strip, same facility, no promotion banner. RESTORED 2026-09-10 from DensityUnread: the row was demoted on 2026-09-09 because the plus sign makes this a capability FLOOR and every figure-bearing arm of the previous carrier was a MAXIMUM, so it answered a bounding question backwards. CapabilityAtLeast is the arm that was missing, and the evidence never moved - no page was re-fetched to restore it.",
+      verification: WordingVerbatim {
+        retrieval: "Markup-grain verification 2026-09-09: the wording is ONE <li> element whose numeral is emphasized - 10kW+ in strong tags followed by the text Cab Density Air - so it is an authored cell and not two cells a reader joined. Matched against tag-stripped text because the emphasis tags mean no contiguous byte run carries the whole wording; positive control in the same pass, 25 Corporate Place South present in the same stripped text. An earlier reading of this row carried only the leading 10kW+, which was a truncation at the emphasis boundary.",
+      },
+    },
+    tail: [],
+  },
+}
+
+data databank_ewr2_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "cabinets, cages",
+  citation: "databank.com New Jersey Piscataway data center page, read 2026-09-08. The page lists cabinets alongside cages as the space products for this facility, on the same pattern as LGA4; it does not state a minimum commitment, so the quote still owes the answer for a one-cabinet order.",
+}
+
 // THE OPERATOR'S NEW JERSEY SITE IN THE HUDSON-BERGEN-ESSEX CORRIDOR, read 2026-09-08 from the
 // operator's own New Jersey index and the EWR1 facility page beneath it. DataBank sells from a
 // suite inside the 165 Halsey carrier hotel, which the census already carries as a building under
@@ -295,7 +340,6 @@ data databank_ewr1_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "The EWR1 page names Cabinets among its colocation platforms but states no minimum, so whether one cabinet is sellable on its own at this site is unread. Ask the quote whether a single cabinet is contractable at 165 Halsey Suite 500, and whether the 10 kW cooling figure is available to a one-cabinet order or only inside a larger footprint.",
 }
 
-data databank_ewr2_piscataway_obligation: NonEmptyStr = "Locate DataBank's current New Jersey facility pages - the Piscataway campus URLs derived from a secondary citation 404 as of 2026-09-08 - and model each site with its address, critical IT load, marketed cabinet density and retail grain. Until then this operator contributes exactly one modelled facility despite operating several in this metro, which understates it."
 
 // THE SAME OPERATOR IN PENNSYLVANIA, ADDED BY THE PHILADELPHIA AND LEHIGH VALLEY LANE. DataBank
 // sells from 401 North Broad, the Philadelphia carrier hotel Netrality owns - so this census now
@@ -330,6 +374,7 @@ data databank_facilities: List<ColoFacilityRow> = [
   databank_lga2_eighth,
   databank_lga3_orangeburg,
   databank_ewr1_newark,
+  databank_ewr2_piscataway,
   databank_phl1_philadelphia,
 ]
 

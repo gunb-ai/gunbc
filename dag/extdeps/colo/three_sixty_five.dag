@@ -49,11 +49,29 @@ data three_sixty_five_bridgewater: ColoFacilityRow = ColoFacilityRow {
   facility_label: "365 NJ1 Bridgewater",
   address: AddressListed {
     street: "999 Frontier Road, Bridgewater, NJ 08807",
-    citation: "datacentermap 365 Bridgewater profile, read 2026-08-18",
+    citation: "365datacenters.com New Jersey data center page, read 2026-09-09 - the operator states 999 Frontier Rd, Bridgewater, NJ 08807 itself, which replaces the earlier directory-profile citation for the same street.",
   },
   municipality: "Bridgewater",
   region_code: "NJ",
   facility_note: "About 20 MW marketed per datacentermap, read 2026-08-18; roughly forty miles west of the Hudson waterfront, so it trades operator travel for suburban cost.",
+}
+
+// THE LAST CENTRAL-NEW-JERSEY FACILITY IN THE CENSUS WITHOUT THESE TWO FACTS, and it refuses on
+// both. Two operator surfaces were read on 2026-09-09 - the New Jersey facility page and the
+// operator's own Bridgewater cutsheet PDF - and neither carries a kilowatt figure of any kind:
+// not per cabinet, not per rack, not per square foot. The page's power section names voltages
+// (120V, 208V, 208V three-phase) and its cooling section names tonnage, which are the two facts
+// operators publish INSTEAD of density and neither of which is one.
+data three_sixty_five_bridgewater_density: CabinetDensityClaim = DensityUnread {
+  obligation: "Neither the operator's New Jersey facility page nor its Bridgewater cutsheet PDF states any per-cabinet or per-rack kilowatt figure. Counted in RAW BYTES 2026-09-09, not through a tag-stripper, because a stripper was found elsewhere in this census to swallow 21 of 22 occurrences of a token and turn a miss into a finding. Page, 200,238 bytes, identical under no user-agent and a full browser one: positive controls chosen to be SUBJECT tokens - Bridgewater=18, the facility's own municipality, and 'New Jersey'=12 - establish that the instrument reached this facility's own surface rather than an index that was never going to carry the figure; kW=0, kVA=0, kilowatt=0, density=0, 'per cabinet'=0. Cutsheet PDF, text layer flattened of whitespace because its kerning splits words: controls Bridgewater=5 and cabinets=2; the same tokens all zero. An earlier check of this PDF reported a FAILING control and proceeded anyway on the assumption it was kerning - it was, but that was not known until the kern-tolerant control was actually run. Ask the quote for the marketed cabinet maximum. The 20 MW that directories attribute to this site is a building total and must not be read as a density, and neither may the cooling tonnage.",
+}
+
+// A CABINET INVENTORY IS NOT A RETAIL GRAIN, and this row exists to keep the two apart. The page
+// says the facility CONTAINS nearly 300 cabinets; it does not say the operator will sell one. A
+// count of cabinets in a building is a fact about the building, exactly as its megawatts are, and
+// reading it as an offer would be the same move this census refuses on the density axis.
+data three_sixty_five_bridgewater_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The operator's wording, identical on the New Jersey page and the Bridgewater cutsheet read 2026-09-09, is \"Nearly 300 combination-locking cabinets, custom cages and suites\" - a facility inventory bullet rather than a statement of what is sold at what minimum. No minimum commitment appears on either surface. Establish whether a single cabinet is sold before ranking this site.",
 }
 
 data three_sixty_five_weehawken: ColoFacilityRow = ColoFacilityRow {

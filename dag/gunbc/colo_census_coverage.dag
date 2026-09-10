@@ -19,6 +19,8 @@ import extdeps.colo.colocation_america {
 import extdeps.colo.centersquare { centersquare_weehawken, centersquare_ewr5_secaucus, centersquare_cabinet_density }
 import extdeps.colo.digital_realty {
   digital_realty_ewr10, digital_realty_cabinet_density,
+  digital_realty_ewr11, digital_realty_ewr11_density,
+  digital_realty_ewr12, digital_realty_ewr12_density,
   digital_realty_jfk10, digital_realty_jfk10_density,
   digital_realty_jfk12, digital_realty_jfk12_density,
   digital_realty_jfk13, digital_realty_jfk13_density,
@@ -27,12 +29,17 @@ import extdeps.colo.three_sixty_five {
   three_sixty_five_carlstadt, three_sixty_five_weehawken, three_sixty_five_cabinet_density,
   three_sixty_five_philadelphia, three_sixty_five_philadelphia_density,
   three_sixty_five_philadelphia_university_city, three_sixty_five_philadelphia_university_city_density,
+  three_sixty_five_bridgewater, three_sixty_five_bridgewater_density,
   three_sixty_five_nyc_32_sixth, three_sixty_five_nyc_121_varick, three_sixty_five_nyc_111_eighth,
   three_sixty_five_nyc_60_hudson, three_sixty_five_nyc_325_hudson, three_sixty_five_nyc_375_pearl,
   three_sixty_five_nyc_85_tenth, three_sixty_five_nyc_65_broadway,
   three_sixty_five_brooklyn_vanderbilt, three_sixty_five_staten_island_teleport,
   three_sixty_five_nyc_density_unread,
 }
+import extdeps.colo.njfx { njfx_wall, njfx_wall_density }
+import extdeps.colo.digital_fortress { digital_fortress_piscataway, digital_fortress_piscataway_density }
+import extdeps.colo.qts { qts_piscataway, qts_piscataway_density }
+import extdeps.colo.iron_mountain { iron_mountain_nje1, iron_mountain_nje1_density }
 import extdeps.colo.dataverge { dataverge_jersey_city, dataverge_cabinet_density, dataverge_brooklyn, dataverge_brooklyn_density }
 import extdeps.colo.evocative { evocative_ewr1, evocative_ewr1_density }
 import extdeps.colo.summit { summit_secaucus, summit_secaucus_density }
@@ -42,6 +49,7 @@ import extdeps.colo.interserver { interserver_secaucus, interserver_teb4_secaucu
 import extdeps.colo.halsey_165 { halsey_165_newark, halsey_165_cabinet_density }
 import extdeps.colo.databank {
   databank_ewr1_newark, databank_ewr1_density, databank_phl1_philadelphia, databank_phl1_density,
+  databank_ewr2_piscataway, databank_ewr2_density,
   databank_lga1_hudson, databank_lga1_density, databank_lga2_eighth, databank_lga2_density,
 }
 import extdeps.colo.tierpoint {
@@ -446,6 +454,59 @@ data nj_hudson_bergen_essex_corridor: RegionCoverage = RegionCoverage {
   },
 }
 
+// THE FIRST NON-EMPTY ROW, AND THE ARM THAT MAKES THE OTHER TWO LEGIBLE. Southern New Jersey and
+// the Hudson Valley are only interesting as measurements beside a region that was surveyed and DID
+// yield facilities; without one, FacilitiesModelled is an arm nothing inhabits and the module reads
+// as a ledger of failures. Central New Jersey is that region, and it is the same lane and the same
+// day as the southern row below - one sweep, two outcomes, which is what a survey looks like when
+// the emptiness is a property of the territory rather than of the effort.
+//
+// MEMBERSHIP IS REGIONAL, NOT PER-LANE. This lane authored seven of the eight rows; the eighth is
+// Iron Mountain NJE-1 Edison, which a carrier commit landed. A coverage row answers what the census
+// knows about a region, so attributing membership to whoever typed it would make the region depend
+// on the reading order of the lanes.
+//
+// THE COUNTS THIS ROW USED TO CARRY ARE GONE, AND THE ARGUMENT FOR REMOVING THEM WAS MADE HERE.
+// It carried facility_count: 8 and density_read_count: 4 - two numbers typed by hand about rows this
+// module could not see, since it imported only std.types and v2.std.optional. The defect was not
+// hypothetical: a sibling region carried 28 while the corpus held 27, and the guard read <= facilities
+// stayed green beside the miscount, because 1 <= 28 is exactly as true as 1 <= 27. Naming the rows
+// makes completeness the identity join DESIGN section 5 asks for instead of a count equality, and it
+// is why the verification distinction below needs no field of its own.
+//
+// FOUR READ IS NOT FOUR VERIFIED, AND THE ROWS NOW SAY SO THEMSELVES. Three of the four wordings were
+// confirmed against the operators' raw bytes at markup grain - NJFX, Digital Fortress and DataBank
+// EWR2, each a single authored element under a heading that scopes it to the facility. The fourth,
+// Iron Mountain NJE-1, sits behind a security interstitial that returns an interstitial document
+// instead of the page, so its 30 kW has one summarizing source and nobody has reproduced it. That
+// distinction used to be unstateable here for want of a field; now that the densities are named
+// rather than counted, it is a property of the rows a fold can read, and no coordinate has to be
+// minted to express it.
+data central_new_jersey: RegionCoverage = RegionCoverage {
+  region_label: "Central New Jersey",
+  region_code: "NJ",
+  outcome: FacilitiesModelled {
+    facilities: [
+      njfx_wall,
+      digital_fortress_piscataway,
+      databank_ewr2_piscataway,
+      iron_mountain_nje1,
+      qts_piscataway,
+      digital_realty_ewr11, digital_realty_ewr12,
+      three_sixty_five_bridgewater,
+    ],
+    densities: [
+      njfx_wall_density,
+      digital_fortress_piscataway_density,
+      databank_ewr2_density,
+      iron_mountain_nje1_density,
+      qts_piscataway_density,
+      digital_realty_ewr11_density, digital_realty_ewr12_density,
+      three_sixty_five_bridgewater_density,
+    ],
+  },
+}
+
 data southern_new_jersey: RegionCoverage = RegionCoverage {
   region_label: "Southern New Jersey",
   region_code: "NJ",
@@ -540,6 +601,40 @@ data nyc_queens_and_bronx: RegionCoverage = RegionCoverage {
   },
 }
 
+// DECLARED FRONTIER: THE UNREAD AND QUOTE-ONLY ARMS ARE DOWNSTREAM FACTS CURRENTLY LIVING UPSTREAM,
+// AND THIS MODULE IS THE DESTINATION. DESIGN section 3 rules that observations this repository
+// produces are receipts in the observing layer, and that missing observations are coverage
+// obligations downstream, never Unobserved properties authored inside an upstream module - a rule
+// this repository has already applied once, in #10671, whose title is "Rehome the cable-leg
+// observation out of the SFF specification". The colo census does the opposite today.
+//
+// THE POPULATION IS NOT STATED HERE ON PURPOSE. An earlier draft of this annotation carried a file
+// and lane count, which was this lane's own estimate written down as though it were a measurement -
+// the transcribed-number move section 6 forbids, and it was wrong when somebody re-derived it. The
+// follow-up sizes itself by re-deriving the arm population over the merged corpus, which is the only
+// count that will be true when it runs.
+//
+// WHERE THE SPLIT POINTS, AND IT IS NOT A NEW TYPE. The distinction that matters is WE READ IT AND IT
+// SAID NOTHING versus WE FAILED TO READ IT - different facts, and only the first is about the
+// operator at all. std.citation already models exactly that: CitationRetrievalObservation, with
+// HttpAccessRefused carrying the status. Minting an observation-plus-obligation pair here instead
+// would be a third answer to a question that already has an authority, which is the section 3 fork
+// this census has already made and retracted once tonight.
+//
+// WHY IT IS WORTH DOING, AND IT IS NOT TIDINESS: a fused string makes a FALSE OBSERVATION EXPENSIVE
+// TO RETRACT. One census row recorded that an operator refused a direct fetch when the truth was a
+// request sent without a user-agent; the obligation that observation generated was already discharged
+// once the fetch was fixed, and correcting either half meant rewriting the other. Every recorded
+// operator refusal in this census has so far needed re-testing, and a false obstacle stops the
+// inquiry that would have found the real defect.
+//
+// The trigger is that split landing here, census-wide in one motion - one lane at a time would leave
+// two shapes inside one carrier, which is worse than one uniform wrong shape - and it depends on the
+// std.citation consumption landing first. The arms themselves carry this frontier where an author of
+// a new row will meet it, in extdeps.colo.types; this annotation is the destination half, and the two
+// are one statement rather than two authorities. Operator ruling, 2026-09-09, on escalation from this
+// lane: land the rows first because the rows are the expensive part, then follow with the shape.
+
 // THIS ROSTER IS INCOMPLETE BY CONSTRUCTION and must not be read as the census's coverage map. It
 // carries the regions a lane surveyed, including ones surveyed and found empty; it does not carry a
 // RegionUnsurveyed row for everything nobody has looked at, which is most of the country. Adding
@@ -588,6 +683,7 @@ data pa_philadelphia_and_lehigh_valley: RegionCoverage = RegionCoverage {
   },
 }
 data census_regions: List<RegionCoverage> = [
+  central_new_jersey,
   nj_hudson_bergen_essex_corridor,
   southern_new_jersey,
   hudson_valley,
