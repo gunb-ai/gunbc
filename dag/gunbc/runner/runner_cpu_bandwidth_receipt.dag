@@ -3,11 +3,6 @@ module gunbc.runner.runner_cpu_bandwidth_receipt
 import std.types { Int, List, NonEmptyStr, String }
 import gunbc.runner.runner_guest_egress_attempt {
   cpu_bound_write_refused, CpuBoundStanding, CpuBoundInterfacePresent,
-  CpuBoundNoEstablishedLeaf,
-}
-import gunbc.runner.runner_cgroup_placement_receipt {
-  placement_verdict, PlacementBidirectional, PlacementForwardOnly,
-  PlacementReverseOnly, PlacementNotEstablished,
 }
 
 // cpu.max NOW EXISTS ON THE ATTEMPT CGROUP, and that is a smaller claim than it sounds.
@@ -32,25 +27,17 @@ data receipt_subject_build: NonEmptyStr = "filtered-egress-4"
 // consistent throughout and misleading throughout: WEIGHT control is not BANDWIDTH control.
 data cause_established: NonEmptyStr = "CONFIG_CFS_BANDWIDTH was unset, so cpu.max did not exist and cgroupfs refused its creation; the cpu controller being delegated established weight control only"
 
-// THE CAUSE AND THE PLACEMENT RECEIPT ARE IMPORTED, not restated from annotation.
-// cpu_bound_write_refused is the same refusal this rebuild closes -- folded once, next to
-// cpu_bound_failure, not nicknamed here. A cpu.max read-back is only InterfacePresent when
-// placement is bidirectional. WrittenButUnread means the quota was written on an established
-// leaf whose read-back was empty; a non-bidirectional placement is CpuBoundNoEstablishedLeaf.
-fn cpu_bound_standing_from_placement() -> CpuBoundStanding {
-  match placement_verdict {
-    PlacementBidirectional { cgroup_path: _, pid: _ } => CpuBoundInterfacePresent {
-      value: "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf",
-      what_this_does_not_show: "that a process exceeding it is actually throttled. No load was applied, so cpu.stat's throttled_usec and nr_throttled were never going to move, and nothing here distinguishes an enforced bound from a stored number",
-      closed_a_prior_refusal: cpu_bound_write_refused,
-    }
-    PlacementForwardOnly { detail: _ } => CpuBoundNoEstablishedLeaf
-    PlacementReverseOnly { detail: _ } => CpuBoundNoEstablishedLeaf
-    PlacementNotEstablished { detail: _ } => CpuBoundNoEstablishedLeaf
-  }
-}
+// ── what the run shows ─────────────────────────────────────────────────────────────────────────
 
-data cpu_bound_standing: CpuBoundStanding = cpu_bound_standing_from_placement()
+// CpuBoundStanding lives on the attempt receipt. This row is the later standing on
+// filtered-egress-4: the interface exists; enforcement does not. It is not derived from
+// placement_verdict (slice5b-cgroup-77e659df), which is a different run and on that run the
+// standing was CpuBoundWrittenButUnread. cpu_bound_write_refused is the EPERM this rebuild closes.
+data cpu_bound_standing: CpuBoundStanding = CpuBoundInterfacePresent {
+  value: "200000 100000 -- two CPUs' worth of runtime per 100ms period, read back from the attempt leaf",
+  what_this_does_not_show: "that a process exceeding it is actually throttled. No load was applied, so cpu.stat's throttled_usec and nr_throttled were never going to move, and nothing here distinguishes an enforced bound from a stored number",
+  closed_a_prior_refusal: cpu_bound_write_refused,
+}
 
 // THE NEXT RUNG IS ONE CONTROLLED LOAD, and it is named so this does not sit at the interface tier
 // by default. A guest spinning more CPU than its quota, with cpu.stat's throttling counters read

@@ -31,7 +31,7 @@ fn satisfying_config() -> String {
 
 test fn a_configuration_meeting_every_modeled_option_holds() -> Bool {
   match verify_kernel_config(config: satisfying_config()) {
-    KernelConfigHolds { options_checked: n } => n == (runner_host_kernel_options() |> count)
+    KernelConfigHolds { options_checked: n, filtered_egress_topology: _ } => n == (runner_host_kernel_options() |> count)
     _ => false
   }
 }

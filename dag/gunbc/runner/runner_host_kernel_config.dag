@@ -3,7 +3,7 @@ module gunbc.runner.runner_host_kernel_config
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.runner.runner_host_filtered_egress {
   KernelFeatureRequirement, runner_host_kernel_requirements,
-  filtered_egress_topology, filtered_egress_topology_label,
+  FilteredEgressTopologyStanding, filtered_egress_topology, filtered_egress_topology_label,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
@@ -225,7 +225,7 @@ fn kernel_config_failures(config: String) -> List<KernelOptionVerdict> {
 // zero-byte file compliant for two of the fifty-two options and, worse, would call an UNREADABLE
 // config compliant for all of them. The emptiness arm is separate for that reason.
 type KernelConfigVerdict
-  = KernelConfigHolds { options_checked: Int }
+  = KernelConfigHolds { options_checked: Int, filtered_egress_topology: FilteredEgressTopologyStanding }
   | KernelConfigRefused { failures: List<KernelOptionVerdict> }
   | KernelConfigUnreadable { detail: NonEmptyStr }
 
@@ -235,7 +235,10 @@ fn verify_kernel_config(config: String) -> KernelConfigVerdict {
   } else {
     let failures = kernel_config_failures(config: config)
     if (failures |> count) == 0 {
-      KernelConfigHolds { options_checked: runner_host_kernel_options() |> count }
+      KernelConfigHolds {
+        options_checked: runner_host_kernel_options() |> count,
+        filtered_egress_topology: filtered_egress_topology,
+      }
     } else {
       KernelConfigRefused { failures: failures }
     }
@@ -244,12 +247,12 @@ fn verify_kernel_config(config: String) -> KernelConfigVerdict {
 
 fn kernel_config_verdict_text(v: KernelConfigVerdict) -> String {
   match v {
-    KernelConfigHolds { options_checked: n } =>
+    KernelConfigHolds { options_checked: n, filtered_egress_topology: t } =>
       join([
         "kernel-config=holds options-checked=",
         to_string(n),
         " ",
-        filtered_egress_topology_label(standing: filtered_egress_topology),
+        filtered_egress_topology_label(standing: t),
       ], "")
     KernelConfigUnreadable { detail: d } =>
       join(["kernel-config=UNREADABLE ", d as String], "")
@@ -327,7 +330,7 @@ func verify_built_kernel_config(path: String) -> ProcessExit
 {
   let verdict = observe_built_kernel_config(path: path)
   match verdict {
-    KernelConfigHolds { options_checked: _ } => ExitSuccess
+    KernelConfigHolds { options_checked: _, filtered_egress_topology: _ } => ExitSuccess
     KernelConfigRefused { failures: _ } => exit_failure(reason: kernel_config_verdict_text(v: verdict))
     KernelConfigUnreadable { detail: _ } => exit_failure(reason: kernel_config_verdict_text(v: verdict))
   }
