@@ -47,6 +47,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 data hermetic_get_authenticated_user_login: String = "hermetic-mock-authenticated-user"
 data hermetic_get_authenticated_user_id: Int = 1
 data hermetic_get_authenticated_user_type: UserType = User
+data hermetic_get_authenticated_user_outcome: RestOutcome = RestOk
 
 service github.Users {
   config {
@@ -78,8 +79,9 @@ service github.Users {
           id: hermetic_get_authenticated_user_id,
           type: hermetic_get_authenticated_user_type
         },
-        outcome: RestOk
+        outcome: hermetic_get_authenticated_user_outcome
       } "hermetic GET /user decoded-200 shape; the login is the fixture identity, not a live GitHub account"
+    }
     }
   }
 }
