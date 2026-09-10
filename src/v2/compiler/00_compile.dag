@@ -1281,13 +1281,14 @@ fn native_lane_module_rows(
             xs: entry.declarations,
             empty: [],
             cons: fn(acc, decl) {
+              let observation = native_test_eval_one(
+                prepared: prepared,
+                declaration: symbol_intern_lexeme(lexeme: decl)
+              )
               concat(acc, [native_lane_member_row(
                 module: entry.module,
                 declaration: decl,
-                verdict: native_test_eval_one(
-                  prepared: prepared,
-                  declaration: symbol_intern_lexeme(lexeme: decl)
-                ).verdict
+                verdict: observation.verdict
               )])
             }
           )
@@ -1295,6 +1296,16 @@ fn native_lane_module_rows(
   }
 }
 
+// WHAT THE POPULATION↔UNIVERSE JOIN STILL DISCRIMINATES, STATED RATHER THAN ASSUMED. Every
+// universe member gets exactly one row from this fold, so admission's omission and foreign-row
+// clauses cannot fire from in-process drift the way they could when a second process echoed a
+// universe file back. That is a rung statement, not a hole: the fact those clauses protected — a
+// DISCOVERED identity the execution route cannot reach — is not lost, it MOVES, and it moves to a
+// better-located carrier. The route refuses such an identity at the Entry stage
+// (native_test_entry_declaration_not_found / native_test_entry_module_scope_unresolved), the
+// exclusion taxonomy classifies that refusal, and an unclassified one still blocks admission by
+// name. The clauses stay enrolled because the receipt is a data shape a future producer can still
+// violate; the discriminating evidence for the class now lives on the exclusion clauses.
 fn native_lane_population(
   context: NativeTestContext,
   universe: NativeLaneUniverse
@@ -1308,19 +1319,36 @@ fn native_lane_population(
 
 // THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They sit outside the
 // universe prefix, so discovery enrols nothing for them and the authority's own declaration is
-// what names them; the verdict is Absent exactly when the route could not produce one, which is
-// the state the false/true clauses refuse.
-fn native_lane_control_verdict(context: NativeTestContext, declaration: String) -> Optional<NativeTestVerdict> {
+// what names them; a verdict is Absent exactly when the route could not produce one, which is the
+// state the false/true clauses refuse. BOTH are answered from ONE prepare: they share a module,
+// and resolve + infer over the whole context is the per-module cost this fold exists to pay once.
+type NativeLaneControls {
+  false_control: Optional<NativeTestVerdict>
+  true_control: Optional<NativeTestVerdict>
+}
+
+fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
   match native_test_prepare_module(
     context: context,
     module: qualified_name_from_dotted_string(dotted: native_route_live_control_module)
   ) {
-    Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } =>
+      NativeLaneControls { false_control: optional_absent(), true_control: optional_absent() }
     Accepted { value: prepared, diagnostics: _ } =>
-      optional_present(value: native_test_eval_one(
-        prepared: prepared,
-        declaration: symbol_intern_lexeme(lexeme: declaration)
-      ).verdict)
+      {
+        let false_observation = native_test_eval_one(
+          prepared: prepared,
+          declaration: symbol_intern_lexeme(lexeme: native_route_live_control_false_declaration)
+        )
+        let true_observation = native_test_eval_one(
+          prepared: prepared,
+          declaration: symbol_intern_lexeme(lexeme: native_route_live_control_true_declaration)
+        )
+        NativeLaneControls {
+          false_control: optional_present(value: false_observation.verdict),
+          true_control: optional_present(value: true_observation.verdict)
+        }
+      }
   }
 }
 
@@ -1354,6 +1382,7 @@ fn native_lane_receipt(
   context: NativeTestContext,
   universe: NativeLaneUniverse,
   population: List<NativeRouteMemberRow>,
+  controls: NativeLaneControls,
   facts: NativeLaneHostFacts
 ) -> NativeRouteReceipt {
   NativeRouteReceipt {
@@ -1367,14 +1396,8 @@ fn native_lane_receipt(
     module_source_index: universe.module_sources,
     population: population,
     file_refusals: fold_list(xs: context.file_refusals, empty: [], cons: fn(acc, fr) { concat(acc, [fr]) }),
-    false_control: native_lane_control_verdict(
-      context: context,
-      declaration: native_route_live_control_false_declaration
-    ),
-    true_control: native_lane_control_verdict(
-      context: context,
-      declaration: native_route_live_control_true_declaration
-    ),
+    false_control: controls.false_control,
+    true_control: controls.true_control,
     malformed_control: facts.malformed_control,
     old_route_control: OldRouteWithdrawn { withdrawn_executable: facts.withdrawn_executable }
   }
@@ -1395,6 +1418,7 @@ fn native_lane_run(ingest: SourceRootIngest, facts: NativeLaneHostFacts) -> Outc
             context: context,
             universe: universe,
             population: population,
+            controls: native_lane_controls(context: context),
             facts: facts
           )
           let admission = native_route_admission(receipt: receipt)

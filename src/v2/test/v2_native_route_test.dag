@@ -25,6 +25,14 @@ import gunbc.witness_v2_native_route {
   native_route_admission, native_route_admitted, native_route_admission_refused_with,
   native_route_admission_summary
 }
+import v2.compiler.compile {
+  NativeLaneSourceFacts,
+  native_lane_declared_module_name,
+  native_lane_unowned_row_path
+}
+import v2.workflow.floor_discovery { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_producer { FloorDiscoveryWalkState }
+import v2.std.live_tree { SubstrateInputsOnly }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   NativeTestRefused,
@@ -1084,4 +1092,55 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
     malformed_control: MalformedSpecimenAccepted,
     old_route_control: OldRouteControlAbsent
   })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed"
+}
+
+// THE DERIVED UNIVERSE'S TWO PRE-JOIN FACTS, JUDGED HERE BECAUSE THE ROUTE NOW OWNS THEM. Both
+// used to be the seed's: the module a source declares (its Rust module index) and the refusal a
+// discovery row with no owning module gets (UniverseEntryOutsideSubject). They moved into
+// v2.compiler.compile with the derivation, so their discriminating reds move with them.
+
+test fn the_declared_module_is_read_off_the_header_and_nothing_else() -> Bool {
+  native_lane_declared_module_name(
+    content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport v2.std.logic { Bool }\nmodule not.the.header\n"
+  ) == "v2.test.subject"
+}
+
+test fn a_source_with_no_module_header_declares_no_module() -> Bool {
+  native_lane_declared_module_name(content: "// only prose\ntest fn t() -> Bool { true }\n") == ""
+}
+
+// The headerless source that enrols a row is the one the derivation names; a headerless source
+// that enrols nothing is not a defect and must not be named.
+test fn a_discovery_row_whose_source_declares_no_module_refuses_the_derivation() -> Bool {
+  let enrolled = FloorDiscoveryWalkState {
+    rows: [FloorDiscoveryRow {
+      label: "t",
+      entry: "src/v2/test/headerless_test.dag",
+      function: "t",
+      reads_live_tree: SubstrateInputsOnly
+    }],
+    walk_failures: 0,
+    walk_failure_path: Absent,
+    sidecar_violations: [],
+    disposition_refusal: Absent
+  }
+  let empty = FloorDiscoveryWalkState {
+    rows: [],
+    walk_failures: 0,
+    walk_failure_path: Absent,
+    sidecar_violations: [],
+    disposition_refusal: Absent
+  }
+  native_lane_unowned_row_path(facts: [
+    NativeLaneSourceFacts {
+      module: "",
+      path: ^src_v2_test_quiet_dag,
+      discovery: empty
+    },
+    NativeLaneSourceFacts {
+      module: "",
+      path: ^headerless_test_path,
+      discovery: enrolled
+    }
+  ]) == "headerless_test_path"
 }
