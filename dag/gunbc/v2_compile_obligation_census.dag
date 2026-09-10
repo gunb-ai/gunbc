@@ -261,7 +261,7 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "the compile-gate and roster-gate witnesses move under a directory gunbc.ci_layer_roots witness_discovery_scan_dirs walks AND their gunbc.witness_deferral_freeze rows delete, so a required run refuses on the copied-accumulator tree" as NonEmptyStr,
+  next_trigger: "TWO CAPABILITIES, AND NEITHER IS A FILE MOVE. First, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Second, the native lane enters the door. Until the first lands no required run refuses on a copied-accumulator tree; until the second lands the executed rung stays Mitigatable however green the interpreted side becomes" as NonEmptyStr,
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed's own folds are never presented to this gate, so a copied accumulator authored in stage0 Rust is invisible to the complexity lens that exists to make it unwritable" as NonEmptyStr
   },
@@ -283,9 +283,9 @@ data determinism_obligation: V2CompileObligation = V2CompileObligation {
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "the determinism witnesses are homed inside witness_discovery_scan_dirs AND a production caller hands the corpus to v2.compiler.compile validate_then_compile, so the gate is asked about a real module rather than a fixture" as NonEmptyStr,
+  next_trigger: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths" as NonEmptyStr,
   seed_escape: SeedEscapeOpen {
-    what_the_seed_does: "the seed emitter iterates a set when ordering pub-use lines, which this gate would classify NonDeterministic; the class is live and observed as same-sha emission divergence, and the gate never sees the emitter because the emitter is stage0 Rust" as NonEmptyStr
+    what_the_seed_does: "the seed is never handed to this gate at all: it is stage0 Rust compiled by rustc, so every call it makes to a declared primitive carrying HostUnspecifiedOrder is consumed rather than refused, and no diagnostic exists to be absent. THE OBSERVED PUB-USE DIVERGENCE IS DELIBERATELY NOT CLAIMED HERE. This row previously named it, and the attribution is withdrawn on the same measurement that withdrew it from primitive_map_keys_obligation: gunbc#10941 found the nondeterministic re-export walk to be v1.05_emit_core_support unique_strings, a fold over a membership map and not a declared primitive, so this gate would not have classified that site even on a program it WAS handed. Carrying the incident here as well would give one measured event two answers inside one module. It has exactly one row, determinism_non_primitive_order_exposing_fold" as NonEmptyStr
   },
   related_drops: ["determinism_transitive_reachability" as NonEmptyStr],
 }
@@ -304,7 +304,7 @@ data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "a witness that imports v2.lens.machine_shape machine_shape_compile_gate is homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  next_trigger: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths" as NonEmptyStr,
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "stage0 Rust declares machine widths as host integer types with no modeled carrier, and no gate asks" as NonEmptyStr
   },
@@ -333,7 +333,7 @@ data mandatory_tag_obligation: V2CompileObligation = V2CompileObligation {
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "the twelve mandatory_tag gate functions leave gunbc.witness_deferral_freeze AND their entries are homed inside witness_discovery_scan_dirs, so the enrolled-in-root-roster refusal executes on a required run" as NonEmptyStr,
+  next_trigger: "THE CAPABILITY IS AN EXECUTING HOME FOR THIS GATE'S WITNESSES, and it is guarded twice over so a single edit satisfies nothing. The twelve gate functions must leave gunbc.witness_deferral_freeze — a freeze row is a declaration that the identity executes nowhere, and deleting it while the entry stays under the 'test/claim/long/' exclusion pattern would swap one silence for another — AND that exclusion must retire on its own terms, which means the corpus-grain walk these witnesses perform becomes affordable on the fold that would run it. Only then does mandatory_tag_enrolled_in_root_roster_rejects_violating_module refuse on a required run, and only then does the WallNow this row records have any executing evidence at all" as NonEmptyStr,
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "stage0 Rust carries no mandatory-tag surface at all, so the seed cannot violate the rule and cannot demonstrate it either" as NonEmptyStr
   },
@@ -357,7 +357,7 @@ data undecidable_verdict_collapse_obligation: V2CompileObligation = V2CompileObl
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "src/v2/test/claim/undecidable_verdict_collapse_wall_test.dag is homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  next_trigger: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths" as NonEmptyStr,
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "stage0 Rust returns bool from predicates that answer undecidable questions, and the collapse is unobservable to this gate" as NonEmptyStr
   },
@@ -382,7 +382,7 @@ data fact_density_obligation: V2CompileObligation = V2CompileObligation {
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "the src/v2/test/lens_fact_density witnesses are homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  next_trigger: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths" as NonEmptyStr,
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "stage0 Rust type aliases carry no fact bundle, so a hollow alias in the seed is not a state this gate can see" as NonEmptyStr
   },
@@ -403,7 +403,7 @@ data unit_modeling_obligation: V2CompileObligation = V2CompileObligation {
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "the src/v2/test/lens_unit_modeling witnesses are homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  next_trigger: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths" as NonEmptyStr,
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "stage0 Rust carries widths and counts as bare host integers, the exact flat-scalar shape this gate flags, and none of it is presented" as NonEmptyStr
   },
@@ -424,7 +424,7 @@ data lifecycle_carrier_obligation: V2CompileObligation = V2CompileObligation {
   native: lens_native_execution,
   route_reach: lens_native_route_reach,
   ceiling: StructurallyGuaranteed,
-  next_trigger: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag is homed inside witness_discovery_scan_dirs" as NonEmptyStr,
+  next_trigger: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths" as NonEmptyStr,
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "stage0 Rust is written almost entirely in String and bool, so the population this gate exists to flag is the seed itself, and the gate is never asked about it" as NonEmptyStr
   },
@@ -712,6 +712,22 @@ fn obligation_executed_rung(o: V2CompileObligation) -> GuaranteeRung {
     Mitigatable
   }
 }
+
+// WHO CONSUMES THE COUNTS, STATED AS A DECLARED FRONTIER RATHER THAN LEFT IMPLICIT (DESIGN section
+// 3c). Today the six counts have exactly one executing consumer and it is a human running
+// census_counts; the WITNESS consumes the derivation beneath them — witness_subject_executes_per_pr,
+// interpreted_standing and obligation_executes_natively all execute in
+// test.claim.v2_compile_obligation_census_witness_test — but no required run reads a count. That is
+// the admissible middle state of section 3c and not the red one only because the later consumer and
+// its trigger are named here: the counts become a receipt line when the required floor publishes an
+// obligation-coverage receipt alongside its claim results, at which point census_counts is that
+// receipt's producer and this paragraph deletes.
+//
+// WHY THEY ARE NOT ROUTED INTO A REQUIRED RUN TODAY. Enrolling a count as its own gated row would
+// put a second enrollment surface beside the witness that already executes the derivation, for a
+// fact the witness already establishes — the section 3 duplication this module was rebuilt to
+// remove, one layer up. The number is a projection of a checked derivation, not an independent
+// claim, and a projection earns a gate when something consumes it, not before.
 
 // THE INSTRUMENT. One entry point that re-derives every number this census reports, so a reader
 // spends one run rather than six and a citation names a producer rather than a table (DESIGN
