@@ -88,11 +88,8 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
       ((c >= 97) && (c <= 122)) ||
       c == 95 ||
       ((c >= 48) && (c <= 57))
-    // Quote (34) is the only closer. A raw line feed is string text, matching
-    // v1 scan_string_body, which never treats LF as a terminator. Excluding 10
-    // here made every multiline dag literal refuse as tokenize_lex_e1_unrecognized_char.
     StringTextChar =>
-      c != 34
+      c != 34 && c != 10
     LineCommentTextChar =>
       c != 10
     BlockCommentTextChar =>

@@ -472,10 +472,17 @@ fn dag_string_escape_sequence_pattern() -> LexPattern {
   }
 }
 
+// v1.compiler.tokenize scan_string_body never treats line feed as a closer:
+// only quote, backslash, and interpolation-start end the body walk. This arm
+// is that admission on the grammar row — StringTextChar still excludes LF so
+// other language models that reuse the class do not grow a second meaning.
 fn dag_string_body_element_pattern() -> LexPattern {
   ChoicePattern {
     left: dag_string_escape_sequence_pattern(),
-    right: CharClassPattern { class: StringTextChar }
+    right: ChoicePattern {
+      left: CharPattern { char: 10 },
+      right: CharClassPattern { class: StringTextChar }
+    }
   }
 }
 
