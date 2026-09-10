@@ -490,7 +490,18 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
 }
 
 fn rust_shared_wrap_ctor(inner_expr: String) -> String {
-  sharing_wrap_ctor_for_target(target: Rust, inner_expr: inner_expr)
+  // Rc::new(panic!(...)) is unreachable_code under -D warnings: panic diverges, so the
+  // constructor call never returns. Native cargo of the 00_compile closure refused on
+  // v2_std_collection wrapping the keyed-container inhabitant panic. A diverging inner
+  // is already a value of every type; wrapping it is not a sharing realization.
+  if starts_with(s: inner_expr, prefix: "panic!(")
+    || starts_with(s: inner_expr, prefix: "compile_error!(")
+    || starts_with(s: inner_expr, prefix: "unreachable!(")
+  {
+    inner_expr
+  } else {
+    sharing_wrap_ctor_for_target(target: Rust, inner_expr: inner_expr)
+  }
 }
 
 fn rust_shared_wrap_ctor_prefix() -> String {

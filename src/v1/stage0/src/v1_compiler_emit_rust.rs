@@ -817,10 +817,17 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
 }
 
 pub fn rust_shared_wrap_ctor(inner_expr: String) -> String {
-    crate::v1_compiler_languages::sharing_wrap_ctor_for_target(
-        RenderTarget::Rust,
-        inner_expr.clone(),
-    )
+    if inner_expr.starts_with("panic!(")
+        || inner_expr.starts_with("compile_error!(")
+        || inner_expr.starts_with("unreachable!(")
+    {
+        inner_expr
+    } else {
+        crate::v1_compiler_languages::sharing_wrap_ctor_for_target(
+            RenderTarget::Rust,
+            inner_expr.clone(),
+        )
+    }
 }
 
 pub fn rust_shared_wrap_ctor_prefix() -> String {
