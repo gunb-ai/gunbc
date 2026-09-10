@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.measure { hardware_thread_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.scoped_authorization { AttemptIdentity }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.work {
@@ -51,7 +51,13 @@ import gunbc.fabric_m0_origin_readback {
   read_origin_staged_file,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// READS THE LIVE TREE, AND THE STAMP HAD TO CHANGE WITH THE BODY. This file previously declared
+// SubstrateInputsOnly and was correct to: it was a pure fold over authored fixtures. It now calls
+// read_origin_staged_file over a committed repository path, which reaches a live-checkout sink, so
+// the old stamp would be a declaration asserting something the body contradicts -- and nothing in
+// the toolchain compares the two. A stamp that outlives the body it describes is the same
+// stale-evidence class this lane has been repairing all along, one scale down.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // A CONFIRMING READ IS A REAL READ HERE TOO. gunbc#10934 replaced the ManifestRead
 // digest-plus-provenance-stamp pair with a sealed OriginReading whose only constructor is
