@@ -4,7 +4,7 @@ import std.types { String, Int, Secret }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.github.github { default_api_base }
+import extdeps.github.github { default_api_base, GitHubUser, User, UserType }
 import extdeps.transports.rest { RestOutcome, RestOk }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -33,17 +33,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // not-success). GitHub documents 200 with the authenticated user and 401 for bad credentials;
 // those are observations, not an enumeration this operation treats as its failure set. The
 // response block names only the success decode. Every other status is RestStatusRefused via
-// RestOutcome — including statuses GitHub has not documented.
-type AuthenticatedUser {
-  login: String
-  id: Int
-}
+// RestOutcome — including statuses GitHub has not documented. The decoded subject is GitHubUser
+// (extdeps.github.github), the same account shape sibling REST modules already consume.
 
 // THE HERMETIC FIXTURE LOGIN IS NOT A GITHUB ACCOUNT. mock_response can only publish one result,
 // so the hermetic arm is the decoded-200 shape of GET /user. The spelling is the fixture's
 // identity: a live GitHub user.login cannot be this string, and a live 401 cannot be this 200.
 data hermetic_get_authenticated_user_login: String = "hermetic-mock-authenticated-user"
 data hermetic_get_authenticated_user_id: Int = 1
+data hermetic_get_authenticated_user_type: UserType = User
 
 service github.Http {
   config {
@@ -57,7 +55,7 @@ service github.Http {
       auth_token: Secret
     }
     output {
-      user: AuthenticatedUser
+      user: GitHubUser
       outcome: RestOutcome
     }
     readonly
@@ -66,13 +64,14 @@ service github.Http {
       path: "/user"
     }
     response {
-      200 => AuthenticatedUser
+      200 => GitHubUser
     }
     mock_response {
       200 => {
         user: {
           login: hermetic_get_authenticated_user_login,
-          id: hermetic_get_authenticated_user_id
+          id: hermetic_get_authenticated_user_id,
+          type: hermetic_get_authenticated_user_type
         },
         outcome: RestOk
       } "hermetic GET /user decoded-200 shape; the login is the fixture identity, not a live GitHub account"

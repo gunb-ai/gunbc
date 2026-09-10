@@ -6,7 +6,7 @@ import extdeps.transports.rest {
   RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 import extdeps.github.http
-import extdeps.github.http { AuthenticatedUser }
+import extdeps.github.github { GitHubUser }
 import gunbc.secret_provision_actuator { mutation_status_is_commit_ambiguous }
 
 // RUNG, HONEST. Classification of a RestOutcome is mechanically preventable on the required
@@ -68,7 +68,7 @@ fn classify_github_http_outcome(rest: RestOutcome, mutation: Bool) -> GitHubHttp
 }
 
 type GitHubAuthenticatedUserRead
-  = GitHubAuthenticatedUserObserved { user: AuthenticatedUser }
+  = GitHubAuthenticatedUserObserved { user: GitHubUser }
   | GitHubAuthenticatedUserRefused { performance: GitHubHttpPerformance }
 
 func perform_github_authenticated_user_read(auth_token: Secret) -> GitHubAuthenticatedUserRead uses net: Network {

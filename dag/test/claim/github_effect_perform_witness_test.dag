@@ -22,6 +22,7 @@ import extdeps.transports.rest {
 import extdeps.github.http {
   hermetic_get_authenticated_user_login,
   hermetic_get_authenticated_user_id,
+  hermetic_get_authenticated_user_type,
 }
 import gunbc.github_effect_perform {
   GitHubHttpSucceeded, GitHubHttpRefused, GitHubHttpCommitAmbiguous,
@@ -189,6 +190,7 @@ test fn perform_authenticated_user_read_binds_the_hermetic_fixture_login() -> Bo
     GitHubAuthenticatedUserObserved { user } =>
       user.login == hermetic_get_authenticated_user_login
         && user.id == hermetic_get_authenticated_user_id
+        && user.type == hermetic_get_authenticated_user_type
     GitHubAuthenticatedUserRefused { performance: _ } => false
   }
 }
