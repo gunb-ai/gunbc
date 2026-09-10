@@ -45,6 +45,8 @@ import gunbc.scm.repository_envelope {
   AdmittedMergeSubject,
   admit_merge_subject,
   MergeSideName,
+  MergeSubjectSourceUnrecoverable,
+  CorpusEntrySourceRefusal,
   MergeBaseOutcome,
   MergeBaseDerived,
   MergeBaseSourceAlreadyConsumed,
@@ -130,6 +132,7 @@ type SquashMergeOutcome
   | SquashMergeResultLocatorCollision { identity: ObjectId }
 
   | SquashMergeAllocatorInvalid
+  | SquashMergeSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
 
 // READING ONE SIDE'S MANIFEST IS ONE FUNCTION, USED THREE TIMES. Writing the resolution inline per
 // side would put one rule in three places and let the copies drift, which is the redundancy DESIGN
@@ -272,6 +275,7 @@ fn squash_merge(
         MergeSubjectSideRootIsSemanticNode { side: sd, root: r } =>
           SquashMergeRootIsSemanticNode { side: sd, root: r }
         MergeSubjectConflicted { conflicts: c } => SquashMergeConflicted { conflicts: c }
+        MergeSubjectSourceUnrecoverable { cause: c } => SquashMergeSourceUnrecoverable { cause: c }
         MergeSubjectAdmitted(admitted) =>
           commit_merged_manifest(admitted: admitted, message: message)
       }

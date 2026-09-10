@@ -61,6 +61,8 @@ import gunbc.scm.object_store {
   CorpusManifestIsAuthoredSource,
   CorpusManifestIsSemanticNode,
   find_corpus_manifest_record,
+  CorpusEntrySourceRefusal, CorpusSourceAdmission,
+  CorpusSourcesAdmitted, CorpusSourcesRefused, admit_corpus_sources,
 }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
@@ -97,6 +99,7 @@ type StagingRefusal
   | StageBaseManifestMissingFromStore { root: ObjectId }
   | StageBaseManifestIsAuthoredSource { root: ObjectId }
   | StageBaseManifestIsSemanticNode { root: ObjectId }
+  | StageSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
 
 // ---------------------------------------------------------------------------------------------
 // THE CANDIDATE IS A FULL SNAPSHOT, AND `Absent` MEANS NO EXPLICIT OVERRIDE -- NOT AN EMPTY CORPUS.
@@ -273,8 +276,44 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
     CandidateRefused { cause: c } => StageStandingRefused { cause: c }
     CandidateEmptyCorpus => NoCandidateAndNoBase
     CandidateInheritedFromBase { record: record } =>
-      stage_standing_against_base(repository: repository, candidate: record.identity)
+      stage_standing_of_admitted_candidate(repository: repository, record: record)
     CandidateFromStage { record: record } =>
+      stage_standing_of_admitted_candidate(repository: repository, record: record)
+  }
+}
+
+// PUBLICATION ADMISSION, AND IT IS PERFORMED WHERE THE ENTRIES ARE ALREADY IN HAND.
+//
+// The format admits a manifest naming a source this store does not hold: partial historical and
+// transport state is representable on purpose. That permission is NOT the same fact as "this
+// repository may publish this snapshot locally", and the write path had been inheriting the first as
+// if it were the second. The authorable counterexample: load a partial repository whose selected
+// manifest names `a -> X` with X absent, `add b -> Y`, and the candidate `{ a -> X, b -> Y }` differs
+// from the base, so `commit_staged` minted, published and reported success -- while checking that
+// commit out refuses with `CorpusEntrySourceMissing { path: a }`. A commit reported as SAVED whose
+// bytes cannot be recovered is the fabricated-plausible-output DESIGN 5 forbids outright. Found by
+// external review.
+//
+// IT COSTS NO SECOND LOOKUP. `effective_candidate` already returns the whole `CorpusManifestRecord`
+// and this function was discarding everything but `record.identity`. Admitting here consumes the
+// entries that were already resolved, so the wall is added without reintroducing the second store
+// walk a previous round deleted as a cost defect.
+//
+// AND IT REUSES THE ONE SOURCE-RECOVERY AUTHORITY rather than copying checkout's. `admit_corpus_sources`
+// is homed in `object_store` beside the lookup it performs; checkout keeps the RECORD per path, this
+// keeps only the refusal. The located missing and wrong-kind causes travel unchanged -- an empty
+// locator and one occupied by the wrong kind are different repairs.
+//
+// THE REFUSAL IS A STAGING REFUSAL, so `CommittableStage` is constructible only from the arms below
+// this admission. The bad commit is not refused downstream; it has no route (DESIGN 4b: construction
+// over validation).
+fn stage_standing_of_admitted_candidate(
+  repository: RepositoryEnvelope,
+  record: CorpusManifestRecord,
+) -> StageStanding {
+  match admit_corpus_sources(store: repository.store, entries: record.entries) {
+    CorpusSourcesRefused { cause: c } => StageStandingRefused { cause: StageSourceUnrecoverable { cause: c } }
+    CorpusSourcesAdmitted =>
       stage_standing_against_base(repository: repository, candidate: record.identity)
   }
 }

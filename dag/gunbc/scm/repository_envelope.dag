@@ -116,6 +116,8 @@ import gunbc.scm.object_store {
   store_corpus_manifest,
   PathUniqueManifestEntries, store_path_unique_manifest,
   UniqueManifestStored, UniqueManifestLocatorCollision,
+  CorpusEntrySourceRefusal, CorpusSourcesAdmitted, CorpusSourcesRefused,
+  admit_corpus_sources,
 }
 import gunbc.scm.commit_closure {
   ClosureCensus,
@@ -334,10 +336,12 @@ type RepositoryCommit sole_constructor {
 // a root without sharing an identity or making checkout ambiguous.
 // THE STAGE IS A LOCATOR, NOT A STAGING AREA, and that is what makes an `add` verb a re-pointing.
 //
-// THE VERB ITSELF IS NOT IN THIS TREE YET, and the sentences below are about the shape this member
-// admits rather than about a landed caller: `add` and `commit` must PUBLISH, and a safe conditional
-// publication cannot be spelled while extdeps.filesystem declares no rename. They land with that
-// capability. What is landed is the member, its codec, and gunbc.scm.staging's observation of it.
+// THE VERBS ARE IN THIS TREE NOW, and this paragraph used to say they were not. It said `add` and
+// `commit` could not land until extdeps.filesystem declared a rename, because a safe conditional
+// publication could not be spelled without one. That was true when written and is false here: the
+// write spine publishes through generation-file compare-and-set, which gives exact-generation
+// publication with independent readback and needs no rename. What is landed is the member, its codec,
+// gunbc.scm.staging's observation of it, and the verbs themselves.
 //
 // What an author accumulates before committing is a set of path -> authored-source bindings. That is
 // EXACTLY what a CorpusManifestObject is, and it is exactly what a commit root is, so a separate
@@ -352,10 +356,17 @@ type RepositoryCommit sole_constructor {
 // nothing and can lose nothing in translation.
 //
 // AND MAKES "IS THERE ANYTHING TO COMMIT" DERIVED RATHER THAN STORED. It is the comparison of this
-// locator with the checked-out commit's root, so committing does not have to CLEAR the stage: after a
-// commit this member and that root would be the same manifest, and the comparison reports clean by
-// construction. No reset step is required, so there is none to forget, and no third state where a
-// stale flag and the actual objects disagree.
+// locator with the checked-out commit's root, so the question is never a flag that can disagree with
+// the objects.
+//
+// THE CONCLUSION DRAWN FROM THAT WAS WRONG AND THE LANDED VERB DOES CLEAR THE STAGE. This paragraph
+// argued that committing need not reset the selection, because afterwards this member and the new
+// commit's root would be the same manifest and the comparison would report clean by construction.
+// The comparison does read clean -- but leaving the selection standing keeps an explicit OVERRIDE in
+// place, and `Absent` versus `Present` is exactly the distinction the last paragraph of this note
+// calls a data-loss defect rather than a nicety. `freeze_committable` therefore sets `staged: none`
+// together with the checkout advance, in one function, so the next `add` inherits from the commit
+// just written rather than from a selection the author has already spent.
 //
 // ONE SELECTION PER DOCUMENT, WHICH IS ONE WORKSPACE, AND THAT SCOPE IS STATED RATHER THAN HIDDEN.
 // A candidate selection is a fact about one working context's pending intent, not about the
@@ -563,27 +574,21 @@ type RepositoryCommitMint
 // and a found manifest establishes nothing about its entries' targets. PUBLICATION ADMISSION --
 // may THIS operation publish given the observed availability? -- belongs to the publishing verb.
 // Answering the second or third here would make a mint refuse for a fact that is not about minting.
-// THE INTEGRATION ANCHOR IS CHECKED FOR PREEXISTENCE IN THE INPUT REPOSITORY, on exactly the ground
-// that already forces the parent check one line down: OUTPUT MEMBERSHIP IS NOT EVIDENCE OF INPUT
-// MEMBERSHIP. A squash can only have consumed a source that existed when it ran, so without this the
-// mint could produce a result and its supposed consumed source in one motion -- a self-consistent
-// repository whose provenance describes an event that could not have happened, and whose consumed
-// join would then refuse or admit on a record nothing ever integrated.
-// It answers with the UNRESOLVABLE ANCHOR rather than a Bool, because the refusal has to name which
-// reference could not be found and a Bool would force the caller to rediscover it.
-fn integration_anchor_resolves(
-  repository: RepositoryEnvelope,
-  integration: CommitIntegration,
-) -> RepositoryCommitRef? {
-  match integration {
-    NoSquashIntegration => none
-    SquashIntegrated { source: s } =>
-      match commit_at_reference(commits: repository.commits, reference: s) {
-        Present { value: _ } => none
-        Absent => Present { value: s }
-      }
-  }
-}
+// `integration_anchor_resolves` STOOD HERE AND IS DELETED, HAVING OUTLIVED ITS QUESTION.
+//
+// It checked that a `SquashIntegrated` anchor pre-existed in the INPUT repository, on the ground that
+// output membership is not evidence of input membership -- a real argument while the generic mint
+// still accepted a raw `CommitIntegration` from any caller. That parameter is gone: `SquashIntegrated`
+// is now reachable only through `store_and_admit_merge_basis`, whose subject requires a derived base
+// and a conflict-free merge of the anchors' own manifests, and whose anchors were resolved from this
+// repository's history. The anchor cannot fail to pre-exist, so the check has no subject rather than
+// no callers.
+//
+// IT WAS LEFT STANDING AS A PUBLIC HELPER WITH NO CALL SITE, which DESIGN 3c names outright: a
+// declaration nothing consumes is redundant work that costs authoring, review and maintenance and
+// displaces nothing -- and worse here, a public membership check beside a sealed route invites a
+// future caller to re-admit an integration on membership alone, which is the exact hole the seal was
+// built to close. Found by external review.
 
 // A ROOT THE STORE ITSELF JUST BRANDED HAS NOTHING LEFT TO RESOLVE, so this route cannot refuse for
 // root resolution and its outcome type does not carry the arms.
@@ -907,11 +912,12 @@ fn admit_commit_subject(
 }
 
 // THE ORDINARY ROUTE DOES NOT ASK THE INTEGRATION QUESTION, so its admission does not carry the
-// answer. `integration_anchor_resolves` returns `Absent` for `NoSquashIntegration` by construction --
-// there is no source to look for -- so skipping it is not a weakened admission, it is the same
-// admission with a question that has no subject removed. The arm is therefore ABSENT from this
-// outcome rather than unreachable within it, which is the difference between a caller that cannot ask
-// and a caller that must match and invent.
+// answer -- and it no longer asks it because there is no integration to ask ABOUT. An earlier form of
+// this note explained that `integration_anchor_resolves` returned `Absent` for `NoSquashIntegration`
+// by construction, so skipping the call cost nothing. That reading described a route that still TOOK
+// an integration; this one supplies `NoSquashIntegration` itself and the helper is deleted. The arm is
+// ABSENT from this outcome rather than unreachable within it, which remains the difference between a
+// caller that cannot ask and a caller that must match and invent.
 // A BASIS THIS REPOSITORY ADMITTED -- SUBJECT, ANCESTRY AND INTEGRATION AS ONE FACT.
 //
 // The first version took an ordinary public `CommitAncestry` and checked only the allocator.
@@ -1024,6 +1030,7 @@ type MergeSubjectAdmission
   | MergeSubjectSideRootIsAuthoredSource { side: MergeSideName, root: ObjectId }
   | MergeSubjectSideRootIsSemanticNode { side: MergeSideName, root: ObjectId }
   | MergeSubjectConflicted { conflicts: List<ManifestPathConflict> }
+  | MergeSubjectSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
 
 type MergeSideRead
   = MergeSideReadRecord { record: CorpusManifestRecord }
@@ -1065,6 +1072,32 @@ fn read_anchor_manifest(
 // constructs the subject from THAT `ManifestMerged` arm and no other value. `merged` is never an
 // argument, so no caller can supply one (DESIGN 4b: construction over validation). The three read
 // refusals and the conflict travel out typed for the verb to carry one-to-one.
+// A MERGE COMMIT IS PUBLISHED THE SAME WAY AN ORDINARY ONE IS, SO IT PASSES THE SAME ADMISSION.
+//
+// `SquashMerged` means a locally publishable, checkoutable commit -- the same claim `commit_staged`
+// makes -- so inheriting the codec's deliberate permission for partial manifests would let the merge
+// write a snapshot whose bytes cannot be recovered, and write a `SquashIntegrated` receipt SPENDING
+// the source while doing it. The merge can reach that state without either side being at fault: a
+// partial base or target contributes an entry whose authored source this store never held, and the
+// path-grain merge decides that path without ever resolving it.
+//
+// The alternative was to state partial-merge semantics explicitly as a different contract. That would
+// be a second meaning for "merged", and DESIGN 3 requires a materially different contract to carry a
+// materially different name. It is one contract, so it gets one admission. Ruled by external review.
+fn admit_merged_sources(
+  anchors: ResolvedMergeAnchors,
+  merged: MergedManifestEntries,
+) -> MergeSubjectAdmission {
+  match admit_corpus_sources(
+    store: anchors.repository.store,
+    entries: path_unique_entry_list(unique: merged.entries),
+  ) {
+    CorpusSourcesRefused { cause: c } => MergeSubjectSourceUnrecoverable { cause: c }
+    CorpusSourcesAdmitted =>
+      MergeSubjectAdmitted(AdmittedMergeSubject { anchors: anchors, merged: merged })
+  }
+}
+
 fn admit_merge_subject(anchors: ResolvedMergeAnchors) -> MergeSubjectAdmission {
   let repository = anchors.repository
   match read_anchor_manifest(
@@ -1095,7 +1128,7 @@ fn admit_merge_subject(anchors: ResolvedMergeAnchors) -> MergeSubjectAdmission {
               ) {
                 ManifestConflicted { conflicts: c } => MergeSubjectConflicted { conflicts: c }
                 ManifestMerged { merged: e } =>
-                  MergeSubjectAdmitted(AdmittedMergeSubject { anchors: anchors, merged: e })
+                  admit_merged_sources(anchors: anchors, merged: e)
               }
           }
       }

@@ -27,10 +27,16 @@ module gunbc.scm.ordinary_commit
 // commit can actually reach. DESIGN section 4b: construction over proof, proof over validation --
 // the state is not refused here, it is unwritable through this route.
 //
-// IT IS NOT A SECOND MINT. The parent admission is `admit_commit_parent` and the row is built by
-// `mint_repository_commit_admitted` -- the same two functions the squash route uses -- so the
-// allocator discipline, the parent-preexistence rule and the row's shape have exactly one authority
-// each. What differs is only WHICH QUESTIONS THIS ROUTE ASKS, which is the thing that should differ.
+// IT IS NOT A SECOND MINT, AND WHAT IT SHARES WITH THE SQUASH ROUTE IS NARROWER THAN THIS NOTE ONCE
+// CLAIMED. It said the parent admission and the row construction were "the same two functions the
+// squash route uses". The row construction still is: `mint_repository_commit_admitted` has one
+// authority and both routes reach it. The PARENT ADMISSION is no longer shared -- squash does not call
+// `admit_commit_parent` at all, because its parent arrives already resolved inside the sealed merge
+// subject, which is the whole point of that seal. So the allocator discipline and the row's shape have
+// exactly one authority each; the parent-preexistence rule has one authority with one caller, and
+// admitting a parent from a bare reference is precisely the membership-only step the merge route was
+// rebuilt to stop performing. What differs is WHICH QUESTIONS EACH ROUTE ASKS, which is the thing that
+// should differ.
 
 import std.types { String, Int }
 import gunbc.scm.ancestry { RepositoryCommitRef, CommitAncestry }

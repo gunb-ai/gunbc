@@ -566,6 +566,105 @@ type AuthoredSourceLookup
   | AuthoredSourceIsSemanticNode { identity: ObjectId }
   | AuthoredSourceIsCorpusManifest { identity: ObjectId }
 
+// RESOLVING ONE MANIFEST ENTRY TO ITS AUTHORED BYTES, AS THE SINGLE AUTHORITY TWO OPERATIONS SHARE.
+//
+// `checkout` asked this question first, because recovering a working tree obviously needs the bytes.
+// Review then found that COMMIT needs the same question and never asked it: a candidate manifest
+// inherited from a PARTIAL base could name a source this store does not hold, and the commit reported
+// success while the resulting snapshot could not be checked out. The format admits partial manifests on
+// purpose -- historical and transport state is representable -- and that permission is NOT the same
+// fact as "this repository may publish this snapshot locally".
+//
+// SO THE PER-ENTRY RESOLUTION IS HOMED HERE RATHER THAN COPIED. It needs only the store, the entry and
+// the authored-source lookup, all of which this module owns, and it is reachable from `checkout`,
+// `staging` and `write_spine` alike without inverting any dependency (DESIGN 3, acyclicity). Copying
+// the walk into the commit path would have given one question two answers that could drift; calling
+// `recover_corpus` from the commit path instead would have MATERIALIZED every file's content to decide
+// a question that needs none, which DESIGN 2 prices as work bought for nothing. The split is at the
+// per-entry seam: this function answers "does this entry's source resolve, and if not, why and where",
+// and each caller keeps what it needs -- checkout the record, commit only the refusal.
+//
+// ALL THREE NON-SUCCESS ARMS SURVIVE, LOCATED BY PATH. An empty locator and one OCCUPIED BY THE WRONG
+// KIND are different repairs, and "some source is missing" is not actionable; the path is the only
+// thing an operator can act on.
+type CorpusEntrySourceRefusal
+  = CorpusEntrySourceMissing { path: NonEmptyStr, source: ObjectId }
+  | CorpusEntrySourceIsSemanticNode { path: NonEmptyStr, source: ObjectId }
+  | CorpusEntrySourceIsCorpusManifest { path: NonEmptyStr, source: ObjectId }
+
+type CorpusEntrySourceResolution
+  = CorpusEntrySourceResolved(AuthoredSourceRecord)
+  | CorpusEntrySourceUnresolved { cause: CorpusEntrySourceRefusal }
+
+fn resolve_manifest_entry_source(
+  store: ObjectStore,
+  entry: CorpusManifestEntry,
+) -> CorpusEntrySourceResolution {
+  match find_authored_source_record(
+    store: store,
+    identity: authored_source_target_locator(target: entry.source),
+  ) {
+    AuthoredSourceFound(record) => CorpusEntrySourceResolved(record)
+    AuthoredSourceAbsent { identity: id } =>
+      CorpusEntrySourceUnresolved { cause: CorpusEntrySourceMissing { path: entry.path, source: id } }
+    AuthoredSourceIsSemanticNode { identity: id } =>
+      CorpusEntrySourceUnresolved {
+        cause: CorpusEntrySourceIsSemanticNode { path: entry.path, source: id },
+      }
+    AuthoredSourceIsCorpusManifest { identity: id } =>
+      CorpusEntrySourceUnresolved {
+        cause: CorpusEntrySourceIsCorpusManifest { path: entry.path, source: id },
+      }
+  }
+}
+
+// THE PUBLICATION ADMISSION: every entry resolves, or the first failure is reported with its path.
+//
+// This is the question a local commit must pass before it may publish. It is deliberately NOT the
+// checkout recovery: it discards the bytes, because whether a snapshot is publishable does not depend
+// on holding its content in memory, and a commit that materialized every file would pay the whole
+// corpus per commit.
+type CorpusSourceAdmission
+  = CorpusSourcesAdmitted
+  | CorpusSourcesRefused { cause: CorpusEntrySourceRefusal }
+
+type CorpusSourceAdmissionAcc {
+  refusal: CorpusEntrySourceRefusal?
+}
+
+fn admit_corpus_source_step(
+  store: ObjectStore,
+  acc: CorpusSourceAdmissionAcc,
+  entry: CorpusManifestEntry,
+) -> CorpusSourceAdmissionAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match resolve_manifest_entry_source(store: store, entry: entry) {
+        CorpusEntrySourceResolved(_) => acc
+        CorpusEntrySourceUnresolved { cause: c } =>
+          CorpusSourceAdmissionAcc { refusal: Present { value: c } }
+      }
+  }
+}
+
+fn admit_corpus_sources(
+  store: ObjectStore,
+  entries: List<CorpusManifestEntry>,
+) -> CorpusSourceAdmission {
+  match fold(
+    entries,
+    init: CorpusSourceAdmissionAcc { refusal: none },
+    f: fn(acc, e) { admit_corpus_source_step(store: store, acc: acc, entry: e) },
+  ) {
+    CorpusSourceAdmissionAcc { refusal: r } =>
+      match r {
+        Present { value: cause } => CorpusSourcesRefused { cause: cause }
+        Absent => CorpusSourcesAdmitted
+      }
+  }
+}
+
 fn find_authored_source_record(store: ObjectStore, identity: ObjectId) -> AuthoredSourceLookup {
   match find_object(store: store, identity: identity) {
     Absent => AuthoredSourceAbsent { identity: identity }
@@ -927,8 +1026,15 @@ fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr
 // property someone asserts. An earlier revision of this paragraph named `store_corpus_manifest` as the
 // sole minter, which was true when written and stopped being true when the insertion body was factored
 // out -- and the factored body then took a bare list, so for one revision the premise was not merely
-// stale but FALSE. Both halves were found by external review. Removing one path from that set and appending exactly one entry preserves
-// it. Both constructors below are exactly that move, and there is no other way to build this carrier.
+// stale but FALSE. Both halves were found by external review.
+//
+// THE RECIPE SENTENCE THAT STOOD HERE IS DELETED TOO. It said uniqueness was preserved by "removing
+// one path from that set and appending exactly one entry", and that both constructors below were
+// exactly that move. That described the LIST carrier. The carrier is a map keyed by path, so a bind is
+// an insert that replaces, there is no removal step, and `path_unique_with_path_removed` was deleted
+// for want of a consumer. Describing a map-backed invariant in the vocabulary of the list it replaced
+// is the attractor DESIGN 3 warns about: while the old spelling survives, the next question gets
+// answered in it.
 // UNIQUENESS IS STRUCTURAL RATHER THAN MAINTAINED, AND THAT IS BOTH A SAFETY AND A COST REPAIR.
 //
 // The list form kept its invariant by SCANNING: every bind dropped any entry already holding the path
@@ -946,8 +1052,11 @@ fn a_duplicated_manifest_path(entries: List<CorpusManifestEntry>) -> NonEmptyStr
 // what the cut actually establishes.
 //
 // THE PROJECTION IS DETERMINISTIC BY SORTING, NOT BY TRUSTING ITERATION ORDER. Hash-map iteration
-// order may never influence the manifest locator or the wire bytes, so `path_unique_entry_list` sorts
-// by path -- the same canonical order `canonical_manifest_entries` produces.
+// order may never influence the manifest locator or the wire bytes, so the projection sorts by path.
+// It does not produce "the same canonical order" as `canonical_manifest_entries` -- an earlier form of
+// this sentence said that, and two spellings of one order is how they drift apart.
+// `path_unique_entry_list` IS `canonical_manifest_entries` applied to the map's values: one owner, one
+// execution, on the cost-sensitive route. Ruled by external review.
 //
 // DIVERGENCE, STATED RATHER THAN QUIETLY TAKEN (DESIGN 3b admits a departure with its reason beside
 // it). The ruling asked for `Map<NonEmptyStr, AuthoredSourceTarget>` -- the value being ONLY the
