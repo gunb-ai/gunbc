@@ -1811,6 +1811,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ), v2_emitter_direct_rust_door_execution_contract()),
     active(
+      identity: "rn_7QF2XN5BJH0K3VDPMWR8CZT6AY",
+      id: "v2-emitter-production-compatible-corpus-module",
+      owner: "self-host",
+      path: "src/v2/compiler/self_host/stage0_production_target.dag",
+      t: fields(
+        headline: "Make the new generator able to produce one real module the seed crate can use",
+        boundary: "One real module from the repository, read off disk the way the crate's own modules arrive, comes out of the new generator in a form the existing crate accepts: visible where the crate calls across module boundaries, carrying the integer the crate's other files already carry, and with every expression in that module's body actually written out. Whether production ever selects it is the step after this one.",
+        displaced_cost: "The step below assumed a real module was already producible and it is not, so without this the flip has nothing to flip. Measuring it here stops a milestone being recorded against a module the generator cannot write.",
+        first_slice: "Take the smallest real subject the census finds -- the one corpus module with a single declaration -- and walk its first refusal repeatedly: emit it, name the exact shape that stopped, add that one shape, emit again.",
+        red_control: "Each capability is separated by its own failing control rather than one generic bad-output check: an item emitted without visibility must fail where the real caller reaches it, and the wrong integer must fail at the exact position the crate's existing files fix. Emitted text alone is not accepted -- the module has to stand in for the real file in a copy of the real crate, build there, and answer a table of inputs the same way the current one does.",
+        out_of_scope: "Not changing which generator production selects, not matching the old generator's bytes, and not widening to modules with several declarations -- that widening waits for a consumer that needs it, and would not by itself make the large integer module producible.",
+        handback: "The source tree and module named, the emitted source, the build result in the real crate, the behavioral table, and the remaining shapes still refused."
+      )
+    ),
+    active(
       identity: "rn_KD37MRQ3ZA6F502DBKE6FE0VB8",
       id: "v2-emitter-first-behavioral-module",
       owner: "self-host",
@@ -1823,6 +1838,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "The deliberately broken version must still fail, and the run must be shown never to have reached the old generator.",
         out_of_scope: "No comparing bytes against what the old generator produced, and no relabelling of unrelated modules.",
         handback: "The test results, which generator made it, and the updated list entry."
+      )
+    ),
+    active_large(
+      identity: "rn_1J8QK4XTB6PM09VZDR3HNW5CEY",
+      id: "v2-emitter-native-crate-partition",
+      owner: "self-host",
+      path: "src/v2/workflow/rust_crate_partition.dag",
+      t: fields(
+        headline: "Decide how the self-built compiler is split into separately built pieces",
+        boundary: "The compiler the new generator emits is today written out as ONE package: one manifest, one crate root, and roughly a hundred and seventy generated files beneath it. This step derives the split from the compiler's own module graph instead — group the modules that genuinely depend on each other in a cycle, keep the groups acyclic, give every module exactly one owning piece, and generate a real multi-package workspace from that. The seven-piece split that already exists is for the OLD compiler and is assigned by hand; it is a precedent for the machinery, not a layout to copy.",
+        displaced_cost: "Where the boundaries fall decides which declarations have to be visible outside their own file, whether the pieces' interfaces are actually complete, what a one-line edit rebuilds, and how much memory a build needs. A one-package artifact answers none of those questions, so proving the compiler can rebuild itself over it proves it for a shape nobody intends to keep — and the failures it would hide are exactly the ones that surface first when the shape changes.",
+        first_slice: "Read the real closure into the module-graph carrier that already exists — modules, dependency edges, exported declarations, by-value type rows — and condense the mutually-dependent groups. Selecting the split comes after there is a graph to select over; a target count alone is not a policy, and the resolver that takes one is deliberately unimplemented today.",
+        red_control: "A module owned by two pieces, or by none, refuses. A cycle between pieces refuses. A declaration one piece needs and another does not expose must fail the build rather than be papered over by exporting everything. And a one-line edit to a leaf must be shown to rebuild that leaf's owner and the pieces that depend on it — NOT the whole compiler, which is what a single package always does and is why crate count alone is not the claim.",
+        out_of_scope: "Not inventing piece names up front, not copying the old compiler's hand-made layout, and not blocking the first real module flip or the initial native CI routing — those establish different facts and can run on the one-package artifact meanwhile, provided that artifact is carried as a temporary probe with this step as its end condition.",
+        handback: "The derived module graph, the split and what selected it, the generated workspace, a build and behavioral run of the same corpus through it, a deliberately broken cross-piece export that fails, and a receipt showing a leaf edit rebuilding only its own dependents."
       )
     ),
     active_large(
@@ -2646,8 +2676,10 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
     edge(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt"),
     edge(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance"),
-    edge(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-direct-rust-door"),
-    edge(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-first-behavioral-module"),
+    edge(child: "v2-emitter-production-compatible-corpus-module", parent: "v2-emitter-direct-rust-door"),
+    edge(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-production-compatible-corpus-module"),
+    edge(child: "v2-emitter-native-crate-partition", parent: "v2-emitter-first-behavioral-module"),
+    edge(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-native-crate-partition"),
     edge(child: "v2-emitter-native-bootstrap", parent: "pderive-error-movement-receipt"),
     edge(child: "v1-emitter-fixed-point", parent: "v2-emitter-native-bootstrap"),
     edge(child: "v1-honest-frontier", parent: "v1-test-hygiene-producer-retirement"),

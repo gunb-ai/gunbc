@@ -1,6 +1,6 @@
 module extdeps.colo.databank
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
@@ -12,7 +12,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.databank.com/data-centers/new-york-city/orangeburg-campus/lga4/"
+    locator: "www.databank.com/data-centers/new-york-city/"
   }
 }
 
@@ -20,12 +20,19 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.databank",
-      decl_name: "databank_lga4_orangeburg",
+      decl_name: "databank_facilities",
       field: WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri {
+        scheme: Https
+        locator: "www.databank.com/data-centers/new-york-city/orangeburg-campus/lga4/"
+      }
+    }
+  ]
 }
 
 // DATABANK WAS ABSENT FROM THE 2026-08-18 CENSUS ENTIRELY, and its absence hid two things at
@@ -63,7 +70,7 @@ data databank_lga4_orangeburg: ColoFacilityRow = ColoFacilityRow {
 // "up to 30 kW/rack" and which therefore genuinely has the property being asserted.
 data databank_lga4_density: CabinetDensityClaim = DensityUnread {
   cause: FigureReadButUnrepresentable {
-    obligation: "THIS PAGE WAS READ AND IT PUBLISHES TWO FIGURES, neither of which this carrier can hold pointing the right way. The operator publishes, verbatim: \"35kW+ Cab Density Air\" and \"100kW+ Cab Density Liq\". Both plus signs are the operator's own, so both are capability FLOORS - at least thirty-five kilowatts on air, at least one hundred on liquid - and the figure-bearing arms here are marketed MAXIMA. Typed as a maximum, thirty-five thousand became an at-most, and the census asserted that a cabinet advertised at thirty-five kilowatts OR MORE refuses 35,001 W. RESOLVE by re-typing both as floor-carrying figures once the carrier expresses a quantity's direction; the numerals and wording above are the reading and no re-fetch is required. RETRIEVAL EVIDENCE, unchanged and still verified: databank.com Orangeburg campus LGA4 page, raw fetch 2026-09-09 (HTTP 200). THE WORDING ABOVE IS NOW THE LITERAL SPEC-TABLE CELLS AND WAS NOT BEFORE. The first cut read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool, not text on the page. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the WORDING did not, which is the general shape silent-heron-303 found across the census. The plus signs are the operator's own, so these are marketed floors on a maximum rather than exact ceilings; the integers are the stated numerals.",
+    obligation: "THIS PAGE WAS READ AND IT PUBLISHES TWO FIGURES, neither of which this carrier can hold pointing the right way. The operator publishes, verbatim: \"35kW+ Cab Density Air\" and \"100kW+ Cab Density Liq\". Both plus signs are the operator's own, so both are capability FLOORS - at least thirty-five kilowatts on air, at least one hundred on liquid - and the figure-bearing arms here are marketed MAXIMA. Typed as a maximum, thirty-five thousand became an at-most, and the census asserted that a cabinet advertised at thirty-five kilowatts OR MORE refuses 35,001 W. RESOLVE by re-typing both as floor-carrying figures once the carrier expresses a quantity's direction; the numerals and wording above are the reading and no re-fetch is required. RETRIEVAL EVIDENCE, unchanged and still verified: databank.com Orangeburg campus LGA4 page from db_data_center-sitemap. Raw fetch 2026-09-09 with no User-Agent and with a full Chrome User-Agent: both HTTP 200, 113793 bytes. Subject control in RAW bytes: LGA4=10. THE WORDING ABOVE IS NOW THE LITERAL SPEC-TABLE CELLS AND WAS NOT BEFORE. The first cut read '35kW+ air-cooled, 100kW+ liquid-cooled' - a fused, invented sentence produced by a summarizing fetch tool, not text on the page. The page carries three separate cells: 'N+1 Cooling Design', '35kW+ Cab Density Air', '100kW+ Cab Density Liq'. The FIGURES survived verification and the WORDING did not. The plus signs are the operator's own, so these are marketed floors rather than exact ceilings.",
     wording: "35kW+ Cab Density Air / 100kW+ Cab Density Liq",
     citation: "databank.com",
   },
@@ -74,9 +81,52 @@ data databank_lga4_retail_grain: RetailGrainStanding = SingleCabinetOffered {
   citation: "databank.com Orangeburg campus LGA4 page, read 2026-09-08",
 }
 
-data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
-  contact_route: "databank.com sales",
-  obligation: "No cabinet or power pricing is published on the facility pages read 2026-09-08. A quote is required, and the density claim above is what makes the quote worth requesting.",
+data databank_lga1_hudson: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank LGA1 Downtown New York City",
+  address: AddressListed {
+    street: "60 Hudson Street, Suite 1903, New York, NY 10013",
+    citation: "databank.com Hudson Street LGA1 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "23,940 IT square feet, 0.74 MW critical IT load, 92 on-site carriers, 2N power and N+1 cooling per the operator page read 2026-09-08. Digital Realty JFK12 and Colocation America NYDC1 sell from the same building under their own modules. Five-borough site; density is a separate marketed claim, not the building's 0.74 MW.",
+}
+
+data databank_lga1_density: CabinetDensityClaim = DensityUnread {
+  cause: FigureReadButUnrepresentable {
+    obligation: "databank.com/data-centers/new-york-city/hudson-street/ from db_data_center-sitemap (not a constructed /lga1/ path: that URL is HTTP 404 with a 116829-byte styled body). Raw fetch 2026-09-09: both UAs HTTP 200, 127107 bytes. Subject control LGA1=84. RAW '5kW+'=1 is the marketed floor sentence, not a ceiling; not treated as DensityMarketedAirOnly. A quote or a spec that names a ceiling is required.",
+    wording: "5kW+",
+    citation: "databank.com/data-centers/new-york-city/hudson-street/",
+  },
+}
+
+data databank_lga1_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "databank.com/data-centers/new-york-city/hudson-street/ full-UA HTTP 200, 127107 bytes, subject LGA1=84. RAW wording 'Cabinets Colocation' names a cabinet product and does not establish a single-cabinet minimum. No CabinetProductNamed arm on this carrier; unread until a quote or a sentence that names the smallest sellable unit.",
+}
+
+data databank_lga2_eighth: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "DataBank",
+  facility_label: "DataBank LGA2 Downtown New York City",
+  address: AddressListed {
+    street: "111 Eighth Avenue, Suite 311A, New York, NY 10011",
+    citation: "databank.com Eighth Avenue LGA2 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "10,200 IT square feet, 0.68 MW critical IT load, 50 on-site carriers, N+1 power and cooling per the operator page read 2026-09-08. Equinix NY9 and Digital Realty JFK10 occupy the same building under their own modules.",
+}
+
+data databank_lga2_density: CabinetDensityClaim = DensityUnread {
+  cause: FigureReadButUnrepresentable {
+    obligation: "databank.com/data-centers/new-york-city/eighth-avenue/ from db_data_center-sitemap. Raw fetch 2026-09-09: both UAs HTTP 200, 127126 bytes. Subject control LGA2=85. RAW '5kW+'=1 is the same marketed floor as LGA1, not a cabinet maximum. Unread until a ceiling is published.",
+    wording: "5kW+",
+    citation: "databank.com/data-centers/new-york-city/eighth-avenue/",
+  },
+}
+
+data databank_lga2_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "databank.com/data-centers/new-york-city/eighth-avenue/ full-UA HTTP 200, 127126 bytes, subject LGA2=85. Same 'Cabinets Colocation' product label as LGA1, not a demonstrated single-cabinet offer.",
 }
 
 // A SECOND SITE THIS OPERATOR RUNS IN NEW JERSEY, NAMED BUT NOT MODELLED. A review relayed into
@@ -214,4 +264,17 @@ data databank_phl1_density: CabinetDensityClaim = DensityUnread {
 
 data databank_phl1_retail_grain: RetailGrainStanding = RetailGrainUnread {
   obligation: "The Philadelphia page read 2026-09-08 describes interconnection and location and does not itemise cabinets, cages or suites for this site. The spec-strip wording carried on the LGA4 row above is that page's, not this one's - and that strip is exactly the template whose adjacent cells four independent readers fused into invented sentences, so nothing is carried across from it. Confirm the smallest sellable unit at PHL1 with sales.",
+}
+
+data databank_facilities: List<ColoFacilityRow> = [
+  databank_lga4_orangeburg,
+  databank_lga1_hudson,
+  databank_lga2_eighth,
+  databank_ewr1_newark,
+  databank_phl1_philadelphia,
+]
+
+data databank_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "databank.com sales",
+  obligation: "No cabinet or power pricing is published on the facility pages read 2026-09-08. A quote is required, and the density claims above are what make the quote worth requesting.",
 }

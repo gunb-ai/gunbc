@@ -1,0 +1,35 @@
+module gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+// A LIVE RETRIEVAL CANNOT PRODUCE ADMISSIBLE EVIDENCE, AND THE REASON IS THE TRANSPORT.
+// http.Client.GetBounded reports body and success only: the HTTP status is never observed, and no
+// realization digests a response body without a filesystem round trip. So gunbc.information_retrieval
+// cannot witness the two facts a CitationRetrievalObservation needs, and every reachable fetch is
+// typed InformationEvidenceUnobservable and refuses.
+//
+// WHY THIS IS A STALL AND NOT A DEFECT. Refusing is the correct arm today: the alternative is
+// writing an unobserved status into an observation record, which this module did in an earlier
+// revision and which DESIGN section 5 names as fabricated plausible output. The class is mitigated
+// -- the wrong state is refused rather than recorded -- and it cannot climb further while the
+// transport stays blind, which is what makes it a stall rather than an unbuilt wall.
+//
+// THE VERIFIED ARM IS EXERCISED ONLY OVER CONSTRUCTED RECEIPTS. That is the population below: the
+// hermetic witnesses reconcile digests the test authored, so nothing proves the reconciliation path
+// against bytes that actually crossed the network.
+data information_retrieval_transport_cannot_report_status_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.information_retrieval -- a live retrieval cannot reach CitationRepresentationVerified, so admissible evidence is unreachable from the network path",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: [
+      "gunbc.information_retrieval information_retrieve_evidence -- the reachable arm yields InformationEvidenceUnobservable because neither the response status nor a body digest is observed",
+      "gunbc.information_query information_evidence_from_verification -- its CitationRepresentationVerified arm is exercised only by witnesses over authored receipts, never by a live fetch",
+      "test.claim.information_retrieval_witness w_retrieval_arm_agrees_with_the_transport -- can only assert which refusal arm ran, because no live retrieval can reach the verified arm to be asserted about",
+      "gunbc.information_retrieval information_retrieve_evidence, success arm -- UNEXERCISED BY ANY EXECUTING CONSUMER. http.Client.GetBounded answers the merge envelope from a mock_response fixed at { success: false }, so the reaching-the-network branch never runs on the path that gates; an always-Unavailable regression cannot be caught there. Enrolling the witness as a bin_wet row would NOT close this: that lane has executed nothing since 2026-08-15 (gunbc.ci.ci_layer_roots excl_bin_wet_reason), so it would report the arm as covered while running it less often than the hermetic path does"
+    ]
+  },
+  next_rung_trigger: climbs_when(capability: "EITHER a live-execution lane that actually runs -- the bin_wet batch restored, or an equivalent whose members are joined back at identity grain so a member that stops executing refuses rather than reading as covered -- OR mock_response coverage whose success is a parameter of the fixture rather than a constant, so both arms are reachable hermetically. AND a retrieval operation that reports what it actually saw -- the response status code, and a digest of the response body computed without a filesystem round trip -- so that a CitationRetrievalObservation can be constructed with every field witnessed rather than one field inferred. NOT satisfied by adding a status field that the transport still does not observe, which is the fabrication this row exists to keep refused.")
+}

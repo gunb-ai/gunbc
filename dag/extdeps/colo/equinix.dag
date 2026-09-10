@@ -3,8 +3,9 @@ module extdeps.colo.equinix
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
-  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly, CabinetDensityClaim,
-  DensityUnread, RetailGrainStanding, RetailGrainUnread,
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered, RetailGrainUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -21,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.colo.equinix",
-      decl_name: "equinix_secaucus_campus",
+      decl_name: "equinix_facilities",
       field: WholeDeclaration
     }
   },
@@ -66,6 +67,33 @@ data equinix_ny6: ColoFacilityRow = ColoFacilityRow {
 }
 
 data equinix_secaucus_campus: List<ColoFacilityRow> = [equinix_ny2, equinix_ny4, equinix_ny5, equinix_ny6]
+
+data equinix_ny9: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Equinix",
+  facility_label: "Equinix NY9",
+  address: AddressListed {
+    street: "111 8th Avenue, New York, NY 10011",
+    citation: "equinix.com NY9 page, read 2026-09-08",
+  },
+  municipality: "New York",
+  region_code: "NY",
+  facility_note: "35,898 square feet of colocation, N+1 UPS and generators, N+2 cooling, 120/208 V distribution per the New York campus listing read 2026-09-08. Adjacent IBX NY8 is named on a 2021 spec sheet as also at a Manhattan carrier hotel but is absent from that live campus listing.",
+}
+
+data equinix_ny9_density: CabinetDensityClaim = DensityUnread {
+  cause: FigureReadButUnrepresentable {
+    obligation: "equinix.com NY9 page. Raw fetch 2026-09-09: no User-Agent HTTP 403, 494 bytes; full Chrome User-Agent HTTP 200, 276964 bytes. Subject control in RAW 200 body: NY9=13. Spec table Minimum Cabinet Density 2kVA (RAW kVA=1) is a floor not a marketed maximum. Excluded kW: the one RAW substring kW sits inside a base64 blob, not a density sentence. Do not read 2 kVA as density. A quote or a later spec that names a maximum is required.",
+    wording: "Minimum Cabinet Density 2kVA",
+    citation: "equinix.com",
+  },
+}
+
+data equinix_ny9_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "Secure Cabinet Express",
+  citation: "equinix.com NY9 products table, read 2026-09-08",
+}
+
+data equinix_facilities: List<ColoFacilityRow> = concat(equinix_secaucus_campus, [equinix_ny1, equinix_ny3, equinix_ny7, equinix_ny9])
 
 data equinix_retail_rates: RetailRateStanding = RatesQuoteOnly {
   contact_route: "equinix.com sales",

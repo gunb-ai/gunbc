@@ -2040,6 +2040,25 @@ fn rust_target_model_bundle_core() -> Node {
 }
 }
 
+// Rust's item visibility keyword, declared here because the SPELLING is a Rust fact, and
+// deliberately NOT appended to rust_production_lex_rules: whether an emitted item is visible
+// outside its module is a property of the crate boundary the emission lands in, so the
+// selection belongs to the target profile that owns that boundary. The language source spells
+// no visibility at all.
+fn rust_visibility_public_lex_rule() -> LexRule {
+  rust_lex_rule(token_class: ^rust_token_kw_pub, text: "pub ")
+}
+
+// THE ^dag_binding_type_int ROW IS THE SPELLING ONE EMISSION ROUTE READS, NOT RUST'S REALIZATION
+// OF THE LANGUAGE'S Int. Rust's representation authority for a type atom is
+// rust_target_atom_realization_catalog; the produced-declaration type-reference route does not
+// consult it and renders this map instead, which makes this row a second and weaker home for a
+// fact that catalog owns (the duplicate `bool` spelling is the same fork seen from the other
+// side). Until produced-declaration type references resolve through TargetAtomRealization, an
+// emission boundary needing a different spelling overlays this map rather than re-spelling it
+// here (v2.compiler.self_host.stage0_production_target, whose crate ABI is spelled i64), and the
+// map is left byte-for-byte as it was so that every claim already sharing an evaluation of it
+// keeps sharing the same one: a profile's delta belongs to the profile.
 fn rust_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_add, "add")
   let ma2 = map_insert(m0, ^rust_binding_fn_add2, "add2")
@@ -2052,6 +2071,12 @@ fn rust_binding_spellings() -> Map<Symbol, String> {
   let m4 = map_insert(m3, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m5 = map_insert(m4, ^rust_collection_surface_vec, "Vec")
   map_insert(m5, ^target_collection_set_carrier, "Set")
+}
+
+fn rust_production_lex_rules_with(extra: List<LexRule>) -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(left: rust_production_lex_rules().rules, right: extra)
+  }
 }
 
 fn rust_emit_host_runtime_primitive_type_node() -> Node {

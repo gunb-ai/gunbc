@@ -1,0 +1,378 @@
+module extdeps.vllm.memory_profile
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.algebra { trim }
+import std.nat { Nat }
+import std.measure { BasisPoint, basis_point, ByteSize, byte_size }
+import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.log_lines {
+  VllmStartupReading, VllmStartupLine,
+  MemoryProfileSummary, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
+}
+
+// THE MEMORY-PROFILE LINE PRINTS TWO KINDS OF NUMBER, AND TYPING THEM ALIKE WOULD FABRICATE
+// PRECISION. Measured on the GLM canary's line, exactly two figures are exact: the byte arguments of
+// the two `--kv-cache-memory` recommendations. Every other term -- device total, startup availability,
+// requested envelope, consumed, peak activation, graph, current KV -- is printed as a rounded GiB
+// value with two decimals, and there is no byte figure behind them anywhere in the log.
+//
+// THE ROUNDED TERMS DO NOT RECONCILE, AND THAT IS EXPECTED RATHER THAN A DEFECT. On this launch
+// 82.52 + 7.42 + 0.1 + 22.02 = 112.06 against a stated envelope of 111.95. The residual is real but
+// the arithmetic is performed upstream in bytes and only then rounded for display, so a consumer that
+// summed these and refused on the mismatch would be refusing the ROUNDING, not the engine. Any
+// admission arithmetic must therefore run on the exact recommendation bytes or on separately observed
+// device totals -- never on these readings.
+//
+// SO THE ROUNDED HALF IS CARRIED AS WHAT IT IS: a printed reading, in hundredths of a gibibyte,
+// beside the literal text it came from. It is comparable and orderable, which is all a rounded figure
+// honestly supports, and it cannot be mistaken for a byte count by any consumer because it is not one.
+type GibibyteReading sole_constructor {
+  hundredths: Nat
+}
+
+fn gibibyte_reading(hundredths: Nat) -> GibibyteReading {
+  GibibyteReading { hundredths: hundredths }
+}
+
+fn gibibyte_reading_hundredths(r: GibibyteReading) -> Nat {
+  r.hundredths
+}
+
+// ── THE READING ────────────────────────────────────────────────────────────────────────────────
+//
+// EVERY FIELD NAME CARRIES ITS TEMPORAL MEANING, because the terms are not the same KIND of quantity
+// and the earlier report treated them as one table of comparable numbers. `startup_available` is an
+// instantaneous allocatability estimate -- on unified memory this vLLM reads host MemAvailable, which
+// includes reclaimable memory and is NOT an inventory of resident bytes. `current_kv` is an allocated
+// pool. The two recommendations are derived candidates, not settings.
+//
+// TWO FIELDS WERE RENAMED BECAUSE THEIR NAMES CLAIMED MORE THAN THE LINE ESTABLISHES, and the names
+// mattered more than usual: these are the terms a later residency equation will add up, and a name
+// that overstates what a term covers is how the same bytes get counted twice.
+//
+// `persistent_consumed` BECAME `reported_total_consumed_during_profile`. Upstream derives this figure
+// as the DIFFERENCE between available memory before engine creation and after profiling, explicitly
+// assuming that surrounding processes did not change their own use across that interval -- and on
+// unified memory the readings either side are host MemAvailable, which moves with reclaimable memory.
+// So it is what the engine reported across an interval, not a persistent charge attributable to vLLM.
+// It becomes that stronger thing only once the host-residency observer establishes a stable
+// surrounding population, which is a different program's subject and not this parser's to assume.
+//
+// `peak_activation_headroom` BECAME `reported_peak_activation`. The old name asserted activation-only
+// headroom; upstream's term may include its applied CUDA-graph estimate depending on how the profiler
+// ran, while graph memory is ALSO reported separately in the same sentence. Narrowing the name would
+// have invited a consumer to add this term to `cudagraph_allocated` as though they were disjoint. The
+// exact profiler condition under which the two overlap is not established here and is deliberately not
+// guessed at: what this module carries is upstream's own term, unnarrowed.
+//
+// THE CAPTURED TEXT IS RETAINED, not summarised. A receipt that kept only the parsed fields could not
+// be re-read when a later revision reworded the line, and the digest of the capture is what lets a
+// consumer decide whether two receipts describe the same observation.
+type VllmMemoryProfileReading sole_constructor {
+  device_total: GibibyteReading
+  startup_available: GibibyteReading
+  requested_utilization: BasisPoint
+  requested_envelope: GibibyteReading
+  reported_total_consumed_during_profile: GibibyteReading
+  reported_peak_activation: GibibyteReading
+  cudagraph_allocated: GibibyteReading
+  current_kv: GibibyteReading
+  recommended_kv_within_requested_envelope: ByteSize
+  recommended_kv_using_startup_availability: ByteSize
+  captured_text: NonEmptyStr
+  observed_at_revision: VllmSourceRevision
+}
+
+// THE RECOMMENDATIONS ARE THE ONLY EXACT TERMS, AND NEITHER IS A POLICY. The larger one is what the
+// engine calculates would fully use the device given the availability IT OBSERVED AT THAT LAUNCH; the
+// smaller is what fits inside the requested envelope. Reading either as capacity, as proven-safe, or
+// as an amount permanently unused is the error this type exists to prevent -- they are candidates for
+// a selection decision that has not been made, bound to one launch's snapshot.
+type VllmKvRecommendation
+  = KvRecommendationWithinRequestedEnvelope
+  | KvRecommendationUsingStartupAvailability
+
+fn vllm_kv_recommendation_bytes(r: VllmMemoryProfileReading, which: VllmKvRecommendation) -> ByteSize {
+  match which {
+    KvRecommendationWithinRequestedEnvelope => r.recommended_kv_within_requested_envelope
+    KvRecommendationUsingStartupAvailability => r.recommended_kv_using_startup_availability
+  }
+}
+
+// ── THE PARSE ──────────────────────────────────────────────────────────────────────────────────
+//
+// TOTAL AND REFUSING: every term is required, and a line missing any one of them yields Unreadable
+// rather than a receipt with plausible fields. That is the whole reason to parse rather than transcribe
+// -- a hand-filled receipt cannot tell "the engine did not print this" from "nobody typed it".
+//
+// THE ANCHORS ARE THE LINE'S OWN PUNCTUATION, not offsets. A position would rot the first time upstream
+// added a clause; the delimiters below are the phrases the sentence is built from, and their ABSENCE is
+// what a reworded line produces -- which refuses, loudly, instead of silently reading the wrong number.
+type VllmMemoryProfileParse
+  = VllmMemoryProfileParsed { reading: VllmMemoryProfileReading }
+  | VllmMemoryProfileUnreadable { captured_text: String, cause: NonEmptyStr }
+
+// A ROUNDED GIB FIGURE BECOMES HUNDREDTHS, and the decimal places vary. The line prints 114.93, 82.52
+// and also 0.1 -- one digit, not two -- so a parse that assumed two places would read 0.1 as 0.01 and
+// under-report CUDAGraph memory by a factor of ten. The fractional part is scaled by its own length.
+fn parse_gib_hundredths(text: String) -> Nat? {
+  let fields = split(s: trim(s: text), delimiter: ".")
+  if fields.length() == 1 {
+    parse_gib_whole_only(whole_text: fields.first())
+  } else if fields.length() == 2 {
+    parse_gib_whole_and_fraction(whole_text: fields.first(), fraction_text: fields.skip(n: 1).first())
+  } else {
+    none
+  }
+}
+
+fn parse_gib_whole_only(whole_text: String) -> Nat? {
+  match parse_int(s: whole_text) {
+    Absent => none
+    Present { value: whole } => parse_gib_combine(whole: whole, frac: 0, digits: 2)
+  }
+}
+
+fn parse_gib_whole_and_fraction(whole_text: String, fraction_text: String) -> Nat? {
+  match parse_int(s: whole_text) {
+    Absent => none
+    Present { value: whole } => parse_gib_with_whole(whole: whole, fraction_text: fraction_text)
+  }
+}
+
+fn parse_gib_with_whole(whole: Int, fraction_text: String) -> Nat? {
+  match parse_int(s: fraction_text) {
+    Absent => none
+    Present { value: frac } => parse_gib_combine(whole: whole, frac: frac, digits: length(fraction_text))
+  }
+}
+
+fn parse_gib_combine(whole: Int, frac: Int, digits: Int) -> Nat? {
+  if whole < 0 || frac < 0 { none }
+  else if digits == 1 { Present { value: whole * 100 + frac * 10 } }
+  else if digits == 2 { Present { value: whole * 100 + frac } }
+  else { none }
+}
+
+// THE TEXT BETWEEN TWO ANCHORS, or nothing. Both anchors must be present and in order; a caller
+// receiving `none` has learned the line does not have the shape this parser was written against.
+fn between(text: String, open: String, close: String) -> String? {
+  let after = split(s: text, delimiter: open)
+  if after.length() < 2 { none }
+  else {
+    let tail = split(s: after.skip(n: 1).first(), delimiter: close)
+    if tail.length() < 2 { none } else { Present { value: tail.first() } }
+  }
+}
+
+fn parse_gib_between(text: String, open: String, close: String) -> Nat? {
+  match between(text: text, open: open, close: close) {
+    Absent => none
+    Present { value: inner } => parse_gib_hundredths(text: inner)
+  }
+}
+
+// THE TWO EXACT FIGURES. These are the only byte counts the line prints, and the only terms any
+// admission arithmetic may use -- every other number in the sentence is a rounded rendering whose sum
+// deliberately does not reconcile.
+fn parse_kv_recommendation_bytes(text: String, occurrence: Nat) -> Nat? {
+  let parts = split(s: text, delimiter: "--kv-cache-memory=")
+  if parts.length() < occurrence + 1 { none }
+  else {
+    match parse_int(s: split(s: parts.skip(n: occurrence).first(), delimiter: "`").first()) {
+      Absent => none
+      Present { value: b } => if b < 0 { none } else { Present { value: b } }
+    }
+  }
+}
+
+// ── THE UTILIZATION THE LINE ITSELF STATES ────────────────────────────────────────────────────
+//
+// THE CALLER USED TO SUPPLY THIS AND THE LINE ALREADY CONTAINED IT. The parser took
+// `requested_utilization: BasisPoint` as a parameter while the captured text says, in the same
+// sentence it parses everything else from, `Desired GPU memory utilization is (0.92, 111.95 GiB)`.
+// So a caller could hand in 0.82 against a line that says 0.92 and the parsed reading would report
+// 0.82 -- the observation rewritten by the party it is meant to constrain. The same was true of the
+// revision, stamped by the caller rather than taken from the reading that carries it.
+//
+// FOUR DECIMAL PLACES, BECAUSE THE ENGINE PRINTS THEM. Its own guidance on this fleet names 0.9112
+// and 0.9288; a two-place parser would read those as 0.91 and 0.92 and move the envelope by hundreds
+// of megabytes on a 121.69 GiB device, which is the same truncation defect the GiB parser above was
+// written to avoid.
+fn parse_basis_points(text: String) -> Nat? {
+  let fields = split(s: trim(s: text), delimiter: ".")
+  if fields.length() == 1 {
+    parse_bp_whole_only(whole_text: fields.first())
+  } else if fields.length() == 2 {
+    parse_bp_whole_and_fraction(whole_text: fields.first(), fraction_text: fields.skip(n: 1).first())
+  } else {
+    none
+  }
+}
+
+fn parse_bp_whole_only(whole_text: String) -> Nat? {
+  match parse_int(s: whole_text) {
+    Absent => none
+    Present { value: whole } => parse_bp_combine(whole: whole, frac: 0, digits: 0)
+  }
+}
+
+fn parse_bp_whole_and_fraction(whole_text: String, fraction_text: String) -> Nat? {
+  match parse_int(s: whole_text) {
+    Absent => none
+    Present { value: whole } => parse_bp_with_whole(whole: whole, fraction_text: fraction_text)
+  }
+}
+
+fn parse_bp_with_whole(whole: Int, fraction_text: String) -> Nat? {
+  match parse_int(s: fraction_text) {
+    Absent => none
+    Present { value: frac } => parse_bp_combine(whole: whole, frac: frac, digits: length(fraction_text))
+  }
+}
+
+fn parse_bp_combine(whole: Int, frac: Int, digits: Int) -> Nat? {
+  if whole < 0 || frac < 0 { none }
+  else if digits == 0 { Present { value: whole * 10000 } }
+  else if digits == 1 { Present { value: whole * 10000 + frac * 1000 } }
+  else if digits == 2 { Present { value: whole * 10000 + frac * 100 } }
+  else if digits == 3 { Present { value: whole * 10000 + frac * 10 } }
+  else if digits == 4 { Present { value: whole * 10000 + frac } }
+  else { none }
+}
+
+data desired_utilization_anchor: String = "Desired GPU memory utilization is ("
+
+// A SECOND OCCURRENCE IS NOT A TIEBREAK, IT IS A REFUSAL. Two `Desired GPU memory utilization is (`
+// segments in one captured text means the capture spans more than one profiling event -- two engines,
+// or one engine restarted -- and reading the first is choosing an arm by position. Whichever number
+// were taken, the reading would silently belong to a launch the caller did not name.
+// THE ARMS ARE ENUMERATED RATHER THAN WILDCARDED, so that a fifth startup line cannot silently
+// acquire the refusal arm. A `_ =>` here would take whatever the classifier grows next and answer
+// "not the memory-profile line" about it without anyone deciding that -- which is exactly the
+// exhaustiveness the classifier's variant exists to force.
+fn vllm_parse_memory_profile(reading: VllmStartupReading) -> VllmMemoryProfileParse {
+  match reading.line {
+    MemoryProfileSummary => vllm_parse_memory_profile_of_summary(reading: reading)
+    GpuKvCacheSize => vllm_parse_memory_profile_wrong_line(reading: reading, named: "GPU KV cache size")
+    MaximumConcurrency => vllm_parse_memory_profile_wrong_line(reading: reading, named: "Maximum concurrency")
+    ResolvedKvCacheFormat => vllm_parse_memory_profile_wrong_line(reading: reading, named: "resolved KV cache format")
+  }
+}
+
+fn vllm_parse_memory_profile_wrong_line(reading: VllmStartupReading, named: String) -> VllmMemoryProfileParse {
+  VllmMemoryProfileUnreadable {
+    captured_text: reading.captured_text as String,
+    cause: join([
+      "this reading is classified as the ", named,
+      " line, not the memory-profile summary; parsing it as one would read figures out of a sentence that does not carry them",
+    ], "") as NonEmptyStr,
+  }
+}
+
+fn vllm_parse_memory_profile_of_summary(reading: VllmStartupReading) -> VllmMemoryProfileParse {
+  let captured_text = reading.captured_text as String
+  let segments = split(s: captured_text, delimiter: desired_utilization_anchor)
+  if segments.length() != 2 {
+    VllmMemoryProfileUnreadable {
+      captured_text: captured_text,
+      cause: join([
+        "the captured text carries ", to_string(segments.length() - 1),
+        " `Desired GPU memory utilization is (` segments; exactly one is required, because a text carrying none states no utilization and a text carrying several states more than one launch's",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match between(text: captured_text, open: desired_utilization_anchor, close: ",") {
+      Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no utilization fraction after `Desired GPU memory utilization is (`" as NonEmptyStr }
+      Present { value: frac_text } =>
+        match parse_basis_points(text: frac_text) {
+          Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: join(["the utilization fraction `", frac_text, "` is not a decimal this parser can read to basis-point precision"], "") as NonEmptyStr }
+          Present { value: bp } =>
+            vllm_parse_memory_profile_figures(
+              captured_text: captured_text,
+              requested_utilization: basis_point(count: bp),
+              observed_at_revision: reading.observed_at_revision)
+        }
+    }
+  }
+}
+
+fn vllm_parse_memory_profile_figures(
+  captured_text: String,
+  requested_utilization: BasisPoint,
+  observed_at_revision: VllmSourceRevision,
+) -> VllmMemoryProfileParse {
+  match parse_gib_between(text: captured_text, open: "Free memory on device (", close: "/") {
+    Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no startup-available figure in `Free memory on device (`" as NonEmptyStr }
+    Present { value: avail } =>
+      match parse_gib_between(text: captured_text, open: "/", close: " GiB) on startup") {
+        Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no device-total figure before ` GiB) on startup`" as NonEmptyStr }
+        Present { value: total } =>
+          match parse_gib_between(text: captured_text, open: "Actual usage is ", close: " GiB for consumed memory") {
+            Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no consumed-memory figure after `Actual usage is `" as NonEmptyStr }
+            Present { value: consumed } => vllm_parse_memory_profile_rest(
+              captured_text: captured_text, requested_utilization: requested_utilization,
+              observed_at_revision: observed_at_revision, avail: avail, total: total, consumed: consumed)
+          }
+      }
+  }
+}
+
+fn vllm_parse_memory_profile_rest(
+  captured_text: String,
+  requested_utilization: BasisPoint,
+  observed_at_revision: VllmSourceRevision,
+  avail: Nat,
+  total: Nat,
+  consumed: Nat,
+) -> VllmMemoryProfileParse {
+  match parse_gib_between(text: captured_text, open: "), ", close: " GiB for peak activation") {
+    Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no peak-activation figure before ` GiB for peak activation`" as NonEmptyStr }
+    Present { value: activation } =>
+      match parse_gib_between(text: captured_text, open: "and ", close: " GiB for CUDAGraph memory") {
+        Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no CUDAGraph figure before ` GiB for CUDAGraph memory`" as NonEmptyStr }
+        Present { value: graph } =>
+          match parse_gib_between(text: captured_text, open: "Current kv cache memory in use is ", close: " GiB") {
+            Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no current-KV figure after `Current kv cache memory in use is `" as NonEmptyStr }
+            Present { value: kv } => vllm_parse_memory_profile_recommendations(
+              captured_text: captured_text, requested_utilization: requested_utilization,
+              observed_at_revision: observed_at_revision, avail: avail, total: total,
+              consumed: consumed, activation: activation, graph: graph, kv: kv)
+          }
+      }
+  }
+}
+
+fn vllm_parse_memory_profile_recommendations(
+  captured_text: String,
+  requested_utilization: BasisPoint,
+  observed_at_revision: VllmSourceRevision,
+  avail: Nat, total: Nat, consumed: Nat, activation: Nat, graph: Nat, kv: Nat,
+) -> VllmMemoryProfileParse {
+  match parse_gib_between(text: captured_text, open: ", ", close: " GiB). Actual usage") {
+    Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no requested-envelope figure before ` GiB). Actual usage`" as NonEmptyStr }
+    Present { value: envelope } =>
+  match parse_kv_recommendation_bytes(text: captured_text, occurrence: 1) {
+    Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no first --kv-cache-memory recommendation" as NonEmptyStr }
+    Present { value: fit } =>
+      match parse_kv_recommendation_bytes(text: captured_text, occurrence: 2) {
+        Absent => VllmMemoryProfileUnreadable { captured_text: captured_text, cause: "no second --kv-cache-memory recommendation" as NonEmptyStr }
+        Present { value: full } =>
+          VllmMemoryProfileParsed { reading: VllmMemoryProfileReading {
+            device_total: gibibyte_reading(hundredths: total),
+            startup_available: gibibyte_reading(hundredths: avail),
+            requested_utilization: requested_utilization,
+            requested_envelope: gibibyte_reading(hundredths: envelope),
+            reported_total_consumed_during_profile: gibibyte_reading(hundredths: consumed),
+            reported_peak_activation: gibibyte_reading(hundredths: activation),
+            cudagraph_allocated: gibibyte_reading(hundredths: graph),
+            current_kv: gibibyte_reading(hundredths: kv),
+            recommended_kv_within_requested_envelope: byte_size(count: fit),
+            recommended_kv_using_startup_availability: byte_size(count: full),
+            captured_text: captured_text as NonEmptyStr,
+            observed_at_revision: observed_at_revision,
+          } }
+      }
+  }
+  }
+}

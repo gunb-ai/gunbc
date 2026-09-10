@@ -1,7 +1,7 @@
 module test.claim.colo_cabinet_density_witness
 
 import std.types { Bool, Int, List }
-import std.measure { Watt, watt, watt_count, volt_ampere }
+import std.measure { Watt, watt, watt_count }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types {
@@ -14,23 +14,43 @@ import extdeps.colo.types {
   density_unread_reading,
 }
 import extdeps.colo.databank {
-  databank_lga4_retail_grain,
+  databank_lga4_density, databank_lga4_retail_grain,
+  databank_lga1_density, databank_lga1_retail_grain,
+  databank_lga2_density, databank_lga2_retail_grain,
   databank_ewr1_newark, databank_ewr1_retail_grain,
   databank_phl1_density, databank_phl1_retail_grain,
 }
 import extdeps.colo.hivelocity { hivelocity_jfk1, hivelocity_jfk1_retail_grain }
 import extdeps.colo.centersquare { centersquare_retail_grain }
-import extdeps.colo.coresite { coresite_secaucus_retail_grain }
-import extdeps.colo.dataverge { dataverge_retail_grain }
+import extdeps.colo.coresite { coresite_secaucus_retail_grain, coresite_ny1_density, coresite_ny1_retail_grain }
+import extdeps.colo.dataverge { dataverge_retail_grain, dataverge_brooklyn_density, dataverge_brooklyn_retail_grain }
 import extdeps.colo.evocative { evocative_ewr1_retail_grain }
 import extdeps.colo.interserver { interserver_retail_grain }
 import extdeps.colo.lumen { lumen_retail_grain }
 import extdeps.colo.summit { summit_retail_grain, summit_secaucus_density }
-import extdeps.colo.three_sixty_five { three_sixty_five_retail_grain }
-import extdeps.colo.colocation_america { colocation_america_cabinet_density, colocation_america_retail_grain }
-import extdeps.colo.equinix { equinix_retail_grain }
-import extdeps.colo.digital_realty { digital_realty_retail_grain }
-import extdeps.colo.h5 { h5_secaucus_retail_grain }
+import extdeps.colo.three_sixty_five {
+  three_sixty_five_retail_grain,
+  three_sixty_five_philadelphia_density,
+  three_sixty_five_philadelphia_university_city_density,
+  three_sixty_five_philadelphia_retail_grain,
+  three_sixty_five_nyc_density_unread, three_sixty_five_nyc_retail_grain,
+}
+import extdeps.colo.colocation_america {
+  colocation_america_cabinet_density, colocation_america_retail_grain,
+  colocation_america_nydc1_density, colocation_america_nydc1_retail_grain,
+  colocation_america_nydc2_density, colocation_america_nydc2_retail_grain,
+}
+import extdeps.colo.equinix { equinix_retail_grain, equinix_ny9_density, equinix_ny9_retail_grain }
+import extdeps.colo.digital_realty {
+  digital_realty_retail_grain,
+  digital_realty_jfk10_density, digital_realty_jfk10_retail_grain,
+  digital_realty_jfk12_density, digital_realty_jfk12_retail_grain,
+  digital_realty_jfk13_density, digital_realty_jfk13_retail_grain,
+}
+import extdeps.colo.h5 {
+  h5_secaucus_retail_grain, h5_philadelphia_density, h5_philadelphia_retail_grain,
+  h5_nyc_325_hudson_density, h5_nyc_325_hudson_retail_grain,
+}
 import extdeps.colo.halsey_165 { halsey_165_retail_grain }
 import extdeps.colo.qts { qts_retail_grain }
 import extdeps.colo.iron_mountain {
@@ -44,22 +64,21 @@ import extdeps.colo.tierpoint {
   tierpoint_bethlehem_retail_grain, tierpoint_lehigh_valley_retail_grain,
   tierpoint_valley_forge_retail_grain,
 }
-import extdeps.colo.h5 { h5_philadelphia_density, h5_philadelphia_retail_grain }
 import extdeps.colo.lightwave_networks { lightwave_philadelphia_density, lightwave_philadelphia_retail_grain }
 import extdeps.colo.flexential {
   flexential_philadelphia_collegeville_density, flexential_philadelphia_collegeville_retail_grain,
 }
 import extdeps.colo.five_9s_digital { five_9s_allentown_density, five_9s_allentown_retail_grain }
-import extdeps.colo.three_sixty_five {
-  three_sixty_five_philadelphia_density,
-  three_sixty_five_philadelphia_university_city_density,
-  three_sixty_five_philadelphia_retail_grain,
+import extdeps.colo.telehouse {
+  telehouse_chelsea_density, telehouse_chelsea_retail_grain,
+  telehouse_teleport_density, telehouse_teleport_retail_grain,
 }
+import extdeps.colo.sabey { sabey_375_pearl_density, sabey_375_pearl_retail_grain }
 import gunbc.colo_census_coverage {
   RegionCoverage, RegionSurveyOutcome, FacilitiesModelled, SurveyedNoRetailOperator, RegionUnsurveyed,
   coverage_facility_count, coverage_density_read_count,
   nj_hudson_bergen_essex_corridor, southern_new_jersey, hudson_valley,
-  pa_philadelphia_and_lehigh_valley, census_regions,
+  nyc_five_boroughs, nyc_queens_and_bronx, pa_philadelphia_and_lehigh_valley, census_regions,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -96,17 +115,6 @@ fn has_ceiling(d: CabinetDensityClaim) -> Bool {
   }
 }
 
-// A FIXTURE REPRODUCING THE READING THAT FOUND THE DEFECT. Telehouse Chelsea publishes "standard
-// power to rack at 3.5kVA with scalable options to 5kVA", and an earlier carrier had no arm for
-// apparent power, so the numeral landed in a field named for kilowatts. The fixture lives here
-// rather than in an operator module because it is evidence about the CARRIER, not a census row -
-// the real Telehouse rows belong to whichever lane reads that operator.
-data apparent_power_fixture: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedApparentPower { power: volt_ampere(count: 5000) },
-  claim_wording: "Standard power to rack at 3.5kVA with scalable options to 5kVA",
-  citation: "witness fixture reproducing the Telehouse Chelsea publication shape; the live rows are carried by the operator's own module",
-}
-
 // POSITIVE CONTROL. A published kilowatt figure yields an established watt reading equal to what
 // the operator marketed, and the same figure as its own upper bound.
 //
@@ -117,39 +125,45 @@ data apparent_power_fixture: CabinetDensityClaim = DensityMarketedAirOnly {
 // positive control. iron_mountain_nje1_density says "high-density UP TO 30 kW/rack" - an actual
 // marketed maximum - so the control keeps a subject that genuinely has the property being asserted.
 // A positive control over a wrong-direction row does not prove the accessor works; it proves nobody
-// checked what the row said.
+// checked what the row said. Telehouse Teleport is the five-borough live maximum: "Up to 20kW per
+// cabinet maximum capacity", verified on raw bytes - a second marketed-max subject, not a substitute
+// for NJE-1.
 test fn w_published_kilowatts_establish_real_power() -> Bool {
   established_watts(d: iron_mountain_nje1_density) == 30000
     && ceiling_refuses_at(d: iron_mountain_nje1_density, required: 30001)
     && !ceiling_refuses_at(d: iron_mountain_nje1_density, required: 29999)
+    && established_watts(d: telehouse_teleport_density) == 20000
+    && ceiling_refuses_at(d: telehouse_teleport_density, required: 20001)
+    && !ceiling_refuses_at(d: telehouse_teleport_density, required: 19999)
 }
 
 // THE FIRST CONJUNCT PINS THE CAUSE AND IS NOT DECORATION. established_watts collapses Absent to
 // the sentinel -1, and Absent has TWO causes: the claim is unread, or the claim IS published but in
 // apparent power. Asserting only the sentinel therefore cannot say WHICH, and this witness would
-// have stayed green if someone edited the fixture to DensityUnread - at which point the kVA wall it
+// have stayed green if someone edited the live row to DensityUnread - at which point the kVA wall it
 // exists to guard would be a decoration passing forever. has_ceiling is true only for a PUBLISHED
 // row, so the pair asserts "this row is published AND it establishes no real power", which is the
 // actual claim. The rule is one this lane proposed and the carrier owner then found in one of their
 // own witnesses: an outcome that is the union of N causes cannot be the control for one of them.
 //
-// THE DISCRIMINATING RED, AND THE REASON THE APPARENT-POWER ARM EXISTS. A kVA publication
-// establishes NO real-power reading: kW = kVA x power factor, no power factor is published, and
-// assuming unity would overstate the cabinet in the flattering direction. If this ever returns
-// 5000 instead of refusing, the carrier has silently equated apparent and real power again.
+// THE DISCRIMINATING RED, AND THE REASON THE APPARENT-POWER ARM EXISTS. Telehouse Chelsea publishes
+// 5 kVA with no power factor. kW = kVA x PF, so the live row establishes NO real-power reading.
+// If this ever returns 5000 instead of refusing, the carrier has silently equated apparent and real
+// power again. The parallel fixture that used to stand in for this row is deleted: the operator
+// module now carries the fact, and a second copy would be a meaning fork.
 test fn w_apparent_power_establishes_no_real_power() -> Bool {
-  has_ceiling(d: apparent_power_fixture)
-    && established_watts(d: apparent_power_fixture) == 0 - 1
+  has_ceiling(d: telehouse_chelsea_density)
+    && established_watts(d: telehouse_chelsea_density) == 0 - 1
 }
 
 // The same figure DOES bound real power from above, because kW <= kVA - usable to REJECT a cabinet
 // too small even at the bound, useless to admit one. The witness now exercises that asymmetry
 // rather than reading the number out: 5001 W is refused on published evidence alone, and 4999 W is
-// NOT refused, which is not the same as admitted. There is no longer any way to ask this fixture
-// what it supplies, which is what makes the distinction structural instead of documented.
+// NOT refused, which is not the same as admitted. There is no longer any way to ask Chelsea what
+// it supplies, which is what makes the distinction structural instead of documented.
 test fn w_apparent_power_still_bounds_real_power_above() -> Bool {
-  ceiling_refuses_at(d: apparent_power_fixture, required: 5001)
-    && !ceiling_refuses_at(d: apparent_power_fixture, required: 4999)
+  ceiling_refuses_at(d: telehouse_chelsea_density, required: 5001)
+    && !ceiling_refuses_at(d: telehouse_chelsea_density, required: 4999)
 }
 
 // AN UNREAD CLAIM YIELDS NOTHING ON EITHER AXIS. The earlier accessor answered 0 here - a
@@ -160,6 +174,8 @@ test fn w_unread_density_establishes_and_bounds_nothing() -> Bool {
   established_watts(d: iron_mountain_wpa1_density) == 0 - 1
     && !has_ceiling(d: iron_mountain_wpa1_density)
     && !ceiling_refuses_at(d: iron_mountain_wpa1_density, required: 999999)
+    && established_watts(d: databank_lga4_density) == 0 - 1
+    && !has_ceiling(d: databank_lga4_density)
 }
 
 // A READ DENSITY AND A SELLABLE GRAIN ARE INDEPENDENT FACTS. A cabinet marketed at 30 kW that the
@@ -195,7 +211,10 @@ fn density_reading_was_read(d: CabinetDensityClaim) -> Bool {
 test fn w_density_and_grain_are_separate_facts() -> Bool {
   grain_offers_single_cabinet(g: databank_lga4_retail_grain)
     && grain_offers_single_cabinet(g: iron_mountain_nje1_retail_grain)
+    && grain_offers_single_cabinet(g: telehouse_chelsea_retail_grain)
+    && !grain_offers_single_cabinet(g: telehouse_teleport_retail_grain)
     && established_watts(d: iron_mountain_nje1_density) == 30000
+    && established_watts(d: telehouse_teleport_density) == 20000
 }
 
 // AN UNREAD DENSITY REFUSES NOTHING, WHICH IS THE ARM THAT KEEPS THE CEILING FROM BEING A FREE
@@ -205,7 +224,59 @@ test fn w_density_and_grain_are_separate_facts() -> Bool {
 // would admit every unread cabinet in the census.
 test fn w_absent_ceiling_refuses_nothing_and_a_real_one_does() -> Bool {
   !ceiling_refuses_at(d: iron_mountain_wpa1_density, required: 999999)
-    && ceiling_refuses_at(d: apparent_power_fixture, required: 999999)
+    && ceiling_refuses_at(d: telehouse_chelsea_density, required: 999999)
+}
+
+// THE FIVE-BOROUGH UNREAD ROWS THIS PR ADDED. Review 62809: a DensityUnread / SingleCabinetOffered
+// / RetailGrainUnread row that nothing reads is dangling regardless of how carefully the obligation
+// is worded. One fold over each arm, not one test per site: the unread arm is one fact, and WPA-1
+// already discriminates it; these lists are the consumption that keeps the NYC instances enrolled.
+data nyc_unread_densities: List<CabinetDensityClaim> = [
+  digital_realty_jfk10_density,
+  digital_realty_jfk12_density,
+  digital_realty_jfk13_density,
+  coresite_ny1_density,
+  dataverge_brooklyn_density,
+  databank_lga1_density,
+  databank_lga2_density,
+  equinix_ny9_density,
+  h5_nyc_325_hudson_density,
+  sabey_375_pearl_density,
+  three_sixty_five_nyc_density_unread,
+  colocation_america_nydc1_density,
+  colocation_america_nydc2_density,
+]
+
+data nyc_single_cabinet_grains: List<RetailGrainStanding> = [
+  digital_realty_jfk10_retail_grain,
+  digital_realty_jfk12_retail_grain,
+  digital_realty_jfk13_retail_grain,
+  coresite_ny1_retail_grain,
+  dataverge_brooklyn_retail_grain,
+  equinix_ny9_retail_grain,
+  h5_nyc_325_hudson_retail_grain,
+]
+
+data nyc_unread_grains: List<RetailGrainStanding> = [
+  sabey_375_pearl_retail_grain,
+  colocation_america_nydc1_retail_grain,
+  colocation_america_nydc2_retail_grain,
+  databank_lga1_retail_grain,
+  databank_lga2_retail_grain,
+  three_sixty_five_nyc_retail_grain,
+]
+
+fn unread_density_is_silent(d: CabinetDensityClaim) -> Bool {
+  established_watts(d: d) == 0 - 1 && !has_ceiling(d: d)
+}
+
+test fn w_nyc_unread_densities_establish_and_bound_nothing() -> Bool {
+  all(nyc_unread_densities, d => unread_density_is_silent(d: d))
+}
+
+test fn w_nyc_published_grains_match_their_arms() -> Bool {
+  all(nyc_single_cabinet_grains, g => grain_offers_single_cabinet(g: g))
+    && all(nyc_unread_grains, g => !grain_offers_single_cabinet(g: g))
 }
 
 // THE COVERAGE CARRIER'S CONSUMER, ENROLLED FOR THE SAME REASON AS THE ONES ABOVE. Review 62758
@@ -222,7 +293,7 @@ fn facility_count_or_sentinel(c: RegionCoverage) -> Int {
 }
 
 // A FIXTURE FOR THE UNSURVEYED ARM, AND THE REASON IT HAD TO BE ONE. Writing this witness is what
-// established that `RegionUnsurveyed` HAS NO INHABITANT in the live roster - all three rows are
+// established that `RegionUnsurveyed` HAS NO INHABITANT in the live roster - every rostered row is
 // surveyed - so the distinction the module exists to draw could not be discriminated by any test
 // over the census as it stands. DESIGN section 4b: where the forbidden state is unauthorable on
 // the live corpus, the fixture is where the RED becomes expressible, and declining to write one
@@ -347,6 +418,8 @@ test fn w_a_read_claim_counts_and_an_unread_one_does_not() -> Bool {
 test fn w_read_densities_never_exceed_the_facilities_they_were_read_from() -> Bool {
   all(census_regions, c => density_reads_never_exceed_facilities(c: c))
     && facility_count_or_sentinel(c: nj_hudson_bergen_essex_corridor) > 0
+    && facility_count_or_sentinel(c: nyc_five_boroughs) > 0
+    && facility_count_or_sentinel(c: nyc_queens_and_bronx) == 0
 }
 
 // THE CORRIDOR'S CENTRAL FINDING, MADE MACHINE-CHECKABLE RATHER THAN ASSERTED IN A PR COMMENT.
