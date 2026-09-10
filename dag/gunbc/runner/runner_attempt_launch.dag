@@ -390,8 +390,10 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
   }
 }
 
-type WorkStandingFromVmm = WorkNotEstablished { vmm_exit: Int }
+type WorkNotEstablished {
+  vmm_exit: Int
+}
 
-fn work_standing_from_vmm_exit(exit_code: Int) -> WorkStandingFromVmm {
+fn work_standing_from_vmm_exit(exit_code: Int) -> WorkNotEstablished {
   WorkNotEstablished { vmm_exit: exit_code }
 }
