@@ -9778,19 +9778,16 @@ pub struct ReferenceDerivedProviderBinding {
 }
 
 pub fn canonical_string_set(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    {
-        let presence = items.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, item: String| {
-                if (item.clone() == "".to_string()) {
-                    acc.clone()
-                } else {
-                    v1_rt::rc_map_insert(acc, item.clone(), true)
-                }
-            },
-        );
-        Rc::new(v1_rt::sorted_map_keys(&presence))
-    }
+    Rc::new(v1_rt::sorted_map_keys(&items.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, item: String| {
+            if (item.clone() == "".to_string()) {
+                acc.clone()
+            } else {
+                v1_rt::rc_map_insert(acc.clone(), item.clone(), true)
+            }
+        },
+    )))
 }
 
 pub fn reference_derived_use_line_plan(
@@ -14570,7 +14567,7 @@ pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
 
 pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
-        let exact = canonical_string_set(lines);
+        let exact = canonical_string_set(lines.clone());
         let covered = Rc::new({
             let mut __result = Vec::new();
             for line in exact.clone().iter().cloned() {

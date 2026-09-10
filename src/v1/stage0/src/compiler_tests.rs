@@ -553,45 +553,19 @@ mod compiler_tests {
                     content: "module probe.omega\nfn keep(z: probe.zebra.Zebra, a: probe.aardvark.Aardvark, m: probe.mongoose.Mongoose) -> Int { z.n + a.n + m.n }\n".to_string(),
                 });
                 let sources = std::rc::Rc::new(im::vector![zebra, aardvark, mongoose, omega]);
-                let first = crate::v1_compiler_compile::compile_sources(
-                    sources.clone(),
-                    crate::v1_compiler_artifact::RenderTarget::Rust,
-                );
-                let second = crate::v1_compiler_compile::compile_sources(
-                    sources,
-                    crate::v1_compiler_artifact::RenderTarget::Rust,
-                );
+                let first = crate::v1_compiler_compile::compile_sources(sources.clone(), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let second = crate::v1_compiler_compile::compile_sources(sources, crate::v1_compiler_artifact::RenderTarget::Rust);
                 assert_eq!(first.files.len(), second.files.len());
                 for (left, right) in first.files.iter().zip(second.files.iter()) {
                     assert_eq!(left.path, right.path);
-                    assert_eq!(
-                        left.content, right.content,
-                        "two emissions of {} must be byte-identical",
-                        left.path
-                    );
+                    assert_eq!(left.content, right.content, "two emissions of {} must be byte-identical", left.path);
                 }
-                let omega_out = first
-                    .files
-                    .iter()
-                    .find(|f| f.path.contains("probe_omega"))
-                    .expect("omega module must emit");
-                let pub_uses: Vec<&str> = omega_out
-                    .content
-                    .lines()
-                    .filter(|l| l.contains("pub use crate::"))
-                    .collect();
-                assert!(
-                    pub_uses.len() >= 2,
-                    "fixture must emit multiple pub use crate lines; got:\n{}",
-                    omega_out.content
-                );
+                let omega_out = first.files.iter().find(|f| f.path.contains("probe_omega")).expect("omega module must emit");
+                let pub_uses: Vec<&str> = omega_out.content.lines().filter(|l| l.contains("pub use crate::")).collect();
+                assert!(pub_uses.len() >= 2, "fixture must emit multiple pub use crate lines; got:\n{}", omega_out.content);
                 let mut sorted = pub_uses.clone();
                 sorted.sort();
-                assert_eq!(
-                    pub_uses, sorted,
-                    "pub use crate lines must be emitted sorted; got:\n{}",
-                    omega_out.content
-                );
+                assert_eq!(pub_uses, sorted, "pub use crate lines must be emitted sorted; got:\n{}", omega_out.content);
             })
             .expect("failed to spawn thread")
             .join();
