@@ -1,0 +1,169 @@
+module gunbc.cloudflare.r2_permission_group_observe
+
+import std.types { String, NonEmptyStr, Secret, List, Timestamp }
+import std.resources { Network }
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.cloudflare.account_api_tokens
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountId,
+  CloudflareAccountAllocated,
+  CloudflareAccountUnallocated,
+  BootstrapCustodyPinned,
+  BootstrapCustodyUnrecorded,
+  fleet_cloudflare_account_standing,
+  fleet_cloudflare_bootstrap_custody,
+}
+import gunbc.auth.access_token_source { OperatorSuppliedToken }
+import gunbc.auth.gcp_secret_access {
+  SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token,
+}
+import gunbc.auth.secret_ref_credential {
+  fetch_secret_ref_credential,
+  SecretCredentialReady,
+  SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused,
+  SecretCredentialFetchRefused,
+  SecretCredentialResolvedVersionMismatch,
+}
+
+// THE OBSERVATION THAT HAS TO HAPPEN BEFORE ANY WRITE GRANT CAN BE DECLARED. Cloudflare's public
+// permission reference names the groups but PUBLISHES NO IDS, so the id of a write-capable R2 group
+// is not a doc-citable fact and may not be authored from memory. It is readable, though: the account
+// tokens API lists every permission group with its id and name, and this entry performs exactly that
+// read and nothing else.
+//
+// IT IS A READ AND ONLY A READ, DELIBERATELY SEPARATED FROM THE MINT. The mint entry ends in a
+// non-idempotent AccountTokens.Create; this one cannot mutate anything, so it can be run freely
+// while the answer is still unknown. Fusing the two would mean discovering what the token is allowed
+// to do only by attempting the thing that spends it.
+//
+// THE BODY IS RETURNED RAW BECAUSE NOTHING HERE MAY INTERPRET IT YET. Folding the response into a
+// typed permission-group roster would require deciding which ids matter before anyone has seen the
+// list -- and the list is the input to that decision. The typed model lands in the change that
+// records the observation, with the retrieval date beside it.
+func observe_account_permission_groups() -> String uses net: Network {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: _, intervention: _ } =>
+      "NO CLOUDFLARE ACCOUNT ID: nothing to list permission groups for"
+    CloudflareAccountAllocated { company: _, account_id: account_id } =>
+      match fleet_cloudflare_bootstrap_custody() {
+        BootstrapCustodyUnrecorded { intervention: _ } =>
+          "NO BOOTSTRAP TOKEN IN CUSTODY: the listing needs the account credential"
+        BootstrapCustodyPinned { locus: locus } =>
+          match read_supplied_access_token() {
+            SuppliedTokenUnavailable { cause: cause } =>
+              concat("NO GCP ACCESS TOKEN: ", cause as String)
+            SuppliedTokenReady { token: gcp_token } =>
+              match fetch_secret_ref_credential(
+                secret_ref: locus,
+                token_source: OperatorSuppliedToken { token: gcp_token },
+              ) {
+                SecretCredentialAccessUpsertRequired { plan: _ } =>
+                  "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access ensure requires an interactive authentication"
+                SecretCredentialFetchRefused { reason: reason } =>
+                  concat("THE BOOTSTRAP TOKEN COULD NOT BE READ: ", reason as String)
+                SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+                  "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode"
+                SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+                  concat(concat("THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested),
+                    concat(", answered about ", resolved))
+                SecretCredentialReady { credential: bootstrap, resolved_version: _ } => {
+                  let listed = cloudflare.AccountTokens.ListPermissionGroups(
+                    auth_token: bootstrap,
+                    account_id: account_id as String,
+                  )
+                  match listed.outcome {
+                    RestStatusRefused { status: _, body: body } =>
+                      concat("LISTING REFUSED: ", body)
+                    RestTransportRefused { cause: cause } =>
+                      concat("LISTING GOT NO RESPONSE: ", cause as String)
+                    RestBodyUndecodable { status: _, cause: cause } =>
+                      concat("LISTING BODY DID NOT DECODE: ", cause as String)
+                    RestOk =>
+                      join(map(listed.groups, g => join([g.id as String, g.name, join(g.scopes, "+")], " | ")), "\n")
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+// WHAT THE LISTING ACTUALLY ANSWERED, RECORDED AS AN OBSERVATION AND NOT AS A CITED FACT.
+// DESIGN section 3 puts observations produced by this repository in the OBSERVING layer: these rows
+// are a receipt of what this account returned at a moment, not properties owned by
+// extdeps.cloudflare.r2. Cloudflare publishes permission group NAMES on its public reference and no
+// IDS at all, so there is no document to cite and an id authored from memory would be
+// indistinguishable from a checked one.
+// THE INSTRUMENT IS NAMED RATHER THAN THE OUTPUT TRANSCRIBED, per DESIGN section 6: these rows are
+// re-derived by running observe_account_permission_groups above against the same account. What is
+// recorded here is only what a later reader needs in order to act without re-running it.
+// THE RETRIEVAL TIME IS PART OF THE FACT. A permission group id is stable in practice and guaranteed
+// by nobody, so a row without its retrieval moment is a claim with no expiry and no way to tell
+// whether it was ever true.
+data cloudflare_permission_group_observation_retrieved_at: Timestamp = "2026-09-10T03:15:00Z"
+
+type ObservedPermissionGroup {
+  id: NonEmptyStr
+  name: String
+  scope: String
+}
+
+// ONLY THE ROWS THIS FLEET HAS A QUESTION ABOUT ARE RECORDED, not the full listing. The account
+// returned several hundred groups; transcribing them would be a copy of an upstream table that
+// changes without us, which is the redundancy section 2 prices. These five are the ones two open
+// decisions turn on: which group the bootstrap token actually holds, and which group a durable
+// origin needs in order to PUT.
+data observed_account_permission_groups: List<ObservedPermissionGroup> = [
+  ObservedPermissionGroup {
+    id: "5bc3f8b21c554832afc660159ab75fa4",
+    name: "Account API Tokens Write",
+    scope: "com.cloudflare.api.account"
+  },
+  ObservedPermissionGroup {
+    id: "6a018a9f2fc74eb6b293b0c548f38b39",
+    name: "Workers R2 Storage Bucket Item Read",
+    scope: "com.cloudflare.edge.r2.bucket"
+  },
+  ObservedPermissionGroup {
+    id: "2efd5506f9c8494dacb1fa10a3e7d5b6",
+    name: "Workers R2 Storage Bucket Item Write",
+    scope: "com.cloudflare.edge.r2.bucket"
+  },
+  ObservedPermissionGroup {
+    id: "b4992e1108244f5d8bfbd5744320c2e1",
+    name: "Workers R2 Storage Read",
+    scope: "com.cloudflare.api.account"
+  },
+  ObservedPermissionGroup {
+    id: "bf7481a1826f439697cb59a20b22293e",
+    name: "Workers R2 Storage Write",
+    scope: "com.cloudflare.api.account"
+  },
+]
+
+fn observed_permission_group_by_id(id: String) -> ObservedPermissionGroup? {
+  fold(
+    observed_account_permission_groups,
+    init: none,
+    f: (acc, row) => match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if (row.id as String) == id { Present { value: row } } else { none }
+    },
+  )
+}
+
+// THE BOOTSTRAP TOKEN HOLDS THE GROUP THE MINT MODEL EXPECTS, ANSWERED RATHER THAN ASSUMED. The
+// token this fleet was handed carries 5bc3f8b21c554832afc660159ab75fa4, which the listing resolves
+// to Account API Tokens Write -- the grant cloudflare_bootstrap_token_shape declares. It is NOT an
+// R2 grant, and its ACCOUNT scope is correct for a bootstrap: minting tokens is an account-level
+// operation. The bucket-versus-account scope question belongs to the MINTED token, which stays
+// bucket-scoped by construction.
+data cloudflare_fleet_bootstrap_observed_permission_group_id: NonEmptyStr = "5bc3f8b21c554832afc660159ab75fa4"
+
+// THE WRITE GRANT A DURABLE ORIGIN NEEDS, OBSERVED. extdeps.cloudflare.r2 models only the READ
+// group, and this is its bucket-scoped counterpart -- same scope family, so a token minted with it
+// can PUT into one named bucket rather than across the account. It is recorded here and NOT yet
+// declared as a grant in extdeps: the change that teaches the origin to PUT is where it becomes a
+// modeled permission, and doing that here would add a grant no fold consumes.
+data cloudflare_r2_bucket_item_write_observed_permission_group_id: NonEmptyStr = "2efd5506f9c8494dacb1fa10a3e7d5b6"

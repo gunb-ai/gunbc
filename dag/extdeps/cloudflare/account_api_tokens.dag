@@ -235,6 +235,27 @@ fn created_account_token_from_create_response(
   }
 }
 
+// THE LISTING ROW, TYPED, BECAUSE THE RAW OPERATION BESIDE IT CANNOT ANSWER. ListPermissionGroupsRaw
+// projects `body` from a response whose envelope has no such field -- Cloudflare answers
+// { result, success, errors, messages } -- so it yields NULL rather than the listing, and null for a
+// missing projection is a fabricated value standing exactly where a typed refusal belongs. That was
+// measured, not inferred: a live GET against this account returned 200 and the operation produced
+// null. The raw operation is left standing with its frontier row rather than silently repaired,
+// because the projection defect is a class worth naming rather than a typo worth patching.
+//
+// SCOPES ARE CARRIED BECAUSE THE QUESTION BEING ASKED IS WHAT A GROUP CAN DO. An id and a name alone
+// let a reader guess from the name, and "Workers R2 Storage Read" versus "Workers R2 Storage Edit"
+// is exactly the guess that must not be made about a grant.
+type AccountPermissionGroupRow {
+  id: NonEmptyStr
+  name: String
+  scopes: List<String>
+}
+
+type AccountPermissionGroupsListResponse {
+  result: List<AccountPermissionGroupRow>
+}
+
 type AccountTokenMetadata {
   id: NonEmptyStr
   name: String
@@ -411,6 +432,28 @@ service cloudflare.AccountTokens {
     }
     response {
       200 => String
+      401 => CloudflareApiError
+      403 => CloudflareApiError
+      5xx => CloudflareApiError
+    }
+  }
+
+  operation ListPermissionGroups {
+    input {
+      auth_token: Secret
+      account_id: String
+    }
+    output {
+      groups: List<AccountPermissionGroupRow> from "result"
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/accounts/\{account_id\}/tokens/permission_groups"
+    }
+    response {
+      200 => AccountPermissionGroupsListResponse
       401 => CloudflareApiError
       403 => CloudflareApiError
       5xx => CloudflareApiError

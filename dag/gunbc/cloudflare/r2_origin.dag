@@ -1,12 +1,14 @@
 module gunbc.cloudflare.r2_origin
 
-import std.types { String, NonEmptyStr, List, Map, Bool }
+import std.types { String, NonEmptyStr, List }
+import std.allocation_roster { allocated_value }
 import extdeps.securities { Securities }
 import extdeps.vendor { Vendor }
 import extdeps.vendor.cloudflare { cloudflare }
 import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault }
-import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
@@ -106,12 +108,10 @@ type DurableOriginBucket {
 // in every manifest locator -- so two purposes claiming one bucket is two workloads sharing a
 // credential scope, and one purpose allocated twice is an ambiguous desired state. Both refuse.
 //
-// RUNG, STATED HONESTLY AND COPIED FROM NEITHER: mechanically preventable, not structural. The
-// roster is an ordinary List literal, so a duplicate row remains WRITABLE and is caught by
-// bucket_allocation_roster_verdict, which the production lookup consults before answering -- a
-// violating roster answers Absent for every purpose rather than serving an arbitrary winner.
-// ATTAINABLE CEILING is structural impossibility; NEXT-RUNG TRIGGER is a duplicate-refusing keyed
-// roster carrier whose construction cannot admit a repeated key on TWO axes.
+// RUNG: structurally guaranteed at the carrier, because std.allocation_roster's roster has no
+// constructor that admits a repeated key on either axis. The authored list below remains a fallible
+// ingress that refuses loudly; that residual, and its own next-rung trigger, are stated once in
+// std.allocation_roster rather than restated here.
 type BucketPurpose
   = FabricDurableOrigin {}
 
@@ -126,78 +126,18 @@ fn bucket_purpose_key(purpose: BucketPurpose) -> String {
   }
 }
 
-type BucketAllocationRosterVerdict
-  = BucketAllocationRosterConsistent
-  | BucketPurposeAllocatedTwice { purpose: BucketPurpose }
-  | BucketNameClaimedTwice { bucket_name: NonEmptyStr }
-
-type BucketAllocationRosterScan {
-  seen_purposes: Map<String, Bool>
-  seen_names: Map<String, Bool>
-  verdict: BucketAllocationRosterVerdict
-}
-
-fn bucket_allocation_roster_step(
-  scan: BucketAllocationRosterScan,
-  row: R2BucketAllocation,
-) -> BucketAllocationRosterScan {
-  match scan.verdict {
-    BucketAllocationRosterConsistent =>
-      match map_get(scan.seen_purposes, bucket_purpose_key(purpose: row.purpose)) {
-        Present { value: _ } =>
-          BucketAllocationRosterScan {
-            seen_purposes: scan.seen_purposes,
-            seen_names: scan.seen_names,
-            verdict: BucketPurposeAllocatedTwice { purpose: row.purpose },
-          }
-        Absent =>
-          match map_get(scan.seen_names, row.bucket_name as String) {
-            Present { value: _ } =>
-              BucketAllocationRosterScan {
-                seen_purposes: scan.seen_purposes,
-                seen_names: scan.seen_names,
-                verdict: BucketNameClaimedTwice { bucket_name: row.bucket_name },
-              }
-            Absent =>
-              BucketAllocationRosterScan {
-                seen_purposes: map_insert(scan.seen_purposes, bucket_purpose_key(purpose: row.purpose), true),
-                seen_names: map_insert(scan.seen_names, row.bucket_name as String, true),
-                verdict: BucketAllocationRosterConsistent,
-              }
-          }
-      }
-    BucketPurposeAllocatedTwice { purpose: dup } =>
-      BucketAllocationRosterScan {
-        seen_purposes: scan.seen_purposes,
-        seen_names: scan.seen_names,
-        verdict: BucketPurposeAllocatedTwice { purpose: dup },
-      }
-    BucketNameClaimedTwice { bucket_name: dup } =>
-      BucketAllocationRosterScan {
-        seen_purposes: scan.seen_purposes,
-        seen_names: scan.seen_names,
-        verdict: BucketNameClaimedTwice { bucket_name: dup },
-      }
-  }
-}
-
-fn bucket_allocation_roster_verdict(
-  allocations: List<R2BucketAllocation>,
-) -> BucketAllocationRosterVerdict {
-  fold(
-    allocations,
-    init: BucketAllocationRosterScan {
-      seen_purposes: empty_map(),
-      seen_names: empty_map(),
-      verdict: BucketAllocationRosterConsistent,
-    },
-    f: bucket_allocation_roster_step,
-  ).verdict
-}
-
-// ONE ROW TODAY, AND THE SHAPE IS THE POINT RATHER THAN THE COUNT. A single allocation could be a
-// bare literal; it is a roster row because the second one must not arrive as a second literal beside
-// it, which is how a naming convention becomes a derivation rule nobody wrote down.
+// THE ALGEBRA IS CONSUMED, NOT RESTATED. std.allocation_roster owns the two-axis injective roster:
+// a carrier in which a duplicate on either axis has no constructor, one fallible ingress that
+// refuses a colliding authored list, and a lookup that needs no consistency guard because an
+// inconsistent roster is not a value. An earlier revision of this module reproduced that algebra
+// line for line beside gunbc.hostname_allocation's copy, which is the section 2 re-invention the
+// design forbids; both now consume the one authority.
+//
+// WHAT REMAINS HERE IS WHAT IS ACTUALLY PER-DOMAIN: which rows exist, what the two axes MEAN, and
+// what a collision would cost. A bucket name is a JOIN KEY -- it appears in the IAM resource name a
+// token policy scopes to, in the S3 endpoint path, and in every manifest locator -- so two purposes
+// claiming one bucket is two workloads sharing a credential scope, and one purpose allocated twice
+// is an ambiguous desired state.
 data gunbc_fleet_r2_bucket_allocations: List<R2BucketAllocation> = [
   R2BucketAllocation {
     purpose: FabricDurableOrigin {},
@@ -205,33 +145,14 @@ data gunbc_fleet_r2_bucket_allocations: List<R2BucketAllocation> = [
   },
 ]
 
-fn bucket_allocation_pick(
-  acc: NonEmptyStr?,
-  row: R2BucketAllocation,
-  purpose: BucketPurpose,
-) -> NonEmptyStr? {
-  match acc {
-    Present { value: found } => Present { value: found }
-    Absent =>
-      if bucket_purpose_key(purpose: row.purpose) == bucket_purpose_key(purpose: purpose) {
-        Present { value: row.bucket_name }
-      } else {
-        none
-      }
-  }
-}
-
 fn allocated_bucket_name(purpose: BucketPurpose) -> NonEmptyStr? {
-  match bucket_allocation_roster_verdict(allocations: gunbc_fleet_r2_bucket_allocations) {
-    BucketAllocationRosterConsistent =>
-      fold(
-        gunbc_fleet_r2_bucket_allocations,
-        init: none,
-        f: (acc, row) => bucket_allocation_pick(acc: acc, row: row, purpose: purpose),
-      )
-    BucketPurposeAllocatedTwice { purpose: _ } => none
-    BucketNameClaimedTwice { bucket_name: _ } => none
-  }
+  allocated_value(
+    rows: gunbc_fleet_r2_bucket_allocations,
+    wanted: bucket_purpose_key(purpose: purpose),
+    primary: row => bucket_purpose_key(purpose: row.purpose),
+    secondary: row => row.bucket_name as String,
+    value: row => row.bucket_name,
+  )
 }
 
 data fabric_durable_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-origin-read-token"
@@ -306,8 +227,29 @@ fn cloudflare_bootstrap_custody_intervention() -> HumanIntervention {
   }
 }
 
+// PINNED, ON THE OPERATOR'S PROVISIONED VERSION. The bootstrap token was placed at version 1 of this
+// secret in the fleet secrets project, so the standing records THAT version rather than "latest".
+//
+// THE PIN IS THE POINT AND NOT A FORMALITY. gunbc.auth.secret_ref_credential requests an exact
+// version and REFUSES when the resolved identity disagrees with the request, and Secret Manager is
+// strongly consistent for exactly one sequence -- add a version, then access that version. "latest"
+// satisfies neither: it is a moving target between two calls, and a fetch addressed to it cannot
+// verify it was answered about the version it meant. A floating reference also makes the receipt
+// meaningless, because the whole content of "which bytes were used" is the version number.
+//
+// THE UNRECORDED ARM DID NOT BECOME DEAD CODE WHEN THIS WAS PINNED. Every future fleet credential
+// starts there, and it is what makes an unprovisioned secret refuse before any network call rather
+// than send a request whose refusal would arrive wearing the wrong words -- "the response named a
+// different version" for a credential that simply does not exist.
+data cloudflare_bootstrap_custody_version: NonEmptyStr = "1"
+
 fn fleet_cloudflare_bootstrap_custody() -> BootstrapCustodyStanding {
-  BootstrapCustodyUnrecorded {
-    intervention: cloudflare_bootstrap_custody_intervention()
+  BootstrapCustodyPinned {
+    locus: SecretRef {
+      project: fleet_secrets_gcp_project,
+      secret: cloudflare_bootstrap_custody_secret_id,
+      version: cloudflare_bootstrap_custody_version,
+      hash_state: HashPending,
+    }
   }
 }
