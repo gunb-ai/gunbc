@@ -2,6 +2,7 @@ module gunbc.machine_intake_mtcollins1_memory_census_observation
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { BitWidth, bit_width }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -226,27 +227,27 @@ type MtCollins1FirmwareChannelBinding {
   slot_in_channel: Nat
   connector: Nat
   rank_count: Nat
-  chip_width_bits: Nat
+  chip_width: BitWidth
   part_number: NonEmptyStr
 }
 
 data mtcollins1_firmware_channel_bindings: List<MtCollins1FirmwareChannelBinding> = [
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 0, slot_in_channel: 0, connector: 1,  rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 1, slot_in_channel: 0, connector: 3,  rank_count: 2, chip_width_bits: 8, part_number: "HMA82GR7AFR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 2, slot_in_channel: 0, connector: 5,  rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 3, slot_in_channel: 0, connector: 7,  rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 4, slot_in_channel: 0, connector: 9,  rank_count: 2, chip_width_bits: 8, part_number: "HMA82GR7AFR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 5, slot_in_channel: 0, connector: 11, rank_count: 2, chip_width_bits: 8, part_number: "HMA82GR7CJR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 6, slot_in_channel: 0, connector: 13, rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 7, slot_in_channel: 0, connector: 15, rank_count: 2, chip_width_bits: 8, part_number: "HMA82GR7AFR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 0, slot_in_channel: 0, connector: 17, rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 1, slot_in_channel: 0, connector: 19, rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 2, slot_in_channel: 0, connector: 21, rank_count: 2, chip_width_bits: 8, part_number: "HMA82GR7AFR8N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 3, slot_in_channel: 0, connector: 23, rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 4, slot_in_channel: 0, connector: 25, rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 5, slot_in_channel: 0, connector: 27, rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 6, slot_in_channel: 0, connector: 29, rank_count: 1, chip_width_bits: 4, part_number: "HMA82GR7AFR4N-VK" },
-  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 7, slot_in_channel: 0, connector: 31, rank_count: 2, chip_width_bits: 8, part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 0, slot_in_channel: 0, connector: 1,  rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 1, slot_in_channel: 0, connector: 3,  rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 2, slot_in_channel: 0, connector: 5,  rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 3, slot_in_channel: 0, connector: 7,  rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 4, slot_in_channel: 0, connector: 9,  rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 5, slot_in_channel: 0, connector: 11, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7CJR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 6, slot_in_channel: 0, connector: 13, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 0, memory_controller: 7, slot_in_channel: 0, connector: 15, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 0, slot_in_channel: 0, connector: 17, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 1, slot_in_channel: 0, connector: 19, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 2, slot_in_channel: 0, connector: 21, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 3, slot_in_channel: 0, connector: 23, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 4, slot_in_channel: 0, connector: 25, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 5, slot_in_channel: 0, connector: 27, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 6, slot_in_channel: 0, connector: 29, rank_count: 1, chip_width: bit_width(4), part_number: "HMA82GR7AFR4N-VK" },
+  MtCollins1FirmwareChannelBinding { processor_socket: 1, memory_controller: 7, slot_in_channel: 0, connector: 31, rank_count: 2, chip_width: bit_width(8), part_number: "HMA82GR7AFR8N-VK" },
 ]
 
 // ── how connector numbers were attached to the two readings, and what discriminates the join ───
@@ -357,3 +358,56 @@ data mtcollins1_census_modelling_obligations: List<MtCollins1CensusModellingObli
   mtcollins1_uncatalogued_part_obligation,
   mtcollins1_rank_mixing_rule_obligation,
 ]
+
+// ── what this receipt does NOT bind, stated because the gap is a correctness gap ───────────────
+
+// THE CAPTURE IS BOUND TO A MT. COLLINS BOARD, NOT TO THIS PHYSICAL UNIT. The census carries
+// `DMI: FOXCONN Mt. Collins/Mt. Collins, BIOS 0ACOC017` from the kernel log, which establishes the
+// MODEL. It does not carry SMBIOS Type 1/2/3, so the board serial 02030A800TEXFT02L that
+// gunbc.machine_intake_mtcollins1_access_observation reads over IPMI FRU appears NOWHERE in these
+// bytes. What ties the capture to unit 1 is the DELIVERY PATH — the image was presented by the
+// controller at 192.168.1.228 and the console is that controller's SOL — which is provenance held
+// by the author, not a fact a reader can check inside the artifact.
+//
+// SO THIS IS RECORDED AS AN OPEN BINDING RATHER THAN QUIETLY RELIED ON. A reader must not treat
+// these sixteen serial numbers as unit 1's inventory on the strength of the filename. The
+// dissolution is one command — `dmidecode --type 2` in the same capture — and the attempt that
+// would have carried it is the failed attempt below.
+data mtcollins1_subject_binding_gap: NonEmptyStr = "The capture establishes the BOARD MODEL (kernel DMI line: FOXCONN Mt. Collins/Mt. Collins, BIOS 0ACOC017) and not the physical unit: SMBIOS Type 1/2/3 was not captured, so board serial 02030A800TEXFT02L is absent from the bytes. The tie to unit 1 is the delivery path (controller 192.168.1.228 presented the image; the console is that controller's SOL), which is author-held provenance, not a reader-checkable fact. Dissolved by capturing dmidecode --type 2 alongside type 17 in a future attempt."
+
+// THE FAILED ATTEMPT IS PRESERVED, WHICH IS THE POINT OF PRESERVING IT. Attempt 3 was built to
+// close the binding gap above and to add a named memory workload with before/after EDAC counters.
+// It never produced a host capture: the kernel loaded from the virtual CD and then panicked with
+// "VFS: Unable to mount root fs on unknown-block(0,0)" — the MegaRAC remote-media session dropped
+// out from under casper between loading the kernel and mounting the squashfs root. The controller
+// reported redirection_status 100 immediately before the reset and status 1 afterwards.
+//
+// ITS BYTES ARE COMMITTED ANYWAY. The recurring failure mode this whole census exists to answer is
+// that a decisive observation gets produced by ad-hoc probing and then lost because the probe's
+// output was never a receipt; a FAILED probe is exactly as easy to lose and is evidence about the
+// delivery route's reliability, which is a fact the boot-delivery model needs. Attempt 3 also
+// produced a srv2-side observation before the boot — an ARP reachability reading with a typed
+// verdict against the expected MAC, and the boot artifact's digest — and that file stands on its
+// own regardless of the host never booting.
+//
+// WHY THERE IS NO ATTEMPT 5. Re-establishing the media after attempt 3 degraded further: stop-media
+// and start-media both answered HTTP 500 and the session never returned to 100. This controller is
+// the ONLY out-of-band path to the M1 canary, and hammering a degraded remote-media subsystem to
+// buy a subject binding and a workload is not a trade worth making against the risk of losing that
+// path. The run was stopped, the boot override cleared to "No override", and the controller left
+// verified healthy over IPMI (ARP REACHABLE at the expected MAC, mc info firmware 0.32).
+type MtCollins1CaptureAttemptFailure {
+  attempt: Nat
+  intent: NonEmptyStr
+  observed_failure: NonEmptyStr
+  preserved_artifacts: NonEmptyStr
+  why_not_retried: NonEmptyStr
+}
+
+data mtcollins1_attempt3_failure: MtCollins1CaptureAttemptFailure = MtCollins1CaptureAttemptFailure {
+  attempt: 3,
+  intent: "Close the subject-binding gap (dmidecode type 1/2/3), record per-section argv and exit status, and add a named memory workload with EDAC counters read before and after, so the health reading would be a load-based one rather than a snapshot.",
+  observed_failure: "The host loaded the kernel from the presented virtual CD and panicked: \"VFS: Unable to mount root fs on unknown-block(0,0)\". The remote-media session dropped between kernel load and root mount; redirection_status read 100 immediately before the reset and 1 after. No host capture was produced.",
+  preserved_artifacts: "artifacts/bmc/mtcollins1-attempt3-sol.log (the console, carrying the panic) and artifacts/bmc/mtcollins1-attempt3-srv2-side.txt (the pre-boot ARP observation with a typed verdict against the expected MAC, plus the boot artifact digest). A failed attempt whose bytes are discarded reproduces the exact failure mode this census exists to end.",
+  why_not_retried: "A further attempt refused before booting: stop-media and start-media both answered HTTP 500 and the session never returned to redirection_status 100. This controller is the only out-of-band path to the M1 canary, so driving a degraded remote-media subsystem harder was declined in favour of leaving the path intact. Boot override was cleared and the controller verified healthy over IPMI.",
+}
