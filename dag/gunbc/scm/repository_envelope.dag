@@ -1165,6 +1165,12 @@ type MergeStoreOutcome
   = MergeStoreAdvanced(AdmittedCommitBasis)
   | MergeStoreLocatorCollision { identity: ObjectId }
 
+// THE STORED ROOT IS NAMED, NOT SHADOWED. This branch used to bind its `RepositoryManifestRoot` to
+// `subject`, which is already this function's parameter name at a DIFFERENT type -- while `parent` and
+// `source` were read from the outer `subject` a few lines above. It was correct only because those two
+// reads happen before the shadow begins, so reordering the lets would have silently changed which
+// subject the basis described, with both spellings typechecking. Nothing in the language objects to
+// shadowing; the objection is that a load-bearing distinction was resting on statement order.
 fn store_and_admit_merge_basis(subject: AdmittedMergeSubject) -> MergeStoreOutcome {
   let repository = subject.anchors.repository
   let parent = subject.anchors.target
@@ -1172,10 +1178,10 @@ fn store_and_admit_merge_basis(subject: AdmittedMergeSubject) -> MergeStoreOutco
   match repository_root_by_storing_unique(repository: repository, unique: subject.merged.entries) {
     RepositoryManifestRootUniqueLocatorCollision { identity: i } =>
       MergeStoreLocatorCollision { identity: i }
-    RepositoryManifestRootUniqueStored(subject) =>
+    RepositoryManifestRootUniqueStored(stored_root) =>
       MergeStoreAdvanced(
         AdmittedCommitBasis {
-          subject: subject,
+          subject: stored_root,
           ancestry: DescendsFrom { parent: parent.commit.reference },
           integration: SquashIntegrated { source: source.commit.reference },
         }
