@@ -1674,32 +1674,26 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-/// ASSESSMENT-RENAME TRANSITION (2026-09-09, gunbc#10883). No ordinal is claimed, for the reason
-/// the entries above give. `product.cable_plant_converge` is renamed to
-/// `product.cable_plant_assessment`, and `gunbc.spark.fabric_switch_converge` to
-/// `gunbc.spark.fabric_switch_assessment`. The modules never had an actuation stage; the
-/// `converge` name advertised one, which is how the shape they replaced came to be bound to a
-/// handler that DEMANDED an apply. Renaming an inspect-only home is the last step of that cut.
+/// CABLE-PLANT DISSOLUTION (2026-09-10, gunbc#10729). NO ORDINAL IS CLAIMED, for the reason the
+/// entries above give and which this change re-measured: the sequence already collides. `THIRTIETH`
+/// appears twice and `THIRTY-SECOND` three times, minted independently by concurrent branches that
+/// each read the then-highest and appended. An ordinal implies a total order this ledger cannot
+/// provide, so the dissolution is named by its SUBJECT, which is unique and checkable. A first draft
+/// of this entry claimed `THIRTY-SECOND` and would have been the fourth of that name.
 ///
-/// ONLY NINE ROWS, AND THE ARITHMETIC IS THE POINT. The wave measured eighteen deltas. Nine
-/// auto-admit: the membership half of the same motion reports `SameDeclarationIdentityRebind`
-/// (the old edge, whose every supplied name still denotes the same declaration) or
-/// `ExplicitlyEvaluatedZeroDelta` (the new edge, reached by a name the module authors). The nine
-/// below are the binding half — a spelling authored on BOTH sides that now resolves to a
-/// different module. Consumers whose OWN module was renamed produce no binding delta at all,
-/// because a delta needs the module on both sides; that is why the two witness files this cut
-/// renamed are absent here and `fabric_switch_observed` is not.
+/// All 9 `gunbc#10883` cable-plant rows are deleted. #10883 merged into `main`, so `main` itself now binds each spelling to
+/// `product.cable_plant_assessment`; base and head agree, no run can produce those deltas, and run
+/// 34421135341 reported every one of them CONSUMED -- `0 unadjudicated, 0 stale, 9 consumed
+/// admission(s) due for deletion on this roster-touching change`. The obligation is not this change's
+/// by authorship but by CONTACT: this is the change that touched the roster, and that is exactly the
+/// rule those rows wrote for themselves. ROWS DELETED EQUALS ROWS THE WALL NAMED: 9 = 9.
 ///
-/// NONE OF THESE CHANGES WHICH DECLARATION THE SPELLING DENOTES. `CablePlant`, `cable_plant`,
-/// `CableLegReading`, `LegReadingTaken` and `LegNeverRead` are the same declarations at a new
-/// module path. A binding whose MEANING had moved would refuse on its own row rather than be
-/// covered by these, which is why they are enumerated by exact identity rather than by a pattern
-/// over the renamed module pair -- a pattern would admit a genuine rebind that happened to land
-/// in the same pair.
+/// ADJUDICATED BY THE WALL'S OWN POSITIVE PROOF, not by the trigger sentence. Each row entered
+/// `consumed_admissions` on `admission_consumed_at_base` -- a proof against the BASE side -- rather
+/// than as the else-arm of "did not match a delta", which this file keeps as an `UnmatchedAdmission`
+/// refusal precisely so the two cannot be confused. The entry above warns that a trigger sentence is
+/// not evidence its trigger fired; here the evidence is the run, named so it can be re-read.
 ///
-/// TRIGGER: these rows are removed when this PR merges. At that point the base itself binds each
-/// spelling to `product.cable_plant_assessment`, every row reports consumed-at-base, and leaving
-/// them would refuse every unrelated PR -- the exact cost the first 53 rows recorded above.
 /// THE THIRTY-ONE ROWS BELOW ARE ONE CO-HOME (2026-09-09, gunbc#10729), AND THEY ARE NOT A
 /// REQUALIFICATION. `gunbc.scm.merge_base` is DELETED and its declarations now live in
 /// `gunbc.scm.repository_envelope`, because the merge-base authority had to be nameable where the
@@ -2051,96 +2045,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
                 "scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt",
             spelling: "MergeBaseSourceAlreadyConsumed",
             target: "gunbc.scm.repository_envelope",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_cable_plant",
-            spelling: "CablePlant",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_cable_plant",
-            spelling: "cable_plant",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_leg_reading",
-            spelling: "CableLegReading",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_leg_reading",
-            spelling: "LegNeverRead",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_leg_reading",
-            spelling: "LegReadingTaken",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_never",
-            spelling: "LegNeverRead",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_never",
-            spelling: "LegReadingTaken",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_taken",
-            spelling: "LegNeverRead",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_taken",
-            spelling: "LegReadingTaken",
-            target: "product.cable_plant_assessment",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
