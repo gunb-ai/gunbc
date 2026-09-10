@@ -36,6 +36,7 @@ import gunbc.machine_intake_receipt {
   IntakeReceiptEnvelope,
   IntakeReceiptResult,
   LedgerRefused,
+  LedgerSubjectMismatch,
   LedgerValidated,
   MachineIntakeReceiptV1,
   ReceiptRefused,
@@ -61,6 +62,7 @@ import gunbc.machine_intake_bmc_secure {
   AccountManagementUnavailable,
   AccountManagementUnreachable,
   BmcCredentialRotationObservation,
+  BmcSecureOutcome,
   BmcSecureRefusalCause,
   BmcSecureRefused,
   BmcSecureStanding,
@@ -175,14 +177,14 @@ fn nominal_rotation() -> BmcCredentialRotationObservation {
 }
 
 fn is_secured(standing: BmcSecureStanding) -> Bool {
-  match standing {
+  match standing.outcome {
     BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _ } => true
     BmcSecureRefused { cause: _ } => false
   }
 }
 
 fn refusal_cause(standing: BmcSecureStanding) -> BmcSecureRefusalCause? {
-  match standing {
+  match standing.outcome {
     BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _ } => none
     BmcSecureRefused { cause: c } => Present { value: c }
   }
@@ -201,7 +203,7 @@ fn refused_with(standing: BmcSecureStanding, expected: BmcSecureRefusalCause) ->
 // arm every refusal below would also pass on a function that refused always.
 test fn nominal_rotation_secures_the_bmc() -> Bool {
   let standing = derive_bmc_secure(subject: intake_subject, observation: nominal_rotation())
-  let satisfied = match standing {
+  let satisfied = match standing.outcome {
     BmcSecured { endpoint: e, reference: r, evidence: ev, secured_at: at } =>
       e == controller && r.credential_epoch == 1 && list_length(items: ev) == 4 && at == 1788000007000
     BmcSecureRefused { cause: _ } => false
@@ -423,19 +425,65 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000002000 },
 ]
 
+// WHAT THIS ROSTER IS, AND WHAT IT IS NOT. `every_refusal_cause` is a
+// hand-authored list literal, so it cannot learn about a variant added later,
+// and an earlier annotation here claimed a coverage it does not provide (review
+// 63083). What the ordinal below actually buys is narrower and worth stating
+// exactly: its match must name every arm of BmcSecureRefusalCause, so a
+// thirteenth cause fails to compile IN THIS FILE and its author cannot land it
+// without visiting the roster it sits beside. That is a compile-time forcing
+// function, not a derivation of the roster from the type — deriving the
+// universe from the coproduct needs a variant-reflection facility this corpus
+// does not expose to .dag, and the honest ceiling is named rather than papered
+// over. The wall that actually stops a hardware owner is
+// bmc_secure_refusal_owner's own exhaustive match, which makes every new cause
+// name an owner before anything compiles; this pair checks that the owners
+// chosen so far are all non-hardware, and that the roster is gap-free and
+// duplicate-free rather than twelve copies of one cause.
+fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
+  match cause {
+    RotationObservationForOtherAttempt { expected: _, found: _ } => 0
+    CredentialStateUnknown { detail: _ } => 1
+    PreviouslyRotatedCredentialRequired => 2
+    AccountManagementUnreachable { detail: _ } => 3
+    CredentialRotationNotApplied => 4
+    CredentialEpochNotAdvanced { previous: _, observed: _ } => 5
+    ManagedCredentialRejected => 6
+    ManagedCredentialUnestablished { detail: _ } => 7
+    ManagedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => 8
+    PublishedCredentialStillAccepted => 9
+    PublishedCredentialRetirementUnestablished { detail: _ } => 10
+    PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => 11
+  }
+}
+
+// Each rostered cause has a distinct ordinal and the ordinals are contiguous
+// from zero. Distinctness is what makes the length meaningful — twelve entries
+// that duplicate one cause would satisfy a bare count — and contiguity is what
+// makes a rostered-but-misnumbered entry red.
+test fn roster_covers_every_refusal_cause() -> Bool {
+  let ordinals = fold(every_refusal_cause, init: [], f: (acc, c) => concat(acc, [refusal_cause_ordinal(cause: c)]))
+  let distinct = fold(
+    ordinals,
+    init: [],
+    f: (acc, o) => if fold(acc, init: false, f: (seen, x) => seen || x == o) { acc } else { concat(acc, [o]) },
+  )
+  let highest = fold(ordinals, init: 0, f: (acc, o) => if (o > acc) { o } else { acc })
+  list_length(items: distinct) == list_length(items: ordinals) && (highest + 1) == list_length(items: ordinals)
+}
+
 // NO CREDENTIAL REFUSAL IS A HARDWARE DEFECT (design §6: an access state is a
 // PartsHold, not a ReturnWindow). gunbc.machine_intake_disposition routes a
-// UnitHardware refusal to a return clock against the seller; this enumerates
-// every cause the phase can produce and requires that none of them takes that
-// route. The count is asserted beside it so a cause added without an owner
-// decision reds here rather than passing on an unexamined list.
+// UnitHardware refusal to a return clock against the seller. Measured over the
+// rostered causes, which is every cause the module declares today; the
+// forcing function that brings a new one here is described above.
 test fn no_credential_refusal_is_a_hardware_defect() -> Bool {
   let hardware_owned = fold(
     every_refusal_cause,
     init: 0,
     f: (acc, c) => if (bmc_secure_refusal_owner(cause: c) == UnitHardware) { acc + 1 } else { acc },
   )
-  hardware_owned == 0 && list_length(items: every_refusal_cause) == 12
+  hardware_owned == 0 && list_length(items: every_refusal_cause) > 0
 }
 
 data producer: IntakeProducerIdentity = IntakeProducerIdentity {
@@ -503,7 +551,6 @@ fn chain(receipts: List<IntakeReceiptEnvelope>) -> List<IntakeReceiptEnvelope> {
 fn ledger_with_bmc_secure(standing: BmcSecureStanding) -> List<IntakeReceiptEnvelope> {
   let receipt = bmc_secure_phase_receipt(
     standing: standing,
-    subject: intake_subject,
     producer: producer,
     policy_digest: policy_digest,
     started_at: 1788000000000,
@@ -581,9 +628,20 @@ test fn rotated_bmc_admits_the_unit() -> Bool {
 // durable spine can tell which rotation secured the unit without this module.
 test fn phase_receipt_projects_the_standing() -> Bool {
   let secured = derive_bmc_secure(subject: intake_subject, observation: nominal_rotation())
-  let good = bmc_secure_phase_receipt(standing: secured, subject: intake_subject, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
-  let refused_standing = BmcSecureRefused { cause: PublishedCredentialStillAccepted }
-  let bad = bmc_secure_phase_receipt(standing: refused_standing, subject: intake_subject, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let good = bmc_secure_phase_receipt(standing: secured, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let refused_standing = derive_bmc_secure(
+    subject: intake_subject,
+    observation: rotation_observed(
+      subj: intake_subject,
+      previous_epoch: 0,
+      bootstrap: bootstrap_accepted,
+      reference: managed_reference,
+      applied_at: rotation_at,
+      managed: managed_accepted,
+      published: published_accepted,
+    ),
+  )
+  let bad = bmc_secure_phase_receipt(standing: refused_standing, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let good_ok = match good.result {
     ReceiptSatisfied => list_length(items: good.observations) == 4 && good.phase == bmc_secure_phase
     ReceiptRefused { owner: _, cause: _ } => false
@@ -593,4 +651,45 @@ test fn phase_receipt_projects_the_standing() -> Bool {
     ReceiptSatisfied => false
   }
   good_ok && bad_ok
+}
+
+// THE CROSS-ATTEMPT REPLAY CONTROL. A standing adjudicated for attempt one
+// cannot be projected as attempt two's evidence, because the receipt reads its
+// subject off the standing and there is no subject parameter to swap. This
+// executes the consequence: the receipt derived from attempt one's standing
+// carries attempt one's subject, and a ledger assembled for attempt two refuses
+// it as LedgerSubjectMismatch rather than admitting a forged member. The
+// stronger half of the claim is structural and therefore not authorable here at
+// all -- a witness cannot hand bmc_secure_phase_receipt the other subject,
+// which is the point -- so what is executed is that the two attempts produce
+// receipts that a ledger tells apart: attempt one's receipt placed inside a
+// ledger whose genesis is attempt two's is refused on the subject it bears.
+test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool {
+  let standing_one = derive_bmc_secure(subject: intake_subject, observation: nominal_rotation())
+  let standing_two = derive_bmc_secure(
+    subject: other_attempt_subject,
+    observation: rotation_observed(
+      subj: other_attempt_subject,
+      previous_epoch: 0,
+      bootstrap: bootstrap_accepted,
+      reference: managed_reference,
+      applied_at: rotation_at,
+      managed: managed_accepted,
+      published: published_rejected,
+    ),
+  )
+  let receipt_one = bmc_secure_phase_receipt(standing: standing_one, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let receipt_two = bmc_secure_phase_receipt(standing: standing_two, producer: producer, policy_digest: policy_digest, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
+  let both_secured = is_secured(standing: standing_one) && is_secured(standing: standing_two)
+  let carries_own_attempt =
+    (receipt_one.subject.attempt_id as NonEmptyStr) == (attempt_one as NonEmptyStr)
+      && (receipt_two.subject.attempt_id as NonEmptyStr) == (attempt_two as NonEmptyStr)
+  let mixed = match validate_intake_receipt_ledger(receipts: chain(receipts: [receipt_two, receipt_one])) {
+    LedgerValidated { ledger: _ } => false
+    LedgerRefused { cause: c } => match c {
+      LedgerSubjectMismatch { index: _ } => true
+      _ => false
+    }
+  }
+  both_secured && carries_own_attempt && mixed
 }

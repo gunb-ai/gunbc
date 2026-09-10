@@ -97,6 +97,16 @@ type ManagedCredentialReference {
 // time has no ordering to check against, and the ordering is what stops a
 // pre-rotation "the published credential was already rejected" reading from
 // being replayed as the post-rotation proof.
+//
+// WHAT THE ORDERING DOES NOT ESTABLISH, said here so it is not read off the
+// refusal names: these are times carried on SUPPLIED observations, so the fold
+// enforces an ordering AMONG THE READINGS IT WAS HANDED and establishes nothing
+// about whether any BMC was probed at all. That is the boundary DESIGN §4b
+// keeps off the ladder — an external fact, observed at a declared frontier and
+// never fabricated here. The frontier is the effectful rotation actuator that
+// produces BmcCredentialRotationObservation; it does not exist yet, and it is
+// the same producer the machine-intake ruling gates on the gunbc.bmc_onboarding
+// split.
 type CredentialRotationApplication
   = RotationApplied { reference: ManagedCredentialReference, applied_at: EpochMs, evidence: EvidenceRef }
   | RotationNotAttempted
@@ -209,7 +219,7 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
 // The satisfied terminal keeps the reference and the readings it rests on, so a
 // later reader can say WHICH rotation secured the unit and WHERE its evidence
 // is. The password is not among them, structurally.
-type BmcSecureStanding
+type BmcSecureOutcome
   = BmcSecured {
       endpoint: BmcControllerEndpoint,
       reference: ManagedCredentialReference,
@@ -217,6 +227,48 @@ type BmcSecureStanding
       secured_at: EpochMs,
     }
   | BmcSecureRefused { cause: BmcSecureRefusalCause }
+
+// THE STANDING CARRIES THE SUBJECT IT WAS ADJUDICATED FOR, AND THE JOIN IS
+// SEALED. An earlier cut returned the outcome alone and had
+// bmc_secure_phase_receipt take the subject as a separate argument, so a
+// standing legitimately derived for host A could be handed to the receipt
+// function beside host B's subject and the receipt read as B's evidence that B
+// had been rotated. Nothing in the types forbade the pairing, and the ledger
+// spine does not repair it: validate_intake_receipt_ledger checks that the
+// receipts in a ledger AGREE on a subject, and a replayed receipt already bears
+// the replacement subject before validation sees it. That is the escape hatch
+// DESIGN §5 rejects outright — the refusal fold is bypassed not by defeating it
+// but by re-addressing its answer.
+//
+// So the subject and the outcome are ONE record and the record is
+// sole_constructor: derive_bmc_secure is its only mint, and the receipt
+// projection reads the subject off the standing rather than accepting one. A
+// cross-attempt replay has no argument left to swap.
+//
+// THE CEILING, SCOPED RATHER THAN OVERCLAIMED, on this repository's own
+// precedent (gunbc.auth.secret_access_admission, and the coproduct-variant form
+// falsified at test.claim.inventory_admitted_ledger_seal_livetree_witness_test):
+// sole_constructor seals RECORDS, not coproduct arms, which is why the pairing
+// and not the outcome is the sealed carrier — a caller may still write a
+// BmcSecured OUTCOME literal, and it reaches nothing, because every consumer
+// takes the standing. And the seal is not claimed for the emitted-Rust path,
+// where DESIGN records by execution that a sole_constructor type's emitted
+// mirror is forgeable; that is a known gap in the mechanism, not a property of
+// this carrier.
+//
+// The seal was taken as a fixture-boundary red once during authoring -- a
+// foreign module writing the record literal refuses with
+// "sole_constructor type 'BmcSecureStanding' cannot be constructed outside its
+// defining module" -- and is not re-enrolled here as a standing gate, because
+// the mechanism's general coverage is gunbc.guarantee_probe_corpus
+// sole_constructor_cross_module_class and its probes; a per-carrier copy of
+// that gate would be the redundant work DESIGN §2 prices. The witness obtains
+// every standing FROM derive_bmc_secure, cross-module, so what is confined is
+// the construction and not the type's usability.
+type BmcSecureStanding sole_constructor {
+  subject: MachineIntakeSubject
+  outcome: BmcSecureOutcome
+}
 
 fn bmc_secure_evidence(
   bootstrap: CredentialProbeOutcome,
@@ -244,7 +296,7 @@ fn adjudicate_published_probe(
   bootstrap: CredentialProbeOutcome,
   managed_evidence: EvidenceRef,
   published: CredentialProbeOutcome,
-) -> BmcSecureStanding {
+) -> BmcSecureOutcome {
   match published {
     CredentialAccepted { evidence: _, observed_at: _ } => BmcSecureRefused { cause: PublishedCredentialStillAccepted }
     CredentialProbeUnestablished { detail: d } => BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: d } }
@@ -273,7 +325,7 @@ fn adjudicate_managed_probe(
   bootstrap: CredentialProbeOutcome,
   managed: CredentialProbeOutcome,
   published: CredentialProbeOutcome,
-) -> BmcSecureStanding {
+) -> BmcSecureOutcome {
   match managed {
     CredentialRejected { evidence: _, observed_at: _ } => BmcSecureRefused { cause: ManagedCredentialRejected }
     CredentialProbeUnestablished { detail: d } => BmcSecureRefused { cause: ManagedCredentialUnestablished { detail: d } }
@@ -302,7 +354,7 @@ fn adjudicate_rotation(
   reference: ManagedCredentialReference,
   applied_at: EpochMs,
   rotation_evidence: EvidenceRef,
-) -> BmcSecureStanding {
+) -> BmcSecureOutcome {
   if (reference.credential_epoch <= observation.previous_credential_epoch) {
     BmcSecureRefused {
       cause: CredentialEpochNotAdvanced {
@@ -329,7 +381,7 @@ fn adjudicate_rotation(
 // needs the credential a previous rotation minted — a PartsHold owned by
 // BmcAccess, not a defect and not a silent skip: proceeding from here would
 // certify a retirement this attempt never performed.
-fn adjudicate_bootstrap(observation: BmcCredentialRotationObservation) -> BmcSecureStanding {
+fn adjudicate_bootstrap(observation: BmcCredentialRotationObservation) -> BmcSecureOutcome {
   match observation.bootstrap_probe {
     CredentialProbeUnestablished { detail: d } => BmcSecureRefused { cause: CredentialStateUnknown { detail: d } }
     CredentialRejected { evidence: _, observed_at: _ } => BmcSecureRefused { cause: PreviouslyRotatedCredentialRequired }
@@ -352,17 +404,18 @@ fn derive_bmc_secure(
   subject: MachineIntakeSubject,
   observation: BmcCredentialRotationObservation,
 ) -> BmcSecureStanding {
-  if same_intake_subject(left: subject, right: observation.subject) == false {
+  let outcome = if same_intake_subject(left: subject, right: observation.subject) == false {
     BmcSecureRefused { cause: RotationObservationForOtherAttempt { expected: subject, found: observation.subject } }
   } else {
     adjudicate_bootstrap(observation: observation)
   }
+  BmcSecureStanding { subject: subject, outcome: outcome }
 }
 
 data bmc_secure_phase: IntakePhase = Arrival { phase: BmcSecure }
 
 fn bmc_secure_receipt_result(standing: BmcSecureStanding) -> IntakeReceiptResult {
-  match standing {
+  match standing.outcome {
     BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _ } => ReceiptSatisfied
     BmcSecureRefused { cause: c } =>
       ReceiptRefused { owner: bmc_secure_refusal_owner(cause: c), cause: bmc_secure_refusal_label(cause: c) }
@@ -370,7 +423,7 @@ fn bmc_secure_receipt_result(standing: BmcSecureStanding) -> IntakeReceiptResult
 }
 
 fn bmc_secure_receipt_observations(standing: BmcSecureStanding) -> List<EvidenceRef> {
-  match standing {
+  match standing.outcome {
     BmcSecured { endpoint: _, reference: _, evidence: e, secured_at: _ } => e
     BmcSecureRefused { cause: _ } => []
   }
@@ -383,9 +436,11 @@ fn bmc_secure_receipt_observations(standing: BmcSecureStanding) -> List<Evidence
 // derive_fleet_admission requires a satisfied receipt for this phase. There is
 // deliberately no second projection: a credential-specific admission path
 // beside the roster would be the parallel authority DESIGN §3 forbids.
+//
+// The subject is READ OFF THE STANDING and is not a parameter, so the receipt
+// this returns can only ever be about the attempt the fold adjudicated.
 fn bmc_secure_phase_receipt(
   standing: BmcSecureStanding,
-  subject: MachineIntakeSubject,
   producer: IntakeProducerIdentity,
   policy_digest: ContentHash,
   started_at: EpochMs,
@@ -394,7 +449,7 @@ fn bmc_secure_phase_receipt(
 ) -> IntakeReceiptEnvelope {
   IntakeReceiptEnvelope {
     schema: MachineIntakeReceiptV1,
-    subject: subject,
+    subject: standing.subject,
     phase: bmc_secure_phase,
     producer: producer,
     policy_digest: policy_digest,
