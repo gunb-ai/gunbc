@@ -208,6 +208,16 @@ together with which choices its rows name, never "residue unchanged".
 
 ## Step 4 — joining causes to files, and saying which join you have
 
+**A signature match must never see annotation text, and this is not hypothetical.** The first pass
+matched the bare word `where` against the whole declaration, and on `dag/std/measure.dag` it matched the
+English word inside a `//` block — attributing a `where`-clause defect to a file that carries none. The
+repair lane taking that row would have hunted for a clause that was not there. Strip every line whose
+first non-space characters are `//` before matching, and re-check the population afterwards: over the
+26-file parse class exactly one attribution changed, which is the shape of a defect this cheap to make
+and this quiet to miss. It is also the sharpest argument for the `JoinEvidence` split — the executed
+neutraliser join cannot make this mistake, because it re-runs the compiler on the modified declaration
+and watches the refusal go away.
+
 Attributing a cause to a file by matching its construct in the isolated declaration is a signature match.
 Where the construct can be removed mechanically — a `where` clause, `sole_constructor`, a leading pipe, a
 numeric type argument, a negative literal, a `return`, an expression body — the join can be EXECUTED

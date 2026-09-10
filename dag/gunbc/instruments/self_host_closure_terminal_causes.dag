@@ -672,7 +672,7 @@ data closure_refusal_rows: List<ClosureFileRow> = [
   ClosureFileRow {
     path: "dag/std/measure.dag"
     terminal_reason: ^parse_g0_tokens_remain
-    causes: [^A, ^G, ^H, ^O]
+    causes: [^G, ^H, ^O]
   },
   ClosureFileRow {
     path: "dag/std/pareto.dag"
