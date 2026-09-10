@@ -1,7 +1,10 @@
 module gunbc.runner.runner_host_kernel_config
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import gunbc.runner.runner_host_filtered_egress { KernelFeatureRequirement, runner_host_kernel_requirements }
+import gunbc.runner.runner_host_filtered_egress {
+  KernelFeatureRequirement, runner_host_kernel_requirements,
+  filtered_egress_topology, filtered_egress_topology_label,
+}
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.tools.gnu_coreutils { cat_command }
@@ -242,7 +245,12 @@ fn verify_kernel_config(config: String) -> KernelConfigVerdict {
 fn kernel_config_verdict_text(v: KernelConfigVerdict) -> String {
   match v {
     KernelConfigHolds { options_checked: n } =>
-      join(["kernel-config=holds options-checked=", to_string(n)], "")
+      join([
+        "kernel-config=holds options-checked=",
+        to_string(n),
+        " ",
+        filtered_egress_topology_label(standing: filtered_egress_topology),
+      ], "")
     KernelConfigUnreadable { detail: d } =>
       join(["kernel-config=UNREADABLE ", d as String], "")
     KernelConfigRefused { failures: fs } =>
