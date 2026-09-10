@@ -98,6 +98,21 @@ type SyntaxSpec {
 // `parse_item_by_form` dispatches on `body_kind` to hand-written body parsers, so a revision whose
 // body parser behaved differently is not reproduced by supplying its environment -- and must not be
 // claimed to be. That population stays outside the covered set and refuses rather than answering.
+//
+// DECLARED FRONTIER (DESIGN section 3c), stated here rather than only in a pull request body,
+// because a consumption claim that lives outside the diff is one of that section's own tells. AS OF
+// THIS DECLARATION EVERY PRODUCER IS THE HEAD'S OWN `dag_parse_environment`, so no caller yet reads
+// a revision under a grammar other than the running binary's, and the type's stated purpose is not
+// yet exercised by execution. That is the honest status, not a claim of consumption.
+//
+// THE CONSUMER IS THE BASE ENVIRONMENT LOADER, which decodes this value out of the four-blob base
+// closure at the revision being compared and hands it to the same tokenizer and parser this change
+// already threads it through. THE TRIGGER IS THAT LOADER LANDING WITH A CROSS-REVISION READ GREEN BY
+// EXECUTION -- a base whose grammar differs from the head's, parsed under its own environment, with
+// a discriminating red that fires when the head's environment is substituted. Until that trigger is
+// met this type is a declared frontier and nothing here may be cited as evidence that
+// gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change has climbed: the
+// climb is the loader's, and section 4b(1) counts a rung only from executed evidence.
 type DagParseEnvironment {
   syntax_spec: SyntaxSpec
   non_name_keywords: Map<String, Bool>
