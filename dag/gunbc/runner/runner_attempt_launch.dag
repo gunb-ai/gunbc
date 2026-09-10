@@ -3,10 +3,11 @@ module gunbc.runner_attempt_launch
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { Second, second, ByteSize, byte_size, measure_le }
+import std.measure { Second, second, ByteSize, byte_size, measure_le, Mebibyte, mebibyte }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command }
 import extdeps.tools.gnu_coreutils { timeout_command }
+import extdeps.tools.busybox { busybox_dd_sparse_image_command }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig,
   FirecrackerBootSource,
@@ -123,6 +124,11 @@ data jail_jit_path: FilePath = "/jit.bin"
 
 data jail_workspace_path: FilePath = "/work.img"
 
+data host_busybox_bin: NonEmptyStr = "/bin/busybox"
+
+// X's WORKGB=4 with `dd bs=1M count=0 seek=$((WORKGB*1024))`: four gibibytes as a Mebibyte seek.
+data runner_attempt_workspace_size: Mebibyte = mebibyte(count: 4096)
+
 type AttemptGround
   = GroundClear
   | GroundOccupied
@@ -165,6 +171,7 @@ type AttemptLaunchPlan
       nft_ruleset: String
       slice: SystemdRunProperty
       workspace_path: String
+      workspace_create: ArgvCommand
       workspace_format: ArgvCommand
       kvm_device: FilePath
       vm_config: FirecrackerVmConfig
@@ -368,6 +375,11 @@ fn plan_authorized_steps(
         nft_ruleset: runner_microvm_nft_ruleset_text(),
         slice: runner_microvm_attempt_slice_property(attempt: attempt),
         workspace_path: runner_microvm_attempt_workspace_path(attempt: attempt),
+        workspace_create: busybox_dd_sparse_image_command(
+          busybox_bin: host_busybox_bin,
+          image_path: runner_microvm_attempt_workspace_path(attempt: attempt),
+          size: runner_attempt_workspace_size,
+        ),
         workspace_format: mke2fs_format_command(
           fs: Ext2,
           image_path: runner_microvm_attempt_workspace_path(attempt: attempt),
@@ -395,6 +407,7 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
       nft_ruleset: _,
       slice: _,
       workspace_path: _,
+      workspace_create: _,
       workspace_format: _,
       kvm_device: _,
       vm_config: _,

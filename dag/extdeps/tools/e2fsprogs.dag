@@ -41,6 +41,18 @@ fn ext_filesystem_type_wire(fs: Ext2FilesystemType) -> String {
   }
 }
 
+// FORMAT AN EXISTING IMAGE FILE, WITH NO SOURCE DIRECTORY AND NO SIZE OPERAND. A workspace that
+// must be empty of any prior tenant is created as a sparse file (busybox_dd_sparse_image_command)
+// and then formatted; `-d` would populate from a tree and that is a different operation
+// (mke2fs_populate_command). There is no `m` size suffix here because the file already has a
+// length; this builder must not steal the size-operand annotation that belongs to populate.
+fn mke2fs_format_command(fs: Ext2FilesystemType, image_path: String) -> ArgvCommand {
+  argv_command(
+    program: mke2fs_program,
+    arguments: ["-t", ext_filesystem_type_wire(fs: fs), "-F", "-q", image_path],
+  )
+}
+
 // `-d` IS WHAT MAKES A ROOT FILESYSTEM BUILDABLE WITHOUT MOUNTING ONE, and that is the reason this
 // builder exists rather than a mount-copy-unmount sequence. mke2fs populates the new filesystem from
 // a directory tree in userspace, so the image is produced by one process with no loop device, no
@@ -52,16 +64,6 @@ fn ext_filesystem_type_wire(fs: Ext2FilesystemType) -> String {
 // device -- so a bare integer at a call site does not name a quantity of storage at all. Carrying
 // the magnitude in std.measure's own unit and rendering the `m` suffix here is what makes the
 // operand mean the same thing on every host (DESIGN section 2: one concept, grounded once).
-// FORMAT AN EXISTING IMAGE FILE, WITH NO SOURCE DIRECTORY. A workspace that must be empty of
-// any prior tenant is created as a sparse file and then formatted; `-d` would populate from a
-// tree and that is a different operation (mke2fs_populate_command).
-fn mke2fs_format_command(fs: Ext2FilesystemType, image_path: String) -> ArgvCommand {
-  argv_command(
-    program: mke2fs_program,
-    arguments: ["-t", ext_filesystem_type_wire(fs: fs), "-F", "-q", image_path],
-  )
-}
-
 fn mke2fs_populate_command(
   fs: Ext2FilesystemType,
   image_path: String,

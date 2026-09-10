@@ -153,6 +153,7 @@ test fn a_zero_byte_credential_does_not_start_the_vmm() -> Bool {
               nft_ruleset: _,
               slice: _,
               workspace_path: _,
+              workspace_create: _,
               workspace_format: _,
               kvm_device: _,
               vm_config: _,
@@ -220,6 +221,7 @@ test fn an_authorized_launch_consumes_network_slice_workspace_and_jailer() -> Bo
               nft_ruleset: nft,
               slice: _,
               workspace_path: ws,
+              workspace_create: create,
               workspace_format: fmt,
               kvm_device: kvm,
               vm_config: cfg,
@@ -239,6 +241,9 @@ test fn an_authorized_launch_consumes_network_slice_workspace_and_jailer() -> Bo
                 && string_contains(s: words, pattern: "--cgroup-version")
                 && string_contains(s: words, pattern: "/bin/jailer")
                 && (fmt.program as String) == "mke2fs"
+                && (create.program as String) == "/bin/busybox"
+                && string_contains(s: join(argv_words(command: create), " "), pattern: "count=0")
+                && string_contains(s: join(argv_words(command: create), " "), pattern: "seek=4096")
                 && count(cfg.drives) == 3
                 && planned_jailer_launches(plan: plan_for(
                   pair: pair, account: pair.account, attempt: a, envelope: admitted(n: 4096), ground: GroundClear,
