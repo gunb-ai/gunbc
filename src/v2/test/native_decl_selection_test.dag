@@ -4,9 +4,11 @@ import v2.compiler.compile {
   native_test_context_from_ingest,
   native_test_eval_one,
   native_test_prepare_module,
+  NativeTestPreparedModule
+}
+import v2.compiler.native_test_vocabulary {
   NativeTestObservation,
   NativeTestPassed,
-  NativeTestPreparedModule,
   NativeTestRefused,
   NativeTestStageEntry
 }

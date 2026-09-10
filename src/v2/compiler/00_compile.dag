@@ -1,6 +1,32 @@
 module v2.compiler.compile
 
 import std.compiler_entry { CompilerEntryDriver, SourceRootEvalDriver }
+import gunbc.witness_v2_native_route {
+  NativeRouteAdmission,
+  NativeRouteMalformedControl,
+  NativeRouteMemberRow,
+  NativeRouteModuleSource,
+  NativeRouteReceipt,
+  NativeRouteTestIdentity,
+  OldRouteWithdrawn,
+  native_route_admission,
+  native_route_admission_summary,
+  native_route_admitted,
+  native_route_live_control_false_declaration,
+  native_route_live_control_module,
+  native_route_live_control_true_declaration,
+  native_route_universe_member,
+  required_v2_native_job_name
+}
+import v2.workflow.floor_discovery_producer {
+  FloorDiscoveryAccepted,
+  FloorDiscoveryWalkState,
+  FloorDiscoveryRefused,
+  discover_floor_rows_for_source,
+  floor_discovery_finalize_source_outcomes
+}
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.logic { Bool }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
 import v2.compiler.infer { infer, InferredTree }
@@ -22,6 +48,20 @@ import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
   source_root_set_from_ingest
+}
+import v2.compiler.native_test_vocabulary {
+  NativeTestFileRefusal,
+  NativeTestObservation,
+  NativeTestPassed,
+  NativeTestRefused,
+  NativeTestReturnedFalse,
+  NativeTestReturnedOther,
+  NativeTestStage,
+  NativeTestStageContext,
+  NativeTestStageEntry,
+  NativeTestStageEval,
+  NativeTestStagePrepare,
+  NativeTestVerdict
 }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -52,8 +92,8 @@ import v2.lens.undecidable_verdict_collapse { undecidable_verdict_collapse_compi
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_append, list_reverse, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, trim }
+import v2.std.algebra { fold_list, length, list_append, list_reverse, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
@@ -77,7 +117,7 @@ import v2.std.diagnostic {
 import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
@@ -675,35 +715,6 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // test either, and running them here would conflate the modeling door with the execution route
 // and multiply their whole-tree cost by the test population.
 
-type NativeTestStage
-  = NativeTestStageContext
-  | NativeTestStagePrepare
-  | NativeTestStageEntry
-  | NativeTestStageEval
-
-type NativeTestVerdict
-  = NativeTestPassed
-  | NativeTestReturnedFalse
-  | NativeTestReturnedOther
-  | NativeTestRefused { stage: NativeTestStage, reason: Symbol }
-
-type NativeTestObservation {
-  module: QualifiedName
-  declaration: Symbol
-  verdict: NativeTestVerdict
-}
-
-// ONE SOURCE'S FRONT-END REFUSAL, AT THE TWO GRAINS THE CLASSIFICATION NEEDS. The rejection's
-// diagnostic list prepends non-fatal pending advisories (rejected_with_pending), so the head
-// reason and the fatal (last) reason are different observations of one refusal — the door
-// ledger's cause-ownership table is keyed by exactly this grain distinction, and the lane's
-// classifier asks both questions of every row.
-type NativeTestFileRefusal {
-  path: Symbol
-  head_reason: Symbol
-  fatal_reason: Symbol
-}
-
 type NativeTestContext {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
@@ -984,6 +995,418 @@ fn native_test_eval_one(
                 reason: ^native_test_entry_declaration_not_arrow
               )
           }
+      }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE LANE'S OWN ADJUDICATION — DERIVED UNIVERSE, OBSERVED POPULATION, JUDGED RECEIPT.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHAT MOVED HERE, AND WHY IT COULD NOT STAY IN THE SEED. The required-v2-native lane's claim is
+// that the EMITTED compiler answers, not the seed. Until this section existed the lane was
+// interpreter-bracketed on both ends: the seed folded the floor's discovery producer over every
+// source through the v1 interpreter to derive the universe (~4 minutes interpreted), and then
+// evaluated native_route_admission through the interpreter to judge the receipt — so the lane
+// that exists to prove a pristine v2 process could not run without the v1 interpreter at all.
+// Both brackets are folds this module can reach natively, so they are declared here and
+// COMPILED; the seed's remaining job is emit + cargo, and every semantic decision the lane makes
+// is executed by the binary the lane is about (operator ruling 2026-09-10).
+//
+// THE JOIN IS NOT MADE TAUTOLOGICAL BY THE MOVE. The driver's earlier contract note — a binary
+// that discovered its own population would make the host-side join tautological — was about a
+// join between two PROCESSES. The join admission actually performs is between the DISCOVERY
+// authority's answer (what the corpus declares a test, read textually per source) and the
+// EXECUTION route's answer (what reached a verdict through the whole front end): two independent
+// folds over two different readings of the same bytes. A universe member with no observation row
+// is still an omission and a row with no member is still foreign; what the move removes is the
+// process boundary between them, which was never what made the join discriminating.
+
+// The lane's own refusal carrier. A refusal reaching here is a LANE-level defect (the corpus
+// refused discovery outright), so it stops the line rather than shrinking the universe; the
+// producer's own reason text is interned as the second diagnostic so the refusal that the
+// process prints names what discovery actually said, not merely that it said something.
+fn native_lane_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^compile_stage_locus_port, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn native_lane_refused<T>(reason: Symbol, detail: String) -> Outcome<T> {
+  Rejected {
+    diagnostics: NonEmptyDiagnostics {
+      head: native_lane_diagnostic(reason: reason),
+      tail: [native_lane_diagnostic(reason: symbol_intern_lexeme(lexeme: detail))]
+    }
+  }
+}
+
+// THE MODULE→PATH RELATION IS READ FROM THE HEADER TEXT, NOT FROM THE PARSE, and that is the
+// point rather than an approximation: a source whose front end refused carries no normalized root
+// and no qualified name, so a parse-derived relation would silently drop exactly the files whose
+// test identities must surface as Context-stage refusals — the population would shrink instead of
+// refusing. The seed answered this same question at this same grain (cli_run's module index) and
+// is deleted with the interpreted derivation; this is that fact's `.dag` home. One consumer, per
+// the facts-before-abstraction discipline: promote it when a second inhabits it.
+fn native_lane_declared_module_name(content: String) -> String {
+  fold(
+    split(s: content, delimiter: "\n"),
+    init: "",
+    f: fn(acc, line) {
+      if acc != "" {
+        acc
+      } else {
+        let trimmed = trim(line)
+        if starts_with(s: trimmed, prefix: "module ") {
+          trim(substring(s: trimmed, start: 7, end: string_length(s: trimmed)))
+        } else {
+          ""
+        }
+      }
+    }
+  )
+}
+
+// ONE SOURCE, READ ONCE, IN BOTH DIRECTIONS. The discovery producer's per-file authority and the
+// module header are answered in the SAME pass, so the universe never needs a path → module join
+// afterwards: the row and the module that owns it are minted together. The seed paid that join as
+// a hash lookup per row; a fold-based lookup here would be quadratic over the whole inventory,
+// which the standing bare-minimum-cost ruling prices as a defect at any realized n.
+type NativeLaneSourceFacts {
+  module: String
+  path: Symbol
+  discovery: FloorDiscoveryWalkState
+}
+
+fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFacts> {
+  fold_list(
+    xs: ingest,
+    empty: [],
+    cons: fn(acc, read) {
+      concat(acc, [NativeLaneSourceFacts {
+        module: native_lane_declared_module_name(content: read.source.carried),
+        path: read.compilation_unit,
+        discovery: discover_floor_rows_for_source(
+          repo_path: symbol_lexeme(sym: read.compilation_unit),
+          content: read.source.carried
+        )
+      }])
+    }
+  )
+}
+
+// ONE UNIVERSE MEMBER'S MODULE: the identities discovery enrolled for it, and the path they were
+// read from. Declarations stay grouped by module because prepare (resolve + infer) is paid once
+// per module and every declaration of a module shares its outcome.
+type NativeLaneUniverseModule {
+  module: String
+  path: Symbol
+  declarations: List<String>
+}
+
+type NativeLaneUniverse {
+  modules: List<NativeLaneUniverseModule>
+  identities: List<NativeRouteTestIdentity>
+  module_sources: List<NativeRouteModuleSource>
+}
+
+fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<NativeLaneUniverseModule> {
+  if native_route_universe_member(module_qn: facts.module) {
+    let declarations = fold_list(
+      xs: facts.discovery.rows,
+      empty: [],
+      cons: fn(acc, row) { concat(acc, [row.function]) }
+    )
+    if length(xs: declarations) == 0 {
+      []
+    } else {
+      [NativeLaneUniverseModule {
+        module: facts.module,
+        path: facts.path,
+        declarations: declarations
+      }]
+    }
+  } else {
+    []
+  }
+}
+
+// THE DERIVATION IS THE FLOOR'S OWN PRODUCER, FINALIZED THE FLOOR'S OWN WAY. The per-source
+// states are handed to floor_discovery_finalize_source_outcomes untouched — so a walk failure, a
+// disposition refusal or a sidecar violation ANYWHERE in the inventory refuses the derivation
+// exactly as it refuses the required floor's — and only then are the universe-prefixed modules
+// kept. Filtering first and finalizing the remainder would have made the lane blind to a sidecar
+// violation outside `v2.test.*`, which is a corpus refusal, not a lane exclusion.
+// A SOURCE THAT ENROLS ROWS AND DECLARES NO MODULE IS A REFUSAL, NOT A DROP. Discovery reads the
+// path and the bytes, so it can enrol test identities for a file whose own header names no module
+// — and such an identity cannot be routed, because the driver resolves by module. The seed refused
+// this state by name (UniverseEntryOutsideSubject) when its module index did not hold a row's
+// entry; keeping the refusal is what stops the derivation from quietly shrinking the universe.
+fn native_lane_unowned_row_path(facts: List<NativeLaneSourceFacts>) -> String {
+  fold_list(
+    xs: facts,
+    empty: "",
+    cons: fn(acc, f) {
+      if acc != "" {
+        acc
+      } else if (f.module == "") && (length(xs: f.discovery.rows) > 0) {
+        symbol_lexeme(sym: f.path)
+      } else {
+        ""
+      }
+    }
+  )
+}
+
+fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse> {
+  let facts = native_lane_source_facts(ingest: ingest)
+  let unowned = native_lane_unowned_row_path(facts: facts)
+  if unowned != "" {
+    return native_lane_refused(
+      reason: ^native_lane_universe_entry_outside_subject,
+      detail: unowned
+    )
+  }
+  match floor_discovery_finalize_source_outcomes(
+    outcomes: fold_list(xs: facts, empty: [], cons: fn(acc, f) { concat(acc, [f.discovery]) })
+  ) {
+    FloorDiscoveryRefused { reason: reason } =>
+      native_lane_refused(reason: ^native_lane_universe_derivation_refused, detail: reason)
+    FloorDiscoveryAccepted { rows: _ } => {
+      let modules = fold_list(
+        xs: facts,
+        empty: [],
+        cons: fn(acc, f) { concat(acc, native_lane_universe_module_for_source(facts: f)) }
+      )
+      outcome_accepted(value: NativeLaneUniverse {
+        modules: modules,
+        identities: fold_list(
+          xs: modules,
+          empty: [],
+          cons: fn(acc, m) {
+            concat(acc, fold_list(
+              xs: m.declarations,
+              empty: [],
+              cons: fn(inner, d) {
+                concat(inner, [NativeRouteTestIdentity { module: m.module, declaration: d }])
+              }
+            ))
+          }
+        ),
+        module_sources: fold_list(
+          xs: modules,
+          empty: [],
+          cons: fn(acc, m) {
+            concat(acc, [NativeRouteModuleSource { module: m.module, path: m.path }])
+          }
+        )
+      })
+    }
+  }
+}
+
+// ── the observed population ────────────────────────────────────────────────────────────────
+//
+// THE PREPARE-REFUSAL FAN-OUT AND THE CONTEXT RECLASSIFICATION ARE ONE FOLD, HERE. Both used to
+// live outside the route: the fan-out in the emitted main's rendered Rust, the reclassification
+// in the seed's harness. They are the same per-module decision — what verdict every declaration
+// of a module gets when the module never reached evaluation — and splitting them across two
+// hosts is what let the seed's join query the relation off-key and silently never reclassify.
+// A module whose own file the context fold refused gets Context-stage rows carrying THAT FILE'S
+// fatal reason; a module whose file loaded but failed resolve/infer gets Prepare-stage rows
+// carrying the resolver's own fatal reason. Every declaration gets exactly one row either way,
+// so the population has no silent remainder to explain.
+
+fn native_lane_file_refusal_for_path(refusals: FreeMonoid<NativeTestFileRefusal>, path: Symbol) -> Optional<NativeTestFileRefusal> {
+  fold_list(
+    xs: refusals,
+    empty: optional_absent(),
+    cons: fn(acc, fr) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => if fr.path == path { optional_present(value: fr) } else { optional_absent() }
+      }
+    }
+  )
+}
+
+fn native_lane_member_row(module: String, declaration: String, verdict: NativeTestVerdict) -> NativeRouteMemberRow {
+  NativeRouteMemberRow {
+    identity: NativeRouteTestIdentity { module: module, declaration: declaration },
+    verdict: verdict
+  }
+}
+
+fn native_lane_module_rows(
+  context: NativeTestContext,
+  entry: NativeLaneUniverseModule
+) -> List<NativeRouteMemberRow> {
+  match native_lane_file_refusal_for_path(refusals: context.file_refusals, path: entry.path) {
+    Present { value: fr } =>
+      fold_list(
+        xs: entry.declarations,
+        empty: [],
+        cons: fn(acc, d) {
+          concat(acc, [native_lane_member_row(
+            module: entry.module,
+            declaration: d,
+            verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
+          )])
+        }
+      )
+    Absent =>
+      match native_test_prepare_module(
+        context: context,
+        module: qualified_name_from_dotted_string(dotted: entry.module)
+      ) {
+        Rejected { diagnostics: d } =>
+          fold_list(
+            xs: entry.declarations,
+            empty: [],
+            cons: fn(acc, decl) {
+              concat(acc, [native_lane_member_row(
+                module: entry.module,
+                declaration: decl,
+                verdict: NativeTestRefused {
+                  stage: NativeTestStagePrepare,
+                  reason: native_test_fatal_reason(d: d)
+                }
+              )])
+            }
+          )
+        Accepted { value: prepared, diagnostics: _ } =>
+          fold_list(
+            xs: entry.declarations,
+            empty: [],
+            cons: fn(acc, decl) {
+              concat(acc, [native_lane_member_row(
+                module: entry.module,
+                declaration: decl,
+                verdict: native_test_eval_one(
+                  prepared: prepared,
+                  declaration: symbol_intern_lexeme(lexeme: decl)
+                ).verdict
+              )])
+            }
+          )
+      }
+  }
+}
+
+fn native_lane_population(
+  context: NativeTestContext,
+  universe: NativeLaneUniverse
+) -> List<NativeRouteMemberRow> {
+  fold_list(
+    xs: universe.modules,
+    empty: [],
+    cons: fn(acc, entry) { concat(acc, native_lane_module_rows(context: context, entry: entry)) }
+  )
+}
+
+// THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They sit outside the
+// universe prefix, so discovery enrols nothing for them and the authority's own declaration is
+// what names them; the verdict is Absent exactly when the route could not produce one, which is
+// the state the false/true clauses refuse.
+fn native_lane_control_verdict(context: NativeTestContext, declaration: String) -> Optional<NativeTestVerdict> {
+  match native_test_prepare_module(
+    context: context,
+    module: qualified_name_from_dotted_string(dotted: native_route_live_control_module)
+  ) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: prepared, diagnostics: _ } =>
+      optional_present(value: native_test_eval_one(
+        prepared: prepared,
+        declaration: symbol_intern_lexeme(lexeme: declaration)
+      ).verdict)
+  }
+}
+
+// ── the receipt, minted and judged inside the route ────────────────────────────────────────
+//
+// THE HOST FACTS ARE THE ONLY THING THE ROUTE CANNOT OBSERVE OF ITSELF: which seed emitted the
+// closure, what the closure's and the executable's content identities are, which executable was
+// withdrawn to close the fallback, and what the malformed specimen's own run observed. They are
+// received as data and recorded verbatim; every other field of the receipt is this process's own
+// observation, and the admission that judges it is the authority's, evaluated here.
+type NativeLaneHostFacts {
+  tested_tree: String
+  preparation_seed_identity: String
+  emitted_closure_identity: String
+  executable_path: String
+  executable_identity: String
+  withdrawn_executable: String
+  malformed_control: NativeRouteMalformedControl
+}
+
+type NativeLaneReport {
+  universe: List<NativeRouteTestIdentity>
+  population: List<NativeRouteMemberRow>
+  file_refusals: List<NativeTestFileRefusal>
+  admission: NativeRouteAdmission
+  summary: String
+  admitted: Bool
+}
+
+fn native_lane_receipt(
+  context: NativeTestContext,
+  universe: NativeLaneUniverse,
+  population: List<NativeRouteMemberRow>,
+  facts: NativeLaneHostFacts
+) -> NativeRouteReceipt {
+  NativeRouteReceipt {
+    job: required_v2_native_job_name,
+    tested_tree: facts.tested_tree,
+    preparation_seed_identity: facts.preparation_seed_identity,
+    emitted_closure_identity: facts.emitted_closure_identity,
+    executable_path: facts.executable_path,
+    executable_identity: facts.executable_identity,
+    universe: universe.identities,
+    module_source_index: universe.module_sources,
+    population: population,
+    file_refusals: fold_list(xs: context.file_refusals, empty: [], cons: fn(acc, fr) { concat(acc, [fr]) }),
+    false_control: native_lane_control_verdict(
+      context: context,
+      declaration: native_route_live_control_false_declaration
+    ),
+    true_control: native_lane_control_verdict(
+      context: context,
+      declaration: native_route_live_control_true_declaration
+    ),
+    malformed_control: facts.malformed_control,
+    old_route_control: OldRouteWithdrawn { withdrawn_executable: facts.withdrawn_executable }
+  }
+}
+
+// THE LANE, END TO END, AS ONE FOLD OVER THE INGEST THE DRIVER ALREADY HAS. The rendered main
+// reads the source roots and the host facts and calls exactly this; nothing between the ingest
+// and the admission verdict is decided by the seed.
+fn native_lane_run(ingest: SourceRootIngest, facts: NativeLaneHostFacts) -> Outcome<NativeLaneReport> {
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: context, diagnostics: _ } =>
+      match native_lane_universe(ingest: ingest) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: universe, diagnostics: _ } => {
+          let population = native_lane_population(context: context, universe: universe)
+          let receipt = native_lane_receipt(
+            context: context,
+            universe: universe,
+            population: population,
+            facts: facts
+          )
+          let admission = native_route_admission(receipt: receipt)
+          outcome_accepted(value: NativeLaneReport {
+            universe: universe.identities,
+            population: population,
+            file_refusals: receipt.file_refusals,
+            admission: admission,
+            summary: native_route_admission_summary(admission: admission),
+            admitted: native_route_admitted(admission: admission)
+          })
+        }
       }
   }
 }

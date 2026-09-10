@@ -6,12 +6,12 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
-import v2.compiler.compile {
+import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
   NativeTestFileRefusal
 }
-import v2.workflow.compile_door_ledger {
+import v2.workflow.compile_door_cause_ownership {
   DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup
 }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
@@ -703,6 +703,20 @@ fn native_route_context_refusals_backed(receipt: NativeRouteReceipt) -> Bool {
     }
   })
 }
+
+// THE LIVE-VERDICT CONTROLS ARE NAMED BY THE AUTHORITY, NOT BY THE HARNESS. The pair sits
+// OUTSIDE the universe prefix on purpose — discovery enrols no row for it, so nothing but this
+// declaration can put it in front of the route — and the clauses below judge the verdicts it
+// produced. While the seed derived the universe, these two names lived as Rust constants beside
+// the derivation; the derivation is now the emitted binary's own fold, and a control the route
+// must execute is a fact of the lane's contract, so it is declared beside the clause that reads
+// it. A control whose declaration is renamed and not re-declared here stops being observed, and
+// the false/true clauses refuse an Absent verdict by name.
+data native_route_live_control_module: String = "v2.native_lane_fixture.control"
+
+data native_route_live_control_false_declaration: String = "native_lane_false_control"
+
+data native_route_live_control_true_declaration: String = "native_lane_true_control"
 
 fn native_route_false_control_holds(receipt: NativeRouteReceipt) -> Bool {
   match receipt.false_control {

@@ -25,7 +25,7 @@ import gunbc.witness_v2_native_route {
   native_route_admission, native_route_admitted, native_route_admission_refused_with,
   native_route_admission_summary
 }
-import v2.compiler.compile {
+import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry,

@@ -1,0 +1,206 @@
+module v2.workflow.compile_door_cause_ownership
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { String }
+
+// THE CAUSE-OWNERSHIP AUTHORITY FOR THE v2 FRONT-END FRONTIER, HOMED BELOW ITS CONSUMERS.
+//
+// The table and its two-grain lookup were declared inside v2.workflow.compile_door_ledger, whose
+// own imports reach v2.compiler.compile and v2.workflow.floor_diff_observe — a closure of ~846
+// modules. Its second consumer, gunbc.witness_v2_native_route, is evaluated INSIDE the emitted
+// native compiler (the required-v2-native lane's admission), whose entry is v2.compiler.compile
+// itself: importing the ledger there would have been a cycle, and carrying the ledger's closure
+// would have made the emitted crate the whole corpus. Ownership is one fact with two readers, so
+// the fact moves to a module both can import (DESIGN section 3: a fact's home is its LAYER, not
+// its file) rather than being forked. The ledger keeps its head-grain contract and imports this.
+
+// THE KEY CARRIES THE GRAIN (review on #10882, 2026-09-09: a head-grain authority must not become
+// a general bag of reasons). A rejection is a LIST with two observed positions: the HEAD — what
+// the door ledger's own DoorRefused rows carry, where rejected_with_pending prepends non-fatal
+// advisories — and the FATAL — the last diagnostic, the cause that actually refused. The same
+// symbol can be owned at both grains (parse_grammar_choice_overlap_residue is the native route's
+// head advisory on 876 modules and never its fatal; parse_g0_tokens_remain is the fatal under it
+// and never surfaces at head), and ownership at one grain says NOTHING about the other — the
+// grains are different observations of the same frontier class. the door ledger's cause_is_attributed keeps its
+// head-grain contract (its rows are head-grain by construction); the fatal-grain lookup
+// is the native route's instrument (gunbc.witness_v2_native_route), derived from the SAME table —
+// one ownership authority, two grains, neither instrument re-enumerates the other.
+
+type DiagnosticGrain
+  = HeadGrain
+  | FatalGrain
+
+type CauseLane
+  = ThisLaneCalibration
+  | SharedSelfHostCriticalPath
+  | MigrationOwned
+
+type CauseOwnership {
+  cause: Symbol
+  grain: DiagnosticGrain
+  lane: CauseLane
+  flip_trigger: String
+}
+
+// ROW GROUPS, BY GRAIN. The first four rows are the door ledger's own head-grain observations. The
+// tokenize_lex_e1_unrecognized_char HEAD row is the native route's head-grain observation
+// (gunbc.witness_v2_native_route joins this table at head grain): the lexer-coverage cause
+// surfaces at HEAD on the native route when it is the first diagnostic, even where a later fatal
+// follows — owned here so the native head join has no unowned advisory; the fatal-grain row of
+// the same cause is the position that refuses. The FATAL-grain rows were measured 2026-09-09 and
+// 2026-09-10 by the gunbc.witness_v2_native_route census as the LAST diagnostic — the cause that
+// actually refused — through the emitted native binary, at the per-row scope each flip_trigger
+// states. rejected_with_pending prepends the non-fatal overlap residue, so the fatal-grain causes
+// never surface at the head grain the door ledger's own rows count; their ownership lives here at
+// the grain they are observed at, and the native-route census classifies against exactly those
+// rows.
+
+data known_frontier_causes: List<CauseOwnership> = [
+  CauseOwnership {
+    cause: ^fact_density_hollow_alias_locus,
+    grain: HeadGrain,
+    lane: ThisLaneCalibration,
+    flip_trigger: "fact_density subtree roster corpus-calibrated (smart-eagle burn-down); flips to Blocking when the count zeroes — calibration must never become relaxing the lens"
+  },
+  CauseOwnership {
+    cause: ^resolve_reason_unbound_symbol,
+    grain: HeadGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "resolve grows generic type-param binding (sharp-bee std/logic thread); flips to Blocking when the count zeroes"
+  },
+  CauseOwnership {
+    cause: ^resolve_ambiguous_export,
+    grain: HeadGrain,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — dissolves by construction at the namespace-only containment flip (admit_named_exports flat-merge replaced by position-distinct containment; nimble-boar-198)"
+  },
+  CauseOwnership {
+    cause: ^parse_grammar_choice_overlap_residue,
+    grain: HeadGrain,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — dissolves by construction at phase-3 import-grammar deletion / grammar-surgery (nimble-boar-198)"
+  },
+  CauseOwnership {
+    cause: ^tokenize_lex_e1_unrecognized_char,
+    grain: HeadGrain,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — lexer coverage is the same grammar-surgery class (nimble-boar-198). Measured 2026-09-09 at HEAD grain by the gunbc.witness_v2_native_route census (6 modules, the annotation-channel and comment-wall syntax among them)"
+  },
+  CauseOwnership {
+    cause: ^parse_g0_tokens_remain,
+    grain: FatalGrain,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — same grammar-surgery class as parse_grammar_choice_overlap_residue (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness_v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
+  },
+  CauseOwnership {
+    cause: ^tokenize_lex_e1_unrecognized_char,
+    grain: FatalGrain,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — lexer coverage is the same grammar-surgery class (nimble-boar-198). Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (6 modules)"
+  },
+  CauseOwnership {
+    cause: ^namespace_graft_body_dissolved_refused,
+    grain: FatalGrain,
+    lane: MigrationOwned,
+    flip_trigger: "no per-cause trigger — the graft is namespace machinery and dissolves with it (nimble-boar-198). Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (41 modules)"
+  },
+  CauseOwnership {
+    cause: ^normalize_reason_post_normalize_not_well_formed,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "normalize stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (6 modules)"
+  },
+  CauseOwnership {
+    cause: ^normalized_tree_reason_wrapper_retention_not_normalized,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "normalize stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (2 modules)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_match_arm_navigation_refused,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (2 modules)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_statement_precedes_without_binding,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (71 files: 40 under v2.test.* homes, 31 in dag/extdeps and dag/gunbc)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_if_navigation_refused,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (5 files, all under v2.test.* homes)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_let_body_not_reachable_from_node,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (3 files, all under v2.test.* homes)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_statement_spine_headless,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (1 file: dag/gunbc/discovery_census.dag)"
+  },
+  CauseOwnership {
+    cause: ^resolve_reason_unbound_symbol,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (2059 v2.test.* members across 417 modules, dominantly the parse frontier's import cascade: the member's own file parses while a file in its import closure refuses, so the imported names resolve to nothing — zeroing rides the parse-frontier rows beside resolve's own binding gaps, the head-grain row's thread)"
+  },
+  CauseOwnership {
+    cause: ^resolve_reason_ambiguous_symbol,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (29 v2.test.* members across 6 modules)"
+  },
+  CauseOwnership {
+    cause: ^infer_grounding_not_derived,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "the node grounding frontier (v2.compiler.infer node_grounding_frontier_note) observed at prepare, where the carried diagnostic is fatal rather than eval-gated; flips to Blocking when the count zeroes, which the frontier note's dissolve-on conditions own. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (2 v2.test.* members, both in v2.test.manual.recompute_trace_probe)"
+  },
+  CauseOwnership {
+    cause: ^eval_rejected_grounding_not_derived,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "eval's grounding gate refuses a body whose inferred facts carry no DerivedGrounding — the node grounding frontier (v2.compiler.infer node_grounding_frontier_note); flips to Blocking when the count zeroes, which the frontier note's dissolve-on conditions own. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (261 v2.test.* members across 110 modules)"
+  }
+]
+
+// list_find_first is a short-circuiting element-returning find — the std/algebra gap beside
+// any/filter/contains (which return Bool or the whole filtered list, never the first match with
+// early-exit). Homed beside its ONE consumer (cause_ownership_lookup) per the
+// facts-before-abstraction discipline: promote to v2.std.algebra when a second consumer inhabits
+// it, not before. Short-circuit matters by the standing bare-minimum-cost ruling (2026-07-10): 'n
+// is small here' is not time-stable — known_frontier_causes grows as causes are modeled — so the
+// find returns on the first hit rather than folding the whole table.
+
+fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
+  match xs {
+    Empty => optional_absent()
+    Cons { head: h, tail: t } =>
+      if predicate(h) {
+        optional_present(value: h)
+      } else {
+        list_find_first(xs: t, predicate: predicate)
+      }
+  }
+}
+
+fn cause_ownership_lookup(cause: Symbol, grain: DiagnosticGrain) -> Optional<CauseOwnership> {
+  list_find_first(
+    xs: known_frontier_causes,
+    predicate: fn(row) {
+      row.cause == cause && discriminant(v: row.grain) == discriminant(v: grain)
+    }
+  )
+}
