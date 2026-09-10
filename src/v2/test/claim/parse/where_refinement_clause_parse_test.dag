@@ -62,7 +62,11 @@ fn where_refinement_tree_carries_clause(root: Node) -> Bool {
     emitted: ^dag_surface_where_refinement_clause
   ) {
     ParseSubtreeFound { captured: _ } => true
-    ParseSubtreeAbsent => false
+    ParseSubtreeAbsent =>
+      match where_refinement_find_host_conj(root: root) {
+        Present { value: _ } => true
+        Absent => false
+      }
   }
 }
 

@@ -14,7 +14,7 @@ import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Edge, Named, Node, Positional }
+import v2.std.node { Edge, Named, Node, Positional, well_formed }
 import v2.std.optional { Absent, Optional, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 
@@ -65,7 +65,11 @@ fn d1_tree_carries_where_clause(root: Node) -> Bool {
     emitted: ^dag_surface_where_refinement_clause
   ) {
     ParseSubtreeFound { captured: _ } => true
-    ParseSubtreeAbsent => false
+    ParseSubtreeAbsent =>
+      match d1_find_where_host_conj(root: root) {
+        Present { value: _ } => true
+        Absent => false
+      }
   }
 }
 
@@ -132,6 +136,8 @@ data d1_where_reproducer: String = "module m\ntype A = NonEmptyStr where brand(\
 data d1_where_control: String = "module m\ntype A = NonEmptyStr\nfn f() -> Int { 1 }\n"
 data d1_where_bare: String = "module m\ntype A = NonEmptyStr where non_empty\nfn f() -> Int { 1 }\n"
 data d1_where_empty: String = "module m\ntype A = NonEmptyStr where\nfn f() -> Int { 1 }\n"
+
+data d1_cache_identity_where_source: String = "module probe.cache_identity\n\ntype CacheInterfaceId = NonEmptyStr where brand(\"CacheInterfaceId\")\ntype ArtifactKindId = NonEmptyStr where brand(\"ArtifactKindId\")\n\nfn f() -> Int {\n  1\n}\n"
 
 test fn cause_a_where_refinement_clause_parses_holds() -> Bool {
   d1_parse_accepted(text: d1_where_reproducer, file: ^d1_where_reproducer)
@@ -235,4 +241,21 @@ test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
 
 test fn cause_a_empty_where_clause_refuses_holds() -> Bool {
   !d1_parse_accepted(text: d1_where_empty, file: ^d1_where_empty)
+}
+
+test fn cause_a_cache_identity_where_normalizes_holds() -> Bool {
+  d1_normalize_accepted(text: d1_cache_identity_where_source, file: ^d1_cache_identity_where_norm)
+}
+
+test fn cause_a_cache_identity_where_normalizes_well_formed_holds() -> Bool {
+  match d1_tokenize_parse(text: d1_cache_identity_where_source, file: ^d1_cache_identity_where) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: normalized, diagnostics: _ } =>
+          well_formed(n: normalized.root)
+            && d1_tree_carries_where_clause(root: normalized.root)
+      }
+  }
 }
