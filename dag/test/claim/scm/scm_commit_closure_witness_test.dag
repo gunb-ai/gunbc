@@ -13,6 +13,7 @@ module test.claim.scm_commit_closure_witness
 // merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
 
 import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
+import v2.std.algebra { non_empty_to_list }
 import v2.std.node { Node, Edge, Symbol, Named, Conj, Atom, Cardinality, Positional, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,
@@ -372,8 +373,8 @@ test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool {
     ClosureCompleteSoNothingToAdmit => false
     ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
     PartialClosureAdmitted { admitted: a } =>
-      (list_length(items: admitted_unresolved(admitted: a)) == 1)
-        && names_exactly(missing: admitted_unresolved(admitted: a), expected: full.child)
+      (list_length(items: non_empty_to_list(xs: admitted_unresolved(admitted: a))) == 1)
+        && names_exactly(missing: non_empty_to_list(xs: admitted_unresolved(admitted: a)), expected: full.child)
   }
 }
 
@@ -1333,7 +1334,7 @@ test fn the_admitted_arm_and_the_partial_admission_report_one_unresolved_populat
         ClosureRequiresNodeAtWrongKind { source_occupied: _, manifest_occupied: _ } => false
         PartialClosureAdmitted { admitted: a } =>
           list_length(items: unresolved) > 0
-            && (unresolved == admitted_unresolved(admitted: a))
+            && (unresolved == non_empty_to_list(xs: admitted_unresolved(admitted: a)))
       }
   }
 }

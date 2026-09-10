@@ -3,7 +3,8 @@ module gunbc.colo_census_coverage
 import std.types { NonEmptyStr, Int, List, Bool }
 import extdeps.colo.types {
   ColoFacilityRow, CabinetDensityClaim,
-  DensityMarketedMax, DensityMarketedAirOnly, DensityUnread,
+  ClaimWordingStanding, ClaimWordingVerified, ClaimWordingSummarized, ClaimWordingUnread,
+  claim_wording_standing,
 }
 import extdeps.colo.equinix {
   equinix_ny1_density, equinix_ny2_density, equinix_ny3_density, equinix_ny4_density,
@@ -172,17 +173,31 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // measuring the wrong thing, and it would have been read as a regression by whoever saw it first.
 //
 // This is therefore a claim-PRESENCE question over the arms, which is what the coverage roster owns.
-// It is not a second spelling of the ceiling: nothing here reads a figure, a unit, a direction or a
+// It is not a second spelling of a screen: nothing here reads a figure, a unit, a direction or a
 // cooling medium, and no Watt is touched. Requirement-specific usability stays where the operator put
-// it, inside the selection projection, and cabinet_density_air_ceiling remains the sole authority for
-// what a cabinet may draw - this module no longer calls it at all.
+// it, inside the selection projection.
 //
-// AND THIS FUNCTION IS THE HABIT REPEATING, WHICH review 62935 CAUGHT AND THIS FILE ALREADY
-// CONDEMNED IN ADVANCE. Nine lines above, coverage_facility_count carries the sentence "writing the
-// predicate again one module later is the receipt that the first deletion was applied to an instance
-// and not to the habit" - written about cabinet_density_is_read. density_claim_is_read asks the same
-// question over the same coproduct, one module later, in the file carrying that sentence.
-// DISPOSITION: YELLOW, not green.
+// THE SENTENCE THAT USED TO END THIS PARAGRAPH NAMED cabinet_density_air_ceiling AS "the sole
+// authority for what a cabinet may draw". THERE IS NO SUCH AUTHORITY ANY MORE, and its absence is
+// deliberate rather than incidental: that accessor and the whole CabinetPowerCeiling carrier are
+// deleted, because a marketed maximum cannot establish what a cabinet may draw and a type whose
+// contract said it could was minting a physical claim out of a marketing one. What replaced it answers
+// a RELATION - published_requirement_standing says whether a requirement sits outside what a page
+// published - and no arm of it decides placement. So the question this module declines to ask now has
+// no answerer anywhere, which is a stronger reason to decline it than deferring to one.
+//
+// AND THE FUNCTION THIS PARAGRAPH WAS WRITTEN ABOUT IS GONE, WHICH IS THE DISPOSITION IT WAS OWED.
+// review 62935 caught density_claim_is_read as the habit repeating - the sentence nine lines above,
+// written about cabinet_density_is_read, says "writing the predicate again one module later is the
+// receipt that the first deletion was applied to an instance and not to the habit", and this file then
+// carried the third instance under it. It was marked YELLOW pending a carrier route.
+//
+// THAT ROUTE LANDED AND THE PREDICATE IS DELETED RATHER THAN RETYPED. The count now matches
+// claim_wording_standing inline at its single call site: the carrier's own three-state fold, whose
+// Unread arm IS the unread claim, so nothing has to be coined to ask whether a page was read. The
+// paragraph is kept rather than deleted because the HABIT is what it documents, and the habit is not
+// retired by one deletion - it is retired by there being no place left to author the predicate a
+// fourth time.
 //
 // THE DIAGNOSIS ABOVE USED TO SAY THE DEFECT WAS "a Bool arm-matcher over a reusable coproduct". THAT
 // IS WRONG AND IT IS WORTH CORRECTING IN PLACE, because it is the sentence a future reader inherits.
@@ -209,10 +224,13 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 //
 // WHY IT IS NOT REPAIRED IN THIS CHANGE. The right home is the carrier - a presence-shaped accessor
 // that answers "was anything published" without also committing to a direction and a medium, which
-// none of the carrier's direction-committed accessors can do. It cannot be written against today's
-// arms, because the arms this predicate matches on are being replaced wholesale: DensityMarketedMax
-// and DensityMarketedAirOnly dissolve into one DensityPublished carrying a non-empty list of
-// figures, so an accessor authored now would match over a coproduct scheduled for deletion.
+// none of the carrier's direction-committed accessors can do. THAT REPLACEMENT HAS NOW LANDED, so the
+// reason this predicate could not be written has expired: DensityMarketedMax and DensityMarketedAirOnly
+// are deleted and one DensityPublished arm carries a non-empty list of figures, each holding its own
+// medium, quantity, wording and verification. This fold now matches two arms rather than three and
+// commits to no direction and no medium, which is what it wanted. What it still does not have is a
+// home: it belongs beside the carrier rather than in this census module, and the membership
+// derivation that would replace the hand-typed counts below is a separate change.
 //
 // TRIGGER, RESTATED AFTER READING DESIGN SECTION 4b(3) AGAINST IT - THE FIRST WORDING WAS THE EXACT
 // DEFECT THAT RULE DESCRIBES. It read "gunbc#10885 landing". That named an ARTIFACT rather than a
@@ -260,9 +278,17 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // the same fold calls it and this declaration goes. A migration whose destination is named and whose
 // origin has no competing authority is not a throwaway artifact; it is one call site moving.
 //
-// ON REBASE this function is DELETED and coverage_density_read_count asks the carrier, in whatever
-// shape the carrier settles on. It is NOT rewritten against the new arms: that would be the same
-// predicate authored a fourth time in the file that already carries the sentence predicting the third.
+// THE REBASE HAPPENED AND THE FUNCTION IS DELETED, WHICH IS WHAT THE SENTENCE ABOVE PROMISED. The
+// first cut of this merge REWROTE it against the new arms instead - `DensityPublished { figures } =>
+// true` - which is exactly the fourth authoring this file predicted and review 63019 caught. Deleting
+// it was never contingent on anything but the carrier route existing, and the carrier route landed in
+// the same change that broke the old one.
+//
+// THE COUNT NOW ASKS AN AUTHORITY THAT ALREADY ANSWERS. `claim_wording_standing` is the carrier's own
+// three-state fold over a claim and its Unread arm IS the unread claim, so no predicate has to be
+// coined to ask whether a page was read - and matching it costs no traversal, which is what the
+// paragraph below asks for. Spelling it inline at the single call site rather than as a named helper
+// is deliberate: a named one would be the fourth authoring under a new name.
 //
 // AND WHERE THE CARRIER ANSWERS WITH THE FIGURES RATHER THAN THE QUESTION, this fold destructures them
 // rather than measuring them. `length(...) > 0` computes a TOTAL to decide a PRESENCE, which is the
@@ -272,14 +298,6 @@ fn coverage_facility_count(c: RegionCoverage) -> Int? {
 // the tempting spelling is the measuring one, and it is tempting precisely where the list is short.
 // Recorded here rather than in a PR thread, because the next reader of this function needs to know it
 // is owed a home, and needs the trigger to be one that can actually be checked.
-fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
-  match d {
-    DensityMarketedMax { air_cooled, liquid_cooled, claim_wording, citation } => true,
-    DensityMarketedAirOnly { air_cooled, claim_wording, citation } => true,
-    DensityUnread { obligation } => false,
-  }
-}
-
 // COUNTS DENSITY CLAIMS, NOT FACILITIES, and the two differ on purpose. Several corridor operators
 // publish one density statement covering every site they run, so a claim is the grain at which the
 // reading actually exists; attributing an operator-level claim to each of its facilities would
@@ -297,7 +315,11 @@ fn density_claim_is_read(d: CabinetDensityClaim) -> Bool {
 // a facility-grain number must not be manufactured from it.
 fn coverage_density_read_count(c: RegionCoverage) -> Int? {
   match c.outcome {
-    FacilitiesModelled { facilities, densities } => Present { value: densities.filter(d => density_claim_is_read(d: d)).length() },
+    FacilitiesModelled { facilities, densities } => Present { value: densities.filter(d => match claim_wording_standing(d: d) {
+      ClaimWordingVerified => true,
+      ClaimWordingSummarized { unverified } => true,
+      ClaimWordingUnread => false,
+    }).length() },
     SurveyedNoRetailOperator { searched, causes, surveyed_on, surveyed_by } => Absent,
     RegionUnsurveyed { obligation } => Absent,
   }

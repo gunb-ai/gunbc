@@ -2,11 +2,15 @@ module extdeps.colo.njfx
 
 import std.types { NonEmptyStr }
 import std.measure { watt }
+import std.algebra { FreeSemigroup }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
-  CabinetDensityClaim, DensityMarketedAirOnly,
+  CabinetDensityClaim, DensityPublished, PublishedDensityFigure,
   CabinetPowerFigure, PublishedRealPower,
+  CoolingMediumStanding, CoolingMediumUnspecified,
+  PublishedPowerQuantity, marketed_real_interval,
+  FigureVerificationStanding, WordingVerbatim,
   RetailGrainStanding, RetailGrainUnread,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -54,10 +58,19 @@ data njfx_wall: ColoFacilityRow = ColoFacilityRow {
 // a commitment on any particular one, and the low end being 2 kW is itself informative - the same
 // page sells cabinets an order of magnitude apart, so the figure that matters to a quote is which
 // end of the band the offered cabinet sits at.
-data njfx_wall_density: CabinetDensityClaim = DensityMarketedAirOnly {
-  air_cooled: PublishedRealPower { power: watt(count: 16000) },
-  claim_wording: "power densities ranging from 2 kW to 16 kW per cabinet",
-  citation: "njfx.net colocation page (njfx.net/colocation/), read 2026-09-08, and the wording verified against the raw bytes 2026-09-09 (HTTP 200, 167854 bytes, the sentence occurs literally). The fetch was re-run 2026-09-09 with NO user-agent and with a full browser user-agent after a short 'Mozilla/5.0' was found elsewhere in this census to manufacture 403s on hosts that answer 200 to both honest inputs: this host is insensitive to all three, returning 200 at the identical byte count, and the wording occurs in every capture. Scope check: the figure sits under the heading High-Density Power inside Infrastructure Built for Mission-Critical Operations on this operator's single-campus Wall Township page, with no promotion banner and no other metro named anywhere on it, so the figure is this facility's. Element boundary: the sentence is one contiguous <p> immediately following <h3>High-Density Power</h3>, so the wording is a single authored string and not two adjacent cells joined by a reader. Positive control in the same pass: the string Wall Township is present in the same stripped text, so an empty wording match would have meant absence rather than a failed fetch. THE COOLING MEDIUM IS UNREAD AND THE ARM DOES NOT SAY SO. The page names no medium for the 16 kW figure. The air-only arm is inhabited because the carrier offers only air-only or air-plus-liquid and there is no arm for a figure whose medium was never published - so this row infers air from the ABSENCE of a liquid claim, which is precisely the move the rest of this census refuses. It is a carrier gap rather than a reading, and the class is filed as gunbc.recurring_failure_mode.unread_arm_missing_on_a_secondary_axis with this row named in its population, its ceiling derived as structurally impossible and its next-rung trigger the published-medium axis - so the defect is rostered where it can be ranked and retired, rather than apologised for in a string no fold reads. The integer is the top of the operator's stated range.",
+data njfx_wall_density: CabinetDensityClaim = DensityPublished {
+  figures: FreeSemigroup {
+    head: PublishedDensityFigure {
+      medium: CoolingMediumUnspecified,
+      quantity: marketed_real_interval(lower: watt(count: 2000), upper: watt(count: 16000)),
+      wording: "power densities ranging from 2 kW to 16 kW per cabinet",
+      citation: "njfx.net colocation page (njfx.net/colocation/), read 2026-09-08, wording verified against raw bytes 2026-09-09 (HTTP 200, 167854 bytes, the sentence occurs literally); re-run 2026-09-09 with no user-agent and with a full browser user-agent after a short Mozilla/5.0 was found elsewhere in this census to manufacture 403s, and this host is insensitive to all three. Scope check: the sentence is one contiguous <p> immediately following <h3>High-Density Power</h3> on the operator's own colocation page for the Wall Township cable landing campus, with no other facility named in the block. THE ROW NOW CARRIES BOTH BOUNDS, WHICH IT COULD NOT BEFORE: the previous arm had ONE slot, so this row asserted only the 16 kW top and silently dropped the 2 kW floor the operator also publishes - the row asserted LESS than the page. A two-ended publication answers in both directions; a single-ended arm cannot. THE MEDIUM IS UNPUBLISHED AND THE ROW NOW SAYS SO: the page names neither air nor liquid, and the previous arm inferred air from the absence of a liquid claim.",
+      verification: WordingVerbatim {
+        retrieval: "Element boundary 2026-09-09: one contiguous <p> element, so the wording is a single authored sentence rather than adjacent cells joined by a reader. Positive control in the same pass: Wall Township present in the same capture. This row was NOT demoted on 2026-09-09 when the two capability floors in this lane were, and the reason is the distinction the ruling turned on - a floor in a maximum arm answers backwards, while a range's top is a genuine upper bound, so the maximum arm answered this row forwards even before the interval arm existed.",
+      },
+    },
+    tail: [],
+  },
 }
 
 // DENSITY READ, GRAIN NOT. The two questions are independent and this facility is the case that
