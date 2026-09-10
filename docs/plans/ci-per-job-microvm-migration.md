@@ -75,25 +75,34 @@ Both workflows today select `[self-hosted, linux, arm64]` (public via `gunbc.ci_
 | M1 | **`dogfood-started` is this repo's CI** | Not the year-end exit |
 | `runs-on` | `gunbc.ci_runner_target` `gunbc_ci_selected_runner_spec` | Not a YAML literal. `witnesses_job()` is `SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: Aarch64, custom: []) }`. Per-attempt label goes in `custom`. #46 does not touch `witnesses_job()`. |
 
+**Why order matters — two improvements can compose into a wash.** #46 removes 34 redundant world acquisitions, which *leaves the seed build as the dominant term*. A naive microVM flip that then compiles that seed with no reachable cache reintroduces cost on that same term. Isolation of the deleter class is still a win; the *job wall* can be a wash. That is the argument for sequencing, and it is stronger than "private is smaller".
+
 **Sequence (shared capability first, then workflows):**
 
-1. Placeability wet probe + host image from Y — **one host path**, both repos consume it.
-2. **First workflow consumer: private**, one job with an **attempt-unique** `runs-on` label (the binding #10927 / bound-attempt receipts already named as missing). Reasons: smaller; already red on the deleter class; a failed cutover does not block public merges; the motivating incident is here. This is **not** M1 dogfood.
-3. **Then public**, one lane at a time, still shadow-labelled until the operator cutover: flip `selected_ci_runner_target` / fleet labels only at the one transition. **That** start is `dogfood-started` and the two-week clock.
+1. **Measure cold vs warm for `cargo build --release -p v1-compiler --bin gunbc`** (same command private uses) with the cache *inside* an empty target dir and `RUSTC_WRAPPER` unset — then decide. One dispatch. If cold ≈ warm, the rest of this section is noise.
+2. Placeability wet probe + host image from Y — **one host path**, both repos consume it.
+3. **First workflow consumer: private**, attempt-unique label in `self_hosted_labels(…, custom: …)`, **only after** the cache-location question below has a number. Reasons that survive: already red on the deleter class; failed cutover does not block public merges. This is **not** M1 dogfood.
+4. **Then public**, one lane at a time. **That** start is `dogfood-started` and the two-week clock.
 
-Instinct (private first) is right for **cure of today's red** and for **not taking public merge-admission down**. It is wrong if read as "private *is* M1". State both.
+Capacity: one Mt. Collins canary is not two 90-minute public lanes plus private. Public cutover needs either serialized lanes, a second canary host, or an honest declared drop of parallelism.
 
-Capacity: one Mt. Collins canary is not two 90-minute public lanes plus private. Public cutover needs either serialized lanes, a second canary host, or an honest declared drop of parallelism. That is a cutover-decision input, not something this plan silently assumes.
+**Coldness is a property of the cache's location, not the VM's lifetime.** A per-attempt guest starts with an empty *local* disk. If the build cache lives *inside* that filesystem, every job is a full cold compile, permanently, and the ~3m warm private seed build (run 34512318040: checkout+toolchain 12s, build 3m 02s, roster 9m 18s; before #46 the roster was 52.8 of 55.7 min) becomes whatever cold actually is. If the cache is **external** and reachable over the network, a fresh VM can be warm on its first rustc. This fleet already has that shape in public tooling: sccache and the ctrl-build remote path exist so a build does not depend on local disk. The question to measure is therefore **whether the cache is reachable from inside the guest, and whether it is warm across VM instances** — not "is the VM cold".
 
-**The number the microVM arm turns on is the BUILD, not the roster.** After #46 the private witnesses job (run 34512318040) is approximately: checkout+toolchain 12s, **Build gunbc from the public seed 3m 02s**, roster 9m 18s (53 min before #46, ~2 min after on a later measurement). Before #46 the roster was 52.8 of 55.7 minutes and the build was ~5%. After it, the roster is a couple of minutes and **the public-seed `v1-compiler --bin gunbc` build is the dominant term**. That 3m 02s was measured on a fleet slot that had built the crate before. A per-attempt microVM starts cold by construction — that is the isolation being bought. The plan must name one of three arms for those build inputs **before** flipping `runs-on`, and must **measure a genuinely cold build** (cheap, on a disposable guest or a wiped `CARGO_HOME`) rather than treating 3m as the floor:
+The three arms answer **different questions**. They are not three interchangeable product choices:
 
-1. **Warm layer** — a content-addressed cargo/sccache volume attached per attempt, keyed so it cannot be the shared-FS deleter class (another job cannot `unlink` this attempt's rustc). Isolation of *running* binaries is preserved; cache *bytes* are shared under a digest. This is a materialization question (`std.materialization_ladder`), not a leftover host home.
-2. **Prebuilt binary published by public CI** — private consumes an artifact identity from a public required run of the same public SHA it already checks out. Private then does not compile `gunbc` from source on the guest. Requires an artifact-return path the compute contract already names as missing for remote builds; do not invent a second publication channel.
-3. **Accepted cold-build cost per attempt** — isolation with no reused compiler state. Honest only after a cold measurement, which may be considerably more than three minutes. If that number races `timeout-minutes: 60` on public's floor, the arm is a declared capacity fact, not a default.
+| Arm | Question it answers | Constraint already in the corpus |
+|---|---|---|
+| **External shared cache** | VM cold, cache warm; cost is a network fetch, not a compile | Guest must **egress** to the cache. `gunbc.runner.runner_guest_egress_attempt` records a guest that did **not** obtain egress (bridge up, no address, no route off the segment). `runner_filtered_egress_receipt` is the later filtered path. A jailed CI guest **may not be permitted** to reach srvN sccache. If it cannot, that is the finding, and this arm is closed until egress is a granted effect, not a hope. |
+| **Prebuilt in the image** | No compile in the job; build moves to image-build time | Private builds from **unpinned public main** so a public authority change goes loud. A binary baked into the image **silences that signal**. Do not adopt this arm without noticing it defeats the reason the private workflow tracks main. A public-CI artifact of the *same SHA the job just checked out* is a different construction (identity join, not a stale image); it still needs artifact-return, which the compute contract names as missing. |
+| **Accepted local-cold** | Isolation with no reused compiler state | Honest iff measured. If cold is 4m and warm is 3m, the whole optimization is noise. |
 
-No measurement of a genuinely cold private `gunbc` build is in this document. **That measurement is a cutover precondition**, not a follow-up.
+**Measure cold first, then decide.** Named dispatch (not a guest): `ctrl-build --remote -- bash -lc '… unset RUSTC_WRAPPER; CARGO_TARGET_DIR=$(mktemp -d); /opt/cargo/bin/cargo build --release -p v1-compiler --bin gunbc'`. Producer: BuildBuddy invocation [1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84](https://app.buildbuddy.io/invocation/1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84). Result: cargo `Finished release … in **3m 58s**`; wrapper `elapsed_sec=238`; `rustc_wrapper_at_start=UNSET`; `Compiling` from `proc-macro2` through `v1-compiler`.
 
-**Complementary, not subsuming.** Private `timeout-minutes: 60` and a 53-minute roster is why main sat broken: two runs after 2026-09-08 **cancelled at 60 minutes**, so three real defects had nothing reporting. MicroVM isolation stops the deleter class; it does not shorten a 53-minute job. #46's process-count cut (53 min → ~8–12 min job) stops racing that timeout. Neither change covers the other.
+What this number **is**: local-compile-cold on an amd64 remote builder with an empty *target* dir. What it **is not**: a Firecracker guest, arm64 (private CI's `Aarch64` labels), a wiped `CARGO_HOME` (private wipes `RUNNER_TEMP/cargo` each job, so it also pays registry fetch), or a proof that guest-to-sccache egress works.
+
+Against the warm 3m 02s on a fleet slot (run 34512318040), the delta is about a minute on a *different* architecture. That is **not** yet "cold ≈ warm, question is noise" for the actual CI hosts — it **is** enough to retire the fear of a 20-minute seed compile on this builder class. The remaining open measurement is **guest reachability of fleet sccache** (`runner_guest_egress_attempt` still `GuestEgressNotEstablished`). Do not flip `runs-on` until that is answered *or* accepted-local-cold is chosen knowing the arm64 number is still unmeasured.
+
+**Complementary, not subsuming.** Private `timeout-minutes: 60` and a 53-minute roster is why main sat broken: two runs after 2026-09-08 **cancelled at 60 minutes**. MicroVM isolation stops the deleter class; it does not shorten a 53-minute job. #46's process-count cut stops racing that timeout. Neither covers the other; together they can still wash if the seed build goes fully cold.
 
 ## 4. What is lost, and the staged carve-out
 
@@ -105,7 +114,7 @@ No measurement of a genuinely cold private `gunbc` build is in this document. **
 
 **Lost on transition, and how it is covered:**
 
-- **Shared toolchain / cargo caches across jobs on one host.** Isolation makes the deleter class unwritable (`toolchain_filesystem_probe_dissolution_condition`). Cost is not "goes up a bit": after #46 the **cold-or-warm build of `gunbc` is the job**. Section 3 names the three arms; until a cold measurement exists, "each guest starts clean" is not a priced cover.
+- **Shared toolchain / cargo caches across jobs on one host.** Isolation makes the deleter class unwritable (`toolchain_filesystem_probe_dissolution_condition`). What is lost is *local* reuse, not necessarily *all* reuse — cache location, not VM lifetime (§3). Until a local-cold number exists, "each guest starts clean" is not a priced cover.
 - **`ci_isolate_toolchain_script` / start-end filesystem probe.** Retired when microVMs make the eviction class impossible — that question belongs to **still-bear-335**, not to the process-count PR.
 - **Persistent runner registration.** Replaced by JIT per attempt. Covered only when mint HTTP + jail staging frontiers bind (`jit_mint_http_realization_frontier`, `jail_jit_device_staging_frontier`).
 - **Slot RAM carve / `CARGO_BUILD_JOBS` from `ci_runner_target_memory_regime`.** A guest size is a different envelope (`gunbc.runner_microvm` size decision). The flip must project through `selected_ci_runner_target`, not a literal in YAML.
@@ -120,7 +129,7 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 | Lane | Question | Relation to this plan |
 |---|---|---|
 | **still-bear-335** (`adhoc-3b2f737a-7b8`) | Typed env-vs-code outcome; private copy of the public filesystem instrument | **Mitigation of the deleter class.** Dissolution of that *instrument* is the microVM arm of `toolchain_filesystem_probe_dissolution_condition`. Typed classification of BMC/host/JIT failure is **not** dissolved by isolation. |
-| **warm-badger-62** (private #46) | Process count: stop re-acquiring the composed world 34 times | **DESIGN §2.** MicroVMs do not replace it. After #46 the build dominates; isolation makes that build colder. Do not edit `strategy.private_witness_workflow`. Do not put a per-attempt label in a function #46 did not touch — use `self_hosted_labels(…, custom: …)`. |
+| **warm-badger-62** (private #46) | Process count: stop re-acquiring the composed world 34 times | **DESIGN §2.** MicroVMs do not replace it. After #46 the seed build dominates; a naive microVM flip without reachable cache can wash that win. Do not edit `strategy.private_witness_workflow`. Per-attempt label: `self_hosted_labels(…, custom: …)`. |
 | This plan | Per-job guest; FCI-3 before jailer; host image from Y | **Cure of the shared-FS eviction class.** Does not shorten a 53-minute roster. Does not classify failures. |
 
 **Retirement signal for still-bear-335's filesystem instrument (delete when true, not before):**
@@ -141,7 +150,9 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 | `toolchain_filesystem_probe_dissolution_condition` | Unbound |
 | `dogfood-started` | Not started (public CI still on srv slots) |
 | This plan's cutover | **Not taken** — operator decision |
+| Local-cold `cargo build --release -p v1-compiler --bin gunbc` (empty target dir, no `RUSTC_WRAPPER`) | **3m 58s** on amd64 BuildBuddy, invocation `1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84`. Not a guest, not arm64, `CARGO_HOME` not wiped. |
+| Guest reachability of fleet sccache | Open; `runner_guest_egress_attempt` is `GuestEgressNotEstablished` |
 
 ## What this document deliberately does not do
 
-It does not change `selected_ci_runner_target`, private `witnesses_job()` labels, fleet-converge, or recovered init. It does not exec jailer. It does not archive still-bear-335 or private #46. Those are the cutover, which this task forbids. The cold-build measurement is named as a precondition and is not taken in this change.
+It does not change `selected_ci_runner_target`, private `witnesses_job()` labels, fleet-converge, or recovered init. It does not exec jailer. It does not archive still-bear-335 or private #46. Those are the cutover, which this task forbids. The seed-build dispatch above does **not** establish guest-to-sccache reachability: BuildBuddy already has an external cache path by design; this run unset `RUSTC_WRAPPER` and still used that runner's `CARGO_HOME`.
