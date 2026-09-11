@@ -57,6 +57,7 @@ import v2.compiler.self_host.ancestry {
   ancestry_succession_parent_generation_mismatch,
   ancestry_successor_build_path_pinned,
   ancestry_successor_not_parent_plus_one,
+  ancestry_successor_parent_generation_negative,
   genesis_already_executed,
   genesis_candidate_is_not_a_genesis,
   BuildPathPinned,
@@ -531,6 +532,27 @@ test fn successor_numbering_must_be_parent_plus_one() -> Bool {
       build_path: anc_remap
     ),
     cause: ^ancestry_successor_not_parent_plus_one
+  )
+}
+
+// GENERATION 0 IS GENESIS-ONLY. A negative parent satisfies generation == parent + 1 at zero, so
+// before this wall SucceedsNative { parent_generation: -1 } minted generation 0 without ever
+// passing genesis admission — the migration boundary reachable from the recurring arm, by
+// arithmetic (review 64112). Everything else about this fixture is admissible: the closure, the
+// build path, the read-back and the executed bytes all bind correctly, which is exactly why the
+// numbering had to be walled rather than left to the other clauses.
+test fn a_successor_naming_a_negative_parent_generation_is_refused() -> Bool {
+  anc_refused_with(
+    g: anc_successor(
+      generation: 0,
+      parent_generation: -1,
+      parent_hex: anc_built_hex,
+      artifact_hex: anc_other_hex,
+      read_back: anc_read_back(hex: anc_other_hex),
+      closure: anc_shared_route_closure(),
+      build_path: anc_remap
+    ),
+    cause: ^ancestry_successor_parent_generation_negative
   )
 }
 

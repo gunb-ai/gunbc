@@ -148,6 +148,21 @@ data ancestry_producer_execution_is_not_the_named_ancestor: String = "native gen
 
 data ancestry_genesis_not_generation_zero: String = "native generation mint refused: GenesisFromSeed is the migration step onto generation 0 and carries no other generation number"
 
+// GENERATION 0 IS GENESIS-ONLY, AND ARITHMETIC ALONE DOES NOT ENFORCE IT. The successor clause
+// checks generation == parent + 1, which a NEGATIVE parent satisfies at generation 0:
+// SucceedsNative { parent_generation: -1 } mints generation 0 without ever passing genesis
+// admission, so the one number the migration boundary is defined by becomes reachable from the
+// recurring arm (review 64112). The remaining clauses do not catch it -- they ask about
+// closures, build paths, read-backs and executed bytes, none of which are about WHERE IN THE
+// CHAIN this generation sits.
+//
+// Refusing a negative parent closes it at the source rather than at the successor's own number:
+// with parent >= 0 the successor is always >= 1 by construction, so generation 0 has exactly one
+// constructor. Stated as its own cause because "the parent generation is not a generation" and
+// "the numbering does not follow the parent" are different defects with different remedies, and
+// collapsing them would report a fabricated chain position as an ordinary off-by-one.
+data ancestry_successor_parent_generation_negative: String = "native generation mint refused: SucceedsNative names a negative parent generation, which is not a position in the chain — and at parent -1 the successor would number itself 0, the one generation reachable only through the genesis migration"
+
 data ancestry_successor_not_parent_plus_one: String = "native generation mint refused: SucceedsNative(parent) must mint generation parent + 1; ancestry and generation number disagree"
 
 data ancestry_artifact_not_materialized: String = "native generation mint refused: the materialized-artifact axis is ArtifactNotMaterialized, so no ancestor artifact exists to be acquired by a successor"
@@ -210,18 +225,32 @@ fn read_back_agrees(
 // v2.compiler.self_host.emitter_producer_provenance v2_emitter_closure_admission. An annotation
 // left attached to a fold it no longer describes is worse than none, because it is read as
 // documentation of the code beneath it (review 64013).
+// IT TAKES THE ANCESTRY, NOT A Bool, and that is this module's own rule applied to itself. An
+// earlier revision's signature was (treatment, genesis: Bool), which re-expressed the
+// NativeAncestry discriminant as a flag — the shape the opening note rejects for used_seed, for
+// the same reason: a Boolean carries the fact while leaving BOTH arms writable on either value,
+// so build_path_admission(treatment: pinned, genesis: true) against a SucceedsNative generation
+// was an admissible call that silently granted the genesis-only pinned allowance. Both call
+// sites happened to pass the right value, which makes it a latent hole rather than a live bug,
+// and caller discipline is exactly what DESIGN section 5 says not to rely on when construction
+// is available. Taking the ancestry means the discriminant is read from the value that carries
+// it, one frame down from the match that already established it (review 64113).
 fn build_path_admission(
   treatment: BuildPathTreatment,
-  genesis: Bool
+  ancestry: NativeAncestry
 ) -> NativeGenerationMintAdmission {
   match treatment {
     BuildPathRemapped { remap_prefix_from: _, remap_prefix_to: _ } =>
       NativeGenerationAdmitted
     BuildPathPinned { directory: _ } =>
-      if genesis {
-        NativeGenerationAdmitted
-      } else {
-        NativeGenerationRefused { cause: ^ancestry_successor_build_path_pinned }
+      match ancestry {
+        GenesisFromSeed { seed_binary: _ } => NativeGenerationAdmitted
+        SucceedsNative {
+          parent_generation: _,
+          parent_artifact: _,
+          produced_by_execution_of: _
+        } =>
+          NativeGenerationRefused { cause: ^ancestry_successor_build_path_pinned }
       }
     BuildPathUnresolved =>
       NativeGenerationRefused { cause: ^ancestry_build_path_unresolved }
@@ -242,7 +271,10 @@ fn native_generation_mint_admission(
       } else if !seed_emit_rust_reachable(closure: g.realized_closure) {
         NativeGenerationRefused { cause: ^ancestry_genesis_closure_omits_seed }
       } else {
-        match build_path_admission(treatment: g.build_path_treatment, genesis: true) {
+        match build_path_admission(
+          treatment: g.build_path_treatment,
+          ancestry: g.ancestry
+        ) {
           NativeGenerationRefused { cause: c } => NativeGenerationRefused { cause: c }
           NativeGenerationAdmitted =>
             read_back_agrees(
@@ -256,7 +288,11 @@ fn native_generation_mint_admission(
       parent_artifact: parent,
       produced_by_execution_of: ran
     } =>
-      if g.generation != p + 1 {
+      if p < genesis_generation_number {
+        NativeGenerationRefused {
+          cause: ^ancestry_successor_parent_generation_negative
+        }
+      } else if g.generation != p + 1 {
         NativeGenerationRefused { cause: ^ancestry_successor_not_parent_plus_one }
       } else if !content_hash_eq_sha512(left: ran.observed, right: parent.observed) {
         NativeGenerationRefused {
@@ -271,7 +307,7 @@ fn native_generation_mint_admission(
           ProducerMintAdmitted =>
             match build_path_admission(
               treatment: g.build_path_treatment,
-              genesis: false
+              ancestry: g.ancestry
             ) {
               NativeGenerationRefused { cause: c } => NativeGenerationRefused { cause: c }
               NativeGenerationAdmitted =>
