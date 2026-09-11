@@ -46,7 +46,7 @@ import gunbc.spark.serving_deployment_selection {
   ServingDeploymentDecisionInput, serving_decision_input, decision_snapshot_key,
   ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
   ServingDeploymentSelectionRefused, ServingDeploymentNeedsPolicy,
-  select_serving_deployment, select_serving_deployment_at_sm12_join,
+  select_serving_deployment, select_serving_deployment_at_sm12_admit, select_serving_deployment_at_sm12_join,
   establish_serving_candidate_field_at_sm12,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
@@ -94,6 +94,17 @@ test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
 test fn the_real_deepseek_v4_1_subject_returns_obligations_rather_than_a_topology() -> Bool {
   match select_serving_deployment(input: deepseek_v4_1_decision_input) {
     ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    _ => false
+  }
+}
+
+test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
+  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+    ServingDeploymentNeedsEvidence { needs: live } =>
+      match select_serving_deployment_at_sm12_admit(input: deepseek_v4_1_decision_input, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+        ServingDeploymentNeedsEvidence { needs: injected } => count(live) == count(injected)
+        _ => false
+      }
     _ => false
   }
 }

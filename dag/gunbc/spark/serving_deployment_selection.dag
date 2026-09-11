@@ -1644,7 +1644,7 @@ fn resolve_in_field(field: ServingDeploymentCandidateField, identity: Declaratio
 }
 
 fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDeploymentSelection {
-  select_serving_deployment_at_sm12_join(input: input, wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes)
+  select_serving_deployment_at_sm12_admit(input: input, admitted: v41_sm12_admitted_kv_cache_dtypes)
 }
 
 fn select_serving_deployment_at_sm12_admit(input: ServingDeploymentDecisionInput, admitted: List<NonEmptyStr>) -> ServingDeploymentSelection {
