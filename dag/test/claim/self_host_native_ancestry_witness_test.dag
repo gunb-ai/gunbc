@@ -1,0 +1,246 @@
+module test.claim.self_host_native_ancestry_witness
+
+import std.content_hash { sha512_hex_digest }
+import v2.compiler.self_host.emitter_producer_provenance {
+  EmitterProducer,
+  RealizedEmitterClosure,
+  V1SeedEmitter,
+  V2EmitterInterpreted,
+  V2EmitterNative,
+  cssl_harness_realized_closure
+}
+import v2.compiler.self_host.generation {
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
+  GeneratedArtifactIdentity,
+  GenerationIdentity,
+  NamedBuildConfiguration,
+  ObservedArtifactDigest,
+  PathRemapped,
+  PathRemappingUnspecified,
+  build_configuration_axis_digest,
+  compiler_artifact_identity,
+  generation_identity_agrees,
+  observed_artifact_digest
+}
+import v2.compiler.self_host.native_ancestry {
+  ArtifactReadBackReceipt,
+  GenesisAlreadyExecuted,
+  GenesisExecuted,
+  GenesisNotYetExecuted,
+  NativeAncestorAcquired,
+  NativeAncestorMissing,
+  NativeAncestryStore,
+  NativeGenerationRecord,
+  NativeGenesisAdmitted,
+  NativeGenesisReceipt,
+  NativeGenesisRefused,
+  NativeSuccessorAdmitted,
+  NativeSuccessorRefused,
+  SuccessorGenerationNotNext,
+  SuccessorInterpretedProducerRefused,
+  SuccessorProducerMustBeNativeAncestor,
+  admit_native_genesis,
+  admit_native_successor,
+  acquire_native_ancestor,
+  admitted_native_producer_closure,
+  native_genesis_deletion_trigger,
+  old_route_absent_by_construction_holds
+}
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Hash, symbol_identity_digest }
+import v2.std.optional { Absent, Present }
+
+data na_artifact_hex: String = "8f31919534d1585a005d999df89eea61ae2aee36ed7f943b768f251bc38c7cbdd927d3dd88c1a1b9322552ee85bf2f866acfc2e9e9d718a6b4195e86b0943316"
+
+fn na_artifact(hex: String) -> GeneratedArtifactIdentity {
+  match sha512_hex_digest(hex: hex) {
+    Present { value: d } =>
+      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+    Absent => ArtifactNotMaterialized
+  }
+}
+
+fn na_digest(label: String) -> Hash {
+  symbol_identity_digest(sym: label)
+}
+
+fn na_observed() -> ObservedArtifactDigest {
+  match sha512_hex_digest(hex: na_artifact_hex) {
+    Present { value: d } => observed_artifact_digest(observed: d)
+    Absent => na_observed()
+  }
+}
+
+fn na_identity() -> GenerationIdentity {
+  compiler_artifact_identity(
+    producer_compiler: na_digest(label: "producer"),
+    source_closure: na_digest(label: "closure"),
+    target_model: na_digest(label: "target"),
+    toolchain: na_digest(label: "toolchain"),
+    build_configuration: na_digest(label: "build"),
+    materialized_artifact: na_artifact(hex: na_artifact_hex)
+  )
+}
+
+fn na_read_back(identity: GenerationIdentity) -> ArtifactReadBackReceipt {
+  match identity.materialized_artifact {
+    ArtifactMaterialized { digest: d } =>
+      ArtifactReadBackReceipt { subject: identity, observed: d }
+    ArtifactNotMaterialized =>
+      ArtifactReadBackReceipt { subject: identity, observed: na_observed() }
+  }
+}
+
+fn na_genesis_receipt() -> NativeGenesisReceipt {
+  let identity = na_identity()
+  NativeGenesisReceipt {
+    seed_binary_identity: identity.producer_compiler,
+    canonical_closure_identity: identity.source_closure,
+    target_model: identity.target_model,
+    toolchain: identity.toolchain,
+    build_configuration: identity.build_configuration,
+    emitted_source_identity: na_digest(label: "emitted-source"),
+    built_artifact: identity.materialized_artifact,
+    read_back: na_read_back(identity: identity),
+    realized_closure: admitted_native_producer_closure(),
+    producer: V1SeedEmitter,
+    deletion_trigger: native_genesis_deletion_trigger
+  }
+}
+
+fn na_record(generation: Int, producer: EmitterProducer) -> NativeGenerationRecord {
+  let identity = na_identity()
+  NativeGenerationRecord {
+    generation: generation,
+    producer: producer,
+    identity: identity,
+    realized_closure: admitted_native_producer_closure(),
+    emitted_source_identity: na_digest(label: "emitted-source"),
+    read_back: na_read_back(identity: identity)
+  }
+}
+
+test fn genesis_once_is_admitted_and_a_second_genesis_is_refused() -> Bool {
+  let first = admit_native_genesis(
+    standing: GenesisNotYetExecuted,
+    attempt: na_genesis_receipt()
+  )
+  let second = admit_native_genesis(
+    standing: GenesisExecuted { receipt: na_genesis_receipt() },
+    attempt: na_genesis_receipt()
+  )
+  match first {
+    NativeGenesisAdmitted { receipt: _ } =>
+      match second {
+        NativeGenesisRefused { cause: GenesisAlreadyExecuted } => true
+        NativeGenesisRefused { cause: _ } => false
+        NativeGenesisAdmitted { receipt: _ } => false
+      }
+    NativeGenesisRefused { cause: _ } => false
+  }
+}
+
+test fn ancestor_missing_refuses_naming_generation_zero_and_does_not_acquire() -> Bool {
+  let store = NativeAncestryStore {
+    genesis: GenesisNotYetExecuted,
+    generations: []
+  }
+  match acquire_native_ancestor(store: store, expected_generation: 0) {
+    NativeAncestorMissing { expected_generation: g } => g == 0
+    NativeAncestorAcquired { record: _ } => false
+    NativeAncestorUnverified { expected_generation: _ } => false
+  }
+}
+
+test fn native_successor_verifies_by_read_back() -> Bool {
+  let ancestor = na_record(generation: 0, producer: V1SeedEmitter)
+  let produced = na_record(generation: 1, producer: V2EmitterNative { generation: 0 })
+  match admit_native_successor(ancestor: ancestor, produced: produced) {
+    NativeSuccessorAdmitted { record: r } => r.generation == 1
+    NativeSuccessorRefused { cause: _ } => false
+  }
+}
+
+test fn seed_cannot_be_the_recurring_successor_producer() -> Bool {
+  let ancestor = na_record(generation: 0, producer: V1SeedEmitter)
+  let produced = na_record(generation: 1, producer: V1SeedEmitter)
+  match admit_native_successor(ancestor: ancestor, produced: produced) {
+    NativeSuccessorRefused { cause: SuccessorProducerMustBeNativeAncestor } => true
+    NativeSuccessorRefused { cause: _ } => false
+    NativeSuccessorAdmitted { record: _ } => false
+  }
+}
+
+test fn interpreted_emitter_is_not_the_recurring_native_path() -> Bool {
+  let ancestor = na_record(generation: 0, producer: V1SeedEmitter)
+  let produced = na_record(generation: 1, producer: V2EmitterInterpreted)
+  match admit_native_successor(ancestor: ancestor, produced: produced) {
+    NativeSuccessorRefused { cause: SuccessorInterpretedProducerRefused } => true
+    NativeSuccessorRefused { cause: _ } => false
+    NativeSuccessorAdmitted { record: _ } => false
+  }
+}
+
+test fn successor_generation_must_be_exactly_next() -> Bool {
+  let ancestor = na_record(generation: 0, producer: V1SeedEmitter)
+  let produced = na_record(generation: 2, producer: V2EmitterNative { generation: 0 })
+  match admit_native_successor(ancestor: ancestor, produced: produced) {
+    NativeSuccessorRefused { cause: SuccessorGenerationNotNext } => true
+    NativeSuccessorRefused { cause: _ } => false
+    NativeSuccessorAdmitted { record: _ } => false
+  }
+}
+
+test fn identity_axes_changed_is_a_new_identity() -> Bool {
+  let left = na_identity()
+  let right = compiler_artifact_identity(
+    producer_compiler: na_digest(label: "producer-MOVED"),
+    source_closure: left.source_closure,
+    target_model: left.target_model,
+    toolchain: left.toolchain,
+    build_configuration: left.build_configuration,
+    materialized_artifact: left.materialized_artifact
+  )
+  !generation_identity_agrees(left: left, right: right)
+}
+
+test fn remapping_is_part_of_build_configuration_identity() -> Bool {
+  let unspecified = build_configuration_axis_digest(
+    config: NamedBuildConfiguration {
+      cargo_profile: "release",
+      remapping: PathRemappingUnspecified
+    }
+  )
+  let remapped = build_configuration_axis_digest(
+    config: NamedBuildConfiguration {
+      cargo_profile: "release",
+      remapping: PathRemapped {
+        host_prefix: "/tmp/build-a",
+        canonical_prefix: "/gunbc/remap/build"
+      }
+    }
+  )
+  let remapped_elsewhere = build_configuration_axis_digest(
+    config: NamedBuildConfiguration {
+      cargo_profile: "release",
+      remapping: PathRemapped {
+        host_prefix: "/tmp/build-b",
+        canonical_prefix: "/gunbc/remap/build"
+      }
+    }
+  )
+  unspecified != remapped && remapped != remapped_elsewhere
+}
+
+test fn admitted_native_closure_is_old_route_absent_by_construction() -> Bool {
+  old_route_absent_by_construction_holds(closure: admitted_native_producer_closure())
+    && !old_route_absent_by_construction_holds(closure: cssl_harness_realized_closure)
+}
+
+test fn empty_closure_is_not_old_route_absent_by_construction() -> Bool {
+  !old_route_absent_by_construction_holds(
+    closure: RealizedEmitterClosure { emitter_module_paths: [] }
+  )
+}

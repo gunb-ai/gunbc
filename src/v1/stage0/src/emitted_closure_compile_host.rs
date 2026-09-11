@@ -801,6 +801,17 @@ pub(crate) fn run_cargo(
     workspace: &Path,
     attribution_symbol: &str,
 ) -> CargoVerdict {
+    run_cargo_with_rustflags(crate_dir, workspace, attribution_symbol, None)
+}
+
+/// Native genesis remaps the host build directory out of the artifact so generation
+/// identity is not bound to the crate path (NFS/GCS serving).
+pub(crate) fn run_cargo_with_rustflags(
+    crate_dir: &Path,
+    workspace: &Path,
+    attribution_symbol: &str,
+    rustflags: Option<&str>,
+) -> CargoVerdict {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let mut command = std::process::Command::new(&cargo);
     command
@@ -810,6 +821,9 @@ pub(crate) fn run_cargo(
         .arg(crate_dir.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", workspace.join("target"))
         .current_dir(crate_dir);
+    if let Some(flags) = rustflags {
+        command.env("RUSTFLAGS", flags);
+    }
     match command.output() {
         Err(e) => CargoVerdict::DidNotComplete {
             detail: format!("spawning {cargo} failed: {e}"),

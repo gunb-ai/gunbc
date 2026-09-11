@@ -18,13 +18,15 @@ import gunbc.witness_v2_native_route {
   native_route_disposition,
   NativeRouteCensus, native_route_census,
   NativeRouteMalformedControl, MalformedSpecimenRefused, MalformedSpecimenAccepted,
-  NativeRouteOldRouteControl, OldRouteWithdrawn, OldRouteFalsifierArmed, OldRouteControlAbsent,
+  NativeRouteOldRouteControl, OldRouteWithdrawn, OldRouteFalsifierArmed, OldRouteAbsentByConstruction, OldRouteControlAbsent,
   NativeRouteReceipt,
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   required_v2_native_job_name,
   native_route_admission, native_route_admitted, native_route_admission_refused_with,
   native_route_admission_summary
 }
+import v2.compiler.self_host.emitter_producer_provenance { cssl_harness_realized_closure }
+import v2.compiler.self_host.native_ancestry { admitted_native_producer_closure }
 import v2.compiler.compile {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   NativeTestRefused,
@@ -1084,4 +1086,53 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
     malformed_control: MalformedSpecimenAccepted,
     old_route_control: OldRouteControlAbsent
   })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed"
+}
+
+test fn old_route_absent_by_construction_with_the_admitted_native_closure_is_admitted() -> Bool {
+  let base = green_receipt()
+  let receipt = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: base.true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: OldRouteAbsentByConstruction {
+      admitted_native_producer_closure: admitted_native_producer_closure()
+    }
+  }
+  native_route_admitted(admission: native_route_admission(receipt: receipt))
+}
+
+test fn old_route_absent_by_construction_with_the_seed_closure_is_refused() -> Bool {
+  let base = green_receipt()
+  let receipt = NativeRouteReceipt {
+    job: base.job,
+    tested_tree: base.tested_tree,
+    preparation_seed_identity: base.preparation_seed_identity,
+    emitted_closure_identity: base.emitted_closure_identity,
+    executable_path: base.executable_path,
+    executable_identity: base.executable_identity,
+    universe: base.universe,
+    module_source_index: base.module_source_index,
+    population: base.population,
+    file_refusals: base.file_refusals,
+    false_control: base.false_control,
+    true_control: base.true_control,
+    malformed_control: base.malformed_control,
+    old_route_control: OldRouteAbsentByConstruction {
+      admitted_native_producer_closure: cssl_harness_realized_closure
+    }
+  }
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "old_route_control_never_installed"
+  )
 }

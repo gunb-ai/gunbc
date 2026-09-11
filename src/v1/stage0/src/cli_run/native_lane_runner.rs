@@ -4,20 +4,18 @@
 //!
 //! THE SUBJECT IS THE ROUTE, NOT THE MODEL. The `.dag` authority owns the admission contract;
 //! this module is the harness that MINTS the receipt the contract admits or refuses: it derives
-//! the `v2.test.*` universe with the floor's own discovery producer, prepares the emitted-native
-//! compiler through the emit-compile phase's one crate writer, invokes that binary by explicit
-//! path over the universe plus the controls, withdraws the old-route CLI for the duration of
-//! every native spawn, and binds the observed verdicts into a `NativeRouteReceipt` that is then
-//! admitted — or refused — by evaluating `native_route_admission` itself. Nothing here decides
-//! admission in Rust: the host observes, the substrate judges.
+//! the `v2.test.*` universe with the floor's own discovery producer, acquires the prior native
+//! generation as the only admissible producer (a missing ancestor is a typed refusal — the seed
+//! is never the miss path), invokes that binary by explicit path over the universe plus the
+//! controls, and binds the observed verdicts into a `NativeRouteReceipt` that is then admitted
+//! — or refused — by evaluating `native_route_admission` itself. Nothing here decides admission
+//! in Rust: the host observes, the substrate judges.
 //!
-//! WHAT THE OLD-ROUTE CONTROL PROVES HERE, AND WHAT IT DOES NOT. The lane's verdicts are parsed
-//! from the spawned emitted binary's stdout, so the execution route is a process boundary, not a
-//! call convention. Withdrawing the seed's `gunbc` binary for the spawn window proves no
-//! subprocess fallback to the seed CLI occurred; it does not prove this process never
-//! interpreted a test — that discipline is the code's own (the interpreter contexts below
-//! evaluate ONLY the discovery producer and the admission authority, never a universe test),
-//! and the receipt's route identity (binary path + content hash) is what admission checks.
+//! THE OLD-ROUTE CONTROL IS ABSENT BY CONSTRUCTION. The receipt carries
+//! `OldRouteAbsentByConstruction` over the admitted native producer closure; the harness does not
+//! require a v1 `gunbc` binary to exist so it can rename it. Genesis (`run_native_genesis`) is the
+//! one-time V1SeedEmitter path and is operator-invoked separately. Until V2EmitterNative(N) → N+1
+//! executes and verifies, this route stays operator-invoked.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -30,6 +28,11 @@ use crate::v1_interpreter::{self, str_value, Value};
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through.
 const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+
+/// Canonical rustc remap prefix so artifact bytes are not bound to the host crate path.
+const NATIVE_BUILD_CANONICAL_PREFIX: &str = "/gunbc/remap/build";
+
+const ANCESTRY_GENERATION_ZERO: u64 = 0;
 
 /// The universe prefix — the same `v2.test.` the required floor gates on. The derivation below
 /// filters the floor discovery producer's rows to it; the admission authority independently
@@ -245,18 +248,108 @@ fn derive_native_universe(source_roots: &[String]) -> Result<NativeUniverseDeriv
     })
 }
 
-/// PREPARATION IS THE EMIT-COMPILE PHASE'S OWN MACHINERY, REUSED. The same emission entry
-/// point, the same crate writer, the same cargo invocation the required emit-compile probes use
-/// — a second emit-or-build path beside them would be free to disagree about what "the emitted
-/// compiler" is. The seed is used exactly once here, in-process, to emit; the receipt records
-/// the seed's identity honestly, and this job claims no native bootstrap.
-fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparation, String> {
+fn ancestry_dir(workspace: &Path) -> PathBuf {
+    workspace
+        .join("target")
+        .join("v2-native-lane")
+        .join("ancestry")
+}
+
+fn ancestry_generation_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("generation")
+}
+
+fn ancestry_compiler_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("compiler")
+}
+
+fn ancestry_closure_identity_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("closure_identity")
+}
+
+/// PREPARATION ACQUIRES THE PRIOR NATIVE GENERATION. The seed is never the miss path:
+/// a missing, damaged or unverified ancestor is a typed refusal naming the generation
+/// expected. `compile_entry_emission` is not reachable from this function.
+fn acquire_native_compiler(workspace: &Path) -> Result<EmittedPreparation, String> {
+    let generation_path = ancestry_generation_path(workspace);
+    if !generation_path.is_file() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeAncestorMissing expected_generation={ANCESTRY_GENERATION_ZERO} — \
+             the seed is never the miss path"
+        ));
+    }
+    let generation_text = std::fs::read_to_string(&generation_path).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified expected_generation={ANCESTRY_GENERATION_ZERO} — \
+             reading {}: {e}",
+            generation_path.display()
+        )
+    })?;
+    let expected_generation: u64 = generation_text.trim().parse().map_err(|_| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified expected_generation={ANCESTRY_GENERATION_ZERO} — \
+             generation file is not an integer"
+        )
+    })?;
+    let binary_path = ancestry_compiler_path(workspace);
+    if !binary_path.is_file() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeAncestorMissing expected_generation={expected_generation} — \
+             no verified native compiler at {}",
+            binary_path.display()
+        ));
+    }
+    let closure_path = ancestry_closure_identity_path(workspace);
+    let closure_identity = std::fs::read_to_string(&closure_path)
+        .map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeAncestorUnverified expected_generation={expected_generation} — \
+                 reading {}: {e}",
+                closure_path.display()
+            )
+        })?
+        .trim()
+        .to_string();
+    if closure_identity.is_empty() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified expected_generation={expected_generation} — \
+             closure identity unrecorded"
+        ));
+    }
+    let binary_identity = sha256_file(&binary_path)?;
+    eprintln!(
+        "required-ci: v2-native acquired native generation {expected_generation} at {} (sha256 {binary_identity})",
+        binary_path.display()
+    );
+    Ok(EmittedPreparation {
+        binary_path,
+        binary_identity,
+        closure_identity,
+        seed_identity: format!("native-generation-{expected_generation}"),
+    })
+}
+
+fn prepare_emitted_compiler(_source_roots: &[String]) -> Result<EmittedPreparation, String> {
     let workspace = super::process_workspace_root();
-    // The probe root follows the declared execution environment (per-job runner temp in CI,
-    // host temp locally) — the selection's authority and its receipt live beside the required
-    // phase's own root policy in `emitted_closure_compile_host`.
+    acquire_native_compiler(&workspace)
+}
+
+fn refuse_if_genesis_already_executed(workspace: &Path) -> Result<(), String> {
+    if ancestry_generation_path(workspace).is_file() {
+        return Err(
+            "V2-NATIVE REFUSAL cause=GenesisAlreadyExecuted — genesis executes once".to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// ONE-TIME MIGRATION GENESIS: V1SeedEmitter → NativeGeneration 0. A second genesis
+/// is a refusal. The ordinary native route never calls this.
+pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
+    let workspace = super::process_workspace_root();
+    refuse_if_genesis_already_executed(&workspace)?;
     let probe_root = super::lane_emit_compile_probe_root();
-    eprintln!("required-ci: v2-native emitting {NATIVE_COMPILE_ENTRY} (seed, in-process)");
+    eprintln!("v2-native-genesis: emitting {NATIVE_COMPILE_ENTRY} (V1SeedEmitter, once)");
     let run = super::compile_entry_emission(
         source_roots,
         NATIVE_COMPILE_ENTRY,
@@ -286,27 +379,21 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
     )
     .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
     let closure_identity = emitted_closure_identity(&crate_dir)?;
-    // THE BUILD'S PEAK MUST NOT STACK ON THE EMISSION'S RETAINED ARENA. The emission's resolved
-    // graph died inside `compile_entry_emission` and the emitted file texts die with `run` here,
-    // but glibc retains the freed arena — and the cargo build below needs gigabytes beside this
-    // process. Measured: the lane's first run held ~15GiB RSS into the build and was SIGKILLed
-    // (rc=137, no diagnostic). Drop, trim, and report in the same motion — the floor runner's
-    // full-inventory release is the pattern, and a trim that cannot release live memory doubles
-    // as the measurement that nothing here is still held.
     drop(run);
-    let rss_before_kb = super::current_rss_bytes().map(|b| b / 1024);
-    let trim_reclaimed_kb = super::trim_retained_heap();
-    let rss_after_kb = super::current_rss_bytes().map(|b| b / 1024);
+    let rustflags = format!(
+        "--remap-path-prefix={}={}",
+        crate_dir.display(),
+        NATIVE_BUILD_CANONICAL_PREFIX
+    );
     eprintln!(
-        "required-ci: v2-native emitted {written} files into {} (closure {closure_identity}); \
-         emission arena released (rss_kb_before={rss_before_kb:?} trim_reclaimed_kb={trim_reclaimed_kb:?} \
-         rss_kb_after={rss_after_kb:?}); cargo build",
+        "v2-native-genesis: emitted {written} files into {} (closure {closure_identity}); cargo build with path remap",
         crate_dir.display()
     );
-    let verdict = super::emitted_closure_compile_host::run_cargo(
+    let verdict = super::emitted_closure_compile_host::run_cargo_with_rustflags(
         &crate_dir,
         &workspace,
         "v2_native_lane_carries_no_mutation_probe",
+        Some(&rustflags),
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(format!(
@@ -324,69 +411,28 @@ fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparatio
             binary_path.display()
         ));
     }
-    let binary_identity = sha256_file(&binary_path)?;
-    let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
-        format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
-    })?)?;
-    eprintln!(
-        "required-ci: v2-native emitted compiler at {} (sha256 {binary_identity})",
-        binary_path.display()
-    );
-    Ok(EmittedPreparation {
-        binary_path,
-        binary_identity,
-        closure_identity,
-        seed_identity,
-    })
-}
-
-/// THE OLD-ROUTE WITHDRAWAL, AS A GUARD SO A REFUSAL PATH CANNOT SKIP THE RESTORE. The seed's
-/// `gunbc` binary — the old compiler/interpreter route's CLI — is renamed out of the way before
-/// the first native spawn and restored when the guard drops, on every exit path. The receipt
-/// records the withdrawn executable's path; the window is what admission's control clause names.
-struct OldRouteWithdrawalGuard {
-    original: PathBuf,
-    withdrawn: PathBuf,
-}
-
-fn withdraw_old_route(workspace: &Path) -> Result<OldRouteWithdrawalGuard, String> {
-    let original = workspace.join("target").join("release").join("gunbc");
-    let withdrawn = workspace
-        .join("target")
-        .join("release")
-        .join("gunbc.withdrawn-v2-native");
-    if !original.is_file() {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=OldRouteWithdrawalImpossible — {} is not a file; the \
-             control cannot withdraw what is absent",
-            original.display()
-        ));
-    }
-    std::fs::rename(&original, &withdrawn).map_err(|e| {
+    let store = ancestry_dir(&workspace);
+    std::fs::create_dir_all(&store)
+        .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
+    let stored = ancestry_compiler_path(&workspace);
+    std::fs::copy(&binary_path, &stored).map_err(|e| {
         format!(
-            "V2-NATIVE REFUSAL cause=OldRouteWithdrawalImpossible — renaming {}: {e}",
-            original.display()
+            "V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — copying {}: {e}",
+            binary_path.display()
         )
     })?;
+    std::fs::write(ancestry_closure_identity_path(&workspace), closure_identity)
+        .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
+    std::fs::write(
+        ancestry_generation_path(&workspace),
+        format!("{ANCESTRY_GENERATION_ZERO}\n"),
+    )
+    .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
     eprintln!(
-        "required-ci: v2-native old route withdrawn ({} moved aside for the native spawns)",
-        original.display()
+        "v2-native-genesis: NativeGeneration 0 stored at {}",
+        stored.display()
     );
-    Ok(OldRouteWithdrawalGuard {
-        original,
-        withdrawn,
-    })
-}
-
-impl Drop for OldRouteWithdrawalGuard {
-    fn drop(&mut self) {
-        if let Err(e) = std::fs::rename(&self.withdrawn, &self.original) {
-            eprintln!(
-                "required-ci: v2-native WARNING — restoring the old route failed ({}): {e}",
-                self.original.display()
-            );
-        }
-    }
+    Ok(())
 }
 
 /// The universe file the emitted binary reads: `module<TAB>declaration` per line, the derived
@@ -710,7 +756,7 @@ fn receipt_value(
     false_control: Option<&NativeVerdictObserved>,
     true_control: Option<&NativeVerdictObserved>,
     malformed_control: Value,
-    withdrawn_executable: &str,
+    old_route_control: Value,
 ) -> Value {
     let universe_values: Vec<Value> = universe
         .iter()
@@ -796,17 +842,7 @@ fn receipt_value(
                 optional_verdict_value(ctx, true_control),
             ),
             (ctx.sym("malformed_control"), malformed_control),
-            (
-                ctx.sym("old_route_control"),
-                Value::Variant {
-                    type_name: ctx.sym("NativeRouteOldRouteControl"),
-                    variant_name: ctx.sym("OldRouteWithdrawn"),
-                    fields: Rc::new(vec![(
-                        ctx.sym("withdrawn_executable"),
-                        str_value(withdrawn_executable),
-                    )]),
-                },
-            ),
+            (ctx.sym("old_route_control"), old_route_control),
         ]),
     }
 }
@@ -854,8 +890,8 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     let derivation_trim_kb = super::trim_retained_heap();
     eprintln!("required-ci: v2-native derivation arena released (trim_reclaimed_kb={derivation_trim_kb:?})");
 
-    // 2. PREPARATION. The seed emits the compiler closure once, in-process; cargo builds the
-    // emitted crate; the receipt records all three identities.
+    // 2. PREPARATION. Acquire the prior native generation. Missing ancestor is a typed
+    // refusal; the seed is not a fallback.
     let preparation = prepare_emitted_compiler(source_roots)?;
 
     // 3. THE UNIVERSE FILE — the derived universe plus the two named controls.
@@ -865,12 +901,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         .join("universe.tsv");
     write_universe_file(&universe_file, &universe)?;
 
-    // 4. THE OLD ROUTE IS WITHDRAWN for the whole spawn window (universe run and malformed
-    // control alike); the guard restores it on every exit path.
-    let withdrawal = withdraw_old_route(&workspace)?;
-    let withdrawn_executable = withdrawal.original.display().to_string();
-
-    // 5. THE NATIVE RUN. The emitted binary, by explicit path, over the derived universe.
+    // 4. THE NATIVE RUN. The acquired native binary, by explicit path, over the derived universe.
     eprintln!("required-ci: v2-native running the emitted compiler over the universe");
     let main_output = run_native_binary(&preparation.binary_path, &universe_file, source_roots)?;
     eprintln!(
@@ -898,10 +929,8 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         &control_universe_file,
         &control_roots,
     )?;
-    drop(withdrawal);
-    eprintln!("required-ci: v2-native old route restored");
 
-    // 7. THE RECEIPT. Controls are lifted out of the observed population (they are not universe
+    // 5. THE RECEIPT. Controls are lifted out of the observed population (they are not universe
     // members and the exact join would refuse them as foreign), context refusals are reclassified
     // against the observed file refusals, and the malformed control records what the poisoned
     // run observed.
@@ -959,6 +988,23 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
             ]),
         }
     };
+    let admitted_closure = v1_interpreter::run_in_context_with_args(
+        &route_ctx,
+        "v2.compiler.self_host.native_ancestry.admitted_native_producer_closure",
+        &[],
+        false,
+    )
+    .map_err(|e| {
+        format!("V2-NATIVE REFUSAL cause=OldRouteControlNeverInstalled — admitted native producer closure unevaluable: {e}")
+    })?;
+    let old_route_control = Value::Variant {
+        type_name: route_ctx.sym("NativeRouteOldRouteControl"),
+        variant_name: route_ctx.sym("OldRouteAbsentByConstruction"),
+        fields: Rc::new(vec![(
+            route_ctx.sym("admitted_native_producer_closure"),
+            admitted_closure,
+        )]),
+    };
     let receipt = receipt_value(
         &route_ctx,
         &tested_tree,
@@ -970,7 +1016,7 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
         false_control.as_ref(),
         true_control.as_ref(),
         malformed_value,
-        &withdrawn_executable,
+        old_route_control,
     );
 
     // 8. ADMISSION, BY THE AUTHORITY. The lane prints the authority's own summary either way.
@@ -1136,5 +1182,58 @@ mod tests {
             Some(("NativeTestStagePrepare", "resolve_module_not_found")),
             "a path-keyed map cannot answer the module-keyed question"
         );
+    }
+
+    #[test]
+    fn missing_ancestor_refuses_naming_generation_zero() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-native-ancestry-missing-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let err = match acquire_native_compiler(&dir) {
+            Ok(_) => panic!("missing ancestor must refuse"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("NativeAncestorMissing"),
+            "missing ancestor must be a typed refusal, got {err}"
+        );
+        assert!(
+            err.contains("expected_generation=0"),
+            "refusal must name the expected generation, got {err}"
+        );
+        assert!(
+            !err.contains("compile_entry_emission") && !err.contains("seed, in-process"),
+            "v1 emit must not be the miss path, got {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn second_genesis_refuses_when_generation_file_exists() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-native-ancestry-genesis-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = ancestry_dir(&dir);
+        std::fs::create_dir_all(&store).unwrap();
+        std::fs::write(ancestry_generation_path(&dir), "0\n").unwrap();
+        let err = refuse_if_genesis_already_executed(&dir).unwrap_err();
+        assert!(
+            err.contains("GenesisAlreadyExecuted"),
+            "second genesis must refuse, got {err}"
+        );
+        let empty = std::env::temp_dir().join(format!(
+            "gunbc-native-ancestry-genesis-empty-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).unwrap();
+        refuse_if_genesis_already_executed(&empty).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&empty);
     }
 }

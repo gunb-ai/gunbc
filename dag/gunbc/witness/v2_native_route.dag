@@ -6,6 +6,8 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
+import v2.compiler.self_host.emitter_producer_provenance { RealizedEmitterClosure }
+import v2.compiler.self_host.native_ancestry { old_route_absent_by_construction_holds }
 import v2.compiler.compile {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
@@ -443,16 +445,17 @@ type NativeRouteMalformedControl
 type NativeRouteOldRouteControl
   = OldRouteWithdrawn { withdrawn_executable: String }
   | OldRouteFalsifierArmed { falsifier_identity: String }
+  | OldRouteAbsentByConstruction { admitted_native_producer_closure: RealizedEmitterClosure }
   | OldRouteControlAbsent
 
 // THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree; the
-// seed used ONLY to prepare the emitted compiler (recorded honestly — this job does not claim
-// native bootstrap); the emitted closure's identity; the executed binary's path AND content
-// identity (route identity is observed, never synthesized from the intended command); the
-// DERIVED universe; the module → source-path relation over the universe's modules (the context
-// reclassification's join key, carried so admission can re-ask the join, not trust it); the
-// OBSERVED population; the per-file front-end refusals the collecting fold gathered; and every
-// control.
+// acquired native generation identity recorded on `preparation_seed_identity` (historical field
+// name — the ordinary route no longer emits from the seed); the emitted closure's identity; the
+// executed binary's path AND content identity (route identity is observed, never synthesized from
+// the intended command); the DERIVED universe; the module → source-path relation over the
+// universe's modules (the context reclassification's join key, carried so admission can re-ask the
+// join, not trust it); the OBSERVED population; the per-file front-end refusals the collecting fold
+// gathered; and every control.
 type NativeRouteReceipt {
   job: String
   tested_tree: String
@@ -741,6 +744,8 @@ fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
   match receipt.old_route_control {
     OldRouteWithdrawn { withdrawn_executable: p } => p != ""
     OldRouteFalsifierArmed { falsifier_identity: f } => f != ""
+    OldRouteAbsentByConstruction { admitted_native_producer_closure: c } =>
+      old_route_absent_by_construction_holds(closure: c)
     OldRouteControlAbsent => false
   }
 }

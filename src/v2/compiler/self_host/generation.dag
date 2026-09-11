@@ -67,25 +67,10 @@ type GeneratedArtifactIdentity
   = ArtifactMaterialized { digest: ObservedArtifactDigest }
   | ArtifactNotMaterialized
 
-// THESE SIX AXES DO NOT DETERMINE THE ARTIFACT, and the gap is named here rather than
-// left to be rediscovered. A Rust debug binary embeds its build directory, so the same
-// source compiled in two different directories yields different bytes while every axis
-// below agrees; the same directory rebuilt yields byte-identical output. Measured by
-// hand twice (gunbc#8181). So this identity identifies a generation UP TO BUILD
-// LOCATION, and build path is an input that no axis names.
-//
-// It is an incompleteness in the promotion premise, not a caveat on comparison. Two
-// honest remedies exist — remap the path out of the emitted artifact so the declared
-// axes become an actual determinant, or name build path in build_configuration so the
-// axis tells the truth about what it covers. Papering over it inside a comparison is
-// the third option and is not available.
-//
-// The direction is fail-closed: relocating an identical build reports as a MOVED
-// artifact rather than a spurious match, so nothing is silently admitted. That is why
-// the first frontier flip may proceed by pinning the build directory. It is also why
-// artifact-digest equality across hosts or workspaces must never be used as a
-// reproducibility oracle. Registered as an obligation with its trigger in
-// gunbc.self_host_promotion_obligations.
+// THESE SIX AXES PLUS THE NAMED REMAPPING POLICY. A Rust debug binary embeds its
+// build directory unless rustc `--remap-path-prefix` is applied. NamedBuildConfiguration
+// carries that remapping on the build-configuration axis so NFS/GCS serving is an
+// identity fact rather than a silent byte drift. The host genesis path passes the flag.
 type GenerationIdentity {
   producer_compiler: Hash
   source_closure: Hash
@@ -351,5 +336,60 @@ fn generation_identity_agrees(
     predicate: fn(axis) {
       generation_axis_agrees(left: left, right: right, axis: axis)
     }
+  )
+}
+
+// Compiler artifact identity (C8) IS this record: producer compiler, source closure,
+// target model, toolchain, build configuration → observed artifact. It is not a second
+// emit_on_demand_key. The named constructor exists so callers cannot assemble a parallel
+// identity type beside GenerationIdentity.
+fn compiler_artifact_identity(
+  producer_compiler: Hash,
+  source_closure: Hash,
+  target_model: Hash,
+  toolchain: Hash,
+  build_configuration: Hash,
+  materialized_artifact: GeneratedArtifactIdentity
+) -> GenerationIdentity {
+  GenerationIdentity {
+    producer_compiler: producer_compiler,
+    source_closure: source_closure,
+    target_model: target_model,
+    toolchain: toolchain,
+    build_configuration: build_configuration,
+    materialized_artifact: materialized_artifact
+  }
+}
+
+// THE BUILD-PATH INPUT THE SIX AXES PREVIOUSLY OMITTED. Rust debug bytes embed the
+// build directory, so NFS/GCS serving across hosts requires the path to be remapped
+// to a canonical prefix rather than named as a seventh opaque axis. Host realization
+// passes rustc `--remap-path-prefix`. An unspecified remapping is a different
+// configuration from a remapped one — identity, not a default.
+type BuildPathRemapping
+  = PathRemapped { host_prefix: String, canonical_prefix: String }
+  | PathRemappingUnspecified
+
+type NamedBuildConfiguration {
+  cargo_profile: String
+  remapping: BuildPathRemapping
+}
+
+fn build_path_remapping_digest(remapping: BuildPathRemapping) -> Hash {
+  match remapping {
+    PathRemapped { host_prefix: host, canonical_prefix: canonical } =>
+      combine_hash(
+        a: symbol_identity_digest(sym: host),
+        b: symbol_identity_digest(sym: canonical)
+      )
+    PathRemappingUnspecified =>
+      symbol_identity_digest(sym: ^build_path_remapping_unspecified)
+  }
+}
+
+fn build_configuration_axis_digest(config: NamedBuildConfiguration) -> Hash {
+  combine_hash(
+    a: symbol_identity_digest(sym: config.cargo_profile),
+    b: build_path_remapping_digest(remapping: config.remapping)
   )
 }
