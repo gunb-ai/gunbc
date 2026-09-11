@@ -32,7 +32,7 @@ import std.induction {
   shape_for_param_growth,
 }
 import std.realization_cost_fidelity {
-  CostShapePreserved,
+  ModeledCostPreserved,
   ModeledCostNotStructured,
   ModeledCostBoundFact,
   CostGrowthNotOrderable,
@@ -110,7 +110,7 @@ fn refusal_kind(report: RealizationCostFidelityReport) -> String {
 test fn concat_model_over_prices_the_left_operand() -> Bool {
   match cost_fidelity_of(modeled: concat_modeled_cost(), realized: concat_realized_cost()) {
     RealizationFasterThanModeled => true
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationSlowerThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
@@ -147,7 +147,7 @@ test fn the_rank_only_reading_cannot_see_the_concat_divergence() -> Bool {
 test fn slower_realization_is_reported() -> Bool {
   match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_nlogn(param: "n")) {
     RealizationSlowerThanModeled => true
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
@@ -160,7 +160,7 @@ test fn slower_realization_is_reported() -> Bool {
 
 test fn identical_costs_are_preserved() -> Bool {
   match cost_fidelity_of(modeled: concat_modeled_cost(), realized: concat_modeled_cost()) {
-    CostShapePreserved => true
+    ModeledCostPreserved => true
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
@@ -187,7 +187,7 @@ test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
     ] },
   ) {
     RealizationDivergesByOperand => true
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
     RealizationCostBodyDependent => false
@@ -203,7 +203,7 @@ test fn per_operand_tradeoff_is_its_own_verdict() -> Bool {
 test fn log_squared_and_linear_do_not_collide() -> Bool {
   match cost_fidelity_of(modeled: log_squared(param: "n"), realized: cost_linear(param: "n")) {
     RealizationSlowerThanModeled => true
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
@@ -269,7 +269,7 @@ test fn a_per_element_body_difference_is_undecided_not_preserved() -> Bool {
   match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_iterate_body(param: "n")) {
     RealizationCostBodyDependent => true
     CostGrowthNotOrderable => false
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
@@ -290,7 +290,7 @@ test fn an_opposing_body_and_growth_delta_is_body_dependent() -> Bool {
   match cost_fidelity_of(modeled: cost_iterate_body(param: "n"), realized: cost_nlogn(param: "n")) {
     RealizationCostBodyDependent => true
     RealizationSlowerThanModeled => false
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     CostGrowthNotOrderable => false
@@ -307,7 +307,7 @@ test fn an_opposing_body_does_not_make_a_realization_faster() -> Bool {
   match cost_fidelity_of(modeled: quadratic(param: "n"), realized: cost_iterate_body(param: "n")) {
     RealizationCostBodyDependent => true
     RealizationFasterThanModeled => false
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationSlowerThanModeled => false
     RealizationDivergesByOperand => false
     CostGrowthNotOrderable => false
@@ -329,7 +329,7 @@ test fn an_agreeing_body_and_growth_delta_stays_decided() -> Bool {
   match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: worse) {
     RealizationSlowerThanModeled => true
     RealizationCostBodyDependent => false
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
     CostGrowthNotOrderable => false
@@ -353,7 +353,7 @@ test fn a_body_in_a_losing_term_is_not_dropped() -> Bool {
   ) {
     RealizationCostBodyDependent => true
     CostGrowthNotOrderable => false
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationSlowerThanModeled => false
     RealizationFasterThanModeled => false
     RealizationDivergesByOperand => false
@@ -451,7 +451,7 @@ test fn a_fractional_exponent_is_not_ordered_as_cheaper_than_linear() -> Bool {
   match cost_fidelity_of(modeled: cost_linear(param: "n"), realized: cost_sqrt(param: "n")) {
     CostGrowthNotOrderable => true
     RealizationFasterThanModeled => false
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationSlowerThanModeled => false
     RealizationDivergesByOperand => false
     RealizationCostBodyDependent => false
@@ -467,7 +467,7 @@ test fn a_fractional_exponent_is_not_ordered_as_cheaper_than_linear() -> Bool {
 test fn an_unbounded_cost_is_not_preserved_against_a_constant() -> Bool {
   match cost_fidelity_of(modeled: ForeverBound, realized: ConstantBound) {
     CostGrowthNotOrderable => true
-    CostShapePreserved => false
+    ModeledCostPreserved => false
     RealizationFasterThanModeled => false
     RealizationSlowerThanModeled => false
     RealizationDivergesByOperand => false
@@ -489,7 +489,7 @@ test fn a_malformed_bound_is_not_orderable() -> Bool {
 // no parameters: the empty-axis case is only wrong when a side was unorderable.
 test fn two_constants_still_compare_as_preserved() -> Bool {
   match cost_fidelity_of(modeled: ConstantBound, realized: ConstantBound) {
-    CostShapePreserved => true
+    ModeledCostPreserved => true
     _ => false
   }
 }

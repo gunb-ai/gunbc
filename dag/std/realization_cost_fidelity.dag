@@ -96,8 +96,17 @@ import std.logic { Bool }
 // operand, LowerIsBetter on cost rank, and std.pareto folds the axis comparisons into a verdict --
 // including its separation of Incomparable from DominanceUndecided, which is precisely the
 // distinction a cost report must not lose.
+// THE SUCCESS ARM NAMES THE COST, NOT A SHAPE, and the earlier name was a meaning fork (DESIGN
+// section 3): it said CostShapePreserved while this join compares CostBounds through std.pareto and
+// never asks for a CostShape at all. The module's own witnesses proved it in opposite directions --
+// the_rank_only_reading_cannot_see_the_concat_divergence asserts that the concat specimen has NO
+// shape, and identical_costs_are_preserved compares that same bound against itself and got a
+// "shape preserved" verdict. A name that claims a fact the comparison never established is exactly
+// the fork the section exists to prevent, and it is worse here than elsewhere because the shape
+// projection is a REAL neighbouring concept in this module: cost_bound_to_shape exists, is partial,
+// and is carried on every row as projected_shape. Two adjacent facts, one name.
 type CostFidelity
-  = CostShapePreserved
+  = ModeledCostPreserved
   | RealizationSlowerThanModeled
   | RealizationFasterThanModeled
   | RealizationDivergesByOperand
@@ -327,7 +336,7 @@ fn fidelity_of_comparisons(comparisons: List<AxisComparison>) -> CostFidelity {
   match dominance_of_comparisons(comparisons: comparisons) {
     Dominates => RealizationFasterThanModeled
     Dominated => RealizationSlowerThanModeled
-    Equivalent => CostShapePreserved
+    Equivalent => ModeledCostPreserved
     Incomparable => RealizationDivergesByOperand
     DominanceUndecided => RealizationCostBodyDependent
   }
@@ -534,7 +543,7 @@ type CostFidelityPopulation
 
 fn cost_fidelity_population(fidelity: CostFidelity) -> CostFidelityPopulation {
   match fidelity {
-    CostShapePreserved => PopulationPreserved
+    ModeledCostPreserved => PopulationPreserved
     RealizationSlowerThanModeled => PopulationFinding
     RealizationFasterThanModeled => PopulationFinding
     RealizationDivergesByOperand => PopulationFinding
