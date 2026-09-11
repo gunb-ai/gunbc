@@ -288,7 +288,7 @@ fn required_compile_lens_roster() -> List<CompileLens> {
 fn lenses_at_grain(lenses: List<CompileLens>, grain: CompileLensGrain) -> List<CompileLens> {
   list_reverse(xs: fold_list(
     xs: lenses,
-    empty: [],
+    empty: Empty,
     cons: fn(acc, lens) {
       if compile_lens_grain_eq(a: lens.grain, b: grain) { Cons { head: lens, tail: acc } } else { acc }
     }
@@ -316,12 +316,14 @@ fn required_lens_roster_digest_text(lenses: List<CompileLens>) -> String {
   )
 }
 
-fn required_lens_roster_digest() -> String {
+fn required_lens_roster_digest_of(lenses: List<CompileLens>) -> String {
   serialize_content_hash(
-    hash: content_hash_of_value(
-      value: required_lens_roster_digest_text(lenses: required_compile_lens_roster()) as NonEmptyStr
-    )
+    hash: content_hash_of_value(value: required_lens_roster_digest_text(lenses: lenses) as NonEmptyStr)
   )
+}
+
+fn required_lens_roster_digest() -> String {
+  required_lens_roster_digest_of(lenses: required_compile_lens_roster())
 }
 
 // THE BIDIRECTIONAL JOIN. Registration and observation are two sides of one fact, and every way
@@ -403,7 +405,7 @@ fn required_lens_registration_keys(lenses: List<CompileLens>) -> Map<String, Com
 }
 
 fn required_lens_first_duplicate(lenses: List<CompileLens>) -> Optional<DeclarationRef> {
-  fold_list(
+  let scan = fold_list(
     xs: lenses,
     empty: RequiredLensDuplicateScan { seen: empty_map(), duplicate: Absent },
     cons: fn(acc, lens) {
@@ -423,7 +425,8 @@ fn required_lens_first_duplicate(lenses: List<CompileLens>) -> Optional<Declarat
           }
       }
     }
-  ).duplicate
+  )
+  scan.duplicate
 }
 
 type RequiredLensDuplicateScan {
@@ -520,21 +523,19 @@ fn join_required_lens_coverage(
             Present { value: u } => RequiredLensCoverageRefused { cause: ObservationUnregistered { lens: u } }
             Absent =>
               let tallies = required_lens_tally_observations(witnesses: witnesses)
-              match fold_list(
+              let scan = fold_list(
                 xs: lenses,
-                empty: RequiredLensRowScan { rows_reversed: [], cause: optional_absent() },
+                empty: RequiredLensRowScan { rows_reversed: Empty, cause: optional_absent() },
                 cons: fn(acc, lens) {
                   required_lens_row_for_registration(acc: acc, lens: lens, tallies: tallies)
                 }
-              ) {
-                RequiredLensRowScan { rows_reversed: rows, cause: c } =>
-                  match c {
-                    Present { value: cause } => RequiredLensCoverageRefused { cause: cause }
-                    Absent =>
-                      RequiredLensCoverageClosed {
-                        roster_digest: required_lens_roster_digest(),
-                        rows: list_reverse(xs: rows)
-                      }
+              )
+              match scan.cause {
+                Present { value: cause } => RequiredLensCoverageRefused { cause: cause }
+                Absent =>
+                  RequiredLensCoverageClosed {
+                    roster_digest: required_lens_roster_digest_of(lenses: lenses),
+                    rows: list_reverse(xs: scan.rows_reversed)
                   }
               }
           }
@@ -830,7 +831,7 @@ fn required_lens_observations(
   let registrations = required_lens_registration_keys(lenses: lenses)
   list_reverse(xs: fold_list(
     xs: witnesses,
-    empty: [],
+    empty: Empty,
     cons: fn(acc, w) {
       match map_lookup(registrations, declaration_ref_display_key(ref: w.lens)) {
         Present { value: _ } => Cons { head: w, tail: acc }
