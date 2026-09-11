@@ -24,6 +24,11 @@ type EgressAttemptOutcome
   = GuestEgressEstablished { via: NonEmptyStr }
   | GuestEgressNotEstablished { reached: NonEmptyStr, blocked_at: NonEmptyStr }
 
+// §3b DIVERGENCE, SAME MEASUREMENT AS guest_reachability. The only remaining hit of this
+// row outside this file is a DeclarationRef in
+// gunbc.recurring_failure_mode.callback_failure_indistinguishable_from_success. That class's
+// own row states a DeclarationRef is not consumption. This change does not close that. It
+// stops asserting that unread folds were a close.
 data egress_outcome: EgressAttemptOutcome = GuestEgressNotEstablished {
   reached: "the bridge carries eth0 and the attempt tap",
   blocked_at: "the host obtained no address on the bridge, so neither host nor guest had a route off the segment",

@@ -1,0 +1,39 @@
+module test.claim.shell.shell_typed_invocation_witness_test
+
+import std.types { Bool, String, List }
+import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsMkdir, ConfigfsWriteAttr, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir }
+import gunbc.bmc_virtual_media { srv4_vm_gadget_setup_ops, srv4_vm_gadget_setup_script }
+
+// THE ACCEPTANCE ORACLE FOR shell-typed-invocation, RED BY DESIGN UNTIL THE NODE IS DONE. The node's
+// bar is that callers say which operation and which arguments and nobody hands over shell text; the
+// specimen the node's own note names is the USB gadget setup, whose script today prefixes `set -e`
+// and joins rendered lines carrying `2>/dev/null || true`. Those are shell control words, and this
+// witness reads the rendered setup for the srv4 virtual-media gadget (an authored fixture, not a live
+// observation) and refuses while any is present. It is enrolled in v2.workflow.floor_expected_red so
+// the required floor holds it as known red rather than as a failure; the transition red -> green IS
+// the work, and when it lands the row leaves that roster by the roster's own removal path.
+//
+// WHAT THE WORKER MAY CHANGE HERE: if the surface this reads (`srv4_vm_gadget_setup_script`) is
+// deleted by the work, this witness is re-pointed at the described form's rendering of the same
+// fixture; its NAME and its claim do not change, because the node's contract names the function.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+test fn usb_gadget_setup_emits_no_shell_control_word() -> Bool {
+  let rendered = srv4_vm_gadget_setup_script()
+  rendered != "" && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
+}
+
+// POSITIVE CONTROL, green today and after: the setup is a list of typed configfs operations over the
+// gadget's own configfs directory, so the red above is about the RENDERING and not about the ops.
+test fn usb_gadget_setup_is_typed_configfs_ops_under_the_gadget_root() -> Bool {
+  let ops = srv4_vm_gadget_setup_ops()
+  count(ops) > 0
+    && all(ops, op => match op {
+      ConfigfsMkdir { path } => string_contains(s: path as String, pattern: "/sys/kernel/config/usb_gadget/")
+      ConfigfsWriteAttr { path, value: _ } => string_contains(s: path as String, pattern: "/sys/kernel/config/usb_gadget/")
+      ConfigfsSymlink { target: _, link } => string_contains(s: link as String, pattern: "/sys/kernel/config/usb_gadget/")
+      ConfigfsRemoveLink { link } => string_contains(s: link as String, pattern: "/sys/kernel/config/usb_gadget/")
+      ConfigfsRmdir { path } => string_contains(s: path as String, pattern: "/sys/kernel/config/usb_gadget/")
+    })
+}

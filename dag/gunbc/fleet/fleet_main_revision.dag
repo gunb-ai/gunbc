@@ -187,12 +187,10 @@ type FleetRevisionRelationObservation {
 // unrelated and then refuses an advance that should have been admitted. The distinction was always
 // declared on the operation and was simply never surfaced.
 //
-// A MERGE BASE THAT IS NEITHER ENDPOINT MEANS THE HISTORIES DIVERGED, and it folds to
-// UnrelatedHistories to match the semantics the existing probe fold already assigns that variant
-// (gunbc.live_deploy.revision deploy_revision_relation_from_probes: neither-is-ancestor yields
-// UnrelatedHistories). Reusing that vocabulary rather than minting a Diverged variant keeps one
-// authority for "how do these two revisions relate"; the name is the deploy lane's, and it means
-// neither-is-an-ancestor rather than share-no-history.
+// A MERGE BASE THAT IS NEITHER ENDPOINT MEANS THE HISTORIES DIVERGED. That case is classified by
+// gunbc.live_deploy.revision revision_relation_from_ancestry_facts, which yields DivergedHistories
+// when neither commit is an ancestor of the other. UnrelatedHistories is reserved for the
+// NoCommonAncestor arm below (merge-base exit 1): the pair shares no merge base at all.
 fn fleet_revision_relation_from_merge_base(
   current: GitObjectId,
   accepted: GitObjectId,
@@ -220,23 +218,15 @@ fn fleet_revision_relation_from_merge_base(
 // representation of the operation's own exit table, comparable against any other operation's codes
 // without complaint from anything (raised in review 54373).
 //
-// A DECLARED CONFLATION SURVIVES THIS CHANGE, AND IT IS NOW VISIBLE AT ONE LINE INSTEAD OF NONE.
 // NoCommonAncestor (git looked; these histories never met) and a reported base that is neither
-// endpoint (they diverged from a shared past) both fold to UnrelatedHistories, because that is the
-// vocabulary gunbc.live_deploy.revision owns and its variant means neither-is-an-ancestor. The two
-// states are genuinely different and have opposite remedies: a divergence is a force-push or a
-// rebase and the shared base is the thing an operator reasons from, while no common ancestor at all
-// means the configured revision came from somewhere else entirely -- a wrong remote, a wrong
-// repository -- which no amount of history reading will reconcile. The refusal message on that
-// variant currently asserts "share no ancestry", which is FALSE for the divergent case and that is
-// the overwhelmingly common one.
-//
-// It is left folded rather than split unilaterally because DeployRevisionRelation is the deploy
-// lane's type and a split changes every consumer of it. The distinction is DECIDABLE and the
-// evidence is now in hand rather than discarded upstream -- NoCommonAncestor arrives as its own
-// variant. Next-rung trigger: the deploy lane splitting UnrelatedHistories into a diverged arm
-// carrying the shared base and an unrelated arm carrying none; this call site consumes the split
-// the day it lands, with no new evidence required. Raised to that owner separately.
+// endpoint (they diverged from a shared past) are already two variants on DeployRevisionRelation:
+// UnrelatedHistories and DivergedHistories. This module is the consumer of that split
+// (relation_from_merge_base_oid projects the reported-base case into
+// revision_relation_from_ancestry_facts; NoCommonAncestor maps here to UnrelatedHistories). The
+// two states have opposite remedies: a divergence is a force-push or a rebase and the shared
+// base is the thing an operator reasons from, while no common ancestor at all means the configured
+// revision came from somewhere else entirely -- a wrong remote, a wrong repository -- which no
+// amount of history reading will reconcile.
 fn merge_base_relation(
   current: GitObjectId,
   accepted: GitObjectId,
