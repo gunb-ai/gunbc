@@ -1,0 +1,152 @@
+module extdeps.needrestart
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// needrestart (Thomas Liske) runs after every dpkg transaction on Ubuntu, finds daemons still mapping
+// replaced libraries, and restarts them. Ubuntu wires it into apt through a dpkg hook, so an
+// unattended security upgrade of libc restarts every service whose process image still maps the old
+// libc -- which on a self-hosted CI host includes every busy runner slot.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/liske/needrestart"
+  }
+}
+
+// The configuration surface this module models, at the upstream tag Ubuntu noble packages. The shipped
+// needrestart.conf documents override_rc as "Override service default selection (hash of regex)" and
+// ends by evaluating every /etc/needrestart/conf.d/*.conf in Perl sort order, dying on a parse error.
+data needrestart_config_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/liske/needrestart/blob/v3.6/ex/needrestart/needrestart.conf"
+  }
+}
+
+// The consumer of override_rc: for each service needing a restart, the first key whose regex matches
+// the unit name decides whether it is restarted (true) or deferred and only reported (false).
+data needrestart_override_rc_consumer_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/liske/needrestart/blob/v3.6/needrestart"
+  }
+}
+
+// The distribution package the fleet runs, read off srv1 with dpkg-query on 2026-09-11.
+data needrestart_ubuntu_noble_package_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "launchpad.net/ubuntu/+source/needrestart/3.6-7ubuntu4.5"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.needrestart",
+      decl_name: "NeedrestartServiceSelectionOverride",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    needrestart_config_authority,
+    needrestart_override_rc_consumer_authority,
+    needrestart_ubuntu_noble_package_authority,
+  ]
+}
+
+data needrestart_upstream_version: NonEmptyStr = "3.6" as NonEmptyStr
+
+data needrestart_ubuntu_noble_package_version: NonEmptyStr = "3.6-7ubuntu4.5" as NonEmptyStr
+
+data needrestart_conf_d_dir: NonEmptyStr = "/etc/needrestart/conf.d" as NonEmptyStr
+
+// Only files ending in `.conf` are evaluated, so the suffix is part of the file's identity rather than
+// a naming habit: a snippet without it is inert, and nothing reports that.
+data needrestart_conf_d_suffix: String = ".conf"
+
+fn needrestart_conf_d_path(stem: NonEmptyStr) -> NonEmptyStr {
+  join([needrestart_conf_d_dir as String, "/", stem as String, needrestart_conf_d_suffix], "") as NonEmptyStr
+}
+
+// The value side of one override_rc entry. upstream stores it as a Perl boolean and reads it into
+// `$restart`; the two states have opposite consequences for a running process, so they are named.
+type NeedrestartDefaultSelection
+  = RestartSelectedByDefault
+  | RestartDeferredByDefault
+
+fn needrestart_default_selection_wire(selection: NeedrestartDefaultSelection) -> String {
+  match selection {
+    RestartSelectedByDefault => "1"
+    RestartDeferredByDefault => "0"
+  }
+}
+
+// THE KEY SIDE IS A UNIT-NAME PREFIX, NOT A REGEX, because a caller-authored regex is a second
+// language with its own failure modes and needrestart dies on a malformed one. The module owns the
+// translation: anchor at the start, quote every character the way Perl's quotemeta does, so the key
+// can only ever mean "unit names beginning with exactly these characters".
+//
+// The accepted alphabet is systemd.unit(5)'s unit-name characters plus the template separator `@`,
+// with the backslash excluded: systemd admits it only as an escape introducer, and a prefix carrying
+// one would make the prefix's meaning depend on a second escaping layer this module does not model.
+type NeedrestartUnitNamePrefix sole_constructor {
+  prefix: NonEmptyStr
+}
+
+type NeedrestartUnitNamePrefixAdmission
+  = NeedrestartUnitNamePrefixAdmitted { prefix: NeedrestartUnitNamePrefix }
+  | NeedrestartUnitNamePrefixRefused { cause: NonEmptyStr }
+
+fn needrestart_unit_name_char_allowed(cp: Int) -> Bool {
+  (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57)
+    || cp == 58 || cp == 45 || cp == 95 || cp == 46 || cp == 64
+}
+
+fn needrestart_unit_name_prefix(raw: String) -> NeedrestartUnitNamePrefixAdmission {
+  if raw == "" {
+    NeedrestartUnitNamePrefixRefused { cause: "needrestart unit-name prefix is empty, which would match every service" as NonEmptyStr }
+  } else if fold(chars(s: raw), init: true, f: (ok, cp) => ok && needrestart_unit_name_char_allowed(cp: cp)) {
+    NeedrestartUnitNamePrefixAdmitted { prefix: NeedrestartUnitNamePrefix { prefix: raw as NonEmptyStr } }
+  } else {
+    NeedrestartUnitNamePrefixRefused {
+      cause: join(["needrestart unit-name prefix `", raw, "` carries a character outside systemd's unit-name alphabet"], "") as NonEmptyStr,
+    }
+  }
+}
+
+// perlfunc quotemeta: every ASCII character that is not a word character is preceded by a backslash.
+fn needrestart_perl_quotemeta_code_point(cp: Int) -> String {
+  if (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57) || cp == 95 {
+    from_code_point(cp: cp)
+  } else {
+    concat("\\", from_code_point(cp: cp))
+  }
+}
+
+fn needrestart_unit_name_prefix_regex(prefix: NeedrestartUnitNamePrefix) -> String {
+  join(["qr(^", join(map(chars(s: prefix.prefix as String), cp => needrestart_perl_quotemeta_code_point(cp: cp)), ""), ")"], "")
+}
+
+type NeedrestartServiceSelectionOverride {
+  units: NeedrestartUnitNamePrefix
+  selection: NeedrestartDefaultSelection
+}
+
+// One assignment into the hash needrestart.conf has already created. Assigning a key rather than
+// replacing the hash is what lets a snippet add one policy without erasing the distribution's own
+// entries (dbus, display managers, getty) that the shipped file declares.
+fn needrestart_override_rc_line(o: NeedrestartServiceSelectionOverride) -> String {
+  join([
+    "$nrconf\{override_rc\}->\{", needrestart_unit_name_prefix_regex(prefix: o.units), "\} = ",
+    needrestart_default_selection_wire(selection: o.selection), ";",
+  ], "")
+}
+
+fn needrestart_conf_d_text(overrides: List<NeedrestartServiceSelectionOverride>) -> String {
+  join(map(overrides, o => concat(needrestart_override_rc_line(o: o), "\n")), "")
+}

@@ -770,6 +770,16 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
   function: "runner_microvm_host_converge_wet",
 }
 
+data gunbc_ci_runner_host_file_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_file_converge.dag",
+  function: "runner_host_file_observe_ci_wet",
+}
+
+data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_file_converge.dag",
+  function: "runner_host_file_converge_ci_wet",
+}
+
 // THE OBSERVER SIDE OF ONE RESET ATTEMPT. It takes no arguments: the dispatch names the OBSERVER, the
 // step hands that label over by environment, and the subject is derived from the label through the
 // modeled assignment. There is no input of any kind through which a caller could name a subject,
@@ -821,6 +831,15 @@ data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_spark_serving_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/pair_serving_apply.dag",
   function: "spark_pair_serving_apply_wet",
+}
+
+// THE ROUTE-A PROBE. It asks a published image what it contains, inside that image, on the selected
+// Spark -- and it needs this job's prelude for a reason that is not incidental: docker's socket on a
+// Spark is root-owned and the managed executor is in no docker group, so the only modeled way to
+// drive docker there is the administrator credential this job materializes.
+data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_runtime_image_probe.dag",
+  function: "v41_published_image_probe_ci_wet",
 }
 
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -942,6 +961,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
+    gunbc_ci_runner_host_file_observe_target,
+    gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
@@ -1713,6 +1734,26 @@ fn gunbc_ci_runner_microvm_host_converge_invoke() -> String {
   )
 }
 
+fn gunbc_ci_runner_host_file_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_file_observe_target.entry,
+    function: gunbc_ci_runner_host_file_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_runner_host_file_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_file_converge_target.entry,
+    function: gunbc_ci_runner_host_file_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+  )
+}
+
 fn gunbc_ci_host_reset_return_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1764,6 +1805,20 @@ fn gunbc_ci_spark_bootstrap_invoke() -> String {
     function: gunbc_ci_spark_bootstrap_target.function,
     claim_run: false,
     receipt_rel: spark_apply_receipt_path
+  )
+}
+
+// The runtime-image probe shares the same prelude as the bootstrap, the grant install and the
+// serving apply: one fleet-key agent from the job and one per-target administrator credential
+// materialized to one file, so four steps cannot drift on how a Spark is reached or authenticated.
+fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_runtime_image_probe_target.entry,
+    function: gunbc_ci_spark_runtime_image_probe_target.function,
+    claim_run: false,
+    receipt_rel: "target/v41-published-image-probe-receipt.txt"
   )
 }
 
