@@ -5,9 +5,8 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensusRow,
   CensusObserved,
   CensusNotRunnable,
-  census_rows_of_class,
-  census_blocking_rows,
-  census_total_count
+  census_key_count,
+  censuses_differ_by_exactly_the_target_key
 }
 import std.types { String, Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -43,51 +42,31 @@ fn census_of(source: String) -> CompileDiagnosticCensus {
 }
 
 // EXACT: this class, this subject, blocking only. Anything else in the closure is not this claim.
-fn keyed_rows(rows: List<CompileDiagnosticCensusRow>, wanted_class: String, wanted_subject: String) -> List<CompileDiagnosticCensusRow> {
-  census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted_class)
-    |> filter(r => r.subject_name == wanted_subject)
-}
-
 fn keyed_count(source: String, wanted_class: String, wanted_subject: String) -> Int {
   match census_of(source: source) {
     CensusObserved { rows: rows } =>
-      census_total_count(rows: keyed_rows(rows: rows, wanted_class: wanted_class, wanted_subject: wanted_subject))
+      census_key_count(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
-// THE COMPLETE BLOCKING KEY SET of a compile, as (class, subject) pairs. Comparing these between
-// the two arms of the producer is what shows the shared closure cancelling: every row either
-// appears on both sides and drops out, or is a real delta and must be accounted for.
-fn blocking_keys(source: String) -> List<String> {
+// THE ROWS OF A COMPILE, or the NotRunnable sentinel made VISIBLE rather than silently empty.
+// Returning [] on the unrunnable arm would make could-not-measure and observed-nothing the same
+// value, which is the fail-open the census module's own API was reshaped to prevent.
+fn census_rows_or_refuse(source: String) -> List<CompileDiagnosticCensusRow> {
   match census_of(source: source) {
-    CensusObserved { rows: rows } =>
-      census_blocking_rows(rows: rows) |> map(r => (r.diagnostic_class as String) + "|" + r.subject_name)
-    CensusNotRunnable { cause: _ } => ["CENSUS-NOT-RUNNABLE"]
+    CensusObserved { rows: rows } => rows
+    CensusNotRunnable { cause: _ } => [unrunnable_sentinel_row()]
   }
 }
 
-fn key_count(keys: List<String>, k: String) -> Int {
-  (keys |> filter(x => x == k)).count()
-}
-
-fn distinct_keys(xs: List<String>) -> List<String> {
-  fold(xs, init: [], f: (acc, k) => if key_count(keys: acc, k: k) == 0 { concat(acc, [k]) } else { acc })
-}
-
-// COMPARED AS A MULTISET, PER KEY, because a set difference cancels multiplicity. An earlier
-// revision filtered "keys of a not present in b", so a key occurring TWICE on the red side and once
-// on green cancelled completely and a second unintended refusal on an already-shared key was
-// invisible -- the exact failure the `== 1` assertions elsewhere in this file exist to close, left
-// open in the comparison that was supposed to be the strictest thing here.
-fn key_delta_is_exactly(red: List<String>, green: List<String>, target: String) -> Bool {
-  distinct_keys(xs: concat(red, green))
-    |> all(k =>
-         if k == target {
-           key_count(keys: red, k: k) == key_count(keys: green, k: k) + 1
-         } else {
-           key_count(keys: red, k: k) == key_count(keys: green, k: k)
-         })
+fn unrunnable_sentinel_row() -> CompileDiagnosticCensusRow {
+  CompileDiagnosticCensusRow {
+    diagnostic_class: "CENSUS-NOT-RUNNABLE",
+    subject_name: "census",
+    blocking: true,
+    count: 1,
+  }
 }
 
 fn sole_constructor_on_origin_reading(source: String) -> Int {
@@ -190,20 +169,29 @@ test fn the_sanctioned_read_route_draws_no_violation() -> Bool {
 // with nothing surviving on the GREEN side at all. An earlier revision compared two hand-written
 // sources whose IMPORTS DIFFERED and called the target-key comparison a differential; the shared
 // closure was assumed to cancel rather than shown to. This form rejects every other delta.
+// THE COMPARATOR IS CONSUMED, NOT RE-MINTED. An earlier revision of this file hand-rolled a
+// key-delta comparison over "class|subject" STRINGS, which forked a fact that already had an
+// implementation -- and the copy was weaker in exactly the way the original was right: it counted
+// ROW ENTRIES instead of summing r.count, so a red row with count 2 and a green row with count 1 at
+// one key cancelled, leaving the multiplicity blindness the keyed form exists to remove. Two
+// implementations of one fact drifted on their second instance (DESIGN 3). The comparator now lives
+// in gunbc.compile_diagnostic_census, which is the module that owns the rule, and both this battery
+// and test.claim.machine_intake.no_fallback_plan_ineligibility_wall_test consume it.
 test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
-  let red = blocking_keys(source: probe_source(body: forged_reading_source))
-  let green = blocking_keys(source: probe_source(body: sanctioned_body))
-  key_delta_is_exactly(red: red, green: green, target: "SoleConstructorViolation|OriginReading")
-    && (key_count(keys: red, k: "SoleConstructorViolation|OriginReading") == 1)
-    && (key_count(keys: green, k: "SoleConstructorViolation|OriginReading") == 0)
+  censuses_differ_by_exactly_the_target_key(
+    red: census_rows_or_refuse(source: probe_source(body: forged_reading_source)),
+    green: census_rows_or_refuse(source: probe_source(body: sanctioned_body)),
+    target_class: "SoleConstructorViolation",
+    target_subject: "OriginReading",
+  )
 }
 
 // CALIBRATION: the census actually RAN for both arms. Without this, a CensusNotRunnable on both
 // sides would cancel in the differential above and read as agreement -- the sentinel key is carried
 // into the key set precisely so it cannot hide there, and this arm names it.
 test fn both_arms_of_the_differential_actually_compiled() -> Bool {
-  (key_count(keys: blocking_keys(source: probe_source(body: forged_reading_source)), k: "CENSUS-NOT-RUNNABLE") == 0)
-    && (key_count(keys: blocking_keys(source: probe_source(body: sanctioned_body)), k: "CENSUS-NOT-RUNNABLE") == 0)
+  (census_key_count(rows: census_rows_or_refuse(source: probe_source(body: forged_reading_source)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
+    && (census_key_count(rows: census_rows_or_refuse(source: probe_source(body: sanctioned_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
 }
 
 // PRINTED DIAGNOSTICS, and their consumer is named rather than left to be inferred (DESIGN 3c).

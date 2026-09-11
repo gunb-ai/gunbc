@@ -8,7 +8,8 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensusRow,
   census_blocking_rows,
   census_rows_of_class,
-  census_total_count
+  census_total_count,
+  censuses_differ_by_exactly_the_target_key
 }
 import v2.std.optional { Absent, Present }
 
@@ -78,74 +79,23 @@ data target_subject: String = "Coproduct(BootDeliveryCandidateStanding)"
 // with delta 1 at the target key and 0 at every other. CompileDiagnosticCensusRow
 // already carries all four fields, so this is read off the instrument's existing
 // output with no ambient literal and no new capability.
-fn census_key_count(
-  rows: List<CompileDiagnosticCensusRow>,
-  diagnostic_class: String,
-  subject_name: String,
-  blocking: Bool
-) -> Int {
-  census_total_count(
-    rows: rows
-      |> filter(r =>
-        (r.diagnostic_class as String) == diagnostic_class
-          && r.subject_name == subject_name
-          && r.blocking == blocking
-      )
-  )
-}
-
-fn row_is_target_key(r: CompileDiagnosticCensusRow) -> Bool {
-  (r.diagnostic_class as String) == target_class && r.subject_name == target_subject && r.blocking
-}
-
-fn expected_delta_at(r: CompileDiagnosticCensusRow) -> Int {
-  if row_is_target_key(r: r) { 1 } else { 0 }
-}
-
-fn delta_at(
-  r: CompileDiagnosticCensusRow,
-  red: List<CompileDiagnosticCensusRow>,
-  green: List<CompileDiagnosticCensusRow>
-) -> Int {
-  let in_red = census_key_count(
-    rows: red,
-    diagnostic_class: r.diagnostic_class as String,
-    subject_name: r.subject_name,
-    blocking: r.blocking
-  )
-  let in_green = census_key_count(
-    rows: green,
-    diagnostic_class: r.diagnostic_class as String,
-    subject_name: r.subject_name,
-    blocking: r.blocking
-  )
-  in_red - in_green
-}
-
-// Ranging over BOTH row lists is what makes the union the domain: a key present
-// only in the GREEN is as visible as one present only in the RED, so a row that
-// disappears fails exactly as loudly as one that appears. The target key is
-// asserted separately rather than left to the row walk, so the comparator still
-// refuses if the target were absent from both sides.
+// THE COMPARATOR IS CONSUMED FROM ITS HOME, not implemented here. These four helpers used to live
+// in this file, and gunbc.compile_diagnostic_census named THIS RECEIPT as the authority for the
+// exact forms -- which reads as reusable and is not: the next battery that needed the comparison
+// (test.claim.fabric_m0_origin_readback_seal) implemented it again and got the multiplicity wrong,
+// counting row entries instead of summing r.count. Naming a receipt as the authority for a form
+// does not make the form reusable; the function does. It now lives in the module that owns the
+// rule, parameterised by the target key, and this file passes its own.
 fn censuses_differ_by_exactly_the_target_row(
   red: List<CompileDiagnosticCensusRow>,
   green: List<CompileDiagnosticCensusRow>
 ) -> Bool {
-  let target_in_red = census_key_count(
-    rows: red,
-    diagnostic_class: target_class,
-    subject_name: target_subject,
-    blocking: true
+  censuses_differ_by_exactly_the_target_key(
+    red: red,
+    green: green,
+    target_class: target_class,
+    target_subject: target_subject,
   )
-  let target_in_green = census_key_count(
-    rows: green,
-    diagnostic_class: target_class,
-    subject_name: target_subject,
-    blocking: true
-  )
-  (target_in_red - target_in_green) == 1
-    && red |> all(r => delta_at(r: r, red: red, green: green) == expected_delta_at(r: r))
-    && green |> all(r => delta_at(r: r, red: red, green: green) == expected_delta_at(r: r))
 }
 
 fn red_rows() -> ProbeCensusRows? {
