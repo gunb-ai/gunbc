@@ -26,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // WHAT IS LOST, STATED: before the split the assertions here were on the per-PR floor -- but they
 // were reading a hand-authored list, so what the floor checked was that the list still said
 // what it said. The executing consumer of the live population is now the operator's instrument:
-//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_blocking_consumer_count
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_blocking_consumer_count_report
 // and locally this file runs as
 //   claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/self_host_v1_consumer_census_live_witness_test.dag --functions <fn,...>
 // The bin_witness_wet_entries rows naming this entry, and gunbc.rung_drop
