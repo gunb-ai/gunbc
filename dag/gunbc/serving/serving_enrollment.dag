@@ -1,12 +1,13 @@
 module gunbc.serving.serving_enrollment
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Port }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.glm_canary_converge { glm_canary_arm, SeqBound, ExperimentalOperatorBound, MeasuredFromLaunchLine }
 
 // ── WHO WE MAY ASK IS NOT WHOSE HOSTS WE CLAIM ────────────────────────────────────────────────
@@ -44,18 +45,23 @@ import gunbc.spark.glm_canary_converge { glm_canary_arm, SeqBound, ExperimentalO
 // being implicit in a convergence roster that also decides deployment. Moving them is a re-homing of
 // this file, not an extraction from three.
 
-// THE PAIR ROUTE'S FRONT DOOR. It moved here from gunbc.harness.harness_wire, where it was a harness
-// row named harness_engine_port, because it is not a fact about the harness: it is the port the vLLM
-// front door of the pair route answers on, and the harness is one client of it. Keeping it there
-// also made it structurally impossible to enrol a route on any other port -- which is exactly what
-// group B needs, its canary answering on its own -- so the second route could not be expressed
-// without an edit rather than a row.
-data serving_pair_front_door_port: Nat = 30000
-
+// THE FRONT DOOR IS ASKED OF THE ROUTE THAT OWNS IT, AND NEITHER ROUTE'S PORT IS SPELLED HERE.
+// A row named harness_engine_port stood in gunbc.harness.harness_wire, which is not a fact about the
+// harness: it is the port a route's vLLM front door answers on, and the harness is one client of it.
+// Deleting it was right; re-minting the literal here was not, and this module did that for one turn
+// of review. Group A's port is the one the repository LAUNCHES that route on -- gunbc.spark.pair_serving_realization
+// spark_pair_serve_port, itself derived from the observed launch -- so a hand-written 30000 beside it
+// meant the port we launch on and the port we ask on were two rows free to drift. Group B was already
+// right, consuming the canary arm's own port rather than spelling 30001; group A now matches it.
+//
+// AND THE FIELD IS A Port RATHER THAN A Nat, because std.types already carries
+// `type Port = Int where range(min: 1, max: 65535)` and a module whose stated purpose is to own route
+// front doors is the wrong place to decline the construction that makes an out-of-range port
+// unwritable (DESIGN section 4b: construction over validation).
 type ServingRouteEndpoint {
   group: FabricGroup
   address: NonEmptyStr
-  port: Nat
+  port: Port
 }
 
 // ── HOW MANY TURNS A ROUTE WILL TAKE, AND WHY THAT IS A DECISION RATHER THAN A READING ───────
@@ -146,10 +152,14 @@ fn serving_route_head(group: FabricGroup) -> HostIdentity {
   }
 }
 
-fn serving_route_port(group: FabricGroup) -> Nat {
+// THE CANARY'S PORT CROSSES ONE WIDTH BOUNDARY AND IT IS CROSSED HERE, ONCE. Its arm declares the
+// port as a Nat; Port is a bounded Int. The conversion is done at this seam rather than at each
+// consumer so there is exactly one place where the canary's spelling meets the corpus's port type,
+// and the range refinement is what checks the result.
+fn serving_route_port(group: FabricGroup) -> Port {
   match group {
-    FabricGroupA => serving_pair_front_door_port
-    FabricGroupB => glm_canary_arm.port
+    FabricGroupA => spark_pair_serve_port
+    FabricGroupB => glm_canary_arm.port as Port
   }
 }
 
