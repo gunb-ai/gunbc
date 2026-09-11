@@ -95,7 +95,9 @@ fn partition_push_lease(partition: PartitionId, expected: HeadExpectation) -> St
 }
 
 // The executor's layout: a bare mirror it writes objects into and pushes from, and a scratch
-// directory for the bytes being hashed. Both are the executor's, never the placement's.
+// directory the mirror is created under and git runs in. Event bytes never pass through scratch:
+// it is shared by every writer on the host, so the append hashes from stdin (event_log_append).
+// Both are the executor's, never the placement's.
 type EventLogLayout {
   mirror: FilePath
   scratch: FilePath

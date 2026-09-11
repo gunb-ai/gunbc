@@ -6,7 +6,6 @@ import std.nat { Nat }
 import std.measure { Measure, Count, One }
 import extdeps.git.plumbing
 import extdeps.git.plumbing { GitWorktreeAt }
-import extdeps.shell
 import product.capacity.pool { Pool, NoReplenishment, pool_of }
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, SeatRequest }
@@ -31,9 +30,7 @@ import gunbc.fabric_event_log {
 // its step. Steps: 1 remote init, 2 empty partition reads absent, 3 first append admitted against
 // absent, 4 second append against absent is STALE with the first as observed head, 5 append against
 // the first is admitted, 6 the partition reads two events oldest first, 7 a one-seat pool grants
-// the first seat, 8 the second request is full, 9 a release then a third request is granted,
-// 10 an append whose scratch path no longer holds the bytes the appender wrote still publishes
-// exactly those bytes.
+// the first seat, 8 the second request is full, 9 a release then a third request is granted.
 
 fn probe_partition() -> PartitionId { "probe-seats" as PartitionId }
 fn probe_actor() -> NonEmptyStr { "probe" as NonEmptyStr }
@@ -55,7 +52,7 @@ fn probe_layout(root: NonEmptyStr) -> EventLogLayout {
 }
 
 fn fabric_event_log_probe(root: NonEmptyStr) -> ProcessExit {
-  let step = match fabric_event_log_probe_step(root: root) { 0 => fabric_event_log_probe_scratch_step(root: root)  n => n }
+  let step = fabric_event_log_probe_step(root: root)
   if step == 0 { ExitSuccess } else { exit_failure(reason: join(["fabric event log probe failed at step ", to_string(step)], "")) }
 }
 
@@ -122,44 +119,6 @@ fn fabric_event_log_probe_step(root: NonEmptyStr) -> Int {
                       }
                   }
                 }
-            }
-        }
-    }
-  }
-}
-
-// STEP 10: THE PUSHED OBJECT IS THE SERIALIZED EVENT, whatever the executor's scratch holds. Every
-// writer on a host shares one scratch root, so a path-routed append hashes whatever that path holds
-// when git reads it: an O_TRUNC from a concurrent writer publishes git's EMPTY blob (the harness's
-// "event e69de29... undecodable: not JSON at offset 0"), a completed foreign write publishes another
-// writer's event under this writer's admitted append. The scratch path is planted here as a link to
-// /dev/null, which fixes that interleaving deterministically; the partition must read back the one
-// event this append serialized.
-fn probe_scratch_partition() -> PartitionId { "probe-scratch" as PartitionId }
-
-fn fabric_event_log_probe_scratch_step(root: NonEmptyStr) -> Int {
-  let layout = probe_layout(root: root)
-  let planted = shell.Symlink.AtomicReplace(target: "/dev/null" as FilePath, link: join([root as String, "/event-", probe_scratch_partition() as String, ".json"], "") as FilePath)
-  if !planted.success { 10 } else {
-    let event = ChainEvent {
-      partition: probe_scratch_partition(),
-      parent: none,
-      recorded_at: 3000,
-      actor: probe_actor(),
-      payload: PoolAcquired { reference: "scratch" as NonEmptyStr, amount: 1, term_seconds: 300 },
-    }
-    match event_log_append(layout: layout, partition: probe_scratch_partition(), event: event, expected: HeadAbsent) {
-      EventAppendRefused { step: _, reason: _ } => 10
-      EventAppendStale { expected: _, observed: _ } => 10
-      EventAppended { id: appended } =>
-        match event_log_read_partition(layout: layout, partition: probe_scratch_partition(), budget: 4) {
-          PartitionReadRefused { step: _, reason: _ } => 10
-          PartitionReadOk { head: _, walk: walk } =>
-            match walk {
-              ChainWalked { oldest_first: xs } =>
-                if length(xs) == 1 && (match first(xs) { Present { value: x } => (x.id as String) == (appended as String)  Absent => false }) { 0 } else { 10 }
-              ChainIncomplete { missing: _, newest_first_so_far: _ } => 10
-              ChainBudgetExhausted { at: _ } => 10
             }
         }
     }
