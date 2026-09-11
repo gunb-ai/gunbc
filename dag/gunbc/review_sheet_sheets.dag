@@ -1,6 +1,6 @@
 module gunbc.review_sheet_sheets
 
-import std.types { NonEmptyStr, String, List }
+import std.disposition { Disposition, Terminal }
 import std.upsert_decision { UpsertDecision }
 import gunbc.ensure {
   EnsurePolicy,
@@ -133,4 +133,8 @@ fn sheets_api_edition() -> NonEmptyStr {
 
 fn sheets_workspace_suite() -> NonEmptyStr {
   google_workspace_product
+}
+
+data live_sheets_transport_frontier: Disposition = Terminal {
+  reason: "sunny-carp-475 binds ReviewSheetProjection to a live sheets.Spreadsheets GetValues and BatchUpdateValues adapter; this change's executing consumer of the decision is test.claim.review_sheet_converge_witness"
 }

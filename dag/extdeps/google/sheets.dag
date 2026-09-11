@@ -115,6 +115,18 @@ fn sheets_major_dimension_wire(d: SheetsMajorDimension) -> String {
   }
 }
 
+fn sheets_major_dimension_from_wire(raw: String) -> SheetsMajorDimension? {
+  if raw == sheets_major_dimension_wire(d: DimensionRows) {
+    Present { value: DimensionRows }
+  } else {
+    if raw == sheets_major_dimension_wire(d: DimensionColumns) {
+      Present { value: DimensionColumns }
+    } else {
+      none
+    }
+  }
+}
+
 type SheetsValueInputOption = InputRaw | InputUserEntered
 
 fn sheets_value_input_option_wire(o: SheetsValueInputOption) -> String {
@@ -123,10 +135,6 @@ fn sheets_value_input_option_wire(o: SheetsValueInputOption) -> String {
     InputUserEntered => "USER_ENTERED"
   }
 }
-
-type SpreadsheetId = NonEmptyStr where brand("SpreadsheetId")
-
-type A1Range = NonEmptyStr where brand("A1Range")
 
 type SheetsError {
   code: Int
@@ -149,12 +157,6 @@ data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> 
     trigger: "a consumer needs unformatted numeric or boolean cells rather than FORMATTED_VALUE strings"
   }
 ]
-
-type BatchUpdateValuesRequest {
-  valueInputOption: String
-  data: List<ValueRange>
-  includeValuesInResponse: Bool?
-}
 
 type BatchUpdateValuesResponse {
   spreadsheetId: String
