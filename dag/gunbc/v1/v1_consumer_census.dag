@@ -953,7 +953,11 @@ data v1_tests_manifest_dependency: CargoPathDependency = CargoPathDependency {
 // refuses in both directions -- a produced site with no row here is undisposed, a row here naming
 // no produced site is stale -- so the table cannot drift from the tree in either direction without
 // the instrument saying which row -- both directions land in the uncitable column as Undecided
-// consumers and the report entry renders the join. The three .dag renderers are cited by declaration and the
+// consumers and the report entry renders the join. THE REACH OF THAT CLAIM IS THE TOKENS': a
+// renderer that spells the seed's package name some other way (a `const`, `.to_owned()`, a
+// `[dependencies.v1-compiler]` table header) is outside the produced population and is neither
+// joined nor reported; widening the tokens is how the reach grows, and the tokens are derived from
+// the package name's authority so the spelling they do cover cannot drift. The three .dag renderers are cited by declaration and the
 // citation wall refuses a stale name; their join to a produced .dag literal population is the
 // declared frontier tools.v1_consumer_discovery (PR #10939) closes.
 //

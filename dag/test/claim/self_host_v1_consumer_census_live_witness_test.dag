@@ -36,13 +36,16 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE LIVE PRODUCER ANSWERS, AND ANSWERS WITH REFERENCES: the tree's own hand Rust outside the
 // deletion set is folded, nothing is unscannable, nothing is unattributed, and every produced row
-// is cited. The count is not compared to a literal -- it is compared to the live cited column.
+// is cited. The produced grain is the line and the census grain is consumer x authority, so the
+// cited column is bounded by the row count, never equal to it by assertion.
 fn the_live_reference_population_is_produced() -> Bool {
   match v1_current_rust_references() {
     RustReferenceHostRefused { detail: _ } => false
     RustReferencesObserved { observed_at: v1cc_seen_tree, rows: rs, unattributed: u, unscannable: un } =>
       count(rs) > 0 && count(un) == 0 && count(u) == 0
-        && count(v1_shim_partition_over(observed_at: v1cc_seen_tree, rows: rs, unattributed: u).cited) == count(rs)
+        && count(v1_shim_partition_over(observed_at: v1cc_seen_tree, rows: rs, unattributed: u).uncitable) == 0
+        && count(v1_shim_partition_over(observed_at: v1cc_seen_tree, rows: rs, unattributed: u).cited) > 0
+        && count(v1_shim_partition_over(observed_at: v1cc_seen_tree, rows: rs, unattributed: u).cited) <= count(rs)
   }
 }
 
