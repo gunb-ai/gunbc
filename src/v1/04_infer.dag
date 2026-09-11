@@ -775,6 +775,56 @@ fn unlisted_variant_use_diagnostics(scope: InferScope, name: String, span: Sourc
   }
 }
 
+// THE ONE PREDICATE deciding whether a declared field OBLIGATES a construction: a field
+// whose type is not optional and which carries no default body must be supplied. Both
+// the literal path (infer_record_lit_structural) and the bare-name path below read it,
+// so the two spellings of a construction cannot disagree about which fields are owed.
+fn declared_field_is_required(sf: Node) -> Bool {
+  let sf_type = match sf.inferred {
+    Present { value: Resolved { node: rt } } => rt
+    _ => field_node_type_expr(n: sf)
+  }
+  sf_type.return_cardinality != CardOptional && sf.body == none
+}
+
+// A BARE VARIANT NAME IN EXPRESSION POSITION IS A CONSTRUCTION SUPPLYING ZERO FIELDS. When
+// the variant declares required fields, that construction owes them exactly as `Name { }`
+// does, and it refuses with the same located MissingField per owed field. Pattern position
+// never reaches this function -- `ParamToken => true` binds no fields on purpose and is
+// inferred by the pattern path -- so the wall is position-sensitive by construction rather
+// than by a spelling test (gunbc.recurring_failure_mode
+// zero_field_construction_escapes_the_field_set_check).
+fn bare_variant_reference_missing_field_diagnostics(scope: InferScope, name: String, span: SourceSpan, owner: Node?) -> List<ErrorNode> {
+  match owner {
+    Present { value: owner_node } =>
+      match owner_node.children |> filter(v => authored_name_at(source_indices: scope.type_env.source_indices, node: v) == qualified_last_segment(name: name)) |> first {
+        Present { value: variant_node } =>
+          variant_node.children
+            |> filter(sf => declared_field_is_required(sf: sf))
+            |> map(sf => make_error_node(
+              diagnostic: MissingField {
+                field: authored_name_at(source_indices: scope.type_env.source_indices, node: sf),
+                type_name: name,
+                span: span
+              },
+              module_name: scope.module_name
+            ))
+        Absent => []
+      }
+    Absent => []
+  }
+}
+
+// Every diagnostic a bare variant VALUE reference owes, in one place: the import-listing
+// check and the field obligation. The four expression sites that mint a
+// VariantValueBinding all call this, so a site cannot get one half without the other.
+fn variant_value_reference_diagnostics(scope: InferScope, name: String, span: SourceSpan, owner: Node?) -> List<ErrorNode> {
+  concat(
+    unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: owner),
+    bare_variant_reference_missing_field_diagnostics(scope: scope, name: name, span: span, owner: owner)
+  )
+}
+
 fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   match lookup_variant_parent_enum(scope: scope, name: name) {
     Present { value: parent_enum } => VariantValueBinding { parent_enum: parent_enum }
@@ -6327,7 +6377,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   span: span,
                   name_span: span
                 ),
-                diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
+                diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
               }
             Absent =>
               let binding_kind = infer_var_binding_kind(scope: scope, name: name)
@@ -6381,7 +6431,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           span: span,
                           name_span: span
                         ),
-                        diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
+                        diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
                       }
                     Absent =>
                       match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
@@ -6396,7 +6446,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               span: span,
                               name_span: span
                             ),
-                            diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
+                            diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
                           }
                         Absent =>
                           let binding_kind = infer_var_binding_kind(scope: scope, name: name)
@@ -6424,7 +6474,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           span: span,
                           name_span: span
                         ),
-                        diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
+                        diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
                       }
                     Absent =>
                       let var_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: name)
@@ -8470,8 +8520,6 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         }
     }
   }
-  let is_zero_field_variant_tag_reference = (field_inits |> count) == 0
-    && presence_variant_owner != none
   let presence_name_is_ambiguous = global_bare_is_ambiguous(env: scope.type_env, name: tn_str)
     && map_get(scope.type_env.str_bindings, tn_str) == none
   let presence_ambiguity_refusal_diags = if tn_str != "" && map_get(scope.type_env.str_bindings, tn_str) == none {
@@ -8489,17 +8537,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else {
       none
     }
-  let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || is_zero_field_variant_tag_reference || presence_name_is_ambiguous {
+  let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || presence_name_is_ambiguous {
       []
     } else {
       presence_fields
         |> filter(sf =>
-          let sf_type = match sf.inferred {
-            Present { value: Resolved { node: rt } } => rt
-            _ => field_node_type_expr(n: sf)
-          }
-          sf_type.return_cardinality != CardOptional
-            && sf.body == none
+          declared_field_is_required(sf: sf)
             && (field_inits |> any(fi => field_init_node_name_at(n: fi, source_indices: si_presence) == authored_name_at(source_indices: si_presence, node: sf))) == false)
         |> map(sf => make_error_node(
           diagnostic: MissingField {

@@ -1130,6 +1130,91 @@ pub fn unlisted_variant_use_diagnostics(
     }
 }
 
+pub fn declared_field_is_required(sf: Rc<Node>) -> bool {
+    {
+        let sf_type = match sf.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+            _ => crate::v1_std_core::field_node_type_expr(sf.clone()),
+        };
+        ((sf_type.return_cardinality.clone() != Cardinality::CardOptional)
+            && (sf.body.clone() == std::option::Option::None))
+    }
+}
+
+pub fn bare_variant_reference_missing_field_diagnostics(
+    scope: Rc<InferScope>,
+    name: String,
+    span: Rc<SourceSpan>,
+    owner: Option<Rc<Node>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match owner.clone() {
+        Some(owner_node) => match Rc::new({
+            let mut __result = Vec::new();
+            for v in owner_node.children.clone().iter().cloned() {
+                if (crate::v1_std_core::authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    v.clone(),
+                ) == crate::v1_std_core::qualified_last_segment(name.clone()))
+                {
+                    __result.push(v);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(variant_node) => Rc::new({
+                let mut __result = Vec::new();
+                for sf in Rc::new({
+                    let mut __result = Vec::new();
+                    for sf in variant_node.children.clone().iter().cloned() {
+                        if declared_field_is_required(sf.clone()) {
+                            __result.push(sf);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::MissingField {
+                            field: crate::v1_std_core::authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                sf.clone(),
+                            ),
+                            type_name: name.clone(),
+                            span: span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    ));
+                }
+                __result
+            }),
+            std::option::Option::None => Rc::new(vec![]),
+        },
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn variant_value_reference_diagnostics(
+    scope: Rc<InferScope>,
+    name: String,
+    span: Rc<SourceSpan>,
+    owner: Option<Rc<Node>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    v1_rt::concat(
+        unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), owner.clone()),
+        bare_variant_reference_missing_field_diagnostics(
+            scope.clone(),
+            name.clone(),
+            span.clone(),
+            owner.clone(),
+        ),
+    )
+}
+
 pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBindingKind> {
     match lookup_variant_parent_enum(scope.clone(), name.clone()) {
         Some(parent_enum) => Rc::new(VarBindingKind::VariantValueBinding {
@@ -9701,7 +9786,7 @@ match scope_parent.clone() {
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), binding.resolved.clone()),
 })), span.clone(), span.clone()),
-    diagnostics: unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
+    diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
     std::option::Option::None => {
                 let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
@@ -9742,7 +9827,7 @@ match scope_parent.clone() {
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), gbinding.resolved.clone()),
 })), span.clone(), span.clone()),
-    diagnostics: unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
+    diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
     std::option::Option::None => match expected_variant_owner_instantiation(expected.clone(), name.clone(), scope.clone()) {
     Some(exp_enum) => Rc::new(InferResult {
@@ -9753,7 +9838,7 @@ match scope_parent.clone() {
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: exp_enum.clone(),
 })), span.clone(), span.clone()),
-    diagnostics: unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
+    diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
     std::option::Option::None => {
                 let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
@@ -9777,7 +9862,7 @@ match expected_variant_enum.clone() {
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: exp_enum.clone(),
 })), span.clone(), span.clone()),
-    diagnostics: unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
+    diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
     std::option::Option::None => {
                 let var_ambiguity_cands = crate::v1_compiler_infer_env::global_bare_strict_ambiguity_candidates(scope.type_env.clone(), name.clone());
@@ -13747,8 +13832,6 @@ pub fn infer_record_lit_structural(
                 },
             }
         };
-        let is_zero_field_variant_tag_reference = (((field_inits.clone().len() as i64) == 0)
-            && (presence_variant_owner.clone() != std::option::Option::None));
         let presence_name_is_ambiguous =
             (crate::v1_compiler_infer_env::global_bare_is_ambiguous(
                 scope.type_env.clone(),
@@ -13804,9 +13887,8 @@ pub fn infer_record_lit_structural(
                     }
                 }
             };
-        let missing_field_diags = if ((((tn_str.clone() == "".to_string())
+        let missing_field_diags = if (((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
-            || is_zero_field_variant_tag_reference.clone())
             || presence_name_is_ambiguous.clone())
         {
             Rc::new(vec![])
@@ -13816,30 +13898,24 @@ pub fn infer_record_lit_structural(
                 for sf in Rc::new({
                     let mut __result = Vec::new();
                     for sf in presence_fields.iter().cloned() {
-                        if {
-                            let sf_type = match sf.inferred.clone().as_deref().cloned() {
-                                Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
-                                _ => crate::v1_std_core::field_node_type_expr(sf.clone()),
-                            };
-                            (((sf_type.return_cardinality.clone() != Cardinality::CardOptional)
-                                && (sf.body.clone() == std::option::Option::None))
-                                && ({
-                                    let mut __found = false;
-                                    for fi in field_inits.iter().cloned() {
-                                        if (crate::v1_std_core::field_init_node_name_at(
-                                            fi.clone(),
-                                            si_presence.clone(),
-                                        ) == crate::v1_std_core::authored_name_at(
-                                            si_presence.clone(),
-                                            sf.clone(),
-                                        )) {
-                                            __found = true;
-                                            break;
-                                        }
+                        if (declared_field_is_required(sf.clone())
+                            && ({
+                                let mut __found = false;
+                                for fi in field_inits.iter().cloned() {
+                                    if (crate::v1_std_core::field_init_node_name_at(
+                                        fi.clone(),
+                                        si_presence.clone(),
+                                    ) == crate::v1_std_core::authored_name_at(
+                                        si_presence.clone(),
+                                        sf.clone(),
+                                    )) {
+                                        __found = true;
+                                        break;
                                     }
-                                    __found
-                                } == false))
-                        } {
+                                }
+                                __found
+                            } == false))
+                        {
                             __result.push(sf);
                         }
                     }
