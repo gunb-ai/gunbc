@@ -1080,6 +1080,15 @@ fn token_count_value(t: TokenCount) -> Nat {
   measure_count(t)
 }
 
+// Remaining room in a token window after some of it is already used. Saturates at zero: an input
+// that fills or exceeds the window leaves no output budget. This is window arithmetic over
+// TokenCount, not an upstream-model fact.
+fn token_count_remaining_in_window(window: TokenCount, used: TokenCount) -> TokenCount {
+  let w = token_count_value(t: window)
+  let u = token_count_value(t: used)
+  if u >= w { token_count(count: 0) } else { token_count(count: w - u) }
+}
+
 fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
   Measure { count: count }
 }
