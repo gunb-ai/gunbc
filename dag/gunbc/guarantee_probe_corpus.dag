@@ -24,6 +24,7 @@ import gunbc.guarantee_measurement {
   probe_set_digest,
   guarantee_class_ids_unique, guarantee_path_ids_unique, guarantee_probe_ids_unique,
   join_receipt_to_path, ReceiptJoined, ReceiptPathUnknown, ReceiptPathDuplicate,
+  MeasurementAnchor,
 }
 import v2.std.optional { Present, Absent }
 import v2.std.diagnostic { Diagnostics, None, Some, NonEmptyDiagnostics }
@@ -1022,20 +1023,20 @@ fn probe_row_observation_holds_for_row(observation: ProbeObservation, row: Guara
 
 fn receipt_matches_probe_row(receipt: GuaranteeMeasurementReceipt, row: GuaranteeProbeRow) -> Bool {
   (receipt.probe as String) == (row.probe as String)
-    && (receipt.class as String) == (row.class as String)
-    && (receipt.path as String) == (row.path as String)
+    && (receipt.anchor.class as String) == (row.class as String)
+    && (receipt.anchor.path as String) == (row.path as String)
 }
 
 fn receipt_matches_v1_compile_probe_row(receipt: GuaranteeMeasurementReceipt, row: V1CompileProbeRow) -> Bool {
   (receipt.probe as String) == (row.probe as String)
-    && (receipt.class as String) == (row.class as String)
-    && (receipt.path as String) == (v1_compile_rust_path_id as String)
+    && (receipt.anchor.class as String) == (row.class as String)
+    && (receipt.anchor.path as String) == (v1_compile_rust_path_id as String)
 }
 
 fn receipt_matches_v2_infer_eval_probe_row(receipt: GuaranteeMeasurementReceipt, row: V2InferEvalProbeRow) -> Bool {
   (receipt.probe as String) == (row.probe as String)
-    && (receipt.class as String) == (row.class as String)
-    && (receipt.path as String) == (v2_infer_eval_path_id as String)
+    && (receipt.anchor.class as String) == (row.class as String)
+    && (receipt.anchor.path as String) == (v2_infer_eval_path_id as String)
 }
 
 fn observation_refused_count(o: ProbeObservation) -> Int {
@@ -1082,22 +1083,47 @@ fn probe_observation_from_census(census: CompileDiagnosticCensus) -> ProbeObserv
   }
 }
 
+// ONE CONSTRUCTOR FOR A PROBE RECEIPT, and the reason is the defect that made this edit necessary.
+// The two builders below differed only in class, path and observation, yet each spelled the whole
+// identity out: when the receipt's identity tuple moved under MeasurementAnchor, both literals broke
+// and so did every reader, because the shape was authored in as many places as it was used. The
+// probe-set digest is derived here too rather than at each call, since both builders derived it
+// identically from the probe -- that was duplicated work, not just duplicated syntax.
+fn probe_receipt(
+  class_id: GuaranteeClassId,
+  path: GuaranteePathId,
+  probe: GuaranteeProbeId,
+  subject_revision: MeasurementRevision,
+  harness_revision: MeasurementRevision,
+  observed: ProbeObservation,
+) -> GuaranteeMeasurementReceipt {
+  GuaranteeMeasurementReceipt {
+    anchor: MeasurementAnchor {
+      class: class_id,
+      path: path,
+      subject_revision: subject_revision,
+      harness_revision: harness_revision,
+      probe_set_digest: probe_set_digest(probe_ids: executed_probe_ids_for_probe(probe: probe)),
+    },
+    probe: probe,
+    observed: observed,
+  }
+}
+
 fn build_v1_compile_receipt(
   row: V1CompileProbeRow,
   census: CompileDiagnosticCensus,
   subject_revision: MeasurementRevision,
   harness_revision: MeasurementRevision,
 ) -> GuaranteeMeasurementReceipt {
-  let executed_probe_ids = executed_probe_ids_for_probe(probe: row.probe)
-  GuaranteeMeasurementReceipt {
-    class: row.class,
+  probe_receipt(
+    class_id: row.class,
     path: v1_compile_rust_path_id,
     probe: row.probe,
     subject_revision: subject_revision,
     harness_revision: harness_revision,
-    probe_set_digest: probe_set_digest(probe_ids: executed_probe_ids),
     observed: probe_observation_from_census(census: census),
-  }
+  )
 }
 
 fn receipt_joins_v1_compile_path(receipt: GuaranteeMeasurementReceipt) -> Bool {
@@ -1114,14 +1140,12 @@ fn build_v2_infer_eval_receipt(
   subject_revision: MeasurementRevision,
   harness_revision: MeasurementRevision,
 ) -> GuaranteeMeasurementReceipt {
-  let executed_probe_ids = executed_probe_ids_for_probe(probe: row.probe)
-  GuaranteeMeasurementReceipt {
-    class: row.class,
+  probe_receipt(
+    class_id: row.class,
     path: v2_infer_eval_path_id,
     probe: row.probe,
     subject_revision: subject_revision,
     harness_revision: harness_revision,
-    probe_set_digest: probe_set_digest(probe_ids: executed_probe_ids),
     observed: observed,
-  }
+  )
 }

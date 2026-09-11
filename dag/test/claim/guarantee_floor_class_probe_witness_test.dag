@@ -292,7 +292,7 @@ test fn floor_record_completeness_receipt_joins_its_v1_compile_path() -> Bool {
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
         && observed_is_verdict(o: receipt.observed)
         && observation_refused_count(o: receipt.observed) == 1
-        && (receipt.path as String) == (v1_compile_rust_path_id as String)
+        && (receipt.anchor.path as String) == (v1_compile_rust_path_id as String)
     Absent => false
   }
 }
