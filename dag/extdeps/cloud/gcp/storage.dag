@@ -20,7 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // workflow's). It carries no handler and no dispatch: the handler lands when the operator says
 // (operator provider ruling, 2026-09-11). These rows are therefore a DECLARED FRONTIER in DESIGN
 // section 3c's middle state -- consumed by a NAMED consumer in a NAMED later change -- and the row
-// gcs_interface_consumer_frontier below carries that as data, not prose. The consumer is the GCS
+// group gcs_storage_frontier_rows below carries that as data, not prose. The consumer is the GCS
 // realization handler, extdeps.realization.materialization_store_gcs, the sibling of
 // extdeps.realization.materialization_store_local: it binds these rows to
 // std.materialization_object's observations exactly as the local handler binds the filesystem
@@ -100,13 +100,17 @@ data gcs_object_status_facts: List<GcsObjectStatusFact> = [
   GcsObjectStatusFact { status: 503, meaning: GcsServerError },
 ]
 
-// The frontier, typed: the subject is this module's status-fact roster, and the dissolution is
+// The frontier, typed, and enrolled in gunbc.census_closure_frontier
+// census_closure_frontier_row_groups so gunbc.dissolution_census folds it like every sibling
+// extdeps frontier group: the subject is this module's status-fact roster, and the dissolution is
 // UNBOUND because its consumer does not exist yet -- a bound dissolution may only cite a declaration
 // the tree already carries (the required declarations phase refuses CITED-MODULE-ABSENT otherwise).
 // The description names the consumer declaration and the ruled dispatch step, so the row becomes
 // bindable to std.dissolution bound_dissolution in the change that lands the handler.
-data gcs_interface_consumer_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(module_path: "extdeps.cloud.gcp.storage", decl_name: "gcs_object_status_facts"),
-  reason: "GCS JSON API v1 interface rows land ahead of their handler (operator provider ruling 2026-09-11: interface rows day one, handler later). Named consumer: extdeps.realization.materialization_store_gcs, which maps gcs_objects_get / gcs_objects_insert_if_absent and gcs_object_status_facts onto std.materialization_object StoreObjectRead / StoreObjectPublish. Named change: ruled dispatch step 5 (NFS/GCS realization), after 4 (route integration).",
-  dissolution: unbound_dissolution(description: "dissolve-on: extdeps.realization.materialization_store_gcs gcs_store_read_observation appears (the GCS realization handler, sibling of extdeps.realization.materialization_store_local, landed at ruled dispatch step 5 NFS/GCS realization); that change rebinds this row to bound_dissolution on that declaration.")
-)
+data gcs_storage_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloud.gcp.storage", decl_name: "gcs_object_status_facts"),
+    reason: "GCS JSON API v1 interface rows land ahead of their handler (operator provider ruling 2026-09-11: interface rows day one, handler later). Named consumer: extdeps.realization.materialization_store_gcs, which maps gcs_objects_get / gcs_objects_insert_if_absent and gcs_object_status_facts onto std.materialization_object StoreObjectRead / StoreObjectPublish. Named change: ruled dispatch step 5 (NFS/GCS realization), after 4 (route integration).",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.realization.materialization_store_gcs gcs_store_read_observation appears (the GCS realization handler, sibling of extdeps.realization.materialization_store_local, landed at ruled dispatch step 5 NFS/GCS realization); that change rebinds this row to bound_dissolution on that declaration.")
+  )
+]
