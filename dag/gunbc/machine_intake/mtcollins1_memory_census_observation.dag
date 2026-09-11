@@ -495,6 +495,25 @@ data mtcollins1_boot_delivery_defect: MtCollins1BootDeliveryDefect = MtCollins1B
 // reports the same serial from the CONTROLLER's IPMI FRU, over a different transport, from a
 // different agent, recorded days earlier. Host-side DMI and controller-side FRU agreeing on one
 // serial is what makes this an observation OF A UNIT; either alone is an observation of a reading.
+// THE ATTEMPT LABEL INSIDE THIS ARTIFACT IS NOT AN ATTEMPT IDENTITY, AND THAT IS A PRODUCER DEFECT
+// rather than a transcription slip. The capture's own header reads "attempt=3" — but so does the
+// FAILED run recorded at mtcollins1_attempt3_failure, whose artifact is committed as
+// mtcollins1-attempt3-sol.log. Two materially different attempts, minutes apart, one with no host
+// capture at all and one that produced these bytes, both answer to "attempt=3".
+//
+// THE CAUSE IS THAT THE PRODUCER CARRIED A LITERAL. The capture script hard-codes its own attempt
+// number, so re-running it re-uses the identity instead of minting a new one; the artifact FILE was
+// correctly never overwritten, but the identity inside it was. An attempt identity that a rerun can
+// silently duplicate is not an identity, and joining receipts on it would merge two attempts with
+// different outcomes.
+//
+// THE BYTES ARE NOT EDITED TO FIX THIS. They are what the machine produced, and rewriting a capture
+// to correct its own label would destroy the only property that makes it evidence. So the label is
+// recorded as unreliable, the model carries the distinguishing facts instead — different artifact,
+// different digest, different wall-clock window, different outcome — and the producer's literal is
+// named as the thing to remove.
+data mtcollins1_host_capture_attempt_label_defect: NonEmptyStr = "The capture's header reads attempt=3, the same label the FAILED run at mtcollins1_attempt3_failure carries. The producer hard-codes its attempt number, so a rerun reuses the identity rather than minting one. The artifacts are distinguished by digest and by wall-clock window (failed run 2026-09-10T22:19Z, this capture 2026-09-11T01:26:50Z to 01:30:29Z), never by that label. Removing the literal from the producer is the fix; the bytes are left exactly as captured."
+
 data mtcollins1_host_capture_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-host-capture.txt"
 
 data mtcollins1_host_capture_byte_count: Int = 270880
@@ -503,7 +522,12 @@ data mtcollins1_host_capture_digest: ContentHash = Sha256Hash(Sha256Digest {
   hex: "a9b880c3ecd9ba611c1df9e7de1ab089839c5d8e92b743bf2e1bcd684100fd2a",
 })
 
-data mtcollins1_host_capture_observed_at: EpochMs = 1789428410000
+// CORRECTED. This previously read 1789428410000, which is 2026-09-14T23:26:50Z — nearly four days
+// after the capture actually ran. The artifact's own first line says
+// "GUNBC-HOST-CAPTURE mtcollins1 attempt=3 begin 2026-09-11T01:26:50Z", and this module's whole
+// claim is that it states nothing the artifact does not contain, so a timestamp the artifact
+// contradicts is the one kind of error it cannot be allowed to carry. 1789090010000 is that line.
+data mtcollins1_host_capture_observed_at: EpochMs = 1789090010000
 
 // EVERY SECTION OF THAT CAPTURE CARRIES ITS ARGV AND ITS EXIT STATUS, which is what makes a
 // missing reading distinguishable from a zero one. All nineteen sections exited 0, so no field
