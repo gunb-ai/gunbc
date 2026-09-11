@@ -15007,10 +15007,42 @@ fn decide_rest_exchange(
     let mapped = if response_format == "Text" {
         map_response_to_value(&body, None, op_node, ctx)?
     } else {
-        let json: serde_json::Value =
-            serde_json::from_str(&body).unwrap_or_else(|_| serde_json::Value::String(body));
+        let json = match serde_json::from_str::<serde_json::Value>(&body) {
+            Ok(json) => json,
+            Err(error) => {
+                let cause = format!("JSON body did not decode: {}", error);
+                return match outcome_field {
+                    Some(field) => Ok(attach_rest_outcome(
+                        None,
+                        op_node,
+                        field,
+                        rest_body_undecodable_value(ctx, status, cause),
+                        ctx,
+                    )),
+                    None => Err(InterpError::TypeError {
+                        msg: format!("HTTP {} body undecodable: {}", status, cause),
+                    }),
+                };
+            }
+        };
         map_response_to_value_json(&json, op_node, ctx)?
     };
+    if let Some(missing) = rest_payload_null_fields(&mapped, op_node, outcome_field, ctx) {
+        let cause = format!(
+            "HTTP {} body did not inhabit the declared output (null at {})",
+            status, missing
+        );
+        return match outcome_field {
+            Some(field) => Ok(attach_rest_outcome(
+                None,
+                op_node,
+                field,
+                rest_body_undecodable_value(ctx, status, cause),
+                ctx,
+            )),
+            None => Err(InterpError::TypeError { msg: cause }),
+        };
+    }
     match outcome_field {
         Some(field) => Ok(attach_rest_outcome(
             Some(mapped),
@@ -15610,6 +15642,93 @@ fn map_response_to_value(
     })
 }
 
+fn rest_output_child_is_outcome(child: &Rc<Node>, ctx: &InterpContext) -> bool {
+    let Some(crate::v1_std_core::InferredNode::Resolved { node }) = child.inferred.as_deref()
+    else {
+        return false;
+    };
+    authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("RestOutcome")
+}
+
+fn rest_output_child_is_list(child: &Rc<Node>, ctx: &InterpContext) -> bool {
+    let Some(crate::v1_std_core::InferredNode::Resolved { node }) = child.inferred.as_deref()
+    else {
+        return false;
+    };
+    authored_name_at(ctx.si(), node.clone()).rsplit('.').next() == Some("List")
+}
+
+fn rest_output_child_is_optional(child: &Rc<Node>) -> bool {
+    child.return_cardinality == Cardinality::CardOptional
+}
+
+fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> BTreeSet<String> {
+    op_node
+        .inferred
+        .as_deref()
+        .and_then(|inferred| match inferred {
+            InferredNode::Resolved { node } => Some(node),
+            _ => None,
+        })
+        .map(|return_type| {
+            return_type
+                .children
+                .iter()
+                .filter(|child| rest_output_child_is_optional(child))
+                .map(|child| authored_name_at(ctx.si(), child.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn rest_payload_null_fields(
+    mapped: &Value,
+    op_node: &Rc<Node>,
+    outcome_field: Option<&str>,
+    ctx: &InterpContext,
+) -> Option<String> {
+    let optional = rest_optional_output_field_names(op_node, ctx);
+    match mapped {
+        Value::Record { fields, .. } => {
+            let missing: Vec<String> = fields
+                .iter()
+                .filter(|(name, value)| {
+                    let field = ctx.resolve(*name);
+                    Some(field.as_str()) != outcome_field
+                        && matches!(value, Value::Null)
+                        && !optional.contains(&field)
+                })
+                .map(|(name, _)| ctx.resolve(*name))
+                .collect();
+            if missing.is_empty() {
+                None
+            } else {
+                Some(missing.join(","))
+            }
+        }
+        Value::Null => Some("<mapped-null>".to_string()),
+        _ => None,
+    }
+}
+
+fn map_response_root_into_payload_field(
+    json: &serde_json::Value,
+    child: &Rc<Node>,
+    ctx: &InterpContext,
+) -> Value {
+    if rest_output_child_is_list(child, ctx) {
+        if json.is_array() {
+            json_to_value(json)
+        } else {
+            Value::Null
+        }
+    } else if json.is_array() {
+        Value::Null
+    } else {
+        json_to_value(json)
+    }
+}
+
 fn map_response_to_value_json(
     json: &serde_json::Value,
     op_node: &Rc<Node>,
@@ -15624,22 +15743,16 @@ fn map_response_to_value_json(
         return Ok(json_to_value(json));
     }
 
-    let type_name = authored_name_at(ctx.si(), return_type.clone());
-    if type_name == "List" && children.is_empty() {
-        return Ok(json_to_value(json));
-    }
-
-    if json.is_array() && !children.is_empty() {
-        let first_field = authored_name_at(ctx.si(), children[0].clone());
-        return Ok(Value::Record {
-            type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-            fields: Rc::new(vec![(ctx.sym(&first_field), json_to_value(json))]),
-        });
-    }
-
+    let payload_count = children
+        .iter()
+        .filter(|child| !rest_output_child_is_outcome(child, ctx))
+        .count();
     let mut fields: Vec<(Symbol, Value)> = Vec::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
+        if rest_output_child_is_outcome(child, ctx) {
+            continue;
+        }
         let from_key = extract_from_key(child, ctx);
         let val = match from_key {
             Some(path) => {
@@ -15651,13 +15764,10 @@ fn map_response_to_value_json(
             }
             None => match json.get(&field_name) {
                 Some(v) => json_to_value(v),
-                None => {
-                    if children.len() == 1 {
-                        json_to_value(json)
-                    } else {
-                        Value::Null
-                    }
+                None if payload_count == 1 => {
+                    map_response_root_into_payload_field(json, child, ctx)
                 }
+                None => Value::Null,
             },
         };
         fields.push((ctx.sym(&field_name), val));
