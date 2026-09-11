@@ -68,6 +68,11 @@ import extdeps.google.sheets {
   InputRaw,
   InputUserEntered,
   BatchUpdateValuesResponse,
+  sheets_api_version,
+  sheets_api_base,
+  sheets_spreadsheets_oauth_scope,
+  sheets_spreadsheets_readonly_oauth_scope,
+  sheets_read_quota_citation,
 }
 import extdeps.google.sheets_mock_corpus { sheets_published_mock_corpus }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
@@ -864,6 +869,16 @@ test fn sheets_published_mock_corpus_covers_get_and_batch_update() -> Bool {
         }
     Absent => false
   }
+}
+
+test fn sheets_quota_scope_and_version_rows_are_consumed() -> Bool {
+  string_contains(s: sheets_api_base as String, pattern: sheets_api_version as String)
+    && string_contains(s: sheets_spreadsheets_oauth_scope as String, pattern: "/auth/spreadsheets")
+    && (sheets_spreadsheets_readonly_oauth_scope as String)
+      != (sheets_spreadsheets_oauth_scope as String)
+    && (sheets_read_quota_citation.fact.module_path as String) == "extdeps.google.sheets"
+    && (sheets_read_quota_citation.fact.decl_name as String)
+      == "sheets_read_requests_per_minute_per_project"
 }
 
 fn w_fixture_project() -> GcpProjectId {
