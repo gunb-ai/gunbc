@@ -9,6 +9,7 @@ import extdeps.uri { uri_wire }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision,
   deepseek_v4_1_flash_encoder_path, deepseek_v4_1_flash_config_path,
+  deepseek_v4_1_flash_license_path, deepseek_v4_1_flash_license_spdx,
   extdeps_external_authority_anchor,
   deepseek_v4_1_flash_context_length, deepseek_v4_1_flash_yarn_scaled_positions,
   deepseek_v4_1_flash_frontier,
@@ -28,9 +29,12 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 test fn encoder_and_config_blob_urls_are_the_hub_shape_at_this_pin() -> Bool {
   let enc = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_encoder_path)
   let cfg = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_config_path)
+  let lic = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_license_path)
   let tree = hub_repo_tree_api_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision)
   (enc as String) == "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/encoding/encoding.py"
     && (cfg as String) == "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/config.json"
+    && (lic as String) == "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/LICENSE"
+    && (deepseek_v4_1_flash_license_spdx as String) == "MIT"
     && (tree as String) == "https://huggingface.co/api/models/deepseek-ai/DeepSeek-V4.1-Flash/tree/dba1be0a40aa45a94ad051997016db3960a90277?recursive=1"
     && (uri_wire(uri: hub_repo_https_uri(repo: deepseek_v4_1_flash_hub_repo)) as String)
       == (uri_wire(uri: extdeps_external_authority_anchor.uri) as String)

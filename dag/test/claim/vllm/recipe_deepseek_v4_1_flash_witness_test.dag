@@ -1,0 +1,19 @@
+module test.claim.vllm.recipe_deepseek_v4_1_flash_witness
+
+import std.types { Bool, String }
+import std.roster_frontier { frontier_rows_well_formed }
+import extdeps.vllm.recipe_deepseek_v4_1_flash {
+  vllm_recipe_deepseek_v4_1_flash_tokenizer_mode,
+  vllm_recipe_deepseek_v4_1_flash_tool_call_parser,
+  vllm_recipe_deepseek_v4_1_flash_reasoning_parser,
+  vllm_recipe_deepseek_v4_1_flash_frontier,
+}
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+test fn recipe_parser_names_are_the_vllm_deepseek_v41_spelling() -> Bool {
+  (vllm_recipe_deepseek_v4_1_flash_tokenizer_mode as String) == "deepseek_v41"
+    && (vllm_recipe_deepseek_v4_1_flash_tool_call_parser as String) == "deepseek_v41"
+    && (vllm_recipe_deepseek_v4_1_flash_reasoning_parser as String) == "deepseek_v41"
+    && frontier_rows_well_formed(rows: vllm_recipe_deepseek_v4_1_flash_frontier)
+}

@@ -55,6 +55,10 @@ data deepseek_v4_1_flash_revision_committed: NonEmptyStr = "2026-09-10T08:18:10Z
 
 data deepseek_v4_1_flash_config_path: NonEmptyStr = "config.json" as NonEmptyStr
 data deepseek_v4_1_flash_encoder_path: NonEmptyStr = "encoding/encoding.py" as NonEmptyStr
+// LICENSE FILE AT THE PIN, SPDX MIT. DSV41-1 is the consumer: a serving image that redistributes
+// these weights must carry this source, not a guessed license.
+data deepseek_v4_1_flash_license_path: NonEmptyStr = "LICENSE" as NonEmptyStr
+data deepseek_v4_1_flash_license_spdx: NonEmptyStr = "MIT" as NonEmptyStr
 data deepseek_v4_1_flash_safetensors_index_path: NonEmptyStr = "model.safetensors.index.json" as NonEmptyStr
 data deepseek_v4_1_flash_inference_model_path: NonEmptyStr = "inference/model.py" as NonEmptyStr
 
@@ -234,8 +238,6 @@ fn deepseek_v4_1_flash_safetensors_payload_total(f: DeepseekV41SafetensorsPayloa
   byte_size(count: n)
 }
 
-data deepseek_v4_1_flash_footprint_unread_on_fleet: Bool = true
-
 fn deepseek_v4_1_flash_fact(decl_name: NonEmptyStr) -> DeclarationRef {
   DeclarationRef {
     module_path: "extdeps.deepseek.deepseek_v4_1_flash" as NonEmptyStr,
@@ -261,6 +263,8 @@ data deepseek_v4_1_flash_frontier_dsv41_1: List<FrontierRow> = deepseek_v4_1_fla
     "deepseek_v4_1_flash_revision" as NonEmptyStr,
     "deepseek_v4_1_flash_revision_committed" as NonEmptyStr,
     "deepseek_v4_1_flash_config_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_license_path" as NonEmptyStr,
+    "deepseek_v4_1_flash_license_spdx" as NonEmptyStr,
     "deepseek_v4_1_flash_architecture_class" as NonEmptyStr,
     "deepseek_v4_1_flash_model_type" as NonEmptyStr,
     "deepseek_v4_1_flash_quant_method" as NonEmptyStr,
@@ -296,9 +300,6 @@ data deepseek_v4_1_flash_frontier_dsv41_1: List<FrontierRow> = deepseek_v4_1_fla
     "deepseek_v4_1_flash_vision_max_image_tokens" as NonEmptyStr,
     "deepseek_v4_1_flash_image_token_id" as NonEmptyStr,
     "deepseek_v4_1_flash_accepts_image_input" as NonEmptyStr,
-    "deepseek_v4_1_flash_vllm_tokenizer_mode" as NonEmptyStr,
-    "deepseek_v4_1_flash_vllm_tool_call_parser" as NonEmptyStr,
-    "deepseek_v4_1_flash_vllm_reasoning_parser" as NonEmptyStr,
   ],
   reason: "DSV41-1 loyal-ram-346 serving-image probe binds this config fact",
   dissolution: unbound_dissolution(description: "a serving-image probe that asks whether DeepseekV41ForCausalLM is registered, then binds the config those weights require"),
@@ -313,7 +314,6 @@ data deepseek_v4_1_flash_frontier_dsv41_2: List<FrontierRow> = deepseek_v4_1_fla
     "deepseek_v4_1_flash_safetensors_shard_count" as NonEmptyStr,
     "deepseek_v4_1_flash_safetensors_index_path" as NonEmptyStr,
     "deepseek_v4_1_flash_payload_footprint_standing" as NonEmptyStr,
-    "deepseek_v4_1_flash_footprint_unread_on_fleet" as NonEmptyStr,
     "deepseek_v4_1_flash_card_reported_parameters" as NonEmptyStr,
     "deepseek_v4_1_flash_context_length" as NonEmptyStr,
     "deepseek_v4_1_flash_native_context_length" as NonEmptyStr,
@@ -479,15 +479,3 @@ data deepseek_v4_1_flash_chat_reasoning_field: NonEmptyStr = "reasoning_content"
 // system message behaves like a user message for appending the assistant generation header.
 data deepseek_v4_1_flash_system_token: NonEmptyStr = "<｜System｜>" as NonEmptyStr
 data deepseek_v4_1_flash_mid_conversation_system_messages_supported: Bool = true
-
-// ===========================================================================================
-// vLLM RECIPE FLAGS, cited to recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash. These are upstream's
-// own serving prescriptions for this model. Whether a given engine build has the named parsers is
-// a different fact, owned by the serving unit, not by this row. This module does not carry a
-// KV-pool token figure, max-num-seqs, measured throughput, or a rendering observation against a
-// serving endpoint — those are scenario properties, not publisher facts.
-// ===========================================================================================
-
-data deepseek_v4_1_flash_vllm_tokenizer_mode: NonEmptyStr = "deepseek_v41" as NonEmptyStr
-data deepseek_v4_1_flash_vllm_tool_call_parser: NonEmptyStr = "deepseek_v41" as NonEmptyStr
-data deepseek_v4_1_flash_vllm_reasoning_parser: NonEmptyStr = "deepseek_v41" as NonEmptyStr

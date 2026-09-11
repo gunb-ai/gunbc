@@ -1,0 +1,46 @@
+module extdeps.vllm.recipe_deepseek_v4_1_flash
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// vLLM'S RECIPE PAGE FOR DEEPSEEK-V4.1-FLASH, as its own authority because recipes.vllm.ai is
+// independently versioned from both the Hub weights and the vLLM engine-args shape. Parser and
+// tokenizer-mode strings are vLLM names, not DeepSeek config.json keys.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "recipes.vllm.ai/deepseek-ai/DeepSeek-V4.1-Flash",
+  }
+}
+
+data vllm_recipe_deepseek_v4_1_flash_tokenizer_mode: NonEmptyStr = "deepseek_v41" as NonEmptyStr
+data vllm_recipe_deepseek_v4_1_flash_tool_call_parser: NonEmptyStr = "deepseek_v41" as NonEmptyStr
+data vllm_recipe_deepseek_v4_1_flash_reasoning_parser: NonEmptyStr = "deepseek_v41" as NonEmptyStr
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.recipe_deepseek_v4_1_flash" as NonEmptyStr,
+      decl_name: "vllm_recipe_deepseek_v4_1_flash_tokenizer_mode" as NonEmptyStr,
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data vllm_recipe_deepseek_v4_1_flash_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: DeclarationRef {
+      module_path: "extdeps.vllm.recipe_deepseek_v4_1_flash" as NonEmptyStr,
+      decl_name: "vllm_recipe_deepseek_v4_1_flash_tokenizer_mode" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    reason: "DSV41-1 launch argv binds the recipe tokenizer mode and parsers",
+    dissolution: unbound_dissolution(description: "a serving-image probe that launches with these recipe flags against DeepseekV41ForCausalLM"),
+  ),
+]

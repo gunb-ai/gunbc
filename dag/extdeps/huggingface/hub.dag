@@ -106,11 +106,31 @@ data hub_branch_name_is_not_a_content_address: Bool = true
 // its own digest and verified locally. This is the shape the deleted Ollama materializer had, and it
 // is the stronger of the two available guarantees -- but it needs a per-file digest manifest, which
 // for a many-shard model repository is an observation rather than something an author can write.
+fn hub_repo_web_kind_prefix(kind: HubRepoKind) -> String {
+  match kind {
+    HubModelRepo => ""
+    HubDatasetRepo => "datasets/"
+    HubSpaceRepo => "spaces/"
+  }
+}
+
+fn hub_repo_api_collection(kind: HubRepoKind) -> NonEmptyStr {
+  match kind {
+    HubModelRepo => "models" as NonEmptyStr
+    HubDatasetRepo => "datasets" as NonEmptyStr
+    HubSpaceRepo => "spaces" as NonEmptyStr
+  }
+}
+
+fn hub_repo_web_locator(repo: HubRepoId) -> NonEmptyStr {
+  join(["huggingface.co/", hub_repo_web_kind_prefix(kind: repo.kind), repo.path as String], "") as NonEmptyStr
+}
+
 fn hub_resolve_url(repo: HubRepoId, revision: NonEmptyStr, path_in_repo: NonEmptyStr) -> NonEmptyStr {
   uri_wire(uri: Uri {
     scheme: Https,
     locator: join([
-      "huggingface.co/", repo.path as String,
+      hub_repo_web_locator(repo: repo) as String,
       "/resolve/", revision as String,
       "/", path_in_repo as String,
     ], "") as NonEmptyStr,
@@ -123,19 +143,18 @@ fn hub_blob_url(repo: HubRepoId, revision: NonEmptyStr, path_in_repo: NonEmptySt
   uri_wire(uri: Uri {
     scheme: Https,
     locator: join([
-      "huggingface.co/", repo.path as String,
+      hub_repo_web_locator(repo: repo) as String,
       "/blob/", revision as String,
       "/", path_in_repo as String,
     ], "") as NonEmptyStr,
   })
 }
 
-// THE REPO PAGE LOCATOR, the `huggingface.co/<path>` subject a product module cites as its Hub
-// authority rather than restating the host.
+// THE REPO PAGE, kind-prefixed so a dataset or Space is not a model URL of the same path.
 fn hub_repo_https_uri(repo: HubRepoId) -> Uri {
   Uri {
     scheme: Https,
-    locator: join(["huggingface.co/", repo.path as String], "") as NonEmptyStr,
+    locator: hub_repo_web_locator(repo: repo),
   }
 }
 
@@ -145,7 +164,8 @@ fn hub_repo_tree_api_url(repo: HubRepoId, revision: NonEmptyStr) -> NonEmptyStr 
   uri_wire(uri: Uri {
     scheme: Https,
     locator: join([
-      "huggingface.co/api/models/", repo.path as String,
+      "huggingface.co/api/", hub_repo_api_collection(kind: repo.kind) as String,
+      "/", repo.path as String,
       "/tree/", revision as String, "?recursive=1",
     ], "") as NonEmptyStr,
   })
