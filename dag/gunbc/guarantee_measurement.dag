@@ -596,7 +596,20 @@ fn minimum_on_ladder(dispositions: List<GuaranteeDisposition>) -> GuaranteeDispo
   })
 }
 
+// AN EMPTY PATH SET IS IGNORANCE, NOT A DECLARED OUTSIDE, and the distinction is the whole reason
+// OutsideModeledGuarantee sits beside the ladder rather than on it. The minimum below seeds with
+// OutsideModeledGuarantee so that an outside path contributes no rung, which is right for a path
+// that someone classified -- and wrong for NO PATHS AT ALL, because the seed then leaks out as the
+// answer: a class nobody measured would report as outside the modeled guarantee, and
+// disposition_is_at_ceiling would call that AT CEILING against an outside-the-ladder ceiling, so a
+// class nobody looked at would stop owing its next-rung trigger. That is the inverse of the leak
+// section 4b guards: not "we do not model this" masquerading as a weak rung, but ignorance
+// masquerading as a deliberate classification. The module already makes this argument for a single
+// probe that could not run; the empty set is the same argument at class grain.
 fn fold_dispositions(dispositions: List<GuaranteeDisposition>) -> GuaranteeDisposition {
+  if dispositions.length() == 0 {
+    Unmeasured
+  } else {
   if any(dispositions, d => disposition_is_below_floor(d: d)) {
     BelowFloor
   } else {
@@ -609,6 +622,7 @@ fn fold_dispositions(dispositions: List<GuaranteeDisposition>) -> GuaranteeDispo
         minimum_on_ladder(dispositions: dispositions)
       }
     }
+  }
   }
 }
 

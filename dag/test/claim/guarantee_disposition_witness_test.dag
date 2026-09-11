@@ -26,6 +26,7 @@ import gunbc.guarantee_measurement {
   OnLadder,
   OutsideModeledGuarantee,
   PathEvidence,
+  PathEvidenceJoin,
   PathEvidenceJoined,
   PathEvidenceRefused,
   ProbeSetsDisagree,
@@ -53,6 +54,7 @@ import gunbc.guarantee_rung {
   GuaranteeRung,
   MechanicallyPreventable,
   Mitigatable,
+  OutsideTheLadder,
   StructurallyGuaranteed,
 }
 import std.types { Bool, CommitSha, NonEmptyStr, String }
@@ -96,18 +98,18 @@ fn receipt(probe: String, observed: ProbeObservation) -> GuaranteeMeasurementRec
   }
 }
 
+// THE REFUSAL ARM BELOW IS DELIBERATELY LOUD, NOT A SUBSTITUTE. Handing back the pair the join just
+// refused would be the absorbing fallback in miniature: every control in this file would keep
+// passing on evidence the carrier rejected, and the join defect would be invisible. Returning two
+// unrunnable probes instead makes EVERY disposition control fail at once, which is the only honest
+// thing an unreachable arm in a fixture can do. the_fixture_pair_actually_joins is what proves this
+// arm unreachable rather than merely unvisited.
 fn evidence(red: ProbeObservation, green: ProbeObservation) -> PathEvidence {
   match path_evidence_from_receipts(
     red: receipt(probe: "red-probe", observed: red),
     green: receipt(probe: "green-probe", observed: green),
   ) {
     PathEvidenceJoined { evidence: e } => e
-    // THE REFUSAL ARM IS DELIBERATELY LOUD, NOT A SUBSTITUTE. Handing back the pair the join just
-    // refused would be the absorbing fallback in miniature: every control below would keep passing
-    // on evidence the carrier rejected, and the join defect would be invisible. Returning two
-    // unrunnable probes instead makes EVERY disposition control fail at once, which is the only
-    // honest thing an unreachable arm in a fixture can do. the_fixture_pair_actually_joins is what
-    // proves this arm is unreachable rather than merely unvisited.
     PathEvidenceRefused { cause: _ } =>
       PathEvidence {
         anchor: anchor(),
@@ -497,5 +499,46 @@ test fn the_join_carries_the_anchor_through() -> Bool {
         && measurement_revision_eq(left: e.anchor.subject_revision, right: anchor().subject_revision)
         && measurement_revision_eq(left: e.anchor.harness_revision, right: anchor().harness_revision)
     PathEvidenceRefused { cause: _ } => false
+  }
+}
+
+
+// ---- THE EMPTY PATH SET ----
+
+// A CLASS WITH NO EVIDENCE IS UNMEASURED, AND THE RED IS THAT IT USED TO BE OUTSIDE THE MODELED
+// GUARANTEE. minimum_on_ladder seeds with OutsideModeledGuarantee so an outside path contributes no
+// rung -- correct for a path someone classified, and wrong for no paths at all, because the seed
+// then leaked out as the answer. Paired with the control below it is the whole defect: a class
+// nobody measured read as outside the guarantee, and an outside class AT an outside-the-ladder
+// ceiling is DONE -- so a class nobody looked at stopped owing its next-rung trigger.
+test fn a_class_with_no_evidence_is_unmeasured() -> Bool {
+  match class_disposition(evidence: []) {
+    Unmeasured => true
+    _ => false
+  }
+}
+
+test fn an_empty_disposition_set_is_unmeasured() -> Bool {
+  match fold_dispositions(dispositions: []) {
+    Unmeasured => true
+    _ => false
+  }
+}
+
+// THE CONSEQUENCE, asserted where it bites rather than only at the fold: an unmeasured class is not
+// at its ceiling, whatever the ceiling is, so the trigger stays owed.
+test fn a_class_with_no_evidence_still_owes_its_trigger() -> Bool {
+  !disposition_is_at_ceiling(
+    r: requirement_at(ceiling: OutsideTheLadder),
+    d: class_disposition(evidence: [])
+  )
+}
+
+// THE OTHER SIDE, so the repair does not swallow the honest case: a class whose paths are all
+// classified as outside the modeled guarantee IS outside, and that is a statement someone made.
+test fn a_classified_outside_class_is_still_outside() -> Bool {
+  match fold_dispositions(dispositions: [OutsideModeledGuarantee, OutsideModeledGuarantee]) {
+    OutsideModeledGuarantee => true
+    _ => false
   }
 }
